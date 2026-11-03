@@ -364,6 +364,7 @@ class ClientBroker(_Broker):
             raise ValueError('fingerprint must be exactly 64 hexadecimal characters')
         self.fingerprint = fingerprint.lower() if fingerprint is not None else None
         self.socket_path, self.remote = str(socket_path), remote
+        self._endpoint_lock = None
         self.server_hostname = server_hostname or remote[0]
         if fingerprint is not None:
             self.context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
@@ -373,6 +374,54 @@ class ClientBroker(_Broker):
             self.context = ssl.create_default_context(cafile=str(cafile))
         self.context.minimum_version = ssl.TLSVersion.TLSv1_2
 
+    def _claim_endpoint(self, path):
+        import fcntl
+        import stat
+        if path.absolute().resolve() != path.absolute():
+            raise ValueError('broker endpoint cannot contain symlinks')
+        # A permanent sibling lock stays outside the game-visible transport
+        # mount. SIGKILL releases flock without relying on PIDs or timeouts.
+        directory = path.parent.with_name(path.parent.name + '.locks')
+        directory.mkdir(mode=0o700, exist_ok=True)
+        info = directory.lstat()
+        if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid()
+                or info.st_mode & 0o077):
+            raise ValueError('unsafe broker lock directory')
+        parent = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            fd = os.open(path.name + '.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW |
+                         os.O_NONBLOCK | os.O_CLOEXEC, 0o600, dir_fd=parent)
+        finally:
+            os.close(parent)
+        try:
+            info = os.fstat(fd)
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                    or info.st_uid != os.geteuid() or info.st_mode & 0o077):
+                raise ValueError('unsafe broker endpoint lock')
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BaseException:
+            os.close(fd)
+            raise
+        self._endpoint_lock = fd
+        try:
+            info = path.lstat()
+        except FileNotFoundError:
+            return
+        if (not stat.S_ISSOCK(info.st_mode) or info.st_uid != os.geteuid()
+                or info.st_nlink != 1 or info.st_mode & 0o077):
+            raise ValueError('unsafe existing broker endpoint')
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+            probe.settimeout(0.1)
+            try:
+                probe.connect(str(path))
+            except ConnectionRefusedError:
+                current = path.lstat()
+                if (current.st_dev, current.st_ino) != (info.st_dev, info.st_ino):
+                    raise ValueError('broker endpoint changed during recovery')
+                path.unlink()
+            else:
+                raise FileExistsError('broker endpoint is active')
+
     def start(self):
         if self._listener is not None or self._stop.is_set():
             raise RuntimeError('broker cannot be restarted')
@@ -380,7 +429,7 @@ class ClientBroker(_Broker):
         path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
         listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
-            # Never remove or replace somebody else's existing path, even stale.
+            self._claim_endpoint(path)
             listener.bind(self.socket_path)
             info = path.lstat()
             self._inode = (info.st_dev, info.st_ino)
@@ -391,6 +440,19 @@ class ClientBroker(_Broker):
             listener.close()
             self.close()
             raise
+
+    def close(self):
+        try:
+            super().close()
+        finally:
+            # Unlink can fail after every worker has stopped. Retain ownership
+            # only if work remains, never just because stale-path cleanup failed.
+            if self.active_clients == 0 and (self._thread is None or not self._thread.is_alive()):
+                self._inode = None
+                with self._lock:
+                    if self._endpoint_lock is not None:
+                        os.close(self._endpoint_lock)
+                        self._endpoint_lock = None
 
     def _pair(self, local, owned):
         # Numeric/hostname remote is operator configuration, never game input.

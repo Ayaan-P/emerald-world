@@ -31,6 +31,7 @@ class DesktopSession:
         self.state = None
         self.server = None
         self.broker = None
+        self.remote_trainer = None
         self.sharing_pin = None
         self.games = {}
         self.game_locks = {}
@@ -285,6 +286,7 @@ class DesktopSession:
                     broker.close()
                     raise
             self.state, self.broker = path, broker
+            self.remote_trainer = identity['trainer']
             self.status = 'TLS verified. Trainer authenticated. Launch the native game to play.'
             return paths
 
@@ -308,6 +310,8 @@ class DesktopSession:
         trainer = paths['profile'].name
         if paths != profile_paths(self.state, trainer):
             raise ValueError('profile must belong to the selected world')
+        if self.remote_trainer is not None and trainer != self.remote_trainer:
+            raise SessionError('Trainer must match this session\'s assigned invitation.')
         if trainer in self.games and self.games[trainer][0].poll() is None:
             raise ValueError('this trainer already has a running game')
         if trainer in self.game_locks:
@@ -493,10 +497,9 @@ class DesktopSession:
                 return {'connected': value.get('ok') is True,
                         'players': [p['id'] for p in value.get('players', [])]}
             # Control role must never evict the native trainer presence.
-            trainers = self.trainers()
-            if not trainers:
+            if self.remote_trainer is None:
                 return {'connected': False, 'players': []}
-            with self._intent_client(trainers[0]):
+            with self._intent_client(self.remote_trainer):
                 pass
             return {'connected': True, 'players': [], 'remote': True}
         except (OSError, ValueError, ConnectionError):
@@ -511,7 +514,16 @@ class DesktopSession:
             elif connection['connected']:
                 lines.append('Online trainers: ' + (', '.join(connection['players']) or 'none yet. Launch a trainer to enter.'))
             else:
-                lines.append('Host unavailable. Saves kept. Retry by disconnecting and hosting or joining again.')
+                if self.remote_trainer is not None:
+                    retry = ('Retry with Disconnect, then Connect remote TLS using the same invitation '
+                             'and local world name. Do not host a replacement world.')
+                elif self.server is None:
+                    retry = ('Retry with Join local after the original host returns, '
+                             'or keep the native field game open while it reconnects.')
+                else:
+                    retry = 'Retry with Disconnect, then Host selected for this same world.'
+                lines.append('Host unavailable. Saves kept. ' + retry)
+                lines.append('A world connection returning does not recover an interrupted native battle or trade.')
         gm = self.gm_status()
         if gm:
             if gm.get('remote'):
@@ -573,12 +585,22 @@ class DesktopSession:
                 except (OSError, ValueError):
                     lines.append(f'{trainer}: AI control starting. Waiting for fresh native telemetry and a private player endpoint.')
             try:
+                import os
+                import stat
+                import time
                 telemetry = paths['telemetry']
-                if telemetry.stat().st_size > 65536:
-                    raise ValueError('oversized telemetry')
-                value = json.loads(telemetry.read_text())
-                if (not isinstance(value, dict) or type(value.get('connected')) is not bool
-                        or type(value.get('revision')) is not int):
+                fd = os.open(telemetry, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+                with os.fdopen(fd) as source:
+                    info = os.fstat(source.fileno())
+                    if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                            or info.st_size > 65536
+                            or not 0 <= time.time() - info.st_mtime <= 5):
+                        raise ValueError('stale or invalid native telemetry')
+                    value = json.loads(source.read(65537))
+                if (not isinstance(value, dict) or value.get('trainer') != trainer
+                        or type(value.get('connected')) is not bool
+                        or type(value.get('revision')) is not int or value['revision'] < 0
+                        or type(value.get('frame')) is not int or value['frame'] < 0):
                     raise ValueError('invalid telemetry')
                 lines.append(f'{trainer}: ' + ('connected' if value.get('connected') else 'connecting or disconnected')
                              + f', revision {value.get("revision", "?")}')
@@ -620,6 +642,7 @@ class DesktopSession:
             self.server.close()
             self.server = None
         self.state = None
+        self.remote_trainer = None
         self.status = 'Disconnected. Saves kept.'
 
     def __enter__(self):
@@ -773,6 +796,8 @@ class DesktopApp:
         actions([('Choose worlds folder', self.choose_root)])
         note('Seed saves are copied only when explicitly selected and never overwrite an existing trainer. Leave blank to start a new adventure or resume. Your personal HOME is never mounted into the native game.')
         self.message = tk.StringVar(value=session.status)
+        from .host_controls import HostControlsPanel
+        self.host_controls = HostControlsPanel(self)
         ttk.Label(frame, text='Live connection and players', font=('Sans', 11, 'bold')).grid(row=3, column=0, sticky='w')
         ttk.Label(frame, textvariable=self.message, wraplength=760, justify='left').grid(row=4, column=0, sticky='w', pady=8)
         self.refresh()

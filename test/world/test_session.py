@@ -79,6 +79,163 @@ class SessionTests(unittest.TestCase):
                 self.assertFalse((root/'guest/transport/world.sock').exists())
                 self.assertTrue((root/'host/transport/world.sock').exists())
 
+    def test_remote_health_uses_the_rejoined_trainer_not_an_old_profile(self):
+        from world import session
+        with tempfile.TemporaryDirectory(dir=RESEARCH) as tmp:
+            root = Path(tmp)
+            with session.DesktopSession(root) as host, session.DesktopSession(root) as guest:
+                host.create_world('host')
+                host.host('host')
+                cert, key = host.tls_material()
+                address = host.share(cert, key, ('127.0.0.1', 0))
+                host.invite('alice', root/'alice.json')
+                host.invite('bob', root/'bob.json')
+                alice = guest.connect_remote('guest', root/'alice.json', address, host.sharing_pin)
+                guest.close()
+                bob = guest.connect_remote('guest', root/'bob.json', address, host.sharing_pin)
+                # Old profiles are not the active invitation. A stale or removed
+                # old config must not make the newly authenticated trainer offline.
+                alice['config'].unlink()
+                self.assertTrue(guest.connection_status()['connected'])
+                with self.assertRaisesRegex(ValueError, 'invitation'):
+                    guest.launch(alice, '/usr/bin/true', None)
+                self.assertEqual(guest.remote_trainer, bob['profile'].name)
+                guest.close()
+                self.assertIsNone(guest.remote_trainer)
+
+    def test_killed_desktop_session_rejoins_own_save_without_orphaned_child(self):
+        import fcntl
+        import subprocess
+        import sys
+        import time
+        from world import session
+        from world.launcher import ProfileLock
+        with tempfile.TemporaryDirectory(dir=RESEARCH) as tmp:
+            root = Path(tmp)
+            fixture = root/'idle.py'
+            # This is a disposable process fixture, not the native game or a
+            # simulated battle. Its guard proves sandbox lifetime independently
+            # of the launcher's own profile lock and reaper thread.
+            fixture.write_text(
+                '#!/usr/bin/python3\nimport fcntl, pathlib, time\n'
+                'guard = open("fixture.lock", "w")\n'
+                'fcntl.flock(guard, fcntl.LOCK_EX)\n'
+                'pathlib.Path("ready").touch()\n'
+                'while True: time.sleep(1)\n')
+            fixture.chmod(0o700)
+            def wait_for(predicate):
+                deadline = time.monotonic() + 5
+                while not predicate() and time.monotonic() < deadline:
+                    time.sleep(.01)
+                self.assertTrue(predicate())
+            with session.DesktopSession(root) as host, session.DesktopSession(root) as guest:
+                host.create_world('host')
+                host.host('host')
+                own = host.local_profile('alice')
+                own['save'].write_bytes(b'host save fixture')
+                cert, key = host.tls_material()
+                address = host.share(cert, key, ('127.0.0.1', 0))
+                invitation = root/'bob.json'
+                host.invite('bob', invitation)
+                paths = guest.connect_remote('guest', invitation, address, host.sharing_pin)
+                paths['save'].write_bytes(b'bob save fixture')
+                config = paths['config'].read_bytes()
+                guest.close()
+                source = (
+                    'import pathlib, sys, time\nfrom world.session import DesktopSession\n'
+                    's = DesktopSession(pathlib.Path(sys.argv[1]))\n'
+                    'p = s.connect_remote("guest", sys.argv[2], (sys.argv[3], int(sys.argv[4])), sys.argv[5])\n'
+                    's.launch(p, pathlib.Path(sys.argv[6]), None)\n'
+                    'while True: time.sleep(1)\n')
+                log = root/'worker.log'
+                with log.open('wb') as output:
+                    worker = subprocess.Popen(
+                        [sys.executable, '-B', '-c', source, str(root), str(invitation),
+                         address[0], str(address[1]), host.sharing_pin, str(fixture)],
+                        stdin=subprocess.DEVNULL, stdout=output, stderr=output)
+                try:
+                    wait_for((paths['profile']/'ready').exists)
+                    with self.assertRaisesRegex(ValueError, 'in use'):
+                        ProfileLock(root/'guest', 'bob')
+                    with (paths['profile']/'fixture.lock').open('r') as guard:
+                        with self.assertRaises(BlockingIOError):
+                            fcntl.flock(guard.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        worker.kill()
+                        worker.wait(3)
+                        def sandbox_stopped():
+                            try:
+                                fcntl.flock(guard.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                                return True
+                            except BlockingIOError:
+                                return False
+                        wait_for(sandbox_stopped)
+                    with ProfileLock(root/'guest', 'bob'):
+                        pass
+                    resumed = guest.connect_remote('guest', invitation, address, host.sharing_pin)
+                    self.assertEqual(resumed, paths)
+                    self.assertEqual(paths['config'].read_bytes(), config)
+                    self.assertEqual(paths['save'].read_bytes(), b'bob save fixture')
+                    self.assertEqual(own['save'].read_bytes(), b'host save fixture')
+                    self.assertTrue(guest.connection_status()['connected'])
+                    with self.assertRaises(ValueError):
+                        guest.local_profile('alice')
+                    with session.DesktopSession(root) as accidental_host:
+                        with self.assertRaises(ValueError):
+                            accidental_host.host('guest')
+                    self.assertFalse((root/'guest/world.sqlite3').exists())
+                    self.assertEqual(log.read_bytes(), b'')
+                finally:
+                    if worker.poll() is None:
+                        worker.kill()
+                    worker.wait(3)
+
+    def test_transport_outage_and_explicit_rejoin_keep_identity_and_save_ownership(self):
+        import json
+        import time
+        from world import session
+        from world.client import WorldClient
+        with tempfile.TemporaryDirectory(dir=RESEARCH) as tmp:
+            root = Path(tmp)
+            with session.DesktopSession(root) as host, session.DesktopSession(root) as guest:
+                host.create_world('host')
+                host.host('host')
+                cert, key = host.tls_material()
+                address = host.share(cert, key, ('127.0.0.1', 0))
+                invitation = root/'bob.json'
+                host.invite('bob', invitation)
+                token = json.loads(invitation.read_text())['token']
+                paths = guest.connect_remote('guest', invitation, address, host.sharing_pin)
+                paths['save'].write_bytes(b'guest save fixture')
+                config = paths['config'].read_bytes()
+                endpoint = guest.state/'transport/world.sock'
+                with WorldClient(endpoint, 'bob', token) as presence:
+                    presence.snapshot()
+                    host.broker.close()
+                    host.broker = None
+                    deadline = time.monotonic() + 3
+                    while host.server.inspect()['players'] and time.monotonic() < deadline:
+                        time.sleep(.01)
+                    self.assertEqual(host.server.inspect()['players'], [])
+                    self.assertFalse(guest.connection_status()['connected'])
+                    status = guest.poll()
+                    self.assertIn('Host unavailable', status)
+                    self.assertIn('Connect remote TLS', status)
+                    self.assertNotIn('hosting or joining', status)
+                    self.assertNotIn(token, status)
+                    host.share(cert, key, address)
+                    self.assertTrue(guest.connection_status()['connected'])
+                    # A new connection carries no retried game input. This is a
+                    # protocol fixture, not proof of native activity recovery.
+                    with WorldClient(endpoint, 'bob', token) as resumed:
+                        resumed.snapshot()
+                        self.assertEqual([p['id'] for p in host.server.inspect()['players']], ['bob'])
+                guest.close()
+                self.assertTrue((host.state/'transport/world.sock').is_socket())
+                self.assertEqual(guest.connect_remote('guest', invitation, address, host.sharing_pin), paths)
+                self.assertEqual(paths['save'].read_bytes(), b'guest save fixture')
+                self.assertEqual(paths['config'].read_bytes(), config)
+                self.assertFalse((guest.state/'world.sqlite3').exists())
+
     def test_launch_tracks_owned_children_and_reports_exit(self):
         from unittest.mock import patch
         from world import session
@@ -159,8 +316,53 @@ class SessionTests(unittest.TestCase):
                     host.launch(paths, Path('/usr/bin/true'), None)
                     paths['telemetry'].write_text('[]')
                     self.assertIn('waiting', host.poll())
-                    paths['telemetry'].write_text('{"connected":true,"revision":3,"peers":[{"trainer":"bob","visible":true}]}')
+                    paths['telemetry'].write_text('{"trainer":"alice","frame":6,"connected":true,"revision":3,"peers":[{"trainer":"bob","visible":true}]}')
                     self.assertIn('Nearby trainers: bob', host.poll())
+
+    def test_human_connection_status_requires_fresh_own_native_telemetry(self):
+        import json
+        import os
+        import time
+        from world import session
+        with tempfile.TemporaryDirectory(dir=RESEARCH) as tmp:
+            root = Path(tmp)
+            fixture = root/'idle.py'
+            fixture.write_text('#!/usr/bin/python3\nimport time\ntime.sleep(30)\n')
+            fixture.chmod(0o700)
+            with session.DesktopSession(root) as host:
+                host.create_world('world')
+                host.host('world')
+                paths = host.local_profile('alice')
+                child = host.launch(paths, fixture, None)
+                self.assertIsNone(child.poll())
+                telemetry = paths['telemetry']
+                value = {'trainer': 'alice', 'frame': 6, 'connected': True,
+                         'ready': True, 'revision': 3, 'peers': []}
+                telemetry.write_text(json.dumps(value))
+                self.assertIn('alice: connected', host.poll())
+                old = time.time() - 30
+                os.utime(telemetry, (old, old))
+                self.assertNotIn('alice: connected', host.poll())
+                future = time.time() + 30
+                os.utime(telemetry, (future, future))
+                self.assertNotIn('alice: connected', host.poll())
+                telemetry.write_text(json.dumps(value) + ' ' * 65536)
+                self.assertNotIn('alice: connected', host.poll())
+                for invalid in (dict(value, trainer='bob'), dict(value, frame=True),
+                                dict(value, revision=-1)):
+                    telemetry.write_text(json.dumps(invalid))
+                    self.assertNotIn('alice: connected', host.poll())
+                telemetry.unlink()
+                other = root/'other.json'
+                other.write_text(json.dumps(value))
+                telemetry.symlink_to(other)
+                self.assertNotIn('alice: connected', host.poll())
+                telemetry.unlink()
+                os.mkfifo(telemetry, 0o600)
+                started = time.monotonic()
+                self.assertNotIn('alice: connected', host.poll())
+                self.assertLess(time.monotonic() - started, 1)
+            self.assertIsNotNone(child.poll())
 
     def test_runtime_gm_host_controls_queue_real_intents_and_stop_cleanly(self):
         import time

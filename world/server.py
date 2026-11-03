@@ -100,6 +100,8 @@ class WorldServer:
             self.db.execute('ALTER TABLE module ADD COLUMN interaction_cursor INTEGER NOT NULL DEFAULT 0')
         self.db.commit()
         os.chmod(self.root / 'world.sqlite3', 0o600)
+        from .host_controls import HostControls
+        self.host_controls = HostControls(self.db)
         self.runtime = mechanics
         if self.runtime is None:
             from .mechanics import MechanicRuntime
@@ -372,6 +374,10 @@ class WorldServer:
                     conn['id'], conn['link'], conn['presence'] = name, True, presence
                     self.link_channels[name] = conn
                     self._queue(conn, f'WELCOME 1 {name} {self.revision} LINK\n')
+                    return
+                rejection = self.host_controls.rejection(name)
+                if rejection:
+                    self._error(conn, rejection)
                     return
                 if control:
                     controls = [c for c in self.connections.values() if c.get('control')]
@@ -665,6 +671,13 @@ class WorldServer:
             request = json.loads(raw)
             if request.get('command') == 'inspect':
                 result = self.inspect()
+            elif request.get('command') == 'host_controls':
+                try:
+                    result = self.host_controls.request(request, self)
+                except ValueError as exc:
+                    # A busy activity or refused host action is not a failing
+                    # mechanic module. Do not replace its persisted status.
+                    result = dict(ok=False, error=str(exc))
             elif request.get('command') == 'events_since':
                 cursor, limit = request.get('cursor', 0), request.get('limit', 64)
                 if type(cursor) is not int or not 0 <= cursor <= 2**63-1 or type(limit) is not int or not 1 <= limit <= 64:
