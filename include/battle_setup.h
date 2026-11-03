@@ -64,4 +64,10 @@ bool8 IsTrainerReadyForRematch(void);
 void ShouldTryGetTrainerScript(void);
 u16 CountBattledRematchTeams(u16 trainerId);
 
+#ifdef PORTABLE
+void BattleSetup_ResumeWorldWildBattle(void);
+void BattleSetup_RecordWorldWildBattle(void);
+void BattleSetup_EndWorldWildBattle(void);
+#endif
+
 #endif // GUARD_BATTLE_SETUP_H

@@ -27,8 +27,10 @@ PREAMBLE = r'''
 #include <string.h>
 #include <assert.h>
 #include "constants/pokemon.h"
+#include "constants/species.h"
 #include "constants/global.h"
 #include "constants/moves.h"
+#include "constants/items.h"
 #include "constants/battle.h"
 typedef int8_t s8;
 #define TEXT_BUFF_ARRAY_COUNT 16
@@ -49,6 +51,7 @@ static struct Task gTasks[16];
 static u8 sLinkReceiveTaskId, sLinkSendTaskId = 1;
 static u8 gLinkBattleSendBuffer[BATTLE_BUFFER_LINK_SIZE];
 static u8 sBattleBuffersTransferData[256], gActiveBattler;
+static u8 gBattlePartyCurrentOrder[3]={0x10,0x32,0x54};
 static u16 gBlockRecvBuffer[5][128];
 static u8 gBattleBufferA[4][512], gBattleBufferB[4][512];
 /* Party mons have the fixed 100-byte save layout. */
@@ -58,14 +61,24 @@ static u32 gBattleTypeFlags = BATTLE_TYPE_LINK_IN_BATTLE;
 static u32 gBattleControllerExecFlags;
 static u8 gReceivedRemoteLinkPlayers = 1, gLinkErrorOccurred;
 static u8 gBattlerAttacker, gBattlerTarget, gAbsentBattlerFlags, gEffectBattler;
+static u8 gBattlerPartyIndexes[4] = {0,0,3,0};
+static unsigned observedMon, observedController;
+static u8 observedBattler, observedSlot;
 static const u32 gBitTable[4] = {1,2,4,8};
 static int active = 1, aborted, dispatched, resets;
+static u8 source=1, localPlayer;
+static bool8 coopMode;
 static u16 receivedSize = 16;
 static int NativeLink_IsActive(void) { return active; }
 static void NativeLink_Abort(void) { active=0; aborted++; }
 static u16 GetBlockReceivedSize(u8 i) { (void)i; return receivedSize; }
+/* This extracted fixture explicitly disables the co-op state machine. */
+static int WorldCoop_IsBattle(void) { return coopMode; }
+static int WorldCoop_ReceiveCompletion(const u8 *p, u16 n, u8 s) { return 0; }
+static bool8 WorldCoop_RewardPacketValid(const u8 *p, u16 n) { return FALSE; }
+static u8 GetMultiplayerId(void) { return localPlayer; }
 static u8 GetLinkPlayerCount(void) { return 2; }
-static u8 GetBlockReceivedStatus(void) { return 2; }
+static u8 GetBlockReceivedStatus(void) { return 1 << source; }
 static void ResetBlockReceivedFlag(u8 i) { (void)i; resets++; }
 static void DestroyTask_RfuIdle(void) {}
 static void MarkBattlerReceivedLinkData(u8 i) { (void)i; dispatched++; }
@@ -94,7 +107,17 @@ class LinkBattlePayloadTests(unittest.TestCase):
                 structs += text[start:text.index('\n};', start) + 3] + '\n'
         battle = (ROOT / 'include/battle.h').read_text()
         actions = '\n'.join(line for line in battle.splitlines() if line.startswith('#define B_ACTION_')) + '\n'
-        code = PREAMBLE + 'static bool8 sNativeBattlePayloadFailed;\n' + actions + structs + enums + flags + macros + offsets + helpers
+        state_start = source.index('static bool8 sNativeBattlePayloadFailed;')
+        state = source[state_start:source.index('#endif', state_start)]
+        code = PREAMBLE + state + actions + structs + enums + flags + macros + offsets + helpers
+        code += '''
+static void WorldCoop_ObserveMonData(u8 battler, u8 slot, const struct BattlePokemon *mon) {
+    (void)mon; observedMon++; observedBattler=battler; observedSlot=slot;
+}
+static void WorldCoop_ObserveController(u8 battler, const u8 *data) {
+    (void)battler; (void)data; observedController++;
+}
+'''
         code += function(source, 'PrepareBufferDataTransferLink') + '\n'
         if emitters:
             code += function(source, 'PrepareBufferDataTransfer') + '\n'
@@ -105,10 +128,158 @@ class LinkBattlePayloadTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory)
             (path / 'test.c').write_text(code)
-            result = subprocess.run([os.environ.get('CC', 'cc'), '-std=gnu99', '-iquote' + str(ROOT / 'include'), '-DPORTABLE', '-g', '-fsanitize=address,undefined', '-fno-sanitize-recover=all', '-fno-omit-frame-pointer', '-fno-pie', '-no-pie', str(path / 'test.c'), '-o', str(path / 'test')], capture_output=True, text=True)
+            result = subprocess.run([os.environ.get('CC', 'cc'), '-std=gnu99', '-iquote' + str(ROOT / 'include'), '-DPORTABLE', '-DUBFIX', '-g', '-fsanitize=address,undefined', '-fno-sanitize-recover=all', '-fno-omit-frame-pointer', '-fno-pie', '-no-pie', str(path / 'test.c'), '-o', str(path / 'test')], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             result = subprocess.run([str(path / 'test')], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_remote_cannot_issue_engine_commands(self):
+        self.run_c(r'''
+ u8 *p=(u8 *)gBlockRecvBuffer[source];
+ p[0]=B_COMM_TO_CONTROLLER; p[4]=8; p[8]=CONTROLLER_LOADMONSPRITE;
+ gBattleTypeFlags |= BATTLE_TYPE_IS_MASTER;
+ TryReceiveLinkBattleData();
+ assert(aborted==1 && !resets && !dispatched && !gTasks[0].tCurrentBlock_End);
+ ''')
+
+    def test_done_identity_is_bound_to_network_sender(self):
+        self.run_c(r'''
+ u8 *p=(u8 *)gBlockRecvBuffer[source];
+ p[0]=B_COMM_CONTROLLER_IS_DONE; p[4]=8; p[8]=0;
+ TryReceiveLinkBattleData();
+ assert(aborted==1 && !resets && !gTasks[0].tCurrentBlock_End);
+ ''')
+
+    def test_reply_cannot_impersonate_other_battler_owner(self):
+        self.run_c(r'''
+ u8 *p=(u8 *)gBlockRecvBuffer[source];
+ p[0]=B_COMM_TO_ENGINE; p[1]=0; p[4]=8; p[8]=CONTROLLER_TWORETURNVALUES;
+ gBattleTypeFlags |= BATTLE_TYPE_IS_MASTER;
+ TryReceiveLinkBattleData();
+ assert(aborted==1 && !resets && !gTasks[0].tCurrentBlock_End);
+ ''')
+
+    def test_solicited_battle_mon_is_validated_before_engine_copy(self):
+        for mutation in ['mon.species=65535', 'mon.moves[0]=MOVES_COUNT',
+                         'mon.level=101', 'mon.hp=31', 'mon.item=65535']:
+            with self.subTest(mutation=mutation):
+                self.run_c(r'''
+ struct BattlePokemon mon={0};
+ mon.species=1; mon.level=10; mon.hp=mon.maxHP=30;
+ mon.attack=mon.defense=mon.speed=mon.spAttack=mon.spDefense=20;
+ ''' + mutation + r''';
+ u8 *p=gLinkBattleRecvBuffer; p[0]=B_COMM_TO_ENGINE; p[1]=1;
+ unsigned n=4+sizeof(mon); n=n-n%4+4; p[4]=n;
+ p[8]=CONTROLLER_DATATRANSFER; p[10]=sizeof(mon);
+ memcpy(p+12,&mon,sizeof(mon));
+ gBattleBufferA[1][0]=CONTROLLER_GETMONDATA;
+ gBattleBufferA[1][1]=REQUEST_ALL_BATTLE;
+ memcpy(sNativeBattleRequest[1],gBattleBufferA[1],sizeof(sNativeBattleRequest[1]));
+ sNativeBattleRequestPending[1]=TRUE;
+ gTasks[0].tCurrentBlock_End=n+8;
+ Task_HandleCopyReceivedLinkBuffersData(0);
+ assert(aborted==1 && !gBattleBufferB[1][0] && !gTasks[0].tCurrentBlock_Start);
+ ''')
+
+    def test_real_solicited_owner_reply_and_duplicate_after_fifo_dispatch(self):
+        for bad_species in [False, True]:
+            with self.subTest(bad_species=bad_species):
+                self.run_c(r'''
+ struct BattlePokemon mon={0};
+ mon.species=1; mon.level=10; mon.hp=mon.maxHP=30;
+ mon.attack=mon.defense=mon.speed=mon.spAttack=mon.spDefense=20;
+ source=0; gActiveBattler=1; gBattleTypeFlags |= BATTLE_TYPE_LINK | BATTLE_TYPE_IS_MASTER;
+ BtlController_EmitGetMonData(B_COMM_TO_CONTROLLER, REQUEST_ALL_BATTLE, 0);
+ receivedSize=gTasks[sLinkSendTaskId].tCurrentBlock_End;
+ memcpy(gBlockRecvBuffer[source],gLinkBattleSendBuffer,receivedSize);
+ TryReceiveLinkBattleData(); Task_HandleCopyReceivedLinkBuffersData(0);
+ assert(!aborted && sNativeBattleRequestPending[1]);
+ memset(gTasks[sLinkSendTaskId].data,0,sizeof(gTasks[sLinkSendTaskId].data));
+ source=localPlayer=1; gBattleTypeFlags &= ~BATTLE_TYPE_IS_MASTER;
+ ''' + ('mon.species=65535;' if bad_species else '') + r'''
+ BtlController_EmitDataTransfer(B_COMM_TO_ENGINE,sizeof(mon),&mon);
+ receivedSize=gTasks[sLinkSendTaskId].tCurrentBlock_End;
+ memcpy(gBlockRecvBuffer[source],gLinkBattleSendBuffer,receivedSize);
+ TryReceiveLinkBattleData(); Task_HandleCopyReceivedLinkBuffersData(0);
+ ''' + (r'''
+ assert(aborted==1 && !gBattleBufferB[1][0]);
+ ''' if bad_species else r'''
+ assert(!aborted && !memcmp(gBattleBufferB[1]+4,&mon,sizeof(mon)));
+ /* The same source cannot answer the same request twice. */
+ TryReceiveLinkBattleData(); Task_HandleCopyReceivedLinkBuffersData(0);
+ assert(aborted==1);
+ '''), emitters=('BtlController_EmitGetMonData','BtlController_EmitDataTransfer'))
+
+    def test_coop_and_pvp_double_reply_owner_mapping(self):
+        for coop, battler in [(True, 2), (False, 3)]:
+            with self.subTest(coop=coop):
+                self.run_c(f'''
+ coopMode={int(coop)}; gBattleTypeFlags |= BATTLE_TYPE_IS_MASTER | BATTLE_TYPE_DOUBLE;
+ u8 *p=(u8 *)gBlockRecvBuffer[source]; p[0]=B_COMM_TO_ENGINE; p[1]={battler}; p[4]=8;
+ p[8]=CONTROLLER_TWORETURNVALUES;
+ gBattleBufferA[{battler}][0]=CONTROLLER_CHOOSEACTION;
+ memcpy(sNativeBattleRequest[{battler}],gBattleBufferA[{battler}],sizeof(sNativeBattleRequest[{battler}]));
+ sNativeBattleRequestPending[{battler}]=TRUE;
+ TryReceiveLinkBattleData(); Task_HandleCopyReceivedLinkBuffersData(0);
+ assert(!aborted && gBattleBufferB[{battler}][0]==CONTROLLER_TWORETURNVALUES);
+ ''')
+
+    def test_unsolicited_well_formed_mon_reply_is_rejected(self):
+        self.run_c(r'''
+ struct BattlePokemon mon={0};
+ mon.species=1; mon.level=10; mon.hp=mon.maxHP=30;
+ mon.attack=mon.defense=mon.speed=mon.spAttack=mon.spDefense=20;
+ u8 *p=gLinkBattleRecvBuffer; p[0]=B_COMM_TO_ENGINE; p[1]=1;
+ unsigned n=4+sizeof(mon); n=n-n%4+4; p[4]=n;
+ p[8]=CONTROLLER_DATATRANSFER; p[10]=sizeof(mon); memcpy(p+12,&mon,sizeof(mon));
+ gTasks[0].tCurrentBlock_End=n+8;
+ Task_HandleCopyReceivedLinkBuffersData(0);
+ assert(aborted==1 && !gBattleBufferB[1][0] && !gTasks[0].tCurrentBlock_Start);
+ ''')
+
+    def test_coop_switch_reply_cannot_select_partners_mon(self):
+        for party_slot in [0, 3]:
+            with self.subTest(party_slot=party_slot):
+                self.run_c(f'''
+ coopMode=TRUE; gBattleTypeFlags |= BATTLE_TYPE_IS_MASTER;
+ u8 *p=(u8 *)gBlockRecvBuffer[source]; p[0]=B_COMM_TO_ENGINE; p[1]=2; p[4]=8;
+ p[8]=CONTROLLER_CHOSENMONRETURNVALUE; p[9]={party_slot};
+ p[10]=0x10; p[11]=0x32; p[12]=0x54;
+ gBattleBufferA[2][0]=CONTROLLER_CHOOSEPOKEMON;
+ memcpy(sNativeBattleRequest[2],gBattleBufferA[2],sizeof(sNativeBattleRequest[2]));
+ sNativeBattleRequestPending[2]=TRUE;
+ TryReceiveLinkBattleData(); Task_HandleCopyReceivedLinkBuffersData(0);
+ assert(aborted=={int(party_slot == 0)});
+ ''')
+
+    def test_real_chosen_mon_cancel_emitter_keeps_valid_order(self):
+        self.run_c(r'''
+ source=0; gBattleTypeFlags |= BATTLE_TYPE_LINK | BATTLE_TYPE_IS_MASTER;
+ gBattleBufferA[0][0]=CONTROLLER_CHOOSEPOKEMON;
+ memcpy(sNativeBattleRequest[0],gBattleBufferA[0],sizeof(sNativeBattleRequest[0]));
+ sNativeBattleRequestPending[0]=TRUE;
+ BtlController_EmitChosenMonReturnValue(B_COMM_TO_ENGINE, PARTY_SIZE, NULL);
+ receivedSize=gTasks[sLinkSendTaskId].tCurrentBlock_End;
+ assert(!memcmp(gLinkBattleSendBuffer+LINK_BUFF_DATA+2,gBattlePartyCurrentOrder,3));
+ memcpy(gBlockRecvBuffer[source],gLinkBattleSendBuffer,receivedSize);
+ TryReceiveLinkBattleData(); Task_HandleCopyReceivedLinkBuffersData(0);
+ assert(!aborted && gBattleBufferB[0][1]==PARTY_SIZE);
+ ''', emitters=('BtlController_EmitChosenMonReturnValue',))
+
+    def test_party_order_nibbles_are_bounded_and_unique(self):
+        for order in ['0xF0,0x32,0x54', '0x10,0x32,0x44']:
+            with self.subTest(order=order):
+                self.run_c(r'''
+ u8 *p=gLinkBattleRecvBuffer; p[0]=B_COMM_TO_ENGINE; p[1]=1; p[4]=8;
+ p[8]=CONTROLLER_CHOSENMONRETURNVALUE; p[9]=1;
+ u8 order[3]={''' + order + r'''}; memcpy(p+10,order,3);
+ gBattleBufferA[1][0]=CONTROLLER_CHOOSEPOKEMON;
+ memcpy(sNativeBattleRequest[1],gBattleBufferA[1],sizeof(sNativeBattleRequest[1]));
+ sNativeBattleRequestPending[1]=TRUE;
+ gTasks[0].tCurrentBlock_End=16;
+ Task_HandleCopyReceivedLinkBuffersData(0);
+ assert(aborted==1 && !gBattleBufferB[1][0] && !gTasks[0].tCurrentBlock_Start);
+ ''')
 
     def test_real_sender_done_round_trip_clears_only_acknowledged_flag(self):
         # Take the size from real completion callers, not an invented packet.
@@ -125,7 +296,7 @@ class LinkBattlePayloadTests(unittest.TestCase):
  ''' + f'PrepareBufferDataTransferLink(B_COMM_CONTROLLER_IS_DONE, {match.group(1)}, data);' + r'''
  receivedSize=gTasks[sLinkSendTaskId].tCurrentBlock_End;
  assert(receivedSize==16 && gLinkBattleSendBuffer[LINK_BUFF_SIZE_LO]==8);
- memcpy(gBlockRecvBuffer[1],gLinkBattleSendBuffer,receivedSize);
+ memcpy(gBlockRecvBuffer[source],gLinkBattleSendBuffer,receivedSize);
  gBattleControllerExecFlags=0xFF;
  TryReceiveLinkBattleData();
  assert(!aborted && !gLinkErrorOccurred && resets==1);
@@ -141,7 +312,7 @@ class LinkBattlePayloadTests(unittest.TestCase):
  BtlController_EmitIntroSlide(B_COMM_TO_CONTROLLER, 0);
  receivedSize=gTasks[sLinkSendTaskId].tCurrentBlock_End;
  assert(receivedSize==12 && gLinkBattleSendBuffer[LINK_BUFF_SIZE_LO]==4);
- memcpy(gBlockRecvBuffer[1],gLinkBattleSendBuffer,receivedSize);
+ memcpy(gBlockRecvBuffer[source],gLinkBattleSendBuffer,receivedSize);
  TryReceiveLinkBattleData(); Task_HandleCopyReceivedLinkBuffersData(0);
  assert(!aborted && !gLinkErrorOccurred && dispatched==1);
  assert(gTasks[0].tCurrentBlock_Start==12 && gBattleBufferA[0][0]==CONTROLLER_INTROSLIDE);
@@ -158,7 +329,7 @@ class LinkBattlePayloadTests(unittest.TestCase):
  ''' + emitter + r'''(B_COMM_TO_CONTROLLER, 0);
  receivedSize=gTasks[sLinkSendTaskId].tCurrentBlock_End;
  assert(receivedSize==12 && gLinkBattleSendBuffer[LINK_BUFF_SIZE_LO]==4);
- memcpy(gBlockRecvBuffer[1],gLinkBattleSendBuffer,receivedSize);
+ memcpy(gBlockRecvBuffer[source],gLinkBattleSendBuffer,receivedSize);
  TryReceiveLinkBattleData(); Task_HandleCopyReceivedLinkBuffersData(0);
  assert(!aborted && !gLinkErrorOccurred && dispatched==1);
  assert(gTasks[0].tCurrentBlock_Start==12);
@@ -171,15 +342,22 @@ class LinkBattlePayloadTests(unittest.TestCase):
                     'BtlController_EmitStatusAnimation', 'BtlController_EmitDataTransfer',
                     'BtlController_EmitTwoReturnValues', 'BtlController_EmitOneReturnValue')
         self.run_c(r'''
- struct BattlePokemon mon={0};
+ struct BattlePokemon mon={0}, transfer[2];
  struct ChooseMoveStruct moves={0};
- u8 order[3]={0}, transfer[236]={0};
- gBattleTypeFlags |= BATTLE_TYPE_LINK;
+ u8 order[3]={0};
+ mon.species=1; mon.level=10; mon.hp=mon.maxHP=30;
+ mon.attack=mon.defense=mon.speed=mon.spAttack=mon.spDefense=20;
+ transfer[0]=transfer[1]=mon;
+ source=0;
+ gBattleTypeFlags |= BATTLE_TYPE_LINK | BATTLE_TYPE_IS_MASTER;
  #define ROUND_TRIP(call, bufferId) do { \
    memset(gTasks,0,sizeof(gTasks)); \
+   sNativeBattleReplyUsed[0]=FALSE; \
+   memcpy(sNativeBattleRequest[0],gBattleBufferA[0],sizeof(sNativeBattleRequest[0])); \
+   sNativeBattleRequestPending[0]=TRUE; \
    call; \
    receivedSize=gTasks[sLinkSendTaskId].tCurrentBlock_End; \
-   memcpy(gBlockRecvBuffer[1],gLinkBattleSendBuffer,receivedSize); \
+   memcpy(gBlockRecvBuffer[source],gLinkBattleSendBuffer,receivedSize); \
    TryReceiveLinkBattleData(); Task_HandleCopyReceivedLinkBuffersData(0); \
    assert(!aborted && !gLinkErrorOccurred); \
    assert(gTasks[0].tCurrentBlock_Start==receivedSize); \
@@ -193,16 +371,20 @@ class LinkBattlePayloadTests(unittest.TestCase):
  ROUND_TRIP(BtlController_EmitChoosePokemon(B_COMM_TO_CONTROLLER, 0, 0, 0, order), B_COMM_TO_CONTROLLER);
  ROUND_TRIP(BtlController_EmitStatusIconUpdate(B_COMM_TO_CONTROLLER, 0, 0), B_COMM_TO_CONTROLLER);
  ROUND_TRIP(BtlController_EmitStatusAnimation(B_COMM_TO_CONTROLLER, 0, 0), B_COMM_TO_CONTROLLER);
+ gBattleBufferA[0][0]=CONTROLLER_GETMONDATA; gBattleBufferA[0][1]=REQUEST_ALL_BATTLE;
  ROUND_TRIP(BtlController_EmitDataTransfer(B_COMM_TO_ENGINE, sizeof(mon), &mon), B_COMM_TO_ENGINE);
+ gBattleBufferA[0][2]=3;
  ROUND_TRIP(BtlController_EmitDataTransfer(B_COMM_TO_ENGINE, sizeof(transfer), transfer), B_COMM_TO_ENGINE);
+ gBattleBufferA[0][0]=CONTROLLER_CHOOSEACTION;
  ROUND_TRIP(BtlController_EmitTwoReturnValues(B_COMM_TO_ENGINE, B_ACTION_USE_MOVE, 0x0100), B_COMM_TO_ENGINE);
+ gBattleBufferA[0][0]=CONTROLLER_OPENBAG;
  ROUND_TRIP(BtlController_EmitOneReturnValue(B_COMM_TO_ENGINE, 0), B_COMM_TO_ENGINE);
  #undef ROUND_TRIP
  ''', emitters=emitters)
 
     def test_remote_size_overflow_aborts_before_copy_or_queue_progress(self):
         self.run_c(r'''
- gBlockRecvBuffer[1][2]=65535;
+ gBlockRecvBuffer[source][2]=65535;
  TryReceiveLinkBattleData();
  assert(aborted==1 && gLinkErrorOccurred);
  assert(!resets && !gTasks[0].tCurrentBlock_End && !dispatched);
@@ -236,7 +418,7 @@ class LinkBattlePayloadTests(unittest.TestCase):
         for payload_size, player in [(4, 0), (12, 0), (8, 2), (8, 255)]:
             for ingress in [True, False]:
                 with self.subTest(payload_size=payload_size, player=player, ingress=ingress):
-                    target = '(u8 *)gBlockRecvBuffer[1]' if ingress else 'gLinkBattleRecvBuffer'
+                    target = '(u8 *)gBlockRecvBuffer[source]' if ingress else 'gLinkBattleRecvBuffer'
                     self.run_c(f'''
  u8 *p={target};
  p[0]=B_COMM_CONTROLLER_IS_DONE; p[4]={payload_size}; p[8]={player};
@@ -280,7 +462,7 @@ class LinkBattlePayloadTests(unittest.TestCase):
 
     def test_bad_command_rejected_before_ingress_queue_progress(self):
         self.run_c(r'''
- u8 *p=(u8 *)gBlockRecvBuffer[1]; p[4]=8; p[8]=255;
+ u8 *p=(u8 *)gBlockRecvBuffer[source]; p[4]=8; p[8]=255;
  TryReceiveLinkBattleData();
  assert(aborted==1 && gLinkErrorOccurred && !resets);
  assert(gTasks[0].tCurrentBlock_End==0);
@@ -290,14 +472,14 @@ class LinkBattlePayloadTests(unittest.TestCase):
         for length in [0, 4, 8, 12, 15, 252, 256]:
             with self.subTest(length=length):
                 self.run_c(f'''
- u8 *p=(u8 *)gBlockRecvBuffer[1]; p[0]=B_COMM_TO_ENGINE; p[4]=8; p[8]=CONTROLLER_TWORETURNVALUES;
+ u8 *p=(u8 *)gBlockRecvBuffer[source]; p[0]=B_COMM_TO_ENGINE; p[4]=8; p[8]=CONTROLLER_TWORETURNVALUES;
  receivedSize={length}; TryReceiveLinkBattleData();
  assert(aborted==1 && gLinkErrorOccurred && !resets && !gTasks[0].tCurrentBlock_End);
  ''')
 
     def test_ring_wrap_and_busy_consumer_preserve_order(self):
         self.run_c(r'''
- u8 *p=(u8 *)gBlockRecvBuffer[1]; p[0]=B_COMM_TO_CONTROLLER; p[4]=8; p[8]=CONTROLLER_LOADMONSPRITE;
+ u8 *p=(u8 *)gBlockRecvBuffer[source]; p[0]=B_COMM_TO_CONTROLLER; p[4]=8; p[8]=CONTROLLER_LOADMONSPRITE;
  gTasks[0].tCurrentBlock_Start=4080; gTasks[0].tCurrentBlock_End=4080;
  TryReceiveLinkBattleData();
  assert(!aborted && gTasks[0].tCurrentBlock_End==16 && gTasks[0].tCurrentBlock_WrapFrom==4080);
@@ -311,7 +493,7 @@ class LinkBattlePayloadTests(unittest.TestCase):
         for start, end, wrap in [(16, 4080, 0), (32, 16, 4080)]:
             with self.subTest(start=start):
                 self.run_c(f'''
- u8 *p=(u8 *)gBlockRecvBuffer[1]; p[0]=B_COMM_TO_ENGINE; p[4]=8; p[8]=CONTROLLER_TWORETURNVALUES;
+ u8 *p=(u8 *)gBlockRecvBuffer[source]; p[0]=B_COMM_TO_ENGINE; p[4]=8; p[8]=CONTROLLER_TWORETURNVALUES;
  gTasks[0].tCurrentBlock_Start={start}; gTasks[0].tCurrentBlock_End={end}; gTasks[0].tCurrentBlock_WrapFrom={wrap};
  TryReceiveLinkBattleData();
  assert(aborted==1 && gLinkErrorOccurred && !resets);
@@ -351,7 +533,7 @@ class LinkBattlePayloadTests(unittest.TestCase):
  };
  for (unsigned i=0; i<ARRAY_COUNT(fixtures); i++) {
    memset(gTasks,0,sizeof(gTasks)); memset(gBlockRecvBuffer,0,sizeof(gBlockRecvBuffer));
-   u8 *p=(u8 *)gBlockRecvBuffer[1]; p[0]=B_COMM_TO_CONTROLLER;
+   u8 *p=(u8 *)gBlockRecvBuffer[source]; p[0]=B_COMM_TO_CONTROLLER;
    p[4]=fixtures[i].length - fixtures[i].length % 4 + 4;
    receivedSize=p[4]+8; p[8]=fixtures[i].command;
    TryReceiveLinkBattleData(); Task_HandleCopyReceivedLinkBuffersData(0);
@@ -361,12 +543,12 @@ class LinkBattlePayloadTests(unittest.TestCase):
 
     def test_maximum_packet_and_repeated_legal_wraps(self):
         self.run_c(r'''
- u8 *p=(u8 *)gBlockRecvBuffer[1]; p[0]=B_COMM_TO_ENGINE; p[4]=244;
- p[8]=CONTROLLER_DATATRANSFER; p[10]=236; receivedSize=252;
+ u8 *p=(u8 *)gBlockRecvBuffer[source]; p[0]=B_COMM_TO_CONTROLLER; p[4]=244;
+ p[8]=CONTROLLER_32; p[9]=236; receivedSize=252;
  for (unsigned i=0; i<100; i++) {
-   p[12]=(u8)i;
+   p[11]=(u8)i;
    TryReceiveLinkBattleData(); Task_HandleCopyReceivedLinkBuffersData(0);
-   assert(!aborted && !gLinkErrorOccurred && gBattleBufferB[0][4]==(u8)i);
+   assert(!aborted && !gLinkErrorOccurred && gBattleBufferA[0][3]==(u8)i);
    assert(gTasks[0].tCurrentBlock_Start==gTasks[0].tCurrentBlock_End);
  }
  ''')
@@ -387,6 +569,7 @@ class LinkBattlePayloadTests(unittest.TestCase):
         self.run_c(r'''
  u8 *p=gLinkBattleRecvBuffer; p[0]=B_COMM_TO_CONTROLLER; p[4]=8;
  p[8]=CONTROLLER_SETRAWMONDATA; p[9]=99; p[10]=1;
+ sNativeBattleSources[0]=1;
  gTasks[0].tCurrentBlock_End=16;
  Task_HandleCopyReceivedLinkBuffersData(0);
  assert(!aborted && dispatched==1 && gTasks[0].tCurrentBlock_Start==16);
@@ -394,9 +577,13 @@ class LinkBattlePayloadTests(unittest.TestCase):
 
     def test_benign_engine_packet(self):
         self.run_c(r'''
- u8 *p=(u8 *)gBlockRecvBuffer[1];
+ u8 *p=(u8 *)gBlockRecvBuffer[source];
  p[0]=B_COMM_TO_ENGINE; p[1]=1; p[4]=8;
  p[8]=CONTROLLER_TWORETURNVALUES; p[9]=0; p[10]=0; p[11]=1;
+ gBattleTypeFlags |= BATTLE_TYPE_IS_MASTER;
+ gBattleBufferA[1][0]=CONTROLLER_CHOOSEACTION;
+ memcpy(sNativeBattleRequest[1],gBattleBufferA[1],sizeof(sNativeBattleRequest[1]));
+ sNativeBattleRequestPending[1]=TRUE;
  TryReceiveLinkBattleData(); Task_HandleCopyReceivedLinkBuffersData(0);
  assert(!aborted && !gLinkErrorOccurred && resets==1);
  assert(gTasks[0].tCurrentBlock_Start==16 && gTasks[0].tCurrentBlock_End==16);

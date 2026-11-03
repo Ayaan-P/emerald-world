@@ -78,7 +78,7 @@ class LinkProtocolTests(unittest.TestCase):
         self.assertEqual(ended, [('alice','L ABORT 123\n'),('bob','L ABORT 123\n')])
 
     def test_oversize_overflow_malformed_inputs_never_echo_or_allocate(self):
-        for raw in (b'x'*513,b'L OFFER 4 bob',b'L ACCEPT 18446744073709551616',
+        for raw in (b'x'*513,b'L OFFER 5 bob',b'L ACCEPT 18446744073709551616',
                     b'L ACCEPT +123',b'L ACCEPT 123 extra',b'L OFFER 1 bad/name',
                     b'L EVENT 4 123 1 0 1 0 8755 nothex',b'L OFFER 1 \xff'):
             p = self.make()

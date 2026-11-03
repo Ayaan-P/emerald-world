@@ -48,7 +48,7 @@ void NativeLink_Reset(void)
 }
 int NativeLink_Admit(uint64_t session, unsigned mode, unsigned slot)
 {
-    if (!session || mode < NATIVE_LINK_SINGLE || mode > NATIVE_LINK_TRADE || slot > 1 || s.session || sCount || !sEmit)
+    if (!session || mode < NATIVE_LINK_SINGLE || mode > NATIVE_LINK_COOP || slot > 1 || s.session || sCount || !sEmit)
         return 0;
     memset(&s, 0, sizeof(s));
     s.session = session; s.mode = mode; s.slot = slot;

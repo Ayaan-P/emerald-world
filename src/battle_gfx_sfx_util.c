@@ -25,6 +25,9 @@
 #include "constants/songs.h"
 #include "constants/rgb.h"
 #include "constants/battle_palace.h"
+#ifdef PORTABLE
+#include "platform/world_coop.h"
+#endif
 
 extern const u8 gBattlePalaceNatureToMoveTarget[];
 extern const u8 *const gBattleAnims_General[];
@@ -880,6 +883,12 @@ bool8 BattleInitAllSprites(u8 *state1, u8 *battler)
         }
         break;
     case 5:
+#ifdef PORTABLE
+        /* Shared single-wild combat has an absent fourth slot, not a second
+         * enemy with valid HP. Its allocated healthbox stays hidden. */
+        if (WorldCoop_IsBattle() && (gAbsentBattlerFlags & (1u << *battler)))
+            goto hideHealthbox;
+#endif
         if (GetBattlerSide(*battler) == B_SIDE_PLAYER)
         {
             if (!(gBattleTypeFlags & BATTLE_TYPE_SAFARI))
@@ -889,6 +898,9 @@ bool8 BattleInitAllSprites(u8 *state1, u8 *battler)
         {
             UpdateHealthboxAttribute(gHealthboxSpriteIds[*battler], &gEnemyParty[gBattlerPartyIndexes[*battler]], HEALTHBOX_ALL);
         }
+#ifdef PORTABLE
+    hideHealthbox:
+#endif
         SetHealthboxSpriteInvisible(gHealthboxSpriteIds[*battler]);
         (*battler)++;
         if (*battler == gBattlersCount)

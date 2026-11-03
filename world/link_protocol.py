@@ -14,10 +14,26 @@ from .link_sessions import LinkError, LinkSessions
 
 _NAME = re.compile(r'[A-Za-z0-9_-]{1,24}\Z')
 _HEX = re.compile(r'[0-9a-f]{32}\Z')
-_KINDS = {1: 'battle_single', 2: 'battle_double', 3: 'trade'}
+_KINDS = {1: 'battle_single', 2: 'battle_double', 3: 'trade', 4: 'coop_wild'}
 _LINK_TYPES = {1: frozenset((0x2211, 0x2233)),
                2: frozenset((0x2211, 0x2244)),
-               3: frozenset((0x1111, 0x1122, 0x1133, 0x1144))}
+               3: frozenset((0x1111, 0x1122, 0x1133, 0x1144)),
+               4: frozenset((0x2255, 0x2211))}
+
+
+@dataclass
+class _Tag:
+    id: int
+    proposer: str
+    target: str
+    deadline: float
+    active: bool = False
+    in_range: int = 0
+    coop_wire: int | None = None
+
+    @property
+    def participants(self):
+        return (self.proposer, self.target)
 
 
 @dataclass(frozen=True)
@@ -44,6 +60,68 @@ class LinkProtocol:
         self._wire = {}
         self._internal = {}
         self._last_wire = None
+        self._tags = {}
+        self._tag_actor = {}
+
+    def _end_tag(self, tag):
+        del self._tags[tag.id]
+        for actor in tag.participants:
+            del self._tag_actor[actor]
+        return [(actor, f'T END {tag.id}\n') for actor in tag.participants]
+
+    def update_presence(self, presence):
+        output = []
+        for tag in self._tags.values():
+            if not tag.active:
+                continue
+            try:
+                self.sessions._near(presence, *tag.participants, coop=True)
+                flag = 1
+            except LinkError:
+                flag = 0
+            if flag != tag.in_range:
+                tag.in_range = flag
+                output.extend((actor, f'T RANGE {tag.id} {flag}\n') for actor in tag.participants)
+        return output
+
+    def _tag_request(self, actor, fields, presence, now):
+        if len(fields) != 3:
+            raise ValueError('tag shape')
+        op, value = fields[1:]
+        if op == 'OFFER':
+            if not _NAME.fullmatch(value):
+                raise ValueError('target')
+            if actor == value:
+                raise LinkError('self_offer')
+            if actor in self._tag_actor or value in self._tag_actor:
+                raise LinkError('busy')
+            if len(self._tag_actor) >= 8:
+                raise LinkError('capacity')
+            self.sessions._near(presence, actor, value, coop=True)
+            tag = _Tag(self._new_id(), actor, value, now + 15)
+            self._tags[tag.id] = tag
+            self._tag_actor[actor] = self._tag_actor[value] = tag.id
+            return [(value, f'T OFFER {tag.id} {actor}\n')]
+        if op not in ('ACCEPT', 'REJECT', 'END'):
+            raise ValueError('tag operation')
+        tag = self._tags.get(_uint(value, 2**64-1))
+        if tag is None:
+            raise LinkError('unknown_session')
+        if actor not in tag.participants:
+            raise LinkError('not_member')
+        if op == 'END':
+            return self._end_tag(tag)
+        if actor != tag.target:
+            raise LinkError('not_target')
+        if tag.active:
+            raise LinkError('invalid_state')
+        if op == 'REJECT':
+            return self._end_tag(tag)
+        self.sessions._near(presence, *tag.participants, coop=True)
+        tag.active = True
+        tag.in_range = 1
+        return [(a, f'T ACTIVE {tag.id} {b} 1\n')
+                for a, b in ((tag.proposer, tag.target), (tag.target, tag.proposer))]
 
     def _new_id(self):
         # A random process namespace followed by a counter avoids reuse without
@@ -95,10 +173,18 @@ class LinkProtocol:
         for wire in closed:
             entry = self._wire.pop(wire)
             del self._internal[entry.internal]
+            for tag in self._tags.values():
+                if tag.coop_wire == wire:
+                    tag.coop_wire = None
         return output
 
     def tick(self, *, now=None):
-        return self._deliver(self.sessions.tick(now=now).events)
+        output = self._deliver(self.sessions.tick(now=now).events)
+        now = self.sessions._last_now
+        for tag in tuple(self._tags.values()):
+            if not tag.active and now >= tag.deadline:
+                output.extend(self._end_tag(tag))
+        return output
 
     def reserved(self, trainers):
         """Read-only host barrier, including offers and between generations.
@@ -109,11 +195,20 @@ class LinkProtocol:
                    for entry in self._wire.values())
 
     def disconnect(self, actor, *, now=None):
-        return self._deliver(self.sessions.disconnect(actor, now=now).events)
+        output = self._deliver(self.sessions.disconnect(actor, now=now).events)
+        tag = self._tags.get(self._tag_actor.get(actor))
+        if tag is not None:
+            output.extend(self._end_tag(tag))
+        return output
 
     def delivery_current(self, actor, line):
         """Recheck after a queue callback may synchronously abort an activity."""
         fields = line.split()
+        if fields[0] == 'T':
+            if fields[1] in ('ERROR', 'END'):
+                return True
+            tag = self._tags.get(int(fields[2]))
+            return tag is not None and actor in tag.participants
         if fields[1] in ('ERROR', 'ABORT'):
             return True
         index = 3 if fields[1] == 'COMMIT' else 2
@@ -129,19 +224,36 @@ class LinkProtocol:
         round. Bad activity IDs from outsiders cannot abort another pair.
         """
         output = self.tick(now=now)
+        channel = 'L'
         try:
             if not isinstance(actor, str) or not _NAME.fullmatch(actor):
                 raise ValueError('actor')
             if type(raw) is not bytes or not 1 <= len(raw) <= 512 or b'\n' in raw or b'\r' in raw:
                 raise ValueError('line')
             fields = raw.decode('ascii').split(' ')
+            if fields[0] == 'T':
+                channel = 'T'
+                if any(not field for field in fields):
+                    raise ValueError('shape')
+                output.extend(self._tag_request(actor, fields, presence, self.sessions._last_now))
+                return output
             if any(not field for field in fields) or fields[0] != 'L':
                 raise ValueError('shape')
             if len(fields) == 4 and fields[1] == 'OFFER':
-                mode = _uint(fields[2], 3)
+                mode = _uint(fields[2], 4)
                 target = fields[3]
                 if mode not in _KINDS or not _NAME.fullmatch(target):
                     raise ValueError('offer')
+                tag = None
+                if mode == 4:
+                    tag = self._tags.get(self._tag_actor.get(actor))
+                    if tag is None or not tag.active or target not in tag.participants or actor == target:
+                        raise LinkError('denied')
+                    if tag.coop_wire is not None:
+                        entry = self._entry(actor, tag.coop_wire)
+                        slot = entry.participants.index(actor)
+                        output.append((actor, f'L ADMIT {tag.coop_wire} 4 {slot}\n'))
+                        return output
                 # Allocate public ID before reserving peers, so allocation failure
                 # cannot strand a consent lock with no addressable wire session.
                 wire = self._new_id()
@@ -151,6 +263,11 @@ class LinkProtocol:
                 entry = _WireSession(result.session_id, result.generation, mode, event.data['participants'])
                 self._wire[wire] = entry
                 self._internal[entry.internal] = wire
+                if tag is not None:
+                    tag.coop_wire = wire
+                    accepted = self.sessions.accept(target, entry.internal, presence, now=now)
+                    output.extend(self._deliver(result.events))
+                    result = accepted
             elif len(fields) == 3 and fields[1] in ('ACCEPT', 'REJECT'):
                 wire = _uint(fields[2], 2**64-1)
                 entry = self._entry(actor, wire)
@@ -161,7 +278,7 @@ class LinkProtocol:
             elif len(fields) == 10 and fields[1] == 'EVENT':
                 kind = _uint(fields[2], 5)
                 wire = _uint(fields[3], 2**64-1)
-                mode = _uint(fields[4], 3)
+                mode = _uint(fields[4], 4)
                 slot = _uint(fields[5], 1)
                 generation = _uint(fields[6], 2**32-1)
                 step = _uint(fields[7], 2**32-1)
@@ -200,7 +317,7 @@ class LinkProtocol:
                     code = 'MALFORMED'
             else:
                 code = 'MALFORMED'
-            output.append((actor, f'L ERROR {code}\n'))
-            if isinstance(actor, str) and _NAME.fullmatch(actor):
-                output.extend(self.disconnect(actor, now=now))
+            output.append((actor, f'{channel} ERROR {code}\n'))
+            if channel == 'L' and isinstance(actor, str) and _NAME.fullmatch(actor):
+                output.extend(self._deliver(self.sessions.disconnect(actor, now=now).events))
         return output

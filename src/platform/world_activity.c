@@ -7,6 +7,7 @@
 #include "palette.h"
 #include "pokemon.h"
 #include "battle.h"
+#include "battle_setup.h"
 #include "event_data.h"
 #include "constants/cable_club.h"
 #include "script.h"
@@ -14,19 +15,22 @@
 #include "trade.h"
 #include "window.h"
 #include "field_player_avatar.h"
+#include "event_object_movement.h"
 #include "field_screen_effect.h"
 #include "constants/characters.h"
 #include "constants/maps.h"
 #include "platform/native_link.h"
 #include "platform/link_transport.h"
 #include "platform/world_activity.h"
+#include "platform/world_coop.h"
 #include <string.h>
 
-enum { IDLE, MENU, INVITATION, WAIT_ADMIT, CONNECTING, NATIVE, RETURNING };
+enum { IDLE, MENU, INVITATION, WAIT_ADMIT, CONNECTING, NATIVE, RETURNING, WAIT_TAG };
 static struct {
     unsigned state, mode, timer;
     u8 window, task;
     bool8 locked;
+    bool8 tagInvitation, encounterPending, wildCaptured;
     char peer[25], talkPeer[25];
     uint64_t invitation;
     const char *status;
@@ -129,18 +133,37 @@ static void CloseMenu(void)
     }
 }
 
+static void ShowWaiting(const char *message)
+{
+    struct WindowTemplate window = { 0, 1, 1, 28, 6, 15, 0x125 };
+    u8 text[64];
+    CloseMenu();
+    sActivity.window = AddWindow(&window);
+    if (sActivity.window == WINDOW_NONE) return;
+    SetStandardWindowBorderStyle(sActivity.window, FALSE);
+    Encode(text, sActivity.peer);
+    AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 0, TEXT_SKIP_DRAW, NULL);
+    Encode(text, message);
+    AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 24, TEXT_SKIP_DRAW, NULL);
+    CopyWindowToVram(sActivity.window, COPYWIN_FULL);
+}
+
 static void Stop(const char *status)
 {
+    bool8 resumeWild = sActivity.wildCaptured;
     CloseMenu();
     if (NativeLink_IsActive()) NativeLink_Abort();
     if (sActivity.locked)
     {
         CloseLink();
         UnlockPlayerFieldControls();
+        if (sActivity.encounterPending) UnfreezeObjectEvents();
         sActivity.locked = FALSE;
     }
     sActivity.state = IDLE;
     sActivity.status = status;
+    sActivity.encounterPending = sActivity.wildCaptured = sActivity.tagInvitation = FALSE;
+    if (resumeWild) BattleSetup_ResumeWorldWildBattle();
 }
 
 static void Task_Menu(u8 taskId)
@@ -154,20 +177,45 @@ static void Task_Menu(u8 taskId)
     {
         uint64_t id = sActivity.invitation;
         CloseMenu();
+        if (sActivity.tagInvitation)
+        {
+            if (choice != 0) { LinkTransport_TagReject(id); Stop("tag declined"); return; }
+            if (!FieldReady() || !ActivityPartyReady(NATIVE_LINK_COOP) || !LinkTransport_TagAccept(id))
+            { LinkTransport_TagReject(id); Stop("tag unavailable"); return; }
+            Stop("tag accepted");
+            return;
+        }
         if (choice != 0) { LinkTransport_Reject(id); Stop("invitation declined"); return; }
         if (!FieldReady() || !ActivityPartyReady(sActivity.mode) || !LinkTransport_Accept(id)) { Stop("invitation unavailable"); return; }
     }
     else
     {
         CloseMenu();
-        if (choice < 0 || choice == 4) { Stop("cancelled"); return; }
-        if (choice == 5)
+        if (choice < 0 || choice == 5) { Stop("cancelled"); return; }
+        if (choice == 6)
         {
             if (!TradeStorageFieldReady()
                 || !TradeStorageLocation(gSaveBlock1Ptr->location.mapGroup, gSaveBlock1Ptr->location.mapNum))
             { Stop("use the PC at a Pokemon Center"); return; }
             Stop("preparing trade party at Center PC");
             ScriptContext_SetupScript(WorldActivity_EventScript_StoragePC);
+            return;
+        }
+        if (choice == 4)
+        {
+            if (LinkTransport_TagPeer())
+            {
+                LinkTransport_TagEnd();
+                Stop("tag ended");
+                return;
+            }
+            if (!FieldReady() || !ActivityPartyReady(NATIVE_LINK_COOP) || !LinkTransport_TagOffer(sActivity.peer))
+            { Stop("tag unavailable"); return; }
+            sActivity.mode = NATIVE_LINK_COOP;
+            sActivity.state = WAIT_TAG;
+            sActivity.timer = 0;
+            sActivity.status = "waiting for tag reply";
+            ShowWaiting("Waiting for tag reply");
             return;
         }
         if (choice == 0)
@@ -187,13 +235,14 @@ static void Task_Menu(u8 taskId)
 
 static bool8 ShowMenu(bool8 incoming)
 {
-    struct WindowTemplate window = { 0, 1, 0, 28, 18, 15, 0x125 };
-    const char *labels[] = { "Talk", "Battle single", "Battle double", "Trade party", "Cancel", "Prepare party at Center PC" };
-    const char *modes[] = { "", "Single battle invitation", "Double battle invitation", "Trade invitation" };
+    struct WindowTemplate window = { 0, 1, 0, 28, 20, 15, 0x125 };
+    const char *labels[] = { "Talk", "Battle single", "Battle double", "Trade party", "Tag up (first 3 mons)", "Cancel", "Prepare party at Center PC" };
+    const char *modes[] = { "", "Single battle invitation", "Double battle invitation", "Trade invitation", "Tag up invitation" };
     u8 text[64];
-    unsigned i, count = incoming ? 2 : 5;
+    unsigned i, count = incoming ? 2 : 6;
     if (!incoming && TradeStorageLocation(gSaveBlock1Ptr->location.mapGroup, gSaveBlock1Ptr->location.mapNum))
-        count = 6;
+        count = 7;
+    if (LinkTransport_TagPeer()) labels[4] = "End tag";
     sActivity.window = AddWindow(&window);
     if (sActivity.window == WINDOW_NONE) return FALSE;
     SetStandardWindowBorderStyle(sActivity.window, FALSE);
@@ -210,10 +259,24 @@ static bool8 ShowMenu(bool8 incoming)
         AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 32 + 16 * i, TEXT_SKIP_DRAW, NULL);
     }
     InitMenuNormal(sActivity.window, FONT_NORMAL, 0, 32, 16, count, incoming ? 1 : 0);
-    if (!incoming && count == 5)
+    if (incoming && sActivity.tagInvitation)
     {
-        Encode(text, "PC mons at a Pokemon Center");
-        AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 128, TEXT_SKIP_DRAW, NULL);
+        Encode(text, "First 3 usable mons fight");
+        AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 80, TEXT_SKIP_DRAW, NULL);
+        Encode(text, "No bag or catches in a tag");
+        AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 96, TEXT_SKIP_DRAW, NULL);
+    }
+    if (!incoming)
+    {
+        Encode(text, LinkTransport_TagPeer()
+            ? (LinkTransport_TagInRange() ? "Tag: nearby; no bag or catches" : "Tag: get closer")
+            : "Tag: no bag or catches");
+        AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, count == 7 ? 144 : 128, TEXT_SKIP_DRAW, NULL);
+        if (count == 6)
+        {
+            Encode(text, "PC mons at a Pokemon Center");
+            AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 144, TEXT_SKIP_DRAW, NULL);
+        }
     }
     CopyWindowToVram(sActivity.window, COPYWIN_FULL);
     sActivity.task = CreateTask(Task_Menu, 80);
@@ -227,6 +290,7 @@ int WorldActivity_Interact(const char *peerName)
     if (sActivity.state != IDLE || !FieldReady() || !LinkTransport_Ready()
         || NativeLink_IsActive() || !CopyPeer(sActivity.peer, peerName)) return 0;
     sActivity.mode = 0;
+    sActivity.tagInvitation = FALSE;
     sActivity.state = MENU;
     if (!ShowMenu(FALSE)) { Stop("native menu unavailable"); return 0; }
     sActivity.status = "peer menu";
@@ -244,7 +308,7 @@ unsigned short WorldActivity_FilterFieldKeys(unsigned short keys)
 const char *WorldActivity_Status(void) { return sActivity.status; }
 const char *WorldActivity_Phase(void)
 {
-    static const char *const phases[] = { "idle", "menu", "invitation", "waiting", "connecting", "native", "returning" };
+    static const char *const phases[] = { "idle", "menu", "invitation", "waiting", "connecting", "native", "returning", "tag_waiting" };
     return phases[sActivity.state];
 }
 unsigned WorldActivity_Mode(void) { return sActivity.state == IDLE ? 0 : sActivity.mode; }
@@ -273,18 +337,97 @@ void WorldActivity_ReturnToField(void)
     SetMainCallback2(CB2_ReturnToField);
 }
 
+int WorldActivity_IsEncounterPending(void)
+{
+    return sActivity.encounterPending
+        && (sActivity.state == WAIT_ADMIT || sActivity.state == CONNECTING)
+        && gMain.callback1 == CB1_Overworld && gMain.callback2 == CB2_Overworld
+        && !gMain.inBattle && !gPaletteFade.active;
+}
+
+int WorldActivity_TryCoopWildBattle(void)
+{
+    const char *peer = LinkTransport_TagPeer();
+    if (sActivity.state != IDLE || NativeLink_IsActive() || !peer
+        || !LinkTransport_TagInRange() || !LinkTransport_Ready()
+        || !ActivityPartyReady(NATIVE_LINK_COOP)
+        || gMain.callback1 != CB1_Overworld || gMain.callback2 != CB2_Overworld
+        || gMain.inBattle || gPaletteFade.active || !CopyPeer(sActivity.peer, peer)) return 0;
+    WorldCoop_CaptureWild();
+    if (!LinkTransport_Offer(sActivity.peer, NATIVE_LINK_COOP)) return 0;
+    sActivity.mode = NATIVE_LINK_COOP;
+    sActivity.encounterPending = sActivity.wildCaptured = TRUE;
+    sActivity.tagInvitation = FALSE;
+    sActivity.state = WAIT_ADMIT;
+    sActivity.timer = 0;
+    sActivity.status = "joining tagged wild encounter";
+    LockPlayerFieldControls();
+    FreezeObjectEvents();
+    StopPlayerAvatar();
+    sActivity.locked = TRUE;
+    ShowWaiting("Joining tagged encounter");
+    return 1;
+}
+
+void WorldActivity_ReturnFromCoopWildBattle(void)
+{
+    CloseMenu();
+    CloseLink();
+    NativeLink_Abort();
+    gFieldLinkPlayerCount = 0;
+    SetMainCallback1(CB1_Overworld);
+    ScriptContext_Init();
+    UnlockPlayerFieldControls();
+    UnfreezeObjectEvents();
+    sActivity.locked = FALSE;
+    sActivity.encounterPending = sActivity.wildCaptured = FALSE;
+    sActivity.state = RETURNING;
+    sActivity.status = "returning after tagged encounter";
+    BattleSetup_EndWorldWildBattle();
+}
+
 void WorldActivity_Update(void)
 {
     const struct LinkTransportInvitation *pending;
+    if (sActivity.state == IDLE && NativeLink_IsActive() && LinkTransport_Mode() == NATIVE_LINK_COOP)
+    {
+        const char *peer = LinkTransport_TagPeer();
+        if (!peer || !FieldReady() || !ActivityPartyReady(NATIVE_LINK_COOP) || !CopyPeer(sActivity.peer, peer))
+        { Stop("tagged encounter unavailable"); return; }
+        sActivity.mode = NATIVE_LINK_COOP;
+        sActivity.encounterPending = TRUE;
+        sActivity.wildCaptured = sActivity.tagInvitation = FALSE;
+        sActivity.state = WAIT_ADMIT;
+        sActivity.timer = 0;
+        sActivity.status = "joining tagged wild encounter";
+        ShowWaiting("Joining tagged encounter");
+    }
     if (sActivity.state == IDLE)
     {
+        pending = LinkTransport_PendingTag();
+        if (pending)
+        {
+            if (!FieldReady() || !ActivityPartyReady(NATIVE_LINK_COOP) || !CopyPeer(sActivity.peer, pending->name))
+            { LinkTransport_TagReject(pending->id); return; }
+            sActivity.invitation = pending->id;
+            sActivity.mode = NATIVE_LINK_COOP;
+            sActivity.tagInvitation = TRUE;
+            sActivity.state = INVITATION;
+            sActivity.status = "incoming tag invitation";
+            if (!ShowMenu(TRUE)) { LinkTransport_TagReject(sActivity.invitation); Stop("native menu unavailable"); }
+            return;
+        }
         pending = LinkTransport_PendingInvitation();
         if (!pending) return;
+        /* Tag consent already authorizes co-op. Its OFFER and ADMIT can be in
+         * different socket reads; do not turn the brief gap into a second UI. */
+        if (pending->mode == NATIVE_LINK_COOP) return;
         if (!FieldReady() || pending->mode < NATIVE_LINK_SINGLE || pending->mode > NATIVE_LINK_TRADE
             || !CopyPeer(sActivity.peer, pending->name))
         { LinkTransport_Reject(pending->id); return; }
         sActivity.invitation = pending->id;
         sActivity.mode = pending->mode;
+        sActivity.tagInvitation = FALSE;
         sActivity.state = INVITATION;
         sActivity.status = "incoming invitation";
         if (!ShowMenu(TRUE)) { LinkTransport_Reject(sActivity.invitation); Stop("native menu unavailable"); }
@@ -295,21 +438,34 @@ void WorldActivity_Update(void)
         if (!FieldReady()) { Stop("field became unavailable"); return; }
         if (sActivity.state == INVITATION)
         {
-            pending = LinkTransport_PendingInvitation();
+            pending = sActivity.tagInvitation ? LinkTransport_PendingTag() : LinkTransport_PendingInvitation();
             if (!pending || pending->id != sActivity.invitation) Stop("invitation expired");
         }
         return;
     }
+    if (sActivity.state == WAIT_TAG)
+    {
+        const char *peer = LinkTransport_TagPeer();
+        if (peer && !strcmp(peer, sActivity.peer)) { Stop("tag ready; stay nearby"); return; }
+        if (!LinkTransport_Ready() || !LinkTransport_TagOfferPending() || ++sActivity.timer > 900)
+            Stop("tag declined or expired");
+        return;
+    }
     if (sActivity.state == WAIT_ADMIT)
     {
-        if (!FieldReady() || !ActivityPartyReady(sActivity.mode) || !LinkTransport_Ready() || ++sActivity.timer > 1800)
+        bool8 coop = sActivity.mode == NATIVE_LINK_COOP;
+        if ((!FieldReady() && !(coop && WorldActivity_IsEncounterPending()))
+            || !ActivityPartyReady(sActivity.mode) || !LinkTransport_Ready() || ++sActivity.timer > 1800)
         { Stop("consent unavailable"); return; }
+        if (coop && !NativeLink_IsActive() && !LinkTransport_OfferPending())
+        { Stop("partner unavailable; continuing wild encounter"); return; }
         if (!NativeLink_IsActive()) return;
         /* Active means server ADMIT after BOTH decisions, not OFFER/ACCEPT. */
         LockPlayerFieldControls();
+        if (coop) { FreezeObjectEvents(); StopPlayerAvatar(); }
         sActivity.locked = TRUE;
         gWirelessCommType = 0;
-        gLinkType = sActivity.mode == NATIVE_LINK_TRADE ? LINKTYPE_TRADE_SETUP
+        gLinkType = coop ? 0x2255 : sActivity.mode == NATIVE_LINK_TRADE ? LINKTYPE_TRADE_SETUP
             : sActivity.mode == NATIVE_LINK_DOUBLE ? LINKTYPE_DOUBLE_BATTLE : LINKTYPE_SINGLE_BATTLE;
         OpenLink();
         ResetLinkPlayers();
@@ -333,9 +489,17 @@ void WorldActivity_Update(void)
         SetDynamicWarp(0, gSaveBlock1Ptr->location.mapGroup,
             gSaveBlock1Ptr->location.mapNum, -1);
         ClearLinkCallback_2();
+        CloseMenu();
         sActivity.state = NATIVE;
         sActivity.status = "native activity running";
-        if (sActivity.mode == NATIVE_LINK_TRADE)
+        if (sActivity.mode == NATIVE_LINK_COOP)
+        {
+            if (!WorldCoop_StartBattle(LinkTransport_CoopOwner()))
+            { Stop("tagged battle unavailable"); return; }
+            sActivity.wildCaptured = sActivity.encounterPending = FALSE;
+            BattleSetup_RecordWorldWildBattle();
+        }
+        else if (sActivity.mode == NATIVE_LINK_TRADE)
         {
             gBattleTypeFlags = 0;
             gSpecialVar_0x8004 = USING_TRADE_CENTER;

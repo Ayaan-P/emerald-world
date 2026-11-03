@@ -10,6 +10,9 @@
 #include "task.h"
 #include "trig.h"
 #include "constants/trainers.h"
+#ifdef PORTABLE
+#include "platform/world_coop.h"
+#endif
 
 static EWRAM_DATA u16 sBgCnt = 0;
 
@@ -110,7 +113,12 @@ void HandleIntroSlide(u8 environment)
     {
         taskId = CreateTask(BattleIntroSlidePartner, 0);
     }
-    else if (gBattleTypeFlags & BATTLE_TYPE_LINK)
+    else if ((gBattleTypeFlags & BATTLE_TYPE_LINK)
+#ifdef PORTABLE
+             /* Shared wild entry has no PvP V/S sprites to animate. */
+             && !WorldCoop_IsBattle()
+#endif
+            )
     {
         taskId = CreateTask(BattleIntroSlideLink, 0);
     }

@@ -48,6 +48,11 @@
 #include "constants/trainer_hill.h"
 #include "constants/weather.h"
 
+#ifdef PORTABLE
+#include "platform/world_activity.h"
+static bool8 sWorldWildFallback;
+#endif
+
 enum {
     TRANSITION_TYPE_NORMAL,
     TRANSITION_TYPE_CAVE,
@@ -405,6 +410,10 @@ void BattleSetup_StartBattlePikeWildBattle(void)
 
 static void DoStandardWildBattle(void)
 {
+#ifdef PORTABLE
+    if (!sWorldWildFallback && CurrentBattlePyramidLocation() == PYRAMID_LOCATION_NONE
+        && WorldActivity_TryCoopWildBattle()) return;
+#endif
     LockPlayerFieldControls();
     FreezeObjectEvents();
     StopPlayerAvatar();
@@ -618,6 +627,36 @@ static void CB2_EndWildBattle(void)
         gFieldCallback = FieldCB_ReturnToFieldNoScriptCheckMusic;
     }
 }
+
+#ifdef PORTABLE
+void BattleSetup_ResumeWorldWildBattle(void)
+{
+    sWorldWildFallback = TRUE;
+    DoStandardWildBattle();
+    sWorldWildFallback = FALSE;
+}
+
+void BattleSetup_RecordWorldWildBattle(void)
+{
+    IncrementGameStat(GAME_STAT_TOTAL_BATTLES);
+    IncrementGameStat(GAME_STAT_WILD_BATTLES);
+    IncrementDailyWildBattles();
+    TryUpdateGymLeaderRematchFromWild();
+}
+
+void BattleSetup_EndWorldWildBattle(void)
+{
+    unsigned i;
+    /* A shared victory does not prevent a private whiteout when this trainer
+     * has no usable Pokemon. Do not change the partner's battle result. */
+    for (i = 0; i < PARTY_SIZE; ++i)
+        if (GetMonData(&gPlayerParty[i], MON_DATA_SPECIES)
+            && !GetMonData(&gPlayerParty[i], MON_DATA_IS_EGG)
+            && GetMonData(&gPlayerParty[i], MON_DATA_HP)) break;
+    if (i == PARTY_SIZE) SetMainCallback2(CB2_WhiteOut);
+    else CB2_EndWildBattle();
+}
+#endif
 
 static void CB2_EndScriptedWildBattle(void)
 {

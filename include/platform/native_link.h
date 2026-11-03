@@ -6,7 +6,7 @@
 /* All callbacks are synchronous, single-threaded and must not reenter Feed.
  * A false emit means retry, not success: the adapter retains the exact event.
  * No credentials. */
-enum NativeLinkMode { NATIVE_LINK_SINGLE = 1, NATIVE_LINK_DOUBLE, NATIVE_LINK_TRADE };
+enum NativeLinkMode { NATIVE_LINK_SINGLE = 1, NATIVE_LINK_DOUBLE, NATIVE_LINK_TRADE, NATIVE_LINK_COOP };
 enum NativeLinkEventKind { NATIVE_LINK_OPEN = 1, NATIVE_LINK_CLOSE, NATIVE_LINK_ADVANCE, NATIVE_LINK_COMMAND, NATIVE_LINK_ABORT };
 enum NativeLinkCommitKind { NATIVE_LINK_PAIR = 1, NATIVE_LINK_HANDSHAKE, NATIVE_LINK_ROUND };
 struct NativeLinkEvent

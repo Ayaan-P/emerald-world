@@ -1,4 +1,7 @@
 #include "global.h"
+#ifdef PORTABLE
+#include "platform/world_coop.h"
+#endif
 #include "battle.h"
 #include "battle_anim.h"
 #include "battle_arena.h"
@@ -2285,6 +2288,14 @@ bool8 HasNoMonsToSwitch(u8 battler, u8 partyIdBattlerOn1, u8 partyIdBattlerOn2)
     if (!(gBattleTypeFlags & BATTLE_TYPE_DOUBLE))
         return FALSE;
 
+#ifdef PORTABLE
+    /* Shared wild opponents have no link trainer or reserve party. Looking up
+     * the absent fourth battler would index beyond the human link roster and
+     * can incorrectly revive it during fainted-mon processing. */
+    if (WorldCoop_IsBattle() && GetBattlerSide(battler) == B_SIDE_OPPONENT)
+        return TRUE;
+#endif
+
     if (gBattleTypeFlags & BATTLE_TYPE_INGAME_PARTNER)
     {
         if (GetBattlerSide(battler) == B_SIDE_PLAYER)
@@ -2490,7 +2501,11 @@ u8 AbilityBattleEffects(u8 caseID, u8 battler, u8 ability, u8 special, u16 moveA
             case ABILITYEFFECT_SWITCH_IN_WEATHER:
                 if (!(gBattleTypeFlags & BATTLE_TYPE_RECORDED))
                 {
-                    switch (GetCurrentWeather())
+                    switch (
+#ifdef PORTABLE
+                            WorldCoop_IsBattle() ? WorldCoop_FieldWeather() :
+#endif
+                            GetCurrentWeather())
                     {
                     case WEATHER_RAIN:
                     case WEATHER_RAIN_THUNDERSTORM:
@@ -2525,7 +2540,11 @@ u8 AbilityBattleEffects(u8 caseID, u8 battler, u8 ability, u8 special, u16 moveA
                 }
                 if (effect != 0)
                 {
-                    gBattleCommunication[MULTISTRING_CHOOSER] = GetCurrentWeather();
+                    gBattleCommunication[MULTISTRING_CHOOSER] =
+#ifdef PORTABLE
+                        WorldCoop_IsBattle() ? WorldCoop_FieldWeather() :
+#endif
+                        GetCurrentWeather();
                     BattleScriptPushCursorAndCallback(BattleScript_OverworldWeatherStarts);
                 }
                 break;
@@ -3306,6 +3325,10 @@ u8 ItemBattleEffects(u8 caseID, u8 battler, bool8 moveTurn)
         switch (battlerHoldEffect)
         {
         case HOLD_EFFECT_DOUBLE_PRIZE:
+#ifdef PORTABLE
+            if (WorldCoop_IsBattle())
+                WorldCoop_DoublePrize(battler);
+#endif
             if (GetBattlerSide(battler) == B_SIDE_PLAYER)
                 gBattleStruct->moneyMultiplier = 2;
             break;

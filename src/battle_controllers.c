@@ -14,13 +14,20 @@
 #include "constants/abilities.h"
 #ifdef PORTABLE
 #include "platform/native_link.h"
+#include "platform/world_coop.h"
 #include "constants/moves.h"
+#include "constants/items.h"
 #endif
 
 static EWRAM_DATA u8 sLinkSendTaskId = 0;
 static EWRAM_DATA u8 sLinkReceiveTaskId = 0;
 #ifdef PORTABLE
 static bool8 sNativeBattlePayloadFailed;
+static bool8 sNativeBattleReplyUsed[MAX_BATTLERS_COUNT];
+static bool8 sNativeBattleRequestPending[MAX_BATTLERS_COUNT];
+/* Controllers replace buffer A's opcode with TERMINATOR_NOP on completion.
+ * Keep the accepted request identity until its authenticated reply arrives. */
+static u8 sNativeBattleRequest[MAX_BATTLERS_COUNT][3];
 #endif
 static EWRAM_DATA u8 sUnused = 0; // Debug? Never read
 EWRAM_DATA struct UnusedControllerStruct gUnusedControllerStruct = {}; // Debug? Unused code that writes to it, never read
@@ -399,6 +406,13 @@ static void InitLinkBtlControllers(void)
     s32 i;
     u8 multiplayerId;
 
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle())
+    {
+        WorldCoop_InitControllers();
+        return;
+    }
+#endif
     if (!(gBattleTypeFlags & BATTLE_TYPE_DOUBLE))
     {
         if (gBattleTypeFlags & BATTLE_TYPE_IS_MASTER)
@@ -708,6 +722,9 @@ static void CreateTasksForSendRecvLinkBuffers(void)
 {
 #ifdef PORTABLE
     sNativeBattlePayloadFailed = FALSE;
+    memset(sNativeBattleReplyUsed, 0, sizeof(sNativeBattleReplyUsed));
+    memset(sNativeBattleRequestPending, 0, sizeof(sNativeBattleRequestPending));
+    memset(sNativeBattleRequest, 0, sizeof(sNativeBattleRequest));
 #endif
     sLinkSendTaskId = CreateTask(Task_HandleSendLinkBuffersData, 0);
     gTasks[sLinkSendTaskId].tState                 = 0;
@@ -742,6 +759,37 @@ enum
 #ifdef PORTABLE
 /* The cable adapter owns the completed block's length, not its payload. */
 extern u16 GetBlockReceivedSize(u8 player);
+/* Side metadata never changes the cable wire layout or FIFO record lengths. */
+static u8 sNativeBattleSources[BATTLE_BUFFER_LINK_SIZE];
+
+static u8 NativeBattleMaster(void)
+{
+    u8 local = GetMultiplayerId();
+    return (gBattleTypeFlags & BATTLE_TYPE_IS_MASTER) ? local : local ^ 1;
+}
+
+static u8 NativeBattleOwner(u8 battler)
+{
+    if (WorldCoop_IsBattle() || (gBattleTypeFlags & BATTLE_TYPE_BATTLE_TOWER))
+        return battler == 2 ? 1 : 0;
+    return NativeBattleMaster() ^ (battler & BIT_SIDE);
+}
+
+static bool8 NativeBattleSourceValid(const u8 *packet, u8 source)
+{
+    if (GetLinkPlayerCount() != 2 || source >= 2)
+        return FALSE;
+    switch (packet[LINK_BUFF_BUFFER_ID])
+    {
+    case B_COMM_TO_CONTROLLER:
+        return source == NativeBattleMaster();
+    case B_COMM_TO_ENGINE:
+        return source == NativeBattleOwner(packet[LINK_BUFF_ACTIVE_BATTLER]);
+    case B_COMM_CONTROLLER_IS_DONE:
+        return packet[LINK_BUFF_DATA] == source;
+    }
+    return FALSE;
+}
 
 static void AbortNativeBattlePayload(void)
 {
@@ -808,6 +856,10 @@ static bool8 NativeBattleCommandValid(const u8 *data, u16 size, u8 bufferId)
         break;
     case CONTROLLER_SWITCHINANIM:
     case CONTROLLER_EXPUPDATE:
+#ifdef PORTABLE
+        if (data[0] == CONTROLLER_EXPUPDATE && WorldCoop_IsBattle())
+            return WorldCoop_RewardPacketValid(data, size);
+#endif
         if (data[1] >= PARTY_SIZE)
             return FALSE;
         break;
@@ -917,6 +969,74 @@ static bool8 NativeBattleHeaderValid(const u8 *packet, u16 size)
             : NativeBattleCommandValid(packet + LINK_BUFF_DATA, size - LINK_BUFF_DATA, packet[LINK_BUFF_BUFFER_ID]));
 }
 
+/* Only REQUEST_ALL_BATTLE is used by the native link engine. Validate it
+ * against the outstanding command before an untrusted byte reaches buffer B.
+ * Controller-only fields in BattlePokemon are uninitialized on the cable, so
+ * do not inspect statStages/types/ability/status2 in this data-only response. */
+static bool8 NativeBattleMonValid(const u8 *data)
+{
+    struct BattlePokemon mon;
+    u8 i;
+    memcpy(&mon, data, sizeof(mon));
+    if (!mon.species || mon.species >= NUM_SPECIES || mon.item >= ITEMS_COUNT
+     || !mon.level || mon.level > MAX_LEVEL || mon.experience > 1640000
+     || !mon.maxHP || mon.maxHP > 999 || mon.hp > mon.maxHP
+     || !mon.attack || mon.attack > 999 || !mon.defense || mon.defense > 999
+     || !mon.speed || mon.speed > 999 || !mon.spAttack || mon.spAttack > 999
+     || !mon.spDefense || mon.spDefense > 999 || (mon.status1 & ~0xFFFu) || mon.isEgg)
+        return FALSE;
+    for (i = 0; i < MAX_MON_MOVES; i++)
+        if (mon.moves[i] >= MOVES_COUNT || mon.pp[i] > 64)
+            return FALSE;
+    return TRUE;
+}
+
+static bool8 NativeBattleReplyValid(u8 battler, const u8 *data)
+{
+    const u8 *request = sNativeBattleRequest[battler];
+    u16 count = 0, i, mask;
+    if (!sNativeBattleRequestPending[battler] || sNativeBattleReplyUsed[battler])
+        return FALSE;
+    switch (data[0])
+    {
+    case CONTROLLER_DATATRANSFER:
+        if (request[0] != CONTROLLER_GETMONDATA || request[1] != REQUEST_ALL_BATTLE)
+            return FALSE;
+        mask = request[2];
+        if (!mask)
+            count = 1;
+        for (; mask; mask >>= 1)
+            count += mask & 1;
+        if ((data[2] | (data[3] << 8)) != count * sizeof(struct BattlePokemon))
+            return FALSE;
+        for (i = 0; i < count; i++)
+            if (!NativeBattleMonValid(data + 4 + i * sizeof(struct BattlePokemon)))
+                return FALSE;
+        return TRUE;
+    case CONTROLLER_CHOSENMONRETURNVALUE:
+        if (request[0] != CONTROLLER_CHOOSEPOKEMON
+         || (WorldCoop_IsBattle() && data[1] < PARTY_SIZE
+             && data[1] / MULTI_PARTY_SIZE != NativeBattleOwner(battler)))
+            return FALSE;
+        mask = 0;
+        for (i = 0; i < PARTY_SIZE; i++)
+        {
+            u8 slot = (data[2 + i / 2] >> ((i % 2) * 4)) & 15;
+            if (slot >= PARTY_SIZE || (mask & (1 << slot)))
+                return FALSE;
+            mask |= 1 << slot;
+        }
+        return TRUE;
+    case CONTROLLER_TWORETURNVALUES:
+        return request[0] == CONTROLLER_CHOOSEACTION || request[0] == CONTROLLER_CHOOSEMOVE
+            || request[0] == CONTROLLER_EXPUPDATE || request[0] == CONTROLLER_DRAWPARTYSTATUSSUMMARY;
+    case CONTROLLER_ONERETURNVALUE:
+    case CONTROLLER_ONERETURNVALUE_DUPLICATE:
+        return request[0] == CONTROLLER_OPENBAG && (data[1] | (data[2] << 8)) < ITEMS_COUNT;
+    }
+    return FALSE;
+}
+
 static bool8 NativeBattleRingStateValid(u8 taskId)
 {
     return gTasks[taskId].tCurrentBlock_Start >= 0
@@ -936,6 +1056,13 @@ void PrepareBufferDataTransferLink(u8 bufferId, u16 size, u8 *data)
     s32 alignedSize;
     s32 i;
 
+#ifdef PORTABLE
+    /* Mirror controllers still ACK animations, but only the battler owner can
+     * answer the engine. In PvP both mirrors historically emitted mon data. */
+    if (NativeLink_IsActive() && bufferId == B_COMM_TO_ENGINE
+     && GetMultiplayerId() != NativeBattleOwner(gActiveBattler))
+        return;
+#endif
     alignedSize = size - size % 4 + 4;
     if (gTasks[sLinkSendTaskId].tCurrentBlock_End + alignedSize + LINK_BUFF_DATA + 1 > BATTLE_BUFFER_LINK_SIZE)
     {
@@ -955,9 +1082,25 @@ void PrepareBufferDataTransferLink(u8 bufferId, u16 size, u8 *data)
     BYTE_TO_SEND(LINK_BUFF_ABSENT_BATTLER_FLAGS) = gAbsentBattlerFlags;
     BYTE_TO_SEND(LINK_BUFF_EFFECT_BATTLER)       = gEffectBattler;
 
+#ifdef PORTABLE
+    if (bufferId == B_COMM_CONTROLLER_IS_DONE)
+    {
+        /* Stock completion passes one player-id byte with a four-byte cable
+         * width. The remaining bytes are padding, not readable stack data. */
+        BYTE_TO_SEND(LINK_BUFF_DATA) = data[0];
+        for (i = 1; i < alignedSize; i++)
+            BYTE_TO_SEND(LINK_BUFF_DATA + i) = 0;
+    }
+    else
+#endif
     for (i = 0; i < size; i++)
         BYTE_TO_SEND(LINK_BUFF_DATA + i) = data[i];
 
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle())
+        for (; i < alignedSize; i++)
+            BYTE_TO_SEND(LINK_BUFF_DATA + i) = 0;
+#endif
     #undef BYTE_TO_SEND
 
     gTasks[sLinkSendTaskId].tCurrentBlock_End = gTasks[sLinkSendTaskId].tCurrentBlock_End + alignedSize + LINK_BUFF_DATA;
@@ -998,7 +1141,11 @@ static void Task_HandleSendLinkBuffersData(u8 taskId)
         }
         else
         {
-            if (gBattleTypeFlags & BATTLE_TYPE_BATTLE_TOWER)
+            if (gBattleTypeFlags & BATTLE_TYPE_BATTLE_TOWER
+#ifdef PORTABLE
+                || WorldCoop_IsBattle()
+#endif
+               )
                 numPlayers = 2;
             else
                 numPlayers = (gBattleTypeFlags & BATTLE_TYPE_MULTI) ? 4 : 2;
@@ -1096,7 +1243,20 @@ void TryReceiveLinkBattleData(void)
                 return;
             }
             recvBuffer = (u8 *)gBlockRecvBuffer[i];
-            if (!NativeBattleHeaderValid(recvBuffer, size))
+            {
+                int completion = WorldCoop_ReceiveCompletion(recvBuffer, size, i);
+                if (completion < 0)
+                {
+                    AbortNativeBattlePayload();
+                    return;
+                }
+                if (completion)
+                {
+                    ResetBlockReceivedFlag(i);
+                    continue;
+                }
+            }
+            if (!NativeBattleHeaderValid(recvBuffer, size) || !NativeBattleSourceValid(recvBuffer, i))
             {
                 AbortNativeBattlePayload();
                 return;
@@ -1120,6 +1280,7 @@ void TryReceiveLinkBattleData(void)
                 return;
             }
             memcpy(&gLinkBattleRecvBuffer[end], recvBuffer, size);
+            sNativeBattleSources[end] = i;
             gTasks[sLinkReceiveTaskId].tCurrentBlock_WrapFrom = wrap;
             gTasks[sLinkReceiveTaskId].tCurrentBlock_End = end + size;
             ResetBlockReceivedFlag(i);
@@ -1207,7 +1368,8 @@ static void Task_HandleCopyReceivedLinkBuffersData(u8 taskId)
         blockSize = gLinkBattleRecvBuffer[start + LINK_BUFF_SIZE_LO]
                   | (gLinkBattleRecvBuffer[start + LINK_BUFF_SIZE_HI] << 8);
         if (blockSize > limit - start - LINK_BUFF_DATA
-            || !NativeBattleHeaderValid(&gLinkBattleRecvBuffer[start], blockSize + LINK_BUFF_DATA))
+            || !NativeBattleHeaderValid(&gLinkBattleRecvBuffer[start], blockSize + LINK_BUFF_DATA)
+            || !NativeBattleSourceValid(&gLinkBattleRecvBuffer[start], sNativeBattleSources[start]))
         {
             AbortNativeBattlePayload();
             return;
@@ -1238,6 +1400,15 @@ static void Task_HandleCopyReceivedLinkBuffersData(u8 taskId)
             if (IS_BATTLE_CONTROLLER_ACTIVE_ON_LOCAL(battler))
                 return;
 
+#ifdef PORTABLE
+            if (NativeLink_IsActive())
+            {
+                sNativeBattleReplyUsed[battler] = FALSE;
+                sNativeBattleRequestPending[battler] = TRUE;
+                memcpy(sNativeBattleRequest[battler], &BYTE_TO_RECEIVE(LINK_BUFF_DATA),
+                    sizeof(sNativeBattleRequest[battler]));
+            }
+#endif
             memcpy(gBattleBufferA[battler], &BYTE_TO_RECEIVE(LINK_BUFF_DATA), blockSize);
             MarkBattlerReceivedLinkData(battler);
 
@@ -1248,8 +1419,40 @@ static void Task_HandleCopyReceivedLinkBuffersData(u8 taskId)
                 gAbsentBattlerFlags = BYTE_TO_RECEIVE(LINK_BUFF_ABSENT_BATTLER_FLAGS);
                 gEffectBattler      = BYTE_TO_RECEIVE(LINK_BUFF_EFFECT_BATTLER);
             }
+#ifdef PORTABLE
+            if (NativeLink_IsActive() && WorldCoop_IsBattle())
+                WorldCoop_ObserveController(battler, &BYTE_TO_RECEIVE(LINK_BUFF_DATA));
+#endif
             break;
         case B_COMM_TO_ENGINE:
+#ifdef PORTABLE
+            if (NativeLink_IsActive())
+            {
+                if (!NativeBattleReplyValid(battler, &BYTE_TO_RECEIVE(LINK_BUFF_DATA)))
+                {
+                    AbortNativeBattlePayload();
+                    return;
+                }
+                sNativeBattleReplyUsed[battler] = TRUE;
+                if (WorldCoop_IsBattle()
+                 && BYTE_TO_RECEIVE(LINK_BUFF_DATA) == CONTROLLER_DATATRANSFER
+                 && sNativeBattleRequest[battler][0] == CONTROLLER_GETMONDATA
+                 && sNativeBattleRequest[battler][1] == REQUEST_ALL_BATTLE)
+                {
+                    u8 mask = sNativeBattleRequest[battler][2];
+                    /* Reserve batches are not public selected-battler data. */
+                    if (mask == 0 || (mask & (mask - 1)) == 0)
+                    {
+                        struct BattlePokemon mon;
+                        u8 slot = gBattlerPartyIndexes[battler];
+                        if (mask)
+                            for (slot = 0; !(mask & (1u << slot)); slot++);
+                        memcpy(&mon, &BYTE_TO_RECEIVE(LINK_BUFF_DATA + 4), sizeof(mon));
+                        WorldCoop_ObserveMonData(battler, slot, &mon);
+                    }
+                }
+            }
+#endif
             memcpy(gBattleBufferB[battler], &gLinkBattleRecvBuffer[gTasks[taskId].tCurrentBlock_Start + LINK_BUFF_DATA], blockSize);
             break;
         case B_COMM_CONTROLLER_IS_DONE:
@@ -1692,13 +1895,21 @@ void BtlController_EmitChosenMonReturnValue(u8 bufferId, u8 partyId, u8 *battleP
 
     sBattleBuffersTransferData[0] = CONTROLLER_CHOSENMONRETURNVALUE;
     sBattleBuffersTransferData[1] = partyId;
-#ifdef UBFIX
+#if defined(UBFIX) || defined(PORTABLE)
     if (battlePartyOrder != NULL)
 #endif
     {
     for (i = 0; i < (int)ARRAY_COUNT(gBattlePartyCurrentOrder); i++)
         sBattleBuffersTransferData[2 + i] = battlePartyOrder[i];
     }
+#ifdef PORTABLE
+    else
+    {
+        /* Cancel replies still carry a valid order, never prior staging bytes. */
+        for (i = 0; i < (int)ARRAY_COUNT(gBattlePartyCurrentOrder); i++)
+            sBattleBuffersTransferData[2 + i] = gBattlePartyCurrentOrder[i];
+    }
+#endif
 
     PrepareBufferDataTransfer(bufferId, sBattleBuffersTransferData, 5);
 }

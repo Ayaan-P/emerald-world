@@ -4,6 +4,9 @@
 #include "battle_main.h"
 #include "battle_message.h"
 #include "battle_setup.h"
+#ifdef PORTABLE
+#include "platform/world_coop.h"
+#endif
 #include "bg.h"
 #include "data.h"
 #include "decompress.h"
@@ -1123,6 +1126,17 @@ void InitLinkBattleVsScreen(u8 taskId)
 
 void DrawBattleEntryBackground(void)
 {
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle())
+    {
+        /* Match HandleIntroSlide's wild task, which only retires BG1.
+         * A PvP entry also seeds BG2 and reserves V/S OBJ tiles, but this
+         * battle never runs the link intro that owns their cleanup. */
+        LZDecompressVram(sBattleEnvironmentTable[gBattleEnvironment].entryTileset, (void *)(BG_CHAR_ADDR(1)));
+        LZDecompressVram(sBattleEnvironmentTable[gBattleEnvironment].entryTilemap, (void *)(BG_SCREEN_ADDR(28)));
+        return;
+    }
+#endif
     if (gBattleTypeFlags & BATTLE_TYPE_LINK)
     {
         LZDecompressVram(gBattleVSFrame_Gfx, (void *)(BG_CHAR_ADDR(1)));
