@@ -276,6 +276,87 @@ static const struct MapHeader *Overworld_GetMapHeaderByGroupAndId(unsigned g, un
             finally:
                 server.close()
 
+    def test_field_cache_revokes_scripts_warp_fades_battles_and_resets(self):
+        import subprocess
+        from test_save_isolation import function
+        bridge = (ROOT / 'src/platform/world_bridge.c').read_text()
+        source = '''#include <assert.h>
+ typedef unsigned char bool8;
+ #define FALSE 0
+ #define MAP_OFFSET 7
+ struct Peer {unsigned group,num,x,y,facing,gfx;};
+ struct ObjectEvent {struct {int x,y;} currentCoords; unsigned facingDirection,graphicsId;};
+ static struct ObjectEvent gObjectEvents[1] = {{{13,12},1,7}};
+ static struct {unsigned objectEventId;} gPlayerAvatar;
+ static struct {int active;} gPaletteFade;
+ static struct {struct Peer field; bool8 fieldKnown;} sWorld;
+ static struct Save {struct {int mapGroup,mapNum;} location;} save={{1,4}}, *gSaveBlock1Ptr=&save;
+ static void CB1_Overworld(void) {}
+ static struct {int inBattle; void (*callback1)(void);} gMain={0,CB1_Overworld};
+ static int overworld=1, script, menu;
+ static bool8 Overworld(void) {return overworld;}
+ static bool8 ScriptContext_IsEnabled(void) {return script;}
+ static void Task_ShowStartMenu(unsigned char taskId) {(void)taskId;}
+ static bool8 FuncIsActiveTask(void (*func)(unsigned char)) {(void)func;return menu;}
+ static bool8 MapCoords(unsigned g,unsigned n,unsigned x,unsigned y) {return g==1 && n==4 && x<14 && y<14;}
+'''
+        source += function(bridge, 'UpdateFieldPresence')
+        source += '''int main(void) {
+ UpdateFieldPresence(); assert(sWorld.fieldKnown); assert(sWorld.field.x==6);
+ script=1; UpdateFieldPresence(); assert(!sWorld.fieldKnown); script=0;
+ UpdateFieldPresence(); gPaletteFade.active=1;
+ UpdateFieldPresence(); assert(!sWorld.fieldKnown);
+ gPaletteFade.active=0; UpdateFieldPresence(); gPaletteFade.active=1; menu=1;
+ UpdateFieldPresence(); assert(sWorld.fieldKnown);
+ overworld=0; menu=0; UpdateFieldPresence(); assert(sWorld.fieldKnown);
+ gMain.inBattle=1; UpdateFieldPresence(); assert(!sWorld.fieldKnown);
+ gMain.inBattle=0; overworld=1; gPaletteFade.active=0; UpdateFieldPresence();
+ overworld=0; gMain.callback1=0; UpdateFieldPresence(); assert(!sWorld.fieldKnown);
+ gMain.callback1=CB1_Overworld; overworld=1; UpdateFieldPresence();
+ overworld=0; save.location.mapNum=5; UpdateFieldPresence(); assert(!sWorld.fieldKnown);
+ return 0;
+}
+'''
+        with tempfile.TemporaryDirectory() as root:
+            c, exe = Path(root)/'cache.c', Path(root)/'cache'
+            c.write_text(source)
+            subprocess.run(['cc', '-std=gnu99', '-Wall', '-Wextra', '-Werror',
+                            str(c), '-o', str(exe)], check=True, capture_output=True)
+            subprocess.run([str(exe)], check=True, capture_output=True)
+
+    def test_walking_presence_does_not_unlock_field_interactions(self):
+        import subprocess
+        from test_save_isolation import function
+        bridge = (ROOT / 'src/platform/world_bridge.c').read_text()
+        source = '''#include <assert.h>
+ typedef unsigned char bool8;
+ static struct {int active;} gPaletteFade;
+ static struct {int tileTransitionState;} gPlayerAvatar;
+ static int overworld=1, locked, script;
+ static bool8 Overworld(void) {return overworld;}
+ static bool8 ArePlayerFieldControlsLocked(void) {return locked;}
+ static bool8 ScriptContext_IsEnabled(void) {return script;}
+'''
+        source += function(bridge, 'PresenceReady') + function(bridge, 'Ready')
+        source += '''int main(void) {
+ gPlayerAvatar.tileTransitionState=1;
+ assert(PresenceReady()); assert(!Ready());
+ gPlayerAvatar.tileTransitionState=0;
+ assert(PresenceReady()); assert(Ready());
+ locked=1; assert(!PresenceReady()); assert(!Ready()); locked=0;
+ script=1; assert(!PresenceReady()); assert(!Ready()); script=0;
+ gPaletteFade.active=1; assert(!PresenceReady()); gPaletteFade.active=0;
+ overworld=0; assert(!PresenceReady()); assert(!Ready());
+ return 0;
+}
+'''
+        with tempfile.TemporaryDirectory() as root:
+            c, exe = Path(root)/'readiness.c', Path(root)/'readiness'
+            c.write_text(source)
+            subprocess.run(['cc', '-std=gnu99', '-Wall', '-Wextra', '-Werror',
+                            str(c), '-o', str(exe)], check=True, capture_output=True)
+            subprocess.run([str(exe)], check=True, capture_output=True)
+
     def test_native_unready_state_is_canonical_even_in_transition(self):
         import subprocess
         from test_save_isolation import function
@@ -292,9 +373,10 @@ static struct {unsigned objectEventId;} gPlayerAvatar;
 static struct Save { struct {int mapGroup,mapNum;} location;
  char bagPocket_Items[1],bagPocket_KeyItems[1],bagPocket_PokeBalls[1],bagPocket_TMHM[1],bagPocket_Berries[1]; } save = {{255,255},{0},{0},{0},{0},{0}}, *gSaveBlock1Ptr=&save;
 static char gPlayerParty[1];
-static struct {int connected; unsigned seq; size_t outputSize; char output[4096];} sWorld;
+struct Peer { unsigned group,num,x,y,facing,gfx; };
+static struct {int connected; unsigned seq; size_t outputSize; char output[4096]; struct Peer field; bool8 fieldKnown;} sWorld;
 static bool8 Overworld(void) {return 1;}
-static bool8 Ready(void) {return 0;}
+static bool8 PresenceReady(void) {return 0;}
 static void Flush(void) {}
 static void Fingerprint(const void *p,size_t n,char out[17]) {(void)p;(void)n;strcpy(out,"0000000000000000");}
 '''
