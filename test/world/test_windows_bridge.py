@@ -11,6 +11,7 @@ SOURCE = ROOT / 'src/platform/world_bridge.c'
 SCRATCH = ROOT.parent / 'emerald-world-research'
 
 
+@unittest.skipIf(os.name == 'nt', 'Linux OS stand-ins; Windows runs the real native bridge fixture')
 class WindowsBridge(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

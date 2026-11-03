@@ -20,6 +20,9 @@ def main():
     for outcome, entries in [('failure', result.failures), ('error', result.errors)]:
         for test, _private_trace in entries:
             identifier = getattr(test, 'test_case', test).id()
+            setup = re.fullmatch(r'(setUpClass|tearDownClass|setUpModule|tearDownModule) \(([A-Za-z_][A-Za-z0-9_.]{0,220})\)', identifier)
+            if setup:
+                identifier = setup[2] + '.' + setup[1]
             if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_.]{0,255}', identifier):
                 outcomes.append({'test_id': identifier, 'outcome': outcome})
     args.report.parent.mkdir(parents=True, exist_ok=True)
