@@ -20,6 +20,7 @@
 #include "global.fieldmap.h"
 #include "fieldmap.h"
 #include "field_camera.h"
+#include "metatile_behavior.h"
 #include "event_object_movement.h"
 #include "main.h"
 #include "overworld.h"
@@ -350,6 +351,16 @@ bool8 WorldBridge_Init(const char *configPath)
     file = NativeFile_Open(configPath, "r");
 #endif
     if (!file) return FALSE;
+#ifndef _WIN32
+    /* Validate bytes before fgets/sscanf can hide a NUL in the final record
+     * or accept control characters as whitespace or a telemetry pathname. */
+    {
+        int c;
+        while ((c = fgetc(file)) != EOF)
+            if ((c < 32 && c != '\t' && c != '\r' && c != '\n') || c == 127) goto invalid;
+        if (ferror(file) || fseek(file, 0, SEEK_SET)) goto invalid;
+    }
+#endif
 #ifdef _WIN32
     /* Reject embedded NUL and DOS EOF before C-string parsing can hide bytes. */
     {
@@ -800,6 +811,10 @@ static void SyncEngine(void)
         if (p->gfx < NUM_OBJ_EVENT_GFX && GetObjectEventGraphicsInfo(p->gfx)->paletteSlot >= PALSLOT_NPC_1
          && GetObjectEventGraphicsInfo(p->gfx)->paletteSlot <= PALSLOT_NPC_4
          && !GetObjectEventGraphicsInfo(p->gfx)->inanimate) gfx = p->gfx;
+        /* A different size needs a fresh OBJ allocation. Replace it during
+         * this reconciliation, rather than hiding the peer for a frame. */
+        if (r->id[0] && Owned(i) && gObjectEvents[r->object].graphicsId != gfx)
+            RemoveRemote(i);
         if (!r->id[0]) {
             u8 id;
             bool8 collision = FALSE;
@@ -818,9 +833,6 @@ static void SyncEngine(void)
         }
         if (!Owned(i)) continue;
         o = &gObjectEvents[r->object];
-        /* Changing sprite dimensions after allocation could overwrite OBJ VRAM.
-         * Respawn instead when a peer changes graphics. */
-        if (o->graphicsId != gfx) { RemoveRemote(i); continue; }
         if (o->currentCoords.x != (int)p->x + MAP_OFFSET || o->currentCoords.y != (int)p->y + MAP_OFFSET)
             MoveObjectEventToMapCoords(o, p->x + MAP_OFFSET, p->y + MAP_OFFSET);
         o->initialCoords = o->currentCoords;
@@ -853,6 +865,23 @@ static bool8 FacingObject(const struct ObjectEvent *p, const struct ObjectEvent 
          || (dy == 0 && dx == -1 && p->facingDirection == DIR_WEST)
          || (dy == 0 && dx == 1 && p->facingDirection == DIR_EAST))
         && (!o->currentElevation || !p->currentElevation || o->currentElevation == p->currentElevation);
+}
+
+/* Match the field engine's reach before shielding template-less remotes.
+ * Two-tile lookups are possible only through a counter, not a sign or PC.
+ * Objects on another elevation are not candidates for that lookup. */
+static bool8 InteractionTarget(const struct ObjectEvent *p, const struct ObjectEvent *o)
+{
+    int dx = o->currentCoords.x - p->currentCoords.x;
+    int dy = o->currentCoords.y - p->currentCoords.y;
+    if (FacingObject(p, o)) return TRUE;
+    if (o->currentElevation && p->currentElevation && o->currentElevation != p->currentElevation) return FALSE;
+    if (!((dx == 0 && dy == 2 && p->facingDirection == DIR_SOUTH)
+       || (dx == 0 && dy == -2 && p->facingDirection == DIR_NORTH)
+       || (dy == 0 && dx == -2 && p->facingDirection == DIR_WEST)
+       || (dy == 0 && dx == 2 && p->facingDirection == DIR_EAST))) return FALSE;
+    return MetatileBehavior_IsCounter(MapGridGetMetatileBehaviorAt(
+        p->currentCoords.x + dx / 2, p->currentCoords.y + dy / 2));
 }
 
 /* This runs only after the game loop, never from the raw key reader. */
@@ -956,6 +985,7 @@ static void SyncDialogue(void)
 u16 WorldBridge_FilterInput(u16 keys)
 {
     unsigned i, j;
+    bool8 adjacentRemote = FALSE;
     const struct ObjectEvent *p;
     u16 pressed = keys & ~sWorld.previousKeys;
     if (!sWorld.enabled) return keys;
@@ -967,25 +997,25 @@ u16 WorldBridge_FilterInput(u16 keys)
     }
     if (!(keys & A_BUTTON) || !Ready() || !IsFieldMessageBoxHidden()) return keys;
     p = &gObjectEvents[gPlayerAvatar.objectEventId];
+    for (i = 0; i < WB_REMOTES; i++)
+        if (Owned(i) && FacingObject(p, &gObjectEvents[sWorld.remotes[i].object])) adjacentRemote = TRUE;
     /* An ordinary map NPC always wins, even if a remote overlaps it or stands
-     * behind it. Never swallow the NPC's A press to protect a farther ghost. */
+     * behind it. A farther NPC cannot win through an adjacent remote: the
+     * engine looks at that object's missing template before trying a counter. */
     for (i = 0; i < OBJECT_EVENTS_COUNT; i++) {
         const struct ObjectEvent *o = &gObjectEvents[i];
         bool8 remote = FALSE;
-        if (!o->active || o->isPlayer || !FacingObject(p, o)) continue;
+        if (!o->active || o->isPlayer || !InteractionTarget(p, o)) continue;
+        if (adjacentRemote && !FacingObject(p, o)) continue;
         for (j = 0; j < WB_REMOTES; j++)
             if (Owned(j) && sWorld.remotes[j].object == i) remote = TRUE;
         if (!remote) return keys;
     }
     for (i = 0; i < WB_REMOTES; i++) if (Owned(i)) {
         const struct ObjectEvent *o = &gObjectEvents[sWorld.remotes[i].object];
-        int dx = o->currentCoords.x - p->currentCoords.x, dy = o->currentCoords.y - p->currentCoords.y;
         /* Dynamic peers have no map-script template. Do not pass them to the
          * vanilla interaction lookup, including through a counter tile. */
-        if ((dx == 0 && dy > 0 && dy <= 2 && p->facingDirection == DIR_SOUTH)
-         || (dx == 0 && dy < 0 && dy >= -2 && p->facingDirection == DIR_NORTH)
-         || (dy == 0 && dx < 0 && dx >= -2 && p->facingDirection == DIR_WEST)
-         || (dy == 0 && dx > 0 && dx <= 2 && p->facingDirection == DIR_EAST)) {
+        if (InteractionTarget(p, o)) {
             if ((pressed & A_BUTTON) && FacingObject(p, o))
                 strcpy(sWorld.pendingObject, sWorld.remotes[i].id);
             return keys & ~A_BUTTON;

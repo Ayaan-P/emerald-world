@@ -70,7 +70,8 @@ class NativePresence(unittest.TestCase):
                 raise RuntimeError('deliberate initial-state failure')
 
         with tempfile.TemporaryDirectory(prefix='ewp-') as tmp:
-            root = Path(tmp)
+            root = Path(tmp)/'world'
+            root.mkdir(mode=0o700)
             (root/'transport').mkdir()
             engine = BrokenEngine.__new__(BrokenEngine)
             try:
@@ -91,7 +92,8 @@ class NativePresence(unittest.TestCase):
         seed = Path(os.environ['EMERALD_WORLD_SAVE']).resolve()
         digest = hashlib.sha256(seed.read_bytes()).digest()
         with tempfile.TemporaryDirectory(prefix='ewp-') as tmp, ExitStack() as stack:
-            root = Path(tmp)
+            root = Path(tmp)/'world'
+            root.mkdir(mode=0o700)
             (root/'transport').mkdir()
             server = WorldServer(root/'transport/world.sock', root).start()
             stack.callback(server.close)

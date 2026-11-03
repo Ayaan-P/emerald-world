@@ -16,6 +16,7 @@
 #include "field_player_avatar.h"
 #include "field_screen_effect.h"
 #include "constants/characters.h"
+#include "constants/maps.h"
 #include "platform/native_link.h"
 #include "platform/link_transport.h"
 #include "platform/world_activity.h"
@@ -62,6 +63,41 @@ static bool8 ActivityPartyReady(unsigned mode)
             && GetMonData(&gPlayerParty[i], MON_DATA_HP)) usable++;
     return usable >= (mode == NATIVE_LINK_DOUBLE ? 2 : 1);
 }
+
+/* Storage preparation is local and precedes consent. Never send box contents
+ * through the party-only trade exchange or open storage during that exchange. */
+static bool8 TradeStorageLocation(u8 mapGroup, u8 mapNum)
+{
+    switch ((mapGroup << 8) | mapNum)
+    {
+    case MAP_OLDALE_TOWN_POKEMON_CENTER_1F:
+    case MAP_DEWFORD_TOWN_POKEMON_CENTER_1F:
+    case MAP_LAVARIDGE_TOWN_POKEMON_CENTER_1F:
+    case MAP_FALLARBOR_TOWN_POKEMON_CENTER_1F:
+    case MAP_VERDANTURF_TOWN_POKEMON_CENTER_1F:
+    case MAP_PACIFIDLOG_TOWN_POKEMON_CENTER_1F:
+    case MAP_PETALBURG_CITY_POKEMON_CENTER_1F:
+    case MAP_SLATEPORT_CITY_POKEMON_CENTER_1F:
+    case MAP_MAUVILLE_CITY_POKEMON_CENTER_1F:
+    case MAP_RUSTBORO_CITY_POKEMON_CENTER_1F:
+    case MAP_FORTREE_CITY_POKEMON_CENTER_1F:
+    case MAP_LILYCOVE_CITY_POKEMON_CENTER_1F:
+    case MAP_MOSSDEEP_CITY_POKEMON_CENTER_1F:
+    case MAP_SOOTOPOLIS_CITY_POKEMON_CENTER_1F:
+    case MAP_EVER_GRANDE_CITY_POKEMON_CENTER_1F:
+    case MAP_BATTLE_FRONTIER_POKEMON_CENTER_1F:
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
+static bool8 TradeStorageFieldReady(void)
+{
+    return sActivity.state == MENU && FieldReady() && !NativeLink_IsActive();
+}
+
+extern const u8 WorldActivity_EventScript_StoragePC[];
 
 /* Native charmap, never feed wire bytes to the text control-code parser. */
 static void Encode(u8 *dest, const char *src)
@@ -125,6 +161,15 @@ static void Task_Menu(u8 taskId)
     {
         CloseMenu();
         if (choice < 0 || choice == 4) { Stop("cancelled"); return; }
+        if (choice == 5)
+        {
+            if (!TradeStorageFieldReady()
+                || !TradeStorageLocation(gSaveBlock1Ptr->location.mapGroup, gSaveBlock1Ptr->location.mapNum))
+            { Stop("use the PC at a Pokemon Center"); return; }
+            Stop("preparing trade party at Center PC");
+            ScriptContext_SetupScript(WorldActivity_EventScript_StoragePC);
+            return;
+        }
         if (choice == 0)
         {
             Stop("world chat handoff");
@@ -142,11 +187,13 @@ static void Task_Menu(u8 taskId)
 
 static bool8 ShowMenu(bool8 incoming)
 {
-    struct WindowTemplate window = { 0, 1, 1, 28, 14, 15, 0x125 };
-    const char *labels[] = { "Talk", "Battle single", "Battle double", "Trade", "Cancel" };
+    struct WindowTemplate window = { 0, 1, 0, 28, 18, 15, 0x125 };
+    const char *labels[] = { "Talk", "Battle single", "Battle double", "Trade party", "Cancel", "Prepare party at Center PC" };
     const char *modes[] = { "", "Single battle invitation", "Double battle invitation", "Trade invitation" };
     u8 text[64];
     unsigned i, count = incoming ? 2 : 5;
+    if (!incoming && TradeStorageLocation(gSaveBlock1Ptr->location.mapGroup, gSaveBlock1Ptr->location.mapNum))
+        count = 6;
     sActivity.window = AddWindow(&window);
     if (sActivity.window == WINDOW_NONE) return FALSE;
     SetStandardWindowBorderStyle(sActivity.window, FALSE);
@@ -163,6 +210,11 @@ static bool8 ShowMenu(bool8 incoming)
         AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 32 + 16 * i, TEXT_SKIP_DRAW, NULL);
     }
     InitMenuNormal(sActivity.window, FONT_NORMAL, 0, 32, 16, count, incoming ? 1 : 0);
+    if (!incoming && count == 5)
+    {
+        Encode(text, "PC mons at a Pokemon Center");
+        AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 128, TEXT_SKIP_DRAW, NULL);
+    }
     CopyWindowToVram(sActivity.window, COPYWIN_FULL);
     sActivity.task = CreateTask(Task_Menu, 80);
     if (sActivity.task == TASK_NONE) { CloseMenu(); return FALSE; }

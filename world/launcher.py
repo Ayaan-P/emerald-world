@@ -195,16 +195,18 @@ def check_player_endpoint(paths):
     raise ValueError('An existing player control endpoint is active. Stop its owner first.')
 
 
-def game_command(binary, state_dir, paths, display=None, agent_control=False):
+def game_command(binary, state_dir, paths, display=None, agent_control=False, *, online=True):
     """Construct explicit allowlist mounts. Never mount whole HOME or /run."""
     binary = Path(binary).resolve()
     state_dir = Path(state_dir).resolve()
+    if online:
+        require_online_state(state_dir)
     transport = state_dir / 'transport'
-    socket_path = transport / 'world.sock'
-    if transport.resolve() != transport:
-        raise ValueError('transport cannot be a symlink')
-    if transport.exists() and any(p.name != 'world.sock' for p in transport.iterdir()):
-        raise ValueError('transport must contain only the public game socket, never admin or credentials')
+    if online:
+        if transport.resolve() != transport:
+            raise ValueError('transport cannot be a symlink')
+        if transport.exists() and any(p.name != 'world.sock' for p in transport.iterdir()):
+            raise ValueError('transport must contain only the public game socket, never admin or credentials')
     args = ['bwrap', '--unshare-all', '--die-with-parent', '--new-session',
             '--cap-drop', 'ALL', '--clearenv', '--ro-bind', '/usr', '/usr',
             '--ro-bind', '/lib', '/lib', '--ro-bind', '/lib64', '/lib64',
@@ -213,8 +215,9 @@ def game_command(binary, state_dir, paths, display=None, agent_control=False):
             '--ro-bind', '/etc/ld.so.cache', '/etc/ld.so.cache',
             '--ro-bind', str(binary), str(binary),
             '--bind', str(paths['profile']), str(paths['profile']),
-            '--ro-bind', str(transport), str(transport),
             '--chdir', str(paths['profile'])]
+    if online:
+        args += ['--ro-bind', str(transport), str(transport)]
     env = {'HOME': '/home/sandbox', 'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8',
            'SDL_AUDIODRIVER': 'dummy', 'SDL_RENDER_DRIVER': 'software'}
     if display:
@@ -229,13 +232,23 @@ def game_command(binary, state_dir, paths, display=None, agent_control=False):
     for key, value in env.items():
         args += ['--setenv', key, value]
     command = args + ['--', str(binary), '--save', str(paths['save']),
-                      '--config', str(paths['settings']), '--world-config', str(paths['config'])]
+                      '--config', str(paths['settings'])]
+    if online:
+        command += ['--world-config', str(paths['config'])]
     if agent_control:
         # Construction only: launchers probe under their held profile lock.
         # A private stale socket must remain for native's inode-safe recovery.
         endpoint = player_endpoint(paths)
         command += ['--player-control', str(endpoint)]
     return command
+
+
+def require_online_state(state_dir):
+    """Offline provenance survives moving a copy to another directory name."""
+    state = Path(state_dir)
+    marker = state / '.offline-copy'
+    if state.name == '.offline' or marker.exists() or marker.is_symlink():
+        raise ValueError('Offline copies cannot connect to world services. Select the original online world.')
 
 
 def prepare_profile(state_dir, trainer, seed_save=None):
@@ -245,6 +258,7 @@ def prepare_profile(state_dir, trainer, seed_save=None):
 
 def _prepare_profile(state_dir, trainer, seed_save, paths):
     """Prepare only while the caller owns the profile lock."""
+    require_online_state(state_dir)
     from world.server import create_identity
     paths['profile'].parent.mkdir(exist_ok=True, mode=0o700)
     paths['profile'].mkdir(exist_ok=True, mode=0o700)
@@ -332,6 +346,15 @@ def main(argv=None):
     join.add_argument('--remote', help='remote host HOST:PORT, requires a trainer invitation and trusted TLS pin')
     join.add_argument('--invitation', type=Path, help='private trainer invitation, never administrator credentials')
     join.add_argument('--pin', help='trusted remote TLS certificate SHA256 pin')
+    offline = sub.add_parser('offline', help='play a separate offline trainer copy without world services')
+    offline.add_argument('trainer')
+    offline.add_argument('--binary', type=Path, default=REPO / 'build/pokeemerald64')
+    seed = offline.add_mutually_exclusive_group()
+    seed.add_argument('--seed-save', type=Path, help='copy an explicit disposable save once, never merge back')
+    seed.add_argument('--copy-online', action='store_true', help='copy this trainer while its online game is stopped')
+    offline.add_argument('--display', help='dedicated nested Xephyr display :90..:199')
+    offline.add_argument('--test-input', type=Path, help='run upstream headless engine input instead of GUI')
+    offline.add_argument('--print-command', action='store_true')
     sub.add_parser('inspect', help='show players, shared tiles, mechanic revision/errors')
     deploy = sub.add_parser('deploy', help='stage and deploy a source candidate under state-dir/candidates')
     deploy.add_argument('source', type=Path)
@@ -351,7 +374,11 @@ def main(argv=None):
         return 0
     if args.state_dir is None:
         p.error('--state-dir is required for this command')
+    if args.command == 'offline':
+        from world.offline import run_offline
+        return run_offline(args)
     state = args.state_dir.resolve()
+    require_online_state(state)
     from world.world_library import WorldActivityLock
     with WorldActivityLock(state):
         state.mkdir(parents=True, exist_ok=True, mode=0o700)

@@ -69,6 +69,7 @@ class HostControlsPanel:
         self.future = None
         self.after_id = None
         self.server = None
+        self.roster_server = None
         self.page = ttk.Frame(app.notebook, padding=12)
         app.notebook.add(self.page, text='Host controls')
         self.page.columnconfigure(0, weight=1)
@@ -117,6 +118,14 @@ class HostControlsPanel:
         if server is None:
             self.message.set('Host a world in Play to use host controls. Joining does not grant host authority.')
             return
+        # Trainer IDs are scoped to a world. A dropdown retained across a host
+        # switch must not remove or readmit an unrelated current-world trainer.
+        if action in ('remove', 'allow') and self.roster_server is not server:
+            self.trainer.set('')
+            self.trainers['values'] = ()
+            self.roster_server = None
+            self.message.set('The hosted world changed. Refresh players before selecting a trainer.')
+            return
         trainer = self.trainer.get()
         if action in ('remove', 'allow') and not trainer:
             self.message.set('Refresh players and select a trainer first.')
@@ -149,6 +158,8 @@ class HostControlsPanel:
         players = []
         if result.get('ok'):
             snapshot = admin_request(server.socket_path, dict(command='inspect'), admin_path=server.admin_path)
+            if not snapshot.get('ok'):
+                raise ValueError('could not refresh hosted players')
             players = [player['id'] for player in snapshot.get('players', [])]
         return result, players
 
@@ -165,6 +176,9 @@ class HostControlsPanel:
                 # Only fixed host-policy errors are returned, not diagnostics.
                 self.message.set('Could not apply host control. Finish or cancel native activities, then refresh and retry.')
             else:
+                if self.roster_server is not self.server:
+                    self.trainer.set('')
+                self.roster_server = self.server
                 self.trainers['values'] = sorted(set(players) | set(result['removed']))
                 if self.trainer.get() not in self.trainers['values']:
                     self.trainer.set('')

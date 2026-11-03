@@ -658,6 +658,16 @@ EventScript_SetBrineyLocation_Route109::
 	.include "data/scripts/record_mix.inc"
 	.include "data/scripts/pc.inc"
 
+	.ifdef PORTABLE
+@ PORTABLE is an assembler symbol for data builds, not a CPP define.
+@ Peer-menu preparation has no facing PC metatile to animate.
+WorldActivity_EventScript_StoragePC::
+	lockall
+	special ShowPokemonStorageSystemPC
+	releaseall
+	end
+	.endif
+
 /* scripts/notices.inc? signs.inc? See comment about text/notices.inc*/
 Common_EventScript_ShowPokemartSign::
 	msgbox gText_PokemartSign, MSGBOX_SIGN
