@@ -92,16 +92,26 @@ class Fixture:
         return self.state()
 
     def connect(self):
-        self.conn, _ = self.listener.accept()
-        self.conn.settimeout(6)
-        received = bytearray()
-        while received.count(b'\n') < 2 and len(received) <= 512:
-            data = self.conn.recv(512)
-            require(bool(data), 'Native peer closed before authentication')
-            received.extend(data)
-        expected = f'EWLOCAL1 {self.local_key}\nHELLO 1 alice {self.token} SOCIAL\n'.encode()
-        require(bytes(received) == expected, 'Native handshake mismatch')
-        self.conn.sendall(b'WELCOME 1 alice 0\n')
+        # Native presence and cable channels are independent TCP connections.
+        # LINK may arrive first, just as on a real authority before presence.
+        prefix = f'EWLOCAL1 {self.local_key}\nHELLO 1 alice {self.token} '.encode()
+        for _ in range(4):
+            connection, _ = self.listener.accept()
+            connection.settimeout(6)
+            received = bytearray()
+            while received.count(b'\n') < 2 and len(received) <= 512:
+                data = connection.recv(512)
+                require(bool(data), 'Native peer closed before authentication')
+                received.extend(data)
+            if bytes(received) == prefix + b'LINK\n':
+                connection.sendall(b'ERROR PRESENCE\n')
+                connection.close()
+                continue
+            self.conn = connection
+            require(bytes(received) == prefix + b'SOCIAL\n', 'Native handshake mismatch')
+            self.conn.sendall(b'WELCOME 1 alice 0\n')
+            return
+        raise AssertionError('Native social channel did not connect')
 
     def telemetry_state(self):
         return json.loads(self.telemetry.read_text(encoding='utf-8'))
