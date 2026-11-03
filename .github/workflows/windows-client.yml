@@ -59,7 +59,7 @@ jobs:
       - name: Test launcher gateway and packaging boundaries
         shell: pwsh
         timeout-minutes: 6
-        run: python scripts/windows_verify.py --label unit --timeout 240 --report build/verification/unit.json -- python -m unittest discover -s test/world -p "test_windows*.py" -v
+        run: python scripts/windows_verify.py --label unit --timeout 240 --report build/verification/unit.json -- python scripts/windows_unit_tests.py --report build/verification/unit-details.json
       - name: Compile real native Windows PE with MinGW GCC
         shell: msys2 {0}
         timeout-minutes: 25
@@ -120,6 +120,7 @@ jobs:
           if-no-files-found: warn
           path: |
             build/verification/unit.json
+            build/verification/unit-details.json
             build/verification/smoke.json
             build/verification/bridge.json
             build/verification/native-fixture.json
