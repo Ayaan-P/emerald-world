@@ -320,7 +320,8 @@ class WorldServer:
     def _snapshot(self, conn):
         lines = ['BEGIN ' + str(self.revision)]
         for name, peer in sorted(self.peers.items()):
-            if name != conn['id'] and peer['state'] is not None and peer['state'][6]:
+            if (name != conn['id'] and peer['state'] is not None
+                    and (peer['state'][6] or (conn.get('social') and peer.get('field')))):
                 lines.append('PEER ' + name + ' ' + ' '.join(map(str, peer['state'])))
         lines += ['TILE ' + ' '.join(map(str, tile)) for tile in self.tiles]
         for obj in self.objects:
@@ -409,7 +410,11 @@ class WorldServer:
                     conn['seq'] = int(fields[1])
                     self._queue(conn, self._snapshot(conn))
                 return
-            if len(fields) != 11 or fields[0] != 'STATE':
+            # FIELD keeps a visible trainer on the map while walking or using
+            # a menu. Its ready bit still gates every interaction. Legacy STATE
+            # retains its canonical absent representation and validation.
+            field = bool(fields and fields[0] == 'FIELD' and conn.get('social'))
+            if len(fields) != 11 or (fields[0] != 'STATE' and not field):
                 raise ValueError('state shape')
             seq = bounded(fields[1], 0, 2**63 - 1)
             if seq <= conn['seq']:
@@ -420,7 +425,7 @@ class WorldServer:
             validate_coords(*state[:4])
             if not 1 <= state[4] <= 4 or state[5] > 255:
                 raise ValueError('invalid peer facing or graphics')
-            if state[6] == 0 and state != [0, 0, 0, 0, 1, 7, 0]:
+            if not field and state[6] == 0 and state != [0, 0, 0, 0, 1, 7, 0]:
                 raise ValueError('noncanonical unready state')
             if not all(HASH.fullmatch(h) for h in fields[9:]):
                 raise ValueError('hash')
@@ -435,7 +440,7 @@ class WorldServer:
             else:
                 self.pending_states[conn['id']] = data
             self._flush_states(force=False)
-            conn['seq'], conn['state'] = seq, state
+            conn['seq'], conn['state'], conn['field'] = seq, state, field
             self._broadcast()
         except (UnicodeError, ValueError):
             self._error(conn, 'MALFORMED')

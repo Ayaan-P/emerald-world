@@ -25,6 +25,8 @@
 #include "overworld.h"
 #include "palette.h"
 #include "script.h"
+#include "start_menu.h"
+#include "task.h"
 #include "field_message_box.h"
 #include "pokemon.h"
 #include "sprite.h"
@@ -76,6 +78,8 @@ static struct {
     unsigned seq, retry, stagedBytes, generation, appliedGeneration;
     bool8 tilesLive;
     struct Snapshot live, stage;
+    struct Peer field;
+    bool8 fieldKnown;
     struct Remote remotes[WB_REMOTES];
     bool8 dialogueActive;
     u16 previousKeys, dialogueKeys;
@@ -177,10 +181,44 @@ static bool8 Overworld(void)
         && gMain.callback2 == CB2_Overworld && !gMain.inBattle;
 }
 
-static bool8 Ready(void)
+static bool8 PresenceReady(void)
 {
     return Overworld() && !gPaletteFade.active && !ArePlayerFieldControlsLocked()
-        && !ScriptContext_IsEnabled() && !gPlayerAvatar.tileTransitionState;
+        && !ScriptContext_IsEnabled();
+}
+
+static bool8 Ready(void)
+{
+    return PresenceReady() && !gPlayerAvatar.tileTransitionState;
+}
+
+/* Menu screens reuse the object/sprite pool. Retain only validated field
+ * coordinates, never handles into that pool. A warp, battle or reset revokes
+ * the cached position before it can be published in a different scene. */
+static void UpdateFieldPresence(void)
+{
+    /* Only a START menu may preserve its position through a field fade.
+     * Scripts and ordinary warp fades revoke presence before the map loads. */
+    if (ScriptContext_IsEnabled() || gMain.inBattle
+     || (Overworld() && gPaletteFade.active && !FuncIsActiveTask(Task_ShowStartMenu))) {
+        sWorld.fieldKnown = FALSE;
+        return;
+    }
+    if (Overworld() && !gPaletteFade.active) {
+        const struct ObjectEvent *player = &gObjectEvents[gPlayerAvatar.objectEventId];
+        struct Peer *p = &sWorld.field;
+        p->group = gSaveBlock1Ptr->location.mapGroup;
+        p->num = gSaveBlock1Ptr->location.mapNum;
+        p->x = player->currentCoords.x - MAP_OFFSET;
+        p->y = player->currentCoords.y - MAP_OFFSET;
+        p->facing = player->facingDirection;
+        p->gfx = player->graphicsId;
+        sWorld.fieldKnown = MapCoords(p->group, p->num, p->x, p->y);
+    } else if (!gSaveBlock1Ptr || gMain.inBattle || gMain.callback1 != CB1_Overworld
+            || sWorld.field.group != (unsigned)gSaveBlock1Ptr->location.mapGroup
+            || sWorld.field.num != (unsigned)gSaveBlock1Ptr->location.mapNum) {
+        sWorld.fieldKnown = FALSE;
+    }
 }
 
 static bool8 Owned(unsigned slot)
@@ -673,12 +711,11 @@ static void Fingerprint(const void *data, size_t size, char out[17])
 
 static void SendState(void)
 {
-    const struct ObjectEvent *player = NULL;
+    const struct Peer *p = &sWorld.field;
     char party[17], bag[17];
     bool8 ready;
     if (!sWorld.connected || sWorld.outputSize) return;
-    ready = Ready();
-    if (ready) player = &gObjectEvents[gPlayerAvatar.objectEventId];
+    ready = sWorld.fieldKnown && PresenceReady();
     Fingerprint(gPlayerParty, sizeof(gPlayerParty), party);
     if (gSaveBlock1Ptr)
         Fingerprint(gSaveBlock1Ptr->bagPocket_Items,
@@ -687,12 +724,10 @@ static void SendState(void)
                   + sizeof(gSaveBlock1Ptr->bagPocket_Berries), bag);
     else Fingerprint(NULL, 0, bag);
     sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
-        "STATE %u %d %d %d %d %u %u %u %s %s\n", ++sWorld.seq,
-        ready ? gSaveBlock1Ptr->location.mapGroup : 0,
-        ready ? gSaveBlock1Ptr->location.mapNum : 0,
-        player ? player->currentCoords.x - MAP_OFFSET : 0,
-        player ? player->currentCoords.y - MAP_OFFSET : 0,
-        player ? player->facingDirection : 1, player ? player->graphicsId : OBJ_EVENT_GFX_BOY_1,
+        "%s %u %u %u %u %u %u %u %u %s %s\n", sWorld.fieldKnown && !ready ? "FIELD" : "STATE", ++sWorld.seq,
+        sWorld.fieldKnown ? p->group : 0, sWorld.fieldKnown ? p->num : 0,
+        sWorld.fieldKnown ? p->x : 0, sWorld.fieldKnown ? p->y : 0,
+        sWorld.fieldKnown ? p->facing : 1, sWorld.fieldKnown ? p->gfx : OBJ_EVENT_GFX_BOY_1,
         ready, party, bag);
     Flush();
 }
@@ -700,17 +735,24 @@ static void SendState(void)
 static void SyncEngine(void)
 {
     unsigned i, j;
-    bool8 updateTiles;
+    bool8 updateTiles, fieldLocked;
     /* Our own modal owns the field lock. Keep its NPC alive, but do not
      * mutate engine objects or map tiles while the text task is running. */
     if (sWorld.dialogueActive && Overworld()) return;
-    if (!Overworld() || gPaletteFade.active || ArePlayerFieldControlsLocked() || ScriptContext_IsEnabled()) {
-        if (Overworld()) for (i = 0; i < WB_REMOTES; i++) RemoveRemote(i);
+    /* Native scripts can add objects after yielding. Return their pool slots
+     * before the next command, but keep trainers visible during field menus. */
+    if (!Overworld() || gPaletteFade.active || ScriptContext_IsEnabled()) {
+        for (i = 0; i < WB_REMOTES; i++) RemoveRemote(i);
         RestoreTiles();
         sWorld.tilesLive = FALSE;
         return;
     }
-    updateTiles = !SameGrid() || !sWorld.tilesLive || sWorld.appliedGeneration != sWorld.generation;
+    fieldLocked = ArePlayerFieldControlsLocked();
+    if (fieldLocked) {
+        RestoreTiles();
+        sWorld.tilesLive = FALSE;
+    }
+    updateTiles = !fieldLocked && (!SameGrid() || !sWorld.tilesLive || sWorld.appliedGeneration != sWorld.generation);
     if (!SameGrid()) {
         sWorld.appliedCount = 0;
         /* The engine may reuse both object and sprite slots after a map load.
@@ -730,7 +772,7 @@ static void SyncEngine(void)
         const struct Peer *p = NULL;
         for (j = 0; j < sWorld.live.peerCount; j++)
             if (!strcmp(r->id, sWorld.live.peers[j].id)) p = &sWorld.live.peers[j];
-        if (!p || !p->ready || p->group != (unsigned)sWorld.group || p->num != (unsigned)sWorld.num)
+        if (!p || p->group != (unsigned)sWorld.group || p->num != (unsigned)sWorld.num)
             RemoveRemote(i);
         else if (!Owned(i)) memset(r, 0, sizeof(*r));
     }
@@ -739,7 +781,7 @@ static void SyncEngine(void)
         struct Remote *r = NULL;
         struct ObjectEvent *o;
         u8 gfx;
-        if (!p->ready || p->group != (unsigned)sWorld.group || p->num != (unsigned)sWorld.num || !GridCoords(p->x, p->y)) continue;
+        if (p->group != (unsigned)sWorld.group || p->num != (unsigned)sWorld.num || !GridCoords(p->x, p->y)) continue;
         /* Never place a template-less remote over a real scripted NPC. Vanilla
          * could otherwise select our object first when A is passed through. */
         if (NativeNpcAt(p->x, p->y)) {
@@ -1030,6 +1072,7 @@ void WorldBridge_AfterFrame(u32 frame)
     FILE *file;
     char path[1100];
     if (!sWorld.enabled) return;
+    UpdateFieldPresence();
     SyncDialogue();
     SyncEngine();
     if (frame % 6 == 0) SendState();
