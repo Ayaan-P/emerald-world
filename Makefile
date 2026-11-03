@@ -681,5 +681,6 @@ $(ROM): $(OBJS)
 	$(MODERNCC) $(CFLAGS) $^ $(PLATFORM_LFLAGS) $(OS_LFLAGS) -o $@ 2>&1 | sed '/ld: warning: pointer not aligned/d'
 else
 $(ROM): $(OBJS)
-	$(MODERNCC) $(CFLAGS) -Wl,--demangle $^ -static-libgcc -L$(SDL_DIR)/lib $(PLATFORM_LFLAGS) $(OS_LFLAGS) -o $@
+	$(file >$(OBJ_DIR)/link.objects.rsp,$(foreach obj,$^,"$(obj)"))
+	$(MODERNCC) $(CFLAGS) -Wl,--demangle @$(OBJ_DIR)/link.objects.rsp -static-libgcc -L$(SDL_DIR)/lib $(PLATFORM_LFLAGS) $(OS_LFLAGS) -o $@
 endif
