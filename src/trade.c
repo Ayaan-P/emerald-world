@@ -50,6 +50,10 @@
 #include "constants/rgb.h"
 #include "constants/songs.h"
 #include "constants/union_room.h"
+#ifdef PORTABLE
+#include "platform/native_link.h"
+#include "easy_chat.h"
+#endif
 
 // IDs for RunTradeMenuCallback
 enum {
@@ -953,6 +957,22 @@ static void CB_StartLinkTrade(void)
     }
 }
 
+#ifdef PORTABLE
+const char *TradeMenu_Phase(void)
+{
+    if (gMain.callback2 != CB2_TradeMenu || sTradeMenu == NULL)
+        return "inactive";
+    switch (sTradeMenu->callbackId)
+    {
+    case CB_MAIN_MENU: return "choosing";
+    case CB_SELECTED_MON: return "selected";
+    case CB_CONFIRM_TRADE_PROMPT: return "confirm";
+    case CB_CANCEL_TRADE_PROMPT: return "cancel_confirm";
+    default: return "busy";
+    }
+}
+#endif
+
 static void CB2_TradeMenu(void)
 {
     RunTradeMenuCallback();
@@ -1047,6 +1067,122 @@ static void Trade_Memcpy(void *dest, const void *src, u32 size)
         _dest[i] = _src[i];
 }
 
+#ifdef PORTABLE
+// Read the completed cable block length before a consumer clears its flag.
+// Request sizes include padding beyond the subset copied into game state.
+static bool8 NativeTradeBlockSizeValid(u8 peer, u16 expectedSize)
+{
+    if (GetBlockReceivedSize(peer) != expectedSize)
+    {
+        NativeLink_Abort();
+        gLinkErrorOccurred = TRUE;
+        return FALSE;
+    }
+    return TRUE;
+}
+
+// Validate a private copy: GetMonData decrypts in place, and malformed boxes
+// must never become visible to icons, summary/evolution tables, or the save.
+static bool8 NativeTradeMonValid(struct Pokemon *mon)
+{
+    u16 checksum = 0;
+    u32 key = mon->box.personality ^ mon->box.otId;
+    u32 species;
+    int i;
+
+    for (i = 0; i < (int)ARRAY_COUNT(mon->box.secure.raw); i++)
+    {
+        u32 word = mon->box.secure.raw[i] ^ key;
+        checksum += (u16)word;
+        checksum += (u16)(word >> 16);
+    }
+    if (checksum != mon->box.checksum)
+        return FALSE;
+    species = GetMonData(mon, MON_DATA_SPECIES);
+    if (species >= NUM_SPECIES)
+        return FALSE;
+    // Unused party slots are zeroed and have no language, level, or mail.
+    if (species == SPECIES_NONE)
+        return !mon->box.hasSpecies;
+    if (!mon->box.hasSpecies || mon->box.isBadEgg
+     || mon->box.language < LANGUAGE_JAPANESE || mon->box.language > LANGUAGE_SPANISH
+     || mon->box.language == 6
+     || mon->level == 0 || mon->level > MAX_LEVEL || mon->hp > mon->maxHP
+     || (mon->status & ~0xFFFu)
+     || (mon->mail != MAIL_NONE && mon->mail >= PARTY_SIZE)
+     || GetMonData(mon, MON_DATA_HELD_ITEM) >= ITEMS_COUNT
+     || GetMonData(mon, MON_DATA_POKEBALL) > LAST_BALL
+     || GetMonData(mon, MON_DATA_EXP) > 1640000)
+        return FALSE;
+    for (i = 0; i < MAX_MON_MOVES; i++)
+        if (GetMonData(mon, MON_DATA_MOVE1 + i) >= MOVES_COUNT)
+            return FALSE;
+    for (i = MON_DATA_COOL_RIBBON; i <= MON_DATA_TOUGH_RIBBON; i++)
+        if (GetMonData(mon, i) > 4)
+            return FALSE;
+    // Network names are data, not text-printer control-code programs.
+    for (i = 0; i < (int)sizeof(mon->box.nickname); i++)
+        if (mon->box.nickname[i] >= 0xFA && mon->box.nickname[i] != EOS)
+            return FALSE;
+    for (i = 0; i < (int)sizeof(mon->box.otName); i++)
+        if (mon->box.otName[i] >= 0xFA && mon->box.otName[i] != EOS)
+            return FALSE;
+    return TRUE;
+}
+
+static bool8 NativeTradePartyBlockValid(u8 peer)
+{
+    struct Pokemon pair[2];
+    if (!NativeTradeBlockSizeValid(peer, 200))
+        return FALSE;
+    Trade_Memcpy(pair, gBlockRecvBuffer[peer], sizeof(pair));
+    if (!NativeTradeMonValid(&pair[0]) || !NativeTradeMonValid(&pair[1]))
+    {
+        NativeLink_Abort();
+        gLinkErrorOccurred = TRUE;
+        return FALSE;
+    }
+    return TRUE;
+}
+static bool8 NativeTradeReject(void);
+
+static bool8 NativeTradeAuxBlockValid(u8 peer, bool8 isMail)
+{
+    int i, j;
+    if (!NativeTradeBlockSizeValid(peer, isMail ? 220 : 40))
+        return FALSE;
+    if (isMail)
+    {
+        struct Mail mails[PARTY_SIZE];
+        Trade_Memcpy(mails, gBlockRecvBuffer[peer], sizeof(mails));
+        for (i = 0; i < PARTY_SIZE; i++)
+        {
+            u16 letter;
+            u16 species;
+            if (mails[i].itemId == ITEM_NONE)
+                continue;
+            species = MailSpeciesToSpecies(mails[i].species, &letter);
+            if (!ItemIsMail(mails[i].itemId) || species == SPECIES_NONE || species >= NUM_SPECIES)
+                return NativeTradeReject();
+            for (j = 0; j < (int)ARRAY_COUNT(mails[i].words); j++)
+                if (mails[i].words[j] != EC_EMPTY_WORD && IsBardWordInvalid(mails[i].words[j]))
+                    return NativeTradeReject();
+            for (j = 0; j < (int)sizeof(mails[i].playerName); j++)
+                if (mails[i].playerName[j] >= 0xFA && mails[i].playerName[j] != EOS)
+                    return NativeTradeReject();
+        }
+    }
+    else
+    {
+        const u8 *ribbons = (const u8 *)gBlockRecvBuffer[peer];
+        for (i = 0; i < GIFT_RIBBONS_COUNT; i++)
+            if (ribbons[i] >= MAX_GIFT_RIBBON)
+                return NativeTradeReject();
+    }
+    return TRUE;
+}
+#endif
+
 static bool8 BufferTradeParties(void)
 {
     u8 id = GetMultiplayerId();
@@ -1083,6 +1219,10 @@ static bool8 BufferTradeParties(void)
     case 4:
         if (_GetBlockReceivedStatus() == 3)
         {
+#ifdef PORTABLE
+            if (NativeLink_IsActive() && !NativeTradePartyBlockValid(id ^ 1))
+                return FALSE;
+#endif
             Trade_Memcpy(&gEnemyParty[0], gBlockRecvBuffer[id ^ 1], 2 * sizeof(struct Pokemon));
             TradeResetReceivedFlags();
             sTradeMenu->bufferPartyState++;
@@ -1100,6 +1240,10 @@ static bool8 BufferTradeParties(void)
     case 8:
         if (_GetBlockReceivedStatus() == 3)
         {
+#ifdef PORTABLE
+            if (NativeLink_IsActive() && !NativeTradePartyBlockValid(id ^ 1))
+                return FALSE;
+#endif
             Trade_Memcpy(&gEnemyParty[2], gBlockRecvBuffer[id ^ 1],  2 * sizeof(struct Pokemon));
             TradeResetReceivedFlags();
             sTradeMenu->bufferPartyState++;
@@ -1117,6 +1261,10 @@ static bool8 BufferTradeParties(void)
     case 12:
         if (_GetBlockReceivedStatus() == 3)
         {
+#ifdef PORTABLE
+            if (NativeLink_IsActive() && !NativeTradePartyBlockValid(id ^ 1))
+                return FALSE;
+#endif
             Trade_Memcpy(&gEnemyParty[4], gBlockRecvBuffer[id ^ 1], 2 * sizeof(struct Pokemon));
             TradeResetReceivedFlags();
             sTradeMenu->bufferPartyState++;
@@ -1134,6 +1282,10 @@ static bool8 BufferTradeParties(void)
     case 16:
         if (_GetBlockReceivedStatus() == 3)
         {
+#ifdef PORTABLE
+            if (NativeLink_IsActive() && !NativeTradeAuxBlockValid(id ^ 1, TRUE))
+                return FALSE;
+#endif
             Trade_Memcpy(gTradeMail, gBlockRecvBuffer[id ^ 1], PARTY_SIZE * sizeof(struct Mail));
             TradeResetReceivedFlags();
             sTradeMenu->bufferPartyState++;
@@ -1151,6 +1303,10 @@ static bool8 BufferTradeParties(void)
     case 20:
         if (_GetBlockReceivedStatus() == 3)
         {
+#ifdef PORTABLE
+            if (NativeLink_IsActive() && !NativeTradeAuxBlockValid(id ^ 1, FALSE))
+                return FALSE;
+#endif
             Trade_Memcpy(sTradeMenu->giftRibbons, gBlockRecvBuffer[id ^ 1], sizeof(sTradeMenu->giftRibbons));
             TradeResetReceivedFlags();
             sTradeMenu->bufferPartyState++;
@@ -1196,8 +1352,38 @@ static void PrintIsThisTradeOkay(void)
     DrawBottomRowText(sText_IsThisTradeOkay, (void *)(OBJ_VRAM0 + (sTradeMenu->bottomTextTileStart * 32)), 24);
 }
 
+#ifdef PORTABLE
+static bool8 NativeTradeReject(void)
+{
+    NativeLink_Abort();
+    gLinkErrorOccurred = TRUE;
+    return FALSE;
+}
+
+static bool8 NativeTradeSelectionValid(u16 selection, u8 party)
+{
+    if (selection >= PARTY_SIZE || selection >= sTradeMenu->partyCounts[party])
+        return NativeTradeReject();
+    return TRUE;
+}
+#endif
+
 static void Leader_ReadLinkBuffer(u8 mpId, u8 status)
 {
+#ifdef PORTABLE
+    if (NativeLink_IsActive())
+    {
+        if (((status & 1) && !NativeTradeBlockSizeValid(0, 20))
+         || ((status & 2) && !NativeTradeBlockSizeValid(1, 20)))
+            return;
+        if ((status & 1) && gBlockRecvBuffer[0][0] == LINKCMD_READY_TO_TRADE
+         && !NativeTradeSelectionValid(gBlockRecvBuffer[0][1], TRADE_PLAYER))
+            return;
+        if ((status & 2) && gBlockRecvBuffer[1][0] == LINKCMD_READY_TO_TRADE
+         && !NativeTradeSelectionValid(gBlockRecvBuffer[1][1], TRADE_PARTNER))
+            return;
+    }
+#endif
     if (status & 1)
     {
         switch (gBlockRecvBuffer[0][0])
@@ -1242,6 +1428,21 @@ static void Leader_ReadLinkBuffer(u8 mpId, u8 status)
 
 static void Follower_ReadLinkBuffer(u8 mpId, u8 status)
 {
+#ifdef PORTABLE
+    if (NativeLink_IsActive())
+    {
+        if (((status & 1) && !NativeTradeBlockSizeValid(0, 20))
+         || ((status & 2) && !NativeTradeBlockSizeValid(1, 20)))
+            return;
+    }
+    if (NativeLink_IsActive() && (status & 1)
+     && gBlockRecvBuffer[0][0] == LINKCMD_SET_MONS_TO_TRADE)
+    {
+        if (!NativeTradeSelectionValid(gBlockRecvBuffer[0][1], TRADE_PARTNER)
+         || !NativeTradeSelectionValid(sTradeMenu->cursorPosition, TRADE_PLAYER))
+            return;
+    }
+#endif
     if (status & 1)
     {
         switch (gBlockRecvBuffer[0][0])
@@ -1849,6 +2050,18 @@ static void RunTradeMenuCallback(void)
 
 static void SetSelectedMon(u8 cursorPosition)
 {
+#ifdef PORTABLE
+    if (NativeLink_IsActive())
+    {
+        if (cursorPosition >= 2 * PARTY_SIZE)
+        {
+            NativeTradeReject();
+            return;
+        }
+        if (!NativeTradeSelectionValid(cursorPosition % PARTY_SIZE, cursorPosition / PARTY_SIZE))
+            return;
+    }
+#endif
     //cursorPosition 0-5 are the player's mons, 6-11 are the partner's
     u8 whichParty = cursorPosition / PARTY_SIZE;
 
@@ -3103,11 +3316,34 @@ static void TradeMons(u8 playerPartyIdx, u8 partnerPartyIdx)
 {
     u8 friendship;
 
+#ifdef PORTABLE
+    // Check before forming party pointers or reading their mail bytes.
+    if (NativeLink_IsActive()
+     && (playerPartyIdx >= PARTY_SIZE || partnerPartyIdx >= PARTY_SIZE
+      || playerPartyIdx >= gPlayerPartyCount || partnerPartyIdx >= gEnemyPartyCount))
+    {
+        NativeLink_Abort();
+        gLinkErrorOccurred = TRUE;
+        return;
+    }
+#endif
+
     struct Pokemon *playerMon = &gPlayerParty[playerPartyIdx];
     u16 playerMail = GetMonData(playerMon, MON_DATA_MAIL);
 
     struct Pokemon *partnerMon = &gEnemyParty[partnerPartyIdx];
     u16 partnerMail = GetMonData(partnerMon, MON_DATA_MAIL);
+
+#ifdef PORTABLE
+    if (NativeLink_IsActive()
+     && ((playerMail != MAIL_NONE && playerMail >= PARTY_SIZE)
+      || (partnerMail != MAIL_NONE && partnerMail >= PARTY_SIZE)))
+    {
+        NativeLink_Abort();
+        gLinkErrorOccurred = TRUE;
+        return;
+    }
+#endif
 
     // The mail attached to the sent Pokémon no longer exists in your file.
     if (playerMail != MAIL_NONE)
@@ -4435,6 +4671,14 @@ static void HandleLinkDataReceive(void)
     u8 recvStatus;
     TradeGetMultiplayerId(); // no effect call, ret val ignored
     recvStatus = GetBlockReceivedStatus();
+#ifdef PORTABLE
+    if (NativeLink_IsActive())
+    {
+        if (((recvStatus & 1) && !NativeTradeBlockSizeValid(0, 20))
+         || ((recvStatus & 2) && !NativeTradeBlockSizeValid(1, 20)))
+            return;
+    }
+#endif
     if (recvStatus & (1 << 0))
     {
         if (gBlockRecvBuffer[0][0] == LINKCMD_CONFIRM_FINISH_TRADE)
@@ -4826,6 +5070,11 @@ static void CB2_FreeTradeAnim(void)
 {
     if (!gPaletteFade.active)
     {
+#ifdef PORTABLE
+        // SDL dispatches VBlank before the saved callback can replace it.
+        // Retire the animation callback before releasing its state and buffers.
+        SetVBlankCallback(NULL);
+#endif
         FreeAllWindowBuffers();
         Free(GetBgTilemapBuffer(3));
         Free(GetBgTilemapBuffer(1));

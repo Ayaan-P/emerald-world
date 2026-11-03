@@ -39,6 +39,17 @@ static struct ObjectEvent gObjectEvents[3];
 static struct {unsigned objectEventId;} gPlayerAvatar;
 static struct Save {struct {int mapGroup,mapNum;} location;} save, *gSaveBlock1Ptr=&save;
 static int ready=1, owned=1, hidden=1, shown, locks, flushes;
+static int activityEnabled, activityOwns, interactions, talkQueued;
+static int WorldActivity_OwnsFieldInput(void) { return activityOwns; }
+static int WorldActivity_Interact(const char *peer) {
+ assert(!strcmp(peer, "bob")); interactions++;
+ if (!activityEnabled) return 0;
+ activityOwns=1; return 1;
+}
+static int WorldActivity_TakeTalkRequest(char peer[25]) {
+ if (!talkQueued) return 0;
+ strcpy(peer, "bob"); talkQueued=0; return 1;
+}
 static bool8 Ready(void) {return ready;}
 static bool8 Overworld(void) {return 1;}
 static bool8 Owned(unsigned i) {return i==0 && owned;}
@@ -95,6 +106,27 @@ int main(void) {
  ready=1;SyncDialogue();assert(shown==2 && locks==1);
  assert(strstr(sWorld.dialogueLiteral,"bob\nLet's explore together!"));
  assert(line("BEGIN 8"));assert(line("END"));SyncDialogue();assert(!sWorld.dialogueActive && locks==0);
+ /* Link unavailable above retains the existing authority-backed greeting. */
+ memset(&sWorld,0,sizeof(sWorld));
+ sWorld.enabled=sWorld.connected=1;strcpy(sWorld.trainer,"alice");
+ strcpy(sWorld.remotes[0].id,"bob");sWorld.remotes[0].object=1;
+ ready=hidden=owned=activityEnabled=1;shown=locks=flushes=interactions=0;
+ assert(line("BEGIN 1"));assert(line("PEER bob 0 1 10 12 1 7 1"));assert(line("END"));
+ WorldBridge_FilterInput(0);assert(WorldBridge_FilterInput(A_BUTTON)==0);SyncDialogue();
+ assert(activityOwns && interactions==1 && flushes==0 && shown==0);
+ /* Menu A stays in raw gMain. Even a queued authority greeting cannot steal UI. */
+ assert(WorldBridge_FilterInput(A_BUTTON)==A_BUTTON);
+ assert(line("BEGIN 2"));assert(line("MEET 2 alice bob 0 1 10 12 explore"));
+ assert(line("PEER bob 0 1 10 12 1 7 1"));assert(line("END"));
+ SyncDialogue();assert(shown==0 && sWorld.shownMeeting==2);
+ /* Talk consumes one handoff and sends actual MEET, not another peer menu. */
+ activityOwns=0;talkQueued=1;SyncDialogue();
+ assert(!talkQueued && interactions==1 && flushes==1);
+ assert(strstr(sWorld.output,"MEET 2 bob\n"));
+ SyncDialogue();assert(interactions==1 && flushes==1 && shown==0);
+ /* A handoff cannot follow a peer that walked away. */
+ talkQueued=1;gObjectEvents[1].currentCoords.x++;
+ SyncDialogue();assert(flushes==1 && !talkQueued);
  return 0;
 }
 '''

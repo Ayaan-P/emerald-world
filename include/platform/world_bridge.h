@@ -7,6 +7,10 @@
 /* NULL config is a strict no-op. Invalid explicit config returns FALSE. */
 bool8 WorldBridge_Init(const char *configPath);
 bool8 WorldBridge_Enabled(void);
+/* Validated local identity for window labels; never returns credentials. */
+const char *WorldBridge_TrainerName(void);
+/* Pump sockets while a native link tick waits, without mutating engine state. */
+void WorldBridge_Poll(bool8 headless);
 /* Call on the game thread immediately before and after RunMainLoop. */
 void WorldBridge_BeforeFrame(u32 frame, bool8 headless);
 void WorldBridge_AfterFrame(u32 frame);

@@ -39,25 +39,37 @@ def luna_author_argv(model, timeout):
 
 class IntentQueue:
     def __init__(self, state_dir):
-        self.root = Path(state_dir).resolve() / 'gm'
-        self.root.mkdir(parents=True, mode=0o700, exist_ok=True)
-        self.db = sqlite3.connect(self.root / 'runtime.sqlite3', timeout=30)
-        self.db.row_factory = sqlite3.Row
-        self.db.execute('PRAGMA journal_mode=WAL')
-        self.db.execute('PRAGMA synchronous=FULL')
-        self.db.executescript('''
-            CREATE TABLE IF NOT EXISTS requests (
-                seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL,
-                player TEXT NOT NULL, text TEXT NOT NULL, kind TEXT NOT NULL,
-                status TEXT NOT NULL, created REAL NOT NULL,
-                started REAL, finished REAL, result TEXT);
-            CREATE TABLE IF NOT EXISTS purposes (player TEXT PRIMARY KEY, text TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-        ''')
-        (self.root / 'runtime.sqlite3').chmod(0o600)
+        from world.world_library import WorldActivityLock
+        self.activity = WorldActivityLock(state_dir)
+        self.db: sqlite3.Connection
+        try:
+            self.root = Path(state_dir).resolve() / 'gm'
+            self.root.mkdir(parents=True, mode=0o700, exist_ok=True)
+            self.db = sqlite3.connect(self.root / 'runtime.sqlite3', timeout=30)
+            self.db.row_factory = sqlite3.Row
+            self.db.execute('PRAGMA journal_mode=WAL')
+            self.db.execute('PRAGMA synchronous=FULL')
+            self.db.executescript('''
+                CREATE TABLE IF NOT EXISTS requests (
+                    seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL,
+                    player TEXT NOT NULL, text TEXT NOT NULL, kind TEXT NOT NULL,
+                    status TEXT NOT NULL, created REAL NOT NULL,
+                    started REAL, finished REAL, result TEXT);
+                CREATE TABLE IF NOT EXISTS purposes (player TEXT PRIMARY KEY, text TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            ''')
+            (self.root / 'runtime.sqlite3').chmod(0o600)
+        except BaseException:
+            if hasattr(self, 'db'):
+                self.db.close()
+            self.activity.close()
+            raise
 
     def close(self):
-        self.db.close()
+        try:
+            self.db.close()
+        finally:
+            self.activity.close()
 
     def submit(self, player, text, request_id=None):
         if not isinstance(player, str) or not player.strip() or len(player.encode()) > 128:
@@ -244,21 +256,29 @@ class RuntimeGM:
         self.observe_events = observe_events
         self.min_author_interval = min_author_interval
         self.queue = IntentQueue(state_dir)
-        self.lock = (self.queue.root / '.runtime.lock').open('a')
+        self.lock = None
         try:
+            self.lock = (self.queue.root / '.runtime.lock').open('a')
             fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc:
-            self.lock.close()
+            self.queue.recover()
+            self.queue.set_runtime({'state': 'ready', 'model': model, 'at': time.time()})
+        except BaseException as exc:
+            if self.lock is not None:
+                self.lock.close()
             self.queue.close()
-            raise ValueError('another runtime GM is active') from exc
-        self.queue.recover()
-        self.queue.set_runtime({'state': 'ready', 'model': model, 'at': time.time()})
+            if isinstance(exc, BlockingIOError):
+                raise ValueError('another runtime GM is active') from exc
+            raise
 
     def close(self):
-        if not self.lock.closed:
-            self.queue.set_runtime({'state': 'stopped', 'model': self.model, 'at': time.time()})
-            self.queue.close()
-            self.lock.close()
+        if self.lock is not None and not self.lock.closed:
+            try:
+                self.queue.set_runtime({'state': 'stopped', 'model': self.model, 'at': time.time()})
+            finally:
+                try:
+                    self.queue.close()
+                finally:
+                    self.lock.close()
 
     def __enter__(self):
         return self

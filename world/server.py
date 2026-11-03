@@ -18,12 +18,14 @@ import hashlib
 
 from .build_catalog import validate_coords, validate_tile
 from .mechanics import validate_objects
+from .link_protocol import LinkProtocol
 
 MAX_QUEUE = 65536
 MAX_LINE = 1024
 MAX_CONTROL_LINE = 16384
 MAX_PEERS = 8
 MAX_TILES = 128
+STATE_FLUSH_INTERVAL = .5
 
 
 def bounded(value, low, high):
@@ -45,6 +47,26 @@ class MeetingUnavailable(ValueError):
 
 class WorldServer:
     def __init__(self, socket_path, state_dir, mechanics=None, admin_path=None):
+        from .world_library import WorldActivityLock
+        # Direct CLI/SDK constructors must participate too, before mkdir or
+        # opening SQLite. Session-only locking leaves a deletion race here.
+        self.activity = WorldActivityLock(state_dir)
+        try:
+            self._initialize(socket_path, state_dir, mechanics, admin_path)
+        except BaseException:
+            try:
+                for name in ('executor', 'control_executor'):
+                    executor = getattr(self, name, None)
+                    if executor is not None:
+                        executor.shutdown(wait=True, cancel_futures=True)
+                database = getattr(self, 'db', None)
+                if database is not None:
+                    database.close()
+            finally:
+                self.activity.close()
+            raise
+
+    def _initialize(self, socket_path, state_dir, mechanics, admin_path):
         self.socket_path = str(socket_path)
         self.root = Path(state_dir).resolve()
         if admin_path is None:
@@ -99,10 +121,17 @@ class WorldServer:
         self.stopping = threading.Event()
         self.connections = {}
         self.peers = {}
+        self.link_channels = {}
+        self.link_protocol = LinkProtocol()
         self.tiles = []
         self.objects = []
         self.interaction_cursor = 0
         self.revision = self.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
+        # Presence is a latest-value snapshot, not authoritative game progress.
+        # Bound it by trainer count and time without holding SQLite's write lock
+        # between packets. Changed inventory hashes still commit immediately.
+        self.pending_states = {}
+        self.next_state_flush = time.monotonic() + STATE_FLUSH_INTERVAL
         row = self.db.execute('SELECT error FROM status WHERE singleton=1').fetchone()
         if row:
             self.module_error = row[0]
@@ -140,8 +169,11 @@ class WorldServer:
         if row is not None and token is not None and not secrets.compare_digest(row[0], token):
             raise ValueError('identity already registered with different token')
         if row is None:
+            # pathlib's parents=True applies mode only to the leaf. Create the
+            # private trainer container explicitly, independent of the umask.
+            (self.root / 'trainers').mkdir(mode=0o700, exist_ok=True)
             directory = self.root / 'trainers' / trainer_id
-            directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+            directory.mkdir(mode=0o700, exist_ok=True)
             row = (token if token is not None else secrets.token_hex(32), str(directory / 'game.sav'))
             with self.db:
                 self.db.execute('INSERT INTO identities(id,token,save_path) VALUES(?,?,?)', (trainer_id, *row))
@@ -227,6 +259,23 @@ class WorldServer:
         cursor = self.db.execute('INSERT INTO events(kind,data) VALUES(?,?)', (kind, json.dumps(data)))
         self.revision = cursor.lastrowid
 
+    def _flush_states(self, *, force=True):
+        now = time.monotonic()
+        if not force and now < self.next_state_flush:
+            return
+        if self.pending_states:
+            revision = self.revision
+            try:
+                with self.db:
+                    for data in self.pending_states.values():
+                        self._event('state', data)
+            except sqlite3.Error:
+                self.revision = revision
+                raise
+            # Only acknowledge the batch after COMMIT succeeds.
+            self.pending_states.clear()
+        self.next_state_flush = time.monotonic() + STATE_FLUSH_INTERVAL
+
     def _queue(self, conn, text):
         data = text.encode('ascii')
         if len(conn['out']) + len(data) > MAX_QUEUE:
@@ -242,13 +291,21 @@ class WorldServer:
 
     def _drop(self, conn):
         sock = conn['sock']
+        conn['closing'] = True
         if sock not in self.connections:
             return
         self.selector.unregister(sock)
         del self.connections[sock]
         sock.close()
+        if self.link_channels.get(conn['id']) is conn:
+            del self.link_channels[conn['id']]
+            self._deliver_links(self.link_protocol.disconnect(conn['id']))
         if conn['id'] and self.peers.get(conn['id']) is conn:
+            self._flush_states()
             del self.peers[conn['id']]
+            channel = self.link_channels.get(conn['id'])
+            if channel is not None:
+                self._drop(channel)
             for peer in self.peers.values():
                 meeting = peer.get('meeting')
                 if meeting and conn['id'] in (meeting['player'], meeting['target']):
@@ -283,7 +340,8 @@ class WorldServer:
             if conn['id'] is None:
                 control = len(fields) == 5 and fields[4] == 'CONTROL'
                 social = len(fields) == 5 and fields[4] == 'SOCIAL'
-                if (len(fields) != 4 and not control and not social) or fields[:2] != ['HELLO', '1']:
+                link = len(fields) == 5 and fields[4] == 'LINK'
+                if (len(fields) != 4 and not control and not social and not link) or fields[:2] != ['HELLO', '1']:
                     self._error(conn, 'AUTH')
                     return
                 name, token = fields[2:4]
@@ -293,6 +351,20 @@ class WorldServer:
                 row = self.db.execute('SELECT token FROM identities WHERE id=?', (name,)).fetchone()
                 if row is None or not secrets.compare_digest(row[0], token):
                     self._error(conn, 'AUTH')
+                    return
+                if link:
+                    presence = self.peers.get(name)
+                    if presence is None or presence.get('closing'):
+                        self._error(conn, 'PRESENCE')
+                        return
+                    if name in self.link_channels:
+                        self._error(conn, 'DUPLICATE')
+                        return
+                    # Bind the exact live presence object, not just its reusable
+                    # trainer ID. Closing/replacing presence closes this channel.
+                    conn['id'], conn['link'], conn['presence'] = name, True, presence
+                    self.link_channels[name] = conn
+                    self._queue(conn, f'WELCOME 1 {name} {self.revision} LINK\n')
                     return
                 if control:
                     controls = [c for c in self.connections.values() if c.get('control')]
@@ -315,6 +387,9 @@ class WorldServer:
                     self._event('join', name)
                 self._queue(conn, f'WELCOME 1 {name} {self.revision}\n')
                 self._broadcast()
+                return
+            if conn.get('link'):
+                self._link_line(conn, raw)
                 return
             if conn.get('control'):
                 self._control_line(conn, raw)
@@ -346,13 +421,53 @@ class WorldServer:
                 raise ValueError('noncanonical unready state')
             if not all(HASH.fullmatch(h) for h in fields[9:]):
                 raise ValueError('hash')
-            with self.db:
-                self.db.execute('UPDATE identities SET party_hash=?,bag_hash=? WHERE id=?', (*fields[9:], conn['id']))
-                self._event('state', dict(id=conn['id'], seq=seq, state=state, party_hash=fields[9], bag_hash=fields[10]))
+            data = dict(id=conn['id'], seq=seq, state=state, party_hash=fields[9], bag_hash=fields[10])
+            hashes = tuple(fields[9:])
+            previous = self.db.execute('SELECT party_hash,bag_hash FROM identities WHERE id=?', (conn['id'],)).fetchone()
+            if hashes != previous:
+                with self.db:
+                    self.db.execute('UPDATE identities SET party_hash=?,bag_hash=? WHERE id=?', (*hashes, conn['id']))
+                    self._event('state', data)
+                self.pending_states.pop(conn['id'], None)
+            else:
+                self.pending_states[conn['id']] = data
+            self._flush_states(force=False)
             conn['seq'], conn['state'] = seq, state
             self._broadcast()
         except (UnicodeError, ValueError):
             self._error(conn, 'MALFORMED')
+
+    def _deliver_links(self, messages):
+        for trainer, line in messages:
+            channel = self.link_channels.get(trainer)
+            if (channel is not None and not channel.get('closing')
+                    and self.link_protocol.delivery_current(trainer, line)):
+                self._queue(channel, line)
+
+    def _link_line(self, conn, raw):
+        if (conn.get('closing') or self.link_channels.get(conn['id']) is not conn
+                or conn['sock'] not in self.connections):
+            return
+        if (self.peers.get(conn['id']) is not conn['presence']
+                or conn['presence'].get('closing')):
+            self._error(conn, 'PRESENCE')
+            return
+        # Only connected native link peers may be invited. CONTROL connections
+        # neither approve requests nor contribute native engine rounds.
+        fields = raw.split(b' ')
+        if len(fields) == 4 and fields[:2] == [b'L', b'OFFER']:
+            try:
+                target = fields[3].decode('ascii')
+            except UnicodeError:
+                target = None
+            other = self.link_channels.get(target)
+            if (other is None or other.get('closing')
+                    or self.peers.get(target) is not other.get('presence')):
+                self._queue(conn, 'L ERROR UNAVAILABLE\n')
+                return
+        presence = {name: peer['state'] for name, peer in self.peers.items()
+                    if peer['state'] is not None and not peer.get('closing')}
+        self._deliver_links(self.link_protocol.process(conn['id'], bytes(raw), presence))
 
     def _meet(self, conn, fields):
         """One fixed cooperative signal, authenticated and ordered like STATE.
@@ -690,6 +805,8 @@ class WorldServer:
                 if conn['id'] is None and not conn['admin'] and time.monotonic() - conn['born'] > 5:
                     self._drop(conn)
             with self.lock:
+                self._flush_states(force=False)
+                self._deliver_links(self.link_protocol.tick())
                 self._poll_controls()
                 self._poll_mechanics()
 
@@ -704,12 +821,15 @@ class WorldServer:
             self.selector = None
             Path(self.socket_path).unlink(missing_ok=True)
             Path(self.admin_path).unlink(missing_ok=True)
+        self.executor.shutdown(wait=True, cancel_futures=True)
+        self.control_executor.shutdown(wait=True, cancel_futures=True)
+        with self.lock:
+            self._flush_states()
         if self.authority_lock is not None:
             self.authority_lock.close()
             self.authority_lock = None
-        self.executor.shutdown(wait=True, cancel_futures=True)
-        self.control_executor.shutdown(wait=True, cancel_futures=True)
         self.db.close()
+        self.activity.close()
 
 
 def create_identity(state_dir, trainer_id, token=None):

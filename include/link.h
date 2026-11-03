@@ -49,6 +49,10 @@
 #define EXTRACT_LINK_ERRORS(status) \
 (((status) & LINK_STAT_ERRORS) >> LINK_STAT_ERRORS_SHIFT)
 
+#ifdef PORTABLE
+u16 GetBlockReceivedSize(u8 who);
+#endif
+
 #define LINKCMD_BLENDER_STOP            0x1111
 #define LINKCMD_SEND_LINK_TYPE          0x2222
 #define LINKCMD_BLENDER_SCORE_MISS      0x2345

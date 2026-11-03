@@ -31,6 +31,7 @@
 #include "constants/event_objects.h"
 #include "constants/map_groups.h"
 #include "platform/world_bridge.h"
+#include "platform/world_activity.h"
 #include "platform/world_catalog.h"
 #ifndef _WIN32
 #include <unistd.h>
@@ -284,6 +285,11 @@ static void Disconnect(void)
 }
 
 bool8 WorldBridge_Enabled(void) { return sWorld.enabled; }
+
+const char *WorldBridge_TrainerName(void)
+{
+    return sWorld.enabled ? sWorld.trainer : NULL;
+}
 
 bool8 WorldBridge_Init(const char *configPath)
 {
@@ -811,7 +817,16 @@ static bool8 FacingObject(const struct ObjectEvent *p, const struct ObjectEvent 
 static void SyncDialogue(void)
 {
     unsigned i, j;
+    char talkPeer[25];
+    bool8 talk = WorldActivity_TakeTalkRequest(talkPeer);
     const struct Meeting *meeting = &sWorld.live.meeting;
+    if (WorldActivity_OwnsFieldInput()) {
+        sWorld.shownMeeting = meeting->seq;
+        sWorld.pendingObject[0] = 0;
+        sWorld.dialogueKeys = 0;
+        return;
+    }
+    if (talk) strcpy(sWorld.pendingObject, talkPeer);
     if (sWorld.socialCooldown) sWorld.socialCooldown--;
     if (sWorld.meetingAge < 180) sWorld.meetingAge++;
     if (sWorld.dialogueActive) {
@@ -853,8 +868,13 @@ static void SyncDialogue(void)
              || !FacingObject(&gObjectEvents[gPlayerAvatar.objectEventId], &gObjectEvents[r->object])) continue;
             for (j = 0; j < sWorld.live.peerCount; j++) {
                 const struct Peer *p = &sWorld.live.peers[j];
-                if (strcmp(p->id, r->id)) continue;
+                if (strcmp(p->id, r->id) || !p->ready
+                 || p->group != (unsigned)gSaveBlock1Ptr->location.mapGroup
+                 || p->num != (unsigned)gSaveBlock1Ptr->location.mapNum
+                 || (int)p->x + MAP_OFFSET != gObjectEvents[r->object].currentCoords.x
+                 || (int)p->y + MAP_OFFSET != gObjectEvents[r->object].currentCoords.y) continue;
                 if (r->id[0] != '@') {
+                    if (!talk && WorldActivity_Interact(r->id)) break;
                     if (sWorld.socialCooldown) break;
                     SendState();
                     if (sWorld.connected) {
@@ -898,6 +918,7 @@ u16 WorldBridge_FilterInput(u16 keys)
     u16 pressed = keys & ~sWorld.previousKeys;
     if (!sWorld.enabled) return keys;
     sWorld.previousKeys = keys;
+    if (WorldActivity_OwnsFieldInput()) return keys;
     if (sWorld.dialogueActive) {
         sWorld.dialogueKeys |= pressed & (A_BUTTON | B_BUTTON);
         return keys & (A_BUTTON | B_BUTTON);
@@ -986,15 +1007,21 @@ void WorldBridge_WriteJSON(FILE *file, u32 frame)
     fprintf(file, "]}");
 }
 
-void WorldBridge_BeforeFrame(u32 frame, bool8 headless)
+void WorldBridge_Poll(bool8 headless)
 {
-    (void)frame;
     if (!sWorld.enabled) return;
     if (!SocketOpen()) {
         if (sWorld.retry) sWorld.retry--;
         else Connect();
     }
     if (SocketOpen()) Receive(headless);
+}
+
+void WorldBridge_BeforeFrame(u32 frame, bool8 headless)
+{
+    (void)frame;
+    if (!sWorld.enabled) return;
+    WorldBridge_Poll(headless);
     SyncEngine();
 }
 

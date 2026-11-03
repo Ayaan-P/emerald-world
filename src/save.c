@@ -1120,6 +1120,12 @@ bool8 LinkFullSave_ReplaceLastSector(void)
 bool8 LinkFullSave_SetLastSectorSignature(void)
 {
     CopySectorSignatureByte(NUM_SECTORS_PER_SLOT, gRamSaveSectorLocations);
+#ifdef PORTABLE
+    // Link trades use incremental flash writes instead of HandleSavingData.
+    // Publish the completed slot only after its final signature is installed.
+    if (!gDamagedSaveSectors)
+        Platform_StoreSaveFile();
+#endif
     if (gDamagedSaveSectors)
         DoSaveFailedScreen(SAVE_NORMAL);
     return FALSE;

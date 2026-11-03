@@ -278,6 +278,13 @@ def author_and_deploy(state_dir, socket_path, request, author_argv=None, timeout
     The author executable is trusted host code, not sandboxed candidate code.
     Returns a persisted report, including structured failure evidence.
     """
+    from .world_library import WorldActivityLock
+    with WorldActivityLock(state_dir):
+        return _author_and_deploy(state_dir, socket_path, request, author_argv, timeout,
+                                  response_file=response_file, runtime_context=runtime_context)
+
+
+def _author_and_deploy(state_dir, socket_path, request, author_argv, timeout, *, response_file, runtime_context):
     root = Path(state_dir).resolve()
     records = root / 'gm' / 'reports'
     records.mkdir(parents=True, mode=0o700, exist_ok=True)

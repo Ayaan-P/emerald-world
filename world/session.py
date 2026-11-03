@@ -44,9 +44,40 @@ class DesktopSession:
     def worlds(self):
         return discover_worlds(self.root)
 
+    def world_library(self):
+        from .world_library import cards
+        return cards(self.root, self.worlds())
+
+    def rename_world(self, name, display_name, tags):
+        from .world_library import rename
+        rename(self.root, name, display_name, tags)
+        self.status = 'World label saved. Stable world key and trainer saves are unchanged.'
+
+    def delete_world(self, name):
+        from .world_library import delete
+        path = self._world(name)
+        if self.state == path:
+            raise SessionError('Disconnect this world before moving it to Deleted.')
+        if any(process.poll() is None and paths['profile'].is_relative_to(path)
+               for process, paths in self.games.values()):
+            raise SessionError('Stop this world\'s native games before deletion.')
+        token = delete(self.root, name)
+        self.status = 'World moved to Deleted. Use Restore deleted world to recover it.'
+        return token
+
+    def deleted_worlds(self):
+        from .world_library import deleted
+        return deleted(self.root)
+
+    def restore_world(self, token):
+        from .world_library import restore
+        path = restore(self.root, token, len(self.worlds()))
+        self.status = 'World restored. Its stable key and trainer saves are unchanged.'
+        return path
+
     def _world(self, name):
-        if not re.fullmatch(r'[A-Za-z0-9_-]{1,48}', name):
-            raise ValueError('world name must be 1..48 letters, digits, _ or -')
+        if name == 'Deleted' or not re.fullmatch(r'[A-Za-z0-9_-]{1,48}', name):
+            raise ValueError('world key must be 1..48 letters, digits, _ or - and cannot be Deleted')
         path = self.root / name
         if path.resolve() != path:
             raise ValueError('world cannot be a symlink')
@@ -54,29 +85,36 @@ class DesktopSession:
 
     def create_world(self, name):
         from .server import WorldServer
+        from .world_library import CAPACITY
+        if name == 'Deleted' or len(self.worlds()) >= CAPACITY:
+            raise SessionError('Choose a world key other than Deleted. The library holds at most 32 worlds.')
         path = self._world(name)
-        if path.exists():
-            raise ValueError('world already exists; select it to resume')
-        path.mkdir(mode=0o700)
-        server = WorldServer(path/'transport/world.sock', path)
-        server.close()
-        return path
+        from .world_library import WorldActivityLock
+        with WorldActivityLock(path):
+            if path.exists():
+                raise ValueError('world already exists; select it to resume')
+            path.mkdir(mode=0o700)
+            server = WorldServer(path/'transport/world.sock', path)
+            server.close()
+            return path
 
     def host(self, name):
         from .server import WorldServer
         if self.state is not None:
             raise ValueError('disconnect before changing worlds')
         path = self._world(name)
-        if not any(item['path'] == str(path) for item in self.worlds()):
-            raise ValueError('select an existing world')
-        server = WorldServer(path/'transport/world.sock', path)
-        try:
-            server.start()
-        except BaseException:
-            server.close()
-            raise
-        self.server, self.state = server, path
-        self.status = 'Hosting ' + name
+        from .world_library import WorldActivityLock
+        with WorldActivityLock(path):
+            if not any(item['path'] == str(path) for item in self.worlds()):
+                raise ValueError('select an existing world')
+            server = WorldServer(path/'transport/world.sock', path)
+            try:
+                server.start()
+            except BaseException:
+                server.close()
+                raise
+            self.server, self.state = server, path
+            self.status = 'Hosting ' + name
 
     def join_local(self, name):
         from .launcher import admin
@@ -186,45 +224,48 @@ class DesktopSession:
                 or not re.fullmatch(r'[0-9a-fA-F]{64}', identity['token'])):
             raise ValueError('invalid trainer invitation')
         path = self._world(name)
-        paths = profile_paths(path, identity['trainer'])
-        if (path/'world.sqlite3').exists():
-            raise ValueError('remote saves need a separate local world name')
-        marker = path/'remote.json'
-        binding = {'host': remote[0], 'port': remote[1], 'pin': fingerprint.lower()}
-        if marker.is_symlink() or (marker.exists() and json.loads(marker.read_text()) != binding):
-            raise ValueError('this save directory belongs to a different remote host')
-        path.mkdir(mode=0o700, exist_ok=True)
-        transport = path/'transport'
-        if transport.resolve() != transport:
-            raise ValueError('transport cannot be a symlink')
-        from .launcher import ProfileLock
-        with ProfileLock(path, identity['trainer']):
-            broker = ClientBroker(transport/'world.sock', remote, fingerprint=fingerprint,
-                                  handshake_timeout=3)
-            try:
-                broker.start()
-                # Control role checks credentials without occupying native presence.
-                from .client import IntentClient
-                with IntentClient(broker.socket_path, identity['trainer'], identity['token'], timeout=4):
-                    pass
-                paths['profile'].mkdir(parents=True, mode=0o700, exist_ok=True)
-                config = (f'socket {transport}/world.sock\ntrainer {identity["trainer"]}\n'
-                          f'token {identity["token"]}\ntelemetry {paths["telemetry"]}\n')
-                if paths['config'].exists() and paths['config'].read_text() != config:
-                    raise ValueError('trainer profile belongs to a different invitation')
-                fd = os.open(paths['config'], os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
-                with os.fdopen(fd, 'w') as output:
-                    output.write(config)
-                paths['config'].chmod(0o600)
-                if not paths['settings'].exists():
-                    paths['settings'].write_text('[video]\nscale=2\n')
-                marker.write_text(json.dumps(binding))
-            except BaseException:
-                broker.close()
-                raise
-        self.state, self.broker = path, broker
-        self.status = 'TLS verified. Trainer authenticated. Launch the native game to play.'
-        return paths
+        from .world_library import WorldActivityLock
+        with WorldActivityLock(path):
+            paths = profile_paths(path, identity['trainer'])
+            if (path/'world.sqlite3').exists():
+                raise ValueError('remote saves need a separate local world name')
+            marker = path/'remote.json'
+            binding = {'host': remote[0], 'port': remote[1], 'pin': fingerprint.lower()}
+            if marker.is_symlink() or (marker.exists() and json.loads(marker.read_text()) != binding):
+                raise ValueError('this save directory belongs to a different remote host')
+            path.mkdir(mode=0o700, exist_ok=True)
+            transport = path/'transport'
+            if transport.resolve() != transport:
+                raise ValueError('transport cannot be a symlink')
+            from .launcher import ProfileLock
+            with ProfileLock(path, identity['trainer']):
+                broker = ClientBroker(transport/'world.sock', remote, fingerprint=fingerprint,
+                                      handshake_timeout=3)
+                try:
+                    broker.start()
+                    # Control role checks credentials without occupying native presence.
+                    from .client import IntentClient
+                    with IntentClient(broker.socket_path, identity['trainer'], identity['token'], timeout=4):
+                        pass
+                    paths['profile'].parent.mkdir(mode=0o700, exist_ok=True)
+                    paths['profile'].mkdir(mode=0o700, exist_ok=True)
+                    config = (f'socket {transport}/world.sock\ntrainer {identity["trainer"]}\n'
+                              f'token {identity["token"]}\ntelemetry {paths["telemetry"]}\n')
+                    if paths['config'].exists() and paths['config'].read_text() != config:
+                        raise ValueError('trainer profile belongs to a different invitation')
+                    fd = os.open(paths['config'], os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+                    with os.fdopen(fd, 'w') as output:
+                        output.write(config)
+                    paths['config'].chmod(0o600)
+                    if not paths['settings'].exists():
+                        paths['settings'].write_text('[video]\nscale=2\n')
+                    marker.write_text(json.dumps(binding))
+                except BaseException:
+                    broker.close()
+                    raise
+            self.state, self.broker = path, broker
+            self.status = 'TLS verified. Trainer authenticated. Launch the native game to play.'
+            return paths
 
     def start_display(self, display):
         from .launcher import ManagedDisplay
@@ -602,6 +643,20 @@ class DesktopApp:
             pages[title] = ttk.Frame(self.notebook, padding=12)
             self.notebook.add(pages[title], text=title)
             pages[title].columnconfigure(1, weight=1)
+        # The library and trainer controls remain reachable on small desktops.
+        play_outer = pages['Play']
+        play_outer.columnconfigure(0, weight=1)
+        play_outer.rowconfigure(0, weight=1)
+        self.play_canvas = tk.Canvas(play_outer, width=760, height=500, highlightthickness=0)
+        self.play_canvas.grid(row=0, column=0, sticky='nsew')
+        play_scroll = ttk.Scrollbar(play_outer, orient='vertical', command=self.play_canvas.yview)
+        play_scroll.grid(row=0, column=1, sticky='ns')
+        self.play_canvas.configure(yscrollcommand=play_scroll.set)
+        pages['Play'] = ttk.Frame(self.play_canvas)
+        pages['Play'].columnconfigure(1, weight=1)
+        play_content = self.play_canvas.create_window((0, 0), window=pages['Play'], anchor='nw')
+        pages['Play'].bind('<Configure>', lambda event: self.play_canvas.configure(scrollregion=self.play_canvas.bbox('all')))
+        self.play_canvas.bind('<Configure>', lambda event: self.play_canvas.itemconfigure(play_content, width=event.width))
         page, row = pages['Play'], 0
         def note(text):
             nonlocal row
@@ -612,7 +667,7 @@ class DesktopApp:
             ttk.Label(page, text=label).grid(row=row, column=0, sticky='w')
             variable = tk.StringVar(value=value)
             self.fields[key] = variable
-            entry = ttk.Combobox(page, textvariable=variable, width=48) if key in ('world', 'trainer') else ttk.Entry(page, textvariable=variable, width=50)
+            entry = ttk.Combobox(page, textvariable=variable, width=48) if key in ('world', 'trainer', 'deleted_world') else ttk.Entry(page, textvariable=variable, width=50)
             entry.grid(row=row, column=1, sticky='ew', pady=4)
             if browse:
                 def choose():
@@ -632,7 +687,34 @@ class DesktopApp:
                 self.buttons.append(button)
             row += 1
         note('1. Choose a saved world or type a new name and create it. Host starts the world on this computer. Join local connects to a world already hosted here.')
-        self.world_entry = field('world', 'World name')
+        note('World library (32 worlds). Labels and tags do not change save paths. Disconnect before hosting a different selected world.')
+        library = ttk.Frame(page)
+        library.grid(row=row, column=0, columnspan=3, sticky='ew')
+        library.columnconfigure(0, weight=1)
+        self.library_tree = ttk.Treeview(library, columns=('tags', 'trainers'), height=3, selectmode='browse')
+        self.library_tree.heading('#0', text='World label (stable key)')
+        self.library_tree.heading('tags', text='Tags')
+        self.library_tree.heading('trainers', text='Trainer profiles')
+        self.library_tree.column('#0', width=260)
+        self.library_tree.column('tags', width=160)
+        self.library_tree.column('trainers', width=160)
+        self.library_tree.grid(row=0, column=0, sticky='ew')
+        scroll = ttk.Scrollbar(library, orient='vertical', command=self.library_tree.yview)
+        scroll.grid(row=0, column=1, sticky='ns')
+        self.library_tree.configure(yscrollcommand=scroll.set)
+        self.library_tree.bind('<<TreeviewSelect>>', self.select_library_world)
+        row += 1
+        self.library_details = tk.StringVar(value='Choose a world to see its details.')
+        ttk.Label(page, textvariable=self.library_details, wraplength=700, justify='left').grid(
+            row=row, column=0, columnspan=3, sticky='w')
+        row += 1
+        self.world_entry = field('world', 'Stable world key / new key')
+        self.world_entry.bind('<<ComboboxSelected>>', self.show_world_details)
+        field('world_label', 'Display name')
+        field('world_tags', 'Tags (comma separated)')
+        actions([('Rename / save tags', self.rename_selected_world), ('Move to Deleted', self.delete_selected_world)])
+        self.deleted_entry = field('deleted_world', 'Deleted world to restore')
+        actions([('Restore deleted world', self.restore_selected_world)])
         actions([('Refresh worlds', self.refresh), ('Create world', self.create),
                  ('Host selected', self.host), ('Join local', self.join_local)])
         note('2. Human trainer: choose a trainer to resume or type a new name. Each trainer has their own team, bag and save.')
@@ -715,8 +797,70 @@ class DesktopApp:
         self.world_entry['values'] = names
         if names and not self.fields['world'].get():
             self.fields['world'].set(names[0])
+        if hasattr(self, 'library_tree'):
+            self.library_cards = self.session.world_library()
+            for item in self.library_tree.get_children():
+                self.library_tree.delete(item)
+            for card in self.library_cards:
+                self.library_tree.insert('', 'end', iid=card['key'],
+                    text=f'{card["display_name"]} ({card["key"]})',
+                    values=(', '.join(card['tags']), ', '.join(t['name'] for t in card['trainers']) or 'none yet'))
+            self.deleted_entry['values'] = [item['token'] for item in self.session.deleted_worlds()]
+            self.show_world_details()
         if hasattr(self, 'trainer_entry'):
             self.trainer_entry['values'] = self.session.trainers()
+
+    def delete_selected_world(self):
+        from tkinter import messagebox
+        key = self.values()['world']
+        # Capture identity before either modal prompt. Neither default is Yes.
+        if not messagebox.askyesno('Move world to Deleted?',
+                f'Move world {key} and every trainer save to Deleted? It can be restored.',
+                parent=self.window, default='no'):
+            return
+        if not messagebox.askyesno('Confirm recoverable deletion',
+                f'Confirm moving the entire world {key}. Stop all hosts, games and GM workers first.',
+                parent=self.window, default='no'):
+            return
+        self.session.delete_world(key)
+        self.refresh()
+
+    def rename_selected_world(self):
+        value = self.values()
+        self.session.rename_world(value['world'], value['world_label'],
+                                  [t.strip() for t in value['world_tags'].split(',') if t.strip()])
+        self.refresh()
+
+    def restore_selected_world(self):
+        token = self.values()['deleted_world']
+        path = self.session.restore_world(token)
+        self.fields['world'].set(path.name)
+        self.refresh()
+
+    def select_library_world(self, event=None):
+        selected = self.library_tree.selection()
+        if selected:
+            self.fields['world'].set(selected[0])
+        self.show_world_details()
+
+    def show_world_details(self, event=None):
+        if not hasattr(self, 'library_details'):
+            return
+        key = self.fields['world'].get().strip()
+        card = next((item for item in self.library_cards if item['key'] == key), None)
+        if card is None:
+            self.library_details.set('Choose a saved world. New names create a separate stable world key.')
+            return
+        self.fields['world_label'].set(card['display_name'])
+        self.fields['world_tags'].set(', '.join(card['tags']))
+        lines = [card['display_name'] + ' | Stable key: ' + key,
+                 'Tags: ' + (', '.join(card['tags']) or 'none')]
+        if not card['trainers']:
+            lines.append('No trainer profiles yet. Party, badges and play time unavailable.')
+        for trainer in card['trainers']:
+            lines.append(f'Trainer {trainer["name"]} | Save file modified: {trainer["saved_at"]}')
+            lines.append(f'Party: {trainer["party"]} | Badges: {trainer["badges"]} | Play time: {trainer["playtime"]}')
+        self.library_details.set('\n'.join(lines))
 
     def create(self):
         self.session.create_world(self.values()['world'])
@@ -738,6 +882,8 @@ class DesktopApp:
         self.refresh()
 
     def _launch(self, value, remote_paths):
+        if 'world' in value and self.session.state != self.session._world(value['world']):
+            raise SessionError('Disconnect and host or join the selected world before launching its trainer.')
         paths = remote_paths or self.session.local_profile(value['trainer'], value['seed'] or None)
         display = value.get('display') or None
         if display and not Path('/tmp/.X11-unix/X' + display[1:]).is_socket():
@@ -749,6 +895,8 @@ class DesktopApp:
         self.refresh()
 
     def _launch_ai(self, value, remote_paths):
+        if 'world' in value and self.session.state != self.session._world(value['world']):
+            raise SessionError('Disconnect and host or join the selected world before launching its trainer.')
         trainer = value['ai_trainer']
         if remote_paths:
             if trainer != remote_paths['profile'].name:

@@ -35,6 +35,11 @@
 #include "constants/songs.h"
 #include "constants/trainer_hill.h"
 
+#ifdef PORTABLE
+#include "platform/world_activity.h"
+#include "platform/world_bridge.h"
+#endif
+
 static EWRAM_DATA u8 sWildEncounterImmunitySteps = 0;
 static EWRAM_DATA u16 sPrevMetatileBehavior = 0;
 
@@ -91,6 +96,14 @@ void FieldGetPlayerInput(struct FieldInput *input, u16 newKeys, u16 heldKeys)
     u8 tileTransitionState = gPlayerAvatar.tileTransitionState;
     u8 runningState = gPlayerAvatar.runningState;
     bool8 forcedMove = MetatileBehavior_IsForcedMovementTile(GetPlayerCurMetatileBehavior(runningState));
+
+#ifdef PORTABLE
+    // Keep raw gMain keys intact for tasks, dialogue and native menus.
+    heldKeys = WorldBridge_FilterInput(heldKeys);
+    newKeys &= heldKeys;
+    newKeys = WorldActivity_FilterFieldKeys(newKeys);
+    heldKeys = WorldActivity_FilterFieldKeys(heldKeys);
+#endif
 
     if ((tileTransitionState == T_TILE_CENTER && forcedMove == FALSE) || tileTransitionState == T_NOT_MOVING)
     {

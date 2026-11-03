@@ -97,12 +97,29 @@ class NativeProtocol(unittest.TestCase):
     def connect(self):
         self.launch()
         self.step()
-        try:
-            self.conn, _ = self.listener.accept()
-        except TimeoutError:
-            self.fail("native bridge did not connect and send HELLO")
-        self.conn.settimeout(3)
-        self.assertEqual(self.conn.recv(1024).decode(), f"HELLO 1 alice {self.token} SOCIAL\n")
+        # Presence and virtual cable intentionally use separate sockets. This
+        # fixture exercises only presence, so explicitly reject the LINK role
+        # rather than assuming connection arrival order identifies the role.
+        for _ in range(3):
+            try:
+                candidate, _ = self.listener.accept()
+            except TimeoutError:
+                self.fail("native bridge did not connect and send HELLO")
+            candidate.settimeout(3)
+            hello = b""
+            while b"\n" not in hello and len(hello) <= 1024:
+                chunk = candidate.recv(1024)
+                if not chunk:
+                    break
+                hello += chunk
+            if hello == f"HELLO 1 alice {self.token} LINK\n".encode():
+                candidate.sendall(b"ERROR AUTH\n")
+                candidate.close()
+                continue
+            self.assertEqual(hello.decode(), f"HELLO 1 alice {self.token} SOCIAL\n")
+            self.conn = candidate
+            break
+        assert self.conn is not None, 'presence role never connected'
         self.conn.sendall(b"WELCOME 1 alice 0\n")
         self.assertTrue(self.step()["world"]["connected"])
 

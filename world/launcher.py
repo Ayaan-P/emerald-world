@@ -97,6 +97,15 @@ class ProfileLock:
     No PID or timestamp is used to decide whether a profile is available.
     """
     def __init__(self, state_dir, trainer):
+        from world.world_library import WorldActivityLock
+        self.activity = WorldActivityLock(state_dir)
+        try:
+            self._acquire(state_dir, trainer)
+        except BaseException:
+            self.activity.close()
+            raise
+
+    def _acquire(self, state_dir, trainer):
         import fcntl
         import stat
         import threading
@@ -131,6 +140,7 @@ class ProfileLock:
             if self.fd is not None:
                 os.close(self.fd)
                 self.fd = None
+            self.activity.close()
 
     def __enter__(self):
         return self
@@ -234,7 +244,8 @@ def prepare_profile(state_dir, trainer, seed_save=None):
 def _prepare_profile(state_dir, trainer, seed_save, paths):
     """Prepare only while the caller owns the profile lock."""
     from world.server import create_identity
-    paths['profile'].mkdir(parents=True, exist_ok=True, mode=0o700)
+    paths['profile'].parent.mkdir(exist_ok=True, mode=0o700)
+    paths['profile'].mkdir(exist_ok=True, mode=0o700)
     os.chmod(paths['profile'], 0o700)
     token = create_identity(Path(state_dir), trainer)
     if isinstance(token, dict):
@@ -339,90 +350,92 @@ def main(argv=None):
     if args.state_dir is None:
         p.error('--state-dir is required for this command')
     state = args.state_dir.resolve()
-    state.mkdir(parents=True, exist_ok=True, mode=0o700)
-    transport = state / 'transport'; transport.mkdir(exist_ok=True, mode=0o700)
-    socket_path = transport / 'world.sock'
-    if args.command == 'host':
-        from world.server import WorldServer
-        server = WorldServer(str(socket_path), str(state))
-        try:
-            server.serve_forever()
-        finally:
-            server.close()
-    elif args.command == 'join':
-        from contextlib import ExitStack
-        with ExitStack() as stack:
-            if any((args.remote, args.invitation, args.pin)):
-                if not all((args.remote, args.invitation, args.pin)) or args.seed_save:
-                    raise ValueError('remote join requires --remote, --invitation and --pin, without --seed-save')
-                from .session import DesktopSession
-                from .transport import _endpoint
-                remote_session = stack.enter_context(DesktopSession(state.parent))
-                if args.agent_control:
-                    # connect_remote takes its own preparation lock. Reject an
-                    # existing endpoint before it can rewrite profile config.
-                    with ProfileLock(state, args.trainer) as preflight:
-                        check_player_endpoint(preflight.paths)
-                paths = remote_session.connect_remote(state.name, args.invitation, _endpoint(args.remote), args.pin)
-                if paths['profile'].name != args.trainer:
-                    raise ValueError('trainer must match the assigned invitation')
-                stack.enter_context(ProfileLock(state, args.trainer))
-                if args.agent_control:
-                    check_player_endpoint(paths)
-            else:
-                if (state/'remote.json').exists():
-                    raise ValueError('remote trainer saves require their invitation and TLS connection')
-                lock = stack.enter_context(ProfileLock(state, args.trainer))
-                if args.agent_control:
-                    check_player_endpoint(lock.paths)
-                paths = _prepare_profile(state, args.trainer, args.seed_save, lock.paths)
-            cmd = (game_command(args.binary, state, paths, args.display, agent_control=True)
-                   if args.agent_control else game_command(args.binary, state, paths, args.display))
-            if args.test_input:
-                target = args.test_input.resolve()
-                if paths['profile'] not in target.parents:
-                    copied = paths['profile'] / 'input.txt'; shutil.copyfile(target, copied); target = copied
-                cmd += ['--test-input', str(target)]
-            if args.bootstrap:
-                target = paths['profile'] / 'bootstrap.txt'
-                shutil.copyfile(args.bootstrap.resolve(), target)
-                cmd += ['--world-input', str(target)]
-            if args.print_command:
-                print(json.dumps(cmd, indent=2))
-                return 0
-            process = subprocess.Popen(cmd)
+    from world.world_library import WorldActivityLock
+    with WorldActivityLock(state):
+        state.mkdir(parents=True, exist_ok=True, mode=0o700)
+        transport = state / 'transport'; transport.mkdir(exist_ok=True, mode=0o700)
+        socket_path = transport / 'world.sock'
+        if args.command == 'host':
+            from world.server import WorldServer
+            server = WorldServer(str(socket_path), str(state))
             try:
-                if args.agent_control:
-                    import shlex
-                    endpoint = player_endpoint(paths)
-                    print(f'AI control starting. Endpoint: {endpoint}', file=sys.stderr, flush=True)
-                    print('Observe: ' + shlex.join(['env', f'PYTHONPATH={REPO}', 'python3', '-m',
-                                                   'world.player', '--endpoint', str(endpoint), 'observe']),
-                          file=sys.stderr, flush=True)
-                    code = f'from world.player import PlayerClient; print(PlayerClient({str(endpoint)!r}).observe())'
-                    print('SDK: ' + shlex.join(['env', f'PYTHONPATH={REPO}', 'python3', '-c', code]),
-                          file=sys.stderr, flush=True)
-                return process.wait()
+                server.serve_forever()
             finally:
-                # Never release the profile while an interrupted child can save.
-                if process.poll() is None:
-                    process.terminate()
+                server.close()
+        elif args.command == 'join':
+            from contextlib import ExitStack
+            with ExitStack() as stack:
+                if any((args.remote, args.invitation, args.pin)):
+                    if not all((args.remote, args.invitation, args.pin)) or args.seed_save:
+                        raise ValueError('remote join requires --remote, --invitation and --pin, without --seed-save')
+                    from .session import DesktopSession
+                    from .transport import _endpoint
+                    remote_session = stack.enter_context(DesktopSession(state.parent))
+                    if args.agent_control:
+                        # connect_remote takes its own preparation lock. Reject an
+                        # existing endpoint before it can rewrite profile config.
+                        with ProfileLock(state, args.trainer) as preflight:
+                            check_player_endpoint(preflight.paths)
+                    paths = remote_session.connect_remote(state.name, args.invitation, _endpoint(args.remote), args.pin)
+                    if paths['profile'].name != args.trainer:
+                        raise ValueError('trainer must match the assigned invitation')
+                    stack.enter_context(ProfileLock(state, args.trainer))
+                    if args.agent_control:
+                        check_player_endpoint(paths)
+                else:
+                    if (state/'remote.json').exists():
+                        raise ValueError('remote trainer saves require their invitation and TLS connection')
+                    lock = stack.enter_context(ProfileLock(state, args.trainer))
+                    if args.agent_control:
+                        check_player_endpoint(lock.paths)
+                    paths = _prepare_profile(state, args.trainer, args.seed_save, lock.paths)
+                cmd = (game_command(args.binary, state, paths, args.display, agent_control=True)
+                       if args.agent_control else game_command(args.binary, state, paths, args.display))
+                if args.test_input:
+                    target = args.test_input.resolve()
+                    if paths['profile'] not in target.parents:
+                        copied = paths['profile'] / 'input.txt'; shutil.copyfile(target, copied); target = copied
+                    cmd += ['--test-input', str(target)]
+                if args.bootstrap:
+                    target = paths['profile'] / 'bootstrap.txt'
+                    shutil.copyfile(args.bootstrap.resolve(), target)
+                    cmd += ['--world-input', str(target)]
+                if args.print_command:
+                    print(json.dumps(cmd, indent=2))
+                    return 0
+                process = subprocess.Popen(cmd)
                 try:
-                    process.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
-    elif args.command == 'inspect':
-        print(json.dumps(admin(socket_path, {'command': 'inspect'}), indent=2))
-    elif args.command == 'deploy':
-        payload = {'command': 'deploy', 'source_path': str(args.source.resolve())}
-        if args.tests: payload['tests_path'] = str(args.tests.resolve())
-        value = admin(socket_path, payload); print(json.dumps(value, indent=2))
-        return 0 if value.get('ok') else 1
-    elif args.command == 'list':
-        profiles = state / 'trainers'
-        print(json.dumps({'world': str(state), 'trainers': sorted(x.name for x in profiles.iterdir() if x.is_dir() and not x.is_symlink()) if profiles.exists() else []}, indent=2))
-    return 0
+                    if args.agent_control:
+                        import shlex
+                        endpoint = player_endpoint(paths)
+                        print(f'AI control starting. Endpoint: {endpoint}', file=sys.stderr, flush=True)
+                        print('Observe: ' + shlex.join(['env', f'PYTHONPATH={REPO}', 'python3', '-m',
+                                                       'world.player', '--endpoint', str(endpoint), 'observe']),
+                              file=sys.stderr, flush=True)
+                        code = f'from world.player import PlayerClient; print(PlayerClient({str(endpoint)!r}).observe())'
+                        print('SDK: ' + shlex.join(['env', f'PYTHONPATH={REPO}', 'python3', '-c', code]),
+                              file=sys.stderr, flush=True)
+                    return process.wait()
+                finally:
+                    # Never release the profile while an interrupted child can save.
+                    if process.poll() is None:
+                        process.terminate()
+                    try:
+                        process.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+        elif args.command == 'inspect':
+            print(json.dumps(admin(socket_path, {'command': 'inspect'}), indent=2))
+        elif args.command == 'deploy':
+            payload = {'command': 'deploy', 'source_path': str(args.source.resolve())}
+            if args.tests: payload['tests_path'] = str(args.tests.resolve())
+            value = admin(socket_path, payload); print(json.dumps(value, indent=2))
+            return 0 if value.get('ok') else 1
+        elif args.command == 'list':
+            profiles = state / 'trainers'
+            print(json.dumps({'world': str(state), 'trainers': sorted(x.name for x in profiles.iterdir() if x.is_dir() and not x.is_symlink()) if profiles.exists() else []}, indent=2))
+        return 0
 
 
 if __name__ == '__main__':

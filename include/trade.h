@@ -20,5 +20,8 @@ void InitTradeSequenceBgGpuRegs(void);
 void LinkTradeDrawWindow(void);
 void LoadTradeAnimGfx(void);
 void DrawTextOnTradeWindow(u8 windowId, const u8 *str, u8 speed);
+#ifdef PORTABLE
+const char *TradeMenu_Phase(void);
+#endif
 
 #endif //GUARD_TRADE_H
