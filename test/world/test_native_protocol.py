@@ -140,6 +140,19 @@ class NativeProtocol(unittest.TestCase):
     def test_disabled_state_is_unchanged(self):
         self.assertNotIn("world", self.launch(False))
 
+    def test_fragmented_chat_receipt_is_atomic_and_not_game_dialogue(self):
+        self.connect()
+        self.conn.sendall(b'BEGIN 7\nCHATMSG 1 bob * 48656c6c6f21\nCHATSTATUS ready\n')
+        state = self.step()['world']
+        self.assertEqual(state['chat_count'], 0)
+        self.assertFalse(state['dialogue_active'])
+        self.conn.sendall(b'END\n')
+        state = self.step()['world']
+        self.assertEqual(state['chat_count'], 1)
+        self.assertFalse(state['dialogue_active'])
+        self.conn.sendall(b'BEGIN 8\nCHATMSG 2 bob alice ff\nEND\n')
+        self.assertFalse(self.step()['world']['connected'])
+
     def test_fragmented_snapshot_is_atomic(self):
         self.connect()
         self.conn.sendall(b"BEGIN 7\nPEER bob 0 9 5 5 1 0 1\n")
