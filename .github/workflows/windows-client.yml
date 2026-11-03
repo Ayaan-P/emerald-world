@@ -63,7 +63,7 @@ jobs:
       - name: Test launcher gateway and packaging boundaries
         shell: pwsh
         timeout-minutes: 6
-        run: python scripts/windows_verify.py --label unit --timeout 240 --report build/verification/unit.json -- python -m unittest test.world.test_windows_client test.world.test_windows_package -v
+        run: python scripts/windows_verify.py --label unit --timeout 240 --report build/verification/unit.json -- python -m unittest discover -s test/world -p "test_windows*.py" -v
       - name: Verify real Windows frames and GBA-layout saves against baseline
         shell: pwsh
         timeout-minutes: 16
