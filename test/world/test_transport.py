@@ -282,6 +282,144 @@ class TransportTests(unittest.TestCase):
         broker.close()
         self.assertFalse(Path(broker.socket_path).exists())
 
+    def test_killed_connector_can_rejoin_with_same_identity(self):
+        import sys
+        from world.client import WorldClient
+        from world.transport import ClientBroker
+        server, identities = self.start_world()
+        host = self.host(server)
+        path = self.root / 'crash/transport/world.sock'
+        process = subprocess.Popen(
+            [sys.executable, '-B', '-m', 'world.transport', 'connect',
+             '--remote', f'{host.address[0]}:{host.address[1]}',
+             '--fingerprint', self.pin, '--socket', str(path)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(lambda: process.poll() is None and process.kill())
+        try:
+            self.wait_for(path.exists)
+            with WorldClient(path, 'Alice', identities[0]['token']) as client:
+                client.snapshot()
+                process.kill()
+                process.wait(3)
+            self.wait_for(lambda: not server.inspect()['players'])
+            self.assertTrue(path.is_socket())
+            with ClientBroker(path, host.address, fingerprint=self.pin):
+                with WorldClient(path, 'Alice', identities[0]['token']) as client:
+                    client.snapshot()
+                    self.assertEqual([p['id'] for p in server.inspect()['players']], ['Alice'])
+                    with self.assertRaisesRegex(ValueError, 'DUPLICATE'):
+                        WorldClient(path, 'Alice', identities[0]['token'])
+                    self.assertEqual([p['id'] for p in server.inspect()['players']], ['Alice'])
+            self.assertFalse(path.exists())
+        finally:
+            if process.poll() is None:
+                process.kill()
+            process.wait(3)
+
+    def test_recovery_never_replaces_unsafe_or_live_unmanaged_endpoints(self):
+        import os
+        from world.transport import ClientBroker
+        path = self.root/'recovery/transport/world.sock'
+        path.parent.mkdir(parents=True)
+        def refused():
+            before = path.lstat()
+            with self.assertRaises((OSError, ValueError)):
+                ClientBroker(path, ('127.0.0.1', 1), fingerprint=self.pin).start()
+            after = path.lstat()
+            self.assertEqual((before.st_dev, before.st_ino), (after.st_dev, after.st_ino))
+        path.write_text('not a socket')
+        refused()
+        path.unlink()
+        target = self.root/'target'
+        target.write_text('untouched')
+        path.symlink_to(target)
+        refused()
+        self.assertEqual(target.read_text(), 'untouched')
+        path.unlink()
+        os.mkfifo(path, 0o600)
+        refused()
+        path.unlink()
+        with socket.socket(socket.AF_UNIX) as unmanaged:
+            unmanaged.bind(str(path))
+            path.chmod(0o600)
+            unmanaged.listen(1)
+            refused()
+        # World socket remains private. A dead but public socket is not ours
+        # to recover, even though a connection probe would be refused.
+        path.chmod(0o666)
+        refused()
+        path.chmod(0o600)
+        with ClientBroker(path, ('127.0.0.1', 1), fingerprint=self.pin):
+            inode = path.stat().st_ino
+            refused()
+            self.assertEqual(path.stat().st_ino, inode)
+        self.assertFalse(path.exists())
+
+    def test_cleanup_error_does_not_leave_a_dead_broker_holding_endpoint_lock(self):
+        from unittest.mock import patch
+        from world.transport import ClientBroker
+        path = self.root/'cleanup/transport/world.sock'
+        broker = ClientBroker(path, ('127.0.0.1', 1), fingerprint=self.pin).start()
+        self.addCleanup(broker.close)
+        original = Path.unlink
+        def denied(target, *args, **kwargs):
+            if target == path:
+                raise PermissionError('fixture cleanup denied')
+            return original(target, *args, **kwargs)
+        with patch.object(Path, 'unlink', denied):
+            with self.assertRaises(PermissionError):
+                broker.close()
+        self.assertFalse(broker._thread.is_alive())
+        self.assertEqual(broker.active_clients, 0)
+        self.assertIsNone(broker._endpoint_lock)
+        with ClientBroker(path, ('127.0.0.1', 1), fingerprint=self.pin):
+            self.assertTrue(path.is_socket())
+        self.assertFalse(path.exists())
+
+    def test_unsafe_endpoint_lock_paths_fail_closed_without_poisoning_rejoin(self):
+        import os
+        from world.transport import ClientBroker
+        path = self.root/'locks/transport/world.sock'
+        path.parent.mkdir(parents=True)
+        directory = path.parent.with_name('transport.locks')
+        outside = self.root/'outside'
+        outside.mkdir()
+        directory.symlink_to(outside, target_is_directory=True)
+        with self.assertRaises(ValueError):
+            ClientBroker(path, ('127.0.0.1', 1), fingerprint=self.pin).start()
+        self.assertEqual(list(outside.iterdir()), [])
+        directory.unlink()
+        directory.mkdir(mode=0o755)
+        with self.assertRaises(ValueError):
+            ClientBroker(path, ('127.0.0.1', 1), fingerprint=self.pin).start()
+        directory.chmod(0o700)
+        lock = directory/'world.sock.lock'
+        target = outside/'target'
+        target.write_text('keep')
+        target.chmod(0o600)
+        for kind in ('symlink', 'hardlink', 'public', 'fifo'):
+            with self.subTest(kind=kind):
+                if kind == 'symlink':
+                    lock.symlink_to(target)
+                elif kind == 'hardlink':
+                    os.link(target, lock)
+                elif kind == 'fifo':
+                    os.mkfifo(lock, 0o600)
+                else:
+                    lock.touch(mode=0o644)
+                with self.assertRaises((OSError, ValueError)):
+                    ClientBroker(path, ('127.0.0.1', 1), fingerprint=self.pin).start()
+                self.assertFalse(path.exists())
+                lock.unlink()
+        self.assertEqual(target.read_text(), 'keep')
+        first = ClientBroker(path, ('127.0.0.1', 1), fingerprint=self.pin).start()
+        first.close()
+        with ClientBroker(path, ('127.0.0.1', 1), fingerprint=self.pin):
+            # A repeated close on the old object cannot unlink the new socket.
+            first.close()
+            self.assertTrue(path.is_socket())
+        self.assertFalse(path.exists())
+
     def test_real_cli_pair_and_sigterm_cleanup(self):
         import sys
         from world.client import WorldClient
