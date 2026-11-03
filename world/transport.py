@@ -11,6 +11,8 @@ Keep the host private key OUTSIDE every game-visible transport directory.
 import argparse
 import hashlib
 import hmac
+import ipaddress
+import json
 import math
 import os
 from pathlib import Path
@@ -24,6 +26,68 @@ import time
 
 MAGIC = b'EWTR1'
 CHUNK = 16384
+
+
+def validate_invitation(value):
+    """Version 1 bundles a TLS trust anchor, not proof of the host's identity."""
+    legacy = {'trainer', 'token'}
+    if (type(value) is not dict or set(value) not in (legacy, legacy | {'version', 'endpoint', 'pin'})
+            or type(value.get('trainer')) is not str
+            or not re.fullmatch(r'[A-Za-z0-9_-]{1,24}', value['trainer'])
+            or type(value.get('token')) is not str
+            or not re.fullmatch(r'[0-9a-fA-F]{64}', value['token'])):
+        raise ValueError('invalid invitation')
+    if 'version' in value:
+        endpoint = value['endpoint']
+        if (type(value['version']) is not int or value['version'] != 1
+                or type(endpoint) is not dict or set(endpoint) != {'host', 'port'}
+                or type(endpoint['port']) is not int or not 1 <= endpoint['port'] <= 65535
+                or type(value['pin']) is not str or not re.fullmatch(r'[0-9a-fA-F]{64}', value['pin'])):
+            raise ValueError('invalid invitation')
+        validate_invitation_host(endpoint['host'])
+    return value
+
+
+def validate_invitation_host(host):
+    """Accept numeric IPs or bounded ASCII DNS names, never wildcard endpoints."""
+    if type(host) is not str or not 1 <= len(host) <= 253:
+        raise ValueError('invalid invitation host')
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        if (not re.fullmatch(r'[A-Za-z0-9.-]+', host)
+                or all(c in '0123456789.' for c in host)
+                or any(not re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?', label)
+                       for label in host.removesuffix('.').split('.'))):
+            raise ValueError('invalid invitation host') from None
+    else:
+        if address.is_unspecified or address.is_multicast or '%' in host:
+            raise ValueError('invalid invitation host')
+    return host
+
+
+def read_invitation(path):
+    """Bound every read and reject duplicate keys and non-regular files."""
+    import stat
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError('invalid invitation')
+            result[key] = value
+        return result
+    try:
+        fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0))
+        with os.fdopen(fd, 'rb') as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size > 4096:
+                raise ValueError('invalid invitation')
+            raw = stream.read(4097)
+        if len(raw) > 4096:
+            raise ValueError('invalid invitation')
+        return validate_invitation(json.loads(raw, object_pairs_hook=unique))
+    except (OSError, ValueError, TypeError, RecursionError):
+        raise ValueError('invalid invitation') from None
 
 
 def _relay(local, remote, stop, timeout, limit):

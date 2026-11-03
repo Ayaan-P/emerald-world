@@ -31,6 +31,7 @@ class DesktopSession:
         self.state = None
         self.server = None
         self.broker = None
+        self.sharing_pin = None
         self.games = {}
         self.game_locks = {}
         self.agent_games = set()
@@ -177,6 +178,9 @@ class DesktopSession:
             if any(Path(material).resolve().is_relative_to(self.state/part)
                    for part in ('trainers', 'transport')):
                 raise ValueError('TLS files must stay outside game-visible directories')
+        import hashlib
+        import ssl
+        pin = hashlib.sha256(ssl.PEM_cert_to_DER_cert(Path(cert).read_text())).hexdigest()
         broker = HostBroker(self.state/'transport/world.sock', cert, key, listen)
         try:
             broker.start()
@@ -184,10 +188,37 @@ class DesktopSession:
             broker.close()
             raise
         self.broker = broker
+        self.sharing_pin = pin
         self.status = f'Hosting TLS at {broker.address[0]}:{broker.address[1]}'
         return broker.address
 
-    def invite(self, trainer, destination):
+    def export_invitation(self, trainer, destination, advertised_address=None):
+        """Export one friend file. Never guess a friend's address from loopback."""
+        import ipaddress
+        if self.server is None or self.broker is None or self.sharing_pin is None:
+            raise SessionError('Enable secure sharing before exporting a friend invitation.')
+        if advertised_address is None:
+            host, port = self.broker.address
+            try:
+                address = ipaddress.ip_address(host)
+                local = address.is_unspecified or address.is_loopback
+            except ValueError:
+                local = host.lower().rstrip('.') == 'localhost'
+            if local:
+                raise SessionError('Enter an explicit advertised address reachable by your friend.')
+            advertised_address = (host, port)
+        if type(advertised_address) not in (tuple, list) or len(advertised_address) != 2:
+            raise SessionError('Enter an explicit advertised address and port.')
+        connection = {'version': 1,
+                      'endpoint': {'host': advertised_address[0], 'port': advertised_address[1]},
+                      'pin': self.sharing_pin}
+        from .transport import validate_invitation
+        validate_invitation(dict(connection, trainer=trainer, token='0'*64))
+        self.invite(trainer, destination, connection=connection)
+        self.status = ('Friend invitation saved. Send it privately through a trusted channel. '
+                       'Its bundled TLS pin is only trustworthy when received from you through that channel.')
+
+    def invite(self, trainer, destination, *, connection=None):
         import os
         if self.server is None:
             raise ValueError('only the host can issue trainer credentials')
@@ -202,27 +233,17 @@ class DesktopSession:
         identity = self.server.create_identity(trainer)
         fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, 'w') as output:
-            json.dump({'trainer': trainer, 'token': identity['token']}, output)
+            json.dump(dict(connection or {}, trainer=trainer, token=identity['token']), output)
         self.status = 'Trainer invitation saved. Share it privately. Verify the TLS pin separately.'
 
     def connect_remote(self, name, invitation, remote, fingerprint):
         import os
-        import stat
         from .launcher import profile_paths
         from .transport import ClientBroker
         if self.state is not None:
             raise ValueError('disconnect before changing worlds')
-        fd = os.open(invitation, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        with os.fdopen(fd, 'r') as source:
-            info = os.fstat(source.fileno())
-            if not stat.S_ISREG(info.st_mode) or info.st_size > 4096:
-                raise ValueError('invitation must be a small regular JSON file')
-            identity = json.loads(source.read(4097))
-        if (not isinstance(identity, dict) or set(identity) != {'trainer', 'token'}
-                or not isinstance(identity['trainer'], str)
-                or not isinstance(identity['token'], str)
-                or not re.fullmatch(r'[0-9a-fA-F]{64}', identity['token'])):
-            raise ValueError('invalid trainer invitation')
+        from .transport import read_invitation
+        identity = read_invitation(invitation)
         path = self._world(name)
         from .world_library import WorldActivityLock
         with WorldActivityLock(path):
@@ -725,8 +746,9 @@ class DesktopApp:
         actions([('Launch AI-controlled trainer', self.launch_ai)])
         note('Play in the native game window. Save from its menu before disconnecting. Closing the launcher stops only its own games and host. Friend connections use the next tab.')
         page, row = pages['Connect friends'], 0
-        note('Host: first host a world in Play. Enable sharing to create a private TLS identity automatically. Send each friend a private invitation and give them the certificate pin through a trusted channel. Direct hosting requires a reachable address and port. No relay is provided.')
+        note('Host: first host a world in Play, then enable secure sharing. Export one private invitation per friend and send it through a trusted channel. Its bundled TLS pin is trustworthy only when received from you through that channel. For wildcard or local listeners, enter an explicit advertised address reachable by your friend. No relay is provided.')
         field('listen', 'Listen address', '127.0.0.1:8765')
+        field('advertised', 'Advertised friend address (HOST:PORT)')
         field('invite_trainer', 'Friend trainer name', 'bob')
         actions([('Enable secure sharing', self.share), ('Save trainer invitation', self.invite)])
         note('Friend: choose a separate local save name in Play, then enter the host address, trusted pin and invitation here. Connect, then return to Play and launch your assigned trainer.')
@@ -933,7 +955,10 @@ class DesktopApp:
         destination = filedialog.asksaveasfilename(parent=self.window, initialdir=str(self.session.root),
                                                  title='Save private trainer invitation', defaultextension='.json')
         if destination:
-            self.session.invite(self.values()['invite_trainer'], destination)
+            from .transport import _endpoint
+            value = self.values()
+            address = _endpoint(value['advertised']) if value['advertised'] else None
+            self.session.export_invitation(value['invite_trainer'], destination, address)
 
     def connect(self):
         from .transport import _endpoint

@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import secrets
 import socket
+import stat
 import subprocess
 import sys
 import threading
@@ -75,27 +76,22 @@ class LoopbackGateway(ClientBroker):
 
 
 def _invitation(path):
-    def unique(pairs):
-        result = {}
-        for key, value in pairs:
-            if key in result:
-                raise ValueError
-            result[key] = value
-        return result
+    from .transport import read_invitation
+    return read_invitation(path)
+
+
+def _unsafe_profile_path(path, *, directory=False):
     try:
-        with Path(path).open('rb') as stream:
-            raw = stream.read(4097)
-        if len(raw) > 4096:
-            raise ValueError
-        value = json.loads(raw, object_pairs_hook=unique)
-        if (type(value) is not dict or set(value) != {'trainer', 'token'}
-                or type(value['trainer']) is not str
-                or not re.fullmatch(r'[A-Za-z0-9_-]{1,24}', value['trainer'])
-                or type(value['token']) is not str or not _HEX.fullmatch(value['token'])):
-            raise ValueError
-        return value
-    except (OSError, ValueError, TypeError):
-        raise ValueError('invalid invitation') from None
+        info = path.lstat()
+    except FileNotFoundError:
+        return False
+    # Junctions and other Windows reparse points are not necessarily symlinks.
+    if (stat.S_ISLNK(info.st_mode)
+            or getattr(info, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT):
+        return True
+    if directory:
+        return not stat.S_ISDIR(info.st_mode)
+    return not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
 
 
 class _ProfileLock:
@@ -104,7 +100,7 @@ class _ProfileLock:
         self.stream = None
         directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         path = directory / 'profile.lock'
-        if path.is_symlink():
+        if _unsafe_profile_path(path):
             raise RuntimeError('unsafe profile lock')
         stream = path.open('a+b')
         try:
@@ -203,7 +199,9 @@ class WindowsGuestSession:
         namespace = hashlib.sha256(json.dumps([host, port, self.pin],
                                               separators=(',', ':')).encode('utf-8')).hexdigest()
         trainer_directory = hashlib.sha256(self.trainer.encode('ascii')).hexdigest()
-        profile = Path(data_root).absolute() / namespace / trainer_directory
+        # The caller's data root is trusted, including Windows short-name or
+        # junction aliases. Resolve only that boundary, never an untrusted child.
+        profile = Path(data_root).resolve() / namespace / trainer_directory
         self.paths = {'profile': profile, 'save': profile/'game.sav',
                       'settings': profile/'pokeemerald.ini', 'config': profile/'world.conf',
                       'telemetry': profile/'telemetry.json'}
@@ -215,12 +213,14 @@ class WindowsGuestSession:
             if self._profile_lock is not None:
                 return self
             profile = self.paths['profile']
-            if profile.resolve() != profile:
+            if (any(_unsafe_profile_path(path, directory=True)
+                    for path in (profile.parent, profile))
+                    or profile.resolve() != profile):
                 raise ValueError('unsafe profile directory')
             self._profile_lock = _ProfileLock(profile)
             try:
                 for path in self.paths.values():
-                    if path.is_symlink():
+                    if _unsafe_profile_path(path, directory=(path == profile)):
                         raise ValueError('unsafe profile file')
                 telemetry = self.paths['telemetry'].as_posix()
                 if ('\n' in telemetry or '\r' in telemetry
@@ -445,7 +445,7 @@ class GuestWindow:
             self.values[name] = variable
             ttk.Entry(root, textvariable=variable, width=64).grid(
                 row=row, column=1, padx=8, pady=5, sticky='ew')
-        ttk.Button(root, text='Choose invitation', command=self.pick_invitation).grid(row=3, column=2, padx=8)
+        ttk.Button(root, text='Import invitation', command=self.import_invitation).grid(row=3, column=2, padx=8)
         self.buttons = []
         for column, (name, callback) in enumerate((('Join', lambda: self.join('join')),
                                                  ('Rejoin', lambda: self.join('rejoin')),
@@ -456,17 +456,39 @@ class GuestWindow:
         self.status_text = tk.StringVar(master=root, value='Disconnected')
         ttk.Label(root, textvariable=self.status_text, wraplength=600).grid(
             row=5, column=0, columnspan=3, padx=8, pady=8, sticky='w')
-        ttk.Label(root, text='Use your own save. Invitation files contain a private WORLD token.').grid(
+        ttk.Label(root, text=('Use your own save. Invitations contain a private WORLD token.\n'
+                              'A bundled TLS pin is trustworthy only when the invitation came from your host through a trusted channel.'),
+                  wraplength=600).grid(
             row=6, column=0, columnspan=3, padx=8, pady=8, sticky='w')
         root.protocol('WM_DELETE_WINDOW', self.close)
         self.tick()
 
     def pick_invitation(self):
+        """Select a legacy file without changing manually entered connection fields."""
         from tkinter import filedialog
         path = filedialog.askopenfilename(parent=self.root, title='Choose WORLD invitation',
                                           filetypes=[('Invitation JSON', '*.json')])
         if path:
             self.values['Invitation'].set(path)
+
+    def import_invitation(self):
+        from tkinter import filedialog
+        path = filedialog.askopenfilename(parent=self.root, title='Choose WORLD invitation',
+                                          filetypes=[('Invitation JSON', '*.json')])
+        if path:
+            try:
+                invitation = _invitation(path)
+            except ValueError:
+                self.status_text.set('Invalid invitation. Choose a small invitation JSON file from your host.')
+                return
+            if 'endpoint' in invitation:
+                self.values['Host'].set(invitation['endpoint']['host'])
+                self.values['Port'].set(str(invitation['endpoint']['port']))
+                self.values['Pin'].set(invitation['pin'])
+            self.values['Invitation'].set(path)
+            self.status_text.set('Invitation imported. Trust its pin only if received from your host through a trusted channel.'
+                                 if 'endpoint' in invitation else
+                                 'Legacy invitation selected. Enter the host, port and independently trusted TLS pin.')
 
     def join(self, action):
         try:

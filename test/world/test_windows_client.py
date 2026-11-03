@@ -355,6 +355,132 @@ class ProfileTests(unittest.TestCase):
         self.addCleanup(session.close)
         return session
 
+    def test_trusted_root_alias_is_canonicalized_before_profile_checks(self):
+        from pathlib import Path
+        from unittest.mock import patch
+        from world.windows_client import WindowsGuestSession
+        canonical = (self.root/'Local App Data').resolve()
+        alias = self.root/'RUNNER~1'
+        original_resolve = Path.resolve
+
+        def resolve(path, *args, **kwargs):
+            try:
+                suffix = path.relative_to(alias)
+            except ValueError:
+                return original_resolve(path, *args, **kwargs)
+            return original_resolve(canonical/suffix, *args, **kwargs)
+
+        with patch.object(Path, 'resolve', resolve):
+            first = WindowsGuestSession('127.0.0.1', 8765, 'a'*64, self.invitation,
+                                        data_root=alias, binary=self.exe)
+            self.addCleanup(first.close)
+            first.prepare()
+            self.assertEqual(first.paths['profile'].parent.parent, canonical)
+            second = self.session()
+            with self.assertRaisesRegex(RuntimeError, 'profile is already in use'):
+                second.prepare()
+        self.assertNotIn('d'*64, str(first.paths))
+
+    def test_profile_files_and_lock_reject_existing_hardlinks(self):
+        import os
+        for name in ('game.sav', 'pokeemerald.ini', 'world.conf', 'telemetry.json', 'profile.lock'):
+            with self.subTest(name=name):
+                session = self.session()
+                profile = session.paths['profile']
+                profile.mkdir(parents=True, exist_ok=True)
+                outside = self.root/'private-file'
+                outside.write_bytes(b'private content')
+                target = profile/name
+                target.unlink(missing_ok=True)
+                os.link(outside, target)
+                try:
+                    with self.assertRaisesRegex((ValueError, RuntimeError), 'unsafe profile'):
+                        session.prepare()
+                    self.assertEqual(outside.read_bytes(), b'private content')
+                    self.assertIsNone(session.gateway)
+                    self.assertIsNone(session._profile_lock)
+                finally:
+                    session.close()
+                    target.unlink()
+                    outside.unlink()
+
+    def test_reparse_points_are_rejected_even_when_not_symlinks(self):
+        from pathlib import Path
+        import stat
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        original_lstat = Path.lstat
+        for name in ('namespace', 'profile', 'game.sav', 'profile.lock'):
+            with self.subTest(name=name):
+                session = self.session()
+                profile = session.paths['profile']
+                profile.mkdir(parents=True, exist_ok=True)
+                target = profile.parent if name == 'namespace' else (
+                    profile if name == 'profile' else profile/name)
+                if name in ('game.sav', 'profile.lock'):
+                    target.write_bytes(b'private content')
+
+                def lstat(path, *args, **kwargs):
+                    info = original_lstat(path, *args, **kwargs)
+                    if path == target:
+                        return SimpleNamespace(st_mode=info.st_mode, st_nlink=info.st_nlink,
+                                               st_file_attributes=stat.FILE_ATTRIBUTE_REPARSE_POINT)
+                    return info
+
+                with patch.object(Path, 'lstat', lstat):
+                    with self.assertRaisesRegex((ValueError, RuntimeError), 'unsafe profile'):
+                        session.prepare()
+                self.assertIsNone(session.gateway)
+                self.assertIsNone(session._profile_lock)
+                if name == 'game.sav':
+                    target.unlink()
+
+    def test_windows_junction_beneath_trusted_root_is_rejected(self):
+        import os
+        import subprocess
+        if os.name != 'nt':
+            self.skipTest('real junction fixture requires Windows')
+        session = self.session()
+        namespace = session.paths['profile'].parent
+        namespace.parent.mkdir(parents=True)
+        outside = self.root/'outside-junction'
+        outside.mkdir()
+        subprocess.run(['cmd.exe', '/d', '/c', 'mklink', '/J', str(namespace), str(outside)],
+                       check=True, capture_output=True)
+        try:
+            with self.assertRaisesRegex(ValueError, 'unsafe profile directory'):
+                session.prepare()
+            self.assertEqual(list(outside.iterdir()), [])
+        finally:
+            os.rmdir(namespace)
+
+    def test_untrusted_namespace_profile_and_files_reject_symlinks(self):
+        for name in ('namespace', 'profile', 'game.sav', 'profile.lock'):
+            with self.subTest(name=name):
+                session = self.session()
+                profile = session.paths['profile']
+                outside = self.root/('outside-' + name)
+                directory = name in ('namespace', 'profile')
+                if directory:
+                    outside.mkdir()
+                else:
+                    outside.write_bytes(b'private content')
+                target = profile.parent if name == 'namespace' else (
+                    profile if name == 'profile' else profile/name)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if name == 'profile.lock':
+                    target.unlink(missing_ok=True)
+                try:
+                    target.symlink_to(outside, target_is_directory=directory)
+                except OSError as error:
+                    self.skipTest('symlinks unavailable: ' + str(error))
+                try:
+                    with self.assertRaisesRegex((ValueError, RuntimeError), 'unsafe profile'):
+                        session.prepare()
+                    self.assertIsNone(session.gateway)
+                finally:
+                    target.unlink()
+
     def test_profile_created_before_explicit_game_args_and_no_host_save_copy(self):
         session = self.session()
         session.prepare()
@@ -424,7 +550,8 @@ class ProfileTests(unittest.TestCase):
         session = self.session()
         child = Mock()
         child.poll.return_value = None
-        with patch('world.windows_client.subprocess.Popen', return_value=child) as launch:
+        with patch('world.windows_client.subprocess.Popen', return_value=child) as launch, \
+             patch('world.windows_client._request_child_close') as request:
             self.assertIs(session.start(), session)
             command = launch.call_args.args[0]
             self.assertNotIn('--player-control', command)
@@ -436,6 +563,7 @@ class ProfileTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 session.start()
             session.close()
+        request.assert_called_once_with(child)
         child.wait.assert_called()
         session.prepare()
 

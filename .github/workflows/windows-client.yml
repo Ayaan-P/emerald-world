@@ -49,10 +49,6 @@ jobs:
         shell: pwsh
         timeout-minutes: 3
         run: python scripts/restore_upstream_assets.py
-      - name: Compile real native Windows PE with MinGW GCC
-        shell: msys2 {0}
-        timeout-minutes: 25
-        run: make -j4 winwsl PREFIX= CC=gcc CXX=g++ SDL_DIR=/mingw64 OS=Windows_NT WERROR=1
       - name: Set native runtime dependency path
         shell: pwsh
         run: |
@@ -64,6 +60,10 @@ jobs:
         shell: pwsh
         timeout-minutes: 6
         run: python scripts/windows_verify.py --label unit --timeout 240 --report build/verification/unit.json -- python -m unittest discover -s test/world -p "test_windows*.py" -v
+      - name: Compile real native Windows PE with MinGW GCC
+        shell: msys2 {0}
+        timeout-minutes: 25
+        run: make -j4 winwsl PREFIX= CC=gcc CXX=g++ SDL_DIR=/mingw64 OS=Windows_NT WERROR=1
       - name: Verify real Windows frames and GBA-layout saves against baseline
         shell: pwsh
         timeout-minutes: 16
