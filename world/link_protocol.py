@@ -100,6 +100,14 @@ class LinkProtocol:
     def tick(self, *, now=None):
         return self._deliver(self.sessions.tick(now=now).events)
 
+    def reserved(self, trainers):
+        """Read-only host barrier, including offers and between generations.
+
+        Call serially on the authority loop, like process and disconnect.
+        """
+        return any(trainer in entry.participants for trainer in trainers
+                   for entry in self._wire.values())
+
     def disconnect(self, actor, *, now=None):
         return self._deliver(self.sessions.disconnect(actor, now=now).events)
 
