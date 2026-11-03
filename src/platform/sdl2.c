@@ -23,6 +23,8 @@
 #include "platform/settings.h"
 #include "platform/system.h"
 #include "platform/test_state.h"
+#include "platform/world_bridge.h"
+#include "platform/player_control.h"
 
 extern void (*const gIntrTable[])(void);
 
@@ -60,6 +62,12 @@ static u32 sTestFrame;
 static u64 sTestAudioHash;
 static FILE *sTestAudio;
 static FILE *sTestState;
+static const char *sWorldConfigPath;
+static const char *sWorldInputPath;
+static const char *sWorldShotPath;
+static bool sWorldBootstrap;
+static u32 sWorldFrame;
+static const char *sPlayerControlPath;
 
 extern void AgbMain(void);
 
@@ -79,11 +87,42 @@ static void WriteWavHeader(FILE *file, u32 dataSize);
 static void FindDataFiles(void);
 static void ToggleFullscreen(void);
 static int RunTestMode(void);
+static bool ReadTestInput(u16 *outKeys);
+static void WriteFramebufferPPM(const uint16_t *image, const char *path);
+static void WorldBootstrapFrame(void);
+static bool PlayerScreenshot(FILE *file);
+static bool WriteFramebufferStream(const uint16_t *image, FILE *file);
 
 int main(int argc, char **argv)
 {
     if (!ParseArgs(argc, argv))
         return 1;
+
+    if (sPlayerControlPath != NULL && sTestMode)
+    {
+        fprintf(stderr, "Player control requires real-time graphical mode.\n");
+        return 1;
+    }
+    if (!PlayerControl_Init(sPlayerControlPath, sSavePath, WriteTestState, PlayerScreenshot))
+        return 1;
+
+    if (!WorldBridge_Init(sWorldConfigPath))
+        return 1;
+    if (sWorldInputPath != NULL || sWorldShotPath != NULL)
+    {
+        if (!WorldBridge_Enabled() || sTestMode || sWorldInputPath == NULL)
+        {
+            fprintf(stderr, "World bootstrap requires --world-config and --world-input in graphical mode.\n");
+            return 1;
+        }
+        sTestInput = fopen(sWorldInputPath, "r");
+        if (sTestInput == NULL)
+        {
+            fprintf(stderr, "Could not open world bootstrap input.\n");
+            return 1;
+        }
+        sWorldBootstrap = true;
+    }
 
     // Open an output console on Windows. The test mode keeps stdout, which the
     // headless tests can read the game's state from.
@@ -211,14 +250,20 @@ int main(int argc, char **argv)
             while (accumulator >= fixedTimestep)
             {
                 //run game logic, draw frame and process DMAs and vblank
+                WorldBootstrapFrame();
+                PlayerControl_BeforeFrame();
+                WorldBridge_BeforeFrame(sWorldFrame, FALSE);
                 ENTER_VBLANK(); //you must be in VBlank before running a game tick
                 if (!RunMainLoop())
                 {
                     // Soft reset: drop the old sound, and start the next frame with MainLoop
+                    WorldBridge_AfterFrame(sWorldFrame++);
+                    PlayerControl_AfterFrame(sWorldFrame);
                     SDL_ClearQueuedAudio(1);
                     accumulator -= fixedTimestep;
                     continue;
                 }
+                WorldBridge_AfterFrame(sWorldFrame++);
                 if (!isGameStepDrawn)
                 {
                     VDraw(sdlTexture);
@@ -229,6 +274,8 @@ int main(int argc, char **argv)
                 // The sound engine runs once a frame, like in the GBA's VBlank
                 // interrupt, so the music keeps time with the game
                 AudioUpdate();
+
+                PlayerControl_AfterFrame(sWorldFrame);
 
                 accumulator -= fixedTimestep;
             }
@@ -246,9 +293,11 @@ int main(int argc, char **argv)
         SDL_RenderPresent(sdlRenderer);
     }
 
+    WorldBridge_Close();
     CloseSaveFile();
 
     SDL_DestroyWindow(sdlWindow);
+    PlayerControl_Close();
     SDL_Quit();
     return 0;
 }
@@ -437,9 +486,9 @@ static void ToggleFullscreen(void)
 
 u16 Platform_GetKeyInput(void)
 {
-    if (sTestMode)
-        return sTestButtons;
-    return Input_GetButtons(NULL);
+    if (sTestMode || sWorldBootstrap)
+        return WorldBridge_FilterInput(sTestButtons);
+    return WorldBridge_FilterInput(Input_GetButtons(NULL) | PlayerControl_Buttons());
 }
 
 void VDraw(SDL_Texture *texture)
@@ -581,6 +630,16 @@ static bool ParseArgs(int argc, char **argv)
         const char *arg = argv[i];
         const char *value = (i + 1 < argc) ? argv[i + 1] : NULL;
 
+        if ((!value || !strncmp(value, "--", 2)) && !strcmp(arg, "--player-control"))
+        {
+            fprintf(stderr, "Missing player control option value.\n");
+            return false;
+        }
+        if (value == NULL && (!strcmp(arg, "--world-config") || !strcmp(arg, "--world-input") || !strcmp(arg, "--world-shot")))
+        {
+            fprintf(stderr, "Missing world option value.\n");
+            return false;
+        }
         if (strncmp(arg, "--", 2) != 0 || value == NULL)
         {
             fprintf(stderr, "Ignoring argument: %s\n", arg);
@@ -591,6 +650,24 @@ static bool ParseArgs(int argc, char **argv)
         if (strcmp(arg, "--save") == 0)
         {
             sSavePath = value;
+        }
+        else if (strcmp(arg, "--player-control") == 0)
+        {
+            if (sPlayerControlPath != NULL)
+                return false;
+            sPlayerControlPath = value;
+        }
+        else if (strcmp(arg, "--world-config") == 0)
+        {
+            sWorldConfigPath = value;
+        }
+        else if (strcmp(arg, "--world-input") == 0)
+        {
+            sWorldInputPath = value;
+        }
+        else if (strcmp(arg, "--world-shot") == 0)
+        {
+            sWorldShotPath = value;
         }
         else if (strcmp(arg, "--config") == 0)
         {
@@ -762,19 +839,21 @@ static void WriteWavHeader(FILE *file, u32 dataSize)
     fwrite(header, 1, sizeof(header), file);
 }
 
-static void WriteTestScreenshot(const uint16_t *image)
+static void WriteFramebufferPPM(const uint16_t *image, const char *path)
 {
-    char path[512];
-    FILE *file;
-
-    snprintf(path, sizeof(path), "%s/frame_%06u.ppm", sTestShotDir, sTestFrame);
-    file = fopen(path, "wb");
+    FILE *file = fopen(path, "wb");
     if (file == NULL)
     {
         fprintf(stderr, "Could not write screenshot %s\n", path);
         return;
     }
 
+    WriteFramebufferStream(image, file);
+    fclose(file);
+}
+
+static bool WriteFramebufferStream(const uint16_t *image, FILE *file)
+{
     fprintf(file, "P6\n%d %d\n255\n", DISPLAY_WIDTH, DISPLAY_HEIGHT);
     for (int i = 0; i < DISPLAY_WIDTH * DISPLAY_HEIGHT; i++)
     {
@@ -786,7 +865,42 @@ static void WriteTestScreenshot(const uint16_t *image)
         };
         fwrite(rgb, 1, sizeof(rgb), file);
     }
-    fclose(file);
+    return !ferror(file);
+}
+
+static bool PlayerScreenshot(FILE *file)
+{
+    static uint16_t image[DISPLAY_WIDTH * DISPLAY_HEIGHT];
+    memset(image, 0, sizeof(image));
+    DrawFrame(image);
+    return WriteFramebufferStream(image, file);
+}
+
+static void WriteTestScreenshot(const uint16_t *image)
+{
+    char path[512];
+    snprintf(path, sizeof(path), "%s/frame_%06u.ppm", sTestShotDir, sTestFrame);
+    WriteFramebufferPPM(image, path);
+}
+
+// Graphical bootstrap uses the same input grammar, without changing the clock,
+// SDL setup or normal frame cadence. Human keyboard control resumes at EOF.
+static void WorldBootstrapFrame(void)
+{
+    static uint16_t image[DISPLAY_WIDTH * DISPLAY_HEIGHT];
+    if (!sWorldBootstrap || ReadTestInput(&sTestButtons))
+        return;
+    if (sWorldShotPath != NULL)
+    {
+        memset(image, 0, sizeof(image));
+        DrawFrame(image);
+        WriteFramebufferPPM(image, sWorldShotPath);
+    }
+    fclose(sTestInput);
+    sTestInput = NULL;
+    sWorldBootstrap = false;
+    sTestButtons = 0;
+    Input_ReleaseTestInputs();
 }
 
 // Runs the game without a window or audio device until the test input ends.
@@ -804,8 +918,10 @@ static int RunTestMode(void)
     {
         bool ranFrame;
 
+        WorldBridge_BeforeFrame(sTestFrame, TRUE);
         ENTER_VBLANK();
         ranFrame = RunMainLoop();
+        WorldBridge_AfterFrame(sTestFrame);
         memset(image, 0, sizeof(image));
         DrawFrame(image);
         REG_VCOUNT = 161;
@@ -838,6 +954,7 @@ static int RunTestMode(void)
         fclose(sTestAudio);
     }
     fclose(sTestInput);
+    WorldBridge_Close();
     CloseSaveFile();
     return 0;
 }

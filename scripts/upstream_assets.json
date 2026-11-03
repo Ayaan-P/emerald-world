@@ -1,0 +1,9 @@
+{
+  "upstream": "https://github.com/alanb2305/pokeemerald-native",
+  "commit": "a5589b181c0ecab001ac5554079cab1f076fe832",
+  "assets": [
+    {"path": "data/mb_berry_fix.gba", "sha256": "f3d87e14688faf0190b33e071607887c7783462b45f92f1cb7135eec56260740"},
+    {"path": "data/mb_colosseum.gba", "sha256": "d133d340ce7507932bcb3a83f9ee1dd9905072763d493b66db20e1bde4304572"},
+    {"path": "data/mb_ereader.gba", "sha256": "e50d06841b3485282bf772f1cfe2988da2bb476eb26ff5337b467af8a60bdf07"}
+  ]
+}

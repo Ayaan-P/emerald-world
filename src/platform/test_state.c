@@ -10,6 +10,7 @@
 #include "script.h"
 #include "constants/songs.h"
 #include "platform/test_state.h"
+#include "platform/world_bridge.h"
 
 // The song the BGM player is playing, or -1
 static int GetBgmSong(void)
@@ -54,7 +55,13 @@ void WriteTestState(FILE *file, u32 frame)
                 object->currentCoords.y - MAP_OFFSET);
         first = FALSE;
     }
-    fprintf(file, "]}\n");
+    fprintf(file, "]");
+    if (WorldBridge_Enabled())
+    {
+        fprintf(file, ", \"world\": ");
+        WorldBridge_WriteJSON(file, frame);
+    }
+    fprintf(file, "}\n");
     fflush(file);
 }
 #endif // PORTABLE

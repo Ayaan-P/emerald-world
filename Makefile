@@ -145,7 +145,7 @@ ifeq ($(PORTABLE),1)
     OS_CFLAGS :=
     # xinput9_1_0.dll comes with every Windows since Vista; -lxinput would need
     # xinput1_3.dll from the old DirectX redistributable
-    OS_LFLAGS := -lwinmm -lxinput9_1_0
+    OS_LFLAGS := -lwinmm -lxinput9_1_0 -lws2_32
     BUILD_FEXTENSION := .exe
   else ifeq ($(TARGET_OS),MACOS)
     # The game's data is assembled by GNU as, like on Linux, and converted to
