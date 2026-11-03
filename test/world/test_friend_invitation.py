@@ -8,6 +8,80 @@ from world.windows_client import _invitation
 
 
 class InvitationTests(unittest.TestCase):
+    def setUp(self):
+        # Dialog interaction is mocked, not a graphical-runtime acceptance test.
+        try:
+            import tkinter.filedialog
+        except ImportError:
+            import sys
+            import types
+            from unittest.mock import Mock, patch
+            tk = types.ModuleType('tkinter')
+            dialogs = types.ModuleType('tkinter.filedialog')
+            setattr(dialogs, 'askopenfilename', Mock())
+            setattr(dialogs, 'asksaveasfilename', Mock())
+            setattr(tk, 'filedialog', dialogs)
+            modules = patch.dict(sys.modules, {'tkinter': tk, 'tkinter.filedialog': dialogs})
+            modules.start()
+            self.addCleanup(modules.stop)
+
+    def test_linux_graphical_import_populates_join_form_without_connecting(self):
+        import os
+        if not os.environ.get('DISPLAY'):
+            self.skipTest('graphical task display required')
+        import tkinter as tk
+        from world.session import DesktopApp, DesktopSession
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root/'invite.json'
+            path.write_text(json.dumps({'version': 1, 'endpoint': {'host': 'host.example', 'port': 8765},
+                                        'pin': 'b'*64, 'trainer': 'friend', 'token': 'a'*64}))
+            session = DesktopSession(DesktopSession.create_root(root/'worlds'))
+            window = tk.Tk()
+            app = None
+            try:
+                app = DesktopApp(window, session, Path('/usr/bin/false'), None)
+                app.import_friend_invitation(path)
+                window.update()
+                self.assertEqual(app.fields['remote'].get(), 'host.example:8765')
+                self.assertEqual(app.fields['trainer'].get(), 'friend')
+                self.assertEqual(app.fields['invitation'].get(), str(path))
+                self.assertEqual(app.notebook.index(app.notebook.select()), 1)
+                self.assertIsNone(session.state)
+            finally:
+                if app is not None:
+                    app.executor.shutdown(wait=True)
+                session.close()
+                window.destroy()
+
+    def test_linux_import_preserves_settings_on_invalid_or_connected(self):
+        from unittest.mock import Mock
+        from world.session import DesktopApp, SessionError
+        app = DesktopApp.__new__(DesktopApp)
+        app.session = Mock(state=None)
+        app.notebook = Mock()
+        app.message = Mock()
+        app.fields = {key: Mock() for key in ('world', 'remote', 'pin', 'trainer', 'invitation')}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)/'invite.json'
+            path.write_text(json.dumps({'version': 1, 'endpoint': {'host': 'host.example', 'port': 8765},
+                                        'pin': 'b'*64, 'trainer': 'friend', 'token': 'a'*64}))
+            app.import_friend_invitation(path)
+            app.fields['remote'].set.assert_called_once_with('host.example:8765')
+            app.fields['trainer'].set.assert_called_once_with('friend')
+            self.assertTrue(app.fields['world'].set.call_args[0][0].startswith('remote-'))
+            app.notebook.select.assert_called_once_with(1)
+            for variable in app.fields.values():
+                variable.reset_mock()
+            path.write_text('invalid')
+            with self.assertRaises(SessionError):
+                app.import_friend_invitation(path)
+            for variable in app.fields.values():
+                variable.set.assert_not_called()
+            app.session.state = Path(tmp)
+            with self.assertRaises(SessionError):
+                app.import_friend_invitation(path)
+
     def test_versioned_bundle_and_legacy(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp)/'invite.json'

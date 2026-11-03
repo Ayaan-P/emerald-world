@@ -67,6 +67,9 @@ class WorldServer:
             raise
 
     def _initialize(self, socket_path, state_dir, mechanics, admin_path):
+        # Refuse incomplete deployments at startup, not on a player's first STATE.
+        from .build_catalog import catalog_maps
+        catalog_maps()
         self.socket_path = str(socket_path)
         self.root = Path(state_dir).resolve()
         if admin_path is None:

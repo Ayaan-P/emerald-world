@@ -61,7 +61,9 @@ def validate_invitation_host(host):
                        for label in host.removesuffix('.').split('.'))):
             raise ValueError('invalid invitation host') from None
     else:
-        if address.is_unspecified or address.is_multicast or '%' in host:
+        mapped = getattr(address, 'ipv4_mapped', None)
+        if (address.is_unspecified or address.is_multicast or '%' in host
+                or (mapped is not None and (mapped.is_unspecified or mapped.is_multicast))):
             raise ValueError('invalid invitation host')
     return host
 

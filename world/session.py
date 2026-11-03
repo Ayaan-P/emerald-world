@@ -755,6 +755,7 @@ class DesktopApp:
         field('remote', 'Remote host:port', '127.0.0.1:8765')
         field('pin', 'Trusted SHA256 certificate pin')
         field('invitation', 'Private trainer invitation', browse=True)
+        actions([('Import friend invitation', self.import_friend_invitation)])
         actions([('Connect remote TLS', self.connect)])
         page, row = pages['Optional GM'], 0
         note('The adventure and multiplayer work without enabling the GM. Only the host can start Luna. Model: openai-codex/gpt-6-luna.')
@@ -936,6 +937,35 @@ class DesktopApp:
     def disconnect(self):
         self.session.close()
         self.remote_paths = None
+
+    def import_friend_invitation(self, path=None):
+        from .transport import read_invitation
+        if self.session.state is not None:
+            raise SessionError('Disconnect before importing a different world invitation.')
+        if path is None:
+            from tkinter import filedialog
+            path = filedialog.askopenfilename(parent=self.window, title='Import friend invitation')
+        if not path:
+            return
+        try:
+            identity = read_invitation(path)
+        except (OSError, ValueError):
+            raise SessionError('Invalid friend invitation. No connection settings were changed.') from None
+        if 'version' in identity:
+            import hashlib
+            endpoint = identity['endpoint']
+            host = endpoint['host']
+            address = f'[{host}]:{endpoint["port"]}' if ':' in host else f'{host}:{endpoint["port"]}'
+            binding = json.dumps([host, endpoint['port'], identity['pin'].lower()]).encode()
+            self.fields['world'].set('remote-' + hashlib.sha256(binding).hexdigest()[:16])
+            self.fields['remote'].set(address)
+            self.fields['pin'].set(identity['pin'])
+        self.fields['trainer'].set(identity['trainer'])
+        self.fields['invitation'].set(str(path))
+        self.notebook.select(1)
+        self.session.status = ('Invitation imported. Only trust it when received privately from your host. '
+                               'Select Connect remote TLS, then launch your trainer in Play.')
+        self.message.set(self.session.status)
 
     def share(self):
         self.fields['pin'].set(self._share(self.values()))
