@@ -34,8 +34,10 @@ class ManagedDisplay:
         if not os.environ.get('DISPLAY'):
             raise ValueError('DISPLAY must name the desktop where the nested game window should open.')
         # TCP is disabled. Only this dedicated local socket is game-mounted.
+        # The game uses SDL's software renderer. Do not initialize GLX drivers
+        # in the nested display: host GPU plugins need not work in its sandbox.
         self.process = subprocess.Popen(['Xephyr', self.display, '-screen', '1100x760',
-                                         '-ac', '-nolisten', 'tcp', '-noreset'],
+                                         '-ac', '-nolisten', 'tcp', '-noreset', '-extension', 'GLX'],
                                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                         stderr=subprocess.DEVNULL)
         deadline = time.monotonic() + 5

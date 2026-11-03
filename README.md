@@ -1,4 +1,37 @@
-# Pokémon Emerald
+# Emerald World (release candidate)
+
+The default `rc` branch contains the multiplayer client and world host. Each
+trainer has a separate party, inventory and save. This is an experimental build,
+not a complete shared-campaign release. Shared wild and trainer co-op battles
+are not implemented.
+
+## Linux multiplayer
+
+Build the native game using [INSTALL_PC.md](INSTALL_PC.md), then run:
+
+```sh
+python3 scripts/linux_client.py --check
+python3 scripts/linux_client.py
+```
+
+The launcher checks Python tkinter, Bubblewrap, Xephyr, SDL2 and the native game.
+It does not install dependencies. `--install-user` adds an application-menu entry
+pointing to the checkout without copying a game binary or replacing another
+launcher.
+
+To join a host, choose **Connect friends**, then **Import friend invitation**.
+Only import an invitation received privately from your host. The file supplies
+the host address, certificate pin and your trainer identity. Select **Connect
+remote TLS**, then return to **Play** and launch your assigned trainer. You can
+also prefill the form with `python3 scripts/linux_client.py --invitation FILE`.
+Importing a file does not connect or start a game automatically.
+
+Multiplayer saves are kept under `~/.local/share/emerald-world/worlds`, separately
+from standalone Emerald saves. Save through the native game menu before closing.
+Never commit invitations, save files, private keys or generated connection
+configs. The optional AI game master is not required to play.
+
+## Native Emerald port
 
 This is a PC port of Pokémon Emerald, based on the [pret decompilation](https://github.com/pret/pokeemerald).
 The PC port was originally made by [NTx86](https://github.com/NTx86/pokeemerald-sdl2pc).
