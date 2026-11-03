@@ -796,6 +796,8 @@ class DesktopApp:
         actions([('Choose worlds folder', self.choose_root)])
         note('Seed saves are copied only when explicitly selected and never overwrite an existing trainer. Leave blank to start a new adventure or resume. Your personal HOME is never mounted into the native game.')
         self.message = tk.StringVar(value=session.status)
+        from .host_controls import HostControlsPanel
+        self.host_controls = HostControlsPanel(self)
         ttk.Label(frame, text='Live connection and players', font=('Sans', 11, 'bold')).grid(row=3, column=0, sticky='w')
         ttk.Label(frame, textvariable=self.message, wraplength=760, justify='left').grid(row=4, column=0, sticky='w', pady=8)
         self.refresh()
