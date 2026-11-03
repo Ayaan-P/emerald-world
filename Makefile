@@ -164,7 +164,7 @@ ifeq ($(PORTABLE),1)
     # Assembled data holds absolute pointers that get relocated at load time.
     # Keep it in .data.rel.ro (read-only once relocated) rather than .rodata,
     # which would need text relocations.
-    FIX_UNDERSCORE += --rename-section .rodata=.data.rel.ro,alloc,load,contents,data
+    FIX_UNDERSCORE += --rename-section .rodata=.data.rel.ro
   else
     OS_CFLAGS :=
     OS_LFLAGS := -no-pie
