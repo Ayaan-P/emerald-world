@@ -28,6 +28,9 @@
 #include "constants/songs.h"
 #include "constants/trainers.h"
 #include "recorded_battle.h"
+#ifdef PORTABLE
+#include "platform/world_coop.h"
+#endif
 
 static void LinkOpponentHandleGetMonData(void);
 static void LinkOpponentHandleGetRawMonData(void);
@@ -1126,6 +1129,12 @@ static void LinkOpponentHandleLoadMonSprite(void)
 
     gSprites[gBattlerSpriteIds[gActiveBattler]].x2 = -DISPLAY_WIDTH;
     gSprites[gBattlerSpriteIds[gActiveBattler]].data[0] = gActiveBattler;
+#ifdef PORTABLE
+    /* Shared wild entry uses SpriteCB_WildMon, unlike a PvP send-out. Its
+     * front animation consumes this species and saves/restores the marker. */
+    if (WorldCoop_IsBattle())
+        gSprites[gBattlerSpriteIds[gActiveBattler]].data[2] = species;
+#endif
     gSprites[gBattlerSpriteIds[gActiveBattler]].oam.paletteNum = gActiveBattler;
     StartSpriteAnim(&gSprites[gBattlerSpriteIds[gActiveBattler]], gBattleMonForms[gActiveBattler]);
 

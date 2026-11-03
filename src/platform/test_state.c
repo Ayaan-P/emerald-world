@@ -16,6 +16,8 @@
 #include "platform/world_bridge.h"
 #include "platform/world_activity.h"
 #include "platform/native_link.h"
+#include "platform/link_transport.h"
+#include "platform/world_coop.h"
 #include "trade.h"
 
 // The song the BGM player is playing, or -1
@@ -39,9 +41,16 @@ static void WriteOwnParty(FILE *file)
     fprintf(file, ", \"party\": [");
     if (gSaveBlock1Ptr != NULL && gSaveBlock2Ptr != NULL)
     {
-        for (int i = 0; i < gPlayerPartyCount && i < PARTY_SIZE; i++)
+        int count = WorldCoop_IsBattle() ? WorldCoop_GetOwnPartyCount() : gPlayerPartyCount;
+        for (int i = 0; i < count && i < PARTY_SIZE; i++)
         {
+            struct Pokemon copy;
             struct Pokemon *mon = &gPlayerParty[i];
+            if (WorldCoop_IsBattle())
+            {
+                copy = *WorldCoop_GetOwnMon(i);
+                mon = &copy;
+            }
             fprintf(file, "%s{\"slot\": %d, \"species\": %u, \"level\": %u, \"hp\": %u, \"max_hp\": %u, \"status\": %u, \"moves\": [",
                     i ? ", " : "", i, (unsigned)GetMonData(mon, MON_DATA_SPECIES),
                     (unsigned)GetMonData(mon, MON_DATA_LEVEL), (unsigned)GetMonData(mon, MON_DATA_HP),
@@ -52,7 +61,7 @@ static void WriteOwnParty(FILE *file)
                         (unsigned)GetMonData(mon, MON_DATA_MOVE1 + move),
                         (unsigned)GetMonData(mon, MON_DATA_PP1 + move));
             }
-            fprintf(file, "]}");
+            fprintf(file, "], \"exp\": %u}", (unsigned)GetMonData(mon, MON_DATA_EXP));
         }
     }
     fprintf(file, "]");
@@ -71,13 +80,34 @@ static void WritePublicBattle(FILE *file)
         fprintf(file, "null");
         return;
     }
-    fprintf(file, "{\"battle_type_flags\": %u, \"battlers_count\": %u, \"turn\": %u, \"battlers\": [",
-            (unsigned)gBattleTypeFlags, (unsigned)gBattlersCount,
-            (unsigned)gBattleResults.battleTurnCounter);
+    fprintf(file, "{\"battle_type_flags\": %u, \"battlers_count\": %u, \"turn\": ",
+            (unsigned)gBattleTypeFlags, (unsigned)gBattlersCount);
+    /* The slave's engine counter never advances. Do not report it as a turn. */
+    if (WorldCoop_IsBattle() && !(gBattleTypeFlags & BATTLE_TYPE_IS_MASTER))
+        fprintf(file, "null");
+    else
+        fprintf(file, "%u", (unsigned)gBattleResults.battleTurnCounter);
+    fprintf(file, ", \"battlers\": [");
     for (int i = 0; i < gBattlersCount; i++)
     {
         const struct BattlePokemon *mon = &gBattleMons[i];
+        struct BattlePokemon displayedMon = {0};
         unsigned spriteId = gBattlerSpriteIds[i];
+
+        /* A stock link slave has no running combat engine. Observe only the
+         * validated controller projection, still gated by its rendered sprite. */
+        if (WorldCoop_IsBattle() && !(gBattleTypeFlags & BATTLE_TYPE_IS_MASTER))
+        {
+            struct WorldCoopPublicMon view;
+            if (!WorldCoop_GetPublicMon(i, &view))
+                continue;
+            displayedMon.species = view.species;
+            displayedMon.level = view.level;
+            displayedMon.hp = view.hp;
+            displayedMon.maxHP = view.maxHP;
+            displayedMon.status1 = view.status;
+            mon = &displayedMon;
+        }
 
         // During intro/switching the battle mon may already contain unrevealed data.
         // Controllers set sprite data[0]/[2] to battler/species when loading a mon.
@@ -148,10 +178,12 @@ void WriteTestState(FILE *file, u32 frame)
     fprintf(file, "]");
     WriteOwnParty(file);
     WritePublicBattle(file);
-    // Phase and status are fixed local literals, never remote names or payloads.
-    fprintf(file, ", \"activity\": {\"phase\": \"%s\", \"mode\": %u, \"status\": \"%s\", \"link_connected\": %s, \"generation\": %u, \"trade_phase\": \"%s\"}",
+    // Tag names have already passed the identifier-only transport grammar.
+    fprintf(file, ", \"activity\": {\"phase\": \"%s\", \"mode\": %u, \"status\": \"%s\", \"link_connected\": %s, \"generation\": %u, \"trade_phase\": \"%s\", \"tag_peer\": \"%s\", \"tag_in_range\": %s, \"coop\": %s}",
             WorldActivity_Phase(), WorldActivity_Mode(), WorldActivity_Status(),
-            NativeLink_IsConnected() ? "true" : "false", (unsigned)NativeLink_Generation(), TradeMenu_Phase());
+            NativeLink_IsConnected() ? "true" : "false", (unsigned)NativeLink_Generation(), TradeMenu_Phase(),
+            LinkTransport_TagPeer() ? LinkTransport_TagPeer() : "", LinkTransport_TagInRange() ? "true" : "false",
+            WorldCoop_IsBattle() ? "true" : "false");
     if (WorldBridge_Enabled())
     {
         fprintf(file, ", \"world\": ");

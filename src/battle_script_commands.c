@@ -1,4 +1,7 @@
 #include "global.h"
+#ifdef PORTABLE
+#include "platform/world_coop.h"
+#endif
 #include "battle.h"
 #include "battle_message.h"
 #include "battle_anim.h"
@@ -2584,6 +2587,10 @@ void SetMoveEffect(bool8 primary, u8 certain)
                 if (GET_BATTLER_SIDE(gBattlerAttacker) == B_SIDE_PLAYER)
                 {
                     u16 payday = gPaydayMoney;
+#ifdef PORTABLE
+                    if (WorldCoop_IsBattle())
+                        WorldCoop_AddPayday(gBattlerAttacker, gBattleMons[gBattlerAttacker].level * 5);
+#endif
                     gPaydayMoney += (gBattleMons[gBattlerAttacker].level * 5);
                     if (payday > gPaydayMoney)
                         gPaydayMoney = 0xFFFF;
@@ -3264,6 +3271,19 @@ static void Cmd_getexp(void)
     gBattlerFainted = GetBattlerForBattleScript(gBattlescriptCurrInstr[1]);
     sentIn = gSentPokesToOpponent[(gBattlerFainted & 2) >> 1];
 
+#ifdef PORTABLE
+    /* Only the shared engine records a real faint. Each local controller
+     * queues its owner's participation for private native EXP/move learning. */
+    if (WorldCoop_IsBattle())
+    {
+        if (gBattleControllerExecFlags)
+            return;
+        if (GetBattlerSide(gBattlerFainted) == B_SIDE_OPPONENT)
+            WorldCoop_EmitDefeat();
+        gBattlescriptCurrInstr += 2;
+        return;
+    }
+#endif
     switch (gBattleScripting.getexpState)
     {
     case 0: // check if should receive exp at all

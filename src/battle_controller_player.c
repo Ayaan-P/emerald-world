@@ -1,4 +1,7 @@
 #include "global.h"
+#ifdef PORTABLE
+#include "platform/world_coop.h"
+#endif
 #include "battle.h"
 #include "battle_anim.h"
 #include "battle_arena.h"
@@ -881,6 +884,15 @@ static void SetLinkBattleEndCallbacks(void)
 // Despite handling link battles separately, this is only ever used by link battles
 void SetBattleEndCallbacks(void)
 {
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle())
+    {
+        if (!gPaletteFade.active && gBattleControllerExecFlags == 0 && IsLinkTaskFinished()
+         && WorldCoop_ReadyForPrivateRewards())
+            WorldCoop_BeginPrivateRewards();
+        return;
+    }
+#endif
     if (!gPaletteFade.active)
     {
         if (gBattleTypeFlags & BATTLE_TYPE_LINK)
@@ -2727,6 +2739,14 @@ static void PlayerHandleExpUpdate(void)
 {
     u8 monId = gBattleBufferA[gActiveBattler][1];
 
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle())
+    {
+        WorldCoop_RecordDefeat(gBattleBufferA[gActiveBattler]);
+        PlayerBufferExecCompleted();
+        return;
+    }
+#endif
     if (GetMonData(&gPlayerParty[monId], MON_DATA_LEVEL) >= MAX_LEVEL)
     {
         PlayerBufferExecCompleted();

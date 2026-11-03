@@ -38,7 +38,19 @@ static struct {
     uint64_t session, accepting;
     unsigned mode, slot, offered;
     struct LinkTransportInvitation pending;
+    uint64_t tag, tagAccepting;
+    char tagOffered[25], tagPeer[25];
+    int tagRange, coopOwner;
+    struct LinkTransportInvitation tagPending;
 } sLink;
+
+static void ClearTag(void)
+{
+    sLink.tag = sLink.tagAccepting = 0;
+    sLink.tagOffered[0] = sLink.tagPeer[0] = 0;
+    sLink.tagRange = 0;
+    memset(&sLink.tagPending, 0, sizeof(sLink.tagPending));
+}
 
 static int Identifier(const char *p)
 {
@@ -103,6 +115,8 @@ static void Disconnect(void)
     sLink.session = sLink.accepting = 0;
     sLink.offered = 0;
     sLink.mode = sLink.slot = 0;
+    sLink.coopOwner = 0;
+    ClearTag();
     memset(&sLink.pending, 0, sizeof(sLink.pending));
 }
 void LinkTransport_Close(void)
@@ -304,15 +318,62 @@ int LinkTransport_Init(const char *configPath)
     return 1;
 }
 int LinkTransport_Ready(void) { return sLink.ready; }
+unsigned LinkTransport_Mode(void) { return sLink.session ? sLink.mode : 0; }
+int LinkTransport_CoopOwner(void) { return sLink.session && sLink.mode == 4 && sLink.coopOwner; }
+int LinkTransport_OfferPending(void) { return sLink.offered != 0; }
+int LinkTransport_TagOfferPending(void) { return sLink.tagOffered[0] != 0; }
+const LinkTransportInvitation *LinkTransport_PendingTag(void)
+{
+    return sLink.tagPending.id ? &sLink.tagPending : NULL;
+}
+const char *LinkTransport_TagPeer(void) { return sLink.tagPeer[0] ? sLink.tagPeer : NULL; }
+int LinkTransport_TagInRange(void) { return sLink.tagPeer[0] && sLink.tagRange; }
+int LinkTransport_TagOffer(const char *target)
+{
+    char line[64];
+    if (!sLink.ready || sLink.tag || sLink.tagOffered[0] || !Identifier(target)
+     || !strcmp(target, sLink.trainer)) return 0;
+    snprintf(line, sizeof(line), "T OFFER %s\n", target);
+    if (!Queue(line)) return 0;
+    strcpy(sLink.tagOffered, target);
+    return 1;
+}
+int LinkTransport_TagAccept(uint64_t id)
+{
+    char line[64];
+    if (!sLink.ready || !id || id != sLink.tagPending.id || sLink.tagAccepting) return 0;
+    snprintf(line, sizeof(line), "T ACCEPT %" PRIu64 "\n", id);
+    if (!Queue(line)) return 0;
+    sLink.tagAccepting = id;
+    return 1;
+}
+int LinkTransport_TagReject(uint64_t id)
+{
+    char line[64];
+    if (!sLink.ready || !id || id != sLink.tagPending.id || sLink.tagAccepting) return 0;
+    snprintf(line, sizeof(line), "T REJECT %" PRIu64 "\n", id);
+    if (!Queue(line)) return 0;
+    memset(&sLink.tagPending, 0, sizeof(sLink.tagPending));
+    return 1;
+}
+int LinkTransport_TagEnd(void)
+{
+    char line[64];
+    if (!sLink.ready || !sLink.tag) return 0;
+    snprintf(line, sizeof(line), "T END %" PRIu64 "\n", sLink.tag);
+    return Queue(line);
+}
 const struct LinkTransportInvitation *LinkTransport_PendingInvitation(void)
 {
-    return sLink.pending.id ? &sLink.pending : NULL;
+    /* Mode four already has tag consent, including across fragmented reads. */
+    return sLink.pending.id && sLink.pending.mode != 4 ? &sLink.pending : NULL;
 }
 int LinkTransport_Offer(const char *target, unsigned mode)
 {
     char line[64];
     if (!sLink.ready || sLink.session || sLink.pending.id || sLink.offered
-     || !Identifier(target) || !strcmp(target, sLink.trainer) || mode < 1 || mode > 3) return 0;
+     || !Identifier(target) || !strcmp(target, sLink.trainer) || mode < 1 || mode > 4) return 0;
+    if (mode == 4 && (!sLink.tagPeer[0] || strcmp(target, sLink.tagPeer) || !sLink.tagRange)) return 0;
     snprintf(line, sizeof(line), "L OFFER %u %s\n", mode, target);
     if (!Queue(line)) return 0;
     sLink.offered = mode;
@@ -365,7 +426,7 @@ static int Line(char *line)
          || strcmp(t[2], sLink.trainer) || !Decimal(t[3], UINT32_MAX, &a) || strcmp(t[4], "LINK")) return 0;
         sLink.ready = 1; return 1;
     }
-    if (n < 3 || strcmp(t[0], "L")) return 0;
+    if (n < 3 || (strcmp(t[0], "L") && strcmp(t[0], "T"))) return 0;
     if (!strcmp(t[1], "ERROR")) {
         /* Fixed protocol codes, never arbitrary server-provided UI text. */
         static const char *const codes[] = {
@@ -373,15 +434,71 @@ static int Line(char *line)
             "clock_regressed", "conflicting_duplicate", "invalid_actor", "invalid_commands", "invalid_generation",
             "invalid_kind", "invalid_link_generation", "invalid_link_type", "invalid_max_steps", "invalid_presence",
             "invalid_session", "invalid_state", "invalid_step", "invalid_time", "invalid_timeout", "link_type_mismatch",
-            "not_adjacent", "not_host", "not_member", "not_ready", "not_target", "self_offer", "unknown_session"
+            "not_adjacent", "not_host", "not_member", "not_ready", "not_target", "self_offer", "unknown_session",
+            "not_in_range", "malformed", "mode", "slot"
         };
         unsigned i;
-        if (n != 3) return 0;
-        for (i = 0; i < sizeof(codes)/sizeof(codes[0]); i++) if (!strcmp(t[2], codes[i])) {
+        char code[41];
+        size_t j;
+        if (n != 3 || strlen(t[2]) >= sizeof(code)) return 0;
+        for (j = 0; t[2][j]; j++) {
+            char ch = t[2][j];
+            code[j] = ch >= 'A' && ch <= 'Z' ? ch + ('a' - 'A') : ch;
+        }
+        code[j] = 0;
+        for (i = 0; i < sizeof(codes)/sizeof(codes[0]); i++) if (!strcmp(code, codes[i])) {
+            if (!strcmp(t[0], "T")) {
+                /* Crossed offers: the server reserved this incoming offer
+                 * first. BUSY rejects only our outgoing intent, not consent
+                 * the player has yet to give (or just explicitly gave). */
+                if (!strcmp(code, "busy") && sLink.tagOffered[0] && sLink.tag && !sLink.tagPeer[0]) {
+                    sLink.tagOffered[0] = 0;
+                    return 1;
+                }
+                if (!sLink.tagPeer[0]) ClearTag();
+                return 1;
+            }
             if (sLink.session) return 0;
             sLink.offered = 0;
             sLink.accepting = 0;
             memset(&sLink.pending, 0, sizeof(sLink.pending));
+            return 1;
+        }
+        return 0;
+    }
+    if (!strcmp(t[0], "T")) {
+        if (!Decimal(t[2], UINT64_MAX, &sid) || !sid) return 0;
+        if (!strcmp(t[1], "OFFER")) {
+            if (n != 4 || !Identifier(t[3]) || !strcmp(t[3], sLink.trainer)
+             || sLink.tagPeer[0] || sLink.tag) return 0;
+            sLink.tag = sid;
+            sLink.tagPending.id = sid;
+            strcpy(sLink.tagPending.name, t[3]);
+            return 1;
+        }
+        if (!strcmp(t[1], "ACTIVE")) {
+            if (n != 5 || !Identifier(t[3]) || !strcmp(t[3], sLink.trainer)
+             || !Decimal(t[4], 1, &a)) return 0;
+            if (sLink.tagPeer[0])
+                return sid == sLink.tag && !strcmp(t[3], sLink.tagPeer) && a == (unsigned)sLink.tagRange;
+            if (!((sLink.tagAccepting == sid && sLink.tagPending.id == sid
+                   && !strcmp(t[3], sLink.tagPending.name))
+               || (!sLink.tag && sLink.tagOffered[0] && !strcmp(t[3], sLink.tagOffered)))) return 0;
+            sLink.tag = sid;
+            strcpy(sLink.tagPeer, t[3]);
+            sLink.tagRange = (int)a;
+            sLink.tagAccepting = 0; sLink.tagOffered[0] = 0;
+            memset(&sLink.tagPending, 0, sizeof(sLink.tagPending));
+            return 1;
+        }
+        if (!strcmp(t[1], "RANGE")) {
+            if (n != 4 || sid != sLink.tag || !sLink.tagPeer[0] || !Decimal(t[3], 1, &a)) return 0;
+            sLink.tagRange = (int)a;
+            return 1;
+        }
+        if (!strcmp(t[1], "END") && n == 3) {
+            if (sid != sLink.tag && !sLink.tagOffered[0]) return 0;
+            ClearTag();
             return 1;
         }
         return 0;
@@ -395,23 +512,31 @@ static int Line(char *line)
     }
     if (!Decimal(t[2], UINT64_MAX, &sid) || !sid) return 0;
     if (!strcmp(t[1], "OFFER")) {
-        if (n != 5 || !Decimal(t[3], 3, &a) || !a || !Identifier(t[4]) || !strcmp(t[4], sLink.trainer)
-         || sLink.session || sLink.offered) return 0;
+        if (n != 5 || !Decimal(t[3], 4, &a) || !a || !Identifier(t[4]) || !strcmp(t[4], sLink.trainer)
+         || sLink.session) return 0;
+        if (a == 4 && (!sLink.tagPeer[0] || strcmp(t[4], sLink.tagPeer))) return 0;
+        if (sLink.offered && !(a == 4 && sLink.offered == 4)) return 0;
         if (sLink.pending.id && (sLink.pending.id != sid || sLink.pending.mode != a || strcmp(sLink.pending.name,t[4]))) return 0;
         sLink.pending.id = sid; sLink.pending.mode = (unsigned)a; strcpy(sLink.pending.name,t[4]); return 1;
     }
     if (!strcmp(t[1], "ADMIT")) {
-        if (n != 5 || !Decimal(t[3], 3, &a) || !a || !Decimal(t[4], 1, &b)) return 0;
+        if (n != 5 || !Decimal(t[3], 4, &a) || !a || !Decimal(t[4], 1, &b)) return 0;
         if (sLink.session) return sid == sLink.session && a == sLink.mode && b == sLink.slot;
-        if (!((sLink.accepting == sid && sLink.pending.mode == a) || sLink.offered == a)) return 0;
+        if (a == 4 && !sLink.tagPeer[0]) return 0;
+        if (!((sLink.accepting == sid && sLink.pending.mode == a) || sLink.offered == a
+           || (a == 4 && sLink.tagPeer[0] && sLink.pending.id == sid
+               && sLink.pending.mode == 4 && !strcmp(sLink.pending.name, sLink.tagPeer)))) return 0;
+        sLink.coopOwner = a == 4 && sLink.pending.id != sid;
         sLink.session = sid; sLink.mode = (unsigned)a; sLink.slot = (unsigned)b;
         if (!NativeLink_Admit(sid, (unsigned)a, (unsigned)b)) return 0;
         sLink.offered = 0; sLink.accepting = 0; memset(&sLink.pending, 0, sizeof(sLink.pending)); return 1;
     }
     if (!strcmp(t[1], "ABORT") && n == 3) {
+        if (!sLink.session && sLink.offered == 4) sLink.offered = 0;
         if (sid == sLink.session) {
             NativeLink_EndSession(sid);
             sLink.session = 0; sLink.mode = sLink.slot = 0;
+            sLink.coopOwner = 0;
         }
         if (sid == sLink.pending.id) { sLink.accepting = 0; memset(&sLink.pending, 0, sizeof(sLink.pending)); }
         return 1;

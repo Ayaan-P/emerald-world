@@ -1,4 +1,7 @@
 #include "global.h"
+#ifdef PORTABLE
+#include "platform/world_coop.h"
+#endif
 #include "malloc.h"
 #include "battle.h"
 #include "battle_anim.h"
@@ -1205,6 +1208,10 @@ static void DrawCancelConfirmButtons(void)
 
 bool8 IsMultiBattle(void)
 {
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle() && gMain.inBattle)
+        return TRUE;
+#endif
     if (gBattleTypeFlags & BATTLE_TYPE_MULTI && gBattleTypeFlags & BATTLE_TYPE_DOUBLE && gBattleTypeFlags & BATTLE_TYPE_TRAINER && gMain.inBattle)
         return TRUE;
     else
@@ -6086,6 +6093,10 @@ static void UpdatePartyToBattleOrder(void)
     for (i = 0; i < PARTY_SIZE; i++)
         memcpy(&gPlayerParty[GetPartyIdFromBattlePartyId(i)], &partyBuffer[i], sizeof(struct Pokemon));
     Free(partyBuffer);
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle())
+        WorldCoop_SetPartyMenuOrder(TRUE);
+#endif
 }
 
 static void UpdatePartyToFieldOrder(void)
@@ -6097,6 +6108,10 @@ static void UpdatePartyToFieldOrder(void)
     for (i = 0; i < PARTY_SIZE; i++)
         memcpy(&gPlayerParty[GetPartyIdFromBattleSlot(i)], &partyBuffer[i], sizeof(struct Pokemon));
     Free(partyBuffer);
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle())
+        WorldCoop_SetPartyMenuOrder(FALSE);
+#endif
 }
 
 static void UNUSED SwitchAliveMonIntoLeadSlot(void)

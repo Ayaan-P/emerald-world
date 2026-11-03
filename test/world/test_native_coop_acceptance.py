@@ -1,0 +1,103 @@
+"""Fail-closed checks for the disposable native co-op acceptance harness."""
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+import tempfile
+import unittest
+
+
+class AcceptanceGuards(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('coop_acceptance', Path(__file__).with_name('native_coop_acceptance.py'))
+        assert spec is not None and spec.loader is not None
+        self.module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.module)
+
+    def test_readiness_requires_explicit_success_and_matching_binary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            binary, marker = Path(tmp)/'binary', Path(tmp)/'marker.json'
+            binary.write_bytes(b'not executed')
+            with self.assertRaises((ValueError, FileNotFoundError)):
+                self.module.require_ready(marker, binary)
+            for value in ({'ok': False}, {'ok': True, 'binary_sha256': '0'*64}):
+                marker.write_text(json.dumps(value))
+                with self.assertRaises(ValueError):
+                    self.module.require_ready(marker, binary)
+            digest = hashlib.sha256(binary.read_bytes()).hexdigest()
+            marker.write_text(json.dumps({'ok': True, 'binary_sha256': digest}))
+            self.assertEqual(self.module.require_ready(marker, binary), digest)
+
+    def test_fixture_changes_display_identity_only_and_seed_stays_unchanged(self):
+        seed = self.module.RESEARCH/'baseline/fixture-firstbattle.sav'
+        before_hash = self.module.sha(seed)
+        original = self.module.saved_party(seed)
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp)/'alice.sav'
+            changed = self.module.identity_fixture(seed, target, 'alice')
+            self.assertEqual(changed[0]['name'], 'STARTALICE')
+            self.assertEqual(self.module.savecheck.Save(target).name, 'ALICE')
+            self.assertEqual([{k:v for k,v in m.items() if k != 'name'} for m in changed],
+                             [{k:v for k,v in m.items() if k != 'name'} for m in original])
+        self.assertEqual(self.module.sha(seed), before_hash)
+
+    def test_debugger_is_inside_bwrap_not_an_external_attach(self):
+        binary = Path('/example/game')
+        command = ['bwrap','--unshare-all','--new-session','--chdir','/profile','--',str(binary),'--save','/profile/test.sav']
+        wrapped = self.module.debug_command(command, binary)
+        self.assertGreater(wrapped.index('/usr/bin/gdb'), wrapped.index('--'))
+        self.assertGreater(wrapped.index(str(binary)), wrapped.index('--args'))
+        self.assertNotIn('-p', wrapped)
+        self.assertIn('--new-session', wrapped)
+        self.assertIn('p sCoop.state', wrapped)
+        self.assertNotIn('p sCoop', wrapped)
+        self.assertIn('p gBattlerControllerFuncs', wrapped)
+
+    def test_debug_abort_stop_is_opt_in_and_precedes_execution(self):
+        import inspect
+        self.assertIn('stop_on_abort', inspect.signature(self.module.debug_command).parameters)
+        binary = Path('/example/game')
+        command = ['bwrap', '--unshare-all', '--', str(binary)]
+        normal = self.module.debug_command(command.copy(), binary)
+        stopped = self.module.debug_command(command.copy(), binary, stop_on_abort=True)
+        breakpoint = "break NativeLink_Abort if 'native_link.c'::s.session != 0"
+        self.assertNotIn(breakpoint, normal)
+        self.assertLess(stopped.index(breakpoint), stopped.index('run'))
+
+    def test_debug_interrupt_selects_only_the_owned_native_inferior(self):
+        records = {100: (1, 'bwrap', 100), 101: (100, 'gdb', 100),
+                   102: (101, 'pokeemerald64', 102),
+                   999: (1, 'pokeemerald64', 999)}
+        self.assertEqual(self.module.owned_native_processes(100, 'pokeemerald64', records), [102])
+        self.assertEqual(self.module.owned_native_processes(200, 'pokeemerald64', records), [])
+
+    def test_field_interaction_waits_for_the_completed_step(self):
+        state = dict(overworld=1, locked=0, script=0, battle=0, fade=0, moving=1)
+        self.assertFalse(self.module.field_free(state))
+        state['moving'] = 0
+        self.assertTrue(self.module.field_free(state))
+
+    def test_shared_battle_rejects_pvp_and_requires_both_allies(self):
+        def state(flags=67):
+            return {'battle': 1, 'activity': {'coop': True}, 'party': [{'species': 277}],
+                    'battle_state': {'battle_type_flags': flags, 'battlers_count': 4,
+                    'battlers': [{'battler': 0, 'side': 0, 'species': 277, 'level': 5},
+                                 {'battler': 2, 'side': 0, 'species': 277, 'level': 5},
+                                 {'battler': 1, 'side': 1, 'species': 288, 'level': 2}]}}
+        states = {'alice': state(), 'bob': state()}
+        self.module.validate_shared_battle(states, {'alice': 1, 'bob': 1})
+        states['bob'] = state(75)
+        with self.assertRaises(AssertionError):
+            self.module.validate_shared_battle(states, {'alice': 1, 'bob': 1})
+        states['bob'] = state()
+        states['bob']['battle_state']['battlers'][1]['side'] = 1
+        with self.assertRaises(AssertionError):
+            self.module.validate_shared_battle(states, {'alice': 1, 'bob': 1})
+        states['bob'] = state()
+        states['bob']['party'].append({'species': 277})
+        with self.assertRaises(AssertionError):
+            self.module.validate_shared_battle(states, {'alice': 1, 'bob': 1})
+
+
+if __name__ == '__main__':
+    unittest.main()

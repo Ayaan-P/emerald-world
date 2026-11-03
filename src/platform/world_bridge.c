@@ -726,7 +726,10 @@ static void SendState(void)
     char party[17], bag[17];
     bool8 ready;
     if (!sWorld.connected || sWorld.outputSize) return;
-    ready = sWorld.fieldKnown && PresenceReady();
+    /* Pending encounters lock controls but retain authoritative tag range.
+     * Never revive a revoked or unsafe field position. */
+    ready = sWorld.fieldKnown && Overworld()
+        && (PresenceReady() || WorldActivity_IsEncounterPending());
     Fingerprint(gPlayerParty, sizeof(gPlayerParty), party);
     if (gSaveBlock1Ptr)
         Fingerprint(gSaveBlock1Ptr->bagPocket_Items,

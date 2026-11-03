@@ -1,4 +1,9 @@
 #include "global.h"
+#ifdef PORTABLE
+#include "platform/world_coop.h"
+#include "platform/native_link.h"
+#include "platform/world_activity.h"
+#endif
 #include "battle.h"
 #include "battle_anim.h"
 #include "battle_ai_script_commands.h"
@@ -65,6 +70,12 @@ extern const struct BgTemplate gBattleBgTemplates[];
 extern const struct WindowTemplate *const gBattleWindowTemplates[];
 
 static void CB2_InitBattleInternal(void);
+#ifdef PORTABLE
+static void CB2_HandleStartCoopBattle(void);
+static void CoopPrivateRewards(void);
+static void FreeRestoreBattleData(void);
+static bool8 sCoopPayoffDone;
+#endif
 static void CB2_PreInitMultiBattle(void);
 static void CB2_PreInitIngamePlayerPartnerBattle(void);
 static void CB2_HandleStartMultiPartnerBattle(void);
@@ -593,6 +604,15 @@ void CB2_InitBattle(void)
     AllocateMonSpritesGfx();
     RecordedBattle_ClearFrontierPassFlag();
 
+#ifdef PORTABLE
+    /* The validated co-op exchange already staged both parties. Do not enter
+     * the four-player selection/VS/Frontier setup or exchange them again. */
+    if (WorldCoop_IsBattle())
+    {
+        CB2_InitBattleInternal();
+        return;
+    }
+#endif
     if (gBattleTypeFlags & BATTLE_TYPE_MULTI)
     {
         if (gBattleTypeFlags & BATTLE_TYPE_RECORDED)
@@ -670,6 +690,10 @@ static void CB2_InitBattleInternal(void)
     gBattle_BG3_Y = 0;
 
     gBattleEnvironment = BattleSetup_GetEnvironmentId();
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle())
+        gBattleEnvironment = WorldCoop_Environment();
+#endif
     if (gBattleTypeFlags & BATTLE_TYPE_RECORDED)
         gBattleEnvironment = BATTLE_ENVIRONMENT_BUILDING;
 
@@ -683,6 +707,11 @@ static void CB2_InitBattleInternal(void)
     SetVBlankCallback(VBlankCB_Battle);
     SetUpBattleVarsAndBirchZigzagoon();
 
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle())
+        SetMainCallback2(CB2_HandleStartCoopBattle);
+    else
+#endif
     if (gBattleTypeFlags & BATTLE_TYPE_MULTI && gBattleTypeFlags & BATTLE_TYPE_BATTLE_TOWER)
         SetMainCallback2(CB2_HandleStartMultiPartnerBattle);
     else if (gBattleTypeFlags & BATTLE_TYPE_MULTI && gBattleTypeFlags & BATTLE_TYPE_INGAME_PARTNER)
@@ -1862,6 +1891,24 @@ static void CB2_HandleStartMultiBattle(void)
 
 void BattleMainCB2(void)
 {
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle() && !NativeLink_IsActive())
+    {
+        /* A normal partner close may overtake our final COMMIT receipt.
+         * Both validated READY records already made the result durable. */
+        if (WorldCoop_CompletionCommitted())
+        {
+            WorldCoop_BeginPrivateRewards();
+            return;
+        }
+        /* Incomplete battles retain the untouched private rollback boundary. */
+        WorldCoop_Abort();
+        FreeAllWindowBuffers();
+        FreeRestoreBattleData();
+        WorldActivity_ReturnToField();
+        return;
+    }
+#endif
     AnimateSprites();
     BuildOamBuffer();
     RunTextPrinters();
@@ -3109,6 +3156,13 @@ static void BattleStartClearSetData(void)
     gBattleScripting.animTargetsHit = 0;
     gLeveledUpInBattle = 0;
     gAbsentBattlerFlags = 0;
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle())
+    {
+        gAbsentBattlerFlags = 1 << B_POSITION_OPPONENT_RIGHT;
+        memset(&gBattleMons[B_POSITION_OPPONENT_RIGHT], 0, sizeof(struct BattlePokemon));
+    }
+#endif
     gBattleStruct->runTries = 0;
     gBattleStruct->safariGoNearCounter = 0;
     gBattleStruct->safariPkblThrowCounter = 0;
@@ -3360,6 +3414,15 @@ static void BattleIntroGetMonsData(void)
     {
     case 0:
         gActiveBattler = gBattleCommunication[1];
+#ifdef PORTABLE
+        /* Co-op has one actual wild mon. Its absent right-hand slot has no
+         * party data and must not solicit an empty BattlePokemon reply. */
+        if (WorldCoop_IsBattle() && (gAbsentBattlerFlags & gBitTable[gActiveBattler]))
+        {
+            gBattleCommunication[MULTIUSE_STATE]++;
+            break;
+        }
+#endif
         BtlController_EmitGetMonData(B_COMM_TO_CONTROLLER, REQUEST_ALL_BATTLE, 0);
         MarkBattlerForControllerExec(gActiveBattler);
         gBattleCommunication[MULTIUSE_STATE]++;
@@ -3400,6 +3463,10 @@ static void BattleIntroDrawTrainersOrMonsSprites(void)
 
     for (gActiveBattler = 0; gActiveBattler < gBattlersCount; gActiveBattler++)
     {
+#ifdef PORTABLE
+        if (WorldCoop_IsBattle() && gActiveBattler == B_POSITION_OPPONENT_RIGHT)
+            continue;
+#endif
         if ((gBattleTypeFlags & BATTLE_TYPE_SAFARI)
             && GetBattlerSide(gActiveBattler) == B_SIDE_PLAYER)
         {
@@ -5099,6 +5166,15 @@ static void HandleEndTurn_FinishBattle(void)
 {
     if (gCurrentActionFuncId == B_ACTION_TRY_FINISH || gCurrentActionFuncId == B_ACTION_FINISHED)
     {
+#ifdef PORTABLE
+        if (WorldCoop_IsBattle())
+        {
+            /* End-link controllers drain acknowledgements and hand off to
+             * private progression. Keep sprites/resources alive for EXP. */
+            gBattleMainFunc = BeginBattleIntroDummy;
+            return;
+        }
+#endif
         if (!(gBattleTypeFlags & (BATTLE_TYPE_LINK
                                   | BATTLE_TYPE_RECORDED_LINK
                                   | BATTLE_TYPE_FIRST_BATTLE
@@ -5279,3 +5355,97 @@ void RunBattleScriptCommands(void)
     if (gBattleControllerExecFlags == 0)
         gBattleScriptingCommandsTable[gBattlescriptCurrInstr[0]]();
 }
+
+#ifdef PORTABLE
+static void CB2_HandleStartCoopBattle(void)
+{
+    RunTasks();
+    AnimateSprites();
+    BuildOamBuffer();
+    if (!NativeLink_IsActive())
+    {
+        WorldCoop_Abort();
+        FreeAllWindowBuffers();
+        FreeRestoreBattleData();
+        WorldActivity_ReturnToField();
+        return;
+    }
+    if (gBattleCommunication[MULTIUSE_STATE] == 0)
+    {
+        /* Match stock battle entry after the background tilemap DMA. Without
+         * this phase BG0 (text/actions) and the battlefield stay disabled. */
+        if (IsDma3ManagerBusyWithBgCopy())
+            return;
+        ShowBg(0);
+        ShowBg(1);
+        ShowBg(2);
+        ShowBg(3);
+        FillAroundBattleWindows();
+        InitBattleControllers();
+        memset(gEnigmaBerries, 0, sizeof(gEnigmaBerries));
+        gBattleCommunication[SPRITES_INIT_STATE1] = 0;
+        gBattleCommunication[SPRITES_INIT_STATE2] = 0;
+        gBattleCommunication[MULTIUSE_STATE] = 1;
+    }
+    if (BattleInitAllSprites(&gBattleCommunication[SPRITES_INIT_STATE1], &gBattleCommunication[SPRITES_INIT_STATE2]))
+    {
+        gPreBattleCallback1 = NULL;
+        gMain.callback1 = BattleMainCB1;
+        SetMainCallback2(BattleMainCB2);
+        gBattleTypeFlags |= BATTLE_TYPE_LINK_IN_BATTLE;
+    }
+}
+
+static const u8 sCoopExpScript[] =
+{
+    B_SCR_OP_GETEXP, BS_OPPONENT1,
+    B_SCR_OP_END2,
+};
+
+static void CoopPrivateRewards(void)
+{
+    if (gPaletteFade.active || gBattleControllerExecFlags)
+        return;
+    if (WorldCoop_NextReward())
+        BattleScriptExecute(sCoopExpScript);
+    else if (!sCoopPayoffDone && gBattleOutcome == B_OUTCOME_WON)
+    {
+        sCoopPayoffDone = TRUE;
+        BattleScriptExecute(BattleScript_PayDayMoneyAndPickUpItems);
+    }
+    else
+    {
+        BeginFastPaletteFade(3);
+        gBattleMainFunc = FreeResetData_ReturnToOvOrDoEvolutions;
+        gCB2_AfterEvolution = BattleMainCB2;
+    }
+}
+
+void WorldCoop_BeginPrivateRewards(void)
+{
+    u8 localBattler = gBattleScripting.multiplayerId * 2;
+    if (localBattler == 2)
+    {
+        /* Reuse the owner's existing sprites/healthbox for native EXP bars.
+         * No remote mon is imported into the private party. */
+        gBattlerSpriteIds[0] = gBattlerSpriteIds[2];
+        gHealthboxSpriteIds[0] = gHealthboxSpriteIds[2];
+    }
+    sCoopPayoffDone = !WorldCoop_PreparePrivateRewards();
+    ResetTasks();
+    gBattlersCount = 2;
+    gBattlerPositions[0] = B_POSITION_PLAYER_LEFT;
+    gBattlerPositions[1] = B_POSITION_OPPONENT_LEFT;
+    gAbsentBattlerFlags = 0;
+    gLeveledUpInBattle = 0;
+    gActiveBattler = 0;
+    SetControllerToPlayer();
+    gBattlerControllerFuncs[1] = BattleControllerDummy;
+    gBattleResources->battleScriptsStack->size = 0;
+    gBattleResources->battleCallbackStack->size = 0;
+    gMain.callback1 = BattleMainCB1;
+    gBattleMainFunc = CoopPrivateRewards;
+    BeginNormalPaletteFade(PALETTES_ALL, 0, 16, 0, RGB_BLACK);
+    SetMainCallback2(BattleMainCB2);
+}
+#endif

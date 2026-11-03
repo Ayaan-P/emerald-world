@@ -447,6 +447,9 @@ class WorldServer:
                 self.pending_states[conn['id']] = data
             self._flush_states(force=False)
             conn['seq'], conn['state'], conn['field'] = seq, state, field
+            self._deliver_links(self.link_protocol.update_presence({
+                name: peer['state'] for name, peer in self.peers.items()
+                if peer['state'] is not None and not peer.get('closing')}))
             self._broadcast()
         except (UnicodeError, ValueError):
             self._error(conn, 'MALFORMED')
@@ -469,15 +472,17 @@ class WorldServer:
         # Only connected native link peers may be invited. CONTROL connections
         # neither approve requests nor contribute native engine rounds.
         fields = raw.split(b' ')
-        if len(fields) == 4 and fields[:2] == [b'L', b'OFFER']:
+        if ((len(fields) == 4 and fields[:2] == [b'L', b'OFFER'])
+                or (len(fields) == 3 and fields[:2] == [b'T', b'OFFER'])):
             try:
-                target = fields[3].decode('ascii')
+                target = fields[-1].decode('ascii')
             except UnicodeError:
                 target = None
             other = self.link_channels.get(target)
             if (other is None or other.get('closing')
                     or self.peers.get(target) is not other.get('presence')):
-                self._queue(conn, 'L ERROR UNAVAILABLE\n')
+                channel = 'T' if fields[0] == b'T' else 'L'
+                self._queue(conn, f'{channel} ERROR UNAVAILABLE\n')
                 return
         presence = {name: peer['state'] for name, peer in self.peers.items()
                     if peer['state'] is not None and not peer.get('closing')}

@@ -115,7 +115,7 @@ bool16 AddTextPrinterParameterized(u8 window, u8 font, const u8 *text,
 {
     u8 expected[64];
     Encode(expected, "PC mons at a Pokemon Center");
-    if (y == 128 && !memcmp(expected, text, sizeof("PC mons at a Pokemon Center")))
+    if (y == 144 && !memcmp(expected, text, sizeof("PC mons at a Pokemon Center")))
         fieldStorageHint = TRUE;
     return FALSE;
 }
@@ -187,7 +187,7 @@ int main(void)
     sActivity.timer = 1;
     sActivity.window = 3;
     sActivity.task = 2;
-    selection = 5;
+    selection = 6;
     Task_Menu(2);
     assert(startedScript == WorldActivity_EventScript_StoragePC);
     assert(sActivity.state == IDLE && !WorldActivity_OwnsFieldInput());
@@ -207,12 +207,12 @@ int main(void)
     assert(!startedScript && sActivity.state == IDLE);
     assert(offers == 0 && accepts == 0 && aborts == 0);
 
-    /* The opening A never selects anything, and Cancel keeps its old index. */
+    /* Opening A is inert; Cancel follows Tag and remains distinct from PC. */
     sActivity.state = MENU;
     sActivity.timer = 0;
     Task_Menu(2);
     assert(sActivity.state == MENU && !startedScript);
-    selection = 4;
+    selection = 5;
     Task_Menu(2);
     assert(sActivity.state == IDLE && !startedScript);
     assert(offers == 0 && accepts == 0 && aborts == 0);
@@ -223,12 +223,12 @@ int main(void)
     save.location.mapNum = MAP_NUM(MAP_OLDALE_TOWN_POKEMON_CENTER_1F);
     sActivity.state = MENU;
     assert(ShowMenu(FALSE));
-    assert(choices == 6 && initialCursor == 0 && menuHeight == 18);
+    assert(choices == 7 && initialCursor == 0 && menuHeight == 20);
     CloseMenu();
     save.location.mapGroup = MAP_GROUP(MAP_ROUTE101);
     save.location.mapNum = MAP_NUM(MAP_ROUTE101);
     assert(ShowMenu(FALSE));
-    assert(choices == 5 && fieldStorageHint);
+    assert(choices == 6 && fieldStorageHint);
     CloseMenu();
     sActivity.mode = NATIVE_LINK_TRADE;
     assert(ShowMenu(TRUE));
