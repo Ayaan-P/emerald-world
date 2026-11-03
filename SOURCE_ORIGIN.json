@@ -1,0 +1,6 @@
+{
+  "repository": "https://github.com/alanb2305/pokeemerald-native",
+  "pinned_commit": "a5589b181c0ecab001ac5554079cab1f076fe832",
+  "publication": "Source-only snapshot. ROM resources, game binaries, saves and local Git history are not published.",
+  "assets_manifest": "scripts/upstream_assets.json"
+}
