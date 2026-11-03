@@ -11,6 +11,7 @@
 
 #include <SDL2/SDL.h>
 
+#include "platform/native_file.h"
 #include "global.h"
 #include "platform.h"
 #include "rtc.h"
@@ -23,6 +24,12 @@
 #include "platform/settings.h"
 #include "platform/system.h"
 #include "platform/test_state.h"
+#include "platform/world_bridge.h"
+#include "platform/world_activity.h"
+#include "platform/player_control.h"
+#include "platform/native_link.h"
+#include "platform/link_transport.h"
+#include "link.h"
 
 extern void (*const gIntrTable[])(void);
 
@@ -60,6 +67,12 @@ static u32 sTestFrame;
 static u64 sTestAudioHash;
 static FILE *sTestAudio;
 static FILE *sTestState;
+static const char *sWorldConfigPath;
+static const char *sWorldInputPath;
+static const char *sWorldShotPath;
+static bool sWorldBootstrap;
+static u32 sWorldFrame;
+static const char *sPlayerControlPath;
 
 extern void AgbMain(void);
 
@@ -79,11 +92,66 @@ static void WriteWavHeader(FILE *file, u32 dataSize);
 static void FindDataFiles(void);
 static void ToggleFullscreen(void);
 static int RunTestMode(void);
+static bool ReadTestInput(u16 *outKeys);
+static void WriteFramebufferPPM(const uint16_t *image, const char *path);
+static void WorldBootstrapFrame(void);
+static bool PlayerScreenshot(FILE *file);
+static bool WriteFramebufferStream(const uint16_t *image, FILE *file);
 
+static const char *WindowTitle(void)
+{
+    static char title[96];
+    const char *trainer = WorldBridge_TrainerName();
+
+    // This labels the validated local configuration, not connection status.
+    snprintf(title, sizeof(title), "Emerald World | %s | %s",
+             trainer != NULL ? trainer : "Local trainer",
+             sPlayerControlPath != NULL ? "AI player" : "Human");
+    return title;
+}
+
+static bool BeginNativeFrame(bool8 headless)
+{
+    WorldBridge_Poll(headless);
+    LinkTransport_Pump();
+    return NativeLink_BeforeFrame(gSendCmd);
+}
+
+/* SDL2 main/windows/SDL_windows_main.c converts CommandLineToArgvW output
+ * with WIN_StringToUTF8W before calling SDL_main (the SDL.h main macro).
+ * Keep argv and SDL_GetPrefPath UTF-8; NativeFile_Open performs the OS conversion. */
 int main(int argc, char **argv)
 {
     if (!ParseArgs(argc, argv))
         return 1;
+
+    if (sPlayerControlPath != NULL && sTestMode)
+    {
+        fprintf(stderr, "Player control requires real-time graphical mode.\n");
+        return 1;
+    }
+    if (!PlayerControl_Init(sPlayerControlPath, sSavePath, WriteTestState, PlayerScreenshot))
+        return 1;
+
+    if (!WorldBridge_Init(sWorldConfigPath))
+        return 1;
+    if (!LinkTransport_Init(sWorldConfigPath))
+        return 1;
+    if (sWorldInputPath != NULL || sWorldShotPath != NULL)
+    {
+        if (!WorldBridge_Enabled() || sTestMode || sWorldInputPath == NULL)
+        {
+            fprintf(stderr, "World bootstrap requires --world-config and --world-input in graphical mode.\n");
+            return 1;
+        }
+        sTestInput = NativeFile_Open(sWorldInputPath, "r");
+        if (sTestInput == NULL)
+        {
+            fprintf(stderr, "Could not open world bootstrap input.\n");
+            return 1;
+        }
+        sWorldBootstrap = true;
+    }
 
     // Open an output console on Windows. The test mode keeps stdout, which the
     // headless tests can read the game's state from.
@@ -121,7 +189,7 @@ int main(int argc, char **argv)
         FILE *mappings;
 
         snprintf(path, sizeof(path), "%sgamecontrollerdb.txt", sDataDir);
-        mappings = fopen(path, "r");
+        mappings = NativeFile_Open(path, "r");
         if (mappings != NULL)
         {
             fclose(mappings);
@@ -131,7 +199,7 @@ int main(int argc, char **argv)
     }
 
     videoScale = gSettings.scale;
-    sdlWindow = SDL_CreateWindow("pokeemerald", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, DISPLAY_WIDTH * videoScale, DISPLAY_HEIGHT * videoScale,
+    sdlWindow = SDL_CreateWindow(WindowTitle(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, DISPLAY_WIDTH * videoScale, DISPLAY_HEIGHT * videoScale,
                                  SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | (gSettings.fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
     if (sdlWindow == NULL)
     {
@@ -197,6 +265,7 @@ int main(int argc, char **argv)
         double deltaTime;
 
         ProcessEvents();
+        LinkTransport_Pump();
 
         curGameTime = SDL_GetPerformanceCounter();
         deltaTime = (double)((curGameTime - lastGameTime) / (double)SDL_GetPerformanceFrequency());
@@ -210,15 +279,30 @@ int main(int argc, char **argv)
 
             while (accumulator >= fixedTimestep)
             {
+                if (!BeginNativeFrame(FALSE))
+                {
+                    // A network wait is not elapsed game time to catch up later.
+                    accumulator = 0;
+                    break;
+                }
                 //run game logic, draw frame and process DMAs and vblank
+                WorldBootstrapFrame();
+                PlayerControl_BeforeFrame();
+                WorldBridge_BeforeFrame(sWorldFrame, FALSE);
                 ENTER_VBLANK(); //you must be in VBlank before running a game tick
                 if (!RunMainLoop())
                 {
+                    NativeLink_Reset();
                     // Soft reset: drop the old sound, and start the next frame with MainLoop
+                    WorldActivity_Update();
+                    WorldBridge_AfterFrame(sWorldFrame++);
+                    PlayerControl_AfterFrame(sWorldFrame);
                     SDL_ClearQueuedAudio(1);
                     accumulator -= fixedTimestep;
                     continue;
                 }
+                WorldActivity_Update();
+                WorldBridge_AfterFrame(sWorldFrame++);
                 if (!isGameStepDrawn)
                 {
                     VDraw(sdlTexture);
@@ -229,6 +313,9 @@ int main(int argc, char **argv)
                 // The sound engine runs once a frame, like in the GBA's VBlank
                 // interrupt, so the music keeps time with the game
                 AudioUpdate();
+                NativeLink_AfterFrame();
+
+                PlayerControl_AfterFrame(sWorldFrame);
 
                 accumulator -= fixedTimestep;
             }
@@ -246,9 +333,12 @@ int main(int argc, char **argv)
         SDL_RenderPresent(sdlRenderer);
     }
 
+    LinkTransport_Close();
+    WorldBridge_Close();
     CloseSaveFile();
 
     SDL_DestroyWindow(sdlWindow);
+    PlayerControl_Close();
     SDL_Quit();
     return 0;
 }
@@ -256,10 +346,10 @@ int main(int argc, char **argv)
 static void ReadSaveFile(const char *path)
 {
     // Check whether the saveFile exists, and create it if not
-    sSaveFile = fopen(path, "r+b");
+    sSaveFile = NativeFile_Open(path, "r+b");
     if (sSaveFile == NULL)
     {
-        sSaveFile = fopen(path, "w+b");
+        sSaveFile = NativeFile_Open(path, "w+b");
     }
 
     fseek(sSaveFile, 0, SEEK_END);
@@ -285,6 +375,7 @@ static void StoreSaveFile()
     {
         fseek(sSaveFile, 0, SEEK_SET);
         fwrite(FLASH_BASE, 1, sizeof(FLASH_BASE), sSaveFile);
+        fflush(sSaveFile);
     }
 }
 
@@ -296,7 +387,7 @@ void Platform_StoreSaveFile(void)
 void Platform_ReadFlash(u16 sectorNum, u32 offset, u8 *dest, u32 size)
 {
     DBGPRINTF("ReadFlash(sectorNum=0x%04X,offset=0x%08X,size=0x%02X)\n",sectorNum,offset,size);
-    FILE * savefile = fopen(sSavePath, "r+b");
+    FILE * savefile = NativeFile_Open(sSavePath, "r+b");
     if (savefile == NULL)
     {
         puts("Error opening save file.");
@@ -381,13 +472,13 @@ void ProcessEvents(void)
             switch (event.key.keysym.sym)
             {
             case SDLK_r:
-                if (event.key.keysym.mod & (KMOD_LCTRL | KMOD_RCTRL))
+                if (sPlayerControlPath == NULL && (event.key.keysym.mod & (KMOD_LCTRL | KMOD_RCTRL)))
                 {
                     RequestSoftReset();
                 }
                 break;
             case SDLK_p:
-                if (event.key.keysym.mod & (KMOD_LCTRL | KMOD_RCTRL))
+                if (sPlayerControlPath == NULL && (event.key.keysym.mod & (KMOD_LCTRL | KMOD_RCTRL)))
                 {
                     paused = !paused;
                 }
@@ -423,8 +514,10 @@ void ProcessEvents(void)
         }
     }
 
-    // Fast-forward while it's held
-    Input_GetButtons(&speedUp);
+    // Physical speed-up belongs to the human window, never the AI controller.
+    speedUp = false;
+    if (sPlayerControlPath == NULL)
+        Input_GetButtons(&speedUp);
     timeScale = speedUp ? 5.0 : 1.0;
 }
 
@@ -437,8 +530,11 @@ static void ToggleFullscreen(void)
 
 u16 Platform_GetKeyInput(void)
 {
-    if (sTestMode)
+    if (sTestMode || sWorldBootstrap)
         return sTestButtons;
+    // A configured AI controller owns its input even while idle or disconnected.
+    if (sPlayerControlPath != NULL)
+        return PlayerControl_Buttons();
     return Input_GetButtons(NULL);
 }
 
@@ -581,6 +677,16 @@ static bool ParseArgs(int argc, char **argv)
         const char *arg = argv[i];
         const char *value = (i + 1 < argc) ? argv[i + 1] : NULL;
 
+        if ((!value || !strncmp(value, "--", 2)) && !strcmp(arg, "--player-control"))
+        {
+            fprintf(stderr, "Missing player control option value.\n");
+            return false;
+        }
+        if (value == NULL && (!strcmp(arg, "--world-config") || !strcmp(arg, "--world-input") || !strcmp(arg, "--world-shot")))
+        {
+            fprintf(stderr, "Missing world option value.\n");
+            return false;
+        }
         if (strncmp(arg, "--", 2) != 0 || value == NULL)
         {
             fprintf(stderr, "Ignoring argument: %s\n", arg);
@@ -592,6 +698,24 @@ static bool ParseArgs(int argc, char **argv)
         {
             sSavePath = value;
         }
+        else if (strcmp(arg, "--player-control") == 0)
+        {
+            if (sPlayerControlPath != NULL)
+                return false;
+            sPlayerControlPath = value;
+        }
+        else if (strcmp(arg, "--world-config") == 0)
+        {
+            sWorldConfigPath = value;
+        }
+        else if (strcmp(arg, "--world-input") == 0)
+        {
+            sWorldInputPath = value;
+        }
+        else if (strcmp(arg, "--world-shot") == 0)
+        {
+            sWorldShotPath = value;
+        }
         else if (strcmp(arg, "--config") == 0)
         {
             sSettingsPath = value;
@@ -599,7 +723,7 @@ static bool ParseArgs(int argc, char **argv)
         else if (strcmp(arg, "--test-input") == 0)
         {
             sTestMode = true;
-            sTestInput = (strcmp(value, "-") == 0) ? stdin : fopen(value, "r");
+            sTestInput = (strcmp(value, "-") == 0) ? stdin : NativeFile_Open(value, "r");
             if (sTestInput == NULL)
             {
                 fprintf(stderr, "Could not open test input %s\n", value);
@@ -608,7 +732,7 @@ static bool ParseArgs(int argc, char **argv)
         }
         else if (strcmp(arg, "--test-hashes") == 0)
         {
-            sTestHashes = fopen(value, "w");
+            sTestHashes = NativeFile_Open(value, "w");
             if (sTestHashes == NULL)
             {
                 fprintf(stderr, "Could not open hash output %s\n", value);
@@ -621,7 +745,7 @@ static bool ParseArgs(int argc, char **argv)
         }
         else if (strcmp(arg, "--test-state") == 0)
         {
-            sTestState = (strcmp(value, "-") == 0) ? stdout : fopen(value, "w");
+            sTestState = (strcmp(value, "-") == 0) ? stdout : NativeFile_Open(value, "w");
             if (sTestState == NULL)
             {
                 fprintf(stderr, "Could not open state output %s\n", value);
@@ -630,7 +754,7 @@ static bool ParseArgs(int argc, char **argv)
         }
         else if (strcmp(arg, "--test-audio") == 0)
         {
-            sTestAudio = fopen(value, "wb");
+            sTestAudio = NativeFile_Open(value, "wb");
             if (sTestAudio == NULL)
             {
                 fprintf(stderr, "Could not open audio output %s\n", value);
@@ -659,7 +783,7 @@ static bool ParseArgs(int argc, char **argv)
 static void FindDataFiles(void)
 {
     static char savePath[1024], settingsPath[1024];
-    FILE *oldSave = fopen("pokeemerald.sav", "rb");
+    FILE *oldSave = NativeFile_Open("pokeemerald.sav", "rb");
 
     if (oldSave != NULL)
         fclose(oldSave);
@@ -762,19 +886,21 @@ static void WriteWavHeader(FILE *file, u32 dataSize)
     fwrite(header, 1, sizeof(header), file);
 }
 
-static void WriteTestScreenshot(const uint16_t *image)
+static void WriteFramebufferPPM(const uint16_t *image, const char *path)
 {
-    char path[512];
-    FILE *file;
-
-    snprintf(path, sizeof(path), "%s/frame_%06u.ppm", sTestShotDir, sTestFrame);
-    file = fopen(path, "wb");
+    FILE *file = NativeFile_Open(path, "wb");
     if (file == NULL)
     {
         fprintf(stderr, "Could not write screenshot %s\n", path);
         return;
     }
 
+    WriteFramebufferStream(image, file);
+    fclose(file);
+}
+
+static bool WriteFramebufferStream(const uint16_t *image, FILE *file)
+{
     fprintf(file, "P6\n%d %d\n255\n", DISPLAY_WIDTH, DISPLAY_HEIGHT);
     for (int i = 0; i < DISPLAY_WIDTH * DISPLAY_HEIGHT; i++)
     {
@@ -786,7 +912,42 @@ static void WriteTestScreenshot(const uint16_t *image)
         };
         fwrite(rgb, 1, sizeof(rgb), file);
     }
-    fclose(file);
+    return !ferror(file);
+}
+
+static bool PlayerScreenshot(FILE *file)
+{
+    static uint16_t image[DISPLAY_WIDTH * DISPLAY_HEIGHT];
+    memset(image, 0, sizeof(image));
+    DrawFrame(image);
+    return WriteFramebufferStream(image, file);
+}
+
+static void WriteTestScreenshot(const uint16_t *image)
+{
+    char path[512];
+    snprintf(path, sizeof(path), "%s/frame_%06u.ppm", sTestShotDir, sTestFrame);
+    WriteFramebufferPPM(image, path);
+}
+
+// Graphical bootstrap uses the same input grammar, without changing the clock,
+// SDL setup or normal frame cadence. Human keyboard control resumes at EOF.
+static void WorldBootstrapFrame(void)
+{
+    static uint16_t image[DISPLAY_WIDTH * DISPLAY_HEIGHT];
+    if (!sWorldBootstrap || ReadTestInput(&sTestButtons))
+        return;
+    if (sWorldShotPath != NULL)
+    {
+        memset(image, 0, sizeof(image));
+        DrawFrame(image);
+        WriteFramebufferPPM(image, sWorldShotPath);
+    }
+    fclose(sTestInput);
+    sTestInput = NULL;
+    sWorldBootstrap = false;
+    sTestButtons = 0;
+    Input_ReleaseTestInputs();
 }
 
 // Runs the game without a window or audio device until the test input ends.
@@ -804,8 +965,20 @@ static int RunTestMode(void)
     {
         bool ranFrame;
 
+        while (!BeginNativeFrame(TRUE))
+        {
+#ifdef _WIN32
+            Sleep(1);
+#else
+            struct timespec delay = {0, 1000000};
+            nanosleep(&delay, NULL);
+#endif
+        }
+        WorldBridge_BeforeFrame(sTestFrame, TRUE);
         ENTER_VBLANK();
         ranFrame = RunMainLoop();
+        WorldActivity_Update();
+        WorldBridge_AfterFrame(sTestFrame);
         memset(image, 0, sizeof(image));
         DrawFrame(image);
         REG_VCOUNT = 161;
@@ -815,7 +988,10 @@ static int RunTestMode(void)
         {
             RunDMAsAndVBlank();
             AudioUpdate();
+            NativeLink_AfterFrame();
         }
+        else
+            NativeLink_Reset();
 
         if (sTestHashes != NULL)
             fprintf(sTestHashes, "%u %016llx %016llx\n", sTestFrame,
@@ -838,6 +1014,8 @@ static int RunTestMode(void)
         fclose(sTestAudio);
     }
     fclose(sTestInput);
+    LinkTransport_Close();
+    WorldBridge_Close();
     CloseSaveFile();
     return 0;
 }

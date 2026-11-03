@@ -16,6 +16,9 @@
 #include "tv.h"
 #include "constants/rgb.h"
 #include "constants/metatile_behaviors.h"
+#ifdef PORTABLE
+#include "platform/world_bridge.h"
+#endif
 
 struct ConnectionFlags
 {
@@ -394,6 +397,10 @@ void SaveMapView(void)
     s32 x, y;
     u16 *mapView;
     s32 width;
+#ifdef PORTABLE
+    // Save the trainer's map state, not transient shared metatile overlays.
+    WorldBridge_PrepareSave();
+#endif
     mapView = gSaveBlock1Ptr->mapView;
     width = gBackupMapLayout.width;
     x = gSaveBlock1Ptr->pos.x;

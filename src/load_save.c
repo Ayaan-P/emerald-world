@@ -13,6 +13,9 @@
 #include "gba/flash_internal.h"
 #include "decoration_inventory.h"
 #include "agb_flash.h"
+#ifdef PORTABLE
+#include "platform/world_bridge.h"
+#endif
 
 static void ApplyNewEncryptionKeyToAllEncryptedData(u32 encryptionKey);
 
@@ -198,6 +201,10 @@ void SaveObjectEvents(void)
 {
     int i;
 
+#ifdef PORTABLE
+    // Synchronous warps can copy objects before the next bridge frame cleanup.
+    WorldBridge_PrepareSave();
+#endif
     for (i = 0; i < OBJECT_EVENTS_COUNT; i++)
         gSaveBlock1Ptr->objectEvents[i] = gObjectEvents[i];
 }

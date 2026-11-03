@@ -9,7 +9,6 @@
 #define STUB_FUNC_QUIET(func) func {}
 #define STUB_FUNC_QUIET_BLOCK(func, block) func { block }
 
-STUB_FUNC_QUIET_BLOCK(bool8 HandleLinkConnection(), return 0;)
 STUB_FUNC_BLOCK(int MultiBoot(struct MultiBootParam *mp), return 0;)
 STUB_FUNC(void IntrMain())
 STUB_FUNC(void GameCubeMultiBoot_Hash())

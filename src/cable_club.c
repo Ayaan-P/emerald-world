@@ -943,6 +943,39 @@ static void Task_StartWirelessCableClubBattle(u8 taskId)
 
 #undef tTimer
 
+#ifdef PORTABLE
+#include "platform/world_activity.h"
+
+/* The world launcher has no cable-club map, seats or scripted warp. Keep the
+ * real battle setup and native post-battle records/save, changing only its
+ * destination to the ordinary local overworld. */
+static void CB2_WorldReturnFromBattle(void)
+{
+    CB2_ReturnFromCableClubBattle();
+    gMain.savedCallback = WorldActivity_ReturnToField;
+}
+
+static void Task_WorldStartBattle(u8 taskId)
+{
+    Task_StartWiredCableClubBattle(taskId);
+    if (gMain.callback2 == CB2_InitBattle)
+        gMain.savedCallback = CB2_WorldReturnFromBattle;
+}
+
+int WorldActivity_StartNativeBattle(unsigned mode)
+{
+    u8 taskId = CreateTask(Task_WorldStartBattle, 80);
+    if (taskId == TASK_NONE)
+        return FALSE;
+    SavePlayerParty();
+    LoadPlayerBag();
+    gSpecialVar_0x8004 = mode == 2 ? USING_DOUBLE_BATTLE : USING_SINGLE_BATTLE;
+    gLinkPlayers[0].id = 0;
+    gLinkPlayers[1].id = 1;
+    return TRUE;
+}
+#endif
+
 static void CB2_ReturnFromUnionRoomBattle(void)
 {
     u8 playerCount;

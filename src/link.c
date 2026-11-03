@@ -27,6 +27,9 @@
 #include "link_rfu.h"
 #include "constants/rgb.h"
 #include "constants/trade.h"
+#ifdef PORTABLE
+#include "platform/native_link.h"
+#endif
 
 // Window IDs for the link error screens
 enum {
@@ -54,6 +57,10 @@ struct LinkTestBGInfo
 
 static struct BlockTransfer sBlockSend;
 static struct BlockTransfer sBlockRecv[MAX_LINK_PLAYERS];
+#ifdef PORTABLE
+static bool8 sNativePlayerExchangeRequested;
+static bool8 sNativeCableOpen;
+#endif
 static u32 sBlockSendDelayCounter;
 static bool32 sDummy1; // Never read
 static bool8 sDummy2; // Never assigned, read in unused function
@@ -375,6 +382,16 @@ void OpenLink(void)
     {
         ResetSerial();
         InitLink();
+#ifdef PORTABLE
+        if (NativeLink_IsActive())
+        {
+            NativeLink_SetCommandSource(gSendCmd);
+            NativeLink_Open(gLinkType);
+            sNativeCableOpen = NativeLink_IsOpen();
+            memset(sBlockRecv, 0, sizeof(sBlockRecv));
+            sNativePlayerExchangeRequested = FALSE;
+        }
+#endif
         gLinkCallback = LinkCB_RequestPlayerDataExchange;
         gLinkVSyncDisabled = FALSE;
         gLinkErrorOccurred = FALSE;
@@ -402,6 +419,11 @@ void OpenLink(void)
 
 void CloseLink(void)
 {
+#ifdef PORTABLE
+    if (NativeLink_IsActive())
+        NativeLink_Close();
+    sNativeCableOpen = FALSE;
+#endif
     gReceivedRemoteLinkPlayers = FALSE;
     if (gWirelessCommType)
         LinkRfu_Shutdown();
@@ -491,6 +513,9 @@ static void CB2_LinkTest(void)
 u16 LinkMain2(const u16 *heldKeys)
 {
     u8 i;
+#ifdef PORTABLE
+    bool8 virtualSession = NativeLink_IsActive();
+#endif
 
     if (!sLinkOpen)
         return 0;
@@ -501,7 +526,15 @@ u16 LinkMain2(const u16 *heldKeys)
     gLinkHeldKeys = *heldKeys;
     if (gLinkStatus & LINK_STAT_CONN_ESTABLISHED)
     {
+#ifdef PORTABLE
+        ProcessRecvCmds(GetMultiplayerId());
+#else
         ProcessRecvCmds(SIO_MULTI_CNT->id);
+#endif
+#ifdef PORTABLE
+        if (virtualSession && (gLinkErrorOccurred || !NativeLink_IsActive()))
+            return gLinkStatus;
+#endif
         if (gLinkCallback != NULL)
             gLinkCallback();
         TrySetLinkErrorBuffer();
@@ -537,17 +570,74 @@ static void ProcessRecvCmds(u8 unused)
         {
             continue;
         }
+#ifdef PORTABLE
+        if (NativeLink_IsActive())
+        {
+            /* Cable sessions expose only battle/trade commands. Payload words
+             * remain data; unsupported command families abort rather than vanish. */
+            if (!gReceivedRemoteLinkPlayers && gRecvCmds[i][0] != LINKCMD_SEND_LINK_TYPE
+                && gRecvCmds[i][0] != LINKCMD_INIT_BLOCK && gRecvCmds[i][0] != LINKCMD_CONT_BLOCK
+                && gRecvCmds[i][0] != LINKCMD_NONE)
+            {
+                NativeLink_Abort();
+                gLinkErrorOccurred = TRUE;
+                return;
+            }
+            switch (gRecvCmds[i][0])
+            {
+            case LINKCMD_SEND_LINK_TYPE:
+            case LINKCMD_INIT_BLOCK:
+            case LINKCMD_CONT_BLOCK:
+            case LINKCMD_SEND_BLOCK_REQ:
+            case LINKCMD_READY_CLOSE_LINK:
+            case LINKCMD_READY_EXIT_STANDBY:
+            case LINKCMD_SEND_HELD_KEYS:
+            case LINKCMD_DUMMY_1:
+            case LINKCMD_DUMMY_2:
+            case LINKCMD_NONE:
+                break;
+            default:
+                NativeLink_Abort();
+                gLinkErrorOccurred = TRUE;
+                return;
+            }
+        }
+#endif
         switch (gRecvCmds[i][0])
         {
             case LINKCMD_SEND_LINK_TYPE:
             {
                 struct LinkPlayerBlock *block;
 
+#ifdef PORTABLE
+                if (NativeLink_IsActive())
+                {
+                    if (i != 0 || sNativePlayerExchangeRequested || gRecvCmds[i][1] != gLinkType)
+                    {
+                        NativeLink_Abort();
+                        gLinkErrorOccurred = TRUE;
+                        return;
+                    }
+                    sNativePlayerExchangeRequested = TRUE;
+                }
+#endif
                 InitLocalLinkPlayer();
                 block = &gLocalLinkPlayerBlock;
                 block->linkPlayer = gLocalLinkPlayer;
-                memcpy(block->magic1, sASCIIGameFreakInc, sizeof(block->magic1) - 1);
-                memcpy(block->magic2, sASCIIGameFreakInc, sizeof(block->magic2) - 1);
+#ifdef PORTABLE
+                if (NativeLink_IsActive())
+                {
+                    memset(block->magic1, 0, sizeof(block->magic1));
+                    memset(block->magic2, 0, sizeof(block->magic2));
+                    memcpy(block->magic1, sASCIIGameFreakInc, sizeof(sASCIIGameFreakInc));
+                    memcpy(block->magic2, sASCIIGameFreakInc, sizeof(sASCIIGameFreakInc));
+                }
+                else
+#endif
+                {
+                    memcpy(block->magic1, sASCIIGameFreakInc, sizeof(block->magic1) - 1);
+                    memcpy(block->magic2, sASCIIGameFreakInc, sizeof(block->magic2) - 1);
+                }
                 InitBlockSend(block, sizeof(*block));
                 break;
             }
@@ -564,6 +654,21 @@ static void ProcessRecvCmds(u8 unused)
             {
                 struct BlockTransfer *blockRecv;
 
+#ifdef PORTABLE
+                if (NativeLink_IsActive()
+                    && (!sNativePlayerExchangeRequested || sBlockRecv[i].active || !gRecvCmds[i][1]
+                        || ((gRecvCmds[i][1] + 13u) / 14u) * 14u > BLOCK_BUFFER_SIZE
+                        || gRecvCmds[i][2] != i + 0x80
+                        || (gRemoteLinkPlayersNotReceived[i]
+                            && gRecvCmds[i][1] != sizeof(struct LinkPlayerBlock))))
+                {
+                    NativeLink_Abort();
+                    gLinkErrorOccurred = TRUE;
+                    return;
+                }
+                if (NativeLink_IsActive())
+                    sBlockRecv[i].active = TRUE;
+#endif
                 blockRecv = &sBlockRecv[i];
                 blockRecv->pos = 0;
                 blockRecv->size = gRecvCmds[i][1];
@@ -572,6 +677,16 @@ static void ProcessRecvCmds(u8 unused)
             }
             case LINKCMD_CONT_BLOCK:
             {
+#ifdef PORTABLE
+                if (NativeLink_IsActive()
+                    && (!sBlockRecv[i].active || sBlockRecv[i].pos >= sBlockRecv[i].size
+                        || sBlockRecv[i].pos + 14 > BLOCK_BUFFER_SIZE))
+                {
+                    NativeLink_Abort();
+                    gLinkErrorOccurred = TRUE;
+                    return;
+                }
+#endif
                 if (sBlockRecv[i].size > BLOCK_BUFFER_SIZE)
                 {
                     u16 *buffer;
@@ -597,6 +712,10 @@ static void ProcessRecvCmds(u8 unused)
 
                 if (sBlockRecv[i].pos >= sBlockRecv[i].size)
                 {
+#ifdef PORTABLE
+                    if (NativeLink_IsActive())
+                        sBlockRecv[i].active = FALSE;
+#endif
                     if (gRemoteLinkPlayersNotReceived[i] == TRUE)
                     {
                         struct LinkPlayerBlock *block;
@@ -604,6 +723,42 @@ static void ProcessRecvCmds(u8 unused)
 
                         block = (struct LinkPlayerBlock *)&gBlockRecvBuffer[i];
                         linkPlayer = &gLinkPlayers[i];
+#ifdef PORTABLE
+                        if (NativeLink_IsActive()
+                            && (memcmp(block->magic1, sASCIIGameFreakInc, sizeof(sASCIIGameFreakInc))
+                                || memcmp(block->magic2, sASCIIGameFreakInc, sizeof(sASCIIGameFreakInc))
+                                || (block->linkPlayer.version & 0xff) != VERSION_EMERALD
+                                || block->linkPlayer.gender > 1
+                                || !memchr(block->linkPlayer.name, EOS, sizeof(block->linkPlayer.name))
+                                || !block->linkPlayer.language || block->linkPlayer.language > 7
+                                || block->linkPlayer.language == 6))
+                        {
+                            NativeLink_Abort();
+                            gLinkErrorOccurred = TRUE;
+                            return;
+                        }
+#endif
+#ifdef PORTABLE
+                        if (NativeLink_IsActive())
+                        {
+                            unsigned namePos;
+                            for (namePos = 0; namePos < sizeof(block->linkPlayer.name); namePos++)
+                            {
+                                if (block->linkPlayer.name[namePos] == EOS)
+                                    break;
+                                if (block->linkPlayer.name[namePos] >= 0xF7)
+                                    break;
+                            }
+                            if (namePos == sizeof(block->linkPlayer.name)
+                                || block->linkPlayer.name[namePos] != EOS
+                                || (block->linkPlayer.language == 1 && namePos > 5))
+                            {
+                                NativeLink_Abort();
+                                gLinkErrorOccurred = TRUE;
+                                return;
+                            }
+                        }
+#endif
                         *linkPlayer = block->linkPlayer;
                         if ((linkPlayer->version & 0xFF) == VERSION_RUBY || (linkPlayer->version & 0xFF) == VERSION_SAPPHIRE)
                         {
@@ -639,6 +794,16 @@ static void ProcessRecvCmds(u8 unused)
                 SetBerryBlenderLinkCallback();
                 break;
             case LINKCMD_SEND_BLOCK_REQ:
+#ifdef PORTABLE
+                if (NativeLink_IsActive()
+                    && (gRecvCmds[i][1] >= ARRAY_COUNT(sBlockRequests)
+                        || gRemoteLinkPlayersNotReceived[i]))
+                {
+                    NativeLink_Abort();
+                    gLinkErrorOccurred = TRUE;
+                    return;
+                }
+#endif
                 SendBlock(0, sBlockRequests[gRecvCmds[i][1]].address, sBlockRequests[gRecvCmds[i][1]].size);
                 break;
             case LINKCMD_SEND_HELD_KEYS:
@@ -941,6 +1106,14 @@ static void ResetBlockSend(void)
 
 static bool32 InitBlockSend(const void *src, size_t size)
 {
+#ifdef PORTABLE
+    if (NativeLink_IsActive() && (!size || size > BLOCK_BUFFER_SIZE || ((size + 13) / 14) * 14 > BLOCK_BUFFER_SIZE))
+    {
+        NativeLink_Abort();
+        gLinkErrorOccurred = TRUE;
+        return FALSE;
+    }
+#endif
     if (sBlockSend.active)
     {
         return FALSE;
@@ -981,6 +1154,16 @@ static void LinkCB_BlockSend(void)
     gSendCmd[0] = LINKCMD_CONT_BLOCK;
     for (i = 0; i < CMD_LENGTH - 1; i++)
     {
+#ifdef PORTABLE
+        if (NativeLink_IsActive())
+        {
+            size_t offset = sBlockSend.pos + i * 2;
+            gSendCmd[i + 1] = offset < sBlockSend.size ? src[offset] : 0;
+            if (offset + 1 < sBlockSend.size)
+                gSendCmd[i + 1] |= src[offset + 1] << 8;
+        }
+        else
+#endif
         gSendCmd[i + 1] = (src[sBlockSend.pos + i * 2 + 1] << 8) | src[sBlockSend.pos + i * 2];
     }
     sBlockSend.pos += 14;
@@ -1027,6 +1210,10 @@ u8 GetMultiplayerId(void)
     if (gWirelessCommType == TRUE)
         return Rfu_GetMultiplayerId();
 
+#ifdef PORTABLE
+    if (NativeLink_IsActive())
+        return NativeLink_LocalId();
+#endif
     return SIO_MULTI_CNT->id;
 }
 
@@ -1099,6 +1286,20 @@ void ResetBlockReceivedFlags(void)
             gBlockReceivedStatus[i] = FALSE;
     }
 }
+
+#ifdef PORTABLE
+/* Consumers must read the actual completed block length before resetting,
+ * instead of trusting a remote-controlled declared size inside a block. */
+u16 GetBlockReceivedSize(u8 who)
+{
+    if (who >= MAX_LINK_PLAYERS || gWirelessCommType || !gBlockReceivedStatus[who]
+        || sBlockRecv[who].active || sBlockRecv[who].size == 0
+        || sBlockRecv[who].size > BLOCK_BUFFER_SIZE
+        || sBlockRecv[who].pos < sBlockRecv[who].size)
+        return 0;
+    return sBlockRecv[who].size;
+}
+#endif
 
 void ResetBlockReceivedFlag(u8 who)
 {
@@ -1733,11 +1934,19 @@ static void CB2_PrintErrorMessage(void)
 
 bool8 GetSioMultiSI(void)
 {
+#ifdef PORTABLE
+    if (NativeLink_IsActive())
+        return NativeLink_LocalId() != 0;
+#endif
     return (REG_SIOCNT & SIO_MULTI_SI) != 0;
 }
 
 static bool8 IsSioMultiMaster(void)
 {
+#ifdef PORTABLE
+    if (NativeLink_IsActive())
+        return NativeLink_LocalId() == 0;
+#endif
     return (REG_SIOCNT & SIO_MULTI_SD) && (REG_SIOCNT & SIO_MULTI_SI) == 0;
 }
 
@@ -1784,7 +1993,47 @@ void LinkPlayerFromBlock(u32 who)
         SetMainCallback2(CB2_LinkError);
 }
 
-#ifndef PORTABLE
+#ifdef PORTABLE
+bool8 HandleLinkConnection(void)
+{
+    if (sNativeCableOpen && !NativeLink_IsActive())
+    {
+        /* A transport abort invalidates native cable state as well. The world
+         * activity owner decides the safe field/battle recovery policy. */
+        CloseLink();
+        gLinkCallback = NULL;
+        gLinkStatus = 0;
+        gLinkErrorOccurred = TRUE;
+        return FALSE;
+    }
+    if (!NativeLink_IsActive() || gWirelessCommType || !sLinkOpen)
+        return FALSE;
+    NativeLink_Pump();
+    /* The full-frame platform gate is mandatory. This also fails closed if a
+     * caller forgot that gate, without clearing a retained outgoing command. */
+    if (!NativeLink_FrameReady())
+        return TRUE;
+    gLinkStatus = LinkMain1(&gShouldAdvanceLinkState, gSendCmd, gRecvCmds);
+    if (!NativeLink_IsActive())
+    {
+        CloseLink();
+        gLinkCallback = NULL;
+        gLinkErrorOccurred = TRUE;
+        return FALSE;
+    }
+    if (gLinkStatus & LINK_STAT_RECEIVED_NOTHING)
+        return TRUE;
+    LinkMain2(&gMain.heldKeys);
+    if (!NativeLink_IsActive())
+    {
+        CloseLink();
+        gLinkCallback = NULL;
+        gLinkStatus = 0;
+        gLinkErrorOccurred = TRUE;
+    }
+    return FALSE;
+}
+#else
 // When this function returns TRUE the callbacks are skipped
 bool8 HandleLinkConnection(void)
 {
@@ -1836,6 +2085,10 @@ u32 GetLinkRecvQueueLength(void)
     if (gWirelessCommType != 0)
         return GetRfuRecvQueueLength();
 
+#ifdef PORTABLE
+    if (NativeLink_IsActive())
+        return NativeLink_RecvQueueCount();
+#endif
     return gLink.recvQueue.count;
 }
 
@@ -1900,6 +2153,20 @@ u32 LinkMain1(u8 *shouldAdvanceLinkState, u16 *sendCmd, u16 (*recvCmds)[CMD_LENG
 {
     u32 retVal;
     u32 retVal2;
+#ifdef PORTABLE
+    if (NativeLink_IsActive())
+    {
+        u32 status = NativeLink_Main1(shouldAdvanceLinkState, sendCmd, recvCmds);
+        gLink.localId = NativeLink_LocalId();
+        gLink.playerCount = EXTRACT_PLAYER_COUNT(status);
+        gLink.isMaster = gLink.localId == 0 ? LINK_MASTER : LINK_SLAVE;
+        gLink.state = NativeLink_IsConnected() ? LINK_STATE_CONN_ESTABLISHED : LINK_STATE_HANDSHAKE;
+        gLink.receivedNothing = EXTRACT_RECEIVED_NOTHING(status);
+        gLastSendQueueCount = NativeLink_SendQueueCount();
+        gLastRecvQueueCount = NativeLink_RecvQueueCount();
+        return status;
+    }
+#endif
 
     switch (gLink.state)
     {
@@ -2094,6 +2361,10 @@ static void DequeueRecvCmds(u16 (*recvCmds)[CMD_LENGTH])
 
 void LinkVSync(void)
 {
+#ifdef PORTABLE
+    if (NativeLink_IsActive())
+        return;
+#endif
     if (gLink.isMaster)
     {
         switch (gLink.state)

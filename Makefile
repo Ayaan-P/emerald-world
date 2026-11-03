@@ -145,7 +145,7 @@ ifeq ($(PORTABLE),1)
     OS_CFLAGS :=
     # xinput9_1_0.dll comes with every Windows since Vista; -lxinput would need
     # xinput1_3.dll from the old DirectX redistributable
-    OS_LFLAGS := -lwinmm -lxinput9_1_0
+    OS_LFLAGS := -lwinmm -lxinput9_1_0 -lws2_32
     BUILD_FEXTENSION := .exe
   else ifeq ($(TARGET_OS),MACOS)
     # The game's data is assembled by GNU as, like on Linux, and converted to
@@ -299,6 +299,14 @@ else ifeq ($(PORTABLE),1)
   # The same floating point results everywhere, which the tests' frame hashes
   # need: on ARM, compilers would otherwise fuse multiplies and adds
   override CFLAGS += -ffp-contract=off
+  ifeq ($(TARGET_OS),WINDOWS)
+    ifeq ($(IS64BIT),1)
+      # The driver and direct cc1 invocation must use the same CPU baseline.
+      # Distribution defaults can otherwise expose unsupported intrinsics in cpp.
+      CPPFLAGS += -march=x86-64
+      override CFLAGS += -march=x86-64
+    endif
+  endif
   ifeq ($(COMPILER),clang)
     # clang reports GNU C that gcc takes as it is, and that pret's code is full
     # of: __alignof__ of expressions, unused tables, u8 and char strings mixed,
@@ -673,5 +681,6 @@ $(ROM): $(OBJS)
 	$(MODERNCC) $(CFLAGS) $^ $(PLATFORM_LFLAGS) $(OS_LFLAGS) -o $@ 2>&1 | sed '/ld: warning: pointer not aligned/d'
 else
 $(ROM): $(OBJS)
-	$(MODERNCC) $(CFLAGS) -Wl,--demangle $^ -static-libgcc -L$(SDL_DIR)/lib $(PLATFORM_LFLAGS) $(OS_LFLAGS) -o $@
+	$(file >$(OBJ_DIR)/link.objects.rsp,$(foreach obj,$^,"$(obj)"))
+	$(MODERNCC) $(CFLAGS) -Wl,--demangle @$(OBJ_DIR)/link.objects.rsp -static-libgcc -L$(SDL_DIR)/lib $(PLATFORM_LFLAGS) $(OS_LFLAGS) -o $@
 endif

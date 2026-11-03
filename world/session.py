@@ -1,0 +1,1116 @@
+"""Explicit-root desktop sessions. No personal save or HOME discovery."""
+import argparse
+import json
+from pathlib import Path
+import re
+import subprocess
+
+from .launcher import REPO, discover_worlds, game_command, prepare_profile
+
+
+class SessionError(ValueError):
+    """A fixed, user-facing session prerequisite error, never provider text."""
+
+
+class DesktopSession:
+    @staticmethod
+    def create_root(worlds_root):
+        root = Path(worlds_root)
+        if not root.is_absolute() or root.resolve() != root:
+            raise ValueError('choose an absolute worlds root without symlinks')
+        root.mkdir(parents=True, mode=0o700, exist_ok=True)
+        if not root.is_dir():
+            raise ValueError('worlds root must be a directory')
+        return root
+
+    def __init__(self, worlds_root):
+        root = Path(worlds_root)
+        if not root.is_absolute() or root.resolve() != root or not root.is_dir():
+            raise ValueError('choose an existing absolute worlds root without symlinks')
+        self.root = root
+        self.state = None
+        self.server = None
+        self.broker = None
+        self.sharing_pin = None
+        self.games = {}
+        self.game_locks = {}
+        self.agent_games = set()
+        self.managed_display = None
+        self.intents = {}
+        self.gm_thread = None
+        self.gm_stop = None
+        self.gm_error = None
+        self.status = 'Choose a world to host or join.'
+
+    def worlds(self):
+        return discover_worlds(self.root)
+
+    def world_library(self):
+        from .world_library import cards
+        return cards(self.root, self.worlds())
+
+    def rename_world(self, name, display_name, tags):
+        from .world_library import rename
+        rename(self.root, name, display_name, tags)
+        self.status = 'World label saved. Stable world key and trainer saves are unchanged.'
+
+    def delete_world(self, name):
+        from .world_library import delete
+        path = self._world(name)
+        if self.state == path:
+            raise SessionError('Disconnect this world before moving it to Deleted.')
+        if any(process.poll() is None and paths['profile'].is_relative_to(path)
+               for process, paths in self.games.values()):
+            raise SessionError('Stop this world\'s native games before deletion.')
+        token = delete(self.root, name)
+        self.status = 'World moved to Deleted. Use Restore deleted world to recover it.'
+        return token
+
+    def deleted_worlds(self):
+        from .world_library import deleted
+        return deleted(self.root)
+
+    def restore_world(self, token):
+        from .world_library import restore
+        path = restore(self.root, token, len(self.worlds()))
+        self.status = 'World restored. Its stable key and trainer saves are unchanged.'
+        return path
+
+    def _world(self, name):
+        if name == 'Deleted' or not re.fullmatch(r'[A-Za-z0-9_-]{1,48}', name):
+            raise ValueError('world key must be 1..48 letters, digits, _ or - and cannot be Deleted')
+        path = self.root / name
+        if path.resolve() != path:
+            raise ValueError('world cannot be a symlink')
+        return path
+
+    def create_world(self, name):
+        from .server import WorldServer
+        from .world_library import CAPACITY
+        if name == 'Deleted' or len(self.worlds()) >= CAPACITY:
+            raise SessionError('Choose a world key other than Deleted. The library holds at most 32 worlds.')
+        path = self._world(name)
+        from .world_library import WorldActivityLock
+        with WorldActivityLock(path):
+            if path.exists():
+                raise ValueError('world already exists; select it to resume')
+            path.mkdir(mode=0o700)
+            server = WorldServer(path/'transport/world.sock', path)
+            server.close()
+            return path
+
+    def host(self, name):
+        from .server import WorldServer
+        if self.state is not None:
+            raise ValueError('disconnect before changing worlds')
+        path = self._world(name)
+        from .world_library import WorldActivityLock
+        with WorldActivityLock(path):
+            if not any(item['path'] == str(path) for item in self.worlds()):
+                raise ValueError('select an existing world')
+            server = WorldServer(path/'transport/world.sock', path)
+            try:
+                server.start()
+            except BaseException:
+                server.close()
+                raise
+            self.server, self.state = server, path
+            self.status = 'Hosting ' + name
+
+    def join_local(self, name):
+        from .launcher import admin
+        if self.state is not None:
+            raise ValueError('disconnect before changing worlds')
+        path = self._world(name)
+        if not any(item['path'] == str(path) for item in self.worlds()):
+            raise ValueError('select an existing world')
+        if not admin(path/'transport/world.sock', {'command': 'inspect'}).get('ok'):
+            raise ValueError('world is not available')
+        self.state = path
+        self.status = 'Joined local world ' + name
+
+    def local_profile(self, trainer, seed_save=None):
+        if self.state is None or (self.broker is not None and self.server is None):
+            raise ValueError('host or join a local world first')
+        return prepare_profile(self.state, trainer, seed_save)
+
+    def tls_material(self):
+        import os
+        import shutil
+        if self.server is None:
+            raise SessionError('Host a world in Play before sharing it.')
+        directory = self.state/'tls'
+        if directory.resolve() != directory:
+            raise SessionError('TLS identity directory cannot be a symlink.')
+        directory.mkdir(mode=0o700, exist_ok=True)
+        directory.chmod(0o700)
+        cert, key = directory/'certificate.pem', directory/'private-key.pem'
+        if cert.is_symlink() or key.is_symlink():
+            raise SessionError('TLS identity files cannot be symlinks.')
+        if cert.exists() and key.exists():
+            key.chmod(0o600)
+            return cert, key
+        if cert.exists() or key.exists():
+            raise SessionError('Incomplete TLS identity. Select an explicit matching certificate and key in Settings.')
+        if not shutil.which('openssl'):
+            raise SessionError('OpenSSL is unavailable. Select an existing TLS certificate and key in Settings.')
+        # Exclusively reserve the files before invoking openssl. Identity is
+        # persistent and remains outside every native game mount.
+        for path in (cert, key):
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            os.close(fd)
+        try:
+            subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
+                            '-keyout', str(key), '-out', str(cert), '-days', '3650',
+                            '-subj', '/CN=Emerald World'], check=True, timeout=20,
+                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except (OSError, subprocess.SubprocessError):
+            cert.unlink(missing_ok=True)
+            key.unlink(missing_ok=True)
+            raise SessionError('Could not create a TLS identity. Select a certificate and key explicitly in Settings.') from None
+        return cert, key
+
+    def share(self, cert, key, listen=('127.0.0.1', 8765)):
+        from .transport import HostBroker
+        if self.server is None or self.broker is not None:
+            raise ValueError('host a world before enabling TLS, and enable it only once')
+        for material in (cert, key):
+            if any(Path(material).resolve().is_relative_to(self.state/part)
+                   for part in ('trainers', 'transport')):
+                raise ValueError('TLS files must stay outside game-visible directories')
+        import hashlib
+        import ssl
+        pin = hashlib.sha256(ssl.PEM_cert_to_DER_cert(Path(cert).read_text())).hexdigest()
+        broker = HostBroker(self.state/'transport/world.sock', cert, key, listen)
+        try:
+            broker.start()
+        except BaseException:
+            broker.close()
+            raise
+        self.broker = broker
+        self.sharing_pin = pin
+        self.status = f'Hosting TLS at {broker.address[0]}:{broker.address[1]}'
+        return broker.address
+
+    def export_invitation(self, trainer, destination, advertised_address=None):
+        """Export one friend file. Never guess a friend's address from loopback."""
+        import ipaddress
+        if self.server is None or self.broker is None or self.sharing_pin is None:
+            raise SessionError('Enable secure sharing before exporting a friend invitation.')
+        if advertised_address is None:
+            host, port = self.broker.address
+            try:
+                address = ipaddress.ip_address(host)
+                local = address.is_unspecified or address.is_loopback
+            except ValueError:
+                local = host.lower().rstrip('.') == 'localhost'
+            if local:
+                raise SessionError('Enter an explicit advertised address reachable by your friend.')
+            advertised_address = (host, port)
+        if type(advertised_address) not in (tuple, list) or len(advertised_address) != 2:
+            raise SessionError('Enter an explicit advertised address and port.')
+        connection = {'version': 1,
+                      'endpoint': {'host': advertised_address[0], 'port': advertised_address[1]},
+                      'pin': self.sharing_pin}
+        from .transport import validate_invitation
+        validate_invitation(dict(connection, trainer=trainer, token='0'*64))
+        self.invite(trainer, destination, connection=connection)
+        self.status = ('Friend invitation saved. Send it privately through a trusted channel. '
+                       'Its bundled TLS pin is only trustworthy when received from you through that channel.')
+
+    def invite(self, trainer, destination, *, connection=None):
+        import os
+        if self.server is None:
+            raise ValueError('only the host can issue trainer credentials')
+        # Validate paths before the identity service creates the directory.
+        from .launcher import profile_paths
+        profile_paths(self.state, trainer)
+        destination = Path(destination).absolute()
+        if destination.resolve().is_relative_to(self.state/'transport') or destination.resolve().is_relative_to(self.state/'trainers'):
+            raise ValueError('keep invitations outside game-visible directories')
+        if destination.exists() or destination.is_symlink():
+            raise ValueError('refusing to replace an existing invitation')
+        identity = self.server.create_identity(trainer)
+        fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, 'w') as output:
+            json.dump(dict(connection or {}, trainer=trainer, token=identity['token']), output)
+        self.status = 'Trainer invitation saved. Share it privately. Verify the TLS pin separately.'
+
+    def connect_remote(self, name, invitation, remote, fingerprint):
+        import os
+        from .launcher import profile_paths
+        from .transport import ClientBroker
+        if self.state is not None:
+            raise ValueError('disconnect before changing worlds')
+        from .transport import read_invitation
+        identity = read_invitation(invitation)
+        path = self._world(name)
+        from .world_library import WorldActivityLock
+        with WorldActivityLock(path):
+            paths = profile_paths(path, identity['trainer'])
+            if (path/'world.sqlite3').exists():
+                raise ValueError('remote saves need a separate local world name')
+            marker = path/'remote.json'
+            binding = {'host': remote[0], 'port': remote[1], 'pin': fingerprint.lower()}
+            if marker.is_symlink() or (marker.exists() and json.loads(marker.read_text()) != binding):
+                raise ValueError('this save directory belongs to a different remote host')
+            path.mkdir(mode=0o700, exist_ok=True)
+            transport = path/'transport'
+            if transport.resolve() != transport:
+                raise ValueError('transport cannot be a symlink')
+            from .launcher import ProfileLock
+            with ProfileLock(path, identity['trainer']):
+                broker = ClientBroker(transport/'world.sock', remote, fingerprint=fingerprint,
+                                      handshake_timeout=3)
+                try:
+                    broker.start()
+                    # Control role checks credentials without occupying native presence.
+                    from .client import IntentClient
+                    with IntentClient(broker.socket_path, identity['trainer'], identity['token'], timeout=4):
+                        pass
+                    paths['profile'].parent.mkdir(mode=0o700, exist_ok=True)
+                    paths['profile'].mkdir(mode=0o700, exist_ok=True)
+                    config = (f'socket {transport}/world.sock\ntrainer {identity["trainer"]}\n'
+                              f'token {identity["token"]}\ntelemetry {paths["telemetry"]}\n')
+                    if paths['config'].exists() and paths['config'].read_text() != config:
+                        raise ValueError('trainer profile belongs to a different invitation')
+                    fd = os.open(paths['config'], os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+                    with os.fdopen(fd, 'w') as output:
+                        output.write(config)
+                    paths['config'].chmod(0o600)
+                    if not paths['settings'].exists():
+                        paths['settings'].write_text('[video]\nscale=2\n')
+                    marker.write_text(json.dumps(binding))
+                except BaseException:
+                    broker.close()
+                    raise
+            self.state, self.broker = path, broker
+            self.status = 'TLS verified. Trainer authenticated. Launch the native game to play.'
+            return paths
+
+    def start_display(self, display):
+        from .launcher import ManagedDisplay
+        if self.managed_display is not None:
+            raise SessionError('This session already owns a game display. Disconnect before replacing it.')
+        managed = ManagedDisplay(display)
+        try:
+            managed.start()
+        except ValueError as exc:
+            raise SessionError(str(exc)) from None
+        self.managed_display = managed
+        self.status = f'Game display {display} ready. Return to Play and launch your trainer.'
+        return display
+
+    def launch(self, paths, binary=REPO/'build/pokeemerald64', display=':93', agent_control=False):
+        from .launcher import ProfileLock, profile_paths
+        if self.state is None:
+            raise ValueError('connect to a world first')
+        trainer = paths['profile'].name
+        if paths != profile_paths(self.state, trainer):
+            raise ValueError('profile must belong to the selected world')
+        if trainer in self.games and self.games[trainer][0].poll() is None:
+            raise ValueError('this trainer already has a running game')
+        if trainer in self.game_locks:
+            self.game_locks.pop(trainer).close()
+        import os
+        import shutil
+        command = (game_command(binary, self.state, paths, display, agent_control=True)
+                   if agent_control else game_command(binary, self.state, paths, display))
+        if not shutil.which('bwrap'):
+            raise SessionError('Bubblewrap is required to isolate the native game.')
+        if not Path(binary).is_file() or not os.access(binary, os.X_OK):
+            raise SessionError('Native game binary is missing or not executable. Select a built game binary.')
+        if display and not Path('/tmp/.X11-unix/X' + display[1:]).is_socket():
+            raise SessionError('Dedicated Xephyr display is missing. Start Xephyr :93 or select an existing dedicated display.')
+        lock = ProfileLock(self.state, trainer)
+        try:
+            if agent_control:
+                from .launcher import check_player_endpoint
+                check_player_endpoint(paths)
+            logfile = paths['profile']/'native.log'
+            if logfile.is_symlink():
+                raise SessionError('Native log cannot be a symlink.')
+            paths['telemetry'].unlink(missing_ok=True)
+            fd = os.open(logfile, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(fd, 'wb') as output:
+                process = subprocess.Popen(command, stdin=subprocess.DEVNULL,
+                                           stdout=output, stderr=subprocess.STDOUT)
+        except BaseException:
+            lock.close()
+            raise
+        self.games[trainer] = (process, paths)
+        self.game_locks[trainer] = lock
+        self.agent_games.discard(trainer)
+        if agent_control:
+            self.agent_games.add(trainer)
+        # Release even when no UI poll runs. The descriptor is CLOEXEC and is
+        # never exposed inside the native sandbox, nor is its directory mounted.
+        import threading
+        def reap():
+            process.wait()
+            if process.poll() is not None:
+                lock.close()
+        try:
+            threading.Thread(target=reap, name='native-profile-lock', daemon=True).start()
+        except BaseException:
+            if process.poll() is None:
+                process.terminate()
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+            lock.close()
+            self.games.pop(trainer)
+            self.game_locks.pop(trainer)
+            raise
+        self.status = (f'{trainer}: AI-controlled trainer launched. Native control status appears below.' if agent_control
+                       else f'{trainer} starting. Use the native game window to play.')
+        return process
+
+    def _gm_queue(self):
+        from .runtime_gm import IntentQueue
+        if self.server is None or self.state is None:
+            raise ValueError('GM controls are available only in the hosting session')
+        directory = self.state/'gm'
+        if directory.resolve() != directory:
+            raise ValueError('GM state cannot be a symlink')
+        return IntentQueue(self.state)
+
+    def start_gm(self):
+        import threading
+        from .runtime_gm import MODEL, RuntimeGM
+        queue = self._gm_queue()
+        queue.close()
+        if self.gm_thread is not None and self.gm_thread.is_alive():
+            raise ValueError('runtime GM is already running')
+        self.gm_stop = threading.Event()
+        ready = threading.Event()
+        self.gm_error = None
+        def work():
+            try:
+                with RuntimeGM(self.state, str(self.state/'transport/world.sock'), model=MODEL,
+                               timeout=30, poll_interval=1) as runtime:
+                    ready.set()
+                    runtime.run(self.gm_stop)
+            except Exception as exc:
+                self.gm_error = type(exc).__name__
+            finally:
+                ready.set()
+        self.gm_thread = threading.Thread(target=work, name='desktop-luna-gm', daemon=True)
+        self.gm_thread.start()
+        if not ready.wait(5) or self.gm_error:
+            self.stop_gm()
+            raise ValueError('runtime GM could not acquire its host authority')
+        self.status = 'Luna developer GM enabled. Player intentions are optional.'
+
+    def stop_gm(self):
+        if self.gm_stop is not None:
+            self.gm_stop.set()
+        if self.gm_thread is not None:
+            # Runtime's existing author lifecycle bounds each call to 30 seconds
+            # and kills its owned author process group before returning.
+            self.gm_thread.join()
+        self.status = 'Luna developer GM stopped. Queued requests and outcomes are kept.'
+
+    def _intent_client(self, trainer):
+        from .client import IntentClient
+        from .launcher import profile_paths
+        if self.state is None:
+            raise SessionError('Connect to a world before submitting an intention.')
+        paths = profile_paths(self.state, trainer)
+        if not paths['config'].exists() and (self.server is not None or self.broker is None):
+            paths = self.local_profile(trainer)
+        if paths['config'].stat().st_size > 4096:
+            raise SessionError('Trainer connection configuration is invalid.')
+        fields = dict(line.split(' ', 1) for line in paths['config'].read_text().splitlines())
+        if (fields.get('trainer') != trainer or fields.get('socket') != str(self.state/'transport/world.sock')
+                or not re.fullmatch(r'[0-9a-fA-F]{64}', fields.get('token', ''))):
+            raise SessionError('Choose a trainer provisioned for this connection.')
+        return IntentClient(fields['socket'], trainer, fields['token'], timeout=3)
+
+    @staticmethod
+    def _intent_result(result, identifier, trainer):
+        request = result.get('request')
+        if (result.get('ok') is not True or not isinstance(request, dict)
+                or request.get('id') != identifier or request.get('player') != trainer
+                or request.get('status') not in ('queued', 'running', 'succeeded', 'failed', 'interrupted')):
+            raise SessionError('Host rejected the intention request. Check connection, text length and queue limits.')
+        return request
+
+    def submit_intent(self, trainer, text):
+        with self._intent_client(trainer) as client:
+            result = client.submit_intent(text)
+            identifier = result.get('id')
+            if not isinstance(identifier, str) or not re.fullmatch(r'net-[0-9a-f]{64}', identifier):
+                raise SessionError('Host did not accept the intention. Check text length and queue limits.')
+            # Verify the exact durable target over the authenticated control role.
+            request = self._intent_result(client.intent_status(identifier), identifier, trainer)
+        self.intents[identifier] = request
+        self.status = f'Intention queued as {identifier}. The host controls the Luna worker.'
+        return identifier
+
+    def intent_status(self, identifier):
+        previous = self.intents.get(identifier)
+        if previous is None:
+            raise SessionError('Select an intention submitted in this session.')
+        trainer = previous['player']
+        with self._intent_client(trainer) as client:
+            request = self._intent_result(client.intent_status(identifier), identifier, trainer)
+        self.intents[identifier] = request
+        return request
+
+    def refresh_intents(self):
+        for identifier in list(self.intents)[-3:]:
+            self.intent_status(identifier)
+
+    def gm_status(self):
+        if self.server is None:
+            return {'remote': True, 'requests': list(self.intents.values())} if self.intents else {}
+        if self.state is None or not (self.state/'gm/runtime.sqlite3').exists():
+            return {}
+        queue = self._gm_queue()
+        try:
+            return queue.status()
+        finally:
+            queue.close()
+
+    def trainers(self):
+        if self.state is None:
+            return []
+        directory = self.state/'trainers'
+        return sorted(p.name for p in directory.iterdir()
+                      if p.is_dir() and not p.is_symlink()
+                      and re.fullmatch(r'[A-Za-z0-9_-]{1,24}', p.name)) if directory.is_dir() else []
+
+    def connection_status(self):
+        if self.state is None:
+            return {'connected': False, 'players': []}
+        try:
+            if self.server is not None or self.broker is None:
+                from .launcher import admin
+                value = admin(self.state/'transport/world.sock', {'command': 'inspect'})
+                return {'connected': value.get('ok') is True,
+                        'players': [p['id'] for p in value.get('players', [])]}
+            # Control role must never evict the native trainer presence.
+            trainers = self.trainers()
+            if not trainers:
+                return {'connected': False, 'players': []}
+            with self._intent_client(trainers[0]):
+                pass
+            return {'connected': True, 'players': [], 'remote': True}
+        except (OSError, ValueError, ConnectionError):
+            return {'connected': False, 'players': []}
+
+    def poll(self):
+        lines = [self.status]
+        if self.state is not None:
+            connection = self.connection_status()
+            if connection.get('remote'):
+                lines.append('Remote TLS host reachable. Trainer authenticated. Player visibility appears in the native game.')
+            elif connection['connected']:
+                lines.append('Online trainers: ' + (', '.join(connection['players']) or 'none yet. Launch a trainer to enter.'))
+            else:
+                lines.append('Host unavailable. Saves kept. Retry by disconnecting and hosting or joining again.')
+        gm = self.gm_status()
+        if gm:
+            if gm.get('remote'):
+                lines.append('Intention status from the host:')
+            else:
+                runtime = gm.get('runtime') or {}
+                lines.append('Luna GM: ' + str(runtime.get('state', 'not started')))
+            for request in gm.get('requests', [])[-3:]:
+                lines.append(f'Intent {request["id"][:12]}: {request["status"]}')
+        if self.gm_error:
+            lines.append('Luna GM stopped after a runtime error. Check configuration and retry explicitly.')
+        for trainer, (process, paths) in self.games.items():
+            code = process.poll()
+            if code is not None:
+                if trainer in self.game_locks:
+                    self.game_locks[trainer].close()
+                lines.append(f'{trainer} exited {code}. Save kept. Details: {paths["profile"]}/native.log')
+                continue
+            if trainer in self.agent_games:
+                from .launcher import player_endpoint
+                import os
+                import shlex
+                import stat
+                import time
+                try:
+                    endpoint = player_endpoint(paths)
+                    directory = paths['profile'].stat()
+                    socket_info = endpoint.lstat()
+                    if (directory.st_uid != os.geteuid() or directory.st_mode & 0o077
+                            or not stat.S_ISSOCK(socket_info.st_mode)
+                            or socket_info.st_uid != os.geteuid()
+                            or socket_info.st_nlink != 1 or socket_info.st_mode & 0o077):
+                        raise ValueError('unsafe player endpoint')
+                    # Launch removes old telemetry before spawning this tracked
+                    # child. Read only its fresh public file, never connect to
+                    # the exclusive player socket, even when it appears idle.
+                    telemetry = paths['telemetry']
+                    if telemetry.resolve() != telemetry:
+                        raise ValueError('telemetry cannot be a symlink')
+                    fd = os.open(telemetry, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+                    with os.fdopen(fd) as source:
+                        info = os.fstat(source.fileno())
+                        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                                or info.st_size > 65536
+                                or not 0 <= time.time() - info.st_mtime <= 5):
+                            raise ValueError('stale or invalid telemetry')
+                        value = json.loads(source.read(65537))
+                    if (not isinstance(value, dict) or value.get('trainer') != trainer
+                            or type(value.get('connected')) is not bool
+                            or type(value.get('ready')) is not bool
+                            or type(value.get('revision')) is not int or value['revision'] < 0
+                            or type(value.get('frame')) is not int or value['frame'] < 0):
+                        raise ValueError('invalid native telemetry')
+                    lines.append(f'{trainer}: AI control ready. Native endpoint available to its controller: {endpoint}')
+                    lines.append('One controller only. Keep your existing SDK or MCP connection while attached.')
+                    code = f'from world.player import PlayerClient; print(PlayerClient({str(endpoint)!r}).observe())'
+                    lines.append('SDK: ' + shlex.join(['env', f'PYTHONPATH={REPO}', 'python3', '-c', code]))
+                    lines.append('MCP: ' + shlex.join(['python3', str(REPO/'world/player_mcp.py'), '--endpoint', str(endpoint)]))
+                except (OSError, ValueError):
+                    lines.append(f'{trainer}: AI control starting. Waiting for fresh native telemetry and a private player endpoint.')
+            try:
+                telemetry = paths['telemetry']
+                if telemetry.stat().st_size > 65536:
+                    raise ValueError('oversized telemetry')
+                value = json.loads(telemetry.read_text())
+                if (not isinstance(value, dict) or type(value.get('connected')) is not bool
+                        or type(value.get('revision')) is not int):
+                    raise ValueError('invalid telemetry')
+                lines.append(f'{trainer}: ' + ('connected' if value.get('connected') else 'connecting or disconnected')
+                             + f', revision {value.get("revision", "?")}')
+                peers = value.get('peers', [])
+                if isinstance(peers, list) and len(peers) <= 64:
+                    nearby = sorted({p['trainer'] for p in peers if isinstance(p, dict)
+                                     and isinstance(p.get('trainer'), str)
+                                     and re.fullmatch(r'[A-Za-z0-9_-]{1,24}', p['trainer'])
+                                     and p.get('visible') is True})
+                    if value['connected'] and nearby:
+                        lines.append('Nearby trainers: ' + ', '.join(nearby))
+            except (OSError, ValueError):
+                lines.append(f'{trainer}: starting, waiting for native connection state')
+        return '\n'.join(lines)
+
+    def close(self):
+        self.stop_gm()
+        for process, _ in self.games.values():
+            if process.poll() is None:
+                process.terminate()
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+        self.games.clear()
+        self.agent_games.clear()
+        for lock in self.game_locks.values():
+            lock.close()
+        self.game_locks.clear()
+        if self.managed_display is not None:
+            self.managed_display.close()
+            self.managed_display = None
+        self.intents.clear()
+        if self.broker is not None:
+            self.broker.close()
+            self.broker = None
+        if self.server is not None:
+            self.server.close()
+            self.server = None
+        self.state = None
+        self.status = 'Disconnected. Saves kept.'
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+
+class DesktopApp:
+    """Tk view with serialized background operations and native game windows."""
+    def __init__(self, window, session, binary, display):
+        import tkinter as tk
+        from tkinter import ttk, filedialog
+        from concurrent.futures import ThreadPoolExecutor
+        self.window, self.session = window, session
+        self.binary, self.display = binary, display
+        self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='desktop-session')
+        self.pending = None
+        self.pending_kind = None
+        self.poll_future = None
+        self.next_poll = 0
+        self.after_id = None
+        self.closing = False
+        self.remote_paths = None
+        self.buttons = []
+        self.fields = {}
+        window.title('Emerald World')
+        window.protocol('WM_DELETE_WINDOW', self.close)
+        frame = ttk.Frame(window, padding=14)
+        frame.grid(sticky='nsew')
+        window.columnconfigure(0, weight=1)
+        window.rowconfigure(0, weight=1)
+        frame.columnconfigure(0, weight=1)
+        self.root_label = tk.StringVar(value='Worlds root: ' + str(session.root))
+        ttk.Label(frame, text='Emerald World', font=('Sans', 18, 'bold')).grid(row=0, column=0, sticky='w')
+        ttk.Label(frame, textvariable=self.root_label).grid(row=1, column=0, sticky='w')
+        self.notebook = ttk.Notebook(frame)
+        self.notebook.grid(row=2, column=0, sticky='nsew', pady=12)
+        pages = {}
+        for title in ('Play', 'Connect friends', 'Optional GM', 'Settings'):
+            pages[title] = ttk.Frame(self.notebook, padding=12)
+            self.notebook.add(pages[title], text=title)
+            pages[title].columnconfigure(1, weight=1)
+        # The library and trainer controls remain reachable on small desktops.
+        play_outer = pages['Play']
+        play_outer.columnconfigure(0, weight=1)
+        play_outer.rowconfigure(0, weight=1)
+        self.play_canvas = tk.Canvas(play_outer, width=760, height=500, highlightthickness=0)
+        self.play_canvas.grid(row=0, column=0, sticky='nsew')
+        play_scroll = ttk.Scrollbar(play_outer, orient='vertical', command=self.play_canvas.yview)
+        play_scroll.grid(row=0, column=1, sticky='ns')
+        self.play_canvas.configure(yscrollcommand=play_scroll.set)
+        pages['Play'] = ttk.Frame(self.play_canvas)
+        pages['Play'].columnconfigure(1, weight=1)
+        play_content = self.play_canvas.create_window((0, 0), window=pages['Play'], anchor='nw')
+        pages['Play'].bind('<Configure>', lambda event: self.play_canvas.configure(scrollregion=self.play_canvas.bbox('all')))
+        self.play_canvas.bind('<Configure>', lambda event: self.play_canvas.itemconfigure(play_content, width=event.width))
+        page, row = pages['Play'], 0
+        def note(text):
+            nonlocal row
+            ttk.Label(page, text=text, wraplength=700, justify='left').grid(row=row, column=0, columnspan=3, sticky='w', pady=6)
+            row += 1
+        def field(key, label, value='', browse=False):
+            nonlocal row
+            ttk.Label(page, text=label).grid(row=row, column=0, sticky='w')
+            variable = tk.StringVar(value=value)
+            self.fields[key] = variable
+            entry = ttk.Combobox(page, textvariable=variable, width=48) if key in ('world', 'trainer', 'deleted_world') else ttk.Entry(page, textvariable=variable, width=50)
+            entry.grid(row=row, column=1, sticky='ew', pady=4)
+            if browse:
+                def choose():
+                    selected = filedialog.askopenfilename(parent=window, initialdir=str(self.session.root))
+                    if selected:
+                        variable.set(selected)
+                ttk.Button(page, text='Choose file', command=choose).grid(row=row, column=2)
+            row += 1
+            return entry
+        def actions(items):
+            nonlocal row
+            bar = ttk.Frame(page)
+            bar.grid(row=row, column=0, columnspan=3, sticky='w', pady=8)
+            for label, operation in items:
+                button = ttk.Button(bar, text=label, command=lambda op=operation: self.submit(op))
+                button.pack(side='left', padx=3)
+                self.buttons.append(button)
+            row += 1
+        note('1. Choose a saved world or type a new name and create it. Host starts the world on this computer. Join local connects to a world already hosted here.')
+        note('World library (32 worlds). Labels and tags do not change save paths. Disconnect before hosting a different selected world.')
+        library = ttk.Frame(page)
+        library.grid(row=row, column=0, columnspan=3, sticky='ew')
+        library.columnconfigure(0, weight=1)
+        self.library_tree = ttk.Treeview(library, columns=('tags', 'trainers'), height=3, selectmode='browse')
+        self.library_tree.heading('#0', text='World label (stable key)')
+        self.library_tree.heading('tags', text='Tags')
+        self.library_tree.heading('trainers', text='Trainer profiles')
+        self.library_tree.column('#0', width=260)
+        self.library_tree.column('tags', width=160)
+        self.library_tree.column('trainers', width=160)
+        self.library_tree.grid(row=0, column=0, sticky='ew')
+        scroll = ttk.Scrollbar(library, orient='vertical', command=self.library_tree.yview)
+        scroll.grid(row=0, column=1, sticky='ns')
+        self.library_tree.configure(yscrollcommand=scroll.set)
+        self.library_tree.bind('<<TreeviewSelect>>', self.select_library_world)
+        row += 1
+        self.library_details = tk.StringVar(value='Choose a world to see its details.')
+        ttk.Label(page, textvariable=self.library_details, wraplength=700, justify='left').grid(
+            row=row, column=0, columnspan=3, sticky='w')
+        row += 1
+        self.world_entry = field('world', 'Stable world key / new key')
+        self.world_entry.bind('<<ComboboxSelected>>', self.show_world_details)
+        field('world_label', 'Display name')
+        field('world_tags', 'Tags (comma separated)')
+        actions([('Rename / save tags', self.rename_selected_world), ('Move to Deleted', self.delete_selected_world)])
+        self.deleted_entry = field('deleted_world', 'Deleted world to restore')
+        actions([('Restore deleted world', self.restore_selected_world)])
+        actions([('Refresh worlds', self.refresh), ('Create world', self.create),
+                 ('Host selected', self.host), ('Join local', self.join_local)])
+        note('2. Human trainer: choose a trainer to resume or type a new name. Each trainer has their own team, bag and save.')
+        self.trainer_entry = field('trainer', 'Human trainer name', 'alice')
+        actions([('Launch / resume trainer', self.launch), ('Disconnect', self.disconnect)])
+        note('AI-controlled trainer: launch a distinct trainer for Hermes or another external agent. This is a player, not the optional Luna GM. No agent attaches to your human game. Copy the verified endpoint and SDK command from live status after launch. Remote AI players need their own trainer invitation and TLS connection.')
+        field('ai_trainer', 'AI-controlled trainer name', 'hermes')
+        actions([('Launch AI-controlled trainer', self.launch_ai)])
+        note('Play in the native game window. Save from its menu before disconnecting. Closing the launcher stops only its own games and host. Friend connections use the next tab.')
+        page, row = pages['Connect friends'], 0
+        note('Host: first host a world in Play, then enable secure sharing. Export one private invitation per friend and send it through a trusted channel. Its bundled TLS pin is trustworthy only when received from you through that channel. For wildcard or local listeners, enter an explicit advertised address reachable by your friend. No relay is provided.')
+        field('listen', 'Listen address', '127.0.0.1:8765')
+        field('advertised', 'Advertised friend address (HOST:PORT)')
+        field('invite_trainer', 'Friend trainer name', 'bob')
+        actions([('Enable secure sharing', self.share), ('Save trainer invitation', self.invite)])
+        note('Friend: choose a separate local save name in Play, then enter the host address, trusted pin and invitation here. Connect, then return to Play and launch your assigned trainer.')
+        field('remote', 'Remote host:port', '127.0.0.1:8765')
+        field('pin', 'Trusted SHA256 certificate pin')
+        field('invitation', 'Private trainer invitation', browse=True)
+        actions([('Connect remote TLS', self.connect)])
+        page, row = pages['Optional GM'], 0
+        note('The adventure and multiplayer work without enabling the GM. Only the host can start Luna. Model: openai-codex/gpt-6-luna.')
+        field('intent', 'Optional player intention')
+        actions([('Start Luna GM (host)', self.start_gm), ('Stop GM (host)', self.stop_gm)])
+        actions([('Submit intention', self.submit_intent), ('Refresh intent status', self.refresh_intents)])
+        page, row = pages['Settings'], 0
+        note('A dedicated nested Xephyr display keeps the native game away from your desktop X socket. Start a new display here, or explicitly select an existing dedicated display. Existing displays are never stopped by this launcher.')
+        field('display', 'Dedicated game display', display or '')
+        actions([('Start dedicated game display', self.start_display)])
+        field('binary', 'Native game binary', str(binary), browse=True)
+        field('seed', 'Optional seed save for NEW trainer', browse=True)
+        field('cert', 'Optional existing TLS certificate', browse=True)
+        field('key', 'Matching TLS private key', browse=True)
+        actions([('Choose worlds folder', self.choose_root)])
+        note('Seed saves are copied only when explicitly selected and never overwrite an existing trainer. Leave blank to start a new adventure or resume. Your personal HOME is never mounted into the native game.')
+        self.message = tk.StringVar(value=session.status)
+        ttk.Label(frame, text='Live connection and players', font=('Sans', 11, 'bold')).grid(row=3, column=0, sticky='w')
+        ttk.Label(frame, textvariable=self.message, wraplength=760, justify='left').grid(row=4, column=0, sticky='w', pady=8)
+        self.refresh()
+        self.after_id = window.after(150, self.tick)
+        window.bind('<Destroy>', self.destroyed, add='+')
+
+    def destroyed(self, event):
+        if event.widget is self.window and self.after_id is not None:
+            self.window.after_cancel(self.after_id)
+            self.after_id = None
+
+    def start_gm(self):
+        self.session.start_gm()
+
+    def stop_gm(self):
+        self.session.stop_gm()
+
+    def submit_intent(self):
+        value = self.values()
+        self.session.submit_intent(value['trainer'], value['intent'])
+        self.fields['intent'].set('')
+
+    def refresh_intents(self):
+        self.session.refresh_intents()
+
+    def choose_root(self):
+        if self.session.state is not None:
+            raise SessionError('Disconnect before choosing a different worlds root.')
+        from tkinter import filedialog
+        selected = filedialog.askdirectory(parent=self.window, initialdir=str(self.session.root), mustexist=False)
+        if selected:
+            replacement = DesktopSession(DesktopSession.create_root(Path(selected)))
+            self.session.close()
+            self.session = replacement
+            self.remote_paths = None
+            self.fields['world'].set('')
+            self.root_label.set('Worlds root: ' + str(replacement.root))
+            self.refresh()
+
+    def values(self):
+        return {key: value.get().strip() for key, value in self.fields.items()}
+
+    def refresh(self):
+        names = [item['name'] for item in self.session.worlds()]
+        self.world_entry['values'] = names
+        if names and not self.fields['world'].get():
+            self.fields['world'].set(names[0])
+        if hasattr(self, 'library_tree'):
+            self.library_cards = self.session.world_library()
+            for item in self.library_tree.get_children():
+                self.library_tree.delete(item)
+            for card in self.library_cards:
+                self.library_tree.insert('', 'end', iid=card['key'],
+                    text=f'{card["display_name"]} ({card["key"]})',
+                    values=(', '.join(card['tags']), ', '.join(t['name'] for t in card['trainers']) or 'none yet'))
+            self.deleted_entry['values'] = [item['token'] for item in self.session.deleted_worlds()]
+            self.show_world_details()
+        if hasattr(self, 'trainer_entry'):
+            self.trainer_entry['values'] = self.session.trainers()
+
+    def delete_selected_world(self):
+        from tkinter import messagebox
+        key = self.values()['world']
+        # Capture identity before either modal prompt. Neither default is Yes.
+        if not messagebox.askyesno('Move world to Deleted?',
+                f'Move world {key} and every trainer save to Deleted? It can be restored.',
+                parent=self.window, default='no'):
+            return
+        if not messagebox.askyesno('Confirm recoverable deletion',
+                f'Confirm moving the entire world {key}. Stop all hosts, games and GM workers first.',
+                parent=self.window, default='no'):
+            return
+        self.session.delete_world(key)
+        self.refresh()
+
+    def rename_selected_world(self):
+        value = self.values()
+        self.session.rename_world(value['world'], value['world_label'],
+                                  [t.strip() for t in value['world_tags'].split(',') if t.strip()])
+        self.refresh()
+
+    def restore_selected_world(self):
+        token = self.values()['deleted_world']
+        path = self.session.restore_world(token)
+        self.fields['world'].set(path.name)
+        self.refresh()
+
+    def select_library_world(self, event=None):
+        selected = self.library_tree.selection()
+        if selected:
+            self.fields['world'].set(selected[0])
+        self.show_world_details()
+
+    def show_world_details(self, event=None):
+        if not hasattr(self, 'library_details'):
+            return
+        key = self.fields['world'].get().strip()
+        card = next((item for item in self.library_cards if item['key'] == key), None)
+        if card is None:
+            self.library_details.set('Choose a saved world. New names create a separate stable world key.')
+            return
+        self.fields['world_label'].set(card['display_name'])
+        self.fields['world_tags'].set(', '.join(card['tags']))
+        lines = [card['display_name'] + ' | Stable key: ' + key,
+                 'Tags: ' + (', '.join(card['tags']) or 'none')]
+        if not card['trainers']:
+            lines.append('No trainer profiles yet. Party, badges and play time unavailable.')
+        for trainer in card['trainers']:
+            lines.append(f'Trainer {trainer["name"]} | Save file modified: {trainer["saved_at"]}')
+            lines.append(f'Party: {trainer["party"]} | Badges: {trainer["badges"]} | Play time: {trainer["playtime"]}')
+        self.library_details.set('\n'.join(lines))
+
+    def create(self):
+        self.session.create_world(self.values()['world'])
+        self.session.status = 'World created. Select Host to start it.'
+        self.refresh()
+
+    def host(self):
+        self.session.host(self.values()['world'])
+
+    def join_local(self):
+        self.session.join_local(self.values()['world'])
+
+    def start_display(self):
+        self.session.start_display(self.values()['display'])
+
+    def launch(self):
+        value = self.values()
+        self._launch(value, self.remote_paths)
+        self.refresh()
+
+    def _launch(self, value, remote_paths):
+        if 'world' in value and self.session.state != self.session._world(value['world']):
+            raise SessionError('Disconnect and host or join the selected world before launching its trainer.')
+        paths = remote_paths or self.session.local_profile(value['trainer'], value['seed'] or None)
+        display = value.get('display') or None
+        if display and not Path('/tmp/.X11-unix/X' + display[1:]).is_socket():
+            self.session.start_display(display)
+        self.session.launch(paths, Path(value.get('binary') or self.binary), display)
+
+    def launch_ai(self):
+        self._launch_ai(self.values(), self.remote_paths)
+        self.refresh()
+
+    def _launch_ai(self, value, remote_paths):
+        if 'world' in value and self.session.state != self.session._world(value['world']):
+            raise SessionError('Disconnect and host or join the selected world before launching its trainer.')
+        trainer = value['ai_trainer']
+        if remote_paths:
+            if trainer != remote_paths['profile'].name:
+                raise SessionError('AI trainer must match its assigned invitation. Connect with a distinct AI invitation.')
+            paths = remote_paths
+        else:
+            if trainer == value['trainer']:
+                raise SessionError('Choose a distinct AI trainer name, different from the Human trainer.')
+            paths = self.session.local_profile(trainer, value['seed'] or None)
+        display = value.get('display') or None
+        if display and not Path('/tmp/.X11-unix/X' + display[1:]).is_socket():
+            self.session.start_display(display)
+        self.session.launch(paths, Path(value.get('binary') or self.binary), display, agent_control=True)
+
+    def disconnect(self):
+        self.session.close()
+        self.remote_paths = None
+
+    def share(self):
+        self.fields['pin'].set(self._share(self.values()))
+
+    def _share(self, value):
+        import hashlib
+        import ssl
+        from .transport import _endpoint
+        cert, key = (Path(value['cert']), Path(value['key'])) if value['cert'] and value['key'] else self.session.tls_material()
+        address = self.session.share(cert, key, _endpoint(value['listen']))
+        pin = hashlib.sha256(ssl.PEM_cert_to_DER_cert(cert.read_text())).hexdigest()
+        self.session.status = f'TLS listening at {address[0]}:{address[1]}\nCertificate pin: {pin}'
+        return pin
+
+    def invite(self):
+        from tkinter import filedialog
+        destination = filedialog.asksaveasfilename(parent=self.window, initialdir=str(self.session.root),
+                                                 title='Save private trainer invitation', defaultextension='.json')
+        if destination:
+            from .transport import _endpoint
+            value = self.values()
+            address = _endpoint(value['advertised']) if value['advertised'] else None
+            self.session.export_invitation(value['invite_trainer'], destination, address)
+
+    def connect(self):
+        from .transport import _endpoint
+        value = self.values()
+        self.remote_paths = self.session.connect_remote(value['world'], value['invitation'],
+                                                        _endpoint(value['remote']), value['pin'])
+        self.fields['trainer'].set(self.remote_paths['profile'].name)
+
+    def submit(self, operation):
+        if self.pending is not None:
+            return
+        # Tk reads and file dialogs stay on the UI thread. Network and bounded
+        # author cleanup run in a serialized worker so the window stays live.
+        if operation in (self.start_display, self.launch, self.launch_ai, self.share):
+            value = self.values()
+            self.pending_kind = operation.__name__
+            if operation == self.start_display:
+                self.pending = self.executor.submit(self.session.start_display, value['display'])
+            elif operation == self.launch:
+                self.pending = self.executor.submit(self._launch, value, self.remote_paths)
+            elif operation == self.launch_ai:
+                self.pending = self.executor.submit(self._launch_ai, value, self.remote_paths)
+            else:
+                self.pending = self.executor.submit(self._share, value)
+            self.message.set('Starting session operation. The window remains available...')
+            for button in self.buttons:
+                button.state(['disabled'])
+            return
+        if operation == self.submit_intent:
+            value = self.values()
+            self.pending_kind = 'intent'
+            self.pending = self.executor.submit(self.session.submit_intent, value['trainer'], value['intent'])
+            self.message.set('Sending intention over the authenticated world connection...')
+            for button in self.buttons:
+                button.state(['disabled'])
+            return
+        if operation in (self.start_gm, self.stop_gm, self.disconnect, self.refresh_intents):
+            self.pending_kind = operation.__name__
+            self.pending = self.executor.submit(operation)
+            self.message.set('Updating session. Waiting for owned work to finish...')
+            for button in self.buttons:
+                button.state(['disabled'])
+            return
+        if operation == self.connect:
+            from .transport import _endpoint
+            value = self.values()
+            try:
+                endpoint = _endpoint(value['remote'])
+            except (ValueError, argparse.ArgumentTypeError):
+                self.message.set('Error: use HOST:PORT for the remote address.')
+                return
+            self.pending_kind = 'connect'
+            self.pending = self.executor.submit(self.session.connect_remote, value['world'],
+                                                value['invitation'], endpoint, value['pin'])
+            self.message.set('Connecting and verifying TLS pin...')
+            for button in self.buttons:
+                button.state(['disabled'])
+            return
+        try:
+            operation()
+            self.message.set(self.session.status)
+            self.next_poll = 0
+        except SessionError as exc:
+            self.session.status = str(exc)
+            self.message.set(self.session.status)
+        except Exception:
+            # Fixed guidance never displays credential-bearing provider text.
+            guidance = {
+                'create': 'Enter a new world name using letters, digits, _ or -. Existing worlds can be selected and hosted.',
+                'host': 'Choose an existing world to host. If it is already hosted, use Join local. Disconnect before switching worlds.',
+                'join_local': 'Choose a world already hosted on this computer. Otherwise use Host selected first.',
+                'launch': 'Connect to a world first. Choose a trainer name and a built binary in Settings. Clear the seed field when resuming an existing save.',
+                'share': 'Host a world first. Check the listen address and port. Existing certificate and key must match and stay outside game-visible folders.',
+                'invite': 'Host a world first and choose a new private invitation file. Trainer names use letters, digits, _ or -.',
+            }
+            self.session.status = 'Could not complete this step. ' + guidance.get(operation.__name__, 'Check selection, files and connection, then retry.')
+            self.message.set(self.session.status)
+
+    def tick(self):
+        self.after_id = None
+        if self.pending is not None and self.pending.done():
+            kind = self.pending_kind
+            try:
+                result = self.pending.result()
+                if kind == 'connect':
+                    self.remote_paths = result
+                    self.fields['trainer'].set(self.remote_paths['profile'].name)
+                elif kind == 'intent':
+                    self.fields['intent'].set('')
+                elif kind == 'share':
+                    self.fields['pin'].set(result)
+                elif kind in ('launch', 'launch_ai'):
+                    self.refresh()
+            except SessionError as exc:
+                self.session.status = str(exc)
+            except Exception:
+                self.session.status = ('Error: remote connection failed. Check host, port, invitation and trusted pin.'
+                                       if kind == 'connect' else 'Error: session operation failed. Check host authority and runtime configuration.')
+            self.pending = None
+            self.pending_kind = None
+            self.message.set(self.session.status)
+            self.next_poll = 0
+            if kind == 'close':
+                self.executor.shutdown(wait=True)
+                self.window.destroy()
+                return
+            for button in self.buttons:
+                button.state(['!disabled'])
+        if self.closing and self.pending is None:
+            self.pending_kind = 'close'
+            self.pending = self.executor.submit(self.session.close)
+        if self.poll_future is not None and self.poll_future.done():
+            try:
+                status = self.poll_future.result()
+                if self.pending is None and not self.closing:
+                    self.message.set(status)
+            except Exception:
+                if self.pending is None:
+                    self.message.set('Connection status unavailable. Saves kept. Disconnect and retry the selected world.')
+            self.poll_future = None
+        import time
+        if self.pending is None and self.poll_future is None and not self.closing and time.monotonic() >= self.next_poll:
+            self.poll_future = self.executor.submit(self.session.poll)
+            self.next_poll = time.monotonic() + 1
+        self.after_id = self.window.after(150, self.tick)
+
+    def close(self):
+        self.closing = True
+        self.message.set('Closing owned games and connections. Saves are kept.')
+
+
+def run_desktop(worlds_root, binary=REPO/'build/pokeemerald64', display=':95'):
+    try:
+        import tkinter as tk
+    except ImportError as exc:
+        raise ValueError('desktop UI requires Python with tkinter available') from exc
+    # Validate before opening any window or scanning anything beyond the explicit root.
+    with DesktopSession(DesktopSession.create_root(worlds_root)) as session:
+        try:
+            window = tk.Tk()
+        except tk.TclError as exc:
+            raise SessionError('Cannot open the launcher desktop. Set DISPLAY to your desktop display. The game uses its own dedicated display.') from exc
+        app = None
+        try:
+            app = DesktopApp(window, session, binary, display)
+            window.mainloop()
+        finally:
+            if app is not None:
+                app.executor.shutdown(wait=True)
+                app.session.close()
+            try:
+                window.destroy()
+            except tk.TclError:
+                pass
+    return 0

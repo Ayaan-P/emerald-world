@@ -12,9 +12,16 @@
 #include "task.h"
 #include "util.h"
 #include "constants/abilities.h"
+#ifdef PORTABLE
+#include "platform/native_link.h"
+#include "constants/moves.h"
+#endif
 
 static EWRAM_DATA u8 sLinkSendTaskId = 0;
 static EWRAM_DATA u8 sLinkReceiveTaskId = 0;
+#ifdef PORTABLE
+static bool8 sNativeBattlePayloadFailed;
+#endif
 static EWRAM_DATA u8 sUnused = 0; // Debug? Never read
 EWRAM_DATA struct UnusedControllerStruct gUnusedControllerStruct = {}; // Debug? Unused code that writes to it, never read
 static EWRAM_DATA u8 sBattleBuffersTransferData[0x100] = {};
@@ -699,6 +706,9 @@ static void PrepareBufferDataTransfer(u8 bufferId, u8 *data, u16 size)
 
 static void CreateTasksForSendRecvLinkBuffers(void)
 {
+#ifdef PORTABLE
+    sNativeBattlePayloadFailed = FALSE;
+#endif
     sLinkSendTaskId = CreateTask(Task_HandleSendLinkBuffersData, 0);
     gTasks[sLinkSendTaskId].tState                 = 0;
     gTasks[sLinkSendTaskId].tCurrentBlock_WrapFrom = 0;
@@ -727,6 +737,197 @@ enum
     LINK_BUFF_EFFECT_BATTLER,
     LINK_BUFF_DATA,
 };
+
+/* Native battle payload boundary. */
+#ifdef PORTABLE
+/* The cable adapter owns the completed block's length, not its payload. */
+extern u16 GetBlockReceivedSize(u8 player);
+
+static void AbortNativeBattlePayload(void)
+{
+    sNativeBattlePayloadFailed = TRUE;
+    NativeLink_Abort();
+    gLinkErrorOccurred = TRUE;
+}
+
+static bool8 NativeBattleCommandValid(const u8 *data, u16 size, u8 bufferId)
+{
+    u16 needed = 4;
+    u16 count, pos;
+    if (size < 4 || data[0] >= CONTROLLER_CMDS_COUNT)
+        return FALSE;
+    switch (data[0])
+    {
+    case CONTROLLER_GETMONDATA:
+    case CONTROLLER_SETMONDATA:
+        if (data[1] > REQUEST_TOUGH_RIBBON_BATTLE || data[2] >= (1 << PARTY_SIZE))
+            return FALSE;
+        if (data[0] == CONTROLLER_GETMONDATA && data[1] == REQUEST_ALL_BATTLE)
+        {
+            u8 mask = data[2];
+            count = mask == 0;
+            while (mask)
+            {
+                count += mask & 1;
+                mask >>= 1;
+            }
+            /* DataTransfer adds four bytes plus 1..4 bytes of padding. */
+            if (count * sizeof(struct BattlePokemon) > 236)
+                return FALSE;
+        }
+        if (data[0] == CONTROLLER_SETMONDATA)
+        {
+            /* SetMonData reads these widths, independently of the wire length. */
+            needed = 4;
+            if (data[1] == REQUEST_ALL_BATTLE)
+                needed = 3 + sizeof(struct BattlePokemon);
+            else if (data[1] == REQUEST_MOVES_PP_BATTLE)
+                needed = 16;
+            else if (data[1] == REQUEST_PP_DATA_BATTLE)
+                needed = 8;
+            else if (data[1] == REQUEST_ALL_IVS_BATTLE)
+                needed = 9;
+            else if (data[1] == REQUEST_OTID_BATTLE || data[1] == REQUEST_EXP_BATTLE
+                  || data[1] == REQUEST_PERSONALITY_BATTLE || data[1] == REQUEST_STATUS_BATTLE)
+                needed = 7;
+            else if (data[1] == REQUEST_SPECIES_BATTLE || data[1] == REQUEST_HELDITEM_BATTLE
+                  || (data[1] >= REQUEST_MOVE1_BATTLE && data[1] <= REQUEST_MOVE4_BATTLE)
+                  || data[1] == REQUEST_CHECKSUM_BATTLE
+                  || (data[1] >= REQUEST_HP_BATTLE && data[1] <= REQUEST_SPDEF_BATTLE))
+                needed = 5;
+        }
+        break;
+    case CONTROLLER_GETRAWMONDATA:
+    case CONTROLLER_SETRAWMONDATA:
+        /* GET also writes a local BattlePokemon, smaller than a party mon. */
+        if ((u16)data[1] + data[2] > (data[0] == CONTROLLER_GETRAWMONDATA
+                ? sizeof(struct BattlePokemon) : sizeof(gPlayerParty[0])))
+            return FALSE;
+        if (data[0] == CONTROLLER_SETRAWMONDATA)
+            needed = 3 + data[2];
+        break;
+    case CONTROLLER_SWITCHINANIM:
+    case CONTROLLER_EXPUPDATE:
+        if (data[1] >= PARTY_SIZE)
+            return FALSE;
+        break;
+    case CONTROLLER_MOVEANIMATION:
+        needed = 16 + sizeof(struct DisableStruct);
+        if ((data[1] | (data[2] << 8)) >= MOVES_COUNT)
+            return FALSE;
+        break;
+    case CONTROLLER_PRINTSTRING:
+    case CONTROLLER_PRINTSTRINGPLAYERONLY:
+        needed = 4 + sizeof(struct BattleMsgData);
+        break;
+    case CONTROLLER_CHOOSEMOVE:
+        needed = 4 + sizeof(struct ChooseMoveStruct);
+        break;
+    case CONTROLLER_CHOOSEPOKEMON:
+        needed = 8;
+        break;
+    case CONTROLLER_STATUSICONUPDATE:
+        needed = 9;
+        break;
+    case CONTROLLER_STATUSANIMATION:
+        needed = 6;
+        break;
+    case CONTROLLER_DATATRANSFER:
+        needed = 4 + (data[2] | (data[3] << 8));
+        if (needed < 4)
+            return FALSE;
+        break;
+    case CONTROLLER_DMA3TRANSFER:
+        /* An address from another process is never a native destination. */
+        return FALSE;
+    case CONTROLLER_PAUSE:
+        needed = 2 + data[1] * 3;
+        break;
+    case CONTROLLER_32:
+        needed = 3 + (data[1] | (data[2] << 8));
+        if (needed < 3)
+            return FALSE;
+        break;
+    case CONTROLLER_CHOSENMONRETURNVALUE:
+        needed = 5;
+        /* PARTY_SIZE is the cancel sentinel. */
+        if (data[1] > PARTY_SIZE)
+            return FALSE;
+        break;
+    case CONTROLLER_TWORETURNVALUES:
+        if (bufferId == B_COMM_TO_ENGINE
+            && (data[1] > B_ACTION_UNK_14
+                || ((data[1] == B_ACTION_USE_MOVE || data[1] == B_ACTION_EXEC_SCRIPT)
+                    && !(data[2] == 0xFF && data[3] == 0xFF)
+                    && (data[2] >= MAX_MON_MOVES || data[3] >= MAX_BATTLERS_COUNT))))
+            return FALSE;
+        break;
+    case CONTROLLER_DRAWPARTYSTATUSSUMMARY:
+        needed = 4 + sizeof(struct HpAndStatus) * PARTY_SIZE;
+        break;
+    case CONTROLLER_LINKSTANDBYMSG:
+    case CONTROLLER_ENDLINKBATTLE:
+        pos = data[0] == CONTROLLER_LINKSTANDBYMSG ? 2 : 4;
+        if (size <= pos + 2 || data[pos] != data[pos + 1])
+            return FALSE;
+        count = data[pos];
+        needed = pos + 2 + count;
+        if (needed >= size)
+            return FALSE;
+        pos += 2;
+        while (count)
+        {
+            u16 actions;
+            if (count < 2 || data[pos] >= MAX_BATTLERS_COUNT)
+                return FALSE;
+            actions = data[pos + 1];
+            if (actions > count - 2)
+                return FALSE;
+            count -= actions + 2;
+            pos += actions + 2;
+        }
+        break;
+    case CONTROLLER_RETURNMONTOBALL:
+    case CONTROLLER_BALLTHROWANIM:
+    case CONTROLLER_STATUSXOR:
+    case CONTROLLER_RESETACTIONMOVESELECTION:
+    case CONTROLLER_INTROSLIDE:
+    case CONTROLLER_SETUNKVAR:
+        needed = 2;
+        break;
+    }
+    /* The native sender always adds 1..4 bytes of alignment padding. */
+    return needed < size;
+}
+
+static bool8 NativeBattleHeaderValid(const u8 *packet, u16 size)
+{
+    return size >= LINK_BUFF_DATA + 4 && size <= 252
+        && (size % 4) == 0
+        && packet[LINK_BUFF_BUFFER_ID] <= B_COMM_CONTROLLER_IS_DONE
+        && packet[LINK_BUFF_ACTIVE_BATTLER] < MAX_BATTLERS_COUNT
+        && packet[LINK_BUFF_ATTACKER] < MAX_BATTLERS_COUNT
+        && packet[LINK_BUFF_TARGET] < MAX_BATTLERS_COUNT
+        && packet[LINK_BUFF_EFFECT_BATTLER] < MAX_BATTLERS_COUNT
+        && packet[LINK_BUFF_ABSENT_BATTLER_FLAGS] < (1 << MAX_BATTLERS_COUNT)
+        && (packet[LINK_BUFF_SIZE_LO] | (packet[LINK_BUFF_SIZE_HI] << 8)) == size - LINK_BUFF_DATA
+        /* Completion callers send four bytes, padded to eight by the sender. */
+        && (packet[LINK_BUFF_BUFFER_ID] == B_COMM_CONTROLLER_IS_DONE
+            ? (size == LINK_BUFF_DATA + 8 && packet[LINK_BUFF_DATA] < GetLinkPlayerCount())
+            : NativeBattleCommandValid(packet + LINK_BUFF_DATA, size - LINK_BUFF_DATA, packet[LINK_BUFF_BUFFER_ID]));
+}
+
+static bool8 NativeBattleRingStateValid(u8 taskId)
+{
+    return gTasks[taskId].tCurrentBlock_Start >= 0
+        && gTasks[taskId].tCurrentBlock_Start < BATTLE_BUFFER_LINK_SIZE
+        && gTasks[taskId].tCurrentBlock_End >= 0
+        && gTasks[taskId].tCurrentBlock_End < BATTLE_BUFFER_LINK_SIZE
+        && gTasks[taskId].tCurrentBlock_WrapFrom >= 0
+        && gTasks[taskId].tCurrentBlock_WrapFrom < BATTLE_BUFFER_LINK_SIZE;
+}
+#endif
+/* End native battle payload boundary. */
 
 // We want to send a message. Place it into the "send" buffer.
 // First argument is a BATTLELINKCOMMTYPE_...
@@ -873,6 +1074,60 @@ void TryReceiveLinkBattleData(void)
     s32 j;
     u8 *recvBuffer;
 
+#ifdef PORTABLE
+    if (sNativeBattlePayloadFailed)
+        return;
+    if (NativeLink_IsActive() && gReceivedRemoteLinkPlayers && (gBattleTypeFlags & BATTLE_TYPE_LINK_IN_BATTLE))
+    {
+        u16 start, end, wrap, size;
+        if (GetLinkPlayerCount() > MAX_LINK_PLAYERS || !NativeBattleRingStateValid(sLinkReceiveTaskId))
+        {
+            AbortNativeBattlePayload();
+            return;
+        }
+        for (i = 0; i < GetLinkPlayerCount(); i++)
+        {
+            if (!(GetBlockReceivedStatus() & gBitTable[i]))
+                continue;
+            size = GetBlockReceivedSize(i);
+            if (size < LINK_BUFF_DATA || size > 252)
+            {
+                AbortNativeBattlePayload();
+                return;
+            }
+            recvBuffer = (u8 *)gBlockRecvBuffer[i];
+            if (!NativeBattleHeaderValid(recvBuffer, size))
+            {
+                AbortNativeBattlePayload();
+                return;
+            }
+            start = gTasks[sLinkReceiveTaskId].tCurrentBlock_Start;
+            end = gTasks[sLinkReceiveTaskId].tCurrentBlock_End;
+            wrap = gTasks[sLinkReceiveTaskId].tCurrentBlock_WrapFrom;
+            if (end + size + 1 > BATTLE_BUFFER_LINK_SIZE)
+            {
+                if (end < start || (start != end && size >= start))
+                {
+                    AbortNativeBattlePayload();
+                    return;
+                }
+                wrap = end;
+                end = 0;
+            }
+            else if (end < start && end + size >= start)
+            {
+                AbortNativeBattlePayload();
+                return;
+            }
+            memcpy(&gLinkBattleRecvBuffer[end], recvBuffer, size);
+            gTasks[sLinkReceiveTaskId].tCurrentBlock_WrapFrom = wrap;
+            gTasks[sLinkReceiveTaskId].tCurrentBlock_End = end + size;
+            ResetBlockReceivedFlag(i);
+        }
+        return;
+    }
+#endif
+
     if (gReceivedRemoteLinkPlayers && (gBattleTypeFlags & BATTLE_TYPE_LINK_IN_BATTLE))
     {
         DestroyTask_RfuIdle();
@@ -913,6 +1168,58 @@ static void Task_HandleCopyReceivedLinkBuffersData(u8 taskId)
 
     #define BYTE_TO_RECEIVE(offset) \
         gLinkBattleRecvBuffer[gTasks[taskId].tCurrentBlock_Start + offset]
+
+#ifdef PORTABLE
+    if (sNativeBattlePayloadFailed)
+        return;
+    if (NativeLink_IsActive())
+    {
+        u16 start, end, limit;
+        if (!NativeBattleRingStateValid(taskId))
+        {
+            AbortNativeBattlePayload();
+            return;
+        }
+        start = gTasks[taskId].tCurrentBlock_Start;
+        end = gTasks[taskId].tCurrentBlock_End;
+        if (start == end)
+            return;
+        limit = end;
+        if (start > end)
+        {
+            limit = gTasks[taskId].tCurrentBlock_WrapFrom;
+            if (start > limit)
+            {
+                AbortNativeBattlePayload();
+                return;
+            }
+            if (start == limit)
+            {
+                start = 0;
+                limit = end;
+            }
+        }
+        if (limit - start < LINK_BUFF_DATA)
+        {
+            AbortNativeBattlePayload();
+            return;
+        }
+        blockSize = gLinkBattleRecvBuffer[start + LINK_BUFF_SIZE_LO]
+                  | (gLinkBattleRecvBuffer[start + LINK_BUFF_SIZE_HI] << 8);
+        if (blockSize > limit - start - LINK_BUFF_DATA
+            || !NativeBattleHeaderValid(&gLinkBattleRecvBuffer[start], blockSize + LINK_BUFF_DATA))
+        {
+            AbortNativeBattlePayload();
+            return;
+        }
+        /* Commit the wrap only after validating the entire queued record. */
+        if (start != gTasks[taskId].tCurrentBlock_Start)
+        {
+            gTasks[taskId].tCurrentBlock_Start = start;
+            gTasks[taskId].tCurrentBlock_WrapFrom = 0;
+        }
+    }
+#endif
 
     if (gTasks[taskId].tCurrentBlock_Start != gTasks[taskId].tCurrentBlock_End)
     {
