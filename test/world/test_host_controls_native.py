@@ -137,5 +137,85 @@ class NativeHostControlsTests(unittest.TestCase):
                 self.assertIsNotNone(proc.poll(), 'native process was not reaped')
 
 
+@unittest.skipUnless(os.environ.get('EMERALD_HOST_BINARY') and os.environ.get('EMERALD_HOST_SEED'),
+                     'explicit native binary and generated smoke fixture required')
+class HeadlessHostControlsTests(unittest.TestCase):
+    def test_native_clients_rejoin_and_keep_private_saves_after_host_actions(self):
+        from contextlib import ExitStack
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from test_native_presence import Engine, driver
+        from world.client import admin_request
+        from world.server import WorldServer
+
+        binary = Path(os.environ['EMERALD_HOST_BINARY']).resolve()
+        seed = Path(os.environ['EMERALD_HOST_SEED']).resolve()
+        seed_hash = hashlib.sha256(seed.read_bytes()).digest()
+        with tempfile.TemporaryDirectory(prefix='ew-host-hl-') as tmp, ExitStack() as stack:
+            root = Path(tmp) / 'world'
+            root.mkdir(mode=0o700)
+            (root / 'transport').mkdir(mode=0o700)
+            socket = root / 'transport/world.sock'
+            server = WorldServer(socket, root).start()
+            stack.callback(server.close)
+            games = []
+
+            def action(name, trainer=None):
+                request = dict(command='host_controls', action=name)
+                if trainer is not None:
+                    request['trainer'] = trainer
+                result = admin_request(socket, request)
+                self.assertTrue(result['ok'], result)
+                return result
+
+            def launch(name):
+                game = Engine(binary, root, name, seed)
+                games.append(game)
+                stack.callback(game.finish)
+                driver.continue_game(game)
+                return game
+
+            def wait_for(predicate, message):
+                # Native bridges advance only with requested frames here. The
+                # wall-clock bound detects failures, not simulated game time.
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline:
+                    for game in games:
+                        game.wait(6)
+                    if predicate():
+                        return
+                    time.sleep(.005)
+                self.fail(message)
+
+            alice = launch('alice')
+            wait_for(lambda: alice.telemetry()['connected'], 'Alice did not connect')
+            action('lock')
+            bob = launch('bob')
+            self.assertTrue(alice.telemetry()['connected'])
+            self.assertFalse(bob.telemetry()['connected'])
+            action('unlock')
+            wait_for(lambda: bob.telemetry()['connected'], 'Bob did not join after unlock')
+            originals = [hashlib.sha256(game.paths['save'].read_bytes()).digest() for game in games]
+
+            action('remove', 'bob')
+            wait_for(lambda: not bob.telemetry()['connected'], 'Bob stayed connected after removal')
+            self.assertTrue(alice.telemetry()['connected'])
+            action('allow', 'bob')
+            wait_for(lambda: bob.telemetry()['connected'], 'Bob did not rejoin after allow')
+            action('stop')
+            self.assertTrue(all(game.telemetry()['connected'] for game in games))
+            action('split')
+            wait_for(lambda: all(not game.telemetry()['connected'] for game in games),
+                     'split left a native client connected')
+            for game, digest in zip(games, originals):
+                before = game.state.pos
+                game.press('LEFT', 16)
+                game.wait(60)
+                self.assertNotEqual(game.state.pos, before, 'native movement stopped after split')
+                self.assertTrue(game.state.free)
+                self.assertEqual(hashlib.sha256(game.paths['save'].read_bytes()).digest(), digest)
+            self.assertEqual(hashlib.sha256(seed.read_bytes()).digest(), seed_hash)
+
+
 if __name__ == '__main__':
     unittest.main()

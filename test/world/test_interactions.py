@@ -7,7 +7,7 @@ import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRATCH = ROOT.parent / 'emerald-world-research'
+# Keep Unix socket fixtures short even when the checkout has a long path.
 
 
 class TrainerInteractions(unittest.TestCase):
@@ -39,6 +39,11 @@ static struct ObjectEvent gObjectEvents[3];
 static struct {unsigned objectEventId;} gPlayerAvatar;
 static struct Save {struct {int mapGroup,mapNum;} location;} save, *gSaveBlock1Ptr=&save;
 static int ready=1, owned=1, hidden=1, shown, locks, flushes;
+static int counter, counterX, counterY;
+static u8 MapGridGetMetatileBehaviorAt(int x, int y) {
+ return counter && x==counterX && y==counterY;
+}
+static bool8 MetatileBehavior_IsCounter(u8 behavior) {return behavior==1;}
 static int activityEnabled, activityOwns, interactions, talkQueued;
 static int WorldActivity_OwnsFieldInput(void) { return activityOwns; }
 static int WorldActivity_Interact(const char *peer) {
@@ -64,7 +69,7 @@ static bool8 WorldCatalog_Metatile(unsigned g,unsigned n,unsigned t) {(void)g;(v
 static void SendState(void) {sWorld.seq++;}
 static void Flush(void) {flushes++;sWorld.outputSize=0;}
 '''
-        for name in ('Identifier','Decimal','ObjectText','EncodeText','Line','FacingObject','NativeNpcAt',
+        for name in ('Identifier','Decimal','ObjectText','EncodeText','Line','FacingObject','InteractionTarget','NativeNpcAt',
                      'SyncDialogue','WorldBridge_FilterInput'):
             source += function(bridge, name)
         source += r'''
@@ -93,6 +98,33 @@ int main(void) {
  WorldBridge_FilterInput(0);assert(WorldBridge_FilterInput(A_BUTTON)==A_BUTTON);
  gObjectEvents[2].active=0;
  assert(!NativeNpcAt(10,12));
+ /* A distant peer is not an interaction target without a counter. Preserve
+  * A for the adjacent tile's native sign, PC, door or background event. */
+ gObjectEvents[1].currentCoords.y=18;
+ counterX=17;counterY=19;counter=0;
+ assert(!MetatileBehavior_IsCounter(MapGridGetMetatileBehaviorAt(17,19)));
+ WorldBridge_FilterInput(0);assert(WorldBridge_FilterInput(A_BUTTON)==A_BUTTON);
+ assert(!sWorld.pendingObject[0]);
+ /* Counter reach still suppresses template-less peers, but does not make
+  * a two-tile greeting or link request authoritative. */
+ counter=1;
+ assert(MetatileBehavior_IsCounter(MapGridGetMetatileBehaviorAt(17,19)));
+ WorldBridge_FilterInput(0);assert(WorldBridge_FilterInput(A_BUTTON)==0);
+ assert(!sWorld.pendingObject[0]);
+ /* A real NPC across a counter keeps native priority over remote objects. */
+ gObjectEvents[2]=gObjectEvents[1];gObjectEvents[2].active=1;
+ WorldBridge_FilterInput(0);assert(WorldBridge_FilterInput(A_BUTTON)==A_BUTTON);
+ /* An adjacent remote on the counter is encountered before the farther
+  * NPC. Passing A through here would expose its missing script template. */
+ gObjectEvents[1].currentCoords.y=19;
+ WorldBridge_FilterInput(0);assert(WorldBridge_FilterInput(A_BUTTON)==0);
+ sWorld.pendingObject[0]=0;
+ gObjectEvents[2].active=0;counter=0;
+ /* A peer on another elevation must not swallow the local tile interaction. */
+ gObjectEvents[1].currentCoords.y=19;
+ gObjectEvents[0].currentElevation=1;gObjectEvents[1].currentElevation=2;
+ WorldBridge_FilterInput(0);assert(WorldBridge_FilterInput(A_BUTTON)==A_BUTTON);
+ gObjectEvents[0].currentElevation=gObjectEvents[1].currentElevation=0;
  owned=1;sWorld.enabled=0;assert(WorldBridge_FilterInput(0xFFFF)==0xFFFF);
  sWorld.enabled=1;
  assert(line("BEGIN 7"));assert(!line("MEET 8 alice bob 0 1 10 12 explore"));
@@ -130,7 +162,7 @@ int main(void) {
  return 0;
 }
 '''
-        with tempfile.TemporaryDirectory(prefix='meet-c-', dir=SCRATCH) as tmp:
+        with tempfile.TemporaryDirectory(prefix='meet-c-') as tmp:
             c, exe = Path(tmp)/'meet.c', Path(tmp)/'meet'
             c.write_text(source)
             result = subprocess.run(['cc','-std=gnu99','-Wall','-Wextra','-Werror',str(c),'-o',str(exe)], capture_output=True,text=True)
@@ -138,10 +170,67 @@ int main(void) {
             result = subprocess.run([str(exe)],capture_output=True,text=True,cwd=tmp)
             self.assertEqual(result.returncode,0,result.stderr)
 
+    def test_counter_reach_all_directions_and_elevations(self):
+        from test_save_isolation import function
+        bridge = (ROOT / 'src/platform/world_bridge.c').read_text()
+        source = r'''#include <assert.h>
+#include <stdio.h>
+typedef unsigned char bool8;
+#define TRUE 1
+#define FALSE 0
+#define DIR_SOUTH 1
+#define DIR_NORTH 2
+#define DIR_WEST 3
+#define DIR_EAST 4
+struct ObjectEvent {struct {int x,y;} currentCoords; unsigned facingDirection,currentElevation;};
+static int counter, frontX, frontY;
+static unsigned MapGridGetMetatileBehaviorAt(int x, int y) {
+ assert(x==frontX && y==frontY); return counter;
+}
+static bool8 MetatileBehavior_IsCounter(unsigned behavior) {return behavior==1;}
+'''
+        source += function(bridge, 'FacingObject') + function(bridge, 'InteractionTarget')
+        source += r'''int main(void) {
+ static const int xs[]={0,0,-1,1}, ys[]={1,-1,0,0};
+ struct ObjectEvent player={{17,20},0,1}, other={{0,0},0,1};
+ unsigned dir, elevation;
+ for (dir=DIR_SOUTH;dir<=DIR_EAST;dir++) {
+  player.facingDirection=dir;
+  frontX=player.currentCoords.x+xs[dir-1];frontY=player.currentCoords.y+ys[dir-1];
+  for (elevation=0;elevation<=2;elevation++) {
+   other.currentElevation=elevation;
+   other.currentCoords.x=frontX;other.currentCoords.y=frontY;
+   counter=0;assert(InteractionTarget(&player,&other)==(elevation!=2));
+   other.currentCoords.x+=xs[dir-1];other.currentCoords.y+=ys[dir-1];
+   assert(!InteractionTarget(&player,&other));
+   counter=1;assert(InteractionTarget(&player,&other)==(elevation!=2));
+   other.currentCoords.x+=xs[dir-1];other.currentCoords.y+=ys[dir-1];
+   assert(!InteractionTarget(&player,&other));
+   other.currentCoords.x=player.currentCoords.x-xs[dir-1];
+   other.currentCoords.y=player.currentCoords.y-ys[dir-1];
+   assert(!InteractionTarget(&player,&other));
+  }
+ }
+ /* Elevation zero matches any floor in the vanilla interaction lookup. */
+ player.currentElevation=0;other.currentElevation=2;
+ other.currentCoords.x=frontX;other.currentCoords.y=frontY;
+ assert(InteractionTarget(&player,&other));
+ return 0;
+}
+'''
+        with tempfile.TemporaryDirectory(prefix='reach-c-') as tmp:
+            c, exe = Path(tmp)/'reach.c', Path(tmp)/'reach'
+            c.write_text(source)
+            built = subprocess.run(['cc', '-std=gnu99', '-Wall', '-Wextra', '-Werror',
+                                    str(c), '-o', str(exe)], capture_output=True, text=True)
+            self.assertEqual(built.returncode, 0, built.stderr)
+            result = subprocess.run([str(exe)], capture_output=True, text=True, cwd=tmp)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_meet_is_ordered_durable_private_and_disconnect_clears(self):
         from world.server import WorldServer
         from world.client import WorldClient, admin_request
-        with tempfile.TemporaryDirectory(prefix='meet-', dir=SCRATCH) as tmp:
+        with tempfile.TemporaryDirectory(prefix='meet-') as tmp:
             server = WorldServer(tmp+'/sock', tmp+'/state')
             identities = [server.create_identity(n) for n in ('alice','bob','legacy')]
             server.start()
@@ -196,7 +285,7 @@ int main(void) {
     def test_meet_rejects_unready_range_map_facing_self_missing_legacy_rate_replay(self):
         from world.server import WorldServer
         # Exercise the real authority method without socket timing to pin rate/order.
-        with tempfile.TemporaryDirectory(prefix='meet-', dir=SCRATCH) as tmp:
+        with tempfile.TemporaryDirectory(prefix='meet-') as tmp:
             server = WorldServer(tmp+'/sock', tmp+'/state')
             try:
                 a = dict(id='alice', state=[0,1,10,13,2,7,1], seq=1, social=True)

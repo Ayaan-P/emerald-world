@@ -123,6 +123,61 @@ class HostControlsTests(unittest.TestCase):
         self.assertTrue(br.readline().startswith(b'L ABORT '))
         self.assertTrue(self.action('split')['ok'])
 
+    def test_stale_roster_cannot_readmit_same_trainer_in_another_world(self):
+        from concurrent.futures import Future, ThreadPoolExecutor
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from world.host_controls import HostControlsPanel
+
+        other_socket = self.root / 'other.sock'
+        other = WorldServer(other_socket, self.root / 'other-state')
+        self.stack.callback(other.close)
+        other_bob = other.create_identity('bob')
+        saves = ((Path(self.bob['save_path']), b'first disposable trainer'),
+                 (Path(other_bob['save_path']), b'second disposable trainer'))
+        for save, contents in saves:
+            save.write_bytes(contents)
+        other.start()
+        other_action = lambda action: admin_request(other_socket, dict(
+            command='host_controls', action=action, **({'trainer': 'bob'} if action in ('remove', 'allow') else {})))
+        self.assertTrue(other_action('remove')['ok'])
+        executor = self.stack.enter_context(ThreadPoolExecutor(max_workers=1))
+        panel = HostControlsPanel.__new__(HostControlsPanel)
+        panel.app = SimpleNamespace(closing=False, pending=None,
+                                    session=SimpleNamespace(server=self.server), executor=executor)
+        panel.trainer = Mock()
+        panel.trainer.get.return_value = 'bob'
+        panel.trainers, panel.buttons = {}, {}
+        panel.message, panel.page = Mock(), Mock()
+        panel.roster_server = self.server
+        panel.server = self.server
+        panel.future = Future()
+        panel.future.set_result(panel._request(self.server, 'status', ''))
+        panel._poll()
+        self.assertIs(panel.roster_server, self.server)
+
+        panel.app.session.server = other
+        panel.perform('allow')
+        if panel.future is not None:
+            panel.future.result(timeout=2)
+        self.assertEqual(other_action('status')['removed'], ['bob'])
+        self.assertIsNone(panel.future)
+        self.assertEqual(self.action('status')['removed'], [])
+
+        panel.perform('status')
+        panel.future.result(timeout=2)
+        panel._poll()
+        self.assertIs(panel.roster_server, other)
+        self.assertIn('bob', panel.trainers['values'])
+        # Choosing the same ID after refreshing is intentional and must work.
+        panel.trainer.get.return_value = 'bob'
+        panel.perform('allow')
+        panel.future.result(timeout=2)
+        panel._poll()
+        self.assertEqual(other_action('status')['removed'], [])
+        for save, contents in saves:
+            self.assertEqual(save.read_bytes(), contents)
+
     def test_policy_and_removed_trainers_survive_authority_restart(self):
         self.assertTrue(self.action('remove', trainer='bob')['ok'])
         self.assertTrue(self.action('lock')['ok'])
@@ -160,6 +215,82 @@ class HostControlsTests(unittest.TestCase):
 
 
 class HostControlsViewTests(unittest.TestCase):
+    def test_targeted_actions_require_roster_from_current_world(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from world.host_controls import HostControlsPanel
+
+        class Value:
+            def __init__(self, value=''):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+            def set(self, value):
+                self.value = value
+
+        from unittest.mock import Mock
+        import threading
+        old_host = SimpleNamespace(stopping=threading.Event())
+        new_host = SimpleNamespace(stopping=threading.Event())
+        for action in ('remove', 'allow'):
+            with self.subTest(action=action):
+                panel = HostControlsPanel.__new__(HostControlsPanel)
+                panel.app = SimpleNamespace(closing=False, pending=None, window=None,
+                                            executor=Mock(),
+                                            session=SimpleNamespace(server=new_host))
+                panel.buttons = {}
+                panel.page = Mock()
+                panel.future = None
+                panel.roster_server = old_host
+                panel.trainer = Value('bob')
+                panel.trainers = {'values': ('bob',)}
+                panel.message = Value()
+                with patch('tkinter.messagebox.askyesno') as confirm:
+                    panel.perform(action)
+                confirm.assert_not_called()
+                self.assertIsNone(panel.future)
+                self.assertEqual(panel.trainer.get(), '')
+                self.assertEqual(panel.trainers['values'], ())
+                self.assertIn('Refresh', panel.message.get())
+
+    def test_refresh_binds_roster_and_clears_cross_world_selection(self):
+        from concurrent.futures import Future
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from world.host_controls import HostControlsPanel
+
+        old_host, new_host = object(), object()
+        for current in (old_host, new_host):
+            with self.subTest(current_host_is_result=current is new_host):
+                future = Future()
+                future.set_result((dict(ok=True, admission='open', removed=[]), ['bob']))
+                panel = SimpleNamespace(
+                    future=future, server=new_host, roster_server=old_host,
+                    app=SimpleNamespace(session=SimpleNamespace(server=current)),
+                    trainer=Mock(), trainers={}, message=Mock(), buttons={})
+                panel.trainer.get.return_value = 'bob'
+                HostControlsPanel._poll(panel)
+                self.assertIsNone(panel.future)
+                if current is new_host:
+                    self.assertIs(panel.roster_server, new_host)
+                    self.assertEqual(panel.trainers['values'], ['bob'])
+                    panel.trainer.set.assert_called_once_with('')
+                else:
+                    self.assertIs(panel.roster_server, old_host)
+                    self.assertEqual(panel.trainers, {})
+
+    def test_failed_player_inspection_cannot_become_a_refreshed_roster(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from world.host_controls import HostControlsPanel
+        host = SimpleNamespace(socket_path='disposable.sock', admin_path='disposable.admin')
+        replies = [dict(ok=True, admission='open', removed=[]), dict(ok=False)]
+        with patch('world.client.admin_request', side_effect=replies):
+            with self.assertRaisesRegex(ValueError, 'refresh'):
+                HostControlsPanel._request(host, 'status', '')
+
     def test_existing_world_window_buttons_control_only_the_current_host(self):
         import os
         if not os.environ.get('DISPLAY'):

@@ -2,7 +2,7 @@
 
 Run with EMERALD_WORLD_BINARY=/absolute/path/to/new/binary python3 this_file.
 EMERALD_WORLD_SAVE may name a NEW acceptance-run save to exercise engine effects.
-Scratch files stay in emerald-world-research, never the source checkout.
+Disposable scratch files use the system temporary directory, never the source checkout.
 """
 import json
 import os
@@ -16,7 +16,6 @@ import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRATCH = ROOT.parent / "emerald-world-research"
 
 
 class BridgeContract(unittest.TestCase):
@@ -33,8 +32,8 @@ class BridgeContract(unittest.TestCase):
 @unittest.skipUnless(os.environ.get("EMERALD_WORLD_BINARY"), "set EMERALD_WORLD_BINARY; never builds")
 class NativeProtocol(unittest.TestCase):
     def setUp(self):
-        SCRATCH.mkdir(exist_ok=True)
-        self.tmp = tempfile.TemporaryDirectory(prefix="native-protocol-", dir=SCRATCH)
+        # AF_UNIX paths must remain short in deeply nested source worktrees.
+        self.tmp = tempfile.TemporaryDirectory(prefix="ew-native-")
         self.path = Path(self.tmp.name)
         self.listener = socket.socket(socket.AF_UNIX)
         self.listener.bind(str(self.path / "sock"))
@@ -130,6 +129,33 @@ class NativeProtocol(unittest.TestCase):
                                 input="", capture_output=True, text=True, timeout=8)
         self.assertEqual(result.returncode, 1)
         self.assertFalse((self.path / "untouched.sav").exists())
+
+    def test_embedded_control_config_fails_before_save_open(self):
+        valid = self.config.read_bytes()
+        for content in (valid.rstrip(b'\n') + b'\0hidden',
+                        valid.replace(b'trainer alice', b'trainer\valice'),
+                        valid.rstrip(b'\n') + b'\x7f'):
+            with self.subTest(content=content):
+                self.config.write_bytes(content)
+                save = self.path / 'untouched-controls.sav'
+                # Check both absent and pre-existing private data. These opaque
+                # bytes are a disposable refusal fixture, not a playable save.
+                for existing in (None, b'private disposable save sentinel\0\xff'):
+                    with self.subTest(existing=existing is not None):
+                        if existing is None:
+                            save.unlink(missing_ok=True)
+                        else:
+                            save.write_bytes(existing)
+                        result = subprocess.run([
+                            os.environ['EMERALD_WORLD_BINARY'], '--world-config', str(self.config),
+                            '--save', str(save), '--test-input', '-',
+                        ], input='', capture_output=True, text=True, timeout=8)
+                        self.assertEqual(result.returncode, 1)
+                        self.assertIn('Invalid world configuration.', result.stderr)
+                        if existing is None:
+                            self.assertFalse(save.exists())
+                        else:
+                            self.assertEqual(save.read_bytes(), existing)
 
     def test_bootstrap_requires_world_config(self):
         result = subprocess.run([os.environ["EMERALD_WORLD_BINARY"], "--world-input", str(self.path / "input.txt")],

@@ -50,6 +50,28 @@ class DesktopSession:
         from .world_library import cards
         return cards(self.root, self.worlds())
 
+    def friend_worlds(self):
+        from .friend_worlds import worlds
+        return worlds(self.root)
+
+    def rejoin_friend(self, name):
+        from .friend_worlds import read, BOOKMARK
+        if self.state is not None:
+            raise SessionError('Disconnect before rejoining a saved friend world.')
+        path = self._world(name)
+        invitation = read(path)
+        endpoint = invitation['endpoint']
+        return self.connect_remote(name, path/BOOKMARK,
+                                   (endpoint['host'], endpoint['port']), invitation['pin'])
+
+    def forget_friend(self, name):
+        from .friend_worlds import forget
+        path = self._world(name)
+        if self.state == path:
+            raise SessionError('Disconnect before forgetting this friend world.')
+        forget(path)
+        self.status = 'Friend connection forgotten. Private trainer progress is unchanged.'
+
     def rename_world(self, name, display_name, tags):
         from .world_library import rename
         rename(self.root, name, display_name, tags)
@@ -83,6 +105,8 @@ class DesktopSession:
         path = self.root / name
         if path.resolve() != path:
             raise ValueError('world cannot be a symlink')
+        from .launcher import require_online_state
+        require_online_state(path)
         return path
 
     def create_world(self, name):
@@ -243,8 +267,11 @@ class DesktopSession:
         from .transport import ClientBroker
         if self.state is not None:
             raise ValueError('disconnect before changing worlds')
-        from .transport import read_invitation
+        from .transport import read_invitation, validate_invitation
         identity = read_invitation(invitation)
+        remembered = validate_invitation({'version': 1, 'trainer': identity['trainer'],
+            'token': identity['token'], 'endpoint': {'host': remote[0], 'port': remote[1]},
+            'pin': fingerprint})
         path = self._world(name)
         from .world_library import WorldActivityLock
         with WorldActivityLock(path):
@@ -282,6 +309,8 @@ class DesktopSession:
                     if not paths['settings'].exists():
                         paths['settings'].write_text('[video]\nscale=2\n')
                     marker.write_text(json.dumps(binding))
+                    from .friend_worlds import remember
+                    remember(path, remembered)
                 except BaseException:
                     broker.close()
                     raise
@@ -303,30 +332,54 @@ class DesktopSession:
         self.status = f'Game display {display} ready. Return to Play and launch your trainer.'
         return display
 
-    def launch(self, paths, binary=REPO/'build/pokeemerald64', display=':93', agent_control=False):
+    def launch_offline(self, world, trainer, binary=REPO/'build/pokeemerald64', display=':93', copy_online=False):
+        from .offline import offline_profile
+        state = self._world(world)
+        # Snapshot preparation and native play acquire the same destination lock.
+        # A competing start between them fails closed instead of sharing a save.
+        try:
+            with offline_profile(state, trainer, copy_online=copy_online) as paths:
+                offline_paths = dict(paths)
+        except ValueError as exc:
+            raise SessionError(str(exc)) from None
+        except OSError:
+            raise SessionError('Offline copy could not be prepared. Stop its online game before copying and use Resume for an existing copy.') from None
+        return self.launch(offline_paths, binary, display, _offline_state=state/'.offline')
+
+    def launch(self, paths, binary=REPO/'build/pokeemerald64', display=':93', agent_control=False, *, _offline_state=None):
         from .launcher import ProfileLock, profile_paths
-        if self.state is None:
+        state = _offline_state if _offline_state is not None else self.state
+        if state is None:
             raise ValueError('connect to a world first')
+        offline = _offline_state is not None
+        if offline and (state.name != '.offline' or agent_control):
+            raise ValueError('Choose a separate human offline profile.')
         trainer = paths['profile'].name
-        if paths != profile_paths(self.state, trainer):
+        if paths != profile_paths(state, trainer):
             raise ValueError('profile must belong to the selected world')
-        if self.remote_trainer is not None and trainer != self.remote_trainer:
+        if not offline and self.remote_trainer is not None and trainer != self.remote_trainer:
             raise SessionError('Trainer must match this session\'s assigned invitation.')
-        if trainer in self.games and self.games[trainer][0].poll() is None:
+        key = 'offline/' + trainer if offline else trainer
+        if key in self.games and self.games[key][0].poll() is None:
             raise ValueError('this trainer already has a running game')
-        if trainer in self.game_locks:
-            self.game_locks.pop(trainer).close()
+        if key in self.game_locks:
+            self.game_locks.pop(key).close()
         import os
         import shutil
-        command = (game_command(binary, self.state, paths, display, agent_control=True)
-                   if agent_control else game_command(binary, self.state, paths, display))
+        command = (game_command(binary, state, paths, display, online=False) if offline else
+                   game_command(binary, state, paths, display, agent_control=True) if agent_control else
+                   game_command(binary, state, paths, display))
         if not shutil.which('bwrap'):
             raise SessionError('Bubblewrap is required to isolate the native game.')
         if not Path(binary).is_file() or not os.access(binary, os.X_OK):
             raise SessionError('Native game binary is missing or not executable. Select a built game binary.')
         if display and not Path('/tmp/.X11-unix/X' + display[1:]).is_socket():
             raise SessionError('Dedicated Xephyr display is missing. Start Xephyr :93 or select an existing dedicated display.')
-        lock = ProfileLock(self.state, trainer)
+        if offline:
+            from .offline import OfflineGameLock
+            lock = OfflineGameLock(state.parent, trainer)
+        else:
+            lock = ProfileLock(state, trainer)
         try:
             if agent_control:
                 from .launcher import check_player_endpoint
@@ -335,18 +388,29 @@ class DesktopSession:
             if logfile.is_symlink():
                 raise SessionError('Native log cannot be a symlink.')
             paths['telemetry'].unlink(missing_ok=True)
-            fd = os.open(logfile, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+            # Validate the opened inode before truncation. A hardlinked log
+            # must never erase a save, and a FIFO must not block the UI thread.
+            import stat
+            try:
+                fd = os.open(logfile, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+            except OSError as exc:
+                raise SessionError('Native log cannot be opened safely.') from exc
             with os.fdopen(fd, 'wb') as output:
+                info = os.fstat(output.fileno())
+                if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                        or info.st_uid != os.geteuid()):
+                    raise SessionError('Native log must be an owned single-link regular file.')
+                os.ftruncate(output.fileno(), 0)
                 process = subprocess.Popen(command, stdin=subprocess.DEVNULL,
                                            stdout=output, stderr=subprocess.STDOUT)
         except BaseException:
             lock.close()
             raise
-        self.games[trainer] = (process, paths)
-        self.game_locks[trainer] = lock
-        self.agent_games.discard(trainer)
+        self.games[key] = (process, paths)
+        self.game_locks[key] = lock
+        self.agent_games.discard(key)
         if agent_control:
-            self.agent_games.add(trainer)
+            self.agent_games.add(key)
         # Release even when no UI poll runs. The descriptor is CLOEXEC and is
         # never exposed inside the native sandbox, nor is its directory mounted.
         import threading
@@ -365,10 +429,11 @@ class DesktopSession:
                 process.kill()
                 process.wait()
             lock.close()
-            self.games.pop(trainer)
-            self.game_locks.pop(trainer)
+            self.games.pop(key)
+            self.game_locks.pop(key)
             raise
-        self.status = (f'{trainer}: AI-controlled trainer launched. Native control status appears below.' if agent_control
+        self.status = (f'{trainer}: Offline play. This separate save never merges into online progress.' if offline else
+                       f'{trainer}: AI-controlled trainer launched. Native control status appears below.' if agent_control
                        else f'{trainer} starting. Use the native game window to play.')
         return process
 
@@ -542,6 +607,9 @@ class DesktopSession:
                     self.game_locks[trainer].close()
                 lines.append(f'{trainer} exited {code}. Save kept. Details: {paths["profile"]}/native.log')
                 continue
+            if trainer.startswith('offline/'):
+                lines.append(f'{trainer[8:]}: offline. No world connection or multiplayer actions. Online progress is unchanged.')
+                continue
             if trainer in self.agent_games:
                 from .launcher import player_endpoint
                 import os
@@ -711,7 +779,7 @@ class DesktopApp:
             ttk.Label(page, text=label).grid(row=row, column=0, sticky='w')
             variable = tk.StringVar(value=value)
             self.fields[key] = variable
-            entry = ttk.Combobox(page, textvariable=variable, width=48) if key in ('world', 'trainer', 'deleted_world') else ttk.Entry(page, textvariable=variable, width=50)
+            entry = ttk.Combobox(page, textvariable=variable, width=48) if key in ('world', 'trainer', 'deleted_world', 'friend_world') else ttk.Entry(page, textvariable=variable, width=50)
             entry.grid(row=row, column=1, sticky='ew', pady=4)
             if browse:
                 def choose():
@@ -764,11 +832,16 @@ class DesktopApp:
         note('2. Human trainer: choose a trainer to resume or type a new name. Each trainer has their own team, bag and save.')
         self.trainer_entry = field('trainer', 'Human trainer name', 'alice')
         actions([('Launch / resume trainer', self.launch), ('Disconnect', self.disconnect)])
+        note('Offline play uses a separate save. It never joins the world or merges progress back. Choose a saved world and trainer. Copying requires that trainer\'s online game to be stopped. Resuming needs no host or invitation.')
+        actions([('Play offline / resume copy', self.launch_offline), ('Copy online and play offline', self.copy_offline)])
         note('AI-controlled trainer: launch a distinct trainer for Hermes or another external agent. This is a player, not the optional Luna GM. No agent attaches to your human game. Copy the verified endpoint and SDK command from live status after launch. Remote AI players need their own trainer invitation and TLS connection.')
         field('ai_trainer', 'AI-controlled trainer name', 'hermes')
         actions([('Launch AI-controlled trainer', self.launch_ai)])
         note('Play in the native game window. Save from its menu before disconnecting. Closing the launcher stops only its own games and host. Friend connections use the next tab.')
         page, row = pages['Connect friends'], 0
+        note('Successful friend connections are remembered privately on this computer. Rejoin uses the same trusted certificate and trainer. Forget removes only the saved connection, not your progress.')
+        self.friend_entry = field('friend_world', 'Saved friend world')
+        actions([('Rejoin saved friend', self.rejoin_friend), ('Forget saved friend', self.forget_friend)])
         note('Host: first host a world in Play, then enable secure sharing. Export one private invitation per friend and send it through a trusted channel. Its bundled TLS pin is trustworthy only when received from you through that channel. For wildcard or local listeners, enter an explicit advertised address reachable by your friend. No relay is provided.')
         field('listen', 'Listen address', '127.0.0.1:8765')
         field('advertised', 'Advertised friend address (HOST:PORT)')
@@ -841,6 +914,11 @@ class DesktopApp:
         return {key: value.get().strip() for key, value in self.fields.items()}
 
     def refresh(self):
+        if hasattr(self, 'friend_entry'):
+            friends = [item['name'] for item in self.session.friend_worlds()]
+            self.friend_entry['values'] = friends
+            if self.fields['friend_world'].get() not in friends:
+                self.fields['friend_world'].set(friends[0] if friends else '')
         names = [item['name'] for item in self.session.worlds()]
         self.world_entry['values'] = names
         if names and not self.fields['world'].get():
@@ -938,6 +1016,19 @@ class DesktopApp:
             self.session.start_display(display)
         self.session.launch(paths, Path(value.get('binary') or self.binary), display)
 
+    def launch_offline(self):
+        self._launch_offline(self.values(), False)
+
+    def copy_offline(self):
+        self._launch_offline(self.values(), True)
+
+    def _launch_offline(self, value, copy_online):
+        display = value.get('display') or None
+        if display and not Path('/tmp/.X11-unix/X' + display[1:]).is_socket():
+            self.session.start_display(display)
+        return self.session.launch_offline(value['world'], value['trainer'],
+                                           Path(value.get('binary') or self.binary), display, copy_online)
+
     def launch_ai(self):
         self._launch_ai(self.values(), self.remote_paths)
         self.refresh()
@@ -962,6 +1053,24 @@ class DesktopApp:
     def disconnect(self):
         self.session.close()
         self.remote_paths = None
+
+    def rejoin_friend(self):
+        name = self.values()['friend_world']
+        self.remote_paths = self.session.rejoin_friend(name)
+        self.fields['world'].set(name)
+        self.fields['trainer'].set(self.remote_paths['profile'].name)
+        self.refresh()
+
+    def forget_friend(self):
+        from tkinter import messagebox
+        name = self.values()['friend_world']
+        if not name:
+            raise SessionError('Choose a saved friend world.')
+        if messagebox.askyesno('Forget friend connection?',
+                f'Forget the saved connection for {name}? Your trainer progress will stay on disk.',
+                parent=self.window, default='no'):
+            self.session.forget_friend(name)
+            self.refresh()
 
     def import_friend_invitation(self, path=None):
         from .transport import read_invitation
@@ -1027,7 +1136,7 @@ class DesktopApp:
             return
         # Tk reads and file dialogs stay on the UI thread. Network and bounded
         # author cleanup run in a serialized worker so the window stays live.
-        if operation in (self.start_display, self.launch, self.launch_ai, self.share):
+        if operation in (self.start_display, self.launch, self.launch_ai, self.launch_offline, self.copy_offline, self.share):
             value = self.values()
             self.pending_kind = operation.__name__
             if operation == self.start_display:
@@ -1036,6 +1145,8 @@ class DesktopApp:
                 self.pending = self.executor.submit(self._launch, value, self.remote_paths)
             elif operation == self.launch_ai:
                 self.pending = self.executor.submit(self._launch_ai, value, self.remote_paths)
+            elif operation in (self.launch_offline, self.copy_offline):
+                self.pending = self.executor.submit(self._launch_offline, value, operation == self.copy_offline)
             else:
                 self.pending = self.executor.submit(self._share, value)
             self.message.set('Starting session operation. The window remains available...')
@@ -1054,6 +1165,17 @@ class DesktopApp:
             self.pending_kind = operation.__name__
             self.pending = self.executor.submit(operation)
             self.message.set('Updating session. Waiting for owned work to finish...')
+            for button in self.buttons:
+                button.state(['disabled'])
+            return
+        if operation == self.rejoin_friend:
+            name = self.values()['friend_world']
+            if not name:
+                self.message.set('Choose a saved friend world.')
+                return
+            self.pending_kind = 'rejoin_friend'
+            self.pending = self.executor.submit(self.session.rejoin_friend, name)
+            self.message.set('Rejoining saved friend world and verifying TLS pin...')
             for button in self.buttons:
                 button.state(['disabled'])
             return
@@ -1098,9 +1220,12 @@ class DesktopApp:
             kind = self.pending_kind
             try:
                 result = self.pending.result()
-                if kind == 'connect':
+                if kind in ('connect', 'rejoin_friend'):
                     self.remote_paths = result
                     self.fields['trainer'].set(self.remote_paths['profile'].name)
+                    if kind == 'rejoin_friend':
+                        self.fields['world'].set(self.remote_paths['profile'].parent.parent.name)
+                    self.refresh()
                 elif kind == 'intent':
                     self.fields['intent'].set('')
                 elif kind == 'share':
@@ -1111,7 +1236,7 @@ class DesktopApp:
                 self.session.status = str(exc)
             except Exception:
                 self.session.status = ('Error: remote connection failed. Check host, port, invitation and trusted pin.'
-                                       if kind == 'connect' else 'Error: session operation failed. Check host authority and runtime configuration.')
+                                       if kind in ('connect', 'rejoin_friend') else 'Error: session operation failed. Check host authority and runtime configuration.')
             self.pending = None
             self.pending_kind = None
             self.message.set(self.session.status)
