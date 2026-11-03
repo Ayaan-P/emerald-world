@@ -40,6 +40,7 @@ static struct {unsigned objectEventId;} gPlayerAvatar;
 static struct Save {struct {int mapGroup,mapNum;} location;} save, *gSaveBlock1Ptr=&save;
 static int ready=1, owned=1, hidden=1, shown, locks, flushes;
 static int activityEnabled, activityOwns, interactions, talkQueued;
+static int WorldTravel_OwnsFieldInput(void) { return 0; }
 static int WorldActivity_OwnsFieldInput(void) { return activityOwns; }
 static int WorldActivity_Interact(const char *peer) {
  assert(!strcmp(peer, "bob")); interactions++;
