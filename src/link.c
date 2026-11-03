@@ -2009,8 +2009,7 @@ bool8 HandleLinkConnection(void)
     if (!NativeLink_IsActive() || gWirelessCommType || !sLinkOpen)
         return FALSE;
     NativeLink_Pump();
-    /* The full-frame platform gate is mandatory. This also fails closed if a
-     * caller forgot that gate, without clearing a retained outgoing command. */
+    /* The adapter captures outgoing commands before this tick clears them. */
     if (!NativeLink_FrameReady())
         return TRUE;
     gLinkStatus = LinkMain1(&gShouldAdvanceLinkState, gSendCmd, gRecvCmds);
@@ -2021,8 +2020,8 @@ bool8 HandleLinkConnection(void)
         gLinkErrorOccurred = TRUE;
         return FALSE;
     }
-    if (gLinkStatus & LINK_STAT_RECEIVED_NOTHING)
-        return TRUE;
+    /* No received matrix is an ordinary asynchronous hardware wait. Keep
+     * callbacks and animation running, and retire this tick's outgoing words. */
     LinkMain2(&gMain.heldKeys);
     if (!NativeLink_IsActive())
     {

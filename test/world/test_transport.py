@@ -11,6 +11,76 @@ import unittest
 RESEARCH = '/home/ayaan/projects/emerald-world-research'
 
 
+class TransportLatencyTests(unittest.TestCase):
+    def test_decrypted_tls_pending_prevents_selector_sleep(self):
+        import threading
+        from unittest.mock import Mock, patch
+        from world.transport import _relay, CHUNK
+        local, local_peer = socket.socketpair()
+        raw, remote_peer = socket.socketpair()
+        with local, local_peer, raw, remote_peer:
+            remote = Mock(wraps=raw)
+            remote.pending = Mock(return_value=1)
+            stop = threading.Event()
+            def ready(readers, writers, errors, timeout):
+                self.assertEqual(timeout, 0, 'decrypted TLS data must not wait for kernel readiness')
+                stop.set()
+                return [], [], []
+            with patch('world.transport.select.select', side_effect=ready):
+                _relay(local, remote, stop, 1, CHUNK + 4)
+
+    def test_read_output_is_sent_before_next_selector_call(self):
+        import struct
+        import threading
+        from unittest.mock import Mock, patch
+        from world.transport import _relay, CHUNK
+        for direction in ('local', 'remote'):
+            with self.subTest(direction=direction):
+                local, local_peer = socket.socketpair()
+                raw, remote_peer = socket.socketpair()
+                with local, local_peer, raw, remote_peer:
+                    remote = Mock(wraps=raw)
+                    remote.pending = Mock(return_value=0)
+                    stop = threading.Event()
+                    payload = b'link command'
+                    frame = struct.pack('!I', len(payload)) + payload
+                    source, destination = ((local_peer, remote_peer) if direction == 'local'
+                                           else (remote_peer, local_peer))
+                    source.sendall(payload if direction == 'local' else frame)
+                    destination.setblocking(False)
+                    calls = 0
+                    def ready(readers, writers, errors, timeout):
+                        nonlocal calls
+                        calls += 1
+                        if calls == 1:
+                            return [local if direction == 'local' else remote], [], []
+                        try:
+                            received = destination.recv(CHUNK)
+                        except BlockingIOError:
+                            received = b''
+                        self.assertEqual(received, frame if direction == 'local' else payload,
+                                         'read-generated output waited for another select')
+                        stop.set()
+                        return [], [], []
+                    with patch('world.transport.select.select', side_effect=ready):
+                        _relay(local, remote, stop, 1, CHUNK + 4)
+
+    def test_tcp_nodelay_is_enabled_before_tls_wrap(self):
+        from unittest.mock import Mock
+        from world.transport import _Broker
+        broker = _Broker()
+        for family in (socket.AF_INET, socket.AF_INET6):
+            with self.subTest(family=family), socket.socket(family) as raw:
+                wrapped = Mock()
+                def wrap(sock, **kwargs):
+                    self.assertEqual(sock.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY), 1)
+                    return wrapped
+                context = Mock()
+                context.wrap_socket.side_effect = wrap
+                self.assertIs(broker._tls(raw, context, []), wrapped)
+                wrapped.do_handshake.assert_called_once_with()
+
+
 class TransportTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix='tls-', dir=RESEARCH)

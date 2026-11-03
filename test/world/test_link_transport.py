@@ -24,6 +24,7 @@ unsigned admits, feeds, aborts; uint64_t lastSid; unsigned lastMode,lastSlot;
 uint16_t matrixSeen[2][8];
 void NativeLink_Init(NativeLinkEmit e, void *c) { cb=e;ctx=c; }
 void NativeLink_Abort(void) { aborts++; }
+void NativeLink_EndSession(uint64_t s) { (void)s; aborts++; }
 int NativeLink_Admit(uint64_t s,unsigned m,unsigned p) { admits++;lastSid=s;lastMode=m;lastSlot=p;return 1; }
 int NativeLink_Feed(unsigned k,uint64_t s,uint32_t g,uint32_t r,const uint16_t m[2][8]) {
 unsigned i,j; (void)k;(void)g;(void)r;feeds++;lastSid=s;

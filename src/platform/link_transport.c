@@ -99,10 +99,11 @@ static void Disconnect(void)
 #endif
     sLink.enabled = sLink.ready = sLink.connecting = 0;
     sLink.queued = sLink.sent = sLink.used = 0;
+    NativeLink_EndSession(sLink.session);
     sLink.session = sLink.accepting = 0;
     sLink.offered = 0;
+    sLink.mode = sLink.slot = 0;
     memset(&sLink.pending, 0, sizeof(sLink.pending));
-    NativeLink_Abort();
 }
 void LinkTransport_Close(void)
 {
@@ -408,7 +409,10 @@ static int Line(char *line)
         sLink.offered = 0; sLink.accepting = 0; memset(&sLink.pending, 0, sizeof(sLink.pending)); return 1;
     }
     if (!strcmp(t[1], "ABORT") && n == 3) {
-        if (sid == sLink.session) { sLink.session = 0; NativeLink_Abort(); }
+        if (sid == sLink.session) {
+            NativeLink_EndSession(sid);
+            sLink.session = 0; sLink.mode = sLink.slot = 0;
+        }
         if (sid == sLink.pending.id) { sLink.accepting = 0; memset(&sLink.pending, 0, sizeof(sLink.pending)); }
         return 1;
     }
