@@ -6,6 +6,7 @@
 #include "fonts.h"
 #include "platform/world_bridge.h"
 #include "platform/world_chat.h"
+#include "platform/settings.h"
 
 static struct {
     int editing, releaseKeys;
@@ -88,7 +89,11 @@ int WorldChat_Event(const SDL_Event *event)
     }
     if (!sChat.editing) {
         if (event->key.keysym.sym != SDLK_t || event->key.repeat
-         || (event->key.keysym.mod & (KMOD_CTRL | KMOD_ALT | KMOD_GUI))) return 0;
+         || (event->key.keysym.mod & (KMOD_ALT | KMOD_GUI))) return 0;
+        /* Configured game input wins on plain T. Ctrl+T stays available even
+         * when T is assigned to Start, another game button, or fast-forward. */
+        if (!(event->key.keysym.mod & KMOD_CTRL)
+         && Input_KeyIsBound(SDL_GetScancodeFromKey(SDLK_t))) return 0;
         sChat.editing = 1;
         sChat.hint[0] = 0;
         SDL_FlushEvent(SDL_TEXTINPUT);
@@ -206,6 +211,7 @@ void WorldChat_Draw(SDL_Renderer *renderer)
     char rows[128][64] = {{0}}, line[184], heading[96];
     unsigned i, row = 0, col = 0, pixels = 0, end, start;
     const char *p, *status;
+    const char *shortcut = Input_KeyIsBound(SDL_GetScancodeFromKey(SDLK_t)) ? "Ctrl+T" : "T";
     SDL_Rect strip = {0,0,240,WORLD_CHAT_HEIGHT};
     if (!WORLD_CHAT_HEIGHT || !WorldBridge_Enabled()) return;
     SDL_SetRenderDrawColor(renderer, 16,24,32,255);
@@ -215,7 +221,7 @@ void WorldChat_Draw(SDL_Renderer *renderer)
     if (!strcmp(status, "slow")) status = "Slow down. Message not sent.";
     else if (!strcmp(status, "unavailable")) status = "Trainer unavailable. Not sent.";
     if (sChat.editing && sChat.hint[0]) snprintf(heading, sizeof(heading), "%s", sChat.hint);
-    else snprintf(heading, sizeof(heading), "Chat %s | T | PgUp/PgDn", status);
+    else snprintf(heading, sizeof(heading), "Chat %s | %s | PgUp/PgDn", status, shortcut);
     DrawText(renderer, heading, 0);
     for (i = 0; i < WorldBridge_ChatCount(); i++) {
         WorldBridge_ChatLine(i, line, sizeof(line));
@@ -242,6 +248,10 @@ void WorldChat_Draw(SDL_Renderer *renderer)
         while (p > sChat.draft && pixels + Width(p[-1]) < 222) pixels += Width(*--p);
         snprintf(line, sizeof(line), "> %s_", p);
         DrawText(renderer, line, 50);
-    } else DrawText(renderer, sChat.hint[0] ? sChat.hint : "T to chat. Private: /w trainer text", 50);
+    } else if (sChat.hint[0]) DrawText(renderer, sChat.hint, 50);
+    else {
+        snprintf(line, sizeof(line), "%s to chat. Private: /w trainer text", shortcut);
+        DrawText(renderer, line, 50);
+    }
 }
 #endif /* PORTABLE */

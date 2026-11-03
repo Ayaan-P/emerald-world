@@ -30,6 +30,7 @@ def main():
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--parent-display', required=True)
     parser.add_argument('--display', default=':138')
+    parser.add_argument('--start-key-t', action='store_true', help='verify remapped Start and the visible Ctrl+T chat fallback')
     args = parser.parse_args()
     out = args.out.resolve()
     if not out.is_relative_to(ROOT/'build'):
@@ -72,10 +73,13 @@ def main():
         try: return json.loads(paths[name]['telemetry'].read_text())
         except (OSError,ValueError): return {}
 
-    def chat(name, text):
+    def open_chat(name):
         x('windowfocus','--sync',windows[name])
-        x('key','t')
+        x('key','ctrl+t' if args.start_key_t and name=='alice' else 't')
         time.sleep(.15)
+
+    def chat(name, text):
+        open_chat(name)
         x('type','--clearmodifiers','--delay','20','--',text)
         x('key','Return')
 
@@ -133,20 +137,35 @@ def main():
         for index,name in enumerate(paths):
             p=paths[name]
             initial_hashes[name]=hashlib.sha256(p['save'].read_bytes()).hexdigest()
-            p['settings'].write_text('scale = 2\nfullscreen = false\n')
+            p['settings'].write_text('scale = 2\nfullscreen = false\n'+('key_start = T\n' if args.start_key_t and name=='alice' else ''))
             boot=p['profile']/'boot.txt'
             boot.write_text(''.join(f'{frames} {buttons}\n' for frames,buttons in startup))
             locks.append(ProfileLock(world,name))
             log=(out/(name+'.log')).open('w');files.append(log)
-            command=game_command(args.binary,world,p,display=args.display)+['--world-input',str(boot)]
+            boot_done=p['profile']/'boot-done.ppm'
+            command=game_command(args.binary,world,p,display=args.display)+['--world-input',str(boot),'--world-shot',str(boot_done)]
             proc=subprocess.Popen(command,stdout=log,stderr=subprocess.STDOUT)
             processes.append(proc)
             windows[name]=until(name+' window',lambda: x('search','--name','^'+re.escape('Emerald World | '+name+' | Human')+'$') or None)
             x('windowmove',windows[name],index*500,0)
             x('windowfocus',windows[name]);x('keydown','space')
             until(name+' field ready',lambda: state(name).get('ready'),15)
+            until(name+' human input handoff',boot_done.exists,5)
             x('keyup','space')
         record('Both natives loaded independent copied fixtures into the field')
+        if args.start_key_t:
+            x('windowfocus','--sync',windows['alice'])
+            start_frame=state('alice')['frame']
+            x('keydown','t');time.sleep(.15);x('keyup','t')
+            def start_menu_open():
+                current=state('alice')
+                return (current.get('ready') is False and current.get('frame',0)>start_frame
+                        and current.get('map')==[1,4] and current.get('in_battle') is False)
+            until('remapped T opens native Start menu',start_menu_open)
+            screenshot('alice','remapped-start-menu')
+            x('keydown','x');time.sleep(.15);x('keyup','x')
+            until('remapped Start menu closes',lambda:state('alice').get('ready'))
+            record('Configured key_start=T opens the native Start menu. Ctrl+T remains available for chat')
         chat('alice','/w bob First private message!')
         until('first-open private delivery',lambda:received('bob','First private message!'))
         chat('alice','Hello field friends! <&> 100%')
@@ -196,7 +215,7 @@ def main():
         until('battle intro rendering',lambda:state('alice').get('in_battle') and state('alice').get('frame',0)>=before+300,10)
         assert state('alice')['in_battle'] and state('alice')['frame']>before
         screenshot('alice','battle-direct')
-        x('windowfocus',windows['alice']);x('key','t')
+        open_chat('alice')
         x('type','--delay','20','--','Typing without covering Pokemon')
         screenshot('alice','battle-composer')
         x('key','Escape')

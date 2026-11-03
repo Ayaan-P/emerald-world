@@ -1,5 +1,6 @@
 """Real socket coverage for opt-in room and direct human chat."""
 from pathlib import Path
+import os
 import socket
 import tempfile
 
@@ -78,6 +79,7 @@ class NativeChatTests(unittest.TestCase):
 #include <SDL2/SDL.h>
 #include "platform/world_bridge.h"
 #include "platform/world_chat.h"
+#include "platform/settings.h"
 static int enabled=1, sent;
 static char recipient[25], message[121];
 bool8 WorldBridge_Enabled(void) {return enabled;}
@@ -97,8 +99,10 @@ static void text(const char *s) {
  SDL_Event e={0};e.type=SDL_TEXTINPUT;strcpy(e.text.text,s);
  assert(WorldChat_Event(&e));
 }
-int main(void) {
+int main(int argc,char **argv) {
+ assert(argc==2);
  assert(SDL_Init(SDL_INIT_VIDEO)==0);
+ LoadSettings(NULL);
  SDL_Event ordinary={0};ordinary.type=SDL_KEYDOWN;ordinary.key.keysym.sym=SDLK_RETURN;
  assert(!WorldChat_Event(&ordinary)); /* Return remains Emerald's Start key. */
  SDL_Event opening={0};opening.type=SDL_TEXTINPUT;strcpy(opening.text.text,"t");
@@ -114,6 +118,27 @@ int main(void) {
  assert(WorldChat_BlocksInput());key(SDLK_ESCAPE);
  key(SDLK_t);text("caf\xc3\xa9");key(SDLK_RETURN);assert(sent==2);
  key(SDLK_ESCAPE);
+ LoadSettings(argv[1]);
+ Input_ReleaseTestInputs();assert(Input_PressTestInput("key:T"));
+ assert(Input_GetTestButtons()==8);
+ ordinary.key.keysym.sym=SDLK_t;ordinary.key.keysym.scancode=SDL_SCANCODE_T;
+ int consumed=WorldChat_Event(&ordinary);
+ int blocked=WorldChat_BlocksInput();
+ unsigned delivered=blocked ? 0 : Input_GetTestButtons();
+ printf("key_start=T: binding=%u consumed=%d blocks=%d delivered=%u\n",Input_GetTestButtons(),consumed,blocked,delivered);
+ fflush(stdout);
+ assert(!consumed && !blocked && delivered==8);
+ ordinary.key.keysym.mod=KMOD_LCTRL;
+ assert(SDL_PushEvent(&opening)==1);
+ assert(WorldChat_Event(&ordinary));assert(WorldChat_BlocksInput());
+ assert(SDL_PeepEvents(&opening,1,SDL_PEEKEVENT,SDL_TEXTINPUT,SDL_TEXTINPUT)==0);
+ text("/w bob Remapped private reply");key(SDLK_RETURN);
+ assert(sent==3 && !strcmp(recipient,"bob") && !strcmp(message,"Remapped private reply"));
+ assert(Input_KeyIsBound(SDL_SCANCODE_T));
+ assert(!Input_KeyIsBound(SDL_SCANCODE_UNKNOWN));
+ assert(!Input_KeyIsBound(SDL_NUM_SCANCODES));
+ LoadSettings(NULL);Input_ReleaseTestInputs();
+ assert(!Input_KeyIsBound(SDL_SCANCODE_T));
  SDL_Window *window=SDL_CreateWindow("test",0,0,240,224,SDL_WINDOW_HIDDEN);
  SDL_Renderer *renderer=SDL_CreateRenderer(window,-1,SDL_RENDERER_SOFTWARE);
  assert(renderer);WorldChat_Draw(renderer);
@@ -128,6 +153,8 @@ int main(void) {
         with tempfile.TemporaryDirectory(prefix='emerald-chat-ui-') as tmp:
             c, exe = Path(tmp)/'ui.c', Path(tmp)/'ui'
             c.write_text(source)
+            config = Path(tmp)/'remapped.ini'
+            config.write_text('key_start = T\n')
             import shlex
             flags = ['-I'+str(sysroot/'usr/include'), '-I'+str(sysroot/'usr/include/x86_64-linux-gnu'),
                      '-L'+str(sysroot/'usr/lib/x86_64-linux-gnu'), '-lSDL2']
@@ -136,13 +163,13 @@ int main(void) {
                     flags = shlex.split(subprocess.check_output(['pkg-config','--cflags','--libs','sdl2'],text=True))
                 except (OSError,subprocess.CalledProcessError):
                     self.skipTest('SDL2 development files required for graphical composer test')
-            result = subprocess.run(['cc','-std=gnu99','-Wall','-Wextra','-Werror', '-DPORTABLE',
-                                     '-iquote', str(root/'include'), str(c), str(ui),
+            result = subprocess.run([os.environ.get('CC','cc'),'-std=gnu99','-Wall','-Wextra','-Werror', '-DPORTABLE','-DVER_64BIT','-DMODERN=1',
+                                     '-iquote', str(root/'include'), str(c), str(ui), str(root/'src/platform/settings.c'),
                                      *flags, '-o',str(exe)], capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
-            import os
-            result = subprocess.run([str(exe)],env=dict(os.environ,SDL_VIDEODRIVER='dummy'),capture_output=True,text=True,cwd=tmp)
-            self.assertEqual(result.returncode,0,result.stderr)
+            result = subprocess.run([str(exe),str(config)],env=dict(os.environ,SDL_VIDEODRIVER='dummy'),capture_output=True,text=True,cwd=tmp)
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            print(result.stdout.strip())
 
     def test_native_snapshot_chat_is_atomic_and_rejects_injection(self):
         import subprocess
@@ -207,7 +234,7 @@ int main(void) {
         with tempfile.TemporaryDirectory(prefix='emerald-chat-c-') as tmp:
             c, exe = Path(tmp)/'chat.c', Path(tmp)/'chat'
             c.write_text(source)
-            result = subprocess.run(['cc','-std=gnu99','-Wall','-Wextra','-Werror',str(c),'-o',str(exe)],capture_output=True,text=True)
+            result = subprocess.run([os.environ.get('CC','cc'),'-std=gnu99','-Wall','-Wextra','-Werror',str(c),'-o',str(exe)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
             result = subprocess.run([str(exe)],capture_output=True,text=True,cwd=tmp)
             self.assertEqual(result.returncode,0,result.stderr)
