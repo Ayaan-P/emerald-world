@@ -55,6 +55,14 @@ class Result:
 
 
 @dataclass
+class _NativeTail:
+    step: int
+    handshake: bool
+    next_steps: dict
+    rows: dict
+
+
+@dataclass
 class _Session:
     id: str
     generation: int
@@ -74,6 +82,10 @@ class _Session:
     opens: set = field(default_factory=set)
     native_open: bool = False
     handshake: bool = False
+    native_pending: dict = field(default_factory=dict)
+    native_history: dict = field(default_factory=dict)
+    native_next: dict = field(default_factory=dict)
+    native_tail: _NativeTail | None = None
 
 
 class LinkSessions:
@@ -95,6 +107,7 @@ class LinkSessions:
     tick must be called periodically even when no client sends requests.
     """
     KINDS = frozenset(('battle_single', 'battle_double', 'trade'))
+    NATIVE_WINDOW = 16
 
     def __init__(self, *, clock=time.monotonic, consent_timeout=15,
                  step_timeout=10, max_steps=4294967296):
@@ -260,20 +273,23 @@ class LinkSessions:
                *, link_generation=None):
         """Validate structural u16 envelope only, NOT native engine semantics.
 
-        At most two pending vectors plus one previous frame are retained.
-        Current or immediately previous exact duplicates are silent no-ops.
-        Earlier frames and future steps fail, and frames are never replayed.
+        Native mode accepts sequential per-actor rounds in a 16-slot window,
+        retains 16 committed matrices for exact duplicate checks, and never
+        replays frames. Non-native mode remains strict stop-and-wait.
         Only completion by both peers extends the active deadline.
         """
         now = self._time(now)
         s = self._member(actor, session_id)
         if type(generation) is not int or generation != s.generation:
             raise LinkError('invalid_generation')
-        if s.native_open:
-            self._link_generation(s, link_generation)
-        elif link_generation is not None:
-            raise LinkError('invalid_link_generation')
-        if s.state != 'active':
+        old_native = (type(link_generation) is int
+                      and link_generation == s.closed_generation)
+        if not old_native:
+            if s.native_open:
+                self._link_generation(s, link_generation)
+            elif link_generation is not None:
+                raise LinkError('invalid_link_generation')
+        if not old_native and s.state != 'active':
             raise LinkError('invalid_state')
         if type(step) is not int or not 0 <= step < self._max_steps:
             raise LinkError('invalid_step')
@@ -281,11 +297,15 @@ class LinkSessions:
             raise LinkError('invalid_commands')
         if any(type(word) is not int or not 0 <= word <= 65535 for word in commands):
             raise LinkError('invalid_commands')
+        words = tuple(commands)
+        if old_native:
+            return self._submit_native_tail(s, actor, step, words)
         # Pairing gates full native ticks. The lobby needs empty committed
         # ticks to reach its host ADVANCE callback before gameplay commands.
-        if s.native_open and not s.handshake and any(commands):
+        if s.native_open and not s.handshake and any(words):
             raise LinkError('invalid_state')
-        words = tuple(commands)
+        if s.native_open:
+            return self._submit_native(s, actor, step, words, now)
         if s.previous is not None and step == s.step - 1:
             if s.previous[s.participants.index(actor)] != words:
                 raise LinkError('conflicting_duplicate')
@@ -307,6 +327,52 @@ class LinkSessions:
         s.deadline = now + self._step_timeout
         if s.step == self._max_steps:
             events += self._end(s, 'step_limit')
+        return self._result(s, events)
+
+    def _submit_native_tail(self, s, actor, step, words):
+        # A CLOSE on one socket can overtake another socket's pipelined rounds.
+        # Only the last generation survives, with a fixed (never sliding) bound.
+        # These vectors are swallowed, never committed into the next generation.
+        tail = s.native_tail
+        if tail is None:
+            raise LinkError('invalid_link_generation')
+        row = tail.rows.get(step, {})
+        if actor in row:
+            if row[actor] != words:
+                raise LinkError('conflicting_duplicate')
+            return self._result(s)
+        if step != tail.next_steps.get(actor, 0) or not tail.step <= step < tail.step + self.NATIVE_WINDOW:
+            raise LinkError('invalid_step')
+        if not tail.handshake and any(words):
+            raise LinkError('invalid_state')
+        tail.rows.setdefault(step, {})[actor] = words
+        tail.next_steps[actor] = step + 1
+        return self._result(s)
+
+    def _submit_native(self, s, actor, step, words, now):
+        # A peer cannot skip even an idle round. Retain exact committed vectors
+        # for one window so retransmission cannot replace engine contributions.
+        row = s.native_history.get(step, s.native_pending.get(step, {}))
+        if actor in row:
+            if row[actor] != words:
+                raise LinkError('conflicting_duplicate')
+            return self._result(s)
+        if step != s.native_next.get(actor, 0) or not s.step <= step < s.step + self.NATIVE_WINDOW:
+            raise LinkError('invalid_step')
+        s.native_pending.setdefault(step, {})[actor] = words
+        s.native_next[actor] = step + 1
+        events = ()
+        while len(s.native_pending.get(s.step, {})) == 2:
+            row = s.native_pending.pop(s.step)
+            frame = tuple(row[p] for p in s.participants)
+            events += self._events(s, 'frame', step=s.step, words=frame)
+            s.native_history[s.step] = row
+            s.step += 1
+            s.native_history.pop(s.step - self.NATIVE_WINDOW - 1, None)
+            s.deadline = now + self._step_timeout
+            if s.step == self._max_steps:
+                events += self._end(s, 'step_limit')
+                break
         return self._result(s, events)
 
     @staticmethod
@@ -341,6 +407,9 @@ class LinkSessions:
             s.link_generation = link_generation
             s.link_type = link_type
             s.native_open = True
+            s.native_pending.clear()
+            s.native_history.clear()
+            s.native_next.clear()
             s.handshake = False
             s.opens.clear()
             s.ready.clear()
@@ -385,6 +454,11 @@ class LinkSessions:
         self._link_generation(s, link_generation)
         if not s.native_open:
             return self._result(s)
+        s.native_tail = _NativeTail(s.step, s.handshake, s.native_next.copy(),
+                                    {**s.native_history, **s.native_pending})
+        s.native_pending.clear()
+        s.native_history.clear()
+        s.native_next.clear()
         s.native_open = False
         s.closed_generation = link_generation
         s.handshake = False

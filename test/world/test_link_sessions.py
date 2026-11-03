@@ -250,10 +250,204 @@ class LinkSessionsTests(unittest.TestCase):
         links.open('z', s.session_id, 2, 0x2233)
         self.assert_code('invalid_link_generation', lambda: links.advance('a', s.session_id, 1))
         links.advance('a', s.session_id, 2)
-        self.assert_code('invalid_link_generation', lambda: submit('z', 0, 1))
+        self.assertEqual(submit('z', 0, 1).events, ())
         self.assertEqual(submit('z', 0, 2).events, ())
         self.assertEqual(submit('a', 0, 2).events[0].data['step'], 0)
         self.assertEqual(len(links.disconnect('a').events), 2)
+
+    def native(self, **options):
+        from world.link_sessions import LinkSessions
+        links = LinkSessions(clock=lambda: 0, **options)
+        s = links.offer('a', 'z', 'battle_single', presence())
+        links.accept('z', s.session_id, presence())
+        links.open('a', s.session_id, 1, 0x2233)
+        links.open('z', s.session_id, 1, 0x2233)
+        links.advance('a', s.session_id, 1)
+        return links, s
+
+    def test_native_pipeline_skew_is_sequential_bounded_and_ordered(self):
+        links, s = self.native()
+        def submit(actor, step, words=None):
+            return links.submit(actor, s.session_id, s.generation, step,
+                                [step] * 8 if words is None else words, link_generation=1)
+        self.assert_code('invalid_step', lambda: submit('a', 1))
+        for step in range(16):
+            self.assertEqual(submit('a', step).events, ())
+        self.assert_code('invalid_step', lambda: submit('a', 16))
+        self.assert_code('conflicting_duplicate', lambda: submit('a', 5, [99]*8))
+        self.assertEqual(submit('a', 5).events, ())
+        self.assert_code('invalid_step', lambda: submit('z', 1))
+        for step in range(16):
+            frame = submit('z', step)
+            self.assertEqual([e.data['step'] for e in frame.events], [step, step])
+            self.assertEqual(frame.events[0].data['words'], ((step,)*8,)*2)
+            # A newly freed slot is usable before the slow peer catches up.
+            self.assertEqual(submit('a', step + 16).events, ())
+        self.assertEqual(submit('z', 15).events, ())
+
+    def test_native_close_tolerates_sequential_inflight_vectors_across_reopen(self):
+        links, s = self.native()
+        def submit(actor, step, gen=1, value=0):
+            return links.submit(actor, s.session_id, s.generation, step,
+                                [value]*8, link_generation=gen)
+        for step in range(4):
+            submit('a', step)
+            submit('z', step)
+        for step in range(4, 10):
+            submit('a', step)
+        links.close_generation('a', s.session_id, 1)
+        self.assertEqual(submit('z', 4).events, ())
+        links.open('a', s.session_id, 2, 0x2233)
+        # Other socket still carries old data and CLOSE while generation 2 opens.
+        self.assertEqual(submit('z', 5).events, ())
+        self.assertEqual(links.close_generation('z', s.session_id, 1).events, ())
+        links.open('z', s.session_id, 2, 0x2233)
+        links.advance('a', s.session_id, 2)
+        submit('a', 0, gen=2, value=7)
+        for step in range(6, 20):
+            self.assertEqual(submit('z', step).events, ())
+        for step in range(10, 20):
+            self.assertEqual(submit('a', step).events, ())
+        self.assertEqual(submit('a', 3).events, ())
+        self.assert_code('conflicting_duplicate', lambda: submit('a', 3, value=1))
+        self.assert_code('conflicting_duplicate', lambda: submit('z', 8, value=1))
+        self.assert_code('invalid_step', lambda: submit('z', 20))
+        self.assertEqual(links.close_generation('a', s.session_id, 1).events, ())
+        frame = submit('z', 0, gen=2, value=9)
+        self.assertEqual(frame.events[0].data['words'], ((7,)*8, (9,)*8))
+        self.assertEqual(frame.events[0].data['link_generation'], 2)
+        links.close_generation('z', s.session_id, 2)
+        self.assert_code('invalid_link_generation', lambda: submit('z', 19))
+
+    def test_native_pipeline_before_handshake_is_idle_only(self):
+        links, s = self.native()
+        links.close_generation('a', s.session_id, 1)
+        links.open('a', s.session_id, 2, 0x2233)
+        links.open('z', s.session_id, 2, 0x2233)
+        for step in range(16):
+            links.submit('a', s.session_id, s.generation, step, [0]*8, link_generation=2)
+        self.assert_code('invalid_state', lambda: links.submit(
+            'z', s.session_id, s.generation, 0, [1]*8, link_generation=2))
+        for step in range(4):
+            frame = links.submit('z', s.session_id, s.generation, step, [0]*8, link_generation=2)
+            self.assertEqual(frame.events[0].data['step'], step)
+        links.close_generation('a', s.session_id, 2)
+        self.assert_code('invalid_state', lambda: links.submit(
+            'z', s.session_id, s.generation, 4, [1]*8, link_generation=2))
+        self.assertEqual(links.submit('z', s.session_id, s.generation, 4,
+                                     [0]*8, link_generation=2).events, ())
+
+    def test_native_stopwait_interoperates_with_bounded_history(self):
+        links, s = self.native()
+        for step in range(1000):
+            words = [step] * 8
+            self.assertEqual(links.submit('a', s.session_id, s.generation, step,
+                                         words, link_generation=1).events, ())
+            words[0] = 65535  # Submitted words must not alias the caller's list.
+            result = links.submit('z', s.session_id, s.generation, step,
+                                  [step]*8, link_generation=1)
+            self.assertEqual(result.events[0].data['words'], ((step,)*8,)*2)
+            self.assertEqual(links.submit('a', s.session_id, s.generation, step,
+                                         [step]*8, link_generation=1).events, ())
+        state = links._sessions[s.session_id]
+        self.assertEqual(state.native_pending, {})
+        self.assertEqual(len(state.native_history), 16)
+        self.assert_code('invalid_step', lambda: links.submit(
+            'a', s.session_id, s.generation, 983, [983]*8, link_generation=1))
+        links.close_generation('a', s.session_id, 1)
+        self.assertEqual(len(state.native_tail.rows), 16)
+        for step in range(1000, 1016):
+            for actor in ('a', 'z'):
+                self.assertEqual(links.submit(actor, s.session_id, s.generation,
+                    step, [0]*8, link_generation=1).events, ())
+        self.assertEqual(len(state.native_tail.rows), 32)
+        self.assertEqual(state.native_pending, {})
+        self.assertEqual(state.native_history, {})
+
+    def test_native_pipeline_or_closed_tail_cannot_extend_deadline(self):
+        links, s = self.native(step_timeout=3)
+        for step in range(16):
+            links.submit('a', s.session_id, s.generation, step,
+                         [0]*8, now=1, link_generation=1)
+        self.assertEqual(len(links.tick(now=3).events), 2)
+        links, s = self.native(step_timeout=3)
+        links.close_generation('a', s.session_id, 1, now=1)
+        links.submit('z', s.session_id, s.generation, 0,
+                     [0]*8, now=3, link_generation=1)
+        self.assertEqual(len(links.tick(now=4).events), 2)
+
+    def test_native_closed_tail_keeps_sequence_envelope_and_auth_guards(self):
+        links, s = self.native()
+        links.submit('a', s.session_id, s.generation, 0, [7]*8, link_generation=1)
+        links.close_generation('a', s.session_id, 1)
+        links.open('a', s.session_id, 2, 0x2233)
+        def submit(actor='z', step=0, words=None, gen=1, consent=None):
+            return links.submit(actor, s.session_id,
+                s.generation if consent is None else consent, step,
+                [0]*8 if words is None else words, link_generation=gen)
+        self.assert_code('not_member', lambda: submit(actor='outsider'))
+        self.assert_code('invalid_generation', lambda: submit(consent=s.generation + 1))
+        self.assert_code('invalid_link_generation', lambda: submit(gen=True))
+        self.assert_code('invalid_link_generation', lambda: submit(gen=3))
+        self.assert_code('invalid_step', lambda: submit(step=1))
+        self.assert_code('invalid_step', lambda: submit(step=16))
+        self.assert_code('invalid_commands', lambda: submit(words=[True]*8))
+        # Old contributions use the old handshake, not generation 2's gate.
+        self.assertEqual(submit(words=[9]*8).events, ())
+        self.assertEqual(submit(actor='a', words=[7]*8).events, ())
+        self.assert_code('conflicting_duplicate', lambda: submit(actor='a'))
+        links.open('z', s.session_id, 2, 0x2233)
+        self.assert_code('invalid_state', lambda: submit(gen=2, words=[1]*8))
+
+    def test_native_pipeline_respects_step_limit(self):
+        links, s = self.native(max_steps=2)
+        for step in range(2):
+            links.submit('a', s.session_id, s.generation, step, [0]*8, link_generation=1)
+        self.assert_code('invalid_step', lambda: links.submit(
+            'a', s.session_id, s.generation, 2, [0]*8, link_generation=1))
+        links.submit('z', s.session_id, s.generation, 0, [0]*8, link_generation=1)
+        result = links.submit('z', s.session_id, s.generation, 1, [0]*8, link_generation=1)
+        self.assertEqual([e.data['type'] for e in result.events],
+                         ['frame', 'frame', 'closed', 'closed'])
+
+    def test_native_pipeline_wire_close_race_preserves_consent(self):
+        import struct
+        from world.link_protocol import LinkProtocol
+        for closer in ('a', 'z'):
+            with self.subTest(closer=closer):
+                protocol = LinkProtocol(clock=lambda: 0, id_factory=lambda: 123)
+                p = presence()
+                protocol.process('a', b'L OFFER 1 z', p)
+                protocol.process('z', b'L ACCEPT 123', p)
+                def event(actor, kind, gen=1, step=0, value=0):
+                    slot = 0 if actor == 'a' else 1
+                    words = struct.pack('<8H', *([value]*8)).hex()
+                    raw = f'L EVENT {kind} 123 1 {slot} {gen} {step} 8755 {words}'
+                    return protocol.process(actor, raw.encode(), p)
+                event('a', 1)
+                event('z', 1)
+                event('a', 3)
+                for step in range(16):
+                    self.assertEqual(event('a', 4, step=step), [])
+                frame = event('z', 4)
+                self.assertEqual(len(frame), 2)
+                self.assertTrue(all('L COMMIT 3 123 1 0 ' in line for _, line in frame))
+                self.assertEqual(event(closer, 2), [])
+                self.assertEqual(event(closer, 1, gen=2), [])
+                for step in range(1, 17):
+                    self.assertEqual(event('z', 4, step=step), [])
+                late = 'z' if closer == 'a' else 'a'
+                self.assertEqual(event(late, 2), [])
+                self.assertEqual(len(event(late, 1, gen=2)), 2)
+                event('a', 3, gen=2)
+                self.assertEqual(event('a', 4, gen=2, value=7), [])
+                new_frame = event('z', 4, gen=2, value=9)
+                self.assertEqual(len(new_frame), 2)
+                self.assertTrue(all('L COMMIT 3 123 2 0 ' in line for _, line in new_frame))
+                # The fixed closed window ends at closing step (1) + 15.
+                rejected = event('z', 4, step=17)
+                self.assertIn(('z', 'L ERROR INVALID_STEP\n'), rejected)
+                self.assertIn(('a', 'L ABORT 123\n'), rejected)
 
     def test_native_generation_identity_validation_and_cross_session_advance(self):
         links, s = self.active()

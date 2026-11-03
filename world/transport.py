@@ -115,9 +115,11 @@ def _relay(local, remote, stop, timeout, limit):
         if not remote_eof and len(incoming) + len(output) < limit:
             readers.append(remote)
         writers = ([remote] if wire else []) + ([local] if output else [])
-        readable, writable, _ = select.select(readers, writers, [], 0.05)
-        if remote in readers and remote.pending():
-            readable = list(set(readable + [remote]))
+        # OpenSSL may already hold plaintext with no kernel-readable bytes.
+        pending = remote in readers and remote.pending()
+        readable, writable, _ = select.select(readers, writers, [], 0 if pending else 0.05)
+        if pending and remote not in readable:
+            readable.append(remote)
         for sock in readable:
             try:
                 capacity = CHUNK if sock is local else min(CHUNK, limit - len(incoming) - len(output))
@@ -146,6 +148,12 @@ def _relay(local, remote, stop, timeout, limit):
                     if size == 0:
                         remote_eof = True
             last = time.monotonic()
+        # A read can create output absent from this select's write interests.
+        # Try it once now. Nonblocking sends retain any backpressured remainder
+        # for normal writable readiness on the next iteration.
+        for sock, buf in ((remote, wire), (local, output)):
+            if buf and sock not in writers and sock not in writable:
+                writable.append(sock)
         for sock in writable:
             buf = wire if sock is remote else output
             try:
@@ -241,6 +249,8 @@ class _Broker:
                 self._workers.discard(threading.current_thread())
 
     def _tls(self, sock, context, owned, **kwargs):
+        # Both accepted and outgoing WAN sockets carry latency-sensitive frames.
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         sock.settimeout(self.handshake_timeout)
         wrapped = context.wrap_socket(sock, do_handshake_on_connect=False, **kwargs)
         owned.append(wrapped)

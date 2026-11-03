@@ -21,7 +21,10 @@ void NativeLink_Init(NativeLinkEmit emit, void *context);
 /* Called ONLY after bilateral consent; session must be nonzero. */
 int NativeLink_Admit(uint64_t session, unsigned mode, unsigned slot);
 void NativeLink_Reset(void); /* invalidates reservation, retains transport */
-void NativeLink_Abort(void);
+void NativeLink_Abort(void); /* local cancellation, retries ABORT until emitted */
+/* Transport-only authoritative invalidation. Drop only this ended session's
+ * state/events, without echoing ABORT. Never use for a successful cable close. */
+void NativeLink_EndSession(uint64_t session);
 int NativeLink_IsActive(void);
 int NativeLink_IsOpen(void);
 int NativeLink_IsConnected(void);
@@ -30,7 +33,14 @@ uint32_t NativeLink_Generation(void);
 unsigned NativeLink_RecvQueueCount(void);
 unsigned NativeLink_SendQueueCount(void);
 void NativeLink_Open(uint16_t linkType);
-void NativeLink_Close(void); /* keeps consented reservation, next open increments */
+/* Graceful close: retry once per tick while the engine keeps running. Returns
+ * 0 without dropping queued commands/receives, 1 after CLOSE is emitted. Caller
+ * must first stop producing commands and capture its final gSendCmd via the
+ * usual BeforeFrame seam. Reservation survives until remote session end. */
+int NativeLink_TryClose(void);
+/* Immediate hardware teardown, explicitly cancels unconsumed commands. Keeps
+ * reservation for reopen. Use TryClose, not this, for a successful drain. */
+void NativeLink_Close(void);
 void NativeLink_Pump(void); /* retries retained transport events */
 /* PAIR only after both OPEN; HANDSHAKE only after host ADVANCE.
  * Both control commits use round=0 and an all-zero matrix. ROUND always has
@@ -38,12 +48,19 @@ void NativeLink_Pump(void); /* retries retained transport events */
  * 0 stale/no session, -1 protocol error (aborts). */
 int NativeLink_Feed(unsigned kind, uint64_t session, uint32_t generation,
                     uint32_t round, const uint16_t matrix[2][8]);
-/* Parent must pump IO then call FrameReady BEFORE input/VBlank/full tick.
- * FrameReady captures prior gSendCmd before LinkMain2 can clear it. BeforeFrame
- * claims the ready tick; AfterFrame closes exactly one full tick.
- * Until both OPEN (PAIR), ticks stay ungated so pending OpenLink tasks run.
- * Once paired, one retained command and one committed matrix per full tick. */
-int NativeLink_FrameReady(void); /* production reads gSendCmd via registered source */
+/* Pump IO, then BeforeFrame exactly once before input/VBlank/full tick.
+ * BeforeFrame captures prior gSendCmd before LinkMain2 clears it, retaining up
+ * to 50 nonzero commands including the outstanding window. Overflow aborts.
+ * FrameReady prepares at most one contribution per engine tick. Repeated polls
+ * never capture or add contributions. Up to 16 emitted rounds cover WAN latency;
+ * each exact self echo is validated before ordered delivery to the engine.
+ * The host must support the same bounded pipeline, with unchanged wire framing.
+ * Network waits do not gate engine ticks. LinkMain2 must run even when Main1
+ * reports RECEIVED_NOTHING, clearing send before generating the next command.
+ * AfterFrame retires a wire slot only after Main1 consumes its valid matrix.
+ * Idle zero rounds are not hardware queue backlog. Close retains only the
+ * bounded emitted window for validation, never delivery, of late old echoes. */
+int NativeLink_FrameReady(void);
 void NativeLink_SetCommandSource(const uint16_t send[8]); /* call once with gSendCmd */
 int NativeLink_BeforeFrame(const uint16_t send[8]);
 void NativeLink_AfterFrame(void);
