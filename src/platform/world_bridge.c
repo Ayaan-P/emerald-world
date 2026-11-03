@@ -32,6 +32,7 @@
 #include "constants/map_groups.h"
 #include "platform/world_bridge.h"
 #include "platform/world_activity.h"
+#include "platform/world_travel.h"
 #include "platform/world_catalog.h"
 #ifndef _WIN32
 #include <unistd.h>
@@ -73,7 +74,7 @@ static struct {
     char socketPath[108], trainer[25], token[65], telemetry[1024];
     char input[WB_BUFFER], output[4096];
     size_t inputSize, outputSize, outputSent;
-    unsigned seq, retry, stagedBytes, generation, appliedGeneration;
+    unsigned seq, retry, stagedBytes, generation, appliedGeneration, snapshotAge;
     bool8 tilesLive;
     struct Snapshot live, stage;
     struct Remote remotes[WB_REMOTES];
@@ -286,6 +287,39 @@ static void Disconnect(void)
 
 bool8 WorldBridge_Enabled(void) { return sWorld.enabled; }
 
+bool8 WorldBridge_GetPeer(unsigned index, struct WorldBridgePeer *peer)
+{
+    unsigned i;
+    if (!peer || !sWorld.connected || sWorld.snapshotAge > 180) return FALSE;
+    for (i = 0; i < sWorld.live.peerCount; i++) {
+        const struct Peer *p = &sWorld.live.peers[i];
+        if (p->id[0] == '@') continue;
+        if (index--) continue;
+        strcpy(peer->name, p->id);
+        peer->group = p->group; peer->num = p->num;
+        peer->x = p->x; peer->y = p->y; peer->ready = p->ready;
+        return TRUE;
+    }
+    return FALSE;
+}
+
+bool8 WorldBridge_TravelTileClear(unsigned group, unsigned num, unsigned x, unsigned y)
+{
+    unsigned i;
+    if (!sWorld.connected || sWorld.snapshotAge > 180 || !MapCoords(group, num, x, y)) return FALSE;
+    for (i = 0; i < sWorld.live.peerCount; i++) {
+        const struct Peer *p = &sWorld.live.peers[i];
+        if (p->group == group && p->num == num && p->x == x && p->y == y) return FALSE;
+    }
+    /* A changed tile is outside the base-map reachability proof, even if the
+     * authority currently marks it passable. Never turn a gate into a shortcut. */
+    for (i = 0; i < sWorld.live.tileCount; i++) {
+        const struct Tile *t = &sWorld.live.tiles[i];
+        if (t->group == group && t->num == num && t->x == x && t->y == y) return FALSE;
+    }
+    return TRUE;
+}
+
 const char *WorldBridge_TrainerName(void)
 {
     return sWorld.enabled ? sWorld.trainer : NULL;
@@ -424,6 +458,7 @@ static bool8 Line(char *line)
         if (n != 1) return FALSE;
         if (sWorld.live.meeting.seq != sWorld.stage.meeting.seq) sWorld.meetingAge = 0;
         sWorld.live = sWorld.stage;
+        sWorld.snapshotAge = 0;
         sWorld.generation++;
         sWorld.staging = FALSE;
         return TRUE;
@@ -820,7 +855,7 @@ static void SyncDialogue(void)
     char talkPeer[25];
     bool8 talk = WorldActivity_TakeTalkRequest(talkPeer);
     const struct Meeting *meeting = &sWorld.live.meeting;
-    if (WorldActivity_OwnsFieldInput()) {
+    if (WorldActivity_OwnsFieldInput() || WorldTravel_OwnsFieldInput()) {
         sWorld.shownMeeting = meeting->seq;
         sWorld.pendingObject[0] = 0;
         sWorld.dialogueKeys = 0;
@@ -918,6 +953,7 @@ u16 WorldBridge_FilterInput(u16 keys)
     u16 pressed = keys & ~sWorld.previousKeys;
     if (!sWorld.enabled) return keys;
     sWorld.previousKeys = keys;
+    if (WorldTravel_OwnsFieldInput()) return 0;
     if (WorldActivity_OwnsFieldInput()) return keys;
     if (sWorld.dialogueActive) {
         sWorld.dialogueKeys |= pressed & (A_BUTTON | B_BUTTON);
@@ -1004,7 +1040,9 @@ void WorldBridge_WriteJSON(FILE *file, u32 frame)
         fprintf(file, "%s{\"map\":[%u,%u],\"pos\":[%u,%u],\"original\":%u,\"raw\":%u}",
             i ? "," : "", a->tile.group, a->tile.num, a->tile.x, a->tile.y, a->original, a->raw);
     }
-    fprintf(file, "]}");
+    fputs("],\"travel\":", file);
+    WorldTravel_WriteJSON(file);
+    fputc('}', file);
 }
 
 void WorldBridge_Poll(bool8 headless)
@@ -1030,6 +1068,8 @@ void WorldBridge_AfterFrame(u32 frame)
     FILE *file;
     char path[1100];
     if (!sWorld.enabled) return;
+    if (sWorld.snapshotAge <= 180) sWorld.snapshotAge++;
+    WorldTravel_Update();
     SyncDialogue();
     SyncEngine();
     if (frame % 6 == 0) SendState();
@@ -1058,6 +1098,7 @@ void WorldBridge_Close(void)
 {
     unsigned i;
     if (!sWorld.enabled) return;
+    WorldTravel_Close();
     RestoreTiles();
     if (Overworld()) for (i = 0; i < WB_REMOTES; i++) RemoveRemote(i);
     Disconnect();
