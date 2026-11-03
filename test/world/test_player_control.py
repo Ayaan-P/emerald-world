@@ -15,8 +15,9 @@ ROOT = Path(__file__).resolve().parents[2]
 class PlayerControlTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        (ROOT / 'research').mkdir(exist_ok=True)
-        cls.scratch = tempfile.TemporaryDirectory(dir=ROOT / 'research')
+        # AF_UNIX names are bounded independently of checkout depth. Keep the
+        # owned fixture private and short without relaxing endpoint validation.
+        cls.scratch = tempfile.TemporaryDirectory(prefix='emerald-control-')
         out = Path(cls.scratch.name) / 'control.so'
         harness = Path(cls.scratch.name) / 'control.c'
         harness.write_text('''#include <sys/socket.h>
