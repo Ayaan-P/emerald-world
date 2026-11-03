@@ -348,7 +348,8 @@ class GuestController:
         if action not in ('join', 'rejoin', 'disconnect'):
             raise ValueError('invalid guest action')
         with self._lock:
-            if self._busy or self._shutdown.is_set():
+            if (self._busy or self._shutdown.is_set() or self.closed.is_set()
+                    or not self._thread.is_alive()):
                 return False
             self._busy = True
             self._state = {'state': 'working'}
@@ -368,35 +369,54 @@ class GuestController:
 
     def _run(self):
         import queue
+        cleanup_pending = False
         try:
             while not self._shutdown.is_set():
                 try:
                     action, settings = self._queue.get(timeout=.2)
                 except queue.Empty:
-                    if self._session is not None:
-                        state = self._session.status()
-                        self._publish(state)
-                        if state['state'] == 'stopped':
-                            self._session.close()
-                            self._session = None
+                    if self._session is not None and not cleanup_pending:
+                        try:
+                            state = self._session.status()
+                            if state['state'] == 'stopped':
+                                cleanup_pending = True
+                                self._session.close()
+                                self._session = None
+                                cleanup_pending = False
+                            self._publish(state)
+                        except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
+                            self._publish({'state': 'error', 'message':
+                                           'Could not read game status or finish cleanup. '
+                                           'Use Disconnect to retry cleanup before joining again.'})
                     continue
                 try:
                     if action in ('rejoin', 'disconnect') and self._session is not None:
+                        cleanup_pending = True
                         self._session.close()
                         self._session = None
+                        cleanup_pending = False
                     if action in ('join', 'rejoin'):
                         if self._session is not None:
                             raise RuntimeError('disconnect before joining again')
                         self._session = WindowsGuestSession(*settings)
                         self._session.start()
                     self._publish(self._session.status() if self._session else {'state': 'stopped'})
-                except (OSError, ValueError, RuntimeError):
+                except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
                     self._publish({'state': 'error', 'message':
-                                   'Could not join or disconnect. Check host, pin, invitation and profile.'})
+                                   'Could not join or disconnect. Check host, pin, invitation and profile. '
+                                   'Use Disconnect to retry cleanup before joining again.'})
                 finally:
                     with self._lock:
                         self._busy = False
+        except Exception:
+            # Unexpected worker failures must not strand accepted UI commands or
+            # expose exception text, which can include invitation capabilities.
+            self._publish({'state': 'error', 'message':
+                           'Guest controls stopped unexpectedly. Close this window and reopen it.'})
         finally:
+            with self._lock:
+                self._shutdown.set()
+                self._busy = False
             # Never signal closed (and let Tk exit) while a child may hold a save.
             while self._session is not None:
                 try:
@@ -506,7 +526,10 @@ def main(argv=None):
             pass
         finally:
             if root is not None:
-                root.destroy()
+                try:
+                    root.destroy()
+                except Exception:
+                    result['ok'] = False
         print(json.dumps(result, sort_keys=True))
         return 0 if result['ok'] else 1
     import tkinter as tk

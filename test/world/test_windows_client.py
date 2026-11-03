@@ -98,6 +98,28 @@ class GatewayTests(unittest.TestCase):
         self.assertIsNotNone(importlib.util.find_spec('world.windows_client'),
                              'Windows client module is missing')
 
+    def test_local_header_bounds_reject_extra_short_and_embedded_newline(self):
+        from world.windows_client import LoopbackGateway
+        with socket.socket() as host:
+            host.bind(('127.0.0.1', 0))
+            host.listen()
+            host.settimeout(.1)
+            gateway = LoopbackGateway(host.getsockname(), fingerprint='a'*64,
+                                      local_token='b'*64, auth_timeout=.15).start()
+            self.addCleanup(gateway.close)
+            for header in (b'EWLOCAL1 '+b'b'*65+b'\n', b'X'*10000,
+                           b'EWLOCAL1 '+b'b'*63+b'\n', b'EWLOCAL1 \n'+b'b'*64):
+                with self.subTest(header_size=len(header)):
+                    with socket.create_connection(gateway.address, timeout=1) as native:
+                        native.sendall(header)
+                        try:
+                            self.assertEqual(native.recv(1), b'')
+                        except ConnectionResetError:
+                            pass
+                    wait_for(lambda: gateway.active_clients == 0)
+            with self.assertRaises(socket.timeout):
+                host.accept()
+
     def test_wrong_local_key_never_dials_host(self):
         from world.windows_client import LoopbackGateway
         with socket.socket() as host:
@@ -235,6 +257,34 @@ class TLSTests(unittest.TestCase):
             gateway.close()
             self.assertEqual(gateway.active_clients, 0)
 
+    def test_gateway_native_hello_reaches_existing_host_broker(self):
+        import os
+        import tempfile
+        from pathlib import Path
+        if os.name != 'posix':
+            self.skipTest('Linux HostBroker integration uses its existing Unix world service')
+        from world.server import WorldServer
+        from world.transport import HostBroker
+        from world.windows_client import LoopbackGateway
+        with tempfile.TemporaryDirectory(prefix='windows world tls ') as temporary:
+            root = Path(temporary)
+            server = WorldServer(root/'transport/world.sock', root)
+            self.addCleanup(server.close)
+            identity = server.create_identity('Alice')
+            server.start()
+            host = HostBroker(server.socket_path, self.cert, self.key).start()
+            self.addCleanup(host.close)
+            gateway = LoopbackGateway(host.address, fingerprint=self.pin, local_token='b'*64).start()
+            self.addCleanup(gateway.close)
+            with socket.create_connection(gateway.address, timeout=2) as native:
+                native.sendall(('EWLOCAL1 ' + 'b'*64 + '\nHELLO 1 Alice '
+                                + identity['token'] + ' SOCIAL\n').encode('ascii'))
+                with native.makefile('rb') as stream:
+                    self.assertTrue(stream.readline(256).startswith(b'WELCOME 1 Alice '))
+            gateway.close()
+            host.close()
+            server.close()
+
     def test_native_reconnect_uses_same_live_gateway(self):
         from world.transport import _magic
         from world.windows_client import LoopbackGateway
@@ -329,8 +379,10 @@ class ProfileTests(unittest.TestCase):
         self.assertNotIn('d'*64, repr(session))
         paths['save'].write_bytes(b'own native save')
         paths['settings'].write_bytes(b'own keys')
+        previous_capability = session.gateway.local_token
         session.close()
         session.prepare()
+        self.assertNotEqual(session.gateway.local_token, previous_capability)
         self.assertEqual(paths['save'].read_bytes(), b'own native save')
         self.assertEqual(paths['settings'].read_bytes(), b'own keys')
 
@@ -461,6 +513,52 @@ class ProfileTests(unittest.TestCase):
         session.close()
         other.prepare()
 
+    def test_controller_disconnect_timeout_keeps_owned_profile_until_explicit_retry(self):
+        from unittest.mock import Mock, patch
+        import subprocess
+        from world.windows_client import GuestController
+        session, other = self.session(), self.session()
+        session.prepare()
+        child = Mock()
+        child.poll.return_value = None
+        child.wait.side_effect = subprocess.TimeoutExpired('private capability', 3)
+        session.child = child
+        with patch('world.windows_client.WindowsGuestSession', return_value=session), \
+             patch.object(session, 'start', return_value=session), \
+             patch('world.windows_client._request_child_close'), \
+             patch('threading.excepthook'):
+            controller = GuestController()
+            try:
+                self.assertTrue(controller.submit('join', ()))
+                wait_for(lambda: not controller.snapshot()['busy'])
+                self.assertTrue(controller.submit('disconnect'))
+                wait_for(lambda: not controller.snapshot()['busy'])
+                state = controller.snapshot()
+                self.assertEqual(state['state'], 'error')
+                self.assertIn('Disconnect', str(state['message']))
+                self.assertNotIn('private capability', repr(state))
+                self.assertTrue(controller._thread.is_alive())
+                self.assertFalse(controller.closed.is_set())
+                self.assertIs(controller._session, session)
+                with self.assertRaisesRegex(RuntimeError, 'profile is already in use'):
+                    other.prepare()
+                time.sleep(.3)
+                self.assertEqual(controller.snapshot()['state'], 'error')
+                self.assertIs(controller._session, session)
+                child.poll.return_value = 0
+                child.wait.side_effect = None
+                self.assertTrue(controller.submit('disconnect'))
+                wait_for(lambda: not controller.snapshot()['busy'])
+                self.assertEqual(controller.snapshot()['state'], 'stopped')
+                self.assertIsNone(controller._session)
+                other.prepare()
+            finally:
+                child.poll.return_value = 0
+                child.wait.side_effect = None
+                controller.shutdown()
+                self.assertTrue(controller.closed.wait(2))
+                controller._thread.join(2)
+
     def test_windows_requests_wm_close_without_stealing_focus(self):
         import types
         from unittest.mock import Mock, patch
@@ -539,6 +637,24 @@ class EntryTests(unittest.TestCase):
         self.assertFalse(json.loads(output.getvalue())['ok'])
         self.assertNotIn('secret', output.getvalue())
 
+    def test_self_test_cleanup_failure_still_returns_secret_free_json(self):
+        import contextlib
+        import io
+        import json
+        import types
+        from pathlib import Path
+        from unittest.mock import Mock, patch
+        from world.windows_client import main
+        tk = Mock()
+        tk.destroy.side_effect = RuntimeError('private failure')
+        output = io.StringIO()
+        with patch.dict('sys.modules', {'tkinter': types.SimpleNamespace(Tk=Mock(return_value=tk))}), \
+             patch('world.windows_client.locate_game', return_value=Path('game/pokeemerald64.exe')), \
+             contextlib.redirect_stdout(output):
+            self.assertEqual(main(['--self-test']), 1)
+        self.assertFalse(json.loads(output.getvalue())['ok'])
+        self.assertNotIn('private', output.getvalue())
+
     def test_window_fields_picker_and_remote_only_actions_without_real_tk(self):
         import types
         from unittest.mock import Mock, patch
@@ -571,6 +687,103 @@ class EntryTests(unittest.TestCase):
             window.disconnect()
             controller.submit.assert_called_with('disconnect')
             root.after.assert_called()
+
+    def test_controller_idle_failures_keep_worker_live_and_allow_disconnect_retry(self):
+        import subprocess
+        from unittest.mock import Mock, patch
+        from world.windows_client import GuestController
+        for operation in ('status', 'cleanup'):
+            for error in (OSError('private capability'),
+                          subprocess.TimeoutExpired('private capability', 3)):
+                with self.subTest(operation=operation, error=type(error).__name__):
+                    session = Mock()
+                    session.status.return_value = {'state': 'connecting'}
+                    with patch('world.windows_client.WindowsGuestSession', return_value=session), \
+                         patch('threading.excepthook'):
+                        controller = GuestController()
+                        try:
+                            self.assertTrue(controller.submit('join', ()))
+                            wait_for(lambda: not controller.snapshot()['busy'])
+                            if operation == 'status':
+                                session.status.side_effect = error
+                            else:
+                                session.status.return_value = {'state': 'stopped'}
+                                session.close.side_effect = error
+                            wait_for(lambda: controller.snapshot()['state'] == 'error'
+                                     or controller.closed.is_set())
+                            self.assertEqual(controller.snapshot()['state'], 'error')
+                            self.assertIn('Disconnect', str(controller.snapshot().get('message')))
+                            self.assertNotIn('private capability', repr(controller.snapshot()))
+                            self.assertTrue(controller._thread.is_alive())
+                            self.assertFalse(controller.closed.is_set())
+                            self.assertIs(controller._session, session)
+                            time.sleep(.3)
+                            self.assertEqual(controller.snapshot()['state'], 'error')
+                            session.status.side_effect = None
+                            session.close.side_effect = None
+                            self.assertTrue(controller.submit('disconnect'))
+                            wait_for(lambda: not controller.snapshot()['busy'])
+                            self.assertEqual(controller.snapshot()['state'], 'stopped')
+                            self.assertIsNone(controller._session)
+                        finally:
+                            session.status.side_effect = None
+                            session.close.side_effect = None
+                            controller.shutdown()
+                            self.assertTrue(controller.closed.wait(2))
+                            controller._thread.join(2)
+
+    def test_controller_unexpected_worker_failure_closes_honestly_and_refuses_commands(self):
+        from unittest.mock import Mock, patch
+        from world.windows_client import GuestController
+        session = Mock()
+        session.status.side_effect = KeyError('private capability')
+        with patch('world.windows_client.WindowsGuestSession', return_value=session), \
+             patch('threading.excepthook') as uncaught:
+            controller = GuestController()
+            try:
+                self.assertTrue(controller.submit('join', ()))
+                self.assertTrue(controller.closed.wait(2))
+                controller._thread.join(2)
+                self.assertFalse(controller._thread.is_alive())
+                self.assertEqual(controller.snapshot()['state'], 'error')
+                self.assertFalse(controller.snapshot()['busy'])
+                self.assertNotIn('private capability', repr(controller.snapshot()))
+                self.assertFalse(controller.submit('join', ()))
+                self.assertFalse(controller.submit('rejoin', ()))
+                self.assertFalse(controller.submit('disconnect'))
+                uncaught.assert_not_called()
+                session.close.assert_called_once()
+            finally:
+                controller.shutdown()
+                controller._thread.join(2)
+
+    def test_controller_shutdown_waits_for_cleanup_and_refuses_commands(self):
+        import subprocess
+        from unittest.mock import Mock, patch
+        from world.windows_client import GuestController
+        session = Mock()
+        session.status.return_value = {'state': 'connecting'}
+        session.close.side_effect = subprocess.TimeoutExpired('private capability', 3)
+        with patch('world.windows_client.WindowsGuestSession', return_value=session):
+            controller = GuestController()
+            try:
+                self.assertTrue(controller.submit('join', ()))
+                wait_for(lambda: not controller.snapshot()['busy'])
+                controller.shutdown()
+                wait_for(lambda: controller.snapshot()['state'] == 'error')
+                self.assertFalse(controller.closed.is_set())
+                self.assertTrue(controller._thread.is_alive())
+                self.assertIs(controller._session, session)
+                self.assertFalse(controller.submit('disconnect'))
+                self.assertNotIn('private capability', repr(controller.snapshot()))
+                session.close.side_effect = None
+                self.assertTrue(controller.closed.wait(2))
+                controller._thread.join(2)
+                self.assertFalse(controller.submit('join', ()))
+            finally:
+                session.close.side_effect = None
+                controller.shutdown()
+                controller._thread.join(2)
 
     def test_controller_does_not_block_caller_and_closes_session(self):
         import threading

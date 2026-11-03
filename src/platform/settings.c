@@ -4,6 +4,7 @@
 #include <string.h>
 #include <SDL2/SDL.h>
 
+#include "platform/native_file.h"
 #include "global.h"
 #include "platform/settings.h"
 
@@ -261,10 +262,10 @@ void LoadSettings(const char *path)
 
     if (path == NULL)
         return;
-    file = fopen(path, "rb");
+    file = NativeFile_Open(path, "rb");
     if (file == NULL)
     {
-        file = fopen(path, "wb");
+        file = NativeFile_Open(path, "wb");
         if (file != NULL && fputs(sDefaultSettings, file) >= 0 && fclose(file) == 0)
             printf("Wrote the default settings to %s\n", path);
         else

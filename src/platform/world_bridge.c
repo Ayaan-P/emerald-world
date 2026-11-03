@@ -15,6 +15,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
+#include "platform/native_file.h"
 #include "global.h"
 #include "global.fieldmap.h"
 #include "fieldmap.h"
@@ -300,9 +301,9 @@ bool8 WorldBridge_Init(const char *configPath)
 #endif
     if (!configPath) return TRUE;
 #ifdef _WIN32
-    file = fopen(configPath, "rb");
+    file = NativeFile_Open(configPath, "rb");
 #else
-    file = fopen(configPath, "r");
+    file = NativeFile_Open(configPath, "r");
 #endif
     if (!file) return FALSE;
 #ifdef _WIN32
@@ -1006,18 +1007,12 @@ void WorldBridge_AfterFrame(u32 frame)
     SyncEngine();
     if (frame % 6 == 0) SendState();
     snprintf(path, sizeof(path), "%s.tmp", sWorld.telemetry);
-    file = fopen(path, "w");
+    file = NativeFile_Open(path, "w");
     if (!file) return;
     WorldBridge_WriteJSON(file, frame);
     fputc('\n', file);
     if (fclose(file) == 0) {
-#ifdef _WIN32
-        /* Same-directory move replaces an existing telemetry file atomically.
-         * Do not delete the old file first: readers must never see a gap. */
-        MoveFileExA(path, sWorld.telemetry, MOVEFILE_REPLACE_EXISTING);
-#else
-        rename(path, sWorld.telemetry);
-#endif
+        NativeFile_Replace(path, sWorld.telemetry);
     }
 }
 

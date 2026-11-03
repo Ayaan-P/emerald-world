@@ -52,7 +52,7 @@ jobs:
       - name: Compile real native Windows PE with MinGW GCC
         shell: msys2 {0}
         timeout-minutes: 25
-        run: make -j2 winwsl PREFIX= CC=gcc CXX=g++ SDL_DIR=/mingw64 OS=Windows_NT WERROR=1
+        run: make -j4 winwsl PREFIX= CC=gcc CXX=g++ SDL_DIR=/mingw64 OS=Windows_NT WERROR=1
       - name: Set native runtime dependency path
         shell: pwsh
         run: |
@@ -88,7 +88,7 @@ jobs:
         shell: pwsh
         timeout-minutes: 5
         run: |
-          python scripts/windows_verify.py --label package --timeout 240 --report build/verification/package.json -- python scripts/windows_package.py --launcher build/windows-dist/EmeraldWorld --binary pokeemerald64.exe --dll-dir "$env:EW_MINGW_BIN" --objdump "$env:EW_MINGW_BIN/objdump.exe" --output build/windows-package
+          python scripts/windows_verify.py --label package --timeout 240 --report build/verification/package.json -- python scripts/windows_package.py --launcher build/windows-dist/EmeraldWorld --binary pokeemerald64.exe --dll-dir "$env:EW_MINGW_BIN" --objdump "$env:EW_MINGW_BIN/objdump.exe" --output build/windows-package --authorize-private-distribution
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Copy-Item build/windows-package/checksums.json build/verification/checksums.json
       - name: Exercise frozen launcher and packaged PE without build-tool PATH
@@ -101,7 +101,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $python scripts/windows_verify.py --label bridge --timeout 120 --report build/verification/portable-bridge.json -- $python scripts/windows_bridge_test.py --binary build/windows-package/EmeraldWorld/game/pokeemerald64.exe --save build/windows-smoke/first_battle/game.sav --report build/verification/portable-native-fixture.json
           exit $LASTEXITCODE
-      # Do not add binary, ZIP, ROM, save, test directory or raw log uploads.
+      # Explicitly authorized private test ZIP, only after every runtime check.
+      - name: Upload verified private Windows client
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: EmeraldWorld-Windows-x64
+          retention-days: 14
+          if-no-files-found: error
+          path: build/windows-package/EmeraldWorld-windows-x64.zip
+      # Diagnostics remain a separate, explicit text whitelist even on failure.
       - name: Upload text verification only
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # official v4

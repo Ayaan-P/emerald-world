@@ -299,6 +299,14 @@ else ifeq ($(PORTABLE),1)
   # The same floating point results everywhere, which the tests' frame hashes
   # need: on ARM, compilers would otherwise fuse multiplies and adds
   override CFLAGS += -ffp-contract=off
+  ifeq ($(TARGET_OS),WINDOWS)
+    ifeq ($(IS64BIT),1)
+      # The driver and direct cc1 invocation must use the same CPU baseline.
+      # Distribution defaults can otherwise expose unsupported intrinsics in cpp.
+      CPPFLAGS += -march=x86-64
+      override CFLAGS += -march=x86-64
+    endif
+  endif
   ifeq ($(COMPILER),clang)
     # clang reports GNU C that gcc takes as it is, and that pret's code is full
     # of: __alignof__ of expressions, unused tables, u8 and char strings mixed,

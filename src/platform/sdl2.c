@@ -11,6 +11,7 @@
 
 #include <SDL2/SDL.h>
 
+#include "platform/native_file.h"
 #include "global.h"
 #include "platform.h"
 #include "rtc.h"
@@ -93,6 +94,9 @@ static void WorldBootstrapFrame(void);
 static bool PlayerScreenshot(FILE *file);
 static bool WriteFramebufferStream(const uint16_t *image, FILE *file);
 
+/* SDL2 main/windows/SDL_windows_main.c converts CommandLineToArgvW output
+ * with WIN_StringToUTF8W before calling SDL_main (the SDL.h main macro).
+ * Keep argv and SDL_GetPrefPath UTF-8; NativeFile_Open performs the OS conversion. */
 int main(int argc, char **argv)
 {
     if (!ParseArgs(argc, argv))
@@ -115,7 +119,7 @@ int main(int argc, char **argv)
             fprintf(stderr, "World bootstrap requires --world-config and --world-input in graphical mode.\n");
             return 1;
         }
-        sTestInput = fopen(sWorldInputPath, "r");
+        sTestInput = NativeFile_Open(sWorldInputPath, "r");
         if (sTestInput == NULL)
         {
             fprintf(stderr, "Could not open world bootstrap input.\n");
@@ -160,7 +164,7 @@ int main(int argc, char **argv)
         FILE *mappings;
 
         snprintf(path, sizeof(path), "%sgamecontrollerdb.txt", sDataDir);
-        mappings = fopen(path, "r");
+        mappings = NativeFile_Open(path, "r");
         if (mappings != NULL)
         {
             fclose(mappings);
@@ -305,10 +309,10 @@ int main(int argc, char **argv)
 static void ReadSaveFile(const char *path)
 {
     // Check whether the saveFile exists, and create it if not
-    sSaveFile = fopen(path, "r+b");
+    sSaveFile = NativeFile_Open(path, "r+b");
     if (sSaveFile == NULL)
     {
-        sSaveFile = fopen(path, "w+b");
+        sSaveFile = NativeFile_Open(path, "w+b");
     }
 
     fseek(sSaveFile, 0, SEEK_END);
@@ -345,7 +349,7 @@ void Platform_StoreSaveFile(void)
 void Platform_ReadFlash(u16 sectorNum, u32 offset, u8 *dest, u32 size)
 {
     DBGPRINTF("ReadFlash(sectorNum=0x%04X,offset=0x%08X,size=0x%02X)\n",sectorNum,offset,size);
-    FILE * savefile = fopen(sSavePath, "r+b");
+    FILE * savefile = NativeFile_Open(sSavePath, "r+b");
     if (savefile == NULL)
     {
         puts("Error opening save file.");
@@ -676,7 +680,7 @@ static bool ParseArgs(int argc, char **argv)
         else if (strcmp(arg, "--test-input") == 0)
         {
             sTestMode = true;
-            sTestInput = (strcmp(value, "-") == 0) ? stdin : fopen(value, "r");
+            sTestInput = (strcmp(value, "-") == 0) ? stdin : NativeFile_Open(value, "r");
             if (sTestInput == NULL)
             {
                 fprintf(stderr, "Could not open test input %s\n", value);
@@ -685,7 +689,7 @@ static bool ParseArgs(int argc, char **argv)
         }
         else if (strcmp(arg, "--test-hashes") == 0)
         {
-            sTestHashes = fopen(value, "w");
+            sTestHashes = NativeFile_Open(value, "w");
             if (sTestHashes == NULL)
             {
                 fprintf(stderr, "Could not open hash output %s\n", value);
@@ -698,7 +702,7 @@ static bool ParseArgs(int argc, char **argv)
         }
         else if (strcmp(arg, "--test-state") == 0)
         {
-            sTestState = (strcmp(value, "-") == 0) ? stdout : fopen(value, "w");
+            sTestState = (strcmp(value, "-") == 0) ? stdout : NativeFile_Open(value, "w");
             if (sTestState == NULL)
             {
                 fprintf(stderr, "Could not open state output %s\n", value);
@@ -707,7 +711,7 @@ static bool ParseArgs(int argc, char **argv)
         }
         else if (strcmp(arg, "--test-audio") == 0)
         {
-            sTestAudio = fopen(value, "wb");
+            sTestAudio = NativeFile_Open(value, "wb");
             if (sTestAudio == NULL)
             {
                 fprintf(stderr, "Could not open audio output %s\n", value);
@@ -736,7 +740,7 @@ static bool ParseArgs(int argc, char **argv)
 static void FindDataFiles(void)
 {
     static char savePath[1024], settingsPath[1024];
-    FILE *oldSave = fopen("pokeemerald.sav", "rb");
+    FILE *oldSave = NativeFile_Open("pokeemerald.sav", "rb");
 
     if (oldSave != NULL)
         fclose(oldSave);
@@ -841,7 +845,7 @@ static void WriteWavHeader(FILE *file, u32 dataSize)
 
 static void WriteFramebufferPPM(const uint16_t *image, const char *path)
 {
-    FILE *file = fopen(path, "wb");
+    FILE *file = NativeFile_Open(path, "wb");
     if (file == NULL)
     {
         fprintf(stderr, "Could not write screenshot %s\n", path);

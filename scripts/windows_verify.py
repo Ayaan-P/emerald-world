@@ -8,9 +8,83 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import subprocess
 import time
+
+
+# These are metadata grammars, not a log sanitizer. Unknown formats stay private.
+_EXCEPTION_TYPES = frozenset({
+    'Exception', 'RuntimeError', 'AssertionError', 'ValueError', 'TypeError',
+    'AttributeError', 'KeyError', 'IndexError', 'ImportError', 'ModuleNotFoundError',
+    'OSError', 'FileNotFoundError', 'PermissionError', 'TimeoutError',
+    'NotImplementedError', 'NameError', 'UnboundLocalError', 'ZeroDivisionError',
+    'OverflowError', 'MemoryError', 'RecursionError', 'UnicodeError',
+    'UnicodeDecodeError', 'UnicodeEncodeError', 'SystemError',
+})
+_FRAME = re.compile(r'  File "([^"\r\n]{1,512})", line ([1-9][0-9]{0,6}), in [^\r\n]{1,120}')
+_SOURCE = re.compile(r'(?:world/[A-Za-z_][A-Za-z0-9_/]*|scripts/windows[A-Za-z0-9_]*|test/[A-Za-z_][A-Za-z0-9_/]*)\.py')
+
+
+def failure_diagnostics(log_path):
+    """Read only a bounded tail and export known source locations/types."""
+    root = Path(__file__).resolve().parents[1]
+    try:
+        with log_path.open('rb') as log:
+            log.seek(0, os.SEEK_END)
+            offset = max(0, log.tell() - 65536)
+            log.seek(offset)
+            tail = log.read(65536)
+        if offset:
+            tail = tail.partition(b'\n')[2]
+        text = tail.decode('utf-8', errors='replace')
+    except OSError:
+        return []
+    diagnostics = []
+    frames = None
+    for line in text.splitlines():
+        test = re.fullmatch(r'(ERROR|FAIL): (test_[A-Za-z0-9_]{1,64}) \(([A-Za-z_][A-Za-z0-9_.]{1,119})\)', line)
+        if (test and test[3].split('.')[-1] == test[2]
+                and all(re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,63}', part)
+                        for part in test[3].split('.'))
+                and not re.search(r'[0-9a-fA-F]{16,}', test[3])
+                and 'DO_NOT_PUBLISH' not in test[3]):
+            diagnostics.append({'test_id': test[3], 'outcome': test[1]})
+            if len(diagnostics) == 32:
+                return diagnostics
+            frames = None
+            continue
+        if line == 'Traceback (most recent call last):':
+            frames = []
+            continue
+        if frames is None:
+            continue
+        match = _FRAME.fullmatch(line)
+        if match:
+            source = match[1].replace('\\', '/')
+            prefix = root.as_posix() + '/'
+            if source.startswith(prefix):
+                source = source[len(prefix):]
+            if (len(source) <= 160 and _SOURCE.fullmatch(source)
+                    and not re.search(r'[0-9a-fA-F]{16,}', source)
+                    and 'DO_NOT_PUBLISH' not in source
+                    and all(part not in ('', '.', '..') for part in source.split('/'))
+                    and (root / source).is_file()):
+                if len(frames) < 32:
+                    frames.append({'file': source, 'line': int(match[2])})
+            continue
+        exception_type = line.partition(':')[0]
+        if exception_type in _EXCEPTION_TYPES:
+            entries = frames or [{}]
+            for frame in entries:
+                if len(diagnostics) == 32:
+                    return diagnostics
+                diagnostics.append(dict(frame, exception_type=exception_type))
+            frames = None
+        elif line and not line.startswith(' '):
+            frames = None
+    return diagnostics
 
 
 def main():
@@ -41,8 +115,14 @@ def main():
                 os.killpg(proc.pid, signal.SIGKILL)
             proc.kill()
             proc.wait(timeout=15)
-    args.report.write_text(json.dumps({'label': args.label, 'passed': code == 0 and not timed_out,
-        'timed_out': timed_out, 'exit_code': code, 'seconds': round(time.monotonic() - started, 2)}, indent=2) + '\n', encoding='utf-8')
+    report = {'label': args.label, 'passed': code == 0 and not timed_out,
+              'timed_out': timed_out, 'exit_code': code,
+              'seconds': round(time.monotonic() - started, 2)}
+    if not report['passed']:
+        diagnostics = failure_diagnostics(args.report.with_suffix('.private.log'))
+        if diagnostics:
+            report['diagnostics'] = diagnostics
+    args.report.write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(f'{args.label}: ' + ('PASS' if code == 0 and not timed_out else 'FAIL (see runner-local private log)'))
     return 0 if code == 0 and not timed_out else 1
 
