@@ -372,6 +372,30 @@ class HostingTests(unittest.TestCase):
         finally:
             manager.close()
 
+    def test_occupied_port_retries_release_broker_descriptors_and_recover(self):
+        manager = self.manager()
+        occupied = socket.socket()
+        self.addCleanup(occupied.close)
+        try:
+            occupied.bind(('127.0.0.1', self.port))
+            occupied.listen()
+            access = manager.create_account()
+            manager.enroll(access['token'], 'a'*64)
+            with self.assertRaises(OSError):
+                manager.create_world('a'*64, 'Retry world', 'Alice', 'retry-one')
+            before = len(list(Path('/proc/self/fd').iterdir()))
+            for _ in range(3):
+                with self.assertRaises(OSError):
+                    manager.create_world('a'*64, 'Retry world', 'Alice', 'retry-one')
+                self.assertEqual(len(list(Path('/proc/self/fd').iterdir())), before)
+            occupied.close()
+            result = manager.create_world('a'*64, 'Retry world', 'Alice', 'retry-one')
+            self.assertEqual(len(manager.list_worlds('a'*64)), 1)
+            self.assertEqual(result['invitation']['endpoint']['port'], self.port)
+            self.assertEqual(manager.resume('a'*64, result['world']['id']), result)
+        finally:
+            manager.close()
+
     def test_owner_creates_persistent_world_with_native_invitation(self):
         from world.transport import ClientBroker, validate_invitation
         from world.client import WorldClient

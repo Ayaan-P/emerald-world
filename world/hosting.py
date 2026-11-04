@@ -127,7 +127,8 @@ class HostedWorldManager:
             server.start()
             broker = HostBroker(server.socket_path, self.cert, self.key,
                                 (self.listen_host, row['port']),
-                                max_clients=server.max_connections-2, timeout=120).start()
+                                max_clients=server.max_connections-2, timeout=120)
+            broker.start()
             with server.lock:
                 server.sharing = dict(version=1, endpoint=dict(host=self.advertise_host, port=row['port']),
                                       pin=self.pin)
