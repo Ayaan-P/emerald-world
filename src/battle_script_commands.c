@@ -7263,6 +7263,10 @@ static void CoopForceRandomSwitch(void)
     for (i = first; i < end; i++)
         if (i != gBattlerPartyIndexes[gBattlerTarget]
          && ((gAbsentBattlerFlags & gBitTable[partner]) || i != gBattlerPartyIndexes[partner])
+         /* An absent partner may already be bringing this reserve in after a
+          * faint. Match the ordinary replacement path's reservation check. */
+         && (!gSpecialStatuses[partner].faintedHasReplacement
+             || i != gBattleStruct->monToSwitchIntoId[partner])
          && GetMonData(&party[i], MON_DATA_SPECIES) != SPECIES_NONE
          && !GetMonData(&party[i], MON_DATA_IS_EGG)
          && GetMonData(&party[i], MON_DATA_HP))

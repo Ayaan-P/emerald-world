@@ -31,8 +31,11 @@ typedef uint8_t u8; typedef uint16_t u16; typedef int32_t s32; typedef uint8_t b
 #define B_POSITION_OPPONENT_RIGHT 3
 #define B_POSITION_PLAYER_LEFT 0
 #define B_POSITION_PLAYER_RIGHT 2
+#define BATTLE_PARTNER(b) ((b)^2)
 #define MON_DATA_HP 1
 #define MON_DATA_SPECIES_OR_EGG 2
+#define MON_DATA_SPECIES 3
+#define MON_DATA_IS_EGG 4
 #define SPECIES_NONE 0
 #define SPECIES_EGG 412
 struct Pokemon {u16 hp, species;};
@@ -41,11 +44,21 @@ static struct {u16 id;} gLinkPlayers[4];
 static unsigned gBattleTypeFlags;
 static u8 gBattlerPartyIndexes[4]={0,0,3,0};
 static struct {u8 monToSwitchIntoId[4];} bs, *gBattleStruct=&bs;
-static int coop;
+static struct {unsigned faintedHasReplacement;} gSpecialStatuses[4];
+static unsigned gAbsentBattlerFlags;
+static const unsigned gBitTable[4]={1,2,4,8};
+static int coop, trainer, secondOpponent;
 static int WorldCoop_IsBattle(void) {return coop;}
+static int WorldCoop_IsTrainer(void) {return trainer;}
+static int WorldCoop_HasSecondOpponent(void) {return secondOpponent;}
 static unsigned GetBattlerSide(u8 b) {return b&1;}
 static u8 GetBattlerAtPosition(u8 b) {return b;}
-static unsigned GetMonData(struct Pokemon *p, unsigned key) {return key==MON_DATA_HP?p->hp:p->species;}
+static u8 GetBattlerPosition(u8 b) {return b;}
+static unsigned GetMonData(struct Pokemon *p, unsigned key) {
+    if(key==MON_DATA_HP)return p->hp;
+    if(key==MON_DATA_IS_EGG)return p->species==SPECIES_EGG;
+    return p->species;
+}
 '''
         pokemon = (ROOT/'src/pokemon.c').read_text()
         code += function(pokemon, 'GetLinkTrainerFlankId')
@@ -61,10 +74,37 @@ int main(void) {
     /* Only two human link identities exist. Neither wild side owns a bench. */
     assert(HasNoMonsToSwitch(3,6,6));
     assert(HasNoMonsToSwitch(1,6,6));
+    /* An active mon is not itself a reserve. Each owner can use only its
+     * own eligible bench, even when the other human is exhausted. */
+    assert(HasNoMonsToSwitch(0,6,6));
+    assert(HasNoMonsToSwitch(2,6,6));
+    gPlayerParty[1]=(struct Pokemon){20,255};
+    gPlayerParty[4]=(struct Pokemon){20,255};
     assert(!HasNoMonsToSwitch(0,6,6));
     assert(!HasNoMonsToSwitch(2,6,6));
-    gPlayerParty[3].hp=0;
+    assert(HasNoMonsToSwitch(0,1,6));
+    assert(HasNoMonsToSwitch(2,4,6));
+    gPlayerParty[4].hp=0;
     assert(HasNoMonsToSwitch(2,6,6)); /* cannot borrow the other human's party */
+    gPlayerParty[1].species=SPECIES_EGG;
+    assert(HasNoMonsToSwitch(0,6,6));
+    gPlayerParty[1].species=255;
+    /* A single NPC's right spot is absent even with a healthy bench. */
+    trainer=1;
+    gEnemyParty[1]=(struct Pokemon){10,290};
+    assert(!HasNoMonsToSwitch(1,6,6));
+    assert(HasNoMonsToSwitch(3,6,6));
+    /* Double NPCs share one roster but cannot duplicate an active or
+     * already reserved replacement into the other position. */
+    secondOpponent=1;gBattlerPartyIndexes[3]=1;
+    assert(HasNoMonsToSwitch(1,6,6));
+    gEnemyParty[2]=(struct Pokemon){10,290};
+    assert(!HasNoMonsToSwitch(1,6,6));
+    gSpecialStatuses[3].faintedHasReplacement=1;
+    bs.monToSwitchIntoId[3]=2;
+    assert(HasNoMonsToSwitch(1,6,6));
+    gSpecialStatuses[3].faintedHasReplacement=0;
+    trainer=secondOpponent=0;
     /* The same production predicate used by fainted-actions must retain bit3. */
     unsigned absent=8;
     for (int i=0;i<4;i++)
