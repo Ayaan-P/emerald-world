@@ -68,7 +68,7 @@ class WebLauncherTests(unittest.TestCase):
         running.poll.return_value = None
         exited.poll.return_value = 0
         self.session.games = {'May': (running, {}), 'Brendan': (exited, {})}
-        with patch('world.world_library._read_metadata', side_effect=[{'display_name': 'remote-12345678'}, {'display_name': 'Our Hoenn'}]):
+        with patch('world.world_library._read_metadata', side_effect=[{'display_name': 'remote-12345678', 'tags': []}, {'display_name': 'Our Hoenn', 'tags': []}]):
             result = self.bridge.snapshot()
         self.assertEqual(result['worlds'][0]['name'], 'Friend’s world · 5678')
         self.assertEqual(result['worlds'][1]['name'], 'Our Hoenn')
@@ -147,6 +147,13 @@ class WebLauncherTests(unittest.TestCase):
         with self.assertRaises(SessionError):
             self.bridge.action('solo_resume', {'world': 'unknown', 'trainer': 'May'})
         self.session.launch_offline.assert_not_called()
+
+    def test_favorite_preserves_name_and_other_tags(self):
+        self.session.friend_worlds.return_value = [{'name': 'world1', 'trainer': 'May'}]
+        self.session._world.return_value = Path('/tmp/world1')
+        with patch('world.world_library._read_metadata', return_value={'display_name': 'Hoenn', 'tags': ['friends']}):
+            self.bridge.action('favorite', {'world': 'world1', 'favorite': True})
+        self.session.rename_world.assert_called_once_with('world1', 'Hoenn', ['friends', 'favorite'])
 
     def test_rename_preserves_existing_world_tags(self):
         self.session.friend_worlds.return_value = [{'name': 'world1', 'trainer': 'May'}]

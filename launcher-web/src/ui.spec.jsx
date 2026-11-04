@@ -78,6 +78,17 @@ describe('player launcher', () => {
     await waitFor(() => expect(perform).toHaveBeenCalledWith('solo_resume', { world: 'solo-a', trainer: 'May' }));
   });
 
+  it('lets players search and favorite saved worlds', async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /your worlds/i }));
+    const search = screen.getByRole('searchbox', { name: /search saved worlds/i });
+    fireEvent.change(search, { target: { value: 'unmatched' } });
+    expect(screen.getByText(/no worlds match/i)).toBeTruthy();
+    fireEvent.change(search, { target: { value: 'May' } });
+    fireEvent.click(screen.getByRole('button', { name: /add our hoenn to favorites/i }));
+    await waitFor(() => expect(perform).toHaveBeenCalledWith('favorite', { world: 'remote-1234', favorite: true }));
+  });
+
   it('renames a saved world locally', async () => {
     render(<App />);
     fireEvent.click(await screen.findByRole('button', { name: /your worlds/i }));
