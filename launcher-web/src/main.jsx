@@ -70,12 +70,12 @@ export function App() {
     return () => { active = false; clearInterval(timer); clearTimeout(timeout); controller?.abort(); };
   }, [busy]);
 
+  // Keep the original opener for the whole dialog chain, not each busy render.
   const dialogOpen = Boolean(dialog);
   useEffect(() => {
     if (!dialogOpen) return;
     const previous = document.activeElement;
     const modal = document.querySelector('[role="dialog"]');
-    modal?.focus();
     const onKey = event => {
       if (event.key === 'Escape' && !busyRef.current) { setDialog(null); setError(''); }
       if (event.key !== 'Tab' || !modal) return;
@@ -88,6 +88,12 @@ export function App() {
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('keydown', onKey); if (previous?.isConnected) previous.focus?.(); };
   }, [dialogOpen]);
+
+  useEffect(() => {
+    // Replacing confirmation content invalidates its focused control. Busy changes
+    // do not change dialog identity and must leave the player's focus alone.
+    if (dialog) document.querySelector('[role="dialog"]')?.focus();
+  }, [dialog]);
 
   useEffect(() => {
     if (!dialog) { invitationRequest.current++; setInvitation(null); setFileName(''); setPasteText(''); setInviteMode('file'); setInviteKind('native'); setInviteFingerprint(''); hostFileRequest.current++; setHostFingerprint(''); setHostAccess(null); setHostFileName(''); setHostMode('access'); seedRequest.current++; setSoloSeed(null); setSoloSeedName(''); setSeedLoading(false); }

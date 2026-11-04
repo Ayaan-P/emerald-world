@@ -8,6 +8,25 @@ vi.mock('./api', () => ({ loadState: vi.fn(), perform: vi.fn(), forgetCapability
 const state = { worlds: [], offline_saves: [], presence: null, hosting: { available: false, enrolled: false, loaded: false, worlds: [], pending: null }, connected: false, trainer: null, games: [], setup: [], status: 'Ready' };
 beforeEach(() => { loadState.mockResolvedValue(state); });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
+it('focuses replacement dialog content and restores the original opener', async () => {
+  const hosted = { ...state, hosting: { ...state.hosting, available: true, enrolled: true, loaded: true, backup_available: true } };
+  loadState.mockResolvedValue(hosted);
+  perform.mockResolvedValue({ ...hosted, download: 'private owner backup', download_kind: 'backup' });
+  const createURL = URL.createObjectURL, revokeURL = URL.revokeObjectURL;
+  URL.createObjectURL = vi.fn(() => 'blob:owner'); URL.revokeObjectURL = vi.fn();
+  try {
+    render(<App />);
+    const opener = await screen.findByRole('button', { name: /back up account/i });
+    opener.focus(); fireEvent.click(opener);
+    const first = screen.getByRole('dialog');
+    const confirm = within(first).getByRole('button', { name: /create backup/i });
+    confirm.focus(); fireEvent.click(confirm);
+    await screen.findByRole('heading', { name: /your backup is ready/i });
+    expect(document.activeElement).toBe(screen.getByRole('dialog'));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(document.activeElement).toBe(opener);
+  } finally { URL.createObjectURL = createURL; URL.revokeObjectURL = revokeURL; }
+});
 it('keeps dialog focus stable while a request runs and restores its opener', async () => {
   let reject;
   perform.mockImplementation(() => new Promise((resolve, fail) => { reject = fail; }));
