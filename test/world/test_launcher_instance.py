@@ -13,6 +13,7 @@ class LauncherInstanceTests(unittest.TestCase):
         import http.client
         import json
         import subprocess
+        import socket
         import sys
         import time
         from world.launcher_instance import LauncherInstance
@@ -52,6 +53,22 @@ class LauncherInstanceTests(unittest.TestCase):
                             if second.poll() is None:
                                 second.kill()
                             second.communicate(timeout=5)
+                    # Browser preconnects and abandoned requests must not pin
+                    # server_close ahead of session cleanup and owner release.
+                    pending = []
+                    self.addCleanup(lambda sockets=pending: [sock.close() for sock in sockets])
+                    origin = f'http://127.0.0.1:{value["port"]}'
+                    for request in (b'', b'GET / HTTP/1.1\r\nHost:',
+                                    (f'POST /api/action HTTP/1.1\r\n'
+                                     f'Host: 127.0.0.1:{value["port"]}\r\n'
+                                     f'Origin: {origin}\r\n'
+                                     f'Authorization: Bearer {value["capability"]}\r\n'
+                                     'Content-Type: application/json\r\n'
+                                     'Content-Length: 100\r\n\r\n{').encode()):
+                        sock = socket.create_connection(('127.0.0.1', value['port']), timeout=3)
+                        pending.append(sock)
+                        sock.sendall(request)
+                    time.sleep(0.1)  # Let the server accept all three connections.
                     if exit_method == 'quit':
                         connection = http.client.HTTPConnection('127.0.0.1', value['port'], timeout=3)
                         origin = f'http://127.0.0.1:{value["port"]}'
