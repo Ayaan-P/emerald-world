@@ -1,0 +1,32 @@
+name: Native multiplayer chat
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/platform/world_chat.c'
+      - 'src/platform/world_bridge.c'
+      - 'src/platform/settings.c'
+      - 'world/server.py'
+      - 'test/world/test_chat*.py'
+      - '.github/workflows/native-chat.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  chat-components:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout source without stored credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install SDL development files
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential libsdl2-dev
+      - name: Run socket, composer, protocol and remapped-key tests
+        run: PYTHONPATH=.:test/world python3 -m unittest test.world.test_chat test.world.test_chat_in_memory test.world.test_window_identity -v
