@@ -463,21 +463,24 @@ void WorldActivity_Update(void)
         sActivity.status = "joining tagged encounter";
         ShowWaiting("Joining tagged encounter");
     }
+    /* The authority's first offer wins a crossing. Present its consent prompt
+     * even if the rejection of our outgoing request is in a later read. */
+    if ((sActivity.state == IDLE || sActivity.state == WAIT_TAG)
+        && (pending = LinkTransport_PendingTag()) != NULL)
+    {
+        if (!FieldReady() || !ActivityPartyReady(NATIVE_LINK_COOP) || !CopyPeer(sActivity.peer, pending->name))
+        { LinkTransport_TagReject(pending->id); return; }
+        CloseMenu();
+        sActivity.invitation = pending->id;
+        sActivity.mode = NATIVE_LINK_COOP;
+        sActivity.tagInvitation = TRUE;
+        sActivity.state = INVITATION;
+        sActivity.status = "incoming tag invitation";
+        if (!ShowMenu(TRUE)) { LinkTransport_TagReject(sActivity.invitation); Stop("native menu unavailable"); }
+        return;
+    }
     if (sActivity.state == IDLE)
     {
-        pending = LinkTransport_PendingTag();
-        if (pending)
-        {
-            if (!FieldReady() || !ActivityPartyReady(NATIVE_LINK_COOP) || !CopyPeer(sActivity.peer, pending->name))
-            { LinkTransport_TagReject(pending->id); return; }
-            sActivity.invitation = pending->id;
-            sActivity.mode = NATIVE_LINK_COOP;
-            sActivity.tagInvitation = TRUE;
-            sActivity.state = INVITATION;
-            sActivity.status = "incoming tag invitation";
-            if (!ShowMenu(TRUE)) { LinkTransport_TagReject(sActivity.invitation); Stop("native menu unavailable"); }
-            return;
-        }
         pending = LinkTransport_PendingInvitation();
         if (!pending) return;
         /* Tag consent already authorizes co-op. Its OFFER and ADMIT can be in
