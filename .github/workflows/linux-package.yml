@@ -1,0 +1,29 @@
+name: Linux player packaging
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/linux_package.py'
+      - 'scripts/linux_bundle_*.py'
+      - 'scripts/linux_client.py'
+      - 'world/**'
+      - 'test/world/test_linux_package.py'
+      - '.github/workflows/linux-package.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fixture-archive-install:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Exercise disposable compiled fixture archives and installs
+        run: python3 -m unittest test.world.test_linux_package -v
+      # No game build, download, upload or release publication in this job.
+      # The real loopback smoke explicitly skips if Xephyr/SDL2/bwrap are absent.

@@ -300,7 +300,13 @@ class DesktopSession:
                 broker = ClientBroker(transport/'world.sock', remote, fingerprint=fingerprint,
                                       handshake_timeout=3)
                 try:
-                    broker.start()
+                    try:
+                        broker.start()
+                    except BlockingIOError:
+                        raise SessionError('This connection is already owned by another launcher. '
+                                           'Disconnect there or use Quit in that launcher, then retry. '
+                                           'If it is an older launcher, close its process before retrying. '
+                                           'Do not delete socket or lock files.') from None
                     # Control role checks credentials without occupying native presence.
                     from .client import IntentClient
                     with IntentClient(broker.socket_path, identity['trainer'], identity['token'], timeout=4):

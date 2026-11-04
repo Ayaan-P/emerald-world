@@ -309,7 +309,9 @@ static void AsymmetricCompletion(void)
     SavePeer();
     LoadPeer(1); DeliverCompletion();
     assert(WorldCoop_ReadyForPrivateRewards());
+    assert(!WorldCoop_IsPrivateRewards());
     assert(WorldCoop_PreparePrivateRewards());
+    assert(WorldCoop_IsPrivateRewards() && !gReceivedRemoteLinkPlayers);
     assert(gPlayerParty[1].hp == 11 && gPlayerPartyCount == 6);
     for (u8 i = 0; i < PARTY_SIZE; i++)
         assert(gPlayerParty[i].box.personality == sCoop.original[i].box.personality);
