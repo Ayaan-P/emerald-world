@@ -20,7 +20,7 @@ describe('player launcher', () => {
     const { container } = render(<App />);
     fireEvent.click(await screen.findByRole('button', { name: /join a world/i }));
     const modal = screen.getByRole('dialog');
-    expect(within(modal).getByRole('button', { name: /^join world$/i }).disabled).toBe(true);
+    expect(within(modal).getByRole('button', { name: /^join and play$/i }).disabled).toBe(true);
     const file = new File(['x'.repeat(4097)], 'invite.json', { type: 'application/json' });
     fireEvent.change(container.querySelector('input[type=file]'), { target: { files: [file] } });
     expect(within(modal).getByRole('alert').textContent).toMatch(/too large/i);
@@ -37,7 +37,7 @@ describe('player launcher', () => {
     fireEvent.drop(within(modal).getByRole('button', { name: /choose invitation file/i }), {
       dataTransfer: { files: [{ name: 'invite.json', size: raw.length, text: async () => raw }] },
     });
-    await waitFor(() => expect(within(modal).getByRole('button', { name: /^join world$/i }).disabled).toBe(false));
+    await waitFor(() => expect(within(modal).getByRole('button', { name: /^join and play$/i }).disabled).toBe(false));
     expect(perform).not.toHaveBeenCalled();
   });
 
@@ -48,11 +48,73 @@ describe('player launcher', () => {
     const file = { name: 'invite.json', size: raw.length, text: async () => raw };
     fireEvent.change(container.querySelector('input[type=file]'), { target: { files: [file] } });
     const modal = screen.getByRole('dialog');
-    const join = await within(modal).findByRole('button', { name: /^join world$/i });
+    const join = await within(modal).findByRole('button', { name: /^join and play$/i });
     await waitFor(() => expect(join.disabled).toBe(false));
     expect(perform).not.toHaveBeenCalled();
     fireEvent.click(join);
     await waitFor(() => expect(perform).toHaveBeenCalledWith('join', { invitation: raw }));
+  });
+
+  it('makes the last saved adventure playable directly from the home page', async () => {
+    render(<App />);
+    const play = await screen.findByRole('button', { name: /^play now$/i });
+    fireEvent.click(play);
+    await waitFor(() => expect(perform).toHaveBeenCalledWith('launch', {}));
+    expect(perform.mock.calls.map(call => call[0]).slice(-2)).toEqual(['rejoin', 'launch']);
+  });
+
+  it('launches the already connected world without reconnecting', async () => {
+    loadState.mockResolvedValue({ ...snapshot(), connected: true, world_key: 'remote-1234', trainer: 'May' });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /^play now$/i }));
+    await waitFor(() => expect(perform).toHaveBeenCalledWith('launch', {}));
+    expect(perform.mock.calls.some(call => call[0] === 'rejoin')).toBe(false);
+  });
+
+  it('joins and starts the game as one player action', async () => {
+    const { container } = render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /join a world/i }));
+    const raw = JSON.stringify({ version: 1, trainer: 'May' });
+    const file = { name: 'invite.json', size: raw.length, text: async () => raw };
+    fireEvent.change(container.querySelector('input[type=file]'), { target: { files: [file] } });
+    const modal = screen.getByRole('dialog');
+    const button = await within(modal).findByRole('button', { name: /^join and play$/i });
+    await waitFor(() => expect(button.disabled).toBe(false));
+    fireEvent.click(button);
+    await waitFor(() => expect(perform).toHaveBeenCalledWith('launch', {}));
+    expect(perform.mock.calls.map(call => call[0]).slice(-2)).toEqual(['join', 'launch']);
+  });
+
+  it('keeps the connected world available if the game fails to open', async () => {
+    const connected = { ...snapshot(), connected: true, trainer: 'May', world_key: 'remote-1234' };
+    perform.mockImplementation(async action => {
+      if (action === 'join') { loadState.mockResolvedValue(connected); return connected; }
+      if (action === 'launch') throw new Error('Game is not built.');
+      return connected;
+    });
+    const { container } = render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /join a world/i }));
+    const raw = JSON.stringify({ version: 1, trainer: 'May' });
+    fireEvent.change(container.querySelector('input[type=file]'), { target: { files: [{ name: 'invite.json', size: raw.length, text: async () => raw }] } });
+    const modal = screen.getByRole('dialog');
+    const button = await within(modal).findByRole('button', { name: /^join and play$/i });
+    await waitFor(() => expect(button.disabled).toBe(false));
+    fireEvent.click(button);
+    expect((await screen.findByRole('alert')).textContent).toMatch(/Game is not built/);
+    await waitFor(() => expect(screen.getByRole('button', { name: /play now/i })).toBeTruthy());
+  });
+
+  it('asks before switching away from a running game', async () => {
+    const connected = { ...snapshot(), connected: true, trainer: 'May', world_key: 'another-world', games: ['May'] };
+    loadState.mockResolvedValue(connected);
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /play our hoenn/i }));
+    const modal = screen.getByRole('dialog');
+    expect(modal.textContent).toMatch(/save in the game first/i);
+    expect(perform).not.toHaveBeenCalled();
+    fireEvent.click(within(modal).getByRole('button', { name: /switch and continue/i }));
+    await waitFor(() => expect(perform).toHaveBeenCalledWith('launch', {}));
+    expect(perform.mock.calls.map(call => call[0]).slice(-3)).toEqual(['disconnect', 'rejoin', 'launch']);
   });
 
   it('lets the player paste a private invitation and confirm the connection', async () => {
@@ -64,7 +126,7 @@ describe('player launcher', () => {
     fireEvent.change(within(modal).getByLabelText(/invitation json/i), { target: { value: raw } });
     fireEvent.click(within(modal).getByRole('button', { name: /^use invitation$/i }));
     expect(perform).not.toHaveBeenCalled();
-    fireEvent.click(within(modal).getByRole('button', { name: /^join world$/i }));
+    fireEvent.click(within(modal).getByRole('button', { name: /^join and play$/i }));
     await waitFor(() => expect(perform).toHaveBeenCalledWith('join', { invitation: raw }));
   });
 
@@ -75,8 +137,35 @@ describe('player launcher', () => {
     const modal = screen.getByRole('dialog');
     fireEvent.change(within(modal).getByLabelText(/world name/i), { target: { value: 'Our Hoenn' } });
     fireEvent.change(within(modal).getByLabelText(/trainer profile/i), { target: { value: 'May' } });
-    fireEvent.click(within(modal).getByRole('button', { name: /create and connect/i }));
+    fireEvent.click(within(modal).getByRole('button', { name: /create and play/i }));
     await waitFor(() => expect(perform).toHaveBeenCalledWith('host_create', { name: 'Our Hoenn', trainer: 'May' }));
+  });
+
+  it('restores an owner profile from a chosen backup', async () => {
+    const hosting = { available: true, backup_available: true, enrolled: false, loaded: false, worlds: [], pending: null };
+    loadState.mockResolvedValue({ ...snapshot(), hosting });
+    const { container } = render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /create a world/i }));
+    const modal = screen.getByRole('dialog');
+    fireEvent.click(within(modal).getByRole('button', { name: /^use backup$/i }));
+    const raw = JSON.stringify({ kind: 'host-profile', pin: 'a'.repeat(64) });
+    const file = { name: 'owner.json', size: raw.length, text: async () => raw };
+    fireEvent.change(container.querySelector('input[type=file]'), { target: { files: [file] } });
+    await within(modal).findByText('owner.json');
+    fireEvent.click(within(modal).getByRole('button', { name: /^restore account$/i }));
+    await waitFor(() => expect(perform).toHaveBeenCalledWith('host_restore', { profile: raw }));
+  });
+
+  it('warns before exporting the owner credential', async () => {
+    const hosting = { available: true, backup_available: true, enrolled: true, loaded: true, worlds: [], pending: null };
+    loadState.mockResolvedValue({ ...snapshot(), hosting });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /back up account/i }));
+    const modal = screen.getByRole('dialog');
+    expect(modal.textContent).toMatch(/anyone with it can manage/i);
+    expect(perform).not.toHaveBeenCalled();
+    fireEvent.click(within(modal).getByRole('button', { name: /create backup/i }));
+    await waitFor(() => expect(perform).toHaveBeenCalledWith('host_export', {}));
   });
 
   it('asks before creating access for another world owner', async () => {
@@ -119,7 +208,7 @@ describe('player launcher', () => {
     const modal = screen.getByRole('dialog');
     const trainer = await within(modal).findByLabelText(/choose your trainer profile/i);
     fireEvent.change(trainer, { target: { value: 'May' } });
-    fireEvent.click(within(modal).getByRole('button', { name: /^join world$/i }));
+    fireEvent.click(within(modal).getByRole('button', { name: /^join and play$/i }));
     await waitFor(() => expect(perform).toHaveBeenCalledWith('host_join', { invitation: raw, trainer: 'May' }));
   });
 
@@ -140,7 +229,7 @@ describe('player launcher', () => {
     const modal = screen.getByRole('dialog');
     expect(modal.textContent).toMatch(/save in the game first/i);
     expect(perform).not.toHaveBeenCalled();
-    fireEvent.click(within(modal).getByRole('button', { name: /^reconnect$/i }));
+    fireEvent.click(within(modal).getByRole('button', { name: /^reconnect and play$/i }));
     await waitFor(() => expect(perform).toHaveBeenCalledWith('reconnect', {}));
   });
 
@@ -155,7 +244,7 @@ describe('player launcher', () => {
 
   it('starts a solo adventure without an invitation', async () => {
     render(<App />);
-    fireEvent.click(await screen.findByRole('button', { name: /^play solo$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /new solo adventure/i }));
     const modal = screen.getByRole('dialog');
     fireEvent.change(within(modal).getByLabelText(/trainer profile/i), { target: { value: 'May' } });
     fireEvent.click(within(modal).getByRole('button', { name: /start adventure/i }));
@@ -164,7 +253,7 @@ describe('player launcher', () => {
 
   it('copies an optional save into a new solo adventure', async () => {
     const { container } = render(<App />);
-    fireEvent.click(await screen.findByRole('button', { name: /^play solo$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /new solo adventure/i }));
     const modal = screen.getByRole('dialog');
     const bytes = new Uint8Array([1, 2, 3]);
     const file = { name: 'emerald.sav', size: bytes.length, arrayBuffer: async () => bytes.buffer };
@@ -177,7 +266,7 @@ describe('player launcher', () => {
   it('can resume an offline adventure with no saved connection', async () => {
     loadState.mockResolvedValue({ ...snapshot(), worlds: [], offline_saves: [{ world: 'solo-a', trainer: 'May', name: 'Solo adventure' }] });
     render(<App />);
-    fireEvent.click(await screen.findByRole('button', { name: /^continue$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^play solo adventure$/i }));
     await waitFor(() => expect(perform).toHaveBeenCalledWith('solo_resume', { world: 'solo-a', trainer: 'May' }));
   });
 
@@ -200,6 +289,25 @@ describe('player launcher', () => {
     fireEvent.change(within(modal).getByLabelText(/world name/i), { target: { value: 'Our Hoenn' } });
     fireEvent.click(within(modal).getByRole('button', { name: /save name/i }));
     await waitFor(() => expect(perform).toHaveBeenCalledWith('rename', { world: 'remote-1234', label: 'Our Hoenn' }));
+  });
+
+  it('backs up a saved trainer only when requested', async () => {
+    const originalCreate = URL.createObjectURL, originalRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = vi.fn(() => 'blob:private-save'); URL.revokeObjectURL = vi.fn();
+    perform.mockImplementation(async action => action === 'save_backup_info' ? { available: true } :
+      { data: 'AQID', filename: 'emerald-trainer-backup.sav' });
+    try {
+      render(<App />);
+      fireEvent.click(await screen.findByRole('button', { name: /save backups/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /create backup/i }));
+      await waitFor(() => expect(perform).toHaveBeenCalledWith('save_backup', {
+        world: 'remote-1234', trainer: 'May', offline: false,
+      }));
+      expect(await screen.findByRole('link', { name: /download save/i })).toBeTruthy();
+      expect(screen.queryByText('AQID')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: /^done$/i }));
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:private-save');
+    } finally { URL.createObjectURL = originalCreate; URL.revokeObjectURL = originalRevoke; }
   });
 
   it('confirms before closing a running offline game', async () => {

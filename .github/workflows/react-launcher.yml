@@ -6,7 +6,10 @@ on:
     paths:
       - 'launcher-web/**'
       - 'world/web_launcher.py'
+      - 'world/save_backup.py'
+      - 'test/world/test_save_backup.py'
       - 'world/hosting_ui.py'
+      - 'world/hosted_profile_backup.py'
       - 'world/hosting_client.py'
       - 'world/hosting_protocol.py'
       - 'world/hosting_session.py'
@@ -22,7 +25,10 @@ on:
     paths:
       - 'launcher-web/**'
       - 'world/web_launcher.py'
+      - 'world/save_backup.py'
+      - 'test/world/test_save_backup.py'
       - 'world/hosting_ui.py'
+      - 'world/hosted_profile_backup.py'
       - 'world/hosting_client.py'
       - 'world/hosting_protocol.py'
       - 'world/hosting_session.py'

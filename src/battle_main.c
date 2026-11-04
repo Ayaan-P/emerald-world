@@ -5510,6 +5510,9 @@ void WorldCoop_BeginPrivateRewards(void)
     gLeveledUpInBattle = 0;
     BattleRebuildPrivateRewardHealthbox();
     gActiveBattler = 0;
+    /* Stock level-up and prize scripts print through the attacker. The shared
+     * attacker may be battler 2 or 3, which the private controller loop retires. */
+    gBattlerAttacker = 0;
     SetControllerToPlayer();
     gBattlerControllerFuncs[1] = BattleControllerDummy;
     gBattleResources->battleScriptsStack->size = 0;

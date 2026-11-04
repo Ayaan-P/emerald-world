@@ -9,6 +9,7 @@ import base64
 import binascii
 import hashlib
 import hmac
+import importlib.util
 import json
 import os
 import re
@@ -38,6 +39,7 @@ class LauncherBridge:
         self.session = session
         self.binary = Path(binary)
         self.remote_paths = None
+        self.browser_input = None
         self.lock = threading.RLock()
         from .hosting_ui import HostedLauncher
         self.hosted = HostedLauncher(session)
@@ -82,6 +84,7 @@ class LauncherBridge:
     def _start_offline(self, world, trainer, copy=False, seed_save=None):
         if self.session.state is not None or any(p.poll() is None for p, _ in self.session.games.values()):
             raise SessionError('Disconnect and close any running game before playing offline.')
+        self.stop_browser_input()
         from scripts.linux_client import binary_ready, discover_display
         if not binary_ready(self.binary):
             raise SessionError('The native game is not built. Follow INSTALL_PC.md first.')
@@ -143,13 +146,34 @@ class LauncherBridge:
                 if label == key and key.startswith('remote-'):
                     label = 'Friend’s world · ' + key[-4:]
                 worlds.append({'key': key, 'name': label, 'trainer': item['trainer'], 'favorite': favorite})
+            offline_world_key = None
+            for game, (process, paths) in self.session.games.items():
+                if not game.startswith('offline/') or process.poll() is not None:
+                    continue
+                try:
+                    profile = Path(paths['profile'])
+                    world = profile.parent.parent.parent
+                    if (profile.name == game[8:] and profile.parent.name == 'trainers'
+                            and profile.parent.parent.name == '.offline'
+                            and world.parent == self.session.root
+                            and re.fullmatch(r'[A-Za-z0-9_-]{1,48}', world.name)):
+                        offline_world_key = world.name
+                except (KeyError, TypeError, ValueError):
+                    pass
             from scripts.linux_client import prerequisites
             setup = [{'name': name, 'ready': ready, 'help': help_text}
                      for name, ready, help_text in prerequisites(self.binary) if name != 'tkinter']
             return {'worlds': worlds, 'offline_saves': self.offline_saves(), 'presence': self.game_presence(), 'hosting': self.hosted.state(), 'setup': setup, 'connected': self.session.state is not None,
                     'trainer': self.session.remote_trainer,
+                    'world_key': self.session.state.name if self.session.state is not None else None,
+                    'offline_world_key': offline_world_key,
                     'games': [name for name, (process, _paths) in self.session.games.items()
                               if process.poll() is None], 'status': self.session.status}
+
+    def stop_browser_input(self):
+        if self.browser_input is not None:
+            self.browser_input.close()
+            self.browser_input = None
 
     def action(self, action, payload):
         with self.lock:
@@ -158,6 +182,7 @@ class LauncherBridge:
                     raise SessionError('Close your running game before switching worlds.')
                 if self.session.state is not None:
                     raise SessionError('Disconnect from your current world first.')
+                self.stop_browser_input()
             if action.startswith('host_'):
                 if not self.hosted.state()['available']:
                     raise SessionError('The hosted-world backend is not installed yet.')
@@ -165,6 +190,14 @@ class LauncherBridge:
                 try:
                     if action == 'host_enroll':
                         self.hosted.enroll(payload.get('access'))
+                    elif action == 'host_restore':
+                        self.hosted.restore_profile(payload.get('profile'))
+                    elif action == 'host_export':
+                        backup = self.hosted.export_profile()
+                        result = self.snapshot()
+                        result['download'] = backup
+                        result['download_kind'] = 'backup'
+                        return result
                     elif action == 'host_refresh':
                         self.hosted.refresh()
                     elif action == 'host_create':
@@ -226,7 +259,31 @@ class LauncherBridge:
                 if not isinstance(name, str):
                     raise SessionError('Choose a saved world.')
                 self.remote_paths = self.session.rejoin_friend(name)
+            elif action == 'save_backup_info':
+                return {'available': importlib.util.find_spec('world.save_backup') is not None}
+            elif action == 'save_backup':
+                if importlib.util.find_spec('world.save_backup') is None:
+                    raise SessionError('Save backup support is not installed yet.')
+                world, trainer, offline = payload.get('world'), payload.get('trainer'), payload.get('offline')
+                if not isinstance(world, str) or not isinstance(trainer, str) or type(offline) is not bool:
+                    raise SessionError('Choose a saved trainer profile.')
+                if offline:
+                    known = any(item['world'] == world and item['trainer'] == trainer for item in self.offline_saves())
+                else:
+                    known = any(item['name'] == world and item['trainer'] == trainer for item in self.session.friend_worlds())
+                if not known:
+                    raise SessionError('Choose an available saved trainer profile.')
+                from .save_backup import backup_save
+                try:
+                    with tempfile.TemporaryDirectory(prefix='emerald-save-backup-') as directory:
+                        destination = Path(directory) / 'trainer.sav'
+                        backup_save(self.session._world(world), trainer, destination, offline=offline)
+                        encoded = base64.b64encode(destination.read_bytes()).decode('ascii')
+                except (OSError, ValueError):
+                    raise SessionError('Could not back up this save. Close the game and check that the profile has a save.') from None
+                return {'data': encoded, 'filename': 'emerald-trainer-backup.sav'}
             elif action == 'reconnect':
+                self.stop_browser_input()
                 if self.session.state is None or self.session.remote_trainer is None:
                     raise SessionError('Join a saved world first.')
                 name = self.session.state.name
@@ -284,11 +341,13 @@ class LauncherBridge:
                     raise SessionError('Choose an existing offline adventure.')
                 self._start_offline(world, trainer)
             elif action == 'leave':
+                self.stop_browser_input()
                 trainer = payload.get('game', self.session.remote_trainer)
                 if not trainer:
                     raise SessionError('No connected trainer is selected.')
                 self.session.leave_game(trainer)
             elif action == 'disconnect':
+                self.stop_browser_input()
                 self.session.disconnect()
                 self.remote_paths = None
             elif action == 'favorite':
@@ -323,6 +382,24 @@ class LauncherBridge:
                 if not isinstance(name, str):
                     raise SessionError('Choose a saved world.')
                 self.session.forget_friend(name)
+            elif action == 'screen_info':
+                from .browser_input import BrowserInput
+                return BrowserInput(self.session).info()
+            elif action == 'screen_start':
+                from .browser_input import BrowserInput
+                self.stop_browser_input()
+                control = BrowserInput(self.session)
+                control.start()
+                self.browser_input = control
+                return {'active': True}
+            elif action == 'screen_keys':
+                if self.browser_input is None:
+                    raise SessionError('Start the in-page view first.')
+                self.browser_input.apply(payload.get('keys'))
+                return {'active': True}
+            elif action == 'screen_stop':
+                self.stop_browser_input()
+                return {'active': False}
             else:
                 raise SessionError('Unknown launcher action.')
             return self.snapshot()
@@ -395,6 +472,8 @@ def handler_for(bridge, capability, port, dist=DIST):
                 if not isinstance(data, dict) or set(data) != {'action', 'payload'} or not isinstance(data['action'], str) or not isinstance(data['payload'], dict):
                     raise ValueError
                 if data['action'] == 'quit' and not data['payload']:
+                    with bridge.lock:
+                        bridge.stop_browser_input()
                     self.send_json(200, {'status': 'Launcher is closing.'})
                     threading.Thread(target=self.server.shutdown, daemon=True).start()
                     return
@@ -464,6 +543,7 @@ def main(argv=None):
     finally:
         server.server_close()
         with bridge.lock:
+            bridge.stop_browser_input()
             session.close()
     return 0
 

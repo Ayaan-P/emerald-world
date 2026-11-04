@@ -1,6 +1,7 @@
 """Unit checks for the local launcher bridge. No live world or game is used."""
 import base64
 import json
+import importlib.util
 import os
 import time
 import tempfile
@@ -44,6 +45,7 @@ class WebLauncherTests(unittest.TestCase):
         self.assertFalse(seen['path'].exists())
         self.assertNotIn('a' * 64, json.dumps(result))
         self.assertTrue(result['connected'])
+        self.assertEqual(result['world_key'], 'world')
 
     def test_duplicate_invitation_keys_and_oversized_files_are_rejected(self):
         raw = json.dumps(self.invitation()).replace('"version": 1', '"version": 1, "version": 1')
@@ -108,6 +110,14 @@ class WebLauncherTests(unittest.TestCase):
                 self.assertEqual(result['worlds'][0]['name'], 'Friend’s world · 1234')
             finally:
                 session.close()
+
+    def test_snapshot_identifies_the_running_offline_world_without_exposing_paths(self):
+        process = Mock(); process.poll.return_value = None
+        profile = self.session.root / 'solo-one' / '.offline' / 'trainers' / 'May'
+        self.session.games = {'offline/May': (process, {'profile': profile})}
+        result = self.bridge.snapshot()
+        self.assertEqual(result['offline_world_key'], 'solo-one')
+        self.assertNotIn(str(self.session.root), json.dumps(result))
 
     def test_presence_uses_only_fresh_sanitized_own_game_telemetry(self):
         telemetry = Path(self.tmp.name) / 'telemetry.json'
@@ -240,6 +250,57 @@ class WebLauncherTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 install_shortcut(directory)
             self.assertEqual(target.read_text(), 'custom shortcut')
+
+    @unittest.skipUnless(importlib.util.find_spec('world.save_backup') is not None, 'save backup module is not installed')
+    def test_backup_exports_only_a_known_profile_without_modifying_save(self):
+        from world.friend_worlds import remember
+        from world.launcher import profile_paths
+        root = Path(self.tmp.name)
+        world = root / 'remote-1234'; world.mkdir(mode=0o700)
+        remember(world, self.invitation())
+        paths = profile_paths(world, 'Trainer')
+        paths['profile'].parent.mkdir(mode=0o700)
+        paths['profile'].mkdir(mode=0o700)
+        paths['save'].write_bytes(b'synthetic progress')
+        session = DesktopSession(root)
+        try:
+            bridge = LauncherBridge(session, '/nonexistent/game')
+            result = bridge.action('save_backup', {'world': 'remote-1234', 'trainer': 'Trainer', 'offline': False})
+            self.assertEqual(base64.b64decode(result['data']), b'synthetic progress')
+            self.assertEqual(paths['save'].read_bytes(), b'synthetic progress')
+            with self.assertRaises(SessionError):
+                bridge.action('save_backup', {'world': 'remote-1234', 'trainer': 'Other', 'offline': False})
+        finally:
+            session.close()
+
+    def test_browser_control_stops_before_disconnect(self):
+        control = Mock()
+        self.bridge.browser_input = control
+        self.bridge.action('disconnect', {})
+        control.close.assert_called_once_with()
+        self.session.disconnect.assert_called_once_with()
+        self.assertIsNone(self.bridge.browser_input)
+
+    def test_browser_control_stops_before_new_saved_world_connection(self):
+        control = Mock()
+        self.bridge.browser_input = control
+        self.session.rejoin_friend.side_effect = lambda name: self.assertIsNone(self.bridge.browser_input)
+        self.bridge.action('rejoin', {'world': 'world1'})
+        control.close.assert_called_once_with()
+
+    def test_browser_control_stops_before_new_solo_game(self):
+        control = Mock()
+        self.bridge.browser_input = control
+        self.session.managed_display = Mock(display=':90')
+        self.session.launch_offline.side_effect = lambda *args, **kwargs: self.assertIsNone(self.bridge.browser_input)
+        with patch('scripts.linux_client.binary_ready', return_value=True):
+            self.bridge.action('solo_new', {'trainer': 'May'})
+        control.close.assert_called_once_with()
+
+    def test_browser_input_actions_require_an_active_controller(self):
+        with self.assertRaises(SessionError):
+            self.bridge.action('screen_keys', {'keys': ['KeyZ']})
+        self.assertEqual(self.bridge.action('screen_stop', {}), {'active': False})
 
     def test_auth_requires_exact_host_capability_and_post_origin(self):
         handler_type = handler_for(self.bridge, 'secret', 8912)

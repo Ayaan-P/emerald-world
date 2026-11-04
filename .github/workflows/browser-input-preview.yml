@@ -1,0 +1,33 @@
+name: Browser input preview
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'world/browser_input.py'
+      - 'world/web_launcher.py'
+      - 'test/world/test_browser_input.py'
+      - '.github/workflows/browser-input-preview.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'world/browser_input.py'
+      - 'world/web_launcher.py'
+      - 'test/world/test_browser_input.py'
+      - '.github/workflows/browser-input-preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  input:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out source without stored credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Check input lease and launcher lifecycle
+        run: python3 -m unittest test.world.test_browser_input test.world.test_web_launcher -v
