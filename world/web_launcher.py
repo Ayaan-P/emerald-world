@@ -22,7 +22,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
-import webbrowser
+import subprocess
 
 from .launcher import REPO
 from .session import DesktopSession, SessionError
@@ -437,11 +437,11 @@ def handler_for(bridge, capability, port, dist=DIST):
                 self.send_error(403)
                 return
             path = urlsplit(self.path).path
-            if path == '/api/state':
+            if path in ('/api/state', '/api/instance'):
                 if not self.authorized():
                     self.send_error(403)
                     return
-                self.send_json(200, bridge.snapshot())
+                self.send_json(200, {'launcher': 1} if path == '/api/instance' else bridge.snapshot())
                 return
             relative = 'index.html' if path == '/' else path.lstrip('/')
             root = Path(dist).resolve()
@@ -516,6 +516,17 @@ def install_shortcut(directory=None):
     return target
 
 
+def open_browser(url):
+    """Keep browser-provider diagnostics private, including failed open attempts."""
+    try:
+        result = subprocess.run(
+            [sys.executable, '-c', 'import sys, webbrowser; sys.exit(0 if webbrowser.open(sys.stdin.read()) else 1)'],
+            input=url, text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+        return result.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worlds-root', type=Path, default=Path.home() / '.local/share/emerald-world/worlds')
@@ -527,24 +538,53 @@ def main(argv=None):
     if args.install:
         print(f'Installed experimental launcher shortcut: {install_shortcut()}')
         return 0
+    from contextlib import ExitStack
+    import signal
+    from .launcher_instance import LauncherInstance, InstanceError
     from scripts.linux_client import discover_binary
-    session = DesktopSession(DesktopSession.create_root(args.worlds_root.absolute()))
-    bridge = LauncherBridge(session, args.binary or discover_binary())
-    capability = secrets.token_urlsafe(32)
-    # Bind first, then create a handler with the actual ephemeral port.
-    server = ThreadingHTTPServer(('127.0.0.1', 0), BaseHTTPRequestHandler, bind_and_activate=True)
-    server.RequestHandlerClass = handler_for(bridge, capability, server.server_port)
+
+    def interrupted(_signum, _frame):
+        raise KeyboardInterrupt
+
+    previous = signal.signal(signal.SIGTERM, interrupted)
     try:
-        if not webbrowser.open(f'http://127.0.0.1:{server.server_port}/#{capability}'):
-            raise RuntimeError('Could not open the local launcher in a browser.')
-        server.serve_forever(poll_interval=0.25)
+        with ExitStack() as cleanup:
+            root = DesktopSession.create_root(args.worlds_root.absolute())
+            instance = LauncherInstance(root)
+            cleanup.callback(instance.close)
+            if not instance.owner:
+                if not open_browser(instance.existing_url()):
+                    raise InstanceError('Could not open the running launcher in a browser. Retry the shortcut.')
+                return 0
+            session = DesktopSession(root)
+            cleanup.callback(session.close)
+            bridge = LauncherBridge(session, args.binary or discover_binary())
+            cleanup.callback(bridge.stop_browser_input)
+            capability = secrets.token_urlsafe(32)
+            server = ThreadingHTTPServer(('127.0.0.1', 0), BaseHTTPRequestHandler)
+            # Drain in-flight actions before closing their session and brokers.
+            server.daemon_threads = False
+            cleanup.callback(server.server_close)
+            server.RequestHandlerClass = handler_for(bridge, capability, server.server_port)
+            # Serve before opening the browser so concurrent shortcuts can probe
+            # even while the desktop's browser opener is still starting.
+            worker = threading.Thread(target=server.serve_forever, kwargs={'poll_interval': 0.1})
+            worker.start()
+            cleanup.callback(worker.join)
+            cleanup.callback(server.shutdown)
+            instance.publish(server.server_port, capability)
+            if not open_browser(f'http://127.0.0.1:{server.server_port}/#{capability}'):
+                raise InstanceError('Could not open the local launcher in a browser. Retry the shortcut.')
+            worker.join()
     except KeyboardInterrupt:
         pass
+    except (OSError, ValueError) as error:
+        # Neither discovery data nor browser-provider text belongs in diagnostics.
+        print(str(error) if isinstance(error, InstanceError) else
+              'Could not start the launcher safely. Check worlds-root permissions and launcher setup.', file=sys.stderr)
+        return 1
     finally:
-        server.server_close()
-        with bridge.lock:
-            bridge.stop_browser_input()
-            session.close()
+        signal.signal(signal.SIGTERM, previous)
     return 0
 
 
