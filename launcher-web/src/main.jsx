@@ -47,9 +47,15 @@ export function App() {
 
   useEffect(() => {
     let active = true;
+    let refreshing = false;
     const refresh = async () => {
+      // One outstanding read per polling cycle prevents stale responses from
+      // overwriting newer launcher state and avoids piling up slow requests.
+      if (refreshing) return;
+      refreshing = true;
       try { const next = await loadState(); if (active) { setState(next); setReady(true); } }
       catch (e) { if (active) { setReady(false); setError(e.message); } }
+      finally { refreshing = false; }
     };
     if (!busy) refresh();
     const timer = setInterval(() => { if (!busy) refresh(); }, 5000);
