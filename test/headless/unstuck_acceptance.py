@@ -34,13 +34,14 @@ def main():
             driver.continue_game(game)
             driver.walk_to(game, 6, 11)
             driver.leave_map(game, "DOWN")  # The lab itself is not an allowed departure.
+            driver.wait_until(game, lambda s: s.free)
             original = (tuple(game.state.map), game.state.pos)
             assert original[0] != (group,num), 'fixture must start away from last heal map'
             saved_hash = hashlib.sha256(Path(game.save_path).read_bytes()).hexdigest()
             sidecar = Path(game.save_path + '.unstuck')
-            game.tap('START'); game.tap('UP',times=2); game.tap('A'); game.wait(120)
+            game.tap('START'); game.wait(60); game.tap('UP',times=2); game.tap('A'); game.wait(120)
             game.tap('B'); game.wait(80)  # default No: return to the menu
-            assert not sidecar.exists() and (tuple(game.state.map),game.state.pos)==original
+            assert not sidecar.exists() and (tuple(game.state.map),game.state.pos)==original, (original, repr(game.state), sidecar.exists())
             game.tap('A'); game.wait(120); game.tap('UP'); game.tap('A')
             driver.wait_until(game, lambda s: s.free and tuple(s.map)==(group,num), step=10, limit=5000)
             assert abs(game.state.pos[0]-spawn_x)+abs(game.state.pos[1]-spawn_y)<=2
@@ -48,7 +49,7 @@ def main():
             assert hashlib.sha256(Path(game.save_path).read_bytes()).hexdigest()==saved_hash
             assert hashlib.sha256(seed.read_bytes()).hexdigest()==digest
             destination=(tuple(game.state.map),game.state.pos)
-            game.tap('START'); game.tap('A'); game.wait(120); game.tap('UP'); game.tap('A'); game.wait(120)
+            game.tap('START'); game.wait(60); game.tap('A'); game.wait(120); game.tap('UP'); game.tap('A'); game.wait(120)
             # The cooldown refusal leaves the player in place; dismiss the message and menu.
             game.tap('A'); game.wait(60); game.tap('B'); game.wait(60)
             assert (tuple(game.state.map),game.state.pos)==destination
