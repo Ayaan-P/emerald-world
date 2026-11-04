@@ -3,6 +3,7 @@
 These helpers are a first step toward issue #53. They are not connected to a menu, do not initiate a warp, and do not claim parity or gameplay acceptance.
 
 - `WorldUnstuck_HealDestination` accepts only exact saved last-heal coordinates assigned by respawn scripts. Home destinations must match the player's gender. This is a whitelist check, not proof that the destination is currently clear or safe.
+- `WorldUnstuck_AllowedDeparture` rejects battle/link activity, scripts, fades, underwater and special facilities, and permits only ordinary Fly/Teleport or Escape Rope departure maps. `WorldUnstuck_StoryAllowsDestination` adds conservative Sootopolis, League and Frontier gates. These checks must be repeated at use time.
 - `WorldUnstuck_ConservativelyBoxed` uses the side-effect-free collision query. It does not waive cooldown for uncertain cases such as objects, doors, water or ledges. This can reject a truly trapped player; it intentionally avoids granting an unjustified waiver.
 - `NativeUnstuck_Reserve` stores a fixed-format timestamp in a private sidecar beside the canonical, owned, single-link save. It refuses symlinks, hard links, unrelated or malformed files, insecure permissions, conflicting locks and an invalid clock. It never changes the save. It writes and syncs the reservation before a future warp; a crash after reservation can consume the cooldown without moving the player. A torn or corrupt sidecar fails closed. This first version is not a crash-atomic journal and is not ready to be wired into gameplay.
 

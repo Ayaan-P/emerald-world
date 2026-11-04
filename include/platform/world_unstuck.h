@@ -8,5 +8,8 @@ struct WarpData;
 unsigned WorldUnstuck_HealDestination(const struct WarpData *warp, u8 playerGender);
 /* Conservative: uncertain movement cases do not qualify for a cooldown waiver. */
 bool8 WorldUnstuck_ConservativelyBoxed(void);
+/* Must be checked again at confirmation and immediately before departure. */
+bool8 WorldUnstuck_AllowedDeparture(void);
+bool8 WorldUnstuck_StoryAllowsDestination(unsigned healId);
 #endif
 #endif

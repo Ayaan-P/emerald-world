@@ -7,6 +7,60 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 
 class WorldUnstuckTests(unittest.TestCase):
+    def test_departure_and_story_gates_fail_closed(self):
+        source = r'''
+#include <assert.h>
+#include "src/platform/world_unstuck.c"
+struct SaveBlock1 *gSaveBlock1Ptr;
+struct Main gMain;
+struct PaletteFadeControl gPaletteFade;
+struct PlayerAvatar gPlayerAvatar;
+struct MapHeader gMapHeader;
+u8 gWirelessCommType;
+static int havePokemon=1, nativeActive, activityOwns, scriptActive, specialArea, flyAllowed=1, league, cleared;
+static u16 city, sky;
+void CB1_Overworld(void) {}
+void CB2_Overworld(void) {}
+int NativeLink_IsActive(void) { return nativeActive; }
+int WorldActivity_OwnsFieldInput(void) { return activityOwns; }
+bool8 ScriptContext_IsEnabled(void) { return scriptActive; }
+bool32 GetSafariZoneFlag(void) { return specialArea; }
+bool8 InBattlePike(void) { return specialArea; }
+u8 CurrentBattlePyramidLocation(void) { return specialArea ? 1 : PYRAMID_LOCATION_NONE; }
+bool8 InMultiPartnerRoom(void) { return specialArea; }
+bool8 Overworld_MapTypeAllowsTeleportAndFly(u8 t) { (void)t;return flyAllowed; }
+bool8 FlagGet(u16 flag) { if (flag==FLAG_SYS_POKEMON_GET) return havePokemon; if (flag==FLAG_LANDMARK_POKEMON_LEAGUE) return league; if (flag==FLAG_SYS_GAME_CLEAR) return cleared; return 0; }
+u16 VarGet(u16 var) { return var==VAR_SOOTOPOLIS_CITY_STATE ? city : sky; }
+int main(void) {
+ static struct SaveBlock1 save;
+ gSaveBlock1Ptr=&save; gMain.callback1=CB1_Overworld; gMain.callback2=CB2_Overworld;
+ gMapHeader.mapType=MAP_TYPE_ROUTE; assert(WorldUnstuck_AllowedDeparture());
+ havePokemon=0; assert(!WorldUnstuck_AllowedDeparture()); havePokemon=1;
+ nativeActive=1; assert(!WorldUnstuck_AllowedDeparture()); nativeActive=0;
+ activityOwns=1; assert(!WorldUnstuck_AllowedDeparture()); activityOwns=0;
+ scriptActive=1; assert(!WorldUnstuck_AllowedDeparture()); scriptActive=0;
+ gMain.inBattle=1; assert(!WorldUnstuck_AllowedDeparture()); gMain.inBattle=0;
+ gPaletteFade.active=1; assert(!WorldUnstuck_AllowedDeparture()); gPaletteFade.active=0;
+ gWirelessCommType=1; assert(!WorldUnstuck_AllowedDeparture()); gWirelessCommType=0;
+ specialArea=1; assert(!WorldUnstuck_AllowedDeparture()); specialArea=0;
+ gMapHeader.mapType=MAP_TYPE_UNDERWATER; assert(!WorldUnstuck_AllowedDeparture());
+ gMapHeader.mapType=MAP_TYPE_INDOOR; flyAllowed=0; assert(!WorldUnstuck_AllowedDeparture());
+ gMapHeader.allowEscaping=1; assert(WorldUnstuck_AllowedDeparture());
+ assert(!WorldUnstuck_StoryAllowsDestination(0));
+ assert(!WorldUnstuck_StoryAllowsDestination(HEAL_LOCATION_SOUTHERN_ISLAND_EXTERIOR));
+ assert(WorldUnstuck_StoryAllowsDestination(HEAL_LOCATION_SOOTOPOLIS_CITY));
+ city=1; assert(!WorldUnstuck_StoryAllowsDestination(HEAL_LOCATION_SOOTOPOLIS_CITY)); city=6;
+ sky=1; assert(!WorldUnstuck_StoryAllowsDestination(HEAL_LOCATION_SOOTOPOLIS_CITY)); sky=3;
+ assert(WorldUnstuck_StoryAllowsDestination(HEAL_LOCATION_SOOTOPOLIS_CITY));
+ assert(!WorldUnstuck_StoryAllowsDestination(HEAL_LOCATION_EVER_GRANDE_CITY_POKEMON_LEAGUE)); league=1;
+ assert(WorldUnstuck_StoryAllowsDestination(HEAL_LOCATION_EVER_GRANDE_CITY_POKEMON_LEAGUE));
+ assert(!WorldUnstuck_StoryAllowsDestination(HEAL_LOCATION_BATTLE_FRONTIER_OUTSIDE_EAST)); cleared=1;
+ assert(WorldUnstuck_StoryAllowsDestination(HEAL_LOCATION_BATTLE_FRONTIER_OUTSIDE_EAST));
+ return 0;
+}
+'''
+        self.compile_and_run(source)
+
     def test_boxed_check_is_conservative_and_has_no_movement_side_effects(self):
         source = r'''
 #include <assert.h>
