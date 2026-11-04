@@ -1,0 +1,28 @@
+# Reviewed migration template; do not install over a live service blindly.
+[Unit]
+Description=Persistent Emerald World authority and TLS relay
+After=network.target
+
+[Service]
+Type=simple
+User=emerald-world
+Group=emerald-world
+WorkingDirectory=/opt/emerald-world
+EnvironmentFile=/etc/emerald-world/server.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -m world.server --require-existing-state --state-dir ${WORLD_STATE_DIR} --listen ${WORLD_LISTEN} --advertise ${WORLD_ADVERTISE} --cert ${WORLD_TLS_CERT} --key ${WORLD_TLS_KEY} --max-players ${WORLD_MAX_PLAYERS} --max-controls ${WORLD_MAX_CONTROLS} --connection-headroom ${WORLD_CONNECTION_HEADROOM}
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=30
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/emerald-world
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

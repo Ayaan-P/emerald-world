@@ -29,6 +29,7 @@ class _Tag:
     deadline: float
     active: bool = False
     in_range: int = 0
+    next_keepalive: float = 0
     coop_wire: int | None = None
 
     @property
@@ -54,8 +55,11 @@ def _uint(text, limit):
 
 
 class LinkProtocol:
-    def __init__(self, *, clock=time.monotonic, id_factory=None):
-        self.sessions = LinkSessions(clock=clock)
+    def __init__(self, *, clock=time.monotonic, id_factory=None, max_players=8):
+        if type(max_players) is not int or not 1 <= max_players <= 64:
+            raise ValueError('max_players must be between 1 and 64')
+        self.max_players = max_players
+        self.sessions = LinkSessions(clock=clock, max_sessions=max_players // 2 or 1)
         self.id_factory = id_factory or (lambda: secrets.randbits(64))
         self._wire = {}
         self._internal = {}
@@ -95,7 +99,7 @@ class LinkProtocol:
                 raise LinkError('self_offer')
             if actor in self._tag_actor or value in self._tag_actor:
                 raise LinkError('busy')
-            if len(self._tag_actor) >= 8:
+            if len(self._tag_actor) + 2 > self.max_players:
                 raise LinkError('capacity')
             self.sessions._near(presence, actor, value, coop=True)
             tag = _Tag(self._new_id(), actor, value, now + 15)
@@ -120,6 +124,7 @@ class LinkProtocol:
         self.sessions._near(presence, *tag.participants, coop=True)
         tag.active = True
         tag.in_range = 1
+        tag.next_keepalive = now + 10
         return [(a, f'T ACTIVE {tag.id} {b} 1\n')
                 for a, b in ((tag.proposer, tag.target), (tag.target, tag.proposer))]
 
@@ -181,9 +186,16 @@ class LinkProtocol:
     def tick(self, *, now=None):
         output = self._deliver(self.sessions.tick(now=now).events)
         now = self.sessions._last_now
+        assert now is not None  # sessions.tick established the authority clock.
         for tag in tuple(self._tags.values()):
             if not tag.active and now >= tag.deadline:
                 output.extend(self._end_tag(tag))
+            elif tag.active and now >= tag.next_keepalive:
+                # Reassert only the existing authority range bit. A durable tag
+                # otherwise leaves LINK silent until the TLS relay expires it.
+                output.extend((actor, f'T RANGE {tag.id} {tag.in_range}\n')
+                              for actor in tag.participants)
+                tag.next_keepalive = now + 10
         return output
 
     def reserved(self, trainers):

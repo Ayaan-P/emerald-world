@@ -15,6 +15,7 @@ import fcntl
 import stat
 import errno
 import hashlib
+import sys
 
 from .build_catalog import validate_coords, validate_tile
 from .mechanics import validate_objects
@@ -46,7 +47,21 @@ class MeetingUnavailable(ValueError):
 
 
 class WorldServer:
-    def __init__(self, socket_path, state_dir, mechanics=None, admin_path=None):
+    def __init__(self, socket_path, state_dir, mechanics=None, admin_path=None, *,
+                 max_players=32, max_controls=None, connection_headroom=8):
+        if type(max_players) is not int or not 1 <= max_players <= 64:
+            raise ValueError('max_players must be between 1 and 64')
+        if max_controls is None:
+            max_controls = 2 * max_players
+        if type(max_controls) is not int or not 0 <= max_controls <= 128:
+            raise ValueError('max_controls must be between 0 and 128')
+        if type(connection_headroom) is not int or not 2 <= connection_headroom <= 64:
+            raise ValueError('connection_headroom must be between 2 and 64')
+        self.max_players = max_players
+        self.max_controls = max_controls
+        self.connection_headroom = connection_headroom
+        self.max_connections = 2 * max_players + max_controls + connection_headroom
+        self._closed = False
         from .world_library import WorldActivityLock
         # Direct CLI/SDK constructors must participate too, before mkdir or
         # opening SQLite. Session-only locking leaves a deletion race here.
@@ -127,7 +142,9 @@ class WorldServer:
         self.connections = {}
         self.peers = {}
         self.link_channels = {}
-        self.link_protocol = LinkProtocol()
+        self.sharing: dict | None = None
+        self.sharing_listen = None
+        self.link_protocol = LinkProtocol(max_players=self.max_players)
         self.tiles = []
         self.objects = []
         self.interaction_cursor = 0
@@ -321,10 +338,21 @@ class WorldServer:
 
     def _snapshot(self, conn):
         lines = ['BEGIN ' + str(self.revision)]
-        for name, peer in sorted(self.peers.items()):
-            if (name != conn['id'] and peer['state'] is not None
-                    and (peer['state'][6] or (conn.get('social') and peer.get('field')))):
-                lines.append('PEER ' + name + ' ' + ' '.join(map(str, peer['state'])))
+        # World population is not the fixed native render-array capacity.
+        # Select deterministically by proximity; no extra wire fields are added.
+        origin = conn.get('state')
+        candidates = []
+        for name, peer in self.peers.items():
+            state = peer['state']
+            if (name == conn['id'] or state is None or
+                    not (state[6] or (conn.get('social') and peer.get('field')))):
+                continue
+            if origin is not None and state[:2] != origin[:2]:
+                continue
+            distance = abs(state[2]-origin[2]) + abs(state[3]-origin[3]) if origin else 0
+            candidates.append((distance, name, state))
+        for _, name, state in sorted(candidates)[:MAX_PEERS]:
+            lines.append('PEER ' + name + ' ' + ' '.join(map(str, state)))
         lines += ['TILE ' + ' '.join(map(str, tile)) for tile in self.tiles]
         for obj in self.objects:
             lines.append('OBJECT ' + obj['id'] + ' ' + ' '.join(str(obj[k]) for k in ('group','num','x','y','gfx'))
@@ -378,7 +406,7 @@ class WorldServer:
                     return
                 if control:
                     controls = [c for c in self.connections.values() if c.get('control')]
-                    if len(controls) >= 16 or sum(c['id'] == name for c in controls) >= 2:
+                    if len(controls) >= self.max_controls or sum(c['id'] == name for c in controls) >= 2:
                         self._error(conn, 'FULL')
                         return
                     conn['id'], conn['control'], conn['busy'] = name, True, False
@@ -387,7 +415,7 @@ class WorldServer:
                 if name in self.peers:
                     self._error(conn, 'DUPLICATE')
                     return
-                if len(self.peers) >= MAX_PEERS:
+                if len(self.peers) >= self.max_players:
                     self._error(conn, 'FULL')
                     return
                 conn['id'] = name
@@ -625,7 +653,13 @@ class WorldServer:
         conn['closing'] = True
         try:
             request = json.loads(raw)
-            if request.get('command') == 'inspect':
+            if request.get('command') == 'invitation':
+                if set(request) != {'command', 'trainer'} or self.sharing is None:
+                    self._queue(conn, json.dumps(dict(ok=False, error='secure sharing required')) + '\n')
+                    return
+                identity = self.create_identity(request['trainer'])
+                result = dict(ok=True, invitation=dict(self.sharing, trainer=identity['id'], token=identity['token']))
+            elif request.get('command') == 'inspect':
                 result = self.inspect()
             elif request.get('command') == 'host_controls':
                 try:
@@ -668,6 +702,10 @@ class WorldServer:
                 player['meeting'] = conn.get('meeting')
                 players.append(player)
             return dict(ok=True, revision=self.revision, players=players,
+                        sharing=(dict(endpoint=self.sharing['endpoint'], listen=getattr(self, 'sharing_listen', None))
+                                 if self.sharing else None),
+                        capacity=dict(players=self.max_players, controls=self.max_controls,
+                                      connections=self.max_connections),
                         tiles=json.loads(json.dumps(self.tiles)), objects=json.loads(json.dumps(self.objects)),
                         state=json.loads(json.dumps(self.module_state)),
                         module_hash=self.candidate.sha256 if self.candidate else None,
@@ -786,7 +824,10 @@ class WorldServer:
                     if key.data in ('listener', 'admin_listener'):
                         sock, _ = key.fileobj.accept()
                         sock.setblocking(False)
-                        if len(self.connections) >= 32:
+                        # Public handshakes cannot consume the local admin reserve.
+                        public_limit = self.max_connections - 2
+                        if (len(self.connections) >= self.max_connections or
+                                (key.data == 'listener' and sum(not c['admin'] for c in self.connections.values()) >= public_limit)):
                             sock.close()
                             continue
                         conn = dict(sock=sock, id=None, seq=-1, state=None, incoming=bytearray(), out=bytearray(), closing=False, born=time.monotonic())
@@ -837,6 +878,9 @@ class WorldServer:
                 self._poll_mechanics()
 
     def close(self):
+        if self._closed:
+            return
+        self._closed = True
         self.stopping.set()
         if self.thread is not None:
             self.thread.join()
@@ -867,21 +911,117 @@ def create_identity(state_dir, trainer_id, token=None):
         server.close()
 
 
+def export_invitation(socket_path, trainer, destination, *, admin_path=None, state_dir=None):
+    """Issue/reissue through the running private authority; never print tokens."""
+    from .client import admin_request
+    from .transport import validate_invitation
+    socket_path = Path(socket_path).absolute()
+    root = (Path(state_dir).absolute() if state_dir is not None else
+            socket_path.parent.parent if socket_path.parent.name == 'transport' else socket_path.parent)
+    destination = Path(destination).absolute()
+    if any(destination.resolve().is_relative_to(root / part) for part in ('transport', 'trainers')):
+        raise ValueError('keep invitations outside game-visible directories')
+    # Exclusive creation also refuses a symlink, including dangling symlinks.
+    fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(fd, 'w') as output:
+            result = admin_request(socket_path, dict(command='invitation', trainer=trainer), admin_path=admin_path)
+            if not result.get('ok'):
+                raise ValueError('invitation service unavailable')
+            invitation = validate_invitation(result['invitation'])
+            json.dump(invitation, output)
+            output.flush()
+            os.fsync(output.fileno())
+    except BaseException:
+        destination.unlink(missing_ok=True)
+        raise
+
+
 def main(argv=None):
+    """Standalone authority; optionally own the existing TLS broker in-process."""
+    from .transport import HostBroker, _endpoint, validate_invitation
+    import signal
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--socket')
+    parser.add_argument('--socket', help='default: STATE_DIR/transport/world.sock')
     parser.add_argument('--admin-socket')
-    parser.add_argument('--state-dir', required=True)
-    parser.add_argument('--create-identity', metavar='ID')
+    parser.add_argument('--state-dir', required=True, help='explicit persistent world directory; reused, never reset')
+    parser.add_argument('--require-existing-state', action='store_true', help='refuse a missing database (deployment safety)')
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument('--create-identity', metavar='ID')
+    action.add_argument('--invite', metavar='ID', help='issue/reissue invitation from the RUNNING private authority')
+    parser.add_argument('--invitation-out', type=Path)
+    parser.add_argument('--listen', type=_endpoint, help='enable TLS at HOST:PORT')
+    parser.add_argument('--advertise', type=_endpoint, help='reachable invitation HOST:PORT (required with --listen)')
+    parser.add_argument('--cert', type=Path, help='existing PEM certificate; never regenerated')
+    parser.add_argument('--key', type=Path, help='existing PEM private key; never regenerated')
+    parser.add_argument('--max-players', type=int, default=32)
+    parser.add_argument('--max-controls', type=int, help='default: twice max-players; at most two per identity')
+    parser.add_argument('--connection-headroom', type=int, default=8, help='includes two private admin slots')
+    parser.add_argument('--timeout', type=float, default=120)
     args = parser.parse_args(argv)
+    state = Path(args.state_dir).absolute()
+    game_socket = args.socket or str(state/'transport/world.sock')
+    if args.require_existing_state and not (state/'world.sqlite3').is_file():
+        parser.error('existing world database required; refusing to create a new world')
+    if bool(args.invite) != bool(args.invitation_out):
+        parser.error('--invite and --invitation-out must be supplied together')
+    if args.listen is not None:
+        if args.advertise is None or args.cert is None or args.key is None:
+            parser.error('--listen requires --advertise, --cert and --key')
+        try:
+            validate_invitation(dict(version=1, endpoint=dict(host=args.advertise[0], port=args.advertise[1]),
+                                     pin='0'*64, trainer='validation', token='0'*64))
+        except ValueError:
+            parser.error('invalid advertised endpoint')
+    elif any(value is not None for value in (args.advertise, args.cert, args.key)):
+        parser.error('--advertise, --cert and --key require --listen')
+    if args.invite is not None:
+        try:
+            export_invitation(game_socket, args.invite, args.invitation_out, admin_path=args.admin_socket, state_dir=state)
+        except (OSError, ValueError, KeyError):
+            parser.exit(1, 'world: could not export invitation (requires running TLS authority and a new private output path)\n')
+        return 0
     if args.create_identity is not None:
         token = create_identity(args.state_dir, args.create_identity)
         print(json.dumps(dict(id=args.create_identity, token=token)))
-    else:
-        if args.socket is None:
-            parser.error('--socket is required when serving')
-        WorldServer(args.socket, args.state_dir, admin_path=args.admin_socket).serve_forever()
+        return 0
+    stopped = threading.Event()
+    previous = {}
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        previous[signum] = signal.signal(signum, lambda *_: stopped.set())
+    server = broker = None
+    result = 0
+    try:
+        server = WorldServer(game_socket, state, admin_path=args.admin_socket,
+                             max_players=args.max_players, max_controls=args.max_controls,
+                             connection_headroom=args.connection_headroom)
+        server.start()
+        if args.listen is not None:
+            import ssl
+            pin = hashlib.sha256(ssl.PEM_cert_to_DER_cert(args.cert.read_text())).hexdigest()
+            broker = HostBroker(game_socket, args.cert, args.key, args.listen,
+                                max_clients=server.max_connections-2, timeout=args.timeout)
+            broker.start()
+            with server.lock:
+                server.sharing = dict(version=1, endpoint=dict(host=args.advertise[0], port=args.advertise[1]), pin=pin)
+                server.sharing_listen = broker.address
+        while not stopped.wait(.1):
+            if not server.thread.is_alive() or (broker is not None and not broker._thread.is_alive()):
+                result = 1
+                break
+    except (OSError, ValueError, RuntimeError):
+        # No credential/path/network-supplied exception contents in service logs.
+        print('world: configuration or listener failure', file=sys.stderr)
+        result = 1
+    finally:
+        if broker is not None:
+            broker.close()
+        if server is not None:
+            server.close()
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)
+    return result
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())

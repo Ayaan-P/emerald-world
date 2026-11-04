@@ -82,6 +82,9 @@ class PresentationTests(unittest.TestCase):
 
     def test_close_immediately_locks_controls(self):
         app = DesktopApp.__new__(DesktopApp)
+        app.pending = None
+        app.session = Mock()
+        app.session.hosted_worlds.return_value = []
         app.message = Value()
         app._set_busy = Mock()
         app.close()

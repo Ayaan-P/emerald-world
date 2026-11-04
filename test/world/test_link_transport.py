@@ -65,6 +65,7 @@ class TransportTest(unittest.TestCase):
     def test_silent_handshake_expires_and_reconnects_same_identity(self):
         self.connect(welcome=False)
         first = self.peer
+        time.sleep(5.1)
         # A connected socket is not an authenticated native channel. No game
         # process is launched: each pump is one production transport update.
         for _ in range(300):
@@ -85,6 +86,7 @@ class TransportTest(unittest.TestCase):
     def test_partial_welcome_does_not_extend_handshake_deadline(self):
         self.connect(welcome=False)
         self.incoming(b'WELCOME 1 Alice')
+        time.sleep(5.1)
         for _ in range(300):
             self.lib.LinkTransport_Pump()
         self.assertEqual(self.peer.recv(4096), b'')
@@ -177,6 +179,8 @@ class TransportTest(unittest.TestCase):
 #define TEST_WINDOWS_H
 #include <stddef.h>
 #include <stdio.h>
+#include <stdint.h>
+uint64_t GetTickCount64(void);
 #define CP_UTF8 65001
 #define MB_ERR_INVALID_CHARS 8
 #define MOVEFILE_REPLACE_EXISTING 1

@@ -179,9 +179,9 @@ def _magic(sock):
 
 
 class _Broker:
-    def __init__(self, max_clients=8, timeout=30, handshake_timeout=5, buffer_limit=65536):
-        if type(max_clients) is not int or not 1 <= max_clients <= 8:
-            raise ValueError('max_clients must be between 1 and 8')
+    def __init__(self, max_clients=136, timeout=30, handshake_timeout=5, buffer_limit=65536):
+        if type(max_clients) is not int or not 1 <= max_clients <= 1024:
+            raise ValueError('max_clients must be between 1 and 1024')
         if any(not math.isfinite(n) or n <= 0 for n in (timeout, handshake_timeout)):
             raise ValueError('timeouts must be finite and positive')
         if type(buffer_limit) is not int or not CHUNK + 4 <= buffer_limit <= 1048576:
@@ -305,8 +305,9 @@ class HostBroker(_Broker):
             raise ValueError('destination must be non-symlink transport/world.sock')
         self.game_socket = str(path)
         for secret in (cert, key):
-            if Path(secret).resolve().is_relative_to(path.parent.resolve()):
-                raise ValueError('TLS files must be outside the game transport directory')
+            if any(Path(secret).resolve().is_relative_to(directory.resolve())
+                   for directory in (path.parent, path.parent.parent / 'trainers')):
+                raise ValueError('TLS files must be outside game-visible transport/trainers directories')
         self.context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         self.context.minimum_version = ssl.TLSVersion.TLSv1_2
         self.context.load_cert_chain(str(cert), str(key))
@@ -505,7 +506,7 @@ def main(argv=None):
     trust.add_argument('--ca-file')
     connect.add_argument('--server-name')
     for command in (serve, connect):
-        command.add_argument('--max-clients', type=int, default=8)
+        command.add_argument('--max-clients', type=int, default=136, help='relay connections, not trainers (presence + LINK + CONTROL)')
         command.add_argument('--timeout', type=float, default=30)
         command.add_argument('--handshake-timeout', type=float, default=5)
         command.add_argument('--buffer-limit', type=int, default=65536)

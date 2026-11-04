@@ -73,6 +73,14 @@ int main(int argc, char **argv)
         result = self.parse(self.records.replace(b' ', b'\t'))
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_visible_peer_preference_is_bounded_and_not_population(self):
+        for limit in (1, 4, 8):
+            with self.subTest(limit=limit):
+                self.assertEqual(self.parse(self.records + f'\nvisible_peers {limit}\n'.encode()).returncode, 0)
+        for value in ('0', '9', '32', '-1', '4294967296', 'four', '1\nvisible_peers 2'):
+            with self.subTest(value=value):
+                self.assertEqual(self.parse(self.records + f'\nvisible_peers {value}\n'.encode()).returncode, 1)
+
     def test_nul_cannot_hide_bytes_in_final_unterminated_record(self):
         for suffix in (b'\0', b'\0hidden', b'\0 extra value'):
             with self.subTest(suffix=suffix):

@@ -33,6 +33,8 @@ class DesktopSession:
         self.broker = None
         self.remote_trainer = None
         self.sharing_pin = None
+        # Remote brokers are connections, never ownership of dedicated worlds.
+        self._hosts = {}
         self.games = {}
         self.game_locks = {}
         self.agent_games = set()
@@ -80,6 +82,8 @@ class DesktopSession:
     def delete_world(self, name):
         from .world_library import delete
         path = self._world(name)
+        if name in self.hosted_worlds():
+            raise SessionError('Explicitly shut down this local world before deletion.')
         if self.state == path:
             raise SessionError('Disconnect this world before moving it to Deleted.')
         if any(process.poll() is None and paths['profile'].is_relative_to(path)
@@ -129,6 +133,11 @@ class DesktopSession:
         if self.state is not None:
             raise ValueError('disconnect before changing worlds')
         path = self._world(name)
+        if name in self._hosts:
+            self.server, self.broker, self.sharing_pin = self._hosts.pop(name)
+            self.state = path
+            self.status = 'Hosting ' + name + ' (existing local world)'
+            return
         from .world_library import WorldActivityLock
         with WorldActivityLock(path):
             if not any(item['path'] == str(path) for item in self.worlds()):
@@ -572,6 +581,8 @@ class DesktopSession:
 
     def poll(self):
         lines = [self.status]
+        if self.hosted_worlds():
+            lines.append('Local worlds owned by this launcher: ' + ', '.join(self.hosted_worlds()) + '. Disconnect does not shut them down.')
         if self.state is not None:
             connection = self.connection_status()
             if connection.get('remote'):
@@ -673,6 +684,22 @@ class DesktopSession:
                 lines.append(f'{trainer}: ' + ('connected' if value.get('connected') else 'connecting or disconnected')
                              + f', revision {value.get("revision", "?")}')
                 peers = value.get('peers', [])
+                roster = value.get('roster')
+                if value['connected'] and isinstance(roster, list) and len(roster) <= 8:
+                    public = []
+                    for peer in roster:
+                        if (not isinstance(peer, dict) or not isinstance(peer.get('trainer'), str)
+                                or not re.fullmatch(r'[A-Za-z0-9_-]{1,24}', peer['trainer'])
+                                or peer.get('nearby') is not True
+                                or type(peer.get('ready')) is not bool
+                                or type(peer.get('rendered')) is not bool):
+                            continue
+                        label = 'available' if peer['ready'] else 'busy, not inviteable'
+                        if not peer['rendered']:
+                            label += ', roster only (field sprite capacity)'
+                        public.append(peer['trainer'] + ' (' + label + ')')
+                    if public:
+                        lines.append('Nearby world roster: ' + ', '.join(public))
                 if isinstance(peers, list) and len(peers) <= 64:
                     nearby = sorted({p['trainer'] for p in peers if isinstance(p, dict)
                                      and isinstance(p.get('trainer'), str)
@@ -684,7 +711,48 @@ class DesktopSession:
                 lines.append(f'{trainer}: starting, waiting for native connection state')
         return '\n'.join(lines)
 
-    def close(self):
+    def hosted_worlds(self):
+        names = set(self._hosts)
+        if self.server is not None and self.state is not None:
+            names.add(self.state.name)
+        return sorted(names)
+
+    def leave_game(self, trainer):
+        """Leave only a child launched here; never another human's process."""
+        if trainer not in self.games:
+            raise SessionError('Choose a game launched by this launcher.')
+        process, _ = self.games.pop(trainer)
+        if process.poll() is None:
+            process.terminate()
+        try:
+            process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+        lock = self.game_locks.pop(trainer, None)
+        if lock is not None:
+            lock.close()
+        self.agent_games.discard(trainer)
+        self.status = 'Left game. Save kept. The world is still running.'
+
+    def shutdown_world(self, name):
+        """Explicit LOCAL ownership operation. Never send remote shutdown."""
+        if self.server is not None and self.state is not None and self.state.name == name:
+            self.disconnect()
+        owned = self._hosts.pop(name, None)
+        if owned is None:
+            raise SessionError('Only a local world hosted by this launcher can be shut down. Dedicated remote worlds are independent.')
+        server, broker, _ = owned
+        if broker is not None:
+            broker.close()
+        server.close()
+        self.status = 'Local world shut down explicitly. Saves kept.'
+
+    def disconnect(self):
+        """Detach clients, preserving localhost hosting until explicit shutdown."""
+        if self.server is not None and self.state is not None:
+            self._hosts[self.state.name] = (self.server, self.broker, self.sharing_pin)
+            self.server = self.broker = None
         self.stop_gm()
         for process, _ in self.games.values():
             if process.poll() is None:
@@ -706,12 +774,17 @@ class DesktopSession:
         if self.broker is not None:
             self.broker.close()
             self.broker = None
-        if self.server is not None:
-            self.server.close()
-            self.server = None
         self.state = None
         self.remote_trainer = None
-        self.status = 'Disconnected. Saves kept.'
+        self.sharing_pin = None
+        self.status = ('Disconnected. Saves kept. Local worlds still hosting: ' + ', '.join(self.hosted_worlds())
+                       if self._hosts else 'Disconnected. Saves kept. Dedicated remote world unchanged.')
+
+    def close(self):
+        """Final owner teardown after explicit launcher-exit confirmation."""
+        self.disconnect()
+        for name in list(self._hosts):
+            self.shutdown_world(name)
 
     def __enter__(self):
         return self
@@ -847,8 +920,9 @@ class DesktopApp:
         heading('3. Play as your trainer')
         note('Choose a trainer to resume, or type a new name. Each human keeps their own team, bag and save.')
         self.trainer_entry = field('trainer', 'Human trainer', 'alice')
-        actions([('Launch / resume trainer', self.launch), ('Disconnect', self.disconnect)])
-        note('Play in the native game window. Save from its menu before disconnecting. Closing this launcher stops only its own games and host.')
+        actions([('Launch / resume trainer', self.launch), ('Leave game', self.leave_game), ('Disconnect', self.disconnect)])
+        actions([('Shut down local world', self.shutdown_world)])
+        note('Save in the native menu before leaving. Leave game stops only your selected game. Disconnect leaves local hosting running. Shut down local world is explicit and affects everyone connected here. Remote dedicated worlds are never owned or stopped by this launcher.')
         heading('Offline play')
         note('Offline play uses a separate save and never merges progress back. Choose a saved world and trainer above. Copying requires that trainer’s online game to be stopped. Resuming needs no host or invitation.')
         actions([('Play offline / resume copy', self.launch_offline), ('Copy online and play offline', self.copy_offline)])
@@ -1025,8 +1099,8 @@ class DesktopApp:
         self.session.refresh_intents()
 
     def choose_root(self):
-        if self.session.state is not None:
-            raise SessionError('Disconnect before choosing a different worlds root.')
+        if self.session.state is not None or self.session.hosted_worlds():
+            raise SessionError('Disconnect and explicitly shut down local hosted worlds before choosing a different worlds root.')
         from tkinter import filedialog
         selected = filedialog.askdirectory(parent=self.window, initialdir=str(self.session.root), mustexist=False)
         if selected:
@@ -1187,8 +1261,22 @@ class DesktopApp:
         self.session.launch(paths, Path(value.get('binary') or self.binary), display, agent_control=True)
 
     def disconnect(self):
-        self.session.close()
+        self.session.disconnect()
         self.remote_paths = None
+
+    def leave_game(self):
+        self.session.leave_game(self.values()['trainer'])
+
+    def shutdown_world(self):
+        from tkinter import messagebox
+        name = self.values()['world']
+        if name not in self.session.hosted_worlds():
+            raise SessionError('This launcher does not own that local world. Remote dedicated worlds cannot be shut down here.')
+        if messagebox.askyesno('Shut down local world?',
+                f'Shut down {name} for everyone connected? Save your game first.',
+                parent=self.window, default='no'):
+            self.session.shutdown_world(name)
+            self.remote_paths = None
 
     def rejoin_friend(self):
         name = self.values()['friend_world']
@@ -1308,6 +1396,13 @@ class DesktopApp:
             self.message.set('Sending intention over the authenticated world connection...')
             self._set_busy(True)
             return
+        if operation == self.leave_game:
+            trainer = self.values()['trainer']
+            self.pending_kind = 'leave_game'
+            self.pending = self.executor.submit(self.session.leave_game, trainer)
+            self.message.set('Leaving the selected game. The world remains running...')
+            self._set_busy(True)
+            return
         if operation in (self.start_gm, self.stop_gm, self.disconnect, self.refresh_intents):
             self.pending_kind = operation.__name__
             self.pending = self.executor.submit(operation)
@@ -1409,6 +1504,15 @@ class DesktopApp:
         self.after_id = self.window.after(150, self.tick)
 
     def close(self):
+        from tkinter import messagebox
+        if self.pending is not None:
+            self.message.set('Wait for the current session operation, then close again to review local world shutdown.')
+            return
+        owned = self.session.hosted_worlds()
+        if owned and not messagebox.askyesno('Exit and shut down local worlds?',
+                'This launcher hosts ' + ', '.join(owned) + '. Exiting shuts these local worlds down for everyone. Disconnect instead to keep them running. Exit and shut down?',
+                parent=self.window, default='no'):
+            return
         self.closing = True
         self._set_busy(True)
         self.message.set('Closing owned games and connections. Saves are kept.')

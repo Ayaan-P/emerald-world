@@ -110,12 +110,15 @@ class LinkSessions:
     NATIVE_WINDOW = 16
 
     def __init__(self, *, clock=time.monotonic, consent_timeout=15,
-                 step_timeout=10, max_steps=4294967296):
+                 step_timeout=10, max_steps=4294967296, max_sessions=8):
         for timeout in (consent_timeout, step_timeout):
             if type(timeout) not in (int, float) or not 0 < timeout <= 60 or not math.isfinite(timeout):
                 raise LinkError('invalid_timeout')
         if type(max_steps) is not int or not 1 <= max_steps <= 4294967296:
             raise LinkError('invalid_max_steps')
+        if type(max_sessions) is not int or not 1 <= max_sessions <= 64:
+            raise LinkError('invalid_max_sessions')
+        self.max_sessions = max_sessions
         self._clock = clock
         self._consent_timeout = consent_timeout
         self._step_timeout = step_timeout
@@ -181,7 +184,7 @@ class LinkSessions:
             raise LinkError('invalid_kind')
         if actor in self._locks or target in self._locks:
             raise LinkError('busy')
-        if len(self._sessions) >= 8:
+        if len(self._sessions) >= self.max_sessions:
             raise LinkError('capacity')
         self._near(presence, actor, target, coop=kind == 'coop_wild')
         self._generation += 1

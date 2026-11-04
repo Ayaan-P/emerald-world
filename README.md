@@ -121,6 +121,22 @@ assigned identity and trusted pin with the host instead of bypassing pin checks.
 Legacy invitations may require a separate local world key and manually entered
 host/pin fields, as indicated in the launcher.
 
+## Persistent server hosting
+
+For an always-on world, run the dedicated authority on the server rather than
+hosting it inside a player's desktop session. See [dedicated deployment](deploy/README.md)
+for the service, existing-world migration and private invitation commands.
+Players join through **Import friend invitation** and **Connect remote TLS** as
+above; leaving or closing a remote client does not shut down that server.
+
+World population is configurable separately from native rendering: the default
+is 32 authenticated trainers, while each native client receives at most eight
+nearby peer records and draws only what the stock object pool can safely hold.
+These are configured bounds, not a measured 32-player throughput guarantee.
+Battle and trade activities remain two-person, with independent actor-scoped
+sessions rather than a single global encounter. Parties, bags, PCs, story progress
+and saves remain private. This does not alter the original campaign or add regions.
+
 ## Tag up and play together
 
 1. Launch different human trainers in the same world. Both should have usable

@@ -1,4 +1,10 @@
 #ifdef PORTABLE
+#ifndef _WIN32
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+#include <time.h>
+#endif
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -21,7 +27,17 @@
 #include "platform/native_link.h"
 #include "platform/link_transport.h"
 #define QUEUE_CAP 65536
-#define HANDSHAKE_PUMPS 300
+#define HANDSHAKE_MILLISECONDS 5000
+static uint64_t MonotonicMilliseconds(void)
+{
+#ifdef _WIN32
+    return GetTickCount64();
+#else
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now)) return UINT64_MAX;
+    return (uint64_t)now.tv_sec * 1000 + (uint64_t)now.tv_nsec / 1000000;
+#endif
+}
 static struct {
 #ifdef _WIN32
     SOCKET fd;
@@ -32,7 +48,8 @@ static struct {
     int fd;
 #endif
     int initialized, enabled, connecting, ready;
-    unsigned retry, handshakePumps;
+    unsigned retry;
+    uint64_t handshakeStarted;
     char path[108], trainer[25], token[65], telemetry[1024];
     char output[QUEUE_CAP], input[513];
     size_t queued, sent, used;
@@ -285,7 +302,7 @@ static int Connect(void)
     }
 #endif
     sLink.connecting = result != 0;
-    sLink.handshakePumps = HANDSHAKE_PUMPS;
+    sLink.handshakeStarted = MonotonicMilliseconds();
     sLink.enabled = 1;
     snprintf(hello, sizeof(hello), "HELLO 1 %s %s LINK\n", sLink.trainer, sLink.token);
     Queue(hello);
@@ -559,8 +576,13 @@ void LinkTransport_Pump(void)
      * silent or trickling endpoint must not strand the native cable forever.
      * Ready channels retain their existing session and inactivity semantics. */
     if (!sLink.ready) {
-        if (!sLink.handshakePumps) { RetryDisconnect(); return; }
-        sLink.handshakePumps--;
+        /* SDL can pump far faster than frames without renderer vsync.
+         * Network admission is bounded by elapsed time, never poll count. */
+        uint64_t now = MonotonicMilliseconds();
+        if (now == UINT64_MAX || sLink.handshakeStarted == UINT64_MAX
+            || now < sLink.handshakeStarted
+            || now - sLink.handshakeStarted >= HANDSHAKE_MILLISECONDS)
+        { RetryDisconnect(); return; }
     }
     if (sLink.connecting) {
         int error = 0;

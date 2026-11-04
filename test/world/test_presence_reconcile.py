@@ -57,7 +57,8 @@ struct Save {struct {int mapGroup,mapNum;} location;
 struct {int active;} gPaletteFade;
 static struct {int paletteSlot,inanimate;} graphics[NUM_OBJ_EVENT_GFX];
 static struct {int dialogueActive,tilesLive,group,num;void *layout,*grid;
- unsigned appliedCount,restoredCount,generation,appliedGeneration;
+ unsigned appliedCount,restoredCount,generation,appliedGeneration,visiblePeers;
+ struct Peer field;
  struct {unsigned peerCount,tileCount;struct Peer peers[WB_REMOTES];struct Tile tiles[WB_TILES];} live;
  struct Remote remotes[WB_REMOTES];struct Applied applied[WB_TILES];} sWorld;
 static int removed,spawned,failSpawn,overworld=1,script,locked;
@@ -97,7 +98,7 @@ static u16 Raw(unsigned x,unsigned y) {(void)x;(void)y;return 0;}
 static void MapGridSetMetatileIdAt(unsigned x,unsigned y,unsigned m) {(void)x;(void)y;(void)m;}
 static void CurrentMapDrawMetatileAt(unsigned x,unsigned y) {(void)x;(void)y;}
 '''
-        fixture += ''.join(function(source, name) for name in ('Owned', 'RemoveRemote', 'NativeNpcAt', 'SyncEngine'))
+        fixture += ''.join(function(source, name) for name in ('Owned', 'RemoveRemote', 'NativeNpcAt', 'SelectPeers', 'SyncEngine'))
         fixture += r'''
 int main(int argc,char **argv) {
  unsigned i,target=argc>1?(unsigned)strtoul(argv[1],NULL,10):1;
@@ -211,6 +212,27 @@ int main(int argc,char **argv) {
  for(i=0;i<WB_REMOTES;i++) if(Owned(i)||sWorld.remotes[i].id[0]) return 30;
  sWorld.live.peerCount=3;SyncEngine();
  if(!Owned(0)||!Owned(1)||!Owned(2)) return 31;
+ /* Stock NPCs retain 15 slots; only one human can be drawn. Nearest human
+  * must replace an already drawn farther human, not delete a native NPC. */
+ overworld=0;SyncEngine();overworld=1;
+ memset(gObjectEvents,0,sizeof(gObjectEvents));memset(gSprites,0,sizeof(gSprites));
+ for(i=0;i<15;i++) {gObjectEvents[i].active=TRUE;gObjectEvents[i].localId=20+i;
+  gObjectEvents[i].currentCoords=(struct Coords){29,29};}
+ sWorld.live.peers[0].x=20;sWorld.live.peers[1].x=15;sWorld.live.peers[2].x=1;
+ SyncEngine();
+ if(strcmp(sWorld.remotes[0].id,"peer2")) return 32;
+ sWorld.live.peers[0].x=0;sWorld.live.peers[2].x=25;SyncEngine();
+ if(strcmp(sWorld.remotes[0].id,"peer0")) return 33;
+ for(i=0;i<15;i++) if(!gObjectEvents[i].active||gObjectEvents[i].localId!=20+i) return 34;
+ sWorld.live.peerCount=4;strcpy(sWorld.live.peers[3].id,"@sign");
+ sWorld.live.peers[3].x=0;sWorld.live.peers[3].y=0;
+ sWorld.live.peers[0].x=20;sWorld.live.peers[2].x=1;SyncEngine();
+ if(strcmp(sWorld.remotes[0].id,"peer2")) return 35;
+ /* Engine reuses our sole slot for an NPC: keep the public peer snapshot,
+  * give up all render handles, and leave every NPC intact. */
+ gObjectEvents[15].localId=99;gSprites[15].data[7]=0;SyncEngine();
+ for(i=0;i<WB_REMOTES;i++) if(Owned(i)||sWorld.remotes[i].id[0]) return 36;
+ if(sWorld.live.peerCount!=4 || gObjectEvents[15].localId!=99) return 37;
  puts("graphics replacement and unchanged peers reconcile in one frame");return 0;
 }
 '''

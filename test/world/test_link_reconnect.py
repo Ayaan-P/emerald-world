@@ -79,7 +79,15 @@ class LinkReconnect(unittest.TestCase):
         self.assertEqual(self.lib.NativeLink_IsActive(), 1)
         self.assertEqual(self.lib.LinkTransport_Mode(), 4)
 
+    def test_fast_render_pumps_do_not_expire_wan_handshake(self):
+        # Dummy/software rendering may poll thousands of times per frame.
+        self.pump(10000)
+        self.incoming(b'WELCOME 1 Alice 1 LINK\n')
+        self.assertEqual(self.lib.LinkTransport_Ready(), 1)
+
     def test_expired_handshake_allows_real_cable_admission_after_retry(self):
+        import time
+        time.sleep(5.1)
         self.pump(300)
         self.assertEqual(self.peer.recv(4096), b'')
         self.assertEqual(self.lib.NativeLink_IsActive(), 0)
