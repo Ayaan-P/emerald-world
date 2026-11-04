@@ -62,6 +62,51 @@ class TransportTest(unittest.TestCase):
         self.assertEqual(self.peer.recv(4096),b'HELLO 1 Alice '+b'a'*64+b' LINK\n')
         if welcome:
             self.peer.sendall(b'WELCOME 1 Alice 1 LINK\n');self.pump()
+    def test_silent_handshake_expires_and_reconnects_same_identity(self):
+        self.connect(welcome=False)
+        first = self.peer
+        # A connected socket is not an authenticated native channel. No game
+        # process is launched: each pump is one production transport update.
+        for _ in range(300):
+            self.lib.LinkTransport_Pump()
+        self.assertEqual(self.lib.LinkTransport_Ready(), 0)
+        self.assertEqual(first.recv(4096), b'', 'silent handshake never expired')
+        first.close()
+        self.peer = None
+        for _ in range(61):
+            self.lib.LinkTransport_Pump()
+        self.peer, _ = self.server.accept()
+        self.peer.settimeout(1)
+        self.pump()
+        self.assertEqual(self.peer.recv(4096), b'HELLO 1 Alice ' + b'a'*64 + b' LINK\n')
+        self.incoming(b'WELCOME 1 Alice 1 LINK\n')
+        self.assertEqual(self.lib.LinkTransport_Ready(), 1)
+
+    def test_partial_welcome_does_not_extend_handshake_deadline(self):
+        self.connect(welcome=False)
+        self.incoming(b'WELCOME 1 Alice')
+        for _ in range(300):
+            self.lib.LinkTransport_Pump()
+        self.assertEqual(self.peer.recv(4096), b'')
+        self.assertEqual(self.lib.LinkTransport_Ready(), 0)
+
+    def test_authenticated_idle_channel_has_no_handshake_expiry(self):
+        self.connect()
+        for _ in range(1000):
+            self.lib.LinkTransport_Pump()
+        self.assertEqual(self.lib.LinkTransport_Ready(), 1)
+        self.assertEqual(self.lib.LinkTransport_Offer(b'Bob', 1), 1)
+
+    def test_version_mismatch_stays_closed_without_retry(self):
+        self.connect(welcome=False)
+        self.incoming(b'WELCOME 2 Alice 1 LINK\n')
+        for _ in range(1000):
+            self.lib.LinkTransport_Pump()
+        self.assertEqual(self.lib.LinkTransport_Ready(), 0)
+        self.server.settimeout(.02)
+        with self.assertRaises(socket.timeout):
+            self.server.accept()
+
     def test_disabled_and_real_handshake(self):
         self.assertEqual(self.lib.LinkTransport_Init(None),1)
         self.pump();self.assertEqual(self.lib.LinkTransport_Offer(b'Bob',1),0)
