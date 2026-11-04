@@ -1,0 +1,12 @@
+#ifndef GUARD_PLATFORM_WORLD_UNSTUCK_H
+#define GUARD_PLATFORM_WORLD_UNSTUCK_H
+#if defined(PORTABLE) && !defined(_WIN32)
+#include "gba/types.h"
+struct WarpData;
+/* Returns a whitelist-backed last-heal destination or zero. This does not
+ * perform a warp or establish that the destination is currently unoccupied. */
+unsigned WorldUnstuck_HealDestination(const struct WarpData *warp, u8 playerGender);
+/* Conservative: uncertain movement cases do not qualify for a cooldown waiver. */
+bool8 WorldUnstuck_ConservativelyBoxed(void);
+#endif
+#endif
