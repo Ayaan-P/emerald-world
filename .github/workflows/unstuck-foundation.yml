@@ -6,6 +6,8 @@ on:
     paths:
       - 'src/platform/native_unstuck.c'
       - 'src/platform/world_unstuck.c'
+      - 'src/platform/unstuck_landing.c'
+      - 'include/platform/unstuck_landing.h'
       - 'include/platform/*unstuck.h'
       - 'test/world/test_*unstuck*.py'
       - '.github/workflows/unstuck-foundation.yml'

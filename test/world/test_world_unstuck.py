@@ -7,6 +7,31 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 
 class WorldUnstuckTests(unittest.TestCase):
+    def test_landing_search_rejects_blocked_or_isolated_tiles_without_mutation(self):
+        source = r'''
+#include <assert.h>
+#include <string.h>
+#include "src/platform/unstuck_landing.c"
+int main(void) {
+ u8 plain[25], clear[25], before[25]; s16 x=-1,y=-1;
+ memset(plain,1,sizeof(plain)); memset(clear,1,sizeof(clear));
+ memcpy(before,clear,sizeof(clear));
+ assert(Unstuck_SelectLanding(plain,clear,5,5,2,2,&x,&y) && x==2 && y==2);
+ assert(!memcmp(before,clear,sizeof(clear)));
+ clear[12]=0; x=y=-1;
+ assert(Unstuck_SelectLanding(plain,clear,5,5,2,2,&x,&y));
+ assert(!(x==2 && y==2) && clear[x+y*5]);
+ memset(clear,0,sizeof(clear)); clear[0]=1; clear[1]=1; x=y=-1;
+ assert(!Unstuck_SelectLanding(plain,clear,5,5,2,2,&x,&y) && x==-1 && y==-1);
+ memset(clear,1,sizeof(clear)); plain[12]=0;
+ assert(!Unstuck_SelectLanding(plain,clear,5,5,2,2,&x,&y));
+ assert(!Unstuck_SelectLanding(plain,clear,129,1,0,0,&x,&y));
+ assert(!Unstuck_SelectLanding(plain,clear,5,5,2,2,NULL,&y));
+ return 0;
+}
+'''
+        self.compile_and_run(source)
+
     def test_departure_and_story_gates_fail_closed(self):
         source = r'''
 #include <assert.h>
