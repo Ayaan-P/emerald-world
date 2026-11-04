@@ -259,7 +259,8 @@ class WebLauncherTests(unittest.TestCase):
         world = root / 'remote-1234'; world.mkdir(mode=0o700)
         remember(world, self.invitation())
         paths = profile_paths(world, 'Trainer')
-        paths['profile'].mkdir(parents=True, mode=0o700)
+        paths['profile'].parent.mkdir(mode=0o700)
+        paths['profile'].mkdir(mode=0o700)
         paths['save'].write_bytes(b'synthetic progress')
         session = DesktopSession(root)
         try:
@@ -271,6 +272,35 @@ class WebLauncherTests(unittest.TestCase):
                 bridge.action('save_backup', {'world': 'remote-1234', 'trainer': 'Other', 'offline': False})
         finally:
             session.close()
+
+    def test_browser_control_stops_before_disconnect(self):
+        control = Mock()
+        self.bridge.browser_input = control
+        self.bridge.action('disconnect', {})
+        control.close.assert_called_once_with()
+        self.session.disconnect.assert_called_once_with()
+        self.assertIsNone(self.bridge.browser_input)
+
+    def test_browser_control_stops_before_new_saved_world_connection(self):
+        control = Mock()
+        self.bridge.browser_input = control
+        self.session.rejoin_friend.side_effect = lambda name: self.assertIsNone(self.bridge.browser_input)
+        self.bridge.action('rejoin', {'world': 'world1'})
+        control.close.assert_called_once_with()
+
+    def test_browser_control_stops_before_new_solo_game(self):
+        control = Mock()
+        self.bridge.browser_input = control
+        self.session.managed_display = Mock(display=':90')
+        self.session.launch_offline.side_effect = lambda *args, **kwargs: self.assertIsNone(self.bridge.browser_input)
+        with patch('scripts.linux_client.binary_ready', return_value=True):
+            self.bridge.action('solo_new', {'trainer': 'May'})
+        control.close.assert_called_once_with()
+
+    def test_browser_input_actions_require_an_active_controller(self):
+        with self.assertRaises(SessionError):
+            self.bridge.action('screen_keys', {'keys': ['KeyZ']})
+        self.assertEqual(self.bridge.action('screen_stop', {}), {'active': False})
 
     def test_auth_requires_exact_host_capability_and_post_origin(self):
         handler_type = handler_for(self.bridge, 'secret', 8912)
