@@ -37,6 +37,7 @@
 #include "platform/world_activity.h"
 #include "platform/world_travel.h"
 #include "platform/world_rally.h"
+#include "platform/world_menu.h"
 #include "platform/world_catalog.h"
 #ifndef _WIN32
 #include <unistd.h>
@@ -1484,6 +1485,7 @@ void WorldBridge_AfterFrame(u32 frame)
 {
     FILE *file;
     char path[1100];
+    WorldMenu_Update();
     if (!sWorld.enabled) return;
     UpdateFieldPresence();
     if (sWorld.snapshotAge <= 180) sWorld.snapshotAge++;
