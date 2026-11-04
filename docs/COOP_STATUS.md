@@ -1,6 +1,19 @@
 # Co-op release status and evidence
 
-## Current verified baseline
+## Current release-readiness work
+
+See [Player release scope](PLAYER_RELEASE_SCOPE.md) for the present player contract,
+private-save ownership, ordinary battle result prompts, recovery limits and
+Windows friend acceptance boundary. Hosted creation/invitations and the React
+launcher were integrated after the baseline below. A human plus Hermes WAN
+session subsequently completed a shared wild battle and both returned to the
+field with Tag intact. This is not a full campaign or Windows acceptance claim.
+
+The dated baseline and matrices below are historical evidence, not an assertion
+that their listed commit is still the current main tip or that all their old
+limitations still describe current code.
+
+## Earlier verified baseline
 
 The current gameplay implementation is on `main` at
 [`ee3c130`](https://github.com/Ayaan-P/emerald-world/commit/ee3c130f96ea0be47e20ebd28bd46218f587cc65),

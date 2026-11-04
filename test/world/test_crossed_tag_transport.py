@@ -136,9 +136,41 @@ class CrossedTagTransport(unittest.TestCase):
         self.route(self.request(winner))
         self.assertEqual(self.libs[loser].LinkTransport_PendingTag().contents.id, 101)
 
+    def test_authority_keepalives_preserve_pending_clients_until_human_accepts(self):
+        winner, loser = self.cross('bob')
+        for self.now in (10, 20, 30, 40, 50):
+            events = self.authority.tick()
+            self.assertEqual(len(events), 2)
+            self.route(events)
+            self.assertTrue(self.libs[loser].LinkTransport_PendingTag())
+            self.assertEqual(self.libs[winner].LinkTransport_TagOfferPending(), 1)
+            for lib in self.libs.values():
+                self.assertEqual(lib.LinkTransport_Ready(), 1)
+                self.assertIsNone(lib.LinkTransport_TagPeer())
+                self.assertEqual(lib.NativeLink_IsActive(), 0)
+        self.now = 59.999
+        self.assertEqual(self.libs[loser].LinkTransport_TagAccept(100), 1)
+        self.route(self.request(loser))
+        self.assertEqual(self.libs[winner].LinkTransport_TagPeer(), loser.encode())
+        self.assertEqual(self.libs[loser].LinkTransport_TagPeer(), winner.encode())
+
+    def test_wait_keepalive_is_read_only_even_after_local_rejection(self):
+        winner, loser = self.cross('alice')
+        for name in (winner, loser):
+            self.deliver(name, 'T WAIT 100\n')
+            self.assertEqual(self.libs[name].LinkTransport_Ready(), 1)
+            self.assertIsNone(self.libs[name].LinkTransport_TagPeer())
+            self.assertEqual(self.libs[name].NativeLink_IsActive(), 0)
+        self.assertEqual(self.libs[loser].LinkTransport_TagReject(100), 1)
+        # A keepalive already in flight may arrive after the local No click.
+        self.deliver(loser, 'T WAIT 100\n')
+        self.assertEqual(self.libs[loser].LinkTransport_Ready(), 1)
+        self.assertFalse(self.libs[loser].LinkTransport_PendingTag())
+        self.route(self.request(loser))
+
     def test_expired_cross_releases_both_and_refuses_stale_accept(self):
         winner, loser = self.cross('alice')
-        self.now = 16
+        self.now = 60
         self.route(self.authority.tick())
         self.assertTrue(all(not lib.LinkTransport_PendingTag() for lib in self.libs.values()))
         self.assertEqual(self.libs[loser].LinkTransport_TagAccept(100), 0)
