@@ -1,5 +1,5 @@
-/* Production co-op functions with explicit IO/Pokemon accessor fixtures.
- * This tests boundaries and ownership, not native gameplay acceptance. */
+/* Production co-op boundaries plus the stock Pokemon encryption/accessors and
+ * GiveMonToPlayer, with explicit IO and PC-sink fixtures, not native gameplay. */
 #include "../../src/platform/world_coop.c"
 #undef NDEBUG
 #include <assert.h>
@@ -34,40 +34,49 @@ void PrepareBufferDataTransferLink(u8 direction, u16 size, u8 *data)
     emittedSize[gActiveBattler / 2] = size;
 }
 void MarkBattlerForControllerExec(u8 battler) { assert(battler == 0 || battler == 2); }
-static void Seal(struct Pokemon *mon, u16 species, u16 ball);
-void SetMonData(struct Pokemon *mon, s32 field, const void *value)
+#include "string_util.h"
+#include "constants/battle.h"
+#include "constants/species.h"
+static union PokemonSubstruct *GetSubstruct(struct BoxPokemon *, u32, u8);
+static u16 CalculateBoxMonChecksum(struct BoxPokemon *);
+static void EncryptBoxMon(struct BoxPokemon *);
+static void DecryptBoxMon(struct BoxPokemon *);
+static u16 GetDeoxysStat(struct Pokemon *mon, s32 stat) { return 0; }
+static struct BoxPokemon storedMon;
+static u8 CopyMonToPC(struct Pokemon *mon)
 {
-    if (field == MON_DATA_HP) memcpy(&mon->hp, value, sizeof(mon->hp));
-    else if (field == MON_DATA_STATUS) memcpy(&mon->status, value, sizeof(mon->status));
-    else if (field == MON_DATA_POKEBALL)
-        Seal(mon, GetMonData(mon, MON_DATA_SPECIES), *(const u16 *)value);
-    else assert(!"unexpected fixture setter");
+    storedMon = mon->box;
+    return MON_GIVEN_TO_PC;
 }
+static struct SaveBlock2 saveBlock2;
+struct SaveBlock2 *gSaveBlock2Ptr = &saveBlock2;
+const u8 gText_EggNickname[] = { EOS }, gText_BadEgg[] = { EOS };
+const u32 gBitTable[] = {1, 2, 4, 8}; /* Stock moves-known query only. */
+#include "stock_pokemon.inc"
 s8 GetSetPokedexFlag(u16 species, u8 operation) { return caughtDex; }
 u16 SpeciesToNationalPokedexNum(u16 species) { return species; }
-u32 GetMonData(struct Pokemon *mon, s32 field, u8 *dest)
-{
-    u32 key = mon->box.personality ^ mon->box.otId;
-    switch (field)
-    {
-    case MON_DATA_SPECIES: return (mon->box.secure.raw[0] ^ key) & 0xFFFF;
-    case MON_DATA_POKEBALL: return (mon->box.secure.raw[0] ^ key) >> 16;
-    case MON_DATA_IS_EGG: return 0;
-    case MON_DATA_HELD_ITEM: return 0;
-    case MON_DATA_EXP: return 1000;
-    case MON_DATA_PP_BONUSES: return 0;
-    default: return 0;
-    }
-}
-u32 GetMonData2(struct Pokemon *mon, s32 field) { return GetMonData3(mon, field, NULL); }
 u8 CalculatePPWithBonus(u16 move, u8 bonus, u8 index) { return 40; }
+u8 *StringCopy(u8 *dest, const u8 *src)
+{
+    while ((*dest = *src++) != EOS) dest++;
+    return dest;
+}
+u16 StringLength(const u8 *src)
+{
+    const u8 *end = src;
+    while (*end != EOS) end++;
+    return end - src;
+}
 static void Seal(struct Pokemon *mon, u16 species, u16 ball)
 {
-    u32 key = mon->box.personality ^ mon->box.otId;
-    u32 word = species | ((u32)ball << 16);
-    mon->box.checksum = species + ball;
-    for (unsigned i = 0; i < ARRAY_COUNT(mon->box.secure.raw); i++)
-        mon->box.secure.raw[i] = key ^ (i ? 0 : word);
+    /* Valid encrypted fixture in all 24 stock personality permutations. */
+    u32 exp = 1000;
+    memset(&mon->box.secure, 0, sizeof(mon->box.secure));
+    mon->box.checksum = 0;
+    EncryptBoxMon(&mon->box);
+    SetMonData(mon, MON_DATA_SPECIES, &species);
+    SetMonData(mon, MON_DATA_POKEBALL, &ball);
+    SetMonData(mon, MON_DATA_EXP, &exp);
 }
 static void Reset(void)
 {
@@ -103,6 +112,102 @@ static struct CoopCompletion Completion(void)
     packet.outcome = B_OUTCOME_CAUGHT;
     packet.catchOwner = sCoop.catchOwner;
     return packet;
+}
+static void TestStockCatchOwnership(void)
+{
+    for (int local = 0; local < 2; local++)
+    for (int permutation = 0; permutation < 24; permutation++)
+    for (int pc = 0; pc < 2; pc++)
+    for (int nickname = 0; nickname < 2; nickname++)
+    {
+        u32 hostId = 2703024129u, catcherId = local ? 2964324354u : hostId;
+        u16 move = MOVE_TACKLE, move2 = MOVE_STRING_SHOT;
+        u32 exp = 27;
+        u8 pp = 35, pp2 = 40, gender = 1;
+        u8 name[POKEMON_NAME_LENGTH] = {0xBB, 0xBC, EOS, EOS, EOS, EOS, EOS, EOS, EOS, EOS};
+        struct Pokemon snapshot, original;
+        struct Pokemon *caught;
+        struct Pokemon boxed = {0};
+        Reset();
+        memset(gPlayerParty, 0, sizeof(gPlayerParty));
+        memcpy(saveBlock2.playerTrainerId, &catcherId, sizeof(catcherId));
+        memset(saveBlock2.playerName, EOS, sizeof(saveBlock2.playerName));
+        saveBlock2.playerName[0] = 0xBC;
+        saveBlock2.playerGender = gender;
+        sCoop.local = local;
+        sCoop.originalCount = pc ? PARTY_SIZE : 1;
+        sCoop.enemies[0].box.personality = permutation + 240;
+        sCoop.enemies[0].box.otId = hostId;
+        Seal(&sCoop.enemies[0], SPECIES_WURMPLE, ITEM_POKE_BALL);
+        SetMonData(&sCoop.enemies[0], MON_DATA_EXP, &exp);
+        SetMonData(&sCoop.enemies[0], MON_DATA_MOVE1, &move);
+        SetMonData(&sCoop.enemies[0], MON_DATA_MOVE2, &move2);
+        SetMonData(&sCoop.enemies[0], MON_DATA_PP1, &pp);
+        SetMonData(&sCoop.enemies[0], MON_DATA_PP2, &pp2);
+        assert(MonValid(&sCoop.enemies[0], FALSE));
+        gEnemyParty[0] = sCoop.enemies[0];
+        gBattlerAttacker = local * 2;
+        gLastUsedItem = ITEM_MASTER_BALL;
+        gBattleMons[1].hp = 4;
+        gBattleMons[1].status1 = 8;
+        assert(WorldCoop_EmitCatch());
+        assert(WorldCoop_CatchPacketValid(emitted[local], 112));
+        WorldCoop_RecordCatchEvent(emitted[local]);
+        snapshot = sCoop.caughtMon;
+        original = gPlayerParty[0] = sCoop.enemies[0];
+        if (pc)
+            for (int slot = 1; slot < PARTY_SIZE; slot++) gPlayerParty[slot] = original;
+        sCoop.commitSent = sCoop.peerReady = sCoop.peerCommit = TRUE;
+        assert(WorldCoop_CompletionCommitted());
+        sCoop.state = COOP_REWARDS;
+        assert(WorldCoop_BeginCatchRewards());
+        assert(MonValid(&gEnemyParty[0], FALSE));
+        assert(gEnemyParty[0].box.checksum == snapshot.box.checksum);
+        assert(gEnemyParty[0].hp == 4 && gEnemyParty[0].status == 8);
+        assert(gEnemyParty[0].maxHP == snapshot.maxHP);
+        assert(gEnemyParty[0].attack == snapshot.attack && gEnemyParty[0].defense == snapshot.defense);
+        assert(gEnemyParty[0].speed == snapshot.speed && gEnemyParty[0].spAttack == snapshot.spAttack
+            && gEnemyParty[0].spDefense == snapshot.spDefense);
+        /* Dex/nickname queries and optional nickname edit precede stock give. */
+        assert(GetMonData(&gEnemyParty[0], MON_DATA_SPECIES) == SPECIES_WURMPLE);
+        assert(GetMonData(&gEnemyParty[0], MON_DATA_PERSONALITY) == (u32)permutation + 240);
+        if (nickname) SetMonData(&gEnemyParty[0], MON_DATA_NICKNAME, name);
+        assert(GiveMonToPlayer(&gEnemyParty[0]) == (pc ? MON_GIVEN_TO_PC : MON_GIVEN_TO_PARTY));
+        boxed.box = storedMon;
+        caught = pc ? &boxed : &gPlayerParty[1];
+        if (!MonValid(&gEnemyParty[0], FALSE))
+            fprintf(stderr, "stock catch corruption: local=%d permutation=%d pc=%d nickname=%d exp=%u move=%u\n",
+                    local, permutation, pc, nickname,
+                    GetMonData(caught, MON_DATA_EXP), GetMonData(caught, MON_DATA_MOVE1));
+        assert(MonValid(&gEnemyParty[0], FALSE));
+        assert(GetMonData(caught, MON_DATA_SPECIES) == SPECIES_WURMPLE);
+        assert(GetMonData(caught, MON_DATA_EXP) == exp);
+        assert(GetMonData(caught, MON_DATA_MOVE1) == move);
+        assert(GetMonData(caught, MON_DATA_MOVE2) == move2);
+        assert(GetMonData(caught, MON_DATA_MOVE3) == MOVE_NONE);
+        assert(GetMonData(caught, MON_DATA_MOVE4) == MOVE_NONE);
+        assert(GetMonData(caught, MON_DATA_PP1) == pp);
+        assert(GetMonData(caught, MON_DATA_PP2) == pp2);
+        assert(GetMonData(caught, MON_DATA_PP3) == 0);
+        assert(GetMonData(caught, MON_DATA_PP4) == 0);
+        assert(GetMonData(caught, MON_DATA_POKEBALL) == ITEM_MASTER_BALL);
+        assert(GetMonData(caught, MON_DATA_OT_ID) == catcherId);
+        assert(gBattleMons[1].otId == catcherId);
+        assert(GetMonData(caught, MON_DATA_PERSONALITY) == snapshot.box.personality);
+        if (!pc)
+        {
+            assert(caught->hp == 4 && caught->status == 8 && caught->maxHP == snapshot.maxHP);
+            assert(caught->level == snapshot.level);
+            assert(MonValid(caught, FALSE));
+        }
+        assert(GetMonData(caught, MON_DATA_OT_GENDER) == gender);
+        assert(!memcmp(caught->box.otName, saveBlock2.playerName, PLAYER_NAME_LENGTH));
+        if (nickname) assert(!memcmp(caught->box.nickname, name, sizeof(name)));
+        assert(!memcmp(&snapshot, &sCoop.caughtMon, sizeof(snapshot)));
+        assert(!memcmp(&original, &gPlayerParty[0], sizeof(original)));
+        assert(!WorldCoop_BeginCatchRewards());
+    }
+    puts("stock catch ownership: host/follower, 24 permutations, party/PC and nickname passed");
 }
 int main(int argc, char **argv)
 {
@@ -206,6 +311,7 @@ int main(int argc, char **argv)
     assert(sCoop.catchOwner == 2 && sCoop.caughtMon.hp == 3 && sCoop.caughtMon.status == 8);
     assert(GetMonData(&sCoop.caughtMon, MON_DATA_POKEBALL) == ITEM_ULTRA_BALL);
     assert(!WorldCoop_EmitCatch());
+    TestStockCatchOwnership();
     puts("catch boundaries: private consumption, context, malformed wire, generation, commit and single-owner delivery passed");
     return 0;
 }

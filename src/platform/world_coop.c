@@ -684,12 +684,23 @@ void WorldCoop_RecordCatchEvent(const u8 *data)
 
 bool8 WorldCoop_BeginCatchRewards(void)
 {
+    u32 oldOtId;
+    unsigned i;
     if (sCoop.state != COOP_REWARDS || sCoop.catchOwner != sCoop.local + 1
      || sCoop.catchDelivered || gBattleOutcome != B_OUTCOME_CAUGHT
      || (sCoop.originalCount == PARTY_SIZE && IsPokemonStorageFull()))
         return FALSE;
     sCoop.catchDelivered = TRUE;
     gEnemyParty[0] = sCoop.caughtMon;
+    /* Stock GiveMonToPlayer changes OT_ID without re-encrypting: ordinary
+     * wild mons already carry the local trainer's ID. The shared snapshot
+     * instead carries the encounter owner's ID. Rekey only this private copy
+     * before the stock dex/nickname/give scripts, preserving personality,
+     * substructure order and checksum. Never alter the committed snapshot. */
+    oldOtId = gEnemyParty[0].box.otId;
+    SetMonData(&gEnemyParty[0], MON_DATA_OT_ID, gSaveBlock2Ptr->playerTrainerId);
+    for (i = 0; i < ARRAY_COUNT(gEnemyParty[0].box.secure.raw); i++)
+        gEnemyParty[0].box.secure.raw[i] ^= oldOtId ^ gEnemyParty[0].box.otId;
     gBattlerAttacker = 0;
     gBattlerTarget = 1;
     gBattlerPartyIndexes[1] = 0;
@@ -702,7 +713,7 @@ bool8 WorldCoop_BeginCatchRewards(void)
     gBattleMons[1].status1 = sCoop.caughtMon.status;
     GetMonData(&sCoop.caughtMon, MON_DATA_NICKNAME, gBattleMons[1].nickname);
     GetMonData(&sCoop.caughtMon, MON_DATA_OT_NAME, gBattleMons[1].otName);
-    gBattleMons[1].otId = sCoop.caughtMon.box.otId;
+    gBattleMons[1].otId = gEnemyParty[0].box.otId;
     gBattleMons[1].personality = sCoop.caughtMon.box.personality;
     return TRUE;
 }

@@ -52,11 +52,23 @@ class CoopCatching(unittest.TestCase):
     def test_production_catch_boundaries(self):
         with tempfile.TemporaryDirectory(prefix='coop-catching-core-') as tmp:
             exe = str(Path(tmp) / 'core')
+            # Compile the real encryption, shuffled substructures, accessors and
+            # stock ownership handoff, not an identity-only Pokemon fixture.
+            pokemon = (ROOT / 'src/pokemon.c').read_text()
+            stock = pokemon[pokemon.index('#define SUBSTRUCT_CASE'):pokemon.index('/* GameFreak called GetMonData')]
+            stock += pokemon[pokemon.index('#define SET8(lhs)'):pokemon.index('void SetMonData(')]
+            for name in ('EncryptBoxMon', 'DecryptBoxMon', 'CalculateBoxMonChecksum',
+                         'GetMonData3', 'GetMonData2', 'GetBoxMonData3', 'GetBoxMonData2',
+                         'SetMonData', 'SetBoxMonData', 'CopyMon', 'GiveMonToPlayer'):
+                stock += function('src/pokemon.c', name)
+            (Path(tmp) / 'stock_pokemon.inc').write_text(stock)
+            # Match the native sanitizer build: stock SET32 uses signed shifts.
             command = ['gcc', '-std=gnu99', '-g', '-fsanitize=address,undefined',
+                       '-fno-sanitize=shift-base',
                        '-fno-sanitize-recover=all', '-fno-pie', '-no-pie',
                        '-ffunction-sections', '-fdata-sections', '-Wl,--gc-sections',
                        '-DPORTABLE', '-DUBFIX', '-DVER_64BIT', '-DNONMATCHING',
-                       '-DMODERN=1', '-iquote', 'include',
+                       '-DMODERN=1', '-iquote', 'include', '-I', tmp,
                        'test/world/coop_catching_core.c', '-o', exe]
             compiled = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
             self.assertEqual(compiled.returncode, 0, compiled.stderr)
