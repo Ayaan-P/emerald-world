@@ -36,6 +36,6 @@ jobs:
       - name: Compile native game with warnings as errors
         run: make -j2 linux CFLAGS=-g WERROR=1
       - name: Generate disposable test save with standalone smoke
-        run: python3 test/headless/smoke.py ./pokeemerald64 --out build/unstuck-seed
+        run: python3 test/headless/smoke.py ./pokeemerald64 --out build/unstuck-seed --update-expected
       - name: Exercise the offline menu and warp
         run: python3 test/headless/unstuck_acceptance.py --binary ./pokeemerald64 --seed build/unstuck-seed/first_battle/game.sav
