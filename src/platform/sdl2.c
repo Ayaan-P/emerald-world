@@ -33,6 +33,7 @@
 #include "platform/player_control.h"
 #include "platform/native_link.h"
 #include "platform/link_transport.h"
+#include "platform/dexnav_native.h"
 #include "link.h"
 
 extern void (*const gIntrTable[])(void);
@@ -187,6 +188,7 @@ int main(int argc, char **argv)
 #endif
         return 1;
     }
+    DexNavNative_Init(sSavePath, !sTestMode);
     // Before AgbMain, whose RtcInit reads it
     InitInternalClock();
 

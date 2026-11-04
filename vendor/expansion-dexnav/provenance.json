@@ -1,0 +1,121 @@
+{
+  "repository": "https://github.com/rh-hideout/pokeemerald-expansion",
+  "commit": "c460a8661dfa0598ae25d42a968c690ecbf489c6",
+  "verification": "Git blob SHA-1 checked before every imported byte was written",
+  "files": [
+    {
+      "path": "src/dexnav.c",
+      "blob": "2a6685dec1ba433bafd7f43812bccf1fc06e11e2",
+      "bytes": 87152,
+      "imported_as": "vendor/expansion-dexnav/upstream/src/dexnav.c"
+    },
+    {
+      "path": "include/dexnav.h",
+      "blob": "b4bf4a2bffff6d5281cff7139675c9c82ce16b7f",
+      "bytes": 2283,
+      "imported_as": "vendor/expansion-dexnav/upstream/include/dexnav.h"
+    },
+    {
+      "path": "include/config/dexnav.h",
+      "blob": "453f75add2dae59394902fb5a85d2b0374187719",
+      "bytes": 3336,
+      "imported_as": "vendor/expansion-dexnav/upstream/include/config/dexnav.h"
+    },
+    {
+      "path": "data/scripts/dexnav.inc",
+      "blob": "698f5019360c5f5686bd32a31f70852ca3f50a6b",
+      "bytes": 955,
+      "imported_as": "vendor/expansion-dexnav/upstream/data/scripts/dexnav.inc"
+    },
+    {
+      "path": "graphics/dexnav/captured_all.png",
+      "blob": "2ed8b40ca9829eb831c1d6787b710852520e3868",
+      "bytes": 157,
+      "imported_as": "graphics/dexnav/captured_all.png"
+    },
+    {
+      "path": "graphics/dexnav/cursor.png",
+      "blob": "0b64cf95b870fad3d04109df25a888e9d1bc1bae",
+      "bytes": 172,
+      "imported_as": "graphics/dexnav/cursor.png"
+    },
+    {
+      "path": "graphics/dexnav/gui.pal",
+      "blob": "77939a5aba0bf4f091bbb8c801b68b501820eb33",
+      "bytes": 180,
+      "imported_as": "graphics/dexnav/gui.pal"
+    },
+    {
+      "path": "graphics/dexnav/gui_tilemap.bin",
+      "blob": "0f62abbef9ce02dd617dbb3c5f2ca9dae7f103c5",
+      "bytes": 2048,
+      "imported_as": "graphics/dexnav/gui_tilemap.bin"
+    },
+    {
+      "path": "graphics/dexnav/gui_tiles.png",
+      "blob": "4e3327b8eee2c52d6376a77fa6fa8c82882b0641",
+      "bytes": 1447,
+      "imported_as": "graphics/dexnav/gui_tiles.png"
+    },
+    {
+      "path": "graphics/dexnav/hidden.png",
+      "blob": "2ad2e22e08d000cd2b021997e9a0c5f598af135c",
+      "bytes": 178,
+      "imported_as": "graphics/dexnav/hidden.png"
+    },
+    {
+      "path": "graphics/dexnav/hidden_search.png",
+      "blob": "d462ddef9311a60b2a92c1c9ec73b4c07be7290d",
+      "bytes": 359,
+      "imported_as": "graphics/dexnav/hidden_search.png"
+    },
+    {
+      "path": "graphics/dexnav/no_data.png",
+      "blob": "a26515b5b17e7bc344146e9121e9c49cff60025c",
+      "bytes": 182,
+      "imported_as": "graphics/dexnav/no_data.png"
+    },
+    {
+      "path": "graphics/dexnav/owned_icon.png",
+      "blob": "fdc5ef71130b2831594ef0c76eb0fca1e146146b",
+      "bytes": 159,
+      "imported_as": "graphics/dexnav/owned_icon.png"
+    },
+    {
+      "path": "graphics/dexnav/star.png",
+      "blob": "5d4b034a45fc56775cb4eb1a9ef22476c8ac6c90",
+      "bytes": 170,
+      "imported_as": "graphics/dexnav/star.png"
+    },
+    {
+      "path": "graphics/text_window/dexnav_pal.pal",
+      "blob": "cb6acc371d355fb351a62553bb81a6405a98d04c",
+      "bytes": 122,
+      "imported_as": "graphics/text_window/dexnav_pal.pal"
+    },
+    {
+      "path": "graphics/field_effects/pics/cave_dust.png",
+      "blob": "1f477c7803d4ed2eec52f228fe2d2fe0ccd80ffd",
+      "bytes": 409,
+      "imported_as": "graphics/field_effects/pics/cave_dust.png"
+    },
+    {
+      "path": "graphics/field_effects/palettes/cave_dust.pal",
+      "blob": "ed31236c4e366ac928d7f10a4abde6120f3e7eb2",
+      "bytes": 167,
+      "imported_as": "graphics/field_effects/palettes/cave_dust.pal"
+    },
+    {
+      "path": "CREDITS.md",
+      "blob": "818d928822c360fb11ae1467dab0a1a56ae2f752",
+      "bytes": 31586,
+      "imported_as": "vendor/expansion-dexnav/upstream/CREDITS.md"
+    },
+    {
+      "path": "docs/CREDITS.md",
+      "blob": "23aced71d95ee69c59d74736d736ba01872f0dde",
+      "bytes": 27,
+      "imported_as": "vendor/expansion-dexnav/upstream/docs/CREDITS.md"
+    }
+  ]
+}

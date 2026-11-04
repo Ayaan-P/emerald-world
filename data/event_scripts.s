@@ -63,6 +63,9 @@
 	.section script_data, "aw"
 
 	.set ALLOCATE_SCRIPT_CMD_TABLE, 1
+#ifdef PORTABLE
+	.include "data/scripts/dexnav.inc"
+#endif
 	.include "data/script_cmd_table.inc"
 
 gSpecialVars::
