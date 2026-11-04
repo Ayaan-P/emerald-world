@@ -1,6 +1,21 @@
-# Instructions
+# Build the native PC port
 
-These instructions explain how to set up the tools required to build **pokeemerald**, which assembles the source files into a binary.
+These instructions build **pokeemerald** from source. For the current multiplayer
+features, Linux launcher setup and evidence limits, see the [README](README.md)
+and [co-op status](docs/COOP_STATUS.md). Native platform build targets do not
+imply current Windows/macOS multiplayer acceptance. No ROM, save or executable
+is supplied by this guide.
+
+Use the current `main` source on both peers and rebuild both for co-op protocol
+v3. A successful presence connection does not prove matching native versions.
+
+The Linux section below includes cloning and restoring the three hash-pinned
+upstream inputs. Windows and macOS builders also need those inputs: after
+installing their platform tools and Python 3, run the same
+`python3 scripts/restore_upstream_assets.py` and
+`python3 scripts/restore_upstream_assets.py --check` commands from the checkout
+before building. They restore only the manifest's ignored local build inputs.
+Do not commit or redistribute them. No dependency installation is automatic.
 
 ## Windows 10/11 (WSL1)
 Follow pret instructions on how to install WSL1 [here](INSTALL.md)
@@ -14,12 +29,10 @@ Download SDL2 mingw libraries from [here](https://archive.org/download/sdl-2-2.0
 
 Extract the tar to the root of the project and rename the SDL2-2.0.16 folder to SDL2
 
-Get the number of threads in your pc using the command `nproc`
-
-Build the Windows version using the following command (replace the parentheses with the number you got from nproc)
+Build the Windows version using all available CPU threads:
 
 ```
-make winwsl -j(nproc number here)
+make -j"$(nproc)" winwsl WERROR=1
 ```
 
 To build 32 bit version add `IS64BIT=0` to the end of the command above
