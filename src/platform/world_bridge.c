@@ -44,6 +44,8 @@
 #include <poll.h>
 #endif
 
+/* Per-recipient relevance window, NOT the server's configurable population.
+ * The server selects at most eight peers; the stock field pool may draw fewer. */
 #define WB_PEERS 8
 #define WB_OBJECTS 8
 #define WB_REMOTES (WB_PEERS + WB_OBJECTS)
@@ -81,7 +83,8 @@ static struct {
     bool8 tilesLive;
     struct Snapshot live, stage;
     struct Peer field;
-    bool8 fieldKnown;
+    bool8 fieldKnown, menuAnchor;
+    unsigned visiblePeers; /* Local render preference, never world population. */
     struct Remote remotes[WB_REMOTES];
     bool8 dialogueActive;
     u16 previousKeys, dialogueKeys;
@@ -194,19 +197,23 @@ static bool8 Ready(void)
     return PresenceReady() && !gPlayerAvatar.tileTransitionState;
 }
 
-/* Menu screens reuse the object/sprite pool. Retain only validated field
- * coordinates, never handles into that pool. A warp, battle or reset revokes
- * the cached position before it can be published in a different scene. */
+/* A busy proxy is a frozen SAFE anchor, not a sample of a reused sprite pool.
+ * WorldActivity owns the known battle/trade entry and return lifecycle. Unknown
+ * scripts, warps and resets revoke it, and no busy path can resurrect it. */
 static void UpdateFieldPresence(void)
 {
-    /* Only a START menu may preserve its position through a field fade.
-     * Scripts and ordinary warp fades revoke presence before the map loads. */
-    if (ScriptContext_IsEnabled() || gMain.inBattle
-     || (Overworld() && gPaletteFade.active && !FuncIsActiveTask(Task_ShowStartMenu))) {
-        sWorld.fieldKnown = FALSE;
+    bool8 activity = WorldActivity_OwnsFieldInput();
+    const char *phase = WorldActivity_Phase();
+    bool8 native = activity && (!strcmp(phase, "native") || !strcmp(phase, "connecting")
+        || !strcmp(phase, "returning") || WorldActivity_IsEncounterPending());
+    if (!gSaveBlock1Ptr || (!native && gMain.callback1 != CB1_Overworld)
+     || (sWorld.fieldKnown
+      && (sWorld.field.group != (unsigned)gSaveBlock1Ptr->location.mapGroup
+       || sWorld.field.num != (unsigned)gSaveBlock1Ptr->location.mapNum))) {
+        sWorld.fieldKnown = sWorld.menuAnchor = FALSE;
         return;
     }
-    if (Overworld() && !gPaletteFade.active) {
+    if (PresenceReady()) {
         const struct ObjectEvent *player = &gObjectEvents[gPlayerAvatar.objectEventId];
         struct Peer *p = &sWorld.field;
         p->group = gSaveBlock1Ptr->location.mapGroup;
@@ -216,11 +223,15 @@ static void UpdateFieldPresence(void)
         p->facing = player->facingDirection;
         p->gfx = player->graphicsId;
         sWorld.fieldKnown = MapCoords(p->group, p->num, p->x, p->y);
-    } else if (!gSaveBlock1Ptr || gMain.inBattle || gMain.callback1 != CB1_Overworld
-            || sWorld.field.group != (unsigned)gSaveBlock1Ptr->location.mapGroup
-            || sWorld.field.num != (unsigned)gSaveBlock1Ptr->location.mapNum) {
-        sWorld.fieldKnown = FALSE;
+        sWorld.menuAnchor = FALSE;
+        return;
     }
+    if (sWorld.fieldKnown && Overworld() && !ScriptContext_IsEnabled()
+     && FuncIsActiveTask(Task_ShowStartMenu)) sWorld.menuAnchor = TRUE;
+    /* Only sanctioned activity can retain an anchor across its native script
+     * locks. A script outside that lifecycle always invalidates menu ancestry. */
+    if ((ScriptContext_IsEnabled() && !native) || (!activity && !sWorld.menuAnchor))
+        sWorld.fieldKnown = sWorld.menuAnchor = FALSE;
 }
 
 static bool8 Owned(unsigned slot)
@@ -340,6 +351,7 @@ bool8 WorldBridge_Init(const char *configPath)
 #endif
     unsigned seen = 0, i;
     memset(&sWorld, 0, sizeof(sWorld));
+    sWorld.visiblePeers = WB_PEERS;
 #ifdef _WIN32
     sWorld.fd = INVALID_SOCKET;
 #else
@@ -410,6 +422,12 @@ bool8 WorldBridge_Init(const char *configPath)
         if (sscanf(line, "%31s %1099s %c", key, value, &extra) != 2) goto invalid;
         if (!strcmp(key, "socket")) { bit = 1; dest = sWorld.socketPath; size = sizeof(sWorld.socketPath); }
 #endif
+        else if (!strcmp(key, "visible_peers")) {
+            if ((seen & 32) || !Decimal(value, &sWorld.visiblePeers)
+             || !sWorld.visiblePeers || sWorld.visiblePeers > WB_PEERS) goto invalid;
+            seen |= 32;
+            continue;
+        }
         else if (!strcmp(key, "trainer")) { bit = 2; dest = sWorld.trainer; size = sizeof(sWorld.trainer); }
         else if (!strcmp(key, "token")) { bit = 4; dest = sWorld.token; size = sizeof(sWorld.token); }
         else if (!strcmp(key, "telemetry")) { bit = 8; dest = sWorld.telemetry; size = sizeof(sWorld.telemetry); }
@@ -419,10 +437,10 @@ bool8 WorldBridge_Init(const char *configPath)
         seen |= bit;
     }
 #ifdef _WIN32
-    if (seen != 31 || strlen(sWorld.loopbackToken) != 64) goto invalid;
+    if ((seen & ~32u) != 31 || strlen(sWorld.loopbackToken) != 64) goto invalid;
     for (i = 0; i < 64; i++) if (!isxdigit((unsigned char)sWorld.loopbackToken[i])) goto invalid;
 #else
-    if (seen != 15 || sWorld.socketPath[0] != '/') goto invalid;
+    if ((seen & ~32u) != 15 || sWorld.socketPath[0] != '/') goto invalid;
 #endif
     if (ferror(file) || !Identifier(sWorld.trainer) || strlen(sWorld.token) != 64) goto invalid;
     for (i = 0; i < 64; i++) if (!isxdigit((unsigned char)sWorld.token[i])) goto invalid;
@@ -493,7 +511,8 @@ static bool8 Line(char *line)
     if (!strcmp(tokens[0], "PEER")) {
         struct Peer *peer;
         if (n != 9 || !Identifier(tokens[1]) || !strcmp(tokens[1], sWorld.trainer)
-         || sWorld.stage.peerCount - sWorld.stage.objectCount == WB_PEERS) return FALSE;
+         || sWorld.stage.peerCount >= WB_REMOTES
+         || sWorld.stage.peerCount - sWorld.stage.objectCount >= WB_PEERS) return FALSE;
         for (i = 0; i < 7; i++) if (!Decimal(tokens[i + 2], &v[i])) return FALSE;
         if (!MapCoords(v[0], v[1], v[2], v[3]) || v[4] < 1 || v[4] > 4 || v[5] > 255 || v[6] > 1) return FALSE;
         for (i = 0; i < sWorld.stage.peerCount; i++) if (!strcmp(sWorld.stage.peers[i].id, tokens[1])) return FALSE;
@@ -506,7 +525,8 @@ static bool8 Line(char *line)
     if (!strcmp(tokens[0], "OBJECT")) {
         struct Peer *peer;
         char id[26], text[58];
-        if (n != 8 || !Identifier(tokens[1]) || sWorld.stage.objectCount == WB_OBJECTS
+        if (n != 8 || !Identifier(tokens[1]) || sWorld.stage.peerCount >= WB_REMOTES
+         || sWorld.stage.objectCount >= WB_OBJECTS
          || !ObjectText(tokens[7], text)) return FALSE;
         for (i = 0; i < 5; i++) if (!Decimal(tokens[i + 2], &v[i])) return FALSE;
         if (!MapCoords(v[0], v[1], v[2], v[3]) || (v[4] != 7 && v[4] != 8)) return FALSE;
@@ -748,9 +768,44 @@ static void SendState(void)
     Flush();
 }
 
+/* A world may contain many more humans than the wire relevance window or
+ * stock sixteen-object pool. Spend only genuinely free/owned slots, nearest
+ * humans first, shared objects second. Never evict a campaign NPC. */
+static unsigned SelectPeers(unsigned order[WB_REMOTES])
+{
+    unsigned i, j, count = 0, capacity = 0, humans = 0, selected = 0;
+    unsigned limit = sWorld.visiblePeers ? sWorld.visiblePeers : WB_PEERS;
+    for (i = 0; i < OBJECT_EVENTS_COUNT; i++) {
+        bool8 ours = FALSE;
+        for (j = 0; j < WB_REMOTES; j++)
+            if (Owned(j) && sWorld.remotes[j].object == i) ours = TRUE;
+        if (!gObjectEvents[i].active || ours) capacity++;
+    }
+    for (i = 0; i < sWorld.live.peerCount; i++) {
+        const struct Peer *p = &sWorld.live.peers[i];
+        unsigned distance = abs((int)p->x - (int)sWorld.field.x) + abs((int)p->y - (int)sWorld.field.y);
+        if (p->group != (unsigned)sWorld.group || p->num != (unsigned)sWorld.num
+         || !GridCoords(p->x, p->y) || NativeNpcAt(p->x, p->y)) continue;
+        for (j = count; j; j--) {
+            const struct Peer *q = &sWorld.live.peers[order[j - 1]];
+            unsigned other = abs((int)q->x - (int)sWorld.field.x) + abs((int)q->y - (int)sWorld.field.y);
+            if ((p->id[0] == '@') > (q->id[0] == '@')
+             || ((p->id[0] == '@') == (q->id[0] == '@') && distance >= other)) break;
+            order[j] = order[j - 1];
+        }
+        order[j] = i;
+        count++;
+    }
+    for (i = 0; i < count && selected < capacity; i++) {
+        if (sWorld.live.peers[order[i]].id[0] != '@' && humans++ >= limit) continue;
+        order[selected++] = order[i];
+    }
+    return selected;
+}
+
 static void SyncEngine(void)
 {
-    unsigned i, j;
+    unsigned i, j, k, order[WB_REMOTES], selected;
     bool8 updateTiles, fieldLocked;
     /* Our own modal owns the field lock. Keep its NPC alive, but do not
      * mutate engine objects or map tiles while the text task is running. */
@@ -783,17 +838,18 @@ static void SyncEngine(void)
     sWorld.grid = gBackupMapLayout.map;
     sWorld.group = gSaveBlock1Ptr->location.mapGroup;
     sWorld.num = gSaveBlock1Ptr->location.mapNum;
+    selected = SelectPeers(order);
     for (i = 0; i < WB_REMOTES; i++) {
         struct Remote *r = &sWorld.remotes[i];
         const struct Peer *p = NULL;
-        for (j = 0; j < sWorld.live.peerCount; j++)
-            if (!strcmp(r->id, sWorld.live.peers[j].id)) p = &sWorld.live.peers[j];
+        for (j = 0; j < selected; j++)
+            if (!strcmp(r->id, sWorld.live.peers[order[j]].id)) p = &sWorld.live.peers[order[j]];
         if (!p || p->group != (unsigned)sWorld.group || p->num != (unsigned)sWorld.num)
             RemoveRemote(i);
         else if (!Owned(i)) memset(r, 0, sizeof(*r));
     }
-    for (j = 0; j < sWorld.live.peerCount; j++) {
-        const struct Peer *p = &sWorld.live.peers[j];
+    for (k = 0; k < selected; k++) {
+        const struct Peer *p = &sWorld.live.peers[order[k]];
         struct Remote *r = NULL;
         struct ObjectEvent *o;
         u8 gfx;
@@ -1055,6 +1111,24 @@ void WorldBridge_WriteJSON(FILE *file, u32 frame)
             count++ ? "," : "", r->id, r->object, o->localId, o->spriteId, o->graphicsId, o->mapGroup, o->mapNum,
             o->currentCoords.x - MAP_OFFSET, o->currentCoords.y - MAP_OFFSET,
             gSprites[o->spriteId].x, gSprites[o->spriteId].y, gSprites[o->spriteId].invisible ? "false" : "true");
+    }
+    /* Public roster survives allocation exhaustion. No team, bag, credentials
+     * or partner data: only the already-public PEER position/readiness. */
+    fprintf(file, "],\"visible_peer_limit\":%u,\"peer_wire_limit\":%u,\"roster\":[", sWorld.visiblePeers, WB_PEERS);
+    count = 0;
+    for (i = 0; i < sWorld.live.peerCount; i++) {
+        const struct Peer *peer = &sWorld.live.peers[i];
+        unsigned j;
+        bool8 rendered = FALSE;
+        if (peer->id[0] == '@') continue;
+        for (j = 0; j < WB_REMOTES; j++)
+            if (Overworld() && Owned(j) && !strcmp(sWorld.remotes[j].id, peer->id)) rendered = TRUE;
+        fprintf(file, "%s{\"trainer\":\"%s\",\"map\":[%u,%u],\"pos\":[%u,%u],\"ready\":%s,\"status\":\"%s\",\"rendered\":%s,\"nearby\":%s}",
+            count++ ? "," : "", peer->id, peer->group, peer->num, peer->x, peer->y,
+            peer->ready ? "true" : "false", peer->ready ? "available" : "busy",
+            rendered ? "true" : "false",
+            gSaveBlock1Ptr && peer->group == (unsigned)gSaveBlock1Ptr->location.mapGroup
+             && peer->num == (unsigned)gSaveBlock1Ptr->location.mapNum ? "true" : "false");
     }
     fprintf(file, "],\"objects\":[");
     count = 0;

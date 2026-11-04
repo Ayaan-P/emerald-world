@@ -4,7 +4,11 @@
 #include <stdio.h>
 #include "gba/types.h"
 
-/* NULL config is a strict no-op. Invalid explicit config returns FALSE. */
+/* NULL config is a strict no-op. Invalid explicit config returns FALSE.
+ * Optional visible_peers 1..8 bounds locally rendered humans (default 8).
+ * This is NOT world population: the authority projects an eight-peer relevance
+ * window and the engine may render fewer when native NPC slots are occupied.
+ * Public telemetry roster includes relevant peers even without a sprite. */
 bool8 WorldBridge_Init(const char *configPath);
 bool8 WorldBridge_Enabled(void);
 /* Validated local identity for window labels; never returns credentials. */
