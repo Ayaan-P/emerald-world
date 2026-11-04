@@ -72,6 +72,14 @@ def assemble(binary, web_dist, version, output):
     for name in filter(None, tracked):
         if re.fullmatch(r'world/[A-Za-z0-9_]+\.py', name):
             frozen[name] = (plain(REPO / name).read_bytes(), 0o644)
+    # Fixed, reviewed attribution inputs for the imported Expansion modules.
+    # Do not recurse through vendor or copy development/runtime evidence.
+    for source, name in [
+        ('vendor/expansion-dexnav/README.md', 'credits/expansion/README.md'),
+        ('vendor/expansion-dexnav/upstream/CREDITS.md', 'credits/expansion/CREDITS.md'),
+        ('vendor/expansion-dexnav/provenance.json', 'credits/expansion/provenance.json'),
+    ]:
+        frozen[name] = (plain(REPO / source).read_bytes(), 0o644)
     # Generated safety catalog is the only non-Python world runtime asset.
     # Runtime catalog reads do not require source data/maps or build tools.
     frozen['world/map_catalog.json'] = (plain(REPO / 'world/map_catalog.json').read_bytes(), 0o644)
