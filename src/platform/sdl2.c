@@ -14,6 +14,7 @@
 #include "platform/native_file.h"
 #ifndef _WIN32
 #include "platform/native_save.h"
+#include "platform/native_unstuck.h"
 #endif
 #include "global.h"
 #include "platform.h"
@@ -181,6 +182,11 @@ int main(int argc, char **argv)
 #endif
         return 1;
     }
+#ifndef _WIN32
+    /* Only the launcher-provided private save may own an unstuck sidecar. */
+    NativeUnstuck_SetSavePath(sSavePath);
+#endif
+
     // Before AgbMain, whose RtcInit reads it
     InitInternalClock();
 

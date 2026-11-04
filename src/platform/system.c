@@ -9,6 +9,9 @@
 #include "main.h"
 #include "platform/dma.h"
 #include "platform/system.h"
+#ifndef _WIN32
+#include "platform/world_unstuck.h"
+#endif
 #include "m4a.h"
 #include "cgb_audio.h"
 
@@ -97,7 +100,12 @@ __attribute__((no_sanitize_address)) static void ClearGameRam(void)
 void RegisterRamReset(u32 resetFlags)
 {
 	if ((resetFlags & (RESET_EWRAM | RESET_IWRAM)) == (RESET_EWRAM | RESET_IWRAM))
-		ClearGameRam();
+    {
+#ifndef _WIN32
+        WorldUnstuck_Reset();
+#endif
+        ClearGameRam();
+    }
 	if (resetFlags & RESET_PALETTE)
 		memset(PLTT, 0, sizeof(PLTT));
 	if (resetFlags & RESET_VRAM)
