@@ -27,5 +27,10 @@ void WorldBridge_WriteJSON(FILE *file, u32 frame);
  * objects and tiles out of persisted saves. Reapplied at the next frame. */
 void WorldBridge_PrepareSave(void);
 void WorldBridge_Close(void);
+/* SDL-side chat never locks, scripts, pauses, or writes the native game. */
+int WorldBridge_ChatSend(const char *target, const char *text);
+unsigned WorldBridge_ChatCount(void);
+const char *WorldBridge_ChatStatus(void);
+void WorldBridge_ChatLine(unsigned index, char *out, unsigned size);
 #endif
 #endif
