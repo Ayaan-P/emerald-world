@@ -28,8 +28,8 @@ from .session import DesktopSession, SessionError
 from .transport import read_invitation
 
 DIST = REPO / 'launcher-web' / 'dist'
-MAX_BODY = 1500000
-MAX_SAVE = 1048576
+MAX_BODY = 180000
+MAX_SAVE = 131072
 
 
 class LauncherBridge:
@@ -192,6 +192,8 @@ class LauncherBridge:
                 except SessionError:
                     raise
                 except HostingError as exc:
+                    if action == 'host_invite_account' and exc.code == 'forbidden':
+                        raise SessionError('This account cannot invite new owners. Ask the server owner for access.') from None
                     message = {'capacity': 'The host has no world slots available right now.',
                                'forbidden': 'The host rejected this access or invitation.',
                                'conflict': 'That trainer or request conflicts with an existing one.',
@@ -262,14 +264,14 @@ class LauncherBridge:
                 if seed is None:
                     self._start_offline(world, trainer)
                 else:
-                    if not isinstance(seed, str) or len(seed) > 1400000:
-                        raise SessionError('Choose a save file no larger than 1 MiB.')
+                    if not isinstance(seed, str) or len(seed) > 174800:
+                        raise SessionError('Choose a save file no larger than 128 KiB.')
                     try:
                         data = base64.b64decode(seed, validate=True)
                     except (ValueError, binascii.Error):
                         raise SessionError('That save file could not be read.') from None
                     if not 0 < len(data) <= MAX_SAVE:
-                        raise SessionError('Choose a nonempty save file no larger than 1 MiB.')
+                        raise SessionError('Choose a nonempty save file no larger than 128 KiB.')
                     with tempfile.TemporaryDirectory(prefix='emerald-save-') as directory:
                         path = Path(directory) / 'seed.sav'
                         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)

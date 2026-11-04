@@ -158,6 +158,12 @@ class WebLauncherTests(unittest.TestCase):
         self.assertEqual(seen['mode'], 0o600)
         self.assertFalse(seen['path'].exists())
 
+    def test_solo_import_refuses_data_larger_than_native_flash(self):
+        raw = base64.b64encode(b'x' * 131073).decode()
+        with self.assertRaisesRegex(SessionError, '128 KiB'):
+            self.bridge.action('solo_new', {'trainer': 'May', 'seed': raw})
+        self.session.launch_offline.assert_not_called()
+
     def test_solo_import_rejects_invalid_data_without_launching(self):
         with self.assertRaises(SessionError):
             self.bridge.action('solo_new', {'trainer': 'May', 'seed': 'not base64!?'})

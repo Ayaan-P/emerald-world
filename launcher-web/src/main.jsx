@@ -151,12 +151,12 @@ export function App() {
     const request = ++seedRequest.current;
     setSoloSeed(null); setSoloSeedName(''); setError('');
     if (!file) return;
-    if (!file.size || file.size > 1048576) { setError('Choose a nonempty save file no larger than 1 MiB.'); return; }
+    if (!file.size || file.size > 131072) { setError('Choose a nonempty save file no larger than 128 KiB.'); return; }
     setSeedLoading(true);
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
       if (request !== seedRequest.current) return;
-      if (!bytes.length || bytes.length > 1048576) throw new Error();
+      if (!bytes.length || bytes.length > 131072) throw new Error();
       let binary = '';
       for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
       setSoloSeed(btoa(binary)); setSoloSeedName(file.name);
