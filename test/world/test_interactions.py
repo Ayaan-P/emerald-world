@@ -45,6 +45,7 @@ static u8 MapGridGetMetatileBehaviorAt(int x, int y) {
 }
 static bool8 MetatileBehavior_IsCounter(u8 behavior) {return behavior==1;}
 static int activityEnabled, activityOwns, interactions, talkQueued;
+static int WorldTravel_OwnsFieldInput(void) { return 0; }
 static int WorldActivity_OwnsFieldInput(void) { return activityOwns; }
 static int WorldActivity_Interact(const char *peer) {
  assert(!strcmp(peer, "bob")); interactions++;
