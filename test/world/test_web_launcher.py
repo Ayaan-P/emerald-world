@@ -44,6 +44,7 @@ class WebLauncherTests(unittest.TestCase):
         self.assertFalse(seen['path'].exists())
         self.assertNotIn('a' * 64, json.dumps(result))
         self.assertTrue(result['connected'])
+        self.assertEqual(result['world_key'], 'world')
 
     def test_duplicate_invitation_keys_and_oversized_files_are_rejected(self):
         raw = json.dumps(self.invitation()).replace('"version": 1', '"version": 1, "version": 1')
@@ -108,6 +109,14 @@ class WebLauncherTests(unittest.TestCase):
                 self.assertEqual(result['worlds'][0]['name'], 'Friend’s world · 1234')
             finally:
                 session.close()
+
+    def test_snapshot_identifies_the_running_offline_world_without_exposing_paths(self):
+        process = Mock(); process.poll.return_value = None
+        profile = self.session.root / 'solo-one' / '.offline' / 'trainers' / 'May'
+        self.session.games = {'offline/May': (process, {'profile': profile})}
+        result = self.bridge.snapshot()
+        self.assertEqual(result['offline_world_key'], 'solo-one')
+        self.assertNotIn(str(self.session.root), json.dumps(result))
 
     def test_presence_uses_only_fresh_sanitized_own_game_telemetry(self):
         telemetry = Path(self.tmp.name) / 'telemetry.json'

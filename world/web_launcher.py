@@ -143,11 +143,27 @@ class LauncherBridge:
                 if label == key and key.startswith('remote-'):
                     label = 'Friend’s world · ' + key[-4:]
                 worlds.append({'key': key, 'name': label, 'trainer': item['trainer'], 'favorite': favorite})
+            offline_world_key = None
+            for game, (process, paths) in self.session.games.items():
+                if not game.startswith('offline/') or process.poll() is not None:
+                    continue
+                try:
+                    profile = Path(paths['profile'])
+                    world = profile.parent.parent.parent
+                    if (profile.name == game[8:] and profile.parent.name == 'trainers'
+                            and profile.parent.parent.name == '.offline'
+                            and world.parent == self.session.root
+                            and re.fullmatch(r'[A-Za-z0-9_-]{1,48}', world.name)):
+                        offline_world_key = world.name
+                except (KeyError, TypeError, ValueError):
+                    pass
             from scripts.linux_client import prerequisites
             setup = [{'name': name, 'ready': ready, 'help': help_text}
                      for name, ready, help_text in prerequisites(self.binary) if name != 'tkinter']
             return {'worlds': worlds, 'offline_saves': self.offline_saves(), 'presence': self.game_presence(), 'hosting': self.hosted.state(), 'setup': setup, 'connected': self.session.state is not None,
                     'trainer': self.session.remote_trainer,
+                    'world_key': self.session.state.name if self.session.state is not None else None,
+                    'offline_world_key': offline_world_key,
                     'games': [name for name, (process, _paths) in self.session.games.items()
                               if process.poll() is None], 'status': self.session.status}
 
