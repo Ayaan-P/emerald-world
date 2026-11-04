@@ -49,6 +49,7 @@
 #define WB_REMOTES (WB_PEERS + WB_OBJECTS)
 #define WB_TILES 128
 #define WB_BUFFER 65536
+#define WB_HANDSHAKE_POLLS 300
 #define WB_LOCALID 224
 #define WB_MARKER 0x5742
 
@@ -76,7 +77,7 @@ static struct {
     char socketPath[108], trainer[25], token[65], telemetry[1024];
     char input[WB_BUFFER], output[4096];
     size_t inputSize, outputSize, outputSent;
-    unsigned seq, retry, stagedBytes, generation, appliedGeneration;
+    unsigned seq, retry, handshakePolls, stagedBytes, generation, appliedGeneration;
     bool8 tilesLive;
     struct Snapshot live, stage;
     struct Peer field;
@@ -623,6 +624,7 @@ static void Connect(void)
     if (result < 0 && errno != EINPROGRESS) { Disconnect(); return; }
 #endif
     sWorld.connecting = result < 0;
+    sWorld.handshakePolls = WB_HANDSHAKE_POLLS;
     sWorld.seq = 0;
     sWorld.shownMeeting = 0;
     QueueHello();
@@ -1099,6 +1101,12 @@ void WorldBridge_Poll(bool8 headless)
     if (!SocketOpen()) {
         if (sWorld.retry) sWorld.retry--;
         else Connect();
+    }
+    if (SocketOpen() && !sWorld.connected) {
+        /* Include connection setup and partial replies in one attempt budget.
+         * Existing cleanup retires stale snapshots before the usual retry. */
+        if (!sWorld.handshakePolls) { Disconnect(); return; }
+        sWorld.handshakePolls--;
     }
     if (SocketOpen()) Receive(headless);
 }

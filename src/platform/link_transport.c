@@ -21,6 +21,7 @@
 #include "platform/native_link.h"
 #include "platform/link_transport.h"
 #define QUEUE_CAP 65536
+#define HANDSHAKE_PUMPS 300
 static struct {
 #ifdef _WIN32
     SOCKET fd;
@@ -31,7 +32,7 @@ static struct {
     int fd;
 #endif
     int initialized, enabled, connecting, ready;
-    unsigned retry;
+    unsigned retry, handshakePumps;
     char path[108], trainer[25], token[65], telemetry[1024];
     char output[QUEUE_CAP], input[513];
     size_t queued, sent, used;
@@ -284,6 +285,7 @@ static int Connect(void)
     }
 #endif
     sLink.connecting = result != 0;
+    sLink.handshakePumps = HANDSHAKE_PUMPS;
     sLink.enabled = 1;
     snprintf(hello, sizeof(hello), "HELLO 1 %s %s LINK\n", sLink.trainer, sLink.token);
     Queue(hello);
@@ -552,6 +554,13 @@ void LinkTransport_Pump(void)
     if (!SocketOpen()) {
         if (sLink.retry) { sLink.retry--; return; }
         if (!Connect()) return;
+    }
+    /* Bound the whole unauthenticated attempt, not each incoming byte. A
+     * silent or trickling endpoint must not strand the native cable forever.
+     * Ready channels retain their existing session and inactivity semantics. */
+    if (!sLink.ready) {
+        if (!sLink.handshakePumps) { RetryDisconnect(); return; }
+        sLink.handshakePumps--;
     }
     if (sLink.connecting) {
         int error = 0;
