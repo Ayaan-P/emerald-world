@@ -1,8 +1,55 @@
 # Co-op release status and evidence
 
-## Snapshot and scope
+## Current verified baseline
 
-This document records the current gameplay baseline on `main` at commit
+The current gameplay implementation is on `main` at
+[`ee3c130`](https://github.com/Ayaan-P/emerald-world/commit/ee3c130f96ea0be47e20ebd28bd46218f587cc65),
+Git tree `d7e25e3c23e489c07037b9cd3388aade61fa0ad4`. Documentation-only
+follow-ups do not change the tested gameplay source.
+
+- [#131](https://github.com/Ayaan-P/emerald-world/pull/131) merged checked owned
+  saves, fresh trade consent and checked trade commits, private faint friendship
+  updates, and the co-op completion echo drain. The original source PRs remain
+  traceable, but their older open/draft state does not mean the integrated code
+  is absent from `main`.
+- [#132](https://github.com/Ayaan-P/emerald-world/pull/132) merged dedicated
+  persistent hosting, bounded population and nearest-peer views, safe busy
+  presence, and explicit launcher lifecycle operations. It also fixes premature
+  native LINK handshake expiry and idle active-Tag channel teardown.
+- [CI run 41875036893](https://github.com/Ayaan-P/emerald-world/actions/runs/41875036893)
+  passed the focused regressions and Linux warning-as-error build with standalone
+  frame/save smoke on the source tree merged by #132. Separately, 53 focused
+  transport/Tag/protocol/dedicated checks passed locally.
+- Four disposable native Linux clients completed a real public pinned-TLS WAN
+  run. All twelve directed peer sprites, ordinary walking, normal peer menus and
+  bilateral consent for two independent Tag pairs passed.
+- Both pairs entered simultaneous genuine grass battles with independent native
+  battle masters. The first pair completed its capture while the second remained
+  in its own connected battle, then the second pair completed its capture.
+- Only each actual throw owner gained a Pokemon and spent a ball. Private party
+  counts changed from 1/2/3/4 to 2/2/4/4. Non-owners' inventories and private PCs
+  passed ownership checks. All four completed ordinary SAVE, Continue and re-SAVE
+  with save counters 3, 4 and 5 and matching private state after reload.
+- The dedicated authority is deployed and its active service/source hash were
+  read back after the run. Existing world state, identities and TLS files were
+  retained. Deployment had a private rollback backup and no connected users at
+  cutover. All disposable native clients were reaped after acceptance.
+
+This proves four players in one world running two independent two-human battles,
+not four humans in one battle. It does not establish 32/64-player throughput,
+Windows guest acceptance, fresh native PvP/trade acceptance, arbitrary disconnect
+recovery or universal special-encounter support. The original campaign remains
+playable; additional regions and expanded species are separate future work.
+Private invitations, raw traces, screenshots, saves and binaries remain private.
+
+The records below describe the older `02080a4` release snapshot. Their no-WAN,
+no-live-deployment and unmerged-hardening statements are historical and are
+superseded by this current section. Earlier failures and narrower evidence are
+retained rather than rewritten as new acceptance.
+
+## Historical snapshot and scope
+
+The historical verification below records the earlier gameplay baseline at commit
 [`02080a4140372be54c5115e605257cae96da45e6`](https://github.com/Ayaan-P/emerald-world/commit/02080a4140372be54c5115e605257cae96da45e6).
 Its Git tree is `a102fffdfcd2c674daafe46cf0018c44dcb6e8b4`.
 Documentation-only follow-ups do not change that gameplay implementation, though
@@ -27,7 +74,7 @@ substitute for native gameplay evidence. Earlier comments on #91 describe
 intermediate failures and pending retests. This matrix records their later
 outcomes without rewriting that history.
 
-## Evidence matrix
+## Historical evidence matrix
 
 | Area | Observed evidence | What it does not establish |
 |---|---|---|
@@ -72,7 +119,7 @@ outcomes without rewriting that history.
 - Both peers need the same updated native source with co-op protocol v3.
   A base presence connection does not prove matching co-op versions.
 
-## Included in the gameplay snapshot
+## Included in the historical gameplay snapshot
 
 Git ancestry and GitHub merge state were checked for this documentation update.
 These slices are on `main`, not merely present on worker branches.
@@ -91,7 +138,7 @@ These slices are on `main`, not merely present on worker branches.
 | [#97](https://github.com/Ayaan-P/emerald-world/pull/97) | Present crossed tag offers without waiting for the outgoing rejection. |
 | [#98](https://github.com/Ayaan-P/emerald-world/pull/98) | Validate move replies against the outstanding controller request. |
 
-## Not included and still pending
+## Historical pending work at 02080a4
 
 | PR or issue | Status at this snapshot |
 |---|---|
@@ -104,9 +151,9 @@ These slices are on `main`, not merely present on worker branches.
 | [#2](https://github.com/Ayaan-P/emerald-world/issues/2) | Windows build/real guest verification remains externally owned and open. |
 | [#89](https://github.com/Ayaan-P/emerald-world/issues/89) | Open known limitation for individual trainer story progression. |
 
-Remaining acceptance includes an observed native failed throw followed by
-continued combat, broader mid-battle quit/network-loss/rejoin timing, current
-WAN catching, and special encounter coverage. Six combat Pokémon per human and
+At that historical snapshot, remaining acceptance included an observed native
+failed throw followed by continued combat, broader mid-battle
+quit/network-loss/rejoin timing, WAN catching, and special encounter coverage. Six combat Pokémon per human and
 complete battle-item support are not available claims.
 
 ### Issue closure is separate from merging a fix
