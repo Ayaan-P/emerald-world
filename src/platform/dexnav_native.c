@@ -39,6 +39,8 @@
 #include <sys/stat.h>
 #endif
 
+/* Existing native species table; preserve its IDs and layout. */
+extern const struct Evolution gEvolutionTable[NUM_SPECIES][EVOS_PER_MON];
 STATIC_ASSERT(sizeof(struct Pokemon) == 100, DexNavNativePokemonMustRemain100Bytes);
 struct DexNavNativeState gDexNavNativeState;
 static bool8 sCreeping, sGui, sFailed;
@@ -259,7 +261,7 @@ bool8 DexNav_RequestOpen(void)
 bool8 DexNavNative_ShouldCreep(u16 heldKeys)
 {
     return gDexNavNativeState.searching && (heldKeys & L_BUTTON)
-        && !TestPlayerAvatarFlags(PLAYER_AVATAR_FLAG_BIKE);
+        && !TestPlayerAvatarFlags(PLAYER_AVATAR_FLAG_MACH_BIKE | PLAYER_AVATAR_FLAG_ACRO_BIKE);
 }
 void DexNavNative_SetCreeping(bool8 creeping) { sCreeping = creeping; }
 bool8 DexNavNative_IsCreeping(void) { return sCreeping; }
