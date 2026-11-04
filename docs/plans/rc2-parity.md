@@ -1,6 +1,8 @@
 # RC2 parity integration
 
-Goal: consolidate dot PR145 and149–154 into one installed, working candidate, not hold chat/travel/preview as unrelated projects. User requested one bounded acceptance pass on the integrated RC, not per-PR test projects.
+Goal: advance the broader parity roadmap in meaningful integrated batches. The current dot PR145 and149–154 consolidation is a foundation, not the definition of parity or an automatic release boundary. Hermes chooses when a candidate contains enough coherent progress to justify one bounded acceptance pass and release; do not stop for per-PR test projects.
+
+Before extending scope, compare roadmap specifications with current main implementation and already merged source. Stale pending-verification labels are not evidence of missing code. Prioritize P0 human adventure/persistence and then P1 adventure/QoL. P2 content/challenge/online work follows actual dependencies, not a promise to replace it with metadata-only stubs. Windows human play remains friend-owned.
 
 ## Integration
 - Frontend stack: serialized status reads, read-only timeout recovery, solo validation, stable modal focus, in-page capture/input view.
