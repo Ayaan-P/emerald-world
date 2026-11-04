@@ -1001,6 +1001,10 @@ u8 HandleSavingData(u8 saveType)
     u8 i;
     u32 *backupVar = gTrainerHillVBlankCounter;
     u8 *tempAddr;
+#ifdef PORTABLE
+    u16 previousSector = gLastWrittenSector;
+    u32 previousCounter = gSaveCounter;
+#endif
 
     gTrainerHillVBlankCounter = NULL;
     UpdateSaveAddresses();
@@ -1052,7 +1056,15 @@ u8 HandleSavingData(u8 saveType)
     }
 
 #ifdef PORTABLE
-	Platform_StoreSaveFile();
+    if (!Platform_StoreSaveFile())
+    {
+        // A file-system error is not a damaged flash sector. Do not erase a
+        // valid backup slot or advance the rotation when persistence fails.
+        gLastWrittenSector = previousSector;
+        gSaveCounter = previousCounter;
+        gTrainerHillVBlankCounter = backupVar;
+        return SAVE_STATUS_ERROR;
+    }
 #endif
 
     gTrainerHillVBlankCounter = backupVar;
@@ -1067,12 +1079,17 @@ u8 TrySavingData(u8 saveType)
         return SAVE_STATUS_ERROR;
     }
 
+#ifdef PORTABLE
+    if (HandleSavingData(saveType) == SAVE_STATUS_ERROR)
+    {
+        gSaveAttemptStatus = SAVE_STATUS_ERROR;
+        return SAVE_STATUS_ERROR;
+    }
+#else
     HandleSavingData(saveType);
+#endif
     if (!gDamagedSaveSectors)
     {
-#ifdef PORTABLE
-		Platform_StoreSaveFile();
-#endif
         gSaveAttemptStatus = SAVE_STATUS_OK;
         return SAVE_STATUS_OK;
     }
