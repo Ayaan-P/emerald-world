@@ -84,6 +84,15 @@ class WebLauncherTests(unittest.TestCase):
             self.bridge.action('offline', {'world': 'world1', 'copy': False})
         self.session.launch_offline.assert_not_called()
 
+    def test_setup_reports_game_dependencies_without_tkinter(self):
+        checks = [('tkinter', False, 'Tk only'), ('bwrap', False, 'Install bubblewrap.'),
+                  ('binary', True, 'Build the game.')]
+        with patch('scripts.linux_client.prerequisites', return_value=checks):
+            result = self.bridge.snapshot()['setup']
+        self.assertEqual([item['name'] for item in result], ['bwrap', 'binary'])
+        self.assertFalse(result[0]['ready'])
+        self.assertEqual(result[0]['help'], 'Install bubblewrap.')
+
     def test_running_offline_game_blocks_rejoin(self):
         process = Mock()
         process.poll.return_value = None

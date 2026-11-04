@@ -43,7 +43,10 @@ class LauncherBridge:
                 if label == key and key.startswith('remote-'):
                     label = 'Friend’s world · ' + key[-4:]
                 worlds.append({'key': key, 'name': label, 'trainer': item['trainer']})
-            return {'worlds': worlds, 'connected': self.session.state is not None,
+            from scripts.linux_client import prerequisites
+            setup = [{'name': name, 'ready': ready, 'help': help_text}
+                     for name, ready, help_text in prerequisites(self.binary) if name != 'tkinter']
+            return {'worlds': worlds, 'setup': setup, 'connected': self.session.state is not None,
                     'trainer': self.session.remote_trainer,
                     'games': [name for name, (process, _paths) in self.session.games.items()
                               if process.poll() is None], 'status': self.session.status}
