@@ -4,7 +4,7 @@
 ## Project
 pokeemerald-native builds Pokémon Emerald as a native program for Linux, Windows and macOS, from [pret's decompilation](https://github.com/pret/pokeemerald). The same sources still build the GBA ROM, and that ROM must not change. The PC port was originally made by [NTx86](https://github.com/NTx86/pokeemerald-sdl2pc); this repository continues from it on its own.
 
-- **Branches**: `vanilla` is the default branch: vanilla Emerald on PC. Work based on [pokeemerald-expansion](https://github.com/rh-hideout/pokeemerald-expansion) goes on its own branch.
+- **Branches**: `main` is the default and the working human multiplayer baseline. Branch from `origin/main` and target new PRs to `main`. `vanilla` preserves the upstream port and `rc` preserves the earlier integration baseline. Do not replace the working co-op implementation with either historical branch. Expansion work remains separate.
 - **Upstream code**: pret's fixes come from `pret/pokeemerald`, fetched as `pret/master`. `git show pret/master:<path>` shows the original of any shared file, and `git show pret/master:src/m4a_1.s` the sound engine's assembly.
 
 ## Behavioral Rules (Always Enforced)
@@ -16,7 +16,7 @@ pokeemerald-native builds Pokémon Emerald as a native program for Linux, Window
 - ALWAYS read a file before editing it, and read a function's body before calling it in a fix
 - ALWAYS build and run the headless tests after code changes, and verify both before committing
 - NEVER use temporary workarounds, TODOs, "for now" hacks, or deferred fixes — solve the root cause
-- Commit and push only when asked. Every change goes on a branch and through a PR into `vanilla`. NEVER force-push a pushed branch
+- Commit and push only when asked. Normal feature work goes on a branch and through a PR into `main`. NEVER force-push a pushed branch. The maintainer may explicitly authorize promoting a new default-branch baseline.
 - NEVER distribute, upload or commit a ROM, a save or a game binary. Print hashes only
 - NEVER mention or @-mention third parties in PR descriptions or commit messages
 - NEVER run `sudo` or install system packages — the user handles installation
@@ -93,14 +93,15 @@ python3 test/headless/run.py ./pokeemerald64 first_battle --shots 30 --sheet
 
 - `expected_frames.txt` changes only when a change is meant to change frames (`smoke.py --update-expected`), and the commit says why. Updating it to make a failing check pass hides a regression.
 - Scenarios live in `test/headless/scenarios/`. New ones define `play(game)` and use the driver's actions (`continue_game`, `walk_to`, `talk_to`, `finish_dialog`, `fight_battle`, `save_game`) rather than hand-timed input. See `test/headless/README.md`.
-- CI (`.github/workflows/build.yml`) runs on pushes to `vanilla` and on every PR:
+- Current default-branch CI is `.github/workflows/main-baseline.yml`. It runs focused protocol/C regressions, a Linux build and standalone headless smoke on `main` pushes and PRs. It does not prove native multiplayer or WAN acceptance.
+- Legacy full-platform CI (`.github/workflows/build.yml`) is manual-only and contains:
   - `build`: the modern GBA build, Windows 64 and 32-bit, Linux with the smoke tests and the data audit
   - `gba-rom`: the agbcc ROM compared with the PR's base
   - `sanitizers`: ASan and UBSan with the smoke tests
   - `macos`: Apple Silicon, with the smoke tests
   - `windows-test`: the smoke tests on Windows, with the frames compared with Linux's
 
-A PR merges only when all five pass.
+Report exactly which checks ran. Do not claim the five legacy jobs passed from a green default-branch check. Native multiplayer acceptance uses disposable profiles and must not interfere with human-controlled sessions.
 
 ### Directory Structure
 ```
@@ -133,7 +134,7 @@ test/headless/        — the headless tests and their Python driver
 - `code-audit` — the multi-pass audit-and-fix loop. Its partition reviewers are the `pe-*-reviewer` agents in `.claude/agents/review/`: platform, audio, renderer and hardware, saves, shared game code, data and assembler, and build and tests.
 
 ## Git
-- Branch off `vanilla`, open a PR into `vanilla`, merge when CI is green.
+- Branch off `main`, open a PR into `main`, merge when applicable CI is green. Do not delete or reset another worker's branch/worktree as repository cleanup.
 - Commit subjects are a plain imperative sentence saying what changed (no conventional-commit prefixes). The body says why, and how it was verified. Check every claim in a message against the staged diff before committing.
 - NEVER force-push a pushed branch. NEVER commit build output, ROMs, saves or `pokeemerald.ini`.
 
@@ -157,6 +158,6 @@ test/headless/        — the headless tests and their Python driver
 - Saves must load on the GBA and on every build: never change a saved byte without converting it
 
 ## Support
-- Repository: https://github.com/fuddlesworth/pokeemerald-native
+- Repository: https://github.com/Ayaan-P/emerald-world
 - Decompilation: https://github.com/pret/pokeemerald
 - Original PC port: https://github.com/NTx86/pokeemerald-sdl2pc

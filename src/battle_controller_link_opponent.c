@@ -237,6 +237,19 @@ static void Intro_WaitForShinyAnimAndHealthbox(void)
 
     if (healthboxAnimDone)
     {
+#ifdef PORTABLE
+        if (WorldCoop_IsBattle() && (gAbsentBattlerFlags & (1u << BATTLE_PARTNER(gActiveBattler))))
+        {
+            /* No second NPC sendout exists for an original single trainer. */
+            if (!gBattleSpritesDataPtr->healthBoxesData[gActiveBattler].finishedShinyMonAnim)
+                return;
+            gBattleSpritesDataPtr->healthBoxesData[gActiveBattler].triedShinyMonAnim = FALSE;
+            gBattleSpritesDataPtr->healthBoxesData[gActiveBattler].finishedShinyMonAnim = FALSE;
+            FreeSpriteTilesByTag(ANIM_TAG_GOLD_STARS);
+            FreeSpritePaletteByTag(ANIM_TAG_GOLD_STARS);
+        }
+        else
+#endif
         if (twoMons || !IsBattlerSpriteVisible(BATTLE_PARTNER(gActiveBattler)))
         {
             if (!gBattleSpritesDataPtr->healthBoxesData[gActiveBattler].finishedShinyMonAnim)
@@ -1227,6 +1240,14 @@ static void LinkOpponentHandleDrawTrainerPic(void)
     s16 xPos;
     u32 trainerPicId;
 
+#ifdef PORTABLE
+    if (WorldCoop_IsTrainer())
+    {
+        xPos = 200;
+        trainerPicId = gTrainers[gTrainerBattleOpponent_A].trainerPic;
+    }
+    else
+#endif
     if (gBattleTypeFlags & BATTLE_TYPE_MULTI)
     {
         if ((GetBattlerPosition(gActiveBattler) & BIT_FLANK) != 0) // second mon

@@ -7,6 +7,9 @@
 #include "battle_message.h"
 #include "battle_interface.h"
 #include "battle_setup.h"
+#ifdef PORTABLE
+#include "platform/world_coop.h"
+#endif
 #include "battle_tower.h"
 #include "battle_tv.h"
 #include "bg.h"
@@ -1670,6 +1673,42 @@ static void OpponentHandleChoosePokemon(void)
     }
 
 
+#ifdef PORTABLE
+    if (WorldCoop_IsTrainer())
+    {
+        u8 other = BATTLE_PARTNER(gActiveBattler);
+        u8 pending = gSpecialStatuses[other].faintedHasReplacement
+            ? gBattleStruct->monToSwitchIntoId[other] : PARTY_SIZE;
+        /* Both NPC slots can request a replacement on the same turn. The
+         * second controller must not claim the first controller's reserve. */
+        if (chosenMonId >= PARTY_SIZE || chosenMonId == pending
+         || chosenMonId == gBattlerPartyIndexes[gActiveBattler]
+         || (!(gAbsentBattlerFlags & gBitTable[other]) && chosenMonId == gBattlerPartyIndexes[other])
+         || !GetMonData(&gEnemyParty[chosenMonId], MON_DATA_SPECIES)
+         || GetMonData(&gEnemyParty[chosenMonId], MON_DATA_IS_EGG)
+         || !GetMonData(&gEnemyParty[chosenMonId], MON_DATA_HP))
+        {
+            for (chosenMonId = 0; chosenMonId < PARTY_SIZE; chosenMonId++)
+                if (chosenMonId != pending && chosenMonId != gBattlerPartyIndexes[gActiveBattler]
+                 && ((gAbsentBattlerFlags & gBitTable[other]) || chosenMonId != gBattlerPartyIndexes[other])
+                 && GetMonData(&gEnemyParty[chosenMonId], MON_DATA_SPECIES)
+                 && !GetMonData(&gEnemyParty[chosenMonId], MON_DATA_IS_EGG)
+                 && GetMonData(&gEnemyParty[chosenMonId], MON_DATA_HP))
+                    break;
+        }
+        if (chosenMonId == PARTY_SIZE)
+        {
+            gAbsentBattlerFlags |= gBitTable[gActiveBattler];
+            gHitMarker &= ~HITMARKER_FAINTED(gActiveBattler);
+            gSpecialStatuses[gActiveBattler].faintedHasReplacement = FALSE;
+        }
+        gBattleStruct->monToSwitchIntoId[gActiveBattler] = chosenMonId;
+        BtlController_EmitChosenMonReturnValue(B_COMM_TO_ENGINE, chosenMonId,
+            gBattleStruct->battlerPartyOrders[gActiveBattler]);
+        OpponentBufferExecCompleted();
+        return;
+    }
+#endif
     *(gBattleStruct->monToSwitchIntoId + gActiveBattler) = chosenMonId;
     BtlController_EmitChosenMonReturnValue(B_COMM_TO_ENGINE, chosenMonId, NULL);
     OpponentBufferExecCompleted();

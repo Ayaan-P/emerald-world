@@ -15,6 +15,9 @@
 #include "battle_interface.h"
 #include "battle_anim.h"
 #include "data.h"
+#ifdef PORTABLE
+#include "platform/world_coop.h"
+#endif
 
 // this file's functions
 static void CB2_ReshowBattleScreenAfterMenu(void);
@@ -182,6 +185,10 @@ static void ClearBattleBgCntBaseBlocks(void)
 
 static bool8 LoadBattlerSpriteGfx(u8 battler)
 {
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle() && battler < MAX_BATTLERS_COUNT && (gAbsentBattlerFlags & (1u << battler)))
+        return TRUE;
+#endif
     if (battler < gBattlersCount)
     {
         if (GetBattlerSide(battler) != B_SIDE_PLAYER)
@@ -207,6 +214,10 @@ static bool8 LoadBattlerSpriteGfx(u8 battler)
 
 static void CreateBattlerSprite(u8 battler)
 {
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle() && battler < MAX_BATTLERS_COUNT && (gAbsentBattlerFlags & (1u << battler)))
+        return;
+#endif
     if (battler < gBattlersCount)
     {
         u8 posY;
@@ -275,6 +286,12 @@ static void CreateBattlerSprite(u8 battler)
 
 static void CreateHealthboxSprite(u8 battler)
 {
+#ifdef PORTABLE
+    /* Shared singles keep slot3 absent in the four-battler engine. Rebuilding
+     * its empty HP bar after a Bag/Party menu would divide by maxHP == 0. */
+    if (WorldCoop_IsBattle() && battler < MAX_BATTLERS_COUNT && (gAbsentBattlerFlags & (1u << battler)))
+        return;
+#endif
     if (battler < gBattlersCount)
     {
         u8 healthboxSpriteId;

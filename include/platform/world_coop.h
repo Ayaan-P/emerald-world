@@ -3,10 +3,16 @@
 #ifdef PORTABLE
 #include "global.h"
 
-/* First slice: first three healthy, non-egg party members fight. All six
+/* The first three healthy, non-egg private party members fight. All six
  * private slots survive. Bag use/catching is unavailable in shared combat.
- * Capture only a standard, genuinely generated single wild encounter. */
+ * Encounters retain the generated wild mon or the complete NPC trainer team. */
 void WorldCoop_CaptureWild(void);
+bool8 WorldCoop_CaptureTrainer(void);
+bool8 WorldCoop_IsTrainer(void);
+bool8 WorldCoop_IsDoubleTrainer(void);
+bool8 WorldCoop_HasSecondOpponent(void);
+u16 WorldCoop_TrainerId(void);
+void WorldCoop_CreateTrainerParty(void);
 int WorldCoop_StartBattle(bool8 encounterOwner);
 int WorldCoop_IsBattle(void);
 struct Pokemon;

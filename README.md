@@ -1,9 +1,50 @@
-# Emerald World (release candidate)
+# Emerald World
 
-The default `rc` branch contains the multiplayer client and world host. Each
-trainer has a separate party, inventory and save. This is an experimental build,
-not a complete shared-campaign release. Shared wild and trainer co-op battles
-are not implemented.
+`main` is the development baseline for the native multiplayer client and world
+host. Start new work and pull requests from `main`; `rc` is retained as a
+historical integration branch, not the current playable baseline.
+
+Each trainer keeps a separate party, inventory and save. This is an experimental
+multiplayer build, not a complete shared-campaign release.
+
+## Working co-op baseline
+
+- Two human-controlled Linux clients can explore the same local world, accept a
+  tag invitation and enter shared wild or ordinary trainer encounters.
+- The maintainer manually played the shared May battle successfully after the
+  trainer-dialogue admission, unused NPC wire-slot and false-blackout fixes.
+  This is local gameplay confirmation, not a new Hetzner/WAN acceptance claim.
+- Each human brings up to **three usable Pokémon** into a tag battle; the full
+  private party is retained outside that temporary combat layout.
+- **Story progression is still individual:** each player currently needs to
+  initiate and win their own trainer encounter for it to count in their game.
+  This limitation is accepted for this baseline, not silently treated as shared
+  campaign completion.
+- Bags/catching in tag battles, six combat Pokémon per human, complete special
+  encounter coverage, and robust mid-battle quit/network-loss/rejoin acceptance
+  remain unfinished or pending verification. Do not infer them from a build or
+  a successful May encounter.
+- PvP and trading remain in the existing client; this baseline promotion does
+  not constitute a fresh end-to-end verification of those paths or of Windows.
+
+Track completed slices and remaining acceptance in the
+[roadmap](https://github.com/Ayaan-P/emerald-world/issues/5) and
+[open issues](https://github.com/Ayaan-P/emerald-world/issues).
+
+## Development checks
+
+The default-branch workflow runs focused protocol/C regressions, a Linux
+compile and standalone headless frame/save smoke. It does not certify
+end-to-end human multiplayer or WAN recovery.
+Locally, the focused checks do not launch game clients:
+
+```sh
+python3 -m unittest test.world.test_tag_coop test.world.test_link_protocol test.world.test_link_sessions test.world.test_trainer_abort_wire_regression -v
+```
+
+Keep runtime worlds, saves, invitations, credentials and generated executables
+out of commits. Never replace a missing acceptance run with mocked gameplay
+results. Preserve the original upstream attribution below.
 
 ## Linux multiplayer
 

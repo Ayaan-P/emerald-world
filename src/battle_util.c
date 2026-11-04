@@ -413,6 +413,13 @@ bool8 TryRunFromBattle(u8 battler)
     u8 holdEffect;
     u8 pyramidMultiplier;
     u8 speedVar;
+#ifdef PORTABLE
+    /* Both human flanks flee the same wild opponent. The right opponent slot
+     * is intentionally absent in a shared single-wild battle. */
+    #define RUN_OPPONENT (WorldCoop_IsBattle() ? B_POSITION_OPPONENT_LEFT : BATTLE_OPPOSITE(battler))
+#else
+    #define RUN_OPPONENT BATTLE_OPPOSITE(battler)
+#endif
 
     if (gBattleMons[battler].item == ITEM_ENIGMA_BERRY)
         holdEffect = gEnigmaBerries[battler].holdEffect;
@@ -433,7 +440,7 @@ bool8 TryRunFromBattle(u8 battler)
         {
             gBattleStruct->runTries++;
             pyramidMultiplier = GetPyramidRunMultiplier();
-            speedVar = (gBattleMons[battler].speed * pyramidMultiplier) / (gBattleMons[BATTLE_OPPOSITE(battler)].speed) + (gBattleStruct->runTries * 30);
+            speedVar = (gBattleMons[battler].speed * pyramidMultiplier) / (gBattleMons[RUN_OPPONENT].speed) + (gBattleStruct->runTries * 30);
             if (speedVar > (Random() & 0xFF))
             {
                 gLastUsedAbility = ABILITY_RUN_AWAY;
@@ -454,18 +461,22 @@ bool8 TryRunFromBattle(u8 battler)
     }
     else
     {
-        if (!(gBattleTypeFlags & BATTLE_TYPE_DOUBLE))
+        if (!(gBattleTypeFlags & BATTLE_TYPE_DOUBLE)
+#ifdef PORTABLE
+         || WorldCoop_IsBattle()
+#endif
+        )
         {
             if (CurrentBattlePyramidLocation() != PYRAMID_LOCATION_NONE)
             {
                 pyramidMultiplier = GetPyramidRunMultiplier();
-                speedVar = (gBattleMons[battler].speed * pyramidMultiplier) / (gBattleMons[BATTLE_OPPOSITE(battler)].speed) + (gBattleStruct->runTries * 30);
+                speedVar = (gBattleMons[battler].speed * pyramidMultiplier) / (gBattleMons[RUN_OPPONENT].speed) + (gBattleStruct->runTries * 30);
                 if (speedVar > (Random() & 0xFF))
                     effect++;
             }
-            else if (gBattleMons[battler].speed < gBattleMons[BATTLE_OPPOSITE(battler)].speed)
+            else if (gBattleMons[battler].speed < gBattleMons[RUN_OPPONENT].speed)
             {
-                speedVar = (gBattleMons[battler].speed * 128) / (gBattleMons[BATTLE_OPPOSITE(battler)].speed) + (gBattleStruct->runTries * 30);
+                speedVar = (gBattleMons[battler].speed * 128) / (gBattleMons[RUN_OPPONENT].speed) + (gBattleStruct->runTries * 30);
                 if (speedVar > (Random() & 0xFF))
                     effect++;
             }
@@ -484,6 +495,7 @@ bool8 TryRunFromBattle(u8 battler)
         gBattleOutcome = B_OUTCOME_RAN;
     }
 
+    #undef RUN_OPPONENT
     return effect;
 }
 
@@ -491,7 +503,11 @@ void HandleAction_Run(void)
 {
     gBattlerAttacker = gBattlerByTurnOrder[gCurrentTurnActionNumber];
 
-    if (gBattleTypeFlags & (BATTLE_TYPE_LINK | BATTLE_TYPE_RECORDED_LINK))
+    if ((gBattleTypeFlags & (BATTLE_TYPE_LINK | BATTLE_TYPE_RECORDED_LINK))
+#ifdef PORTABLE
+     && !WorldCoop_IsBattle()
+#endif
+    )
     {
         gCurrentTurnActionNumber = gBattlersCount;
 
@@ -2289,11 +2305,37 @@ bool8 HasNoMonsToSwitch(u8 battler, u8 partyIdBattlerOn1, u8 partyIdBattlerOn2)
         return FALSE;
 
 #ifdef PORTABLE
-    /* Shared wild opponents have no link trainer or reserve party. Looking up
-     * the absent fourth battler would index beyond the human link roster and
-     * can incorrectly revive it during fainted-mon processing. */
-    if (WorldCoop_IsBattle() && GetBattlerSide(battler) == B_SIDE_OPPONENT)
+    /* Resolve ownership before the stock MULTI path looks up link trainers.
+     * Humans own three combat slots each; the NPC owns its entire roster. */
+    if (WorldCoop_IsBattle())
+    {
+        u8 first = 0, end = PARTY_SIZE;
+        u8 partner = BATTLE_PARTNER(battler);
+        if (GetBattlerSide(battler) == B_SIDE_OPPONENT)
+        {
+            if (!WorldCoop_IsTrainer()
+             || ((GetBattlerPosition(battler) & BIT_FLANK) && !WorldCoop_HasSecondOpponent()))
+                return TRUE;
+            party = gEnemyParty;
+        }
+        else
+        {
+            party = gPlayerParty;
+            first = (GetBattlerPosition(battler) & BIT_FLANK) ? MULTI_PARTY_SIZE : 0;
+            end = first + MULTI_PARTY_SIZE;
+        }
+        for (i = first; i < end; i++)
+            if (i != gBattlerPartyIndexes[battler]
+             && ((gAbsentBattlerFlags & gBitTable[partner]) || i != gBattlerPartyIndexes[partner])
+             && i != partyIdBattlerOn1 && i != partyIdBattlerOn2
+             && (!gSpecialStatuses[partner].faintedHasReplacement
+                 || i != gBattleStruct->monToSwitchIntoId[partner])
+             && GetMonData(&party[i], MON_DATA_SPECIES)
+             && !GetMonData(&party[i], MON_DATA_IS_EGG)
+             && GetMonData(&party[i], MON_DATA_HP))
+                return FALSE;
         return TRUE;
+    }
 #endif
 
     if (gBattleTypeFlags & BATTLE_TYPE_INGAME_PARTNER)

@@ -1987,6 +1987,13 @@ void BufferStringBattle(u16 stringID)
     switch (stringID)
     {
     case STRINGID_INTROMSG: // first battle msg
+#ifdef PORTABLE
+        if (WorldCoop_IsTrainer())
+        {
+            stringPtr = sText_Trainer1WantsToBattle;
+            break;
+        }
+#endif
         if (gBattleTypeFlags & BATTLE_TYPE_TRAINER)
         {
             if (gBattleTypeFlags & (BATTLE_TYPE_LINK | BATTLE_TYPE_RECORDED_LINK))
@@ -2039,6 +2046,13 @@ void BufferStringBattle(u16 stringID)
         }
         break;
     case STRINGID_INTROSENDOUT: // poke first send-out
+#ifdef PORTABLE
+        if (WorldCoop_IsTrainer() && GetBattlerSide(gActiveBattler) == B_SIDE_OPPONENT)
+        {
+            stringPtr = WorldCoop_HasSecondOpponent() ? sText_Trainer1SentOutTwoPkmn : sText_Trainer1SentOutPkmn;
+            break;
+        }
+#endif
         if (GetBattlerSide(gActiveBattler) == B_SIDE_PLAYER)
         {
             if (gBattleTypeFlags & BATTLE_TYPE_DOUBLE)
@@ -2111,6 +2125,13 @@ void BufferStringBattle(u16 stringID)
         }
         break;
     case STRINGID_SWITCHINMON: // switch-in msg
+#ifdef PORTABLE
+        if (WorldCoop_IsTrainer() && GetBattlerSide(gBattleScripting.battler) == B_SIDE_OPPONENT)
+        {
+            stringPtr = sText_Trainer1SentOutPkmn2;
+            break;
+        }
+#endif
         if (GetBattlerSide(gBattleScripting.battler) == B_SIDE_PLAYER)
         {
             if (*(&gBattleStruct->hpScale) == 0 || gBattleTypeFlags & BATTLE_TYPE_DOUBLE)
@@ -2171,6 +2192,18 @@ void BufferStringBattle(u16 stringID)
         stringPtr = sText_AttackerUsedX;
         break;
     case STRINGID_BATTLEEND: // battle end
+#ifdef PORTABLE
+        if (WorldCoop_IsTrainer())
+        {
+            switch (gBattleTextBuff1[0])
+            {
+            case B_OUTCOME_WON: stringPtr = sText_PlayerDefeatedLinkTrainerTrainer1; break;
+            case B_OUTCOME_LOST: stringPtr = sText_PlayerLostAgainstTrainer1; break;
+            default: stringPtr = sText_PlayerBattledToDrawTrainer1; break;
+            }
+            break;
+        }
+#endif
         if (gBattleTextBuff1[0] & B_OUTCOME_LINK_BATTLE_RAN)
         {
             gBattleTextBuff1[0] &= ~(B_OUTCOME_LINK_BATTLE_RAN);

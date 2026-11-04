@@ -30,7 +30,9 @@ static struct {
     unsigned state, mode, timer;
     u8 window, task;
     bool8 locked;
-    bool8 tagInvitation, encounterPending, wildCaptured;
+    bool8 tagInvitation, encounterPending, wildCaptured, trainerCaptured;
+    bool8 encounterOfferDeferred;
+    MainCallback trainerCallback;
     char peer[25], talkPeer[25];
     uint64_t invitation;
     const char *status;
@@ -151,19 +153,31 @@ static void ShowWaiting(const char *message)
 static void Stop(const char *status)
 {
     bool8 resumeWild = sActivity.wildCaptured;
+    bool8 resumeTrainer = sActivity.trainerCaptured;
     CloseMenu();
     if (NativeLink_IsActive()) NativeLink_Abort();
     if (sActivity.locked)
     {
         CloseLink();
-        UnlockPlayerFieldControls();
-        if (sActivity.encounterPending) UnfreezeObjectEvents();
+        if (!resumeTrainer)
+        {
+            UnlockPlayerFieldControls();
+            if (sActivity.encounterPending) UnfreezeObjectEvents();
+        }
         sActivity.locked = FALSE;
     }
     sActivity.state = IDLE;
     sActivity.status = status;
     sActivity.encounterPending = sActivity.wildCaptured = sActivity.tagInvitation = FALSE;
-    if (resumeWild) BattleSetup_ResumeWorldWildBattle();
+    sActivity.trainerCaptured = FALSE;
+    sActivity.encounterOfferDeferred = FALSE;
+    if (resumeTrainer)
+    {
+        gMain.savedCallback = sActivity.trainerCallback;
+        BattleSetup_ResumeWorldTrainerBattle();
+        sActivity.trainerCallback = NULL;
+    }
+    else if (resumeWild) BattleSetup_ResumeWorldWildBattle();
 }
 
 static void Task_Menu(u8 taskId)
@@ -323,12 +337,19 @@ int WorldActivity_TakeTalkRequest(char peer[25])
 
 void WorldActivity_ReturnToField(void)
 {
+    /* An incomplete exchange is neither a victory nor a defeat. Discard the
+     * suspended trainer script, rather than invoking its ordinary result
+     * callback (which would white out or award local trainer progression). */
+    sActivity.trainerCallback = NULL;
+    sActivity.trainerCaptured = sActivity.encounterPending = FALSE;
+    sActivity.wildCaptured = sActivity.encounterOfferDeferred = FALSE;
     CloseLink();
     NativeLink_Abort();
     gFieldLinkPlayerCount = 0;
     SetMainCallback1(CB1_Overworld);
     ScriptContext_Init();
     UnlockPlayerFieldControls();
+    UnfreezeObjectEvents();
     sActivity.locked = FALSE;
     gFieldCallback = FieldCB_WarpExitFadeFromBlack;
     gFieldCallback2 = NULL;
@@ -345,22 +366,35 @@ int WorldActivity_IsEncounterPending(void)
         && !gMain.inBattle && !gPaletteFade.active;
 }
 
-int WorldActivity_TryCoopWildBattle(void)
+static int TryCoopBattle(bool8 trainer)
 {
     const char *peer = LinkTransport_TagPeer();
     if (sActivity.state != IDLE || NativeLink_IsActive() || !peer
-        || !LinkTransport_TagInRange() || !LinkTransport_Ready()
+        || (!trainer && !LinkTransport_TagInRange()) || !LinkTransport_Ready()
         || !ActivityPartyReady(NATIVE_LINK_COOP)
         || gMain.callback1 != CB1_Overworld || gMain.callback2 != CB2_Overworld
         || gMain.inBattle || gPaletteFade.active || !CopyPeer(sActivity.peer, peer)) return 0;
-    WorldCoop_CaptureWild();
-    if (!LinkTransport_Offer(sActivity.peer, NATIVE_LINK_COOP)) return 0;
+    if (trainer)
+    {
+        if (!WorldCoop_CaptureTrainer()) return 0;
+    }
+    else
+        WorldCoop_CaptureWild();
+    /* Trainer dialogue legitimately revokes field readiness before this hook.
+     * First suspend that recognized encounter so presence can refresh from the
+     * real field object. Only then may the existing broker range/consent gate
+     * authorize an offer; never treat a dialogue's cached RANGE 0 as solo play. */
+    if (!trainer && !LinkTransport_Offer(sActivity.peer, NATIVE_LINK_COOP)) return 0;
+    sActivity.encounterOfferDeferred = trainer;
     sActivity.mode = NATIVE_LINK_COOP;
-    sActivity.encounterPending = sActivity.wildCaptured = TRUE;
+    sActivity.encounterPending = TRUE;
+    sActivity.wildCaptured = !trainer;
+    sActivity.trainerCaptured = trainer;
+    sActivity.trainerCallback = trainer ? gMain.savedCallback : NULL;
     sActivity.tagInvitation = FALSE;
     sActivity.state = WAIT_ADMIT;
     sActivity.timer = 0;
-    sActivity.status = "joining tagged wild encounter";
+    sActivity.status = "joining tagged encounter";
     LockPlayerFieldControls();
     FreezeObjectEvents();
     StopPlayerAvatar();
@@ -369,21 +403,48 @@ int WorldActivity_TryCoopWildBattle(void)
     return 1;
 }
 
+int WorldActivity_TryCoopWildBattle(void) { return TryCoopBattle(FALSE); }
+int WorldActivity_TryCoopTrainerBattle(void) { return TryCoopBattle(TRUE); }
+
 void WorldActivity_ReturnFromCoopWildBattle(void)
 {
+    MainCallback trainerCallback = sActivity.trainerCallback;
+    bool8 trainer = WorldCoop_IsTrainer();
+    u16 trainerId = WorldCoop_TrainerId();
+    bool8 localScript;
+    sActivity.trainerCallback = NULL;
+    WorldCoop_Abort();
     CloseMenu();
     CloseLink();
     NativeLink_Abort();
     gFieldLinkPlayerCount = 0;
     SetMainCallback1(CB1_Overworld);
-    ScriptContext_Init();
-    UnlockPlayerFieldControls();
-    UnfreezeObjectEvents();
+    localScript = trainerCallback == NULL && trainer && gBattleOutcome == B_OUTCOME_WON
+        && BattleSetup_ResumeWorldTrainerScript(trainerId);
+    if (trainerCallback == NULL && !localScript)
+        ScriptContext_Init();
+    /* The owner's suspended script still owns its field lock and NPCs. */
+    if (trainerCallback == NULL && !localScript)
+    {
+        UnlockPlayerFieldControls();
+        UnfreezeObjectEvents();
+    }
     sActivity.locked = FALSE;
     sActivity.encounterPending = sActivity.wildCaptured = FALSE;
     sActivity.state = RETURNING;
     sActivity.status = "returning after tagged encounter";
-    BattleSetup_EndWorldWildBattle();
+    sActivity.trainerCaptured = FALSE;
+    if (trainerCallback != NULL)
+        trainerCallback();
+    else if (!localScript)
+    {
+        if (trainer && gBattleOutcome == B_OUTCOME_WON)
+        {
+            BattleSetup_RegisterWorldTrainerInMatchCall(trainerId);
+            SetTrainerFlag(trainerId);
+        }
+        BattleSetup_EndWorldWildBattle();
+    }
 }
 
 void WorldActivity_Update(void)
@@ -399,7 +460,7 @@ void WorldActivity_Update(void)
         sActivity.wildCaptured = sActivity.tagInvitation = FALSE;
         sActivity.state = WAIT_ADMIT;
         sActivity.timer = 0;
-        sActivity.status = "joining tagged wild encounter";
+        sActivity.status = "joining tagged encounter";
         ShowWaiting("Joining tagged encounter");
     }
     if (sActivity.state == IDLE)
@@ -457,6 +518,19 @@ void WorldActivity_Update(void)
         if ((!FieldReady() && !(coop && WorldActivity_IsEncounterPending()))
             || !ActivityPartyReady(sActivity.mode) || !LinkTransport_Ready() || ++sActivity.timer > 1800)
         { Stop("consent unavailable"); return; }
+        if (sActivity.encounterOfferDeferred)
+        {
+            const char *peer = LinkTransport_TagPeer();
+            if (!peer || strcmp(peer, sActivity.peer))
+            { Stop("tag unavailable; continuing trainer encounter"); return; }
+            if (!NativeLink_IsActive())
+            {
+                if (!LinkTransport_TagInRange()) return;
+                if (!LinkTransport_Offer(sActivity.peer, NATIVE_LINK_COOP))
+                { Stop("partner unavailable; continuing trainer encounter"); return; }
+            }
+            sActivity.encounterOfferDeferred = FALSE;
+        }
         if (coop && !NativeLink_IsActive() && !LinkTransport_OfferPending())
         { Stop("partner unavailable; continuing wild encounter"); return; }
         if (!NativeLink_IsActive()) return;
@@ -497,7 +571,8 @@ void WorldActivity_Update(void)
             if (!WorldCoop_StartBattle(LinkTransport_CoopOwner()))
             { Stop("tagged battle unavailable"); return; }
             sActivity.wildCaptured = sActivity.encounterPending = FALSE;
-            BattleSetup_RecordWorldWildBattle();
+            sActivity.trainerCaptured = FALSE;
+            /* The kind is authenticated by the exchange, not by overworld presence. */
         }
         else if (sActivity.mode == NATIVE_LINK_TRADE)
         {

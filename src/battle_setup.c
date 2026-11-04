@@ -636,6 +636,18 @@ void BattleSetup_ResumeWorldWildBattle(void)
     sWorldWildFallback = FALSE;
 }
 
+void BattleSetup_ResumeWorldTrainerBattle(void)
+{
+    DoTrainerBattle();
+}
+
+void BattleSetup_RecordWorldTrainerBattle(void)
+{
+    IncrementGameStat(GAME_STAT_TOTAL_BATTLES);
+    IncrementGameStat(GAME_STAT_TRAINER_BATTLES);
+    TryUpdateGymLeaderRematchFromTrainer();
+}
+
 void BattleSetup_RecordWorldWildBattle(void)
 {
     IncrementGameStat(GAME_STAT_TOTAL_BATTLES);
@@ -1394,7 +1406,12 @@ void BattleSetup_StartTrainerBattle(void)
     if (CurrentBattlePyramidLocation() != PYRAMID_LOCATION_NONE || InTrainerHillChallenge())
         DoBattlePyramidTrainerHillBattle();
     else
-        DoTrainerBattle();
+    {
+#ifdef PORTABLE
+        if (!WorldActivity_TryCoopTrainerBattle())
+#endif
+            DoTrainerBattle();
+    }
 
     ScriptContext_Stop();
 }
@@ -1446,9 +1463,60 @@ void BattleSetup_StartRematchBattle(void)
 {
     gBattleTypeFlags = BATTLE_TYPE_TRAINER;
     gMain.savedCallback = CB2_EndRematchBattle;
-    DoTrainerBattle();
+#ifdef PORTABLE
+    if (!WorldActivity_TryCoopTrainerBattle())
+#endif
+        DoTrainerBattle();
     ScriptContext_Stop();
 }
+
+#ifdef PORTABLE
+bool8 BattleSetup_ResumeWorldTrainerScript(u16 trainerId)
+{
+    u8 i;
+    if (HasTrainerBeenFought(trainerId))
+        return FALSE;
+    /* Only a locally present, direct trainerbattle command can authorize a
+     * local story continuation. No script address is supplied by the peer.
+     * Conditional wrappers and remote-map scripts are deliberately not run. */
+    for (i = 0; i < OBJECT_EVENTS_COUNT; i++)
+    {
+        const u8 *script;
+        u8 mode;
+        if (!gObjectEvents[i].active || gObjectEvents[i].isPlayer
+         || gObjectEvents[i].mapNum != gSaveBlock1Ptr->location.mapNum
+         || gObjectEvents[i].mapGroup != gSaveBlock1Ptr->location.mapGroup)
+            continue;
+        script = GetObjectEventScriptPointerByObjectEventId(i);
+        if (script == NULL || script[0] != 0x5C /* trainerbattle */
+         || TrainerBattleLoadArg16(script + 2) != trainerId)
+            continue;
+        mode = script[1];
+        if (mode != TRAINER_BATTLE_CONTINUE_SCRIPT
+         && mode != TRAINER_BATTLE_CONTINUE_SCRIPT_NO_MUSIC
+         && mode != TRAINER_BATTLE_CONTINUE_SCRIPT_DOUBLE
+         && mode != TRAINER_BATTLE_CONTINUE_SCRIPT_DOUBLE_NO_MUSIC)
+            continue;
+        gApproachingTrainerId = gNoOfApproachingTrainers = 0;
+        gSelectedObjectEvent = i;
+        gSpecialVar_LastTalked = gObjectEvents[i].localId;
+        BattleSetup_ConfigureTrainerBattle(script + 1);
+        if (sTrainerABattleScriptRetAddr == NULL)
+            return FALSE;
+        sNoOfPossibleTrainerRetScripts = 0;
+        sShouldCheckTrainerBScript = FALSE;
+        gWhichTrainerToFaceAfterBattle = 0;
+        RegisterTrainerInMatchCall();
+        SetTrainerFlag(trainerId);
+        ScriptContext_SetupScript(sTrainerABattleScriptRetAddr);
+        LockPlayerFieldControls();
+        FreezeObjectEvents();
+        SetMainCallback2(CB2_ReturnToFieldContinueScriptPlayMapMusic);
+        return TRUE;
+    }
+    return FALSE;
+}
+#endif
 
 void ShowTrainerIntroSpeech(void)
 {
@@ -1825,6 +1893,20 @@ static u32 GetTrainerMatchCallFlag(u32 trainerId)
 
     return 0xFFFF;
 }
+
+#ifdef PORTABLE
+void BattleSetup_RegisterWorldTrainerInMatchCall(u16 trainerId)
+{
+    /* A guest without a recognized story continuation still defeated this
+     * trainer locally. Never borrow the owner's selected trainer context. */
+    if (trainerId > TRAINER_NONE && trainerId < TRAINERS_COUNT && FlagGet(FLAG_HAS_MATCH_CALL))
+    {
+        u32 matchCallFlagId = GetTrainerMatchCallFlag(trainerId);
+        if (matchCallFlagId != 0xFFFF)
+            FlagSet(matchCallFlagId);
+    }
+}
+#endif
 
 static void RegisterTrainerInMatchCall(void)
 {

@@ -20,6 +20,9 @@ void BattleGfxSfxDummy3(u8 gender);
 void FreeTrainerFrontPicPalette(u16 frontPicId);
 bool8 BattleLoadAllHealthBoxesGfx(u8 state);
 void LoadBattleBarGfx(u8 unused);
+#ifdef PORTABLE
+void BattleRebuildPrivateRewardHealthbox(void);
+#endif
 bool8 BattleInitAllSprites(u8 *state1, u8 *battler);
 void ClearSpritesHealthboxAnimData(void);
 void CopyAllBattleSpritesInvisibilities(void);

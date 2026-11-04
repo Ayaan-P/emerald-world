@@ -1,5 +1,6 @@
 #ifdef PORTABLE
 #include "global.h"
+#include "data.h"
 #include "battle.h"
 #include "battle_controllers.h"
 #include "battle_main.h"
@@ -18,6 +19,7 @@
 #include "constants/pokemon.h"
 #include "constants/characters.h"
 #include "constants/weather.h"
+#include "constants/opponents.h"
 #include "platform/native_link.h"
 #include "platform/world_activity.h"
 #include "platform/world_coop.h"
@@ -27,13 +29,16 @@
  * exactly the 100-byte GBA layout on every supported native architecture. */
 STATIC_ASSERT(sizeof(struct Pokemon) == 100, CoopPokemonWireSize);
 enum { COOP_IDLE, COOP_EXCHANGE, COOP_BATTLE, COOP_REWARDS };
-enum { COOP_MAGIC = 0x4357, COOP_VERSION = 1, COOP_TIMEOUT = 1800 };
+enum { COOP_MAGIC = 0x4357, COOP_VERSION = 2, COOP_TIMEOUT = 1800,
+       COOP_CONFIRM = 4 + PARTY_SIZE, COOP_READY = COOP_CONFIRM + 1, COOP_COMMIT = COOP_CONFIRM + 2 };
 struct CoopHeader
 {
     u16 magic;
     u8 version, phase;
     u8 owner, count, environment, weather;
     u32 seed;
+    u16 trainer;
+    u8 kind, enemyCount;
 };
 struct CoopMonBlock
 {
@@ -42,7 +47,7 @@ struct CoopMonBlock
     struct Pokemon mon;
 };
 STATIC_ASSERT(sizeof(struct CoopMonBlock) <= 256, CoopBlockBound);
-STATIC_ASSERT(sizeof(struct CoopHeader) == 12, CoopHeaderWireSize);
+STATIC_ASSERT(sizeof(struct CoopHeader) == 16, CoopHeaderWireSize);
 struct CoopCompletion
 {
     u16 magic;
@@ -56,7 +61,9 @@ static struct
     u8 readySent, commitSent, peerReady, peerCommit, peerOutcome, peerReward;
     u8 state, phase, local, ownerPeer, count, originalCount;
     u8 slots[MULTI_PARTY_SIZE];
-    u8 rewardMask, rewardRead;
+    u8 rewardMask[PARTY_SIZE], rewardRead;
+    u8 kind, enemyCount, capturedKind, capturedCount;
+    u16 trainer, capturedTrainer;
     u8 moneyMultiplier[2], rewardMultiplier;
     u16 payday[2], rewardPayday;
     bool8 owner, sent, staged, captured, reward, partyMenuOrder;
@@ -66,7 +73,7 @@ static struct
     struct Pokemon original[PARTY_SIZE];
     struct Pokemon selected[MULTI_PARTY_SIZE];
     struct Pokemon allies[PARTY_SIZE];
-    struct Pokemon wild, capturedWild;
+    struct Pokemon enemies[PARTY_SIZE], capturedEnemies[PARTY_SIZE];
     struct CoopHeader headers[2];
     struct CoopMonBlock outgoing;
     struct WorldCoopPublicMon publicMons[MAX_BATTLERS_COUNT];
@@ -131,13 +138,50 @@ void WorldCoop_CaptureWild(void)
 {
     if (sCoop.state != COOP_IDLE)
         return;
-    sCoop.capturedWild = gEnemyParty[0];
+    memset(sCoop.capturedEnemies, 0, sizeof(sCoop.capturedEnemies));
+    sCoop.capturedEnemies[0] = gEnemyParty[0];
+    sCoop.capturedKind = sCoop.capturedTrainer = 0;
+    sCoop.capturedCount = 1;
     sCoop.capturedEnvironment = BattleSetup_GetEnvironmentId();
     sCoop.capturedWeather = GetCurrentWeather();
     sCoop.capturedSeed = gRngValue;
-    sCoop.captured = MonValid(&sCoop.capturedWild, FALSE)
-                  && GetMonData(&sCoop.capturedWild, MON_DATA_HP) != 0;
+    sCoop.captured = MonValid(&sCoop.capturedEnemies[0], FALSE)
+                  && GetMonData(&sCoop.capturedEnemies[0], MON_DATA_HP) != 0;
 }
+
+bool8 WorldCoop_CaptureTrainer(void)
+{
+    u8 i;
+    if (sCoop.state != COOP_IDLE || !gTrainerBattleOpponent_A
+     || gTrainerBattleOpponent_A >= TRAINERS_COUNT
+     || !(gBattleTypeFlags & BATTLE_TYPE_TRAINER)
+     || (gBattleTypeFlags & ~(BATTLE_TYPE_TRAINER | BATTLE_TYPE_DOUBLE)))
+        return FALSE;
+    WorldCoop_CreateTrainerParty();
+    sCoop.captured = FALSE;
+    sCoop.capturedCount = gTrainers[gTrainerBattleOpponent_A].partySize;
+    if (!sCoop.capturedCount || sCoop.capturedCount > PARTY_SIZE)
+        return FALSE;
+    for (i = 0; i < sCoop.capturedCount; i++)
+        if (!MonValid(&gEnemyParty[i], FALSE) || !GetMonData(&gEnemyParty[i], MON_DATA_HP))
+            return FALSE;
+    memcpy(sCoop.capturedEnemies, gEnemyParty, sizeof(sCoop.capturedEnemies));
+    sCoop.capturedKind = (gBattleTypeFlags & BATTLE_TYPE_DOUBLE) ? 2 : 1;
+    sCoop.capturedTrainer = gTrainerBattleOpponent_A;
+    sCoop.capturedEnvironment = BattleSetup_GetEnvironmentId();
+    sCoop.capturedWeather = GetCurrentWeather();
+    sCoop.capturedSeed = gRngValue;
+    sCoop.captured = TRUE;
+    return TRUE;
+}
+
+bool8 WorldCoop_IsTrainer(void) { return sCoop.kind != 0 && sCoop.state != COOP_IDLE; }
+bool8 WorldCoop_IsDoubleTrainer(void) { return WorldCoop_IsTrainer() && sCoop.kind == 2; }
+/* The roster size is a bench, not permission to turn a single into a double.
+ * kind records the original admitted format before the shared engine adds its
+ * own DOUBLE flag for the two allied humans. */
+bool8 WorldCoop_HasSecondOpponent(void) { return WorldCoop_IsDoubleTrainer() && sCoop.enemyCount > 1; }
+u16 WorldCoop_TrainerId(void) { return sCoop.trainer; }
 
 int WorldCoop_IsBattle(void)
 {
@@ -200,7 +244,15 @@ static bool8 HeaderValid(const struct CoopHeader *header, u8 phase)
     return header->magic == COOP_MAGIC && header->version == COOP_VERSION
         && header->phase == phase && header->owner <= 1 && header->count > 0
         && header->count <= MULTI_PARTY_SIZE && header->weather <= WEATHER_ABNORMAL
-        && header->environment <= BATTLE_ENVIRONMENT_PLAIN;
+        && header->environment <= BATTLE_ENVIRONMENT_PLAIN && header->kind <= 2
+        && (header->owner
+            ? (header->kind ? header->trainer > 0 && header->trainer < TRAINERS_COUNT
+                && header->enemyCount == gTrainers[header->trainer].partySize
+                && header->enemyCount > 0 && header->enemyCount <= PARTY_SIZE
+                && (!gTrainers[header->trainer].doubleBattle || header->kind == 2)
+                && (header->kind != 2 || header->enemyCount > 1)
+              : header->trainer == 0 && header->enemyCount == 1)
+            : header->kind == 0 && header->trainer == 0 && header->enemyCount == 0);
 }
 
 static void CB2_Exchange(void)
@@ -216,7 +268,7 @@ static void CB2_Exchange(void)
     {
         if (!IsLinkTaskFinished())
             return;
-        if (phase == 0 || phase == 5)
+        if (phase == 0 || phase == COOP_CONFIRM)
         {
             struct CoopHeader header = sCoop.headers[sCoop.local];
             header.phase = phase;
@@ -231,8 +283,8 @@ static void CB2_Exchange(void)
             sCoop.outgoing.phase = phase;
             if (phase <= 3)
                 sCoop.outgoing.mon = sCoop.selected[phase - 1];
-            else if (sCoop.owner)
-                sCoop.outgoing.mon = sCoop.capturedWild;
+            else if (sCoop.owner && phase - 4 < sCoop.capturedCount)
+                sCoop.outgoing.mon = sCoop.capturedEnemies[phase - 4];
             if (!SendBlock(BitmaskAllOtherLinkPlayers(), &sCoop.outgoing, sizeof(sCoop.outgoing)))
                 return;
         }
@@ -242,7 +294,7 @@ static void CB2_Exchange(void)
         return;
     for (peer = 0; peer < 2; peer++)
     {
-        if (phase == 0 || phase == 5)
+        if (phase == 0 || phase == COOP_CONFIRM)
         {
             struct CoopHeader header;
             if (GetBlockReceivedSize(peer) != sizeof(header))
@@ -271,7 +323,8 @@ static void CB2_Exchange(void)
         else
         {
             struct CoopMonBlock block;
-            bool8 empty = phase <= 3 ? phase > sCoop.headers[peer].count : peer != sCoop.ownerPeer;
+            bool8 empty = phase <= 3 ? phase > sCoop.headers[peer].count
+                : peer != sCoop.ownerPeer || phase - 4 >= sCoop.enemyCount;
             if (GetBlockReceivedSize(peer) != sizeof(block))
             {
                 ExchangeFailed();
@@ -289,7 +342,7 @@ static void CB2_Exchange(void)
             if (phase <= 3)
                 sCoop.allies[peer * MULTI_PARTY_SIZE + phase - 1] = block.mon;
             else if (!empty)
-                sCoop.wild = block.mon;
+                sCoop.enemies[phase - 4] = block.mon;
         }
     }
     ResetBlockReceivedFlags();
@@ -305,11 +358,14 @@ static void CB2_Exchange(void)
         sCoop.environment = sCoop.headers[sCoop.ownerPeer].environment;
         sCoop.weather = sCoop.headers[sCoop.ownerPeer].weather;
         sCoop.seed = sCoop.headers[sCoop.ownerPeer].seed;
+        sCoop.kind = sCoop.headers[sCoop.ownerPeer].kind;
+        sCoop.trainer = sCoop.headers[sCoop.ownerPeer].trainer;
+        sCoop.enemyCount = sCoop.headers[sCoop.ownerPeer].enemyCount;
     }
     sCoop.sent = FALSE;
     sCoop.timer = 0;
     sCoop.phase++;
-    if (phase != 5)
+    if (phase != COOP_CONFIRM)
         return;
 
     /* Only after both sides validated every block can a mixed battle party
@@ -318,18 +374,27 @@ static void CB2_Exchange(void)
     /* Native multi menus use a six-slot layout, including empty reserves. */
     gPlayerPartyCount = PARTY_SIZE;
     ZeroEnemyPartyMons();
-    gEnemyParty[0] = sCoop.wild;
-    gEnemyPartyCount = 1;
+    memcpy(gEnemyParty, sCoop.enemies, sizeof(sCoop.enemies));
+    gEnemyPartyCount = sCoop.enemyCount;
     sCoop.staged = TRUE;
     sCoop.captured = FALSE;
     sCoop.generation = NativeLink_Generation();
     sCoop.state = COOP_BATTLE;
     gRngValue = gRecordedBattleRngSeed = sCoop.seed;
     gBattleTypeFlags = BATTLE_TYPE_LINK | BATTLE_TYPE_MULTI | BATTLE_TYPE_DOUBLE;
+    if (sCoop.kind)
+    {
+        gBattleTypeFlags |= BATTLE_TYPE_TRAINER;
+        gTrainerBattleOpponent_A = sCoop.trainer;
+    }
     if (sCoop.local == 0)
         gBattleTypeFlags |= BATTLE_TYPE_IS_MASTER;
     for (i = 0; i < 2; i++)
         gLinkPlayers[i].id = i * 2;
+    if (sCoop.kind)
+        BattleSetup_RecordWorldTrainerBattle();
+    else
+        BattleSetup_RecordWorldWildBattle();
     gMain.savedCallback = WorldActivity_ReturnFromCoopWildBattle;
     SetMainCallback2(CB2_InitBattle);
 }
@@ -367,6 +432,9 @@ int WorldCoop_StartBattle(bool8 encounterOwner)
     sCoop.payday[0] = sCoop.payday[1] = sCoop.rewardPayday = 0;
     sCoop.moneyMultiplier[0] = sCoop.moneyMultiplier[1] = sCoop.rewardMultiplier = 1;
     memset(sCoop.headers, 0, sizeof(sCoop.headers));
+    memset(sCoop.enemies, 0, sizeof(sCoop.enemies));
+    memset(sCoop.rewardMask, 0, sizeof(sCoop.rewardMask));
+    sCoop.kind = sCoop.enemyCount = sCoop.trainer = 0;
     header = &sCoop.headers[sCoop.local];
     header->magic = COOP_MAGIC;
     header->version = COOP_VERSION;
@@ -375,6 +443,9 @@ int WorldCoop_StartBattle(bool8 encounterOwner)
     header->environment = sCoop.owner ? sCoop.capturedEnvironment : 0;
     header->weather = sCoop.owner ? sCoop.capturedWeather : 0;
     header->seed = sCoop.owner ? sCoop.capturedSeed : 0;
+    header->kind = sCoop.owner ? sCoop.capturedKind : 0;
+    header->trainer = sCoop.owner ? sCoop.capturedTrainer : 0;
+    header->enemyCount = sCoop.owner ? sCoop.capturedCount : 0;
     sCoop.state = COOP_EXCHANGE;
     ResetBlockReceivedFlags();
     SetMainCallback1(NULL);
@@ -388,11 +459,13 @@ void WorldCoop_InitControllers(void)
     memset(sCoop.publicValid, 0, sizeof(sCoop.publicValid));
     gBattleScripting.multiplayerId = sCoop.local;
     gBattlersCount = MAX_BATTLERS_COUNT;
-    gAbsentBattlerFlags = 1 << B_POSITION_OPPONENT_RIGHT;
+    gAbsentBattlerFlags = WorldCoop_HasSecondOpponent() ? 0 : 1 << B_POSITION_OPPONENT_RIGHT;
     for (i = 0; i < MAX_BATTLERS_COUNT; i++)
     {
         gBattlerPositions[i] = i;
         gBattlerPartyIndexes[i] = (i & BIT_FLANK) ? MULTI_PARTY_SIZE : 0;
+        if (i == B_POSITION_OPPONENT_RIGHT)
+            gBattlerPartyIndexes[i] = WorldCoop_HasSecondOpponent() ? 1 : 0;
         BufferBattlePartyCurrentOrderBySide(i, (i & BIT_FLANK) != 0);
     }
     gBattlerControllerFuncs[0] = sCoop.local == 0 ? SetControllerToPlayer : SetControllerToLinkPartner;
@@ -413,7 +486,7 @@ void WorldCoop_ObserveMonData(u8 battler, u8 partySlot, const struct BattlePokem
      || mon == NULL || !mon->species || mon->species >= NUM_SPECIES
      || !mon->level || mon->level > MAX_LEVEL || partySlot >= PARTY_SIZE)
         return;
-    if ((battler & BIT_SIDE) ? partySlot != 0 : partySlot / MULTI_PARTY_SIZE != battler / 2)
+    if ((battler & BIT_SIDE) ? partySlot >= sCoop.enemyCount : partySlot / MULTI_PARTY_SIZE != battler / 2)
         return;
     view = &sCoop.publicMons[battler];
     memset(view, 0, sizeof(*view));
@@ -467,11 +540,13 @@ bool8 WorldCoop_GetPublicMon(u8 battler, struct WorldCoopPublicMon *mon)
 void WorldCoop_EmitDefeat(void)
 {
     u8 packet[9] = { CONTROLLER_EXPUPDATE, 0, 0, 0, 0, 0, 0, 0, 1 };
-    u16 species = gBattleMons[gBattlerFainted].species;
+    u8 slot = gBattlerPartyIndexes[gBattlerFainted];
+    u16 species = GetMonData(&sCoop.enemies[slot], MON_DATA_SPECIES);
     u8 battler;
+    packet[1] = slot;
     packet[2] = species;
     packet[3] = species >> 8;
-    packet[4] = gBattleMons[gBattlerFainted].level;
+    packet[4] = GetMonData(&sCoop.enemies[slot], MON_DATA_LEVEL);
     packet[5] = gSentPokesToOpponent[(gBattlerFainted & BIT_FLANK) >> 1];
     for (battler = 0; battler <= 2; battler += 2)
     {
@@ -502,9 +577,9 @@ void WorldCoop_DoublePrize(u8 battler)
 
 bool8 WorldCoop_RewardPacketValid(const u8 *data, u16 size)
 {
-    return size == 12 && data[0] == CONTROLLER_EXPUPDATE && data[1] == 0
-        && (data[2] | (data[3] << 8)) == GetMonData(&sCoop.wild, MON_DATA_SPECIES)
-        && data[4] == GetMonData(&sCoop.wild, MON_DATA_LEVEL)
+    return size == 12 && data[0] == CONTROLLER_EXPUPDATE && data[1] < sCoop.enemyCount
+        && (data[2] | (data[3] << 8)) == GetMonData(&sCoop.enemies[data[1]], MON_DATA_SPECIES)
+        && data[4] == GetMonData(&sCoop.enemies[data[1]], MON_DATA_LEVEL)
         && (data[5] & ~0x3F) == 0 && (data[8] == 1 || data[8] == 2)
         && data[9] == 0 && data[10] == 0 && data[11] == 0;
 }
@@ -512,13 +587,13 @@ bool8 WorldCoop_RewardPacketValid(const u8 *data, u16 size)
 void WorldCoop_RecordDefeat(const u8 *data)
 {
     u8 i, mask = data[5] >> (sCoop.local * MULTI_PARTY_SIZE);
-    if (sCoop.reward || !WorldCoop_RewardPacketValid(data, 12))
+    if (!WorldCoop_RewardPacketValid(data, 12) || (sCoop.reward & (1 << data[1])))
         return;
-    sCoop.rewardMask = 0;
+    sCoop.rewardMask[data[1]] = 0;
     for (i = 0; i < sCoop.count; i++)
         if (mask & (1 << i))
-            sCoop.rewardMask |= 1 << sCoop.slots[i];
-    sCoop.reward = TRUE;
+            sCoop.rewardMask[data[1]] |= 1 << sCoop.slots[i];
+    sCoop.reward |= 1 << data[1];
     sCoop.rewardPayday = data[6] | (data[7] << 8);
     sCoop.rewardMultiplier = data[8];
 }
@@ -558,11 +633,12 @@ int WorldCoop_ReceiveCompletion(const u8 *data, u16 size, u8 sender)
     if (packet.version != COOP_VERSION || packet.generation != sCoop.generation || NativeLink_Generation() != sCoop.generation
      || packet.seed != sCoop.seed || packet.sender != sender || packet.reserved
      || packet.outcome == 0 || packet.outcome > B_OUTCOME_MON_TELEPORTED
-     || packet.reward > 1 || (packet.phase != 6 && packet.phase != 7))
+     || (packet.reward & ~((1 << sCoop.enemyCount) - 1))
+     || (packet.phase != COOP_READY && packet.phase != COOP_COMMIT))
         return -1;
     if (sender == sCoop.local)
         return 1;
-    if (packet.phase == 6)
+    if (packet.phase == COOP_READY)
     {
         if (sCoop.peerReady && (sCoop.peerOutcome != packet.outcome || sCoop.peerReward != packet.reward))
             return -1;
@@ -609,7 +685,7 @@ bool8 WorldCoop_ReadyForPrivateRewards(void)
     packet.sender = sCoop.local;
     packet.outcome = gBattleOutcome;
     packet.reward = sCoop.reward;
-    packet.phase = sCoop.readySent ? 7 : 6;
+    packet.phase = sCoop.readySent ? COOP_COMMIT : COOP_READY;
     if ((!sCoop.readySent || (sCoop.peerReady && !sCoop.commitSent))
      && SendBlock(BitmaskAllOtherLinkPlayers(), &packet, sizeof(packet)))
     {
@@ -685,24 +761,23 @@ bool8 WorldCoop_PreparePrivateRewards(void)
     sCoop.staged = FALSE;
     sCoop.state = COOP_REWARDS;
     CloseLink();
-    gBattleTypeFlags = 0;
+    gBattleTypeFlags = sCoop.kind ? BATTLE_TYPE_TRAINER : 0;
     gBattleControllerExecFlags = 0;
     return valid;
 }
 
 bool8 WorldCoop_NextReward(void)
 {
-    if (!sCoop.reward || sCoop.rewardRead)
-    {
-        sCoop.state = COOP_IDLE;
+    while (sCoop.rewardRead < sCoop.enemyCount && !(sCoop.reward & (1 << sCoop.rewardRead)))
+        sCoop.rewardRead++;
+    if (sCoop.rewardRead == sCoop.enemyCount)
         return FALSE;
-    }
-    sCoop.rewardRead = TRUE;
     memset(&gBattleMons[1], 0, sizeof(gBattleMons[1]));
-    gBattleMons[1].species = GetMonData(&sCoop.wild, MON_DATA_SPECIES);
-    gBattleMons[1].level = GetMonData(&sCoop.wild, MON_DATA_LEVEL);
+    gBattleMons[1].species = GetMonData(&sCoop.enemies[sCoop.rewardRead], MON_DATA_SPECIES);
+    gBattleMons[1].level = GetMonData(&sCoop.enemies[sCoop.rewardRead], MON_DATA_LEVEL);
     gBattlerFainted = 1;
-    gSentPokesToOpponent[0] = sCoop.rewardMask;
+    gBattlerPartyIndexes[1] = sCoop.rewardRead;
+    gSentPokesToOpponent[0] = sCoop.rewardMask[sCoop.rewardRead++];
     gBattleScripting.getexpState = 0;
     return TRUE;
 }

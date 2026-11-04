@@ -30,18 +30,37 @@ Download SDL2.dll [32 bit version](https://archive.org/download/sdl-2-2.0.16/SDL
 
 ## Linux (Ubuntu)
 
+Start from the current development baseline:
+
+```sh
+git clone --branch main https://github.com/Ayaan-P/emerald-world.git
+cd emerald-world
+```
+
 Run the following command to install the required libraries
 ```
 sudo apt install build-essential git make libpng-dev libsdl2-dev
 ```
 
-Get the number of threads in your pc using the command `nproc`
+Restore the three build inputs using the repository's existing hash-pinned
+upstream manifest. They are local build inputs only, ignored by Git; do not
+commit or redistribute them with this source baseline.
 
-Build the Linux version using the following command (replace the parentheses with the number you got from nproc)
+```sh
+python3 scripts/restore_upstream_assets.py
+python3 scripts/restore_upstream_assets.py --check
+```
 
+Build the Linux version:
+
+```sh
+make -j"$(nproc)" linux CFLAGS=-g WERROR=1
 ```
-make linux -j(nproc number here)
-```
+
+For the multiplayer desktop launcher, also install `python3-tk`, `bubblewrap`
+and `xserver-xephyr` through your distribution's package manager. The launcher
+checks prerequisites with `python3 scripts/linux_client.py --check`; it does not
+install them automatically.
 
 To build 32 bit version add `IS64BIT=0` to the end of the command above (32 bit version does not build on Ubuntu 25 and above)
 

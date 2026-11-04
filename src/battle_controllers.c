@@ -1015,7 +1015,7 @@ static bool8 NativeBattleReplyValid(u8 battler, const u8 *data)
         return TRUE;
     case CONTROLLER_CHOSENMONRETURNVALUE:
         if (request[0] != CONTROLLER_CHOOSEPOKEMON
-         || (WorldCoop_IsBattle() && data[1] < PARTY_SIZE
+         || (WorldCoop_IsBattle() && !(battler & BIT_SIDE) && data[1] < PARTY_SIZE
              && data[1] / MULTI_PARTY_SIZE != NativeBattleOwner(battler)))
             return FALSE;
         mask = 0;
@@ -1176,7 +1176,17 @@ static void Task_HandleSendLinkBuffersData(u8 taskId)
                     gTasks[taskId].tCurrentBlock_Start    = 0;
                 }
                 blockSize = (BYTE_TO_SEND(LINK_BUFF_SIZE_LO) | (BYTE_TO_SEND(LINK_BUFF_SIZE_HI) << 8)) + LINK_BUFF_DATA;
-                SendBlock(BitmaskAllOtherLinkPlayers(), &BYTE_TO_SEND(0), blockSize);
+#ifdef PORTABLE
+                /* A busy sender has not accepted this FIFO record. Keep its
+                 * head until the block belongs to this controller command. */
+                if (NativeLink_IsActive())
+                {
+                    if (!SendBlock(BitmaskAllOtherLinkPlayers(), &BYTE_TO_SEND(0), blockSize))
+                        break;
+                }
+                else
+#endif
+                    SendBlock(BitmaskAllOtherLinkPlayers(), &BYTE_TO_SEND(0), blockSize);
                 gTasks[taskId].tState++;
             }
             else

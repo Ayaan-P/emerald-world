@@ -2122,6 +2122,14 @@ static u8 CreateNPCTrainerParty(struct Pokemon *party, u16 trainerNum, bool8 fir
     return gTrainers[trainerNum].partySize;
 }
 
+#ifdef PORTABLE
+void WorldCoop_CreateTrainerParty(void)
+{
+    gEnemyPartyCount = CreateNPCTrainerParty(gEnemyParty, gTrainerBattleOpponent_A, TRUE);
+    /* CreateNPCTrainerParty preserves the full NPC team and original format. */
+}
+#endif
+
 static void UNUSED HBlankCB_Battle(void)
 {
     if (REG_VCOUNT < DISPLAY_HEIGHT && REG_VCOUNT >= 111)
@@ -3159,8 +3167,9 @@ static void BattleStartClearSetData(void)
 #ifdef PORTABLE
     if (WorldCoop_IsBattle())
     {
-        gAbsentBattlerFlags = 1 << B_POSITION_OPPONENT_RIGHT;
-        memset(&gBattleMons[B_POSITION_OPPONENT_RIGHT], 0, sizeof(struct BattlePokemon));
+        gAbsentBattlerFlags = WorldCoop_HasSecondOpponent() ? 0 : 1 << B_POSITION_OPPONENT_RIGHT;
+        if (!WorldCoop_HasSecondOpponent())
+            memset(&gBattleMons[B_POSITION_OPPONENT_RIGHT], 0, sizeof(struct BattlePokemon));
     }
 #endif
     gBattleStruct->runTries = 0;
@@ -3464,7 +3473,7 @@ static void BattleIntroDrawTrainersOrMonsSprites(void)
     for (gActiveBattler = 0; gActiveBattler < gBattlersCount; gActiveBattler++)
     {
 #ifdef PORTABLE
-        if (WorldCoop_IsBattle() && gActiveBattler == B_POSITION_OPPONENT_RIGHT)
+        if (WorldCoop_IsBattle() && (gAbsentBattlerFlags & gBitTable[gActiveBattler]))
             continue;
 #endif
         if ((gBattleTypeFlags & BATTLE_TYPE_SAFARI)
@@ -3538,6 +3547,10 @@ static void BattleIntroDrawTrainersOrMonsSprites(void)
             if (GetBattlerPosition(gActiveBattler) == B_POSITION_PLAYER_RIGHT
              || GetBattlerPosition(gActiveBattler) == B_POSITION_OPPONENT_RIGHT)
             {
+#ifdef PORTABLE
+                if (WorldCoop_IsTrainer() && GetBattlerSide(gActiveBattler) == B_SIDE_OPPONENT)
+                    continue;
+#endif
                 BtlController_EmitDrawTrainerPic(B_COMM_TO_CONTROLLER);
                 MarkBattlerForControllerExec(gActiveBattler);
             }
@@ -3677,6 +3690,21 @@ static void BattleIntroPrintOpponentSendsOut(void)
 static void BattleIntroOpponent2SendsOutMonAnimation(void)
 {
     u32 position;
+#ifdef PORTABLE
+    if (WorldCoop_IsTrainer())
+    {
+        if (gBattleControllerExecFlags)
+            return;
+        gActiveBattler = B_POSITION_OPPONENT_RIGHT;
+        if (!(gAbsentBattlerFlags & gBitTable[gActiveBattler]))
+        {
+            BtlController_EmitSwitchInAnim(B_COMM_TO_CONTROLLER, gBattlerPartyIndexes[gActiveBattler], FALSE);
+            MarkBattlerForControllerExec(gActiveBattler);
+        }
+        gBattleMainFunc = BattleIntroRecordMonsToDex;
+        return;
+    }
+#endif
 
     if (!(gBattleTypeFlags & BATTLE_TYPE_RECORDED))
     {
@@ -4100,7 +4128,11 @@ u8 IsRunningFromBattleImpossible(void)
 
     if (holdEffect == HOLD_EFFECT_CAN_ALWAYS_RUN)
         return BATTLE_RUN_SUCCESS;
-    if (gBattleTypeFlags & BATTLE_TYPE_LINK)
+    if ((gBattleTypeFlags & BATTLE_TYPE_LINK)
+#ifdef PORTABLE
+     && !WorldCoop_IsBattle()
+#endif
+    )
         return BATTLE_RUN_SUCCESS;
     if (gBattleMons[gActiveBattler].ability == ABILITY_RUN_AWAY)
         return BATTLE_RUN_SUCCESS;
@@ -4397,7 +4429,11 @@ static void HandleTurnActionSelectionState(void)
                     return;
                 }
                 else if (gBattleTypeFlags & BATTLE_TYPE_TRAINER
-                         && !(gBattleTypeFlags & (BATTLE_TYPE_LINK | BATTLE_TYPE_RECORDED_LINK))
+                         && (!(gBattleTypeFlags & (BATTLE_TYPE_LINK | BATTLE_TYPE_RECORDED_LINK))
+#ifdef PORTABLE
+                             || WorldCoop_IsBattle()
+#endif
+                            )
                          && gBattleBufferB[gActiveBattler][1] == B_ACTION_RUN)
                 {
                     BattleScriptExecute(BattleScript_PrintCantRunFromTrainer);
@@ -5169,6 +5205,18 @@ static void HandleEndTurn_FinishBattle(void)
 #ifdef PORTABLE
         if (WorldCoop_IsBattle())
         {
+            /* Wild escape scripts end locally and never execute endlinkbattle.
+             * Send the same end record as the win/loss script before parking
+             * the master, so both humans reach the validated completion gate. */
+            if (gBattleOutcome == B_OUTCOME_RAN
+             || gBattleOutcome == B_OUTCOME_PLAYER_TELEPORTED
+             || gBattleOutcome == B_OUTCOME_MON_FLED
+             || gBattleOutcome == B_OUTCOME_MON_TELEPORTED)
+            {
+                gActiveBattler = GetBattlerAtPosition(B_POSITION_PLAYER_LEFT);
+                BtlController_EmitEndLinkBattle(B_COMM_TO_CONTROLLER, gBattleOutcome);
+                MarkBattlerForControllerExec(gActiveBattler);
+            }
             /* End-link controllers drain acknowledgements and hand off to
              * private progression. Keep sprites/resources alive for EXP. */
             gBattleMainFunc = BeginBattleIntroDummy;
@@ -5396,6 +5444,13 @@ static void CB2_HandleStartCoopBattle(void)
     }
 }
 
+static const u8 sCoopTrainerPrizeScript[] =
+{
+    B_SCR_OP_GETMONEYREWARD,
+    B_SCR_OP_END2,
+};
+static bool8 sCoopTrainerPrizeDone;
+
 static const u8 sCoopExpScript[] =
 {
     B_SCR_OP_GETEXP, BS_OPPONENT1,
@@ -5408,6 +5463,11 @@ static void CoopPrivateRewards(void)
         return;
     if (WorldCoop_NextReward())
         BattleScriptExecute(sCoopExpScript);
+    else if (!sCoopTrainerPrizeDone && gBattleOutcome == B_OUTCOME_WON)
+    {
+        sCoopTrainerPrizeDone = TRUE;
+        BattleScriptExecute(sCoopTrainerPrizeScript);
+    }
     else if (!sCoopPayoffDone && gBattleOutcome == B_OUTCOME_WON)
     {
         sCoopPayoffDone = TRUE;
@@ -5426,18 +5486,21 @@ void WorldCoop_BeginPrivateRewards(void)
     u8 localBattler = gBattleScripting.multiplayerId * 2;
     if (localBattler == 2)
     {
-        /* Reuse the owner's existing sprites/healthbox for native EXP bars.
+        /* Keep the owner's mon sprite for native level-up animations.
          * No remote mon is imported into the private party. */
         gBattlerSpriteIds[0] = gBattlerSpriteIds[2];
-        gHealthboxSpriteIds[0] = gHealthboxSpriteIds[2];
     }
+    sCoopTrainerPrizeDone = !WorldCoop_IsTrainer();
     sCoopPayoffDone = !WorldCoop_PreparePrivateRewards();
+    if (sCoopPayoffDone)
+        sCoopTrainerPrizeDone = TRUE;
     ResetTasks();
     gBattlersCount = 2;
     gBattlerPositions[0] = B_POSITION_PLAYER_LEFT;
     gBattlerPositions[1] = B_POSITION_OPPONENT_LEFT;
     gAbsentBattlerFlags = 0;
     gLeveledUpInBattle = 0;
+    BattleRebuildPrivateRewardHealthbox();
     gActiveBattler = 0;
     SetControllerToPlayer();
     gBattlerControllerFuncs[1] = BattleControllerDummy;

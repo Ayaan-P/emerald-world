@@ -763,6 +763,23 @@ void BattleLoadAllHealthBoxesGfxAtOnce(void)
         LoadCompressedSpriteSheet(&sSpriteSheets_HealthBar[gBattlerPositions[i]]);
 }
 
+#ifdef PORTABLE
+void BattleRebuildPrivateRewardHealthbox(void)
+{
+    // Singles EXP bars require a 0x1000 sheet, not either 0x800 doubles box.
+    // Retire both allied boxes before replacing their shared tile resources.
+    DestoryHealthboxSprite(gHealthboxSpriteIds[0]);
+    DestoryHealthboxSprite(gHealthboxSpriteIds[2]);
+    FreeSpriteTilesByTag(TAG_HEALTHBOX_PLAYER1_TILE);
+    FreeSpriteTilesByTag(TAG_HEALTHBOX_PLAYER2_TILE);
+    LoadCompressedSpriteSheet(&sSpriteSheet_SinglesPlayerHealthbox);
+    gHealthboxSpriteIds[0] = CreateBattlerHealthboxSprites(0);
+    InitBattlerHealthboxCoords(0);
+    UpdateHealthboxAttribute(gHealthboxSpriteIds[0], &gPlayerParty[gBattlerPartyIndexes[0]], HEALTHBOX_ALL);
+    SetHealthboxSpriteVisible(gHealthboxSpriteIds[0]);
+}
+#endif
+
 bool8 BattleLoadAllHealthBoxesGfx(u8 state)
 {
     bool8 retVal = FALSE;

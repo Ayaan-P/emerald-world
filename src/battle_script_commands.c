@@ -4751,6 +4751,15 @@ static void Cmd_jumpifcantswitch(void)
     {
         gBattlescriptCurrInstr = T1_READ_PTR(gBattlescriptCurrInstr + DSIZE8BIT + DSIZE8BIT);
     }
+#ifdef PORTABLE
+    else if (WorldCoop_IsBattle())
+    {
+        if (HasNoMonsToSwitch(gActiveBattler, PARTY_SIZE, PARTY_SIZE))
+            gBattlescriptCurrInstr = T1_READ_PTR(gBattlescriptCurrInstr + DSIZE8BIT + DSIZE8BIT);
+        else
+            gBattlescriptCurrInstr += DSIZE8BIT + DSIZE8BIT + DSIZEPTR;
+    }
+#endif
     else if (gBattleTypeFlags & BATTLE_TYPE_INGAME_PARTNER)
     {
         if (GetBattlerSide(gActiveBattler) == B_SIDE_OPPONENT)
@@ -5663,7 +5672,11 @@ static u32 GetTrainerMoneyToGive(u16 trainerId)
 
         if (gBattleTypeFlags & BATTLE_TYPE_TWO_OPPONENTS)
             moneyReward = 4 * lastMonLevel * gBattleStruct->moneyMultiplier * gTrainerMoneyTable[i].value;
-        else if (gBattleTypeFlags & BATTLE_TYPE_DOUBLE)
+        else if (gBattleTypeFlags & BATTLE_TYPE_DOUBLE
+#ifdef PORTABLE
+                 || WorldCoop_IsDoubleTrainer()
+#endif
+                )
             moneyReward = 4 * lastMonLevel * gBattleStruct->moneyMultiplier * 2 * gTrainerMoneyTable[i].value;
         else
             moneyReward = 4 * lastMonLevel * gBattleStruct->moneyMultiplier * gTrainerMoneyTable[i].value;
@@ -7222,8 +7235,64 @@ static bool8 TryDoForceSwitchOut(void)
     return TRUE;
 }
 
+#ifdef PORTABLE
+/* NPCs have no link-player identity. Choose within the real owner's bench,
+ * and leave ordering untouched when the stock level/escape roll fails. */
+static void CoopForceRandomSwitch(void)
+{
+    struct Pokemon *party;
+    u8 first = 0, end = PARTY_SIZE, i, count = 0;
+    u8 candidates[PARTY_SIZE];
+    u8 partner = BATTLE_PARTNER(gBattlerTarget);
+
+    if (GetBattlerSide(gBattlerTarget) == B_SIDE_PLAYER)
+    {
+        party = gPlayerParty;
+        first = (GetBattlerPosition(gBattlerTarget) & BIT_FLANK) ? MULTI_PARTY_SIZE : 0;
+        end = first + MULTI_PARTY_SIZE;
+    }
+    else
+    {
+        if ((GetBattlerPosition(gBattlerTarget) & BIT_FLANK) && !WorldCoop_HasSecondOpponent())
+        {
+            gBattlescriptCurrInstr = T1_READ_PTR(gBattlescriptCurrInstr + DSIZE8BIT);
+            return;
+        }
+        party = gEnemyParty;
+    }
+    for (i = first; i < end; i++)
+        if (i != gBattlerPartyIndexes[gBattlerTarget]
+         && ((gAbsentBattlerFlags & gBitTable[partner]) || i != gBattlerPartyIndexes[partner])
+         && GetMonData(&party[i], MON_DATA_SPECIES) != SPECIES_NONE
+         && !GetMonData(&party[i], MON_DATA_IS_EGG)
+         && GetMonData(&party[i], MON_DATA_HP))
+            candidates[count++] = i;
+    if (!count)
+    {
+        gBattlescriptCurrInstr = T1_READ_PTR(gBattlescriptCurrInstr + DSIZE8BIT);
+        return;
+    }
+    if (!TryDoForceSwitchOut())
+        return;
+    i = candidates[Random() % count];
+    gBattleStruct->monToSwitchIntoId[gBattlerTarget] = i;
+    if (GetBattlerSide(gBattlerTarget) == B_SIDE_PLAYER)
+    {
+        SwitchPartyOrderLinkMulti(gBattlerTarget, i, 0);
+        SwitchPartyOrderLinkMulti(partner, i, 1);
+    }
+}
+#endif
+
 static void Cmd_forcerandomswitch(void)
 {
+#ifdef PORTABLE
+    if (WorldCoop_IsTrainer())
+    {
+        CoopForceRandomSwitch();
+        return;
+    }
+#endif
     s32 i;
     s32 battler1PartyId = 0;
     s32 battler2PartyId = 0;

@@ -19,6 +19,7 @@ int WorldActivity_StartNativeBattle(unsigned mode);
 void WorldActivity_ReturnToField(void);
 /* Called at the real wild-encounter seam, before its transition takes the field. */
 int WorldActivity_TryCoopWildBattle(void);
+int WorldActivity_TryCoopTrainerBattle(void);
 int WorldActivity_IsEncounterPending(void);
 void WorldActivity_ReturnFromCoopWildBattle(void);
 #endif
