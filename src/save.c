@@ -1001,6 +1001,10 @@ u8 HandleSavingData(u8 saveType)
     u8 i;
     u32 *backupVar = gTrainerHillVBlankCounter;
     u8 *tempAddr;
+#ifdef PORTABLE
+    u16 previousSector = gLastWrittenSector;
+    u32 previousCounter = gSaveCounter;
+#endif
 
     gTrainerHillVBlankCounter = NULL;
     UpdateSaveAddresses();
@@ -1052,7 +1056,15 @@ u8 HandleSavingData(u8 saveType)
     }
 
 #ifdef PORTABLE
-	Platform_StoreSaveFile();
+    if (!Platform_StoreSaveFile())
+    {
+        // A file-system error is not a damaged flash sector. Do not erase a
+        // valid backup slot or advance the rotation when persistence fails.
+        gLastWrittenSector = previousSector;
+        gSaveCounter = previousCounter;
+        gTrainerHillVBlankCounter = backupVar;
+        return SAVE_STATUS_ERROR;
+    }
 #endif
 
     gTrainerHillVBlankCounter = backupVar;
@@ -1067,12 +1079,17 @@ u8 TrySavingData(u8 saveType)
         return SAVE_STATUS_ERROR;
     }
 
+#ifdef PORTABLE
+    if (HandleSavingData(saveType) == SAVE_STATUS_ERROR)
+    {
+        gSaveAttemptStatus = SAVE_STATUS_ERROR;
+        return SAVE_STATUS_ERROR;
+    }
+#else
     HandleSavingData(saveType);
+#endif
     if (!gDamagedSaveSectors)
     {
-#ifdef PORTABLE
-		Platform_StoreSaveFile();
-#endif
         gSaveAttemptStatus = SAVE_STATUS_OK;
         return SAVE_STATUS_OK;
     }
@@ -1124,7 +1141,16 @@ bool8 LinkFullSave_SetLastSectorSignature(void)
     // Link trades use incremental flash writes instead of HandleSavingData.
     // Publish the completed slot only after its final signature is installed.
     if (!gDamagedSaveSectors)
-        Platform_StoreSaveFile();
+    {
+        if (!Platform_StoreSaveFile())
+        {
+            // A host I/O failure is not damaged flash. Preserve the backup slot
+            // and do not let the link callback acknowledge a durable save yet.
+            gSaveAttemptStatus = SAVE_STATUS_ERROR;
+            return TRUE;
+        }
+        gSaveAttemptStatus = SAVE_STATUS_OK;
+    }
 #endif
     if (gDamagedSaveSectors)
         DoSaveFailedScreen(SAVE_NORMAL);
@@ -1345,7 +1371,12 @@ void Task_LinkFullSave(u8 taskId)
     case 8:
         if (IsLinkTaskFinished())
         {
+#ifdef PORTABLE
+            if (LinkFullSave_SetLastSectorSignature())
+                break;
+#else
             LinkFullSave_SetLastSectorSignature();
+#endif
             tState = 9;
         }
         break;

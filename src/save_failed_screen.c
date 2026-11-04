@@ -262,7 +262,17 @@ static void CB2_WipeSave(void)
 
         FillWindowPixelBuffer(sWindowIds[TEXT_WIN_ID], PIXEL_FILL(1));
         SaveFailedScreenTextPrint(gText_CheckCompleted, 1, 0);
+#ifdef PORTABLE
+        if (HandleSavingData(sSaveFailedType) == SAVE_STATUS_ERROR)
+        {
+            FillWindowPixelBuffer(sWindowIds[TEXT_WIN_ID], PIXEL_FILL(1));
+            SaveFailedScreenTextPrint(gText_BackupMemoryDamaged, 1, 0);
+            SetMainCallback2(CB2_GameplayCannotBeContinued);
+            return;
+        }
+#else
         HandleSavingData(sSaveFailedType);
+#endif
 
         if (gDamagedSaveSectors != 0)
         {

@@ -12,6 +12,9 @@
 #include <SDL2/SDL.h>
 
 #include "platform/native_file.h"
+#ifndef _WIN32
+#include "platform/native_save.h"
+#endif
 #include "global.h"
 #include "platform.h"
 #include "rtc.h"
@@ -80,8 +83,8 @@ int DoMain(void *param);
 void ProcessEvents(void);
 void VDraw(SDL_Texture *texture);
 
-static void ReadSaveFile(const char *path);
-static void StoreSaveFile(void);
+static bool ReadSaveFile(const char *path);
+static bool StoreSaveFile(void);
 static void CloseSaveFile(void);
 
 static void InitInternalClock(void);
@@ -170,7 +173,14 @@ int main(int argc, char **argv)
     else if (sSavePath == NULL)
         sSavePath = "pokeemerald.sav";
     LoadSettings(sSettingsPath);
-    ReadSaveFile(sSavePath);
+    if (!ReadSaveFile(sSavePath))
+    {
+        fprintf(stderr, "Could not open the trainer save.\n");
+#ifndef _WIN32
+        fprintf(stderr, "%s\n", NativeSave_OpenError());
+#endif
+        return 1;
+    }
     // Before AgbMain, whose RtcInit reads it
     InitInternalClock();
 
@@ -343,50 +353,67 @@ int main(int argc, char **argv)
     return 0;
 }
 
-static void ReadSaveFile(const char *path)
+static bool ReadSaveFile(const char *path)
 {
-    // Check whether the saveFile exists, and create it if not
+#ifdef _WIN32
+    // Keep the platform's existing path handling unchanged.
     sSaveFile = NativeFile_Open(path, "r+b");
     if (sSaveFile == NULL)
-    {
         sSaveFile = NativeFile_Open(path, "w+b");
-    }
+#else
+    // Own this inode for the entire game, including each ordinary menu save.
+    sSaveFile = NativeSave_Open(path);
+#endif
+    if (sSaveFile == NULL)
+        return false;
 
-    fseek(sSaveFile, 0, SEEK_END);
-    int fileSize = ftell(sSaveFile);
-    fseek(sSaveFile, 0, SEEK_SET);
+    if (fseek(sSaveFile, 0, SEEK_END) != 0)
+        goto fail;
+    long fileSize = ftell(sSaveFile);
+    if (fileSize < 0 || fseek(sSaveFile, 0, SEEK_SET) != 0)
+        goto fail;
+    size_t bytesToRead = (size_t)fileSize < sizeof(FLASH_BASE) ? (size_t)fileSize : sizeof(FLASH_BASE);
+    size_t bytesRead = fread(FLASH_BASE, 1, bytesToRead, sSaveFile);
+    if (bytesRead != bytesToRead)
+        goto fail;
+    memset(FLASH_BASE + bytesRead, 0xFF, sizeof(FLASH_BASE) - bytesRead);
+    return true;
 
-    // Only read as many bytes as fit inside the buffer
-    // or as many bytes as are in the file
-    int bytesToRead = (fileSize < sizeof(FLASH_BASE)) ? fileSize : sizeof(FLASH_BASE);
-
-    int bytesRead = fread(FLASH_BASE, 1, bytesToRead, sSaveFile);
-
-    // Fill the buffer if the savefile was just created or smaller than the buffer itself
-    for (int i = bytesRead; i < sizeof(FLASH_BASE); i++)
-    {
-        FLASH_BASE[i] = 0xFF;
-    }
+fail:
+    fclose(sSaveFile);
+    sSaveFile = NULL;
+    return false;
 }
 
-static void StoreSaveFile()
+static bool StoreSaveFile(void)
 {
+#ifndef _WIN32
+    return NativeSave_Write(sSaveFile, FLASH_BASE, sizeof(FLASH_BASE));
+#else
     if (sSaveFile != NULL)
     {
         fseek(sSaveFile, 0, SEEK_SET);
         fwrite(FLASH_BASE, 1, sizeof(FLASH_BASE), sSaveFile);
         fflush(sSaveFile);
     }
+    return true;
+#endif
 }
 
-void Platform_StoreSaveFile(void)
+bool8 Platform_StoreSaveFile(void)
 {
-    StoreSaveFile();
+    return StoreSaveFile();
 }
 
 void Platform_ReadFlash(u16 sectorNum, u32 offset, u8 *dest, u32 size)
 {
     DBGPRINTF("ReadFlash(sectorNum=0x%04X,offset=0x%08X,size=0x%02X)\n",sectorNum,offset,size);
+#ifndef _WIN32
+    // Reads and writes must agree on the lifetime-owned save, even if its path
+    // has been renamed or replaced while this game is running.
+    if (!NativeSave_Read(sSaveFile, ((size_t)sectorNum << gFlash->sector.shift) + offset, dest, size))
+        puts("Error reading save file.");
+#else
     FILE * savefile = NativeFile_Open(sSavePath, "r+b");
     if (savefile == NULL)
     {
@@ -404,6 +431,7 @@ void Platform_ReadFlash(u16 sectorNum, u32 offset, u8 *dest, u32 size)
         return;
     }
     fclose(savefile);
+#endif
 }
 
 static u64 HashBytes(u64 hash, const void *data, size_t size)
@@ -451,6 +479,7 @@ static void CloseSaveFile()
     if (sSaveFile != NULL)
     {
         fclose(sSaveFile);
+        sSaveFile = NULL;
     }
 }
 
