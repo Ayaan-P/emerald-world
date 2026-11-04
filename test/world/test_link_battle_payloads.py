@@ -76,6 +76,12 @@ static u16 GetBlockReceivedSize(u8 i) { (void)i; return receivedSize; }
 static int WorldCoop_IsBattle(void) { return coopMode; }
 static int WorldCoop_ReceiveCompletion(const u8 *p, u16 n, u8 s) { return 0; }
 static bool8 WorldCoop_RewardPacketValid(const u8 *p, u16 n) { return FALSE; }
+/* Catch semantics are exercised by coop_catching_core.c. These transport
+ * fixtures only need the new dispatch hooks to fail closed. */
+static bool8 WorldCoop_CatchPacketValid(const u8 *p, u16 n) { return FALSE; }
+static bool8 WorldCoop_BallReplyValid(u16 reply) {
+    return reply == 0 || (reply >= ITEM_MASTER_BALL && reply <= LAST_BALL && reply != ITEM_SAFARI_BALL);
+}
 static u8 GetMultiplayerId(void) { return localPlayer; }
 static u8 GetLinkPlayerCount(void) { return 2; }
 static u8 GetBlockReceivedStatus(void) { return 1 << source; }

@@ -1399,6 +1399,11 @@ static void CompleteWhenChoseItem(void)
 {
     if (gMain.callback2 == BattleMainCB2 && !gPaletteFade.active)
     {
+#ifdef PORTABLE
+        if (WorldCoop_IsBattle())
+            BtlController_EmitOneReturnValue(B_COMM_TO_ENGINE, WorldCoop_SelectBall(gSpecialVar_ItemId));
+        else
+#endif
         BtlController_EmitOneReturnValue(B_COMM_TO_ENGINE, gSpecialVar_ItemId);
         PlayerBufferExecCompleted();
     }
@@ -2742,7 +2747,10 @@ static void PlayerHandleExpUpdate(void)
 #ifdef PORTABLE
     if (WorldCoop_IsBattle())
     {
-        WorldCoop_RecordDefeat(gBattleBufferA[gActiveBattler]);
+        if (gBattleBufferA[gActiveBattler][1] >= 254)
+            WorldCoop_RecordCatchEvent(gBattleBufferA[gActiveBattler]);
+        else
+            WorldCoop_RecordDefeat(gBattleBufferA[gActiveBattler]);
         PlayerBufferExecCompleted();
         return;
     }

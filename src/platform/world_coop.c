@@ -14,6 +14,9 @@
 #include "random.h"
 #include "recorded_battle.h"
 #include "party_menu.h"
+#include "item.h"
+#include "pokedex.h"
+#include "constants/pokedex.h"
 #include "constants/items.h"
 #include "constants/moves.h"
 #include "constants/pokemon.h"
@@ -29,7 +32,7 @@
  * exactly the 100-byte GBA layout on every supported native architecture. */
 STATIC_ASSERT(sizeof(struct Pokemon) == 100, CoopPokemonWireSize);
 enum { COOP_IDLE, COOP_EXCHANGE, COOP_BATTLE, COOP_REWARDS };
-enum { COOP_MAGIC = 0x4357, COOP_VERSION = 2, COOP_TIMEOUT = 1800,
+enum { COOP_MAGIC = 0x4357, COOP_VERSION = 3, COOP_TIMEOUT = 1800,
        COOP_CONFIRM = 4 + PARTY_SIZE, COOP_READY = COOP_CONFIRM + 1, COOP_COMMIT = COOP_CONFIRM + 2 };
 struct CoopHeader
 {
@@ -53,11 +56,24 @@ struct CoopCompletion
     u16 magic;
     u8 version, phase;
     u32 generation, seed;
-    u8 sender, outcome, reward, reserved;
+    u8 sender, outcome, reward, catchOwner;
 };
 STATIC_ASSERT(sizeof(struct CoopCompletion) == 16, CoopCompletionWireSize);
+/* Catch events use the authenticated master-to-controller FIFO, not saves. */
+struct CoopCatchPacket
+{
+    u8 command, tag, owner, reserved;
+    u32 generation;
+    struct Pokemon mon;
+};
+STATIC_ASSERT(sizeof(struct CoopCatchPacket) == 108, CoopCatchWireSize);
+enum { COOP_BALL_USE = 254, COOP_CATCH = 255 };
 static struct
 {
+    u8 catchOwner;
+    bool8 catchDelivered;
+    u16 pendingBall;
+    struct Pokemon caughtMon;
     u8 readySent, commitSent, peerReady, peerCommit, peerOutcome, peerReward;
     u8 state, phase, local, ownerPeer, count, originalCount;
     u8 slots[MULTI_PARTY_SIZE];
@@ -132,6 +148,13 @@ static bool8 MonValid(struct Pokemon *mon, bool8 allowEmpty)
         if (mon->box.otName[i] >= 0xFA && mon->box.otName[i] != EOS)
             return FALSE;
     return TRUE;
+}
+
+bool8 WorldCoop_CanSelectBall(u16 item)
+{
+    return sCoop.state == COOP_BATTLE && !sCoop.kind
+        && item >= ITEM_MASTER_BALL && item <= LAST_BALL && item != ITEM_SAFARI_BALL
+        && (sCoop.originalCount < PARTY_SIZE || !IsPokemonStorageFull());
 }
 
 void WorldCoop_CaptureWild(void)
@@ -408,6 +431,7 @@ int WorldCoop_StartBattle(bool8 encounterOwner)
      || (encounterOwner && !sCoop.captured))
         return 0;
     sCoop.readySent = sCoop.commitSent = sCoop.peerReady = sCoop.peerCommit = FALSE;
+    sCoop.catchOwner = sCoop.catchDelivered = sCoop.pendingBall = 0;
     sCoop.count = 0;
     memset(sCoop.selected, 0, sizeof(sCoop.selected));
     for (i = 0; i < PARTY_SIZE && sCoop.count < MULTI_PARTY_SIZE; i++)
@@ -537,6 +561,152 @@ bool8 WorldCoop_GetPublicMon(u8 battler, struct WorldCoopPublicMon *mon)
     return TRUE;
 }
 
+/* The owner supplies only private, ball-specific context. No partner bag or
+ * dex is consulted by the master when it executes the ordinary capture odds. */
+bool8 WorldCoop_BallReplyValid(u16 reply)
+{
+    u16 item = reply & 0xFF;
+    return sCoop.state == COOP_BATTLE && !sCoop.kind
+        && (reply == 0 || (item >= ITEM_MASTER_BALL && item <= LAST_BALL
+            && item != ITEM_SAFARI_BALL && !(reply & ~0x3FF)
+            && (!(reply & 0x100) || item == ITEM_REPEAT_BALL)
+            && (!(reply & 0x200) || item == ITEM_DIVE_BALL)));
+}
+
+u16 WorldCoop_SelectBall(u16 item)
+{
+    u16 reply = item;
+    if (!item)
+        return 0;
+    if (!WorldCoop_CanSelectBall(item) || !CheckBagHasItem(item, 1))
+        return 0;
+    sCoop.pendingBall = item;
+    if (item == ITEM_REPEAT_BALL && GetSetPokedexFlag(SpeciesToNationalPokedexNum(
+            GetMonData(&sCoop.enemies[0], MON_DATA_SPECIES)), FLAG_GET_CAUGHT))
+        reply |= 0x100;
+    if (item == ITEM_DIVE_BALL && sCoop.environment == BATTLE_ENVIRONMENT_UNDERWATER)
+        reply |= 0x200;
+    return reply;
+}
+
+void WorldCoop_EmitBallUse(u16 reply)
+{
+    u8 packet[9] = { CONTROLLER_EXPUPDATE, COOP_BALL_USE, 0, 0 };
+    u32 generation = sCoop.generation;
+    packet[2] = gBattlerAttacker / 2 + 1;
+    packet[3] = reply & 0xFF;
+    memcpy(packet + 4, &generation, sizeof(generation));
+    gActiveBattler = gBattlerAttacker;
+    PrepareBufferDataTransferLink(B_COMM_TO_CONTROLLER, sizeof(packet), packet);
+    MarkBattlerForControllerExec(gActiveBattler);
+}
+
+bool8 WorldCoop_EmitCatch(void)
+{
+    struct CoopCatchPacket packet = {0};
+    u8 battler;
+    if (sCoop.state != COOP_BATTLE || sCoop.kind || sCoop.catchOwner
+     || gBattlerAttacker > 2 || (gBattlerAttacker & BIT_SIDE))
+        return FALSE;
+    packet.command = CONTROLLER_EXPUPDATE;
+    packet.tag = COOP_CATCH;
+    packet.owner = gBattlerAttacker / 2 + 1;
+    packet.generation = sCoop.generation;
+    packet.mon = gEnemyParty[0];
+    SetMonData(&packet.mon, MON_DATA_HP, &gBattleMons[B_POSITION_OPPONENT_LEFT].hp);
+    SetMonData(&packet.mon, MON_DATA_STATUS, &gBattleMons[B_POSITION_OPPONENT_LEFT].status1);
+    SetMonData(&packet.mon, MON_DATA_POKEBALL, &gLastUsedItem);
+    for (battler = 0; battler <= 2; battler += 2)
+    {
+        gActiveBattler = battler;
+        PrepareBufferDataTransferLink(B_COMM_TO_CONTROLLER, sizeof(packet), (u8 *)&packet);
+        MarkBattlerForControllerExec(battler);
+    }
+    return TRUE;
+}
+
+bool8 WorldCoop_CatchPacketValid(const u8 *data, u16 size)
+{
+    struct CoopCatchPacket packet;
+    struct Pokemon *base = &sCoop.enemies[0];
+    u32 generation;
+    if (sCoop.state != COOP_BATTLE || sCoop.kind || sCoop.enemyCount != 1
+     || sCoop.generation != NativeLink_Generation() || size < 12
+     || data[0] != CONTROLLER_EXPUPDATE || data[2] < 1 || data[2] > 2)
+        return FALSE;
+    memcpy(&generation, data + 4, sizeof(generation));
+    if (generation != sCoop.generation)
+        return FALSE;
+    if (data[1] == COOP_BALL_USE)
+        return size == 12 && data[3] >= ITEM_MASTER_BALL && data[3] <= LAST_BALL
+            && data[3] != ITEM_SAFARI_BALL && !data[8] && !data[9] && !data[10] && !data[11];
+    if (data[1] != COOP_CATCH || size != sizeof(packet) + 4 || data[3]
+     || data[108] || data[109] || data[110] || data[111])
+        return FALSE;
+    memcpy(&packet, data, sizeof(packet));
+    return MonValid(&packet.mon, FALSE) && packet.mon.hp
+        && packet.mon.box.personality == base->box.personality
+        && packet.mon.box.otId == base->box.otId
+        && GetMonData(&packet.mon, MON_DATA_SPECIES) == GetMonData(base, MON_DATA_SPECIES)
+        && packet.mon.level == base->level && packet.mon.maxHP == base->maxHP
+        && packet.mon.attack == base->attack && packet.mon.defense == base->defense
+        && packet.mon.speed == base->speed && packet.mon.spAttack == base->spAttack
+        && packet.mon.spDefense == base->spDefense
+        && GetMonData(&packet.mon, MON_DATA_POKEBALL) >= ITEM_MASTER_BALL
+        && GetMonData(&packet.mon, MON_DATA_POKEBALL) != ITEM_SAFARI_BALL;
+}
+
+void WorldCoop_RecordCatchEvent(const u8 *data)
+{
+    if (data[1] == COOP_BALL_USE)
+    {
+        /* Only the owning player controller reaches here. The link-partner
+         * mirror only ACKs, so no other human's bag is ever touched. */
+        if (data[2] != sCoop.local + 1 || gActiveBattler != sCoop.local * 2
+         || sCoop.pendingBall != data[3] || !RemoveBagItem(data[3], 1))
+            NativeLink_Abort();
+        sCoop.pendingBall = 0;
+    }
+    else
+    {
+        struct CoopCatchPacket packet;
+        memcpy(&packet, data, sizeof(packet));
+        if (sCoop.catchOwner && (sCoop.catchOwner != packet.owner
+            || memcmp(&sCoop.caughtMon, &packet.mon, sizeof(packet.mon))))
+        {
+            NativeLink_Abort();
+            return;
+        }
+        sCoop.catchOwner = packet.owner;
+        sCoop.caughtMon = packet.mon;
+    }
+}
+
+bool8 WorldCoop_BeginCatchRewards(void)
+{
+    if (sCoop.state != COOP_REWARDS || sCoop.catchOwner != sCoop.local + 1
+     || sCoop.catchDelivered || gBattleOutcome != B_OUTCOME_CAUGHT
+     || (sCoop.originalCount == PARTY_SIZE && IsPokemonStorageFull()))
+        return FALSE;
+    sCoop.catchDelivered = TRUE;
+    gEnemyParty[0] = sCoop.caughtMon;
+    gBattlerAttacker = 0;
+    gBattlerTarget = 1;
+    gBattlerPartyIndexes[1] = 0;
+    gLastUsedItem = GetMonData(&sCoop.caughtMon, MON_DATA_POKEBALL);
+    memset(&gBattleMons[1], 0, sizeof(gBattleMons[1]));
+    gBattleMons[1].species = GetMonData(&sCoop.caughtMon, MON_DATA_SPECIES);
+    gBattleMons[1].level = sCoop.caughtMon.level;
+    gBattleMons[1].hp = sCoop.caughtMon.hp;
+    gBattleMons[1].maxHP = sCoop.caughtMon.maxHP;
+    gBattleMons[1].status1 = sCoop.caughtMon.status;
+    GetMonData(&sCoop.caughtMon, MON_DATA_NICKNAME, gBattleMons[1].nickname);
+    GetMonData(&sCoop.caughtMon, MON_DATA_OT_NAME, gBattleMons[1].otName);
+    gBattleMons[1].otId = sCoop.caughtMon.box.otId;
+    gBattleMons[1].personality = sCoop.caughtMon.box.personality;
+    return TRUE;
+}
+
 void WorldCoop_EmitDefeat(void)
 {
     u8 packet[9] = { CONTROLLER_EXPUPDATE, 0, 0, 0, 0, 0, 0, 0, 1 };
@@ -631,7 +801,9 @@ int WorldCoop_ReceiveCompletion(const u8 *data, u16 size, u8 sender)
         return -1;
     memcpy(&packet, data, sizeof(packet));
     if (packet.version != COOP_VERSION || packet.generation != sCoop.generation || NativeLink_Generation() != sCoop.generation
-     || packet.seed != sCoop.seed || packet.sender != sender || packet.reserved
+     || packet.seed != sCoop.seed || packet.sender != sender || packet.catchOwner != sCoop.catchOwner
+     || ((packet.outcome == B_OUTCOME_CAUGHT) != (packet.catchOwner != 0))
+     || (packet.catchOwner && (sCoop.kind || sCoop.enemyCount != 1 || packet.reward))
      || packet.outcome == 0 || packet.outcome > B_OUTCOME_MON_TELEPORTED
      || (packet.reward & ~((1 << sCoop.enemyCount) - 1))
      || (packet.phase != COOP_READY && packet.phase != COOP_COMMIT))
@@ -658,7 +830,8 @@ int WorldCoop_ReceiveCompletion(const u8 *data, u16 size, u8 sender)
 
 bool8 WorldCoop_CompletionCommitted(void)
 {
-    return sCoop.state == COOP_BATTLE && sCoop.commitSent && sCoop.peerReady;
+    return sCoop.state == COOP_BATTLE && sCoop.commitSent && sCoop.peerReady
+        && (!sCoop.catchOwner || (sCoop.peerCommit && sCoop.generation == NativeLink_Generation()));
 }
 
 bool8 WorldCoop_ReadyForPrivateRewards(void)
@@ -671,6 +844,8 @@ bool8 WorldCoop_ReadyForPrivateRewards(void)
         return TRUE;
     if (!NativeLink_IsActive() || NativeLink_Generation() != sCoop.generation
      || ++sCoop.timer > COOP_TIMEOUT || !BuildPrivateParty(merged)
+     || ((gBattleOutcome == B_OUTCOME_CAUGHT) != (sCoop.catchOwner != 0))
+     || (sCoop.catchOwner && (sCoop.kind || sCoop.reward))
      || (sCoop.peerReady && (sCoop.peerOutcome != gBattleOutcome || sCoop.peerReward != sCoop.reward)))
     {
         NativeLink_Abort();
@@ -685,6 +860,7 @@ bool8 WorldCoop_ReadyForPrivateRewards(void)
     packet.sender = sCoop.local;
     packet.outcome = gBattleOutcome;
     packet.reward = sCoop.reward;
+    packet.catchOwner = sCoop.catchOwner;
     packet.phase = sCoop.readySent ? COOP_COMMIT : COOP_READY;
     if ((!sCoop.readySent || (sCoop.peerReady && !sCoop.commitSent))
      && SendBlock(BitmaskAllOtherLinkPlayers(), &packet, sizeof(packet)))
@@ -755,7 +931,7 @@ bool8 WorldCoop_PreparePrivateRewards(void)
     gBattlerPartyIndexes[0] = sCoop.slots[active < sCoop.count ? active : 0];
     LoadPrivateBattleMon();
     if (!valid)
-        sCoop.reward = FALSE;
+        sCoop.reward = sCoop.catchOwner = FALSE;
     gPaydayMoney = valid && sCoop.reward ? sCoop.rewardPayday : 0;
     gBattleStruct->moneyMultiplier = sCoop.rewardMultiplier;
     sCoop.staged = FALSE;

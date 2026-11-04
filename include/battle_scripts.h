@@ -1,5 +1,9 @@
 #ifndef GUARD_BATTLE_SCRIPTS_H
 #define GUARD_BATTLE_SCRIPTS_H
+#ifdef PORTABLE
+extern const u8 BattleScript_CoopSharedCatch[];
+extern const u8 BattleScript_CoopPrivateCatch[];
+#endif
 
 extern const u8 BattleScript_HitFromCritCalc[];
 extern const u8 BattleScript_MoveEnd[];

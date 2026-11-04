@@ -4,7 +4,7 @@
 #include "global.h"
 
 /* The first three healthy, non-egg private party members fight. All six
- * private slots survive. Bag use/catching is unavailable in shared combat.
+ * private slots survive. Only balls may be used in the shared wild bag.
  * Encounters retain the generated wild mon or the complete NPC trainer team. */
 void WorldCoop_CaptureWild(void);
 bool8 WorldCoop_CaptureTrainer(void);
@@ -35,6 +35,14 @@ struct WorldCoopPublicMon
 void WorldCoop_ObserveMonData(u8 battler, u8 partySlot, const struct BattlePokemon *mon);
 void WorldCoop_ObserveController(u8 battler, const u8 *data);
 bool8 WorldCoop_GetPublicMon(u8 battler, struct WorldCoopPublicMon *mon);
+bool8 WorldCoop_CanSelectBall(u16 item);
+bool8 WorldCoop_BallReplyValid(u16 reply);
+u16 WorldCoop_SelectBall(u16 item);
+void WorldCoop_EmitBallUse(u16 reply);
+bool8 WorldCoop_EmitCatch(void);
+bool8 WorldCoop_CatchPacketValid(const u8 *data, u16 size);
+void WorldCoop_RecordCatchEvent(const u8 *data);
+bool8 WorldCoop_BeginCatchRewards(void);
 void WorldCoop_EmitDefeat(void);
 void WorldCoop_AddPayday(u8 battler, u16 amount);
 void WorldCoop_DoublePrize(u8 battler);

@@ -1,4 +1,7 @@
 #include "global.h"
+#ifdef PORTABLE
+#include "platform/world_coop.h"
+#endif
 #include "item_use.h"
 #include "battle.h"
 #include "battle_pyramid.h"
@@ -937,6 +940,18 @@ void ItemUseOutOfBattle_EvolutionStone(u8 taskId)
 
 void ItemUseInBattle_PokeBall(u8 taskId)
 {
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle())
+    {
+        /* Selection reserves nothing and consumes nothing. Only execution of
+         * this owner's ordered action may consume the private ball. */
+        if (WorldCoop_CanSelectBall(gSpecialVar_ItemId) && CheckBagHasItem(gSpecialVar_ItemId, 1))
+            Task_FadeAndCloseBagMenu(taskId);
+        else
+            DisplayItemMessage(taskId, FONT_NORMAL, gText_BoxFull, CloseItemMessage);
+        return;
+    }
+#endif
     if (IsPlayerPartyAndPokemonStorageFull() == FALSE) // have room for mon?
     {
         RemoveBagItem(gSpecialVar_ItemId, 1);
