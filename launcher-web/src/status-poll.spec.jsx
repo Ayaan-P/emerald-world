@@ -31,3 +31,29 @@ it('retries polling after a state read fails', async () => {
   expect(loadState).toHaveBeenCalledTimes(2);
   expect(screen.getByText('Ready')).toBeTruthy();
 });
+
+it('times out a hung status read, retries, and clears only its own error', async () => {
+  vi.useFakeTimers();
+  loadState.mockImplementationOnce(({ signal }) => new Promise((resolve, reject) => {
+    signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+  })).mockResolvedValue(state);
+  render(<App />);
+  await act(async () => { await vi.advanceTimersByTimeAsync(8000); });
+  expect(screen.getByRole('alert').textContent).toMatch(/took too long/i);
+  await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+  expect(loadState).toHaveBeenCalledTimes(2);
+  expect(screen.getByText('Ready')).toBeTruthy();
+  expect(screen.queryByRole('alert')).toBeNull();
+});
+it('keeps an action error when a later status read succeeds', async () => {
+  vi.useFakeTimers();
+  loadState.mockResolvedValue(state);
+  perform.mockRejectedValueOnce(new Error('Could not launch adventure'));
+  render(<App />);
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { screen.getByRole('button', { name: /play solo/i }).click(); });
+  await act(async () => { screen.getByRole('button', { name: /start adventure/i }).click(); await Promise.resolve(); });
+  expect(screen.getByRole('alert').textContent).toContain('Could not launch adventure');
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+  expect(screen.getByRole('alert').textContent).toContain('Could not launch adventure');
+});

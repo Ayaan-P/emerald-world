@@ -22,7 +22,7 @@ async function request(path, options = {}) {
   return result;
 }
 
-export const loadState = () => request('/api/state');
+export const loadState = (options = {}) => request('/api/state', options);
 export const forgetCapability = () => sessionStorage.removeItem(key);
 export const perform = (action, payload = {}) => request('/api/action', {
   method: 'POST', headers: { 'Content-Type': 'application/json' },
