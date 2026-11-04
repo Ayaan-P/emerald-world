@@ -26,6 +26,7 @@
 #include "constants/maps.h"
 #include "constants/global.h"
 #include "platform/world_unstuck.h"
+#include "platform/unstuck_landing.h"
 
 static const unsigned sAllowedHealLocations[] = {
         HEAL_LOCATION_LITTLEROOT_TOWN_BRENDANS_HOUSE_2F,
@@ -198,5 +199,62 @@ bool8 WorldUnstuck_StoryAllowsDestination(unsigned healId)
     if (healId == HEAL_LOCATION_BATTLE_FRONTIER_OUTSIDE_EAST
         && !FlagGet(FLAG_SYS_GAME_CLEAR)) return FALSE;
     return TRUE;
+}
+enum WorldUnstuckPlanResult WorldUnstuck_Plan(struct WorldUnstuckPlan *out)
+{
+    static u8 grid[8192];
+    struct WorldUnstuckPlan plan = {0};
+    const struct HealLocation *heal;
+    const struct MapHeader *destination;
+    const struct ObjectEvent *player;
+    int x, y;
+    if (!out || !gSaveBlock2Ptr || !WorldUnstuck_AllowedDeparture()
+        || gPlayerAvatar.objectEventId >= OBJECT_EVENTS_COUNT) return UNSTUCK_PLAN_BLOCKED;
+    player=&gObjectEvents[gPlayerAvatar.objectEventId];
+    if (!player->active || !player->isPlayer) return UNSTUCK_PLAN_BLOCKED;
+    x=player->currentCoords.x-MAP_OFFSET; y=player->currentCoords.y-MAP_OFFSET;
+    if (x<0 || y<0 || gSaveBlock1Ptr->location.mapGroup<0 || gSaveBlock1Ptr->location.mapNum<0
+        || !WorldCatalog_Coords(gSaveBlock1Ptr->location.mapGroup,gSaveBlock1Ptr->location.mapNum,x,y))
+        return UNSTUCK_PLAN_BLOCKED;
+    plan.healId=WorldUnstuck_HealDestination(&gSaveBlock1Ptr->lastHealLocation,gSaveBlock2Ptr->playerGender);
+    if (!plan.healId || !WorldUnstuck_StoryAllowsDestination(plan.healId)) return UNSTUCK_PLAN_NO_HEAL;
+    heal=GetHealLocation(plan.healId);
+    if (!heal) return UNSTUCK_PLAN_NO_HEAL;
+    destination=Overworld_GetMapHeaderByGroupAndId(heal->mapGroup,heal->mapNum);
+    if (!WorldUnstuck_BuildStaticGrid(heal->mapGroup,heal->mapNum,destination,grid,sizeof(grid))
+        || !Unstuck_SelectLanding(grid,grid,destination->mapLayout->width,destination->mapLayout->height,
+                                  heal->x,heal->y,&plan.landingX,&plan.landingY)) return UNSTUCK_PLAN_NO_LANDING;
+    plan.originGroup=gSaveBlock1Ptr->location.mapGroup; plan.originNum=gSaveBlock1Ptr->location.mapNum;
+    plan.originX=x; plan.originY=y; plan.destinationGroup=heal->mapGroup; plan.destinationNum=heal->mapNum;
+    plan.spawnX=heal->x; plan.spawnY=heal->y;
+    *out=plan;
+    return UNSTUCK_PLAN_OK;
+}
+bool8 WorldUnstuck_RevalidateArrival(const struct WorldUnstuckPlan *plan, bool8 occupancyComplete)
+{
+    static u8 plain[8192], clear[8192];
+    const struct WorldCatalogMap *catalog;
+    const struct ObjectEvent *player;
+    const struct HealLocation *heal;
+    if (!plan || !occupancyComplete || !gSaveBlock1Ptr || !gSaveBlock2Ptr
+        || !WorldUnstuck_AllowedDeparture() || gPlayerAvatar.objectEventId >= OBJECT_EVENTS_COUNT)
+        return FALSE;
+    catalog=WorldCatalog_Find(plan->destinationGroup,plan->destinationNum);
+    heal=GetHealLocation(plan->healId);
+    if (!catalog || !heal || heal->mapGroup != (int)plan->destinationGroup
+        || heal->mapNum != (int)plan->destinationNum || heal->x != plan->spawnX || heal->y != plan->spawnY)
+        return FALSE;
+    player=&gObjectEvents[gPlayerAvatar.objectEventId];
+    if (!player->active || !player->isPlayer || gSaveBlock1Ptr->location.mapGroup != (int)plan->destinationGroup
+        || gSaveBlock1Ptr->location.mapNum != (int)plan->destinationNum
+        || player->currentCoords.x-MAP_OFFSET != plan->landingX
+        || player->currentCoords.y-MAP_OFFSET != plan->landingY
+        || WorldUnstuck_HealDestination(&gSaveBlock1Ptr->lastHealLocation,gSaveBlock2Ptr->playerGender) != plan->healId
+        || !WorldUnstuck_StoryAllowsDestination(plan->healId)) return FALSE;
+    if (!gMapHeader.mapLayout || gMapHeader.mapLayout->width != (int)catalog->width
+        || gMapHeader.mapLayout->height != (int)catalog->height
+        || !WorldUnstuck_BuildLoadedGrid(plain,clear,sizeof(plain))) return FALSE;
+    return Unstuck_IsPlannedLandingStillSafe(plain,clear,catalog->width,catalog->height,
+                                            plan->spawnX,plan->spawnY,plan->landingX,plan->landingY);
 }
 #endif

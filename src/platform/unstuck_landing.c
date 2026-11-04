@@ -41,4 +41,11 @@ bool8 Unstuck_SelectLanding(const u8 *plain, const u8 *clear, unsigned width, un
     }
     return 0;
 }
+bool8 Unstuck_IsPlannedLandingStillSafe(const u8 *plain, const u8 *clear, unsigned width, unsigned height,
+                                       unsigned spawnX, unsigned spawnY, s16 plannedX, s16 plannedY)
+{
+    s16 x, y;
+    return Unstuck_SelectLanding(plain,clear,width,height,spawnX,spawnY,&x,&y)
+        && x==plannedX && y==plannedY;
+}
 #endif

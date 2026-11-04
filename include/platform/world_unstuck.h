@@ -4,6 +4,11 @@
 #include "gba/types.h"
 struct WarpData;
 struct MapHeader;
+struct WorldUnstuckPlan {
+    unsigned healId, originGroup, originNum, destinationGroup, destinationNum;
+    s16 originX, originY, spawnX, spawnY, landingX, landingY;
+};
+enum WorldUnstuckPlanResult { UNSTUCK_PLAN_OK, UNSTUCK_PLAN_BLOCKED, UNSTUCK_PLAN_NO_HEAL, UNSTUCK_PLAN_NO_LANDING };
 /* Returns a whitelist-backed last-heal destination or zero. This does not
  * perform a warp or establish that the destination is currently unoccupied. */
 unsigned WorldUnstuck_HealDestination(const struct WarpData *warp, u8 playerGender);
@@ -12,6 +17,12 @@ bool8 WorldUnstuck_ConservativelyBoxed(void);
 /* Must be checked again at confirmation and immediately before departure. */
 bool8 WorldUnstuck_AllowedDeparture(void);
 bool8 WorldUnstuck_StoryAllowsDestination(unsigned healId);
+/* Computes a conservative proposal only. It does not reserve cooldown, warp,
+ * alter save data or establish fresh remote occupancy. */
+enum WorldUnstuckPlanResult WorldUnstuck_Plan(struct WorldUnstuckPlan *out);
+/* No controls may be released on this result alone: online callers must prove
+ * complete, fresh remote occupancy independently and pass TRUE only then. */
+bool8 WorldUnstuck_RevalidateArrival(const struct WorldUnstuckPlan *plan, bool8 occupancyComplete);
 /* Snapshot of the currently loaded map only. It cannot establish whether
  * remote occupancy is fresh; callers must additionally establish freshness. */
 bool8 WorldUnstuck_BuildLoadedGrid(u8 *plain, u8 *clear, unsigned capacity);

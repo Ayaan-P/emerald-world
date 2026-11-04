@@ -7,6 +7,87 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 
 class WorldUnstuckTests(unittest.TestCase):
+    def test_plan_checks_the_real_policy_without_mutating_game_state(self):
+        source = r'''
+#include <assert.h>
+#include <string.h>
+#include "src/heal_location.c"
+#include "src/platform/unstuck_landing.c"
+#include "src/platform/world_unstuck.c"
+struct SaveBlock1 *gSaveBlock1Ptr;
+struct SaveBlock2 *gSaveBlock2Ptr;
+struct Main gMain;
+struct PaletteFadeControl gPaletteFade;
+struct PlayerAvatar gPlayerAvatar;
+struct ObjectEvent gObjectEvents[OBJECT_EVENTS_COUNT];
+struct MapHeader gMapHeader;
+struct BackupMapLayout gBackupMapLayout;
+u8 gWirelessCommType;
+static int blockedX=-1,blockedY=-1;
+u8 MapGridGetCollisionAt(s32 x,s32 y) { return x==blockedX && y==blockedY; }
+u8 MapGridGetElevationAt(s32 x,s32 y) { (void)x;(void)y;return ELEVATION_DEFAULT; }
+s32 MapGridGetMetatileBehaviorAt(s32 x,s32 y) { (void)x;(void)y;return MB_NORMAL; }
+static struct MapHeader destination;
+void CB1_Overworld(void) {}
+void CB2_Overworld(void) {}
+int NativeLink_IsActive(void) { return 0; }
+int WorldActivity_OwnsFieldInput(void) { return 0; }
+bool8 ScriptContext_IsEnabled(void) { return FALSE; }
+bool32 GetSafariZoneFlag(void) { return FALSE; }
+bool8 InBattlePike(void) { return FALSE; }
+u8 CurrentBattlePyramidLocation(void) { return PYRAMID_LOCATION_NONE; }
+bool8 InMultiPartnerRoom(void) { return FALSE; }
+bool8 Overworld_MapTypeAllowsTeleportAndFly(u8 t) { return t==MAP_TYPE_ROUTE || t==MAP_TYPE_TOWN; }
+bool8 FlagGet(u16 flag) { return flag==FLAG_SYS_POKEMON_GET; }
+u16 VarGet(u16 var) { (void)var;return 0; }
+struct MapHeader const *const Overworld_GetMapHeaderByGroupAndId(u16 group,u16 num) {
+ return group==MAP_GROUP(MAP_OLDALE_TOWN) && num==MAP_NUM(MAP_OLDALE_TOWN) ? &destination : NULL;
+}
+int main(void) {
+ static struct SaveBlock1 save, before; static struct SaveBlock2 save2;
+ static u16 map[8192], attributes[512];
+ struct Tileset tiles={.metatileAttributes=attributes};
+ const struct WorldCatalogMap *catalog=WorldCatalog_Find(MAP_GROUP(MAP_OLDALE_TOWN),MAP_NUM(MAP_OLDALE_TOWN));
+ struct MapLayout layout={.width=catalog->width,.height=catalog->height,.map=map,.primaryTileset=&tiles,.secondaryTileset=&tiles};
+ struct MapEvents events={0}; const struct HealLocation *heal=GetHealLocation(HEAL_LOCATION_OLDALE_TOWN);
+ struct WorldUnstuckPlan plan, untouched;
+ assert(catalog && catalog->width*catalog->height<=8192);
+ for(unsigned i=0;i<catalog->width*catalog->height;i++) map[i]=PACK_ELEVATION(ELEVATION_DEFAULT);
+ destination.mapLayout=&layout; destination.events=&events; destination.mapType=MAP_TYPE_TOWN;
+ gSaveBlock1Ptr=&save; gSaveBlock2Ptr=&save2; save2.playerGender=MALE;
+ save.location.mapGroup=MAP_GROUP(MAP_ROUTE101);save.location.mapNum=MAP_NUM(MAP_ROUTE101);
+ save.lastHealLocation=(struct WarpData){heal->mapGroup,heal->mapNum,WARP_ID_NONE,heal->x,heal->y};
+ gMain.callback1=CB1_Overworld;gMain.callback2=CB2_Overworld;gMapHeader.mapType=MAP_TYPE_ROUTE;
+ gPlayerAvatar.objectEventId=0;gObjectEvents[0].active=1;gObjectEvents[0].isPlayer=1;
+ gObjectEvents[0].currentCoords.x=4+MAP_OFFSET;gObjectEvents[0].currentCoords.y=5+MAP_OFFSET;
+ before=save; memset(&plan,0x55,sizeof(plan)); untouched=plan;
+ assert(WorldUnstuck_Plan(&plan)==UNSTUCK_PLAN_OK);
+ assert(plan.originX==4 && plan.originY==5 && plan.landingX==heal->x && plan.landingY==heal->y);
+ assert(!memcmp(&save,&before,sizeof(save)));
+ gMain.inBattle=1;plan=untouched;assert(WorldUnstuck_Plan(&plan)==UNSTUCK_PLAN_BLOCKED);
+ assert(!memcmp(&plan,&untouched,sizeof(plan)));gMain.inBattle=0;
+ unsigned x=heal->x,y=heal->y,w=layout.width;
+ map[x+y*w] |= PACK_COLLISION(1);
+ plan=untouched;assert(WorldUnstuck_Plan(&plan)==UNSTUCK_PLAN_NO_LANDING);
+ assert(!memcmp(&plan,&untouched,sizeof(plan)) && !memcmp(&save,&before,sizeof(save)));
+ map[x+y*w] &= ~PACK_COLLISION(1);
+ assert(WorldUnstuck_Plan(&plan)==UNSTUCK_PLAN_OK);
+ save.location.mapGroup=heal->mapGroup;save.location.mapNum=heal->mapNum;
+ gObjectEvents[0].currentCoords.x=plan.landingX+MAP_OFFSET;gObjectEvents[0].currentCoords.y=plan.landingY+MAP_OFFSET;
+ gMapHeader=destination;gBackupMapLayout.map=map;
+ gBackupMapLayout.width=layout.width+MAP_OFFSET_W;gBackupMapLayout.height=layout.height+MAP_OFFSET_H;
+ assert(!WorldUnstuck_RevalidateArrival(&plan,FALSE)); /* no freshness proof */
+ assert(WorldUnstuck_RevalidateArrival(&plan,TRUE));
+ gObjectEvents[1].active=1;gObjectEvents[1].currentCoords=gObjectEvents[0].currentCoords;
+ assert(!WorldUnstuck_RevalidateArrival(&plan,TRUE));gObjectEvents[1].active=0;
+ blockedX=plan.landingX+MAP_OFFSET;blockedY=plan.landingY+MAP_OFFSET;
+ assert(!WorldUnstuck_RevalidateArrival(&plan,TRUE));blockedX=blockedY=-1;
+ plan.spawnX++;assert(!WorldUnstuck_RevalidateArrival(&plan,TRUE));
+ return 0;
+}
+'''
+        self.compile_and_run(source)
+
     def test_landing_search_rejects_blocked_or_isolated_tiles_without_mutation(self):
         source = r'''
 #include <assert.h>
@@ -18,9 +99,14 @@ int main(void) {
  memcpy(before,clear,sizeof(clear));
  assert(Unstuck_SelectLanding(plain,clear,5,5,2,2,&x,&y) && x==2 && y==2);
  assert(!memcmp(before,clear,sizeof(clear)));
- clear[12]=0; x=y=-1;
+ assert(Unstuck_IsPlannedLandingStillSafe(plain,clear,5,5,2,2,2,2));
+ clear[12]=0;
+ assert(!Unstuck_IsPlannedLandingStillSafe(plain,clear,5,5,2,2,2,2));
+ x=y=-1;
  assert(Unstuck_SelectLanding(plain,clear,5,5,2,2,&x,&y));
  assert(!(x==2 && y==2) && clear[x+y*5]);
+ assert(Unstuck_IsPlannedLandingStillSafe(plain,clear,5,5,2,2,x,y));
+ clear[x+y*5]=0; assert(!Unstuck_IsPlannedLandingStillSafe(plain,clear,5,5,2,2,x,y));
  memset(clear,0,sizeof(clear)); clear[0]=1; clear[1]=1; x=y=-1;
  assert(!Unstuck_SelectLanding(plain,clear,5,5,2,2,&x,&y) && x==-1 && y==-1);
  memset(clear,1,sizeof(clear)); plain[12]=0;

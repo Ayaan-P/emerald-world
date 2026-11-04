@@ -6,5 +6,9 @@
  * occupancy grids, exclude the player, and revalidate after arrival. */
 bool8 Unstuck_SelectLanding(const u8 *plain, const u8 *clear, unsigned width, unsigned height,
                             unsigned spawnX, unsigned spawnY, s16 *outX, s16 *outY);
+/* Conservative recheck: if the loaded grid changes the chosen landing, the
+ * caller must not release controls at the old destination. */
+bool8 Unstuck_IsPlannedLandingStillSafe(const u8 *plain, const u8 *clear, unsigned width, unsigned height,
+                                       unsigned spawnX, unsigned spawnY, s16 plannedX, s16 plannedY);
 #endif
 #endif
