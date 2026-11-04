@@ -9,7 +9,7 @@ vi.mock('./api', () => ({ loadState: vi.fn(), perform: vi.fn(), forgetCapability
 
 const snapshot = () => ({
   worlds: [{ key: 'remote-1234', name: 'Our Hoenn', trainer: 'May' }],
-  offline_saves: [], presence: null, connected: false, trainer: null, games: [], setup: [], status: 'Ready',
+  offline_saves: [], presence: null, hosting: { available: false, enrolled: false, loaded: false, worlds: [], pending: null }, connected: false, trainer: null, games: [], setup: [], status: 'Ready',
 });
 
 beforeEach(() => { loadState.mockResolvedValue(snapshot()); perform.mockResolvedValue(snapshot()); });
@@ -66,6 +66,49 @@ describe('player launcher', () => {
     expect(perform).not.toHaveBeenCalled();
     fireEvent.click(within(modal).getByRole('button', { name: /^join world$/i }));
     await waitFor(() => expect(perform).toHaveBeenCalledWith('join', { invitation: raw }));
+  });
+
+  it('creates a hosted world when an owner account is ready', async () => {
+    loadState.mockResolvedValue({ ...snapshot(), hosting: { available: true, enrolled: true, loaded: false, worlds: [], pending: null } });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /create a world/i }));
+    const modal = screen.getByRole('dialog');
+    fireEvent.change(within(modal).getByLabelText(/world name/i), { target: { value: 'Our Hoenn' } });
+    fireEvent.change(within(modal).getByLabelText(/trainer profile/i), { target: { value: 'May' } });
+    fireEvent.click(within(modal).getByRole('button', { name: /create and connect/i }));
+    await waitFor(() => expect(perform).toHaveBeenCalledWith('host_create', { name: 'Our Hoenn', trainer: 'May' }));
+  });
+
+  it('offers a private invitation as a download without showing its contents', async () => {
+    const hosted = { available: true, enrolled: true, loaded: true, pending: null,
+      worlds: [{ id: '1234567890abcdef', name: 'Our Hoenn', trainer: 'May' }] };
+    loadState.mockResolvedValue({ ...snapshot(), hosting: hosted });
+    perform.mockResolvedValue({ ...snapshot(), hosting: hosted, download: '{"token":"private-test-token"}' });
+    const oldCreate = URL.createObjectURL, oldRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = vi.fn(() => 'blob:private-invitation');
+    URL.revokeObjectURL = vi.fn();
+    try {
+      render(<App />);
+      fireEvent.click(await screen.findByRole('button', { name: /invite friend/i }));
+      const modal = await screen.findByRole('dialog');
+      expect(modal.textContent).not.toContain('private-test-token');
+      expect(within(modal).getByRole('link', { name: /download invitation/i }).getAttribute('href')).toBe('blob:private-invitation');
+      fireEvent.click(within(modal).getByRole('button', { name: /done/i }));
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:private-invitation');
+    } finally { URL.createObjectURL = oldCreate; URL.revokeObjectURL = oldRevoke; }
+  });
+
+  it('asks for a trainer before redeeming a hosted-world invite', async () => {
+    const { container } = render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /join a world/i }));
+    const raw = JSON.stringify({ kind: 'world-join', version: 1 });
+    const file = { name: 'invite.json', size: raw.length, text: async () => raw };
+    fireEvent.change(container.querySelector('input[type=file]'), { target: { files: [file] } });
+    const modal = screen.getByRole('dialog');
+    const trainer = await within(modal).findByLabelText(/choose your trainer profile/i);
+    fireEvent.change(trainer, { target: { value: 'May' } });
+    fireEvent.click(within(modal).getByRole('button', { name: /^join world$/i }));
+    await waitFor(() => expect(perform).toHaveBeenCalledWith('host_join', { invitation: raw, trainer: 'May' }));
   });
 
   it('makes the separate offline copy choice explicit', async () => {

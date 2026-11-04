@@ -39,6 +39,8 @@ class LauncherBridge:
         self.binary = Path(binary)
         self.remote_paths = None
         self.lock = threading.RLock()
+        from .hosting_ui import HostedLauncher
+        self.hosted = HostedLauncher(session)
 
     def offline_saves(self):
         """List private offline profiles without opening their save contents."""
@@ -144,19 +146,51 @@ class LauncherBridge:
             from scripts.linux_client import prerequisites
             setup = [{'name': name, 'ready': ready, 'help': help_text}
                      for name, ready, help_text in prerequisites(self.binary) if name != 'tkinter']
-            return {'worlds': worlds, 'offline_saves': self.offline_saves(), 'presence': self.game_presence(), 'setup': setup, 'connected': self.session.state is not None,
+            return {'worlds': worlds, 'offline_saves': self.offline_saves(), 'presence': self.game_presence(), 'hosting': self.hosted.state(), 'setup': setup, 'connected': self.session.state is not None,
                     'trainer': self.session.remote_trainer,
                     'games': [name for name, (process, _paths) in self.session.games.items()
                               if process.poll() is None], 'status': self.session.status}
 
     def action(self, action, payload):
         with self.lock:
-            if action in ('join', 'rejoin'):
+            if action in ('join', 'rejoin', 'host_create', 'host_resume', 'host_join'):
                 if any(p.poll() is None for p, _ in self.session.games.values()):
                     raise SessionError('Close your running game before switching worlds.')
                 if self.session.state is not None:
                     raise SessionError('Disconnect from your current world first.')
-            if action == 'join':
+            if action.startswith('host_'):
+                if not self.hosted.state()['available']:
+                    raise SessionError('The hosted-world backend is not installed yet.')
+                from .hosting_protocol import HostingError
+                try:
+                    if action == 'host_enroll':
+                        self.hosted.enroll(payload.get('access'))
+                    elif action == 'host_refresh':
+                        self.hosted.refresh()
+                    elif action == 'host_create':
+                        self.remote_paths = self.hosted.create(payload.get('name'), payload.get('trainer'))
+                    elif action == 'host_resume':
+                        self.remote_paths = self.hosted.resume(payload.get('world'))
+                    elif action == 'host_join':
+                        self.remote_paths = self.hosted.join(payload.get('invitation'), payload.get('trainer'))
+                    elif action == 'host_invite':
+                        invitation = self.hosted.invite(payload.get('world'))
+                        result = self.snapshot()
+                        result['download'] = invitation
+                        return result
+                    else:
+                        raise SessionError('Unknown hosted-world action.')
+                except SessionError:
+                    raise
+                except HostingError as exc:
+                    message = {'capacity': 'The host has no world slots available right now.',
+                               'forbidden': 'The host rejected this access or invitation.',
+                               'conflict': 'That trainer or request conflicts with an existing one.',
+                               'unavailable': 'The hosted service is temporarily unavailable.'}.get(exc.code, 'The hosted service rejected that request.')
+                    raise SessionError(message) from None
+                except (OSError, ValueError):
+                    raise SessionError('Could not complete the hosted-world request. Check your access file and connection, then retry.') from None
+            elif action == 'join':
                 raw = payload.get('invitation')
                 if not isinstance(raw, str) or len(raw.encode('utf-8')) > 4096:
                     raise SessionError('Choose a valid invitation file.')
@@ -347,7 +381,7 @@ def handler_for(bridge, capability, port, dist=DIST):
                 if not 0 <= length <= MAX_BODY:
                     raise ValueError
                 data = json.loads(self.rfile.read(length))
-                if not isinstance(data, dict) or set(data) != {'action', 'payload'} or not isinstance(data['payload'], dict):
+                if not isinstance(data, dict) or set(data) != {'action', 'payload'} or not isinstance(data['action'], str) or not isinstance(data['payload'], dict):
                     raise ValueError
                 if data['action'] == 'quit' and not data['payload']:
                     self.send_json(200, {'status': 'Launcher is closing.'})

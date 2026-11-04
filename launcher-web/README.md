@@ -1,6 +1,6 @@
 # Emerald World React launcher (experimental)
 
-This is a browser-based Linux launcher backed by the existing Python `DesktopSession`. It does not replace the Tk launcher. A trusted invitation connects to an existing remote world; server-side world creation is not implemented yet.
+This is a browser-based Linux launcher backed by the existing Python `DesktopSession`. It does not replace the Tk launcher. A trusted invitation connects to a remote world. Hosted-world creation, account enrollment, and friend invites activate only when the hosted-world backend from PR #136 is installed and its separate management service has been configured. The current existing single-world deployment does not itself provide this management API.
 
 ## Run
 
@@ -24,8 +24,10 @@ When the online game is running, the launcher can show connection status and nea
 ## Checks
 
 ```sh
-python3 -m unittest test.world.test_web_launcher
+python3 -m unittest test.world.test_hosting_ui test.world.test_hosting_ui_contract test.world.test_web_launcher
 cd launcher-web && npm test && npm run test:ui && npm run build
 ```
 
 These checks do not run a real multiplayer session or exercise the native game. A graphical Linux desktop and native prerequisites are required for an end-to-end run. Windows and macOS are not supported by this experimental launcher.
+
+Hosted worlds use a private HOST ACCESS file to enroll an owner account. A host owner can create and resume worlds and download one-trainer join invitations. World-join invitations are private credentials: share them through a trusted channel. A pending creation is retried with the same request ID to avoid duplicate worlds after an uncertain result. The existing single-world service is not modified by this launcher.
