@@ -1,0 +1,35 @@
+name: Hosted profile backup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'world/hosted_profile_backup.py'
+      - 'world/hosting_client.py'
+      - 'world/hosting_protocol.py'
+      - 'test/world/test_hosted_profile_backup.py'
+      - '.github/workflows/host-profile-backup.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'world/hosted_profile_backup.py'
+      - 'world/hosting_client.py'
+      - 'world/hosting_protocol.py'
+      - 'test/world/test_hosted_profile_backup.py'
+      - '.github/workflows/host-profile-backup.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out source without stored credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Check safe owner profile backup and restore
+        run: python3 -m unittest test.world.test_hosted_profile_backup -v
