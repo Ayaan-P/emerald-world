@@ -181,7 +181,7 @@ bool8 WorldUnstuck_BuildLoadedGrid(u8 *plain, u8 *clear, unsigned capacity)
     return TRUE;
 }
 
-bool8 WorldUnstuck_AllowedDeparture(void)
+static bool8 WorldUnstuck_FieldStateSafe(void)
 {
     if (!gSaveBlock1Ptr || !FlagGet(FLAG_SYS_POKEMON_GET)
         || gMain.callback1 != CB1_Overworld || gMain.callback2 != CB2_Overworld
@@ -193,6 +193,12 @@ bool8 WorldUnstuck_AllowedDeparture(void)
         || LinkTransport_PendingInvitation() || LinkTransport_PendingTag()
         || GetSafariZoneFlag() || InBattlePike() || CurrentBattlePyramidLocation() != PYRAMID_LOCATION_NONE
         || InMultiPartnerRoom()) return FALSE;
+    return TRUE;
+}
+
+bool8 WorldUnstuck_AllowedDeparture(void)
+{
+    if (!WorldUnstuck_FieldStateSafe()) return FALSE;
     /* Restrict to places where a normal Fly/Teleport or Escape Rope departure
      * is supported. Special interiors and story-locked maps fail closed. */
     return Overworld_MapTypeAllowsTeleportAndFly(gMapHeader.mapType) || gMapHeader.allowEscaping;
@@ -248,7 +254,7 @@ bool8 WorldUnstuck_RevalidateArrival(const struct WorldUnstuckPlan *plan, bool8 
     const struct ObjectEvent *player;
     const struct HealLocation *heal;
     if (!plan || !occupancyComplete || !gSaveBlock1Ptr || !gSaveBlock2Ptr
-        || !WorldUnstuck_AllowedDeparture() || gPlayerAvatar.objectEventId >= OBJECT_EVENTS_COUNT)
+        || !WorldUnstuck_FieldStateSafe() || gPlayerAvatar.objectEventId >= OBJECT_EVENTS_COUNT)
         return FALSE;
     catalog=WorldCatalog_Find(plan->destinationGroup,plan->destinationNum);
     heal=GetHealLocation(plan->healId);

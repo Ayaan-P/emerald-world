@@ -32,6 +32,8 @@ def main():
         try:
             game = driver.Game(str(args.binary.resolve()), str(Path(tmp)/'game'), save=str(seed))
             driver.continue_game(game)
+            driver.walk_to(game, 6, 11)
+            driver.leave_map(game, "DOWN")  # The lab itself is not an allowed departure.
             original = (tuple(game.state.map), game.state.pos)
             assert original[0] != (group,num), 'fixture must start away from last heal map'
             saved_hash = hashlib.sha256(Path(game.save_path).read_bytes()).hexdigest()
