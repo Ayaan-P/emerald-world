@@ -511,7 +511,9 @@ void WorldActivity_Update(void)
     {
         const char *peer = LinkTransport_TagPeer();
         if (peer && !strcmp(peer, sActivity.peer)) { Stop("tag ready; stay nearby"); return; }
-        if (!LinkTransport_Ready() || !LinkTransport_TagOfferPending() || ++sActivity.timer > 900)
+        /* The broker expires tag consent in real time and sends END to both
+         * sides. A frame cap can retire only the proposer's UI too early. */
+        if (!LinkTransport_Ready() || !LinkTransport_TagOfferPending())
             Stop("tag declined or expired");
         return;
     }
@@ -596,6 +598,8 @@ void WorldActivity_Update(void)
          * Battle helper routes its native post-battle save to our local return. */
         if (gMain.callback2 == CB2_ReturnToFieldFromMultiplayer)
             WorldActivity_ReturnToField();
+        else if (sActivity.mode == NATIVE_LINK_COOP && WorldCoop_IsPrivateRewards())
+            sActivity.status = "tagged encounter complete; finishing private rewards";
         else if (!NativeLink_IsActive())
             sActivity.status = "native connection lost; reset required (no automatic save or rollback)";
         return;

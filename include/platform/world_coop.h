@@ -53,6 +53,8 @@ int WorldCoop_ReceiveCompletion(const u8 *data, u16 size, u8 sender);
 bool8 WorldCoop_ReadyForPrivateRewards(void);
 bool8 WorldCoop_CompletionCommitted(void);
 bool8 WorldCoop_PreparePrivateRewards(void);
+/* Local EXP, catch and evolution prompts run after intentional link closure. */
+bool8 WorldCoop_IsPrivateRewards(void);
 bool8 WorldCoop_NextReward(void);
 void WorldCoop_Abort(void);
 /* battle_main owns its static native engine/evolution callbacks. */

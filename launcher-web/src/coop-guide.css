@@ -1,0 +1,6 @@
+.coop-guide { margin: 1rem 0 2rem; padding: 1rem 1.25rem; border: 1px solid var(--border, #d8d5c8); border-radius: 12px; }
+.coop-guide summary { cursor: pointer; font-weight: 700; }
+.coop-guide ol { padding-left: 1.35rem; margin: 1rem 0; }
+.coop-guide li { line-height: 1.5; margin: .75rem 0; padding-left: .2rem; }
+.coop-guide p { line-height: 1.5; margin: .8rem 0; }
+.coop-guide summary:focus-visible { outline: 3px solid #8f742e; outline-offset: 4px; }
