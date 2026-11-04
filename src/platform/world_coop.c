@@ -58,7 +58,7 @@ struct CoopCompletion
 STATIC_ASSERT(sizeof(struct CoopCompletion) == 16, CoopCompletionWireSize);
 static struct
 {
-    u8 readySent, commitSent, peerReady, peerCommit, peerOutcome, peerReward;
+    u8 readySent, commitSent, commitEchoed, peerReady, peerCommit, peerOutcome, peerReward;
     u8 state, phase, local, ownerPeer, count, originalCount;
     u8 slots[MULTI_PARTY_SIZE];
     u8 rewardMask[PARTY_SIZE], rewardRead;
@@ -407,7 +407,7 @@ int WorldCoop_StartBattle(bool8 encounterOwner)
      || GetLinkPlayerCount() != 2 || GetMultiplayerId() > 1
      || (encounterOwner && !sCoop.captured))
         return 0;
-    sCoop.readySent = sCoop.commitSent = sCoop.peerReady = sCoop.peerCommit = FALSE;
+    sCoop.readySent = sCoop.commitSent = sCoop.commitEchoed = sCoop.peerReady = sCoop.peerCommit = FALSE;
     sCoop.count = 0;
     memset(sCoop.selected, 0, sizeof(sCoop.selected));
     for (i = 0; i < PARTY_SIZE && sCoop.count < MULTI_PARTY_SIZE; i++)
@@ -637,7 +637,17 @@ int WorldCoop_ReceiveCompletion(const u8 *data, u16 size, u8 sender)
      || (packet.phase != COOP_READY && packet.phase != COOP_COMMIT))
         return -1;
     if (sender == sCoop.local)
+    {
+        if (!sCoop.readySent || packet.outcome != gBattleOutcome || packet.reward != sCoop.reward)
+            return -1;
+        if (packet.phase == COOP_COMMIT)
+        {
+            if (!sCoop.commitSent || !sCoop.peerReady)
+                return -1;
+            sCoop.commitEchoed = TRUE;
+        }
         return 1;
+    }
     if (packet.phase == COOP_READY)
     {
         if (sCoop.peerReady && (sCoop.peerOutcome != packet.outcome || sCoop.peerReward != packet.reward))
@@ -658,6 +668,9 @@ int WorldCoop_ReceiveCompletion(const u8 *data, u16 size, u8 sender)
 
 bool8 WorldCoop_CompletionCommitted(void)
 {
+    /* Preserve the durable READY boundary if normal peer closure overtakes
+     * local consumption of the last COMMIT block. Wire drain is checked
+     * separately while the session remains active. */
     return sCoop.state == COOP_BATTLE && sCoop.commitSent && sCoop.peerReady;
 }
 
@@ -667,7 +680,8 @@ bool8 WorldCoop_ReadyForPrivateRewards(void)
     struct CoopCompletion packet = {0};
     if (sCoop.state != COOP_BATTLE)
         return FALSE;
-    if (WorldCoop_CompletionCommitted() && (!NativeLink_IsActive() || sCoop.peerCommit))
+    if (WorldCoop_CompletionCommitted()
+     && (!NativeLink_IsActive() || (sCoop.commitEchoed && sCoop.peerCommit)))
         return TRUE;
     if (!NativeLink_IsActive() || NativeLink_Generation() != sCoop.generation
      || ++sCoop.timer > COOP_TIMEOUT || !BuildPrivateParty(merged)
@@ -694,7 +708,9 @@ bool8 WorldCoop_ReadyForPrivateRewards(void)
         else
             sCoop.commitSent = TRUE;
     }
-    return WorldCoop_CompletionCommitted() && sCoop.peerCommit;
+    /* SendBlock only queues our COMMIT. Do not let the same call close an
+     * active session before its authenticated echo has actually drained. */
+    return WorldCoop_CompletionCommitted() && sCoop.commitEchoed && sCoop.peerCommit;
 }
 
 /* The slave never runs the battle engine, so its gBattleMons cannot be used
