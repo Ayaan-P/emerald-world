@@ -20,10 +20,19 @@ multiplayer build, not a complete shared-campaign release.
   initiate and win their own trainer encounter for it to count in their game.
   This limitation is accepted for this baseline, not silently treated as shared
   campaign completion.
-- Bags/catching in tag battles, six combat Pokémon per human, complete special
-  encounter coverage, and robust mid-battle quit/network-loss/rejoin acceptance
-  remain unfinished or pending verification. Do not infer them from a build or
-  a successful May encounter.
+- Shared wild battles support **privately owned Poké Balls**: each trainer selects
+  from their own bag; an executed throw consumes only that trainer's ball. A
+  successful catch belongs only to the thrower, with normal nickname/dex handling
+  and private party/PC delivery after bilateral battle completion. Trainer
+  battles reject bag use; other battle items remain unsupported in co-op.
+  Both peers must use the updated **co-op protocol v3** build.
+- Local SDK gameplay has verified host catches into both party and full-party PC,
+  exact ball ownership, and ordinary save/reload. A follower ownership-encryption
+  defect was reproduced and fixed; follower and failed-throw acceptance is still
+  in progress on this branch. This is not WAN capture acceptance.
+- Six combat Pokémon per human, complete special encounter coverage, and robust
+  mid-battle quit/network-loss/rejoin acceptance remain unfinished or pending
+  verification. Do not infer them from a build or a successful May encounter.
 - PvP and trading remain in the existing client; this baseline promotion does
   not constitute a fresh end-to-end verification of those paths or of Windows.
 
@@ -39,7 +48,7 @@ end-to-end human multiplayer or WAN recovery.
 Locally, the focused checks do not launch game clients:
 
 ```sh
-PYTHONPATH=.:test/world python3 -m unittest test_tag_coop test_link_protocol test_link_sessions test_trainer_abort_wire_regression -v
+PYTHONPATH=.:test/world python3 -m unittest test_coop_catching test_tag_coop test_link_protocol test_link_sessions test_trainer_abort_wire_regression test_link_battle_payloads test_coop_controller_repro -v
 ```
 
 Keep runtime worlds, saves, invitations, credentials and generated executables
