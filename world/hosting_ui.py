@@ -193,6 +193,7 @@ class HostedLauncher:
     def join(self, raw, trainer):
         if not available():
             raise SessionError('The hosted-world backend is not installed yet.')
+        self._root()
         if not isinstance(trainer, str) or not re.fullmatch('[A-Za-z0-9_-]{1,24}', trainer):
             raise SessionError('Use 1 to 24 letters, numbers, underscores or hyphens for your trainer.')
         from .hosting_session import HostedWorldSession
