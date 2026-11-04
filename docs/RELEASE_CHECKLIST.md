@@ -4,14 +4,14 @@ This is a bounded release checklist, not a claim of universal campaign or networ
 
 ## Required local deliverables
 
-- [ ] Reopening the launcher uses one instance per private worlds root; competing old sessions produce actionable errors rather than stealing locks.
-- [ ] Successful shared completion followed by private reward prompts does not falsely demand reset; real interrupted native activity remains explicit.
-- [ ] Tag invitation acceptance uses an aligned, human-usable deadline with unchanged consent requirements.
-- [ ] Versioned x86-64 Linux archive includes the actual native executable, prebuilt browser launcher, runtime source/data, manifest and checksums; contains no player/account/server private files.
-- [ ] Disposable user-local install/update leaves a sentinel save intact, runs prerequisite/version checks and opens the packaged loopback launcher successfully.
-- [ ] Native standalone frame/save smoke uses disposable state only.
-- [ ] Owner backup, trainer save backup/import and hosted authority restore have recorded disposable rehearsals.
-- [ ] Nonsecret service health output and private backup/recovery instructions are available.
+- [x] Reopening the launcher uses one instance per private worlds root; competing old sessions produce actionable errors rather than stealing locks.
+- [x] Successful shared completion followed by private reward prompts does not falsely demand reset; real interrupted native activity remains explicit.
+- [x] Tag invitation acceptance uses an aligned, human-usable deadline with unchanged consent requirements.
+- [x] Versioned x86-64 Linux archive includes the actual native executable, prebuilt browser launcher, runtime source/data, manifest and checksums; contains no player/account/server private files.
+- [x] Disposable user-local install/update leaves a sentinel save intact, runs prerequisite/version checks and opens the packaged loopback launcher successfully.
+- [x] Native standalone frame/save smoke uses disposable state only.
+- [x] Owner backup, trainer save backup/import and hosted authority restore have recorded disposable rehearsals.
+- [x] Nonsecret service health output and private backup/recovery instructions are available.
 - [ ] Source and assets are merged to main; publication points at the verified source commit.
 
 ## Human acceptance

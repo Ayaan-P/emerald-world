@@ -13,7 +13,12 @@ is not a claim of complete shared-campaign or Windows play acceptance.
 See [Player release scope](docs/PLAYER_RELEASE_SCOPE.md) for current behavior,
 recovery limits and the remaining friend-owned Windows gate.
 
-The current launcher is built with `npm ci && npm run build` in `launcher-web`,
+For the versioned Linux archive and save-preserving user installation, see
+[Linux packaging and installation](docs/linux-packaging.md). The package requires
+system Python 3.11+, Bubblewrap, Xephyr, SDL2 and a browser; it does not require
+npm, a development virtualenv or a source checkout on the player's machine.
+
+The current source launcher is built with `npm ci && npm run build` in `launcher-web`,
 then opened with `python3 -m world.web_launcher` from the repository root.
 The browser opens the launcher; **Play opens a separate native game window**.
 The older tkinter source launcher remains a fallback, not the packaged player UI.
