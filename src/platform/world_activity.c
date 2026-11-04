@@ -277,14 +277,14 @@ static bool8 ShowMenu(bool8 incoming)
     {
         Encode(text, "First 3 usable mons fight");
         AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 80, TEXT_SKIP_DRAW, NULL);
-        Encode(text, "No bag or catches in a tag");
+        Encode(text, "Wild: Poke Balls only");
         AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 96, TEXT_SKIP_DRAW, NULL);
     }
     if (!incoming)
     {
         Encode(text, LinkTransport_TagPeer()
-            ? (LinkTransport_TagInRange() ? "Tag: nearby; no bag or catches" : "Tag: get closer")
-            : "Tag: no bag or catches");
+            ? (LinkTransport_TagInRange() ? "Tag: nearby" : "Tag: get closer")
+            : "Tag: wild catches enabled");
         AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, count == 7 ? 144 : 128, TEXT_SKIP_DRAW, NULL);
         if (count == 6)
         {

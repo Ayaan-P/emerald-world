@@ -20,7 +20,7 @@ class WorldActivityContracts(unittest.TestCase):
         self.assertIn('gReceivedRemoteLinkPlayers', source)
         self.assertNotIn('CreateTask_EnterCableClubSeat', source)
         self.assertNotIn('gReceivedRemoteLinkPlayers =', source)
-        self.assertNotIn('gBattleOutcome =', source)
+        self.assertNotRegex(source, r'\bgBattleOutcome\s*=(?!=)')
 
     def test_real_c_name_encoding_and_input_ownership(self):
         # Compile the actual translation unit against real engine headers. GC
