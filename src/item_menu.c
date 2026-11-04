@@ -1,4 +1,7 @@
 #include "global.h"
+#ifdef PORTABLE
+#include "platform/world_coop.h"
+#endif
 #include "item_menu.h"
 #include "battle.h"
 #include "battle_controllers.h"
@@ -1532,7 +1535,11 @@ static void OpenContextMenu(u8 taskId)
     {
     case ITEMMENULOCATION_BATTLE:
     case ITEMMENULOCATION_WALLY:
-        if (GetItemBattleUsage(gSpecialVar_ItemId))
+        if (GetItemBattleUsage(gSpecialVar_ItemId)
+#ifdef PORTABLE
+            && (!WorldCoop_IsBattle() || WorldCoop_CanSelectBall(gSpecialVar_ItemId))
+#endif
+           )
         {
             gBagMenu->contextMenuItemsPtr = sContextMenuItems_BattleUse;
             gBagMenu->contextMenuNumItems = ARRAY_COUNT(sContextMenuItems_BattleUse);
@@ -1984,7 +1991,11 @@ static void ItemMenu_Cancel(u8 taskId)
 
 static void ItemMenu_UseInBattle(u8 taskId)
 {
-    if (GetItemBattleFunc(gSpecialVar_ItemId))
+    if (GetItemBattleFunc(gSpecialVar_ItemId)
+#ifdef PORTABLE
+        && (!WorldCoop_IsBattle() || WorldCoop_CanSelectBall(gSpecialVar_ItemId))
+#endif
+       )
     {
         RemoveContextWindow();
         GetItemBattleFunc(gSpecialVar_ItemId)(taskId);

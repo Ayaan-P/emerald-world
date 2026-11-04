@@ -1,6 +1,7 @@
 #include "global.h"
 #ifdef PORTABLE
 #include "platform/world_coop.h"
+#include "platform/native_link.h"
 #endif
 #include "battle.h"
 #include "battle_message.h"
@@ -10024,6 +10025,10 @@ static void Cmd_handleballthrow(void)
 
     gActiveBattler = gBattlerAttacker;
     gBattlerTarget = BATTLE_OPPOSITE(gBattlerAttacker);
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle())
+        gBattlerTarget = B_POSITION_OPPONENT_LEFT;
+#endif
 
     if (gBattleTypeFlags & BATTLE_TYPE_TRAINER)
     {
@@ -10058,7 +10063,11 @@ static void Cmd_handleballthrow(void)
                     ballMultiplier = 10;
                 break;
             case ITEM_DIVE_BALL:
-                if (GetCurrentMapType() == MAP_TYPE_UNDERWATER)
+                if (
+#ifdef PORTABLE
+                    WorldCoop_IsBattle() ? (gBattleBufferB[gBattlerAttacker][2] & 2) != 0 :
+#endif
+                    GetCurrentMapType() == MAP_TYPE_UNDERWATER)
                     ballMultiplier = 35;
                 else
                     ballMultiplier = 10;
@@ -10076,7 +10085,11 @@ static void Cmd_handleballthrow(void)
                 }
                 break;
             case ITEM_REPEAT_BALL:
-                if (GetSetPokedexFlag(SpeciesToNationalPokedexNum(gBattleMons[gBattlerTarget].species), FLAG_GET_CAUGHT))
+                if (
+#ifdef PORTABLE
+                    WorldCoop_IsBattle() ? (gBattleBufferB[gBattlerAttacker][2] & 1) != 0 :
+#endif
+                    GetSetPokedexFlag(SpeciesToNationalPokedexNum(gBattleMons[gBattlerTarget].species), FLAG_GET_CAUGHT))
                     ballMultiplier = 30;
                 else
                     ballMultiplier = 10;
@@ -10094,7 +10107,11 @@ static void Cmd_handleballthrow(void)
         }
         else
         {
-            ballMultiplier = sBallCatchBonuses[gLastUsedItem - ITEM_ULTRA_BALL];
+            ballMultiplier =
+#ifdef PORTABLE
+                gLastUsedItem == ITEM_MASTER_BALL ? 0 :
+#endif
+                sBallCatchBonuses[gLastUsedItem - ITEM_ULTRA_BALL];
         }
 
         odds = (catchRate * ballMultiplier / 10)
@@ -10123,10 +10140,18 @@ static void Cmd_handleballthrow(void)
         {
             BtlController_EmitBallThrowAnim(B_COMM_TO_CONTROLLER, BALL_3_SHAKES_SUCCESS);
             MarkBattlerForControllerExec(gActiveBattler);
-            gBattlescriptCurrInstr = BattleScript_SuccessBallThrow;
+            gBattlescriptCurrInstr =
+#ifdef PORTABLE
+                    WorldCoop_IsBattle() ? BattleScript_CoopSharedCatch :
+#endif
+                    BattleScript_SuccessBallThrow;
             SetMonData(&gEnemyParty[gBattlerPartyIndexes[gBattlerTarget]], MON_DATA_POKEBALL, &gLastUsedItem);
 
-            if (CalculatePlayerPartyCount() == PARTY_SIZE)
+            if (
+#ifdef PORTABLE
+                WorldCoop_IsBattle() ? WorldCoop_GetOwnPartyCount() == PARTY_SIZE :
+#endif
+                CalculatePlayerPartyCount() == PARTY_SIZE)
                 gBattleCommunication[MULTISTRING_CHOOSER] = 0;
             else
                 gBattleCommunication[MULTISTRING_CHOOSER] = 1;
@@ -10150,10 +10175,18 @@ static void Cmd_handleballthrow(void)
 
             if (shakes == BALL_3_SHAKES_SUCCESS) // mon caught, copy of the code above
             {
-                gBattlescriptCurrInstr = BattleScript_SuccessBallThrow;
+                gBattlescriptCurrInstr =
+#ifdef PORTABLE
+                    WorldCoop_IsBattle() ? BattleScript_CoopSharedCatch :
+#endif
+                    BattleScript_SuccessBallThrow;
                 SetMonData(&gEnemyParty[gBattlerPartyIndexes[gBattlerTarget]], MON_DATA_POKEBALL, &gLastUsedItem);
 
-                if (CalculatePlayerPartyCount() == PARTY_SIZE)
+                if (
+#ifdef PORTABLE
+                    WorldCoop_IsBattle() ? WorldCoop_GetOwnPartyCount() == PARTY_SIZE :
+#endif
+                    CalculatePlayerPartyCount() == PARTY_SIZE)
                     gBattleCommunication[MULTISTRING_CHOOSER] = 0;
                 else
                     gBattleCommunication[MULTISTRING_CHOOSER] = 1;
@@ -10169,6 +10202,20 @@ static void Cmd_handleballthrow(void)
 
 static void Cmd_givecaughtmon(void)
 {
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle())
+    {
+        if (gBattleControllerExecFlags)
+            return;
+        if (!WorldCoop_EmitCatch())
+        {
+            NativeLink_Abort();
+            return;
+        }
+        gBattlescriptCurrInstr++;
+        return;
+    }
+#endif
     if (GiveMonToPlayer(&gEnemyParty[gBattlerPartyIndexes[BATTLE_OPPOSITE(gBattlerAttacker)]]) != MON_GIVEN_TO_PARTY)
     {
         if (!ShouldShowBoxWasFullMessage())

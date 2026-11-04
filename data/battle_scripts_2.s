@@ -61,6 +61,36 @@ BattleScript_SafariBallThrow::
 	updatestatusicon BS_ATTACKER
 	handleballthrow
 
+	.ifdef PORTABLE
+@ Shared combat never opens a private dex, nickname screen, party or PC.
+BattleScript_CoopSharedCatch::
+	givecaughtmon
+	setbyte gBattleOutcome, B_OUTCOME_CAUGHT
+	finishturn
+
+@ Only the catcher runs this, after bilateral commit and private restoration.
+BattleScript_CoopPrivateCatch::
+	incrementgamestat GAME_STAT_POKEMON_CAPTURES
+	printstring STRINGID_GOTCHAPKMNCAUGHTPLAYER
+	trysetcaughtmondexflags BattleScript_CoopNickname
+	printstring STRINGID_PKMNDATAADDEDTODEX
+	waitstate
+	setbyte gBattleCommunication, 0
+	displaydexinfo
+BattleScript_CoopNickname:
+	printstring STRINGID_GIVENICKNAMECAPTURED
+	waitstate
+	setbyte gBattleCommunication, 0
+	trygivecaughtmonnick BattleScript_CoopGiveEnd
+	givecaughtmon
+	printfromtable gCaughtMonStringIds
+	waitmessage B_WAIT_TIME_LONG
+	end2
+BattleScript_CoopGiveEnd:
+	givecaughtmon
+	end2
+	.endif
+
 BattleScript_SuccessBallThrow::
 	jumpifhalfword CMP_EQUAL, gLastUsedItem, ITEM_SAFARI_BALL, BattleScript_PrintCaughtMonInfo
 	incrementgamestat GAME_STAT_POKEMON_CAPTURES

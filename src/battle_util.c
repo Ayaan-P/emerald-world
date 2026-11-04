@@ -320,6 +320,19 @@ void HandleAction_UseItem(void)
     ClearFuryCutterDestinyBondGrudge(gBattlerAttacker);
     gLastUsedItem = gBattleBufferB[gBattlerAttacker][1] | (gBattleBufferB[gBattlerAttacker][2] << 8);
 
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle())
+    {
+        if (!WorldCoop_BallReplyValid(gLastUsedItem) || !gLastUsedItem
+         || (gBattlerAttacker & BIT_SIDE))
+        {
+            gCurrentActionFuncId = B_ACTION_FINISHED;
+            return;
+        }
+        WorldCoop_EmitBallUse(gLastUsedItem);
+        gLastUsedItem &= 0xFF;
+    }
+#endif
     if (gLastUsedItem <= LAST_BALL) // is ball
     {
         gBattlescriptCurrInstr = gBattlescriptsForBallThrow[gLastUsedItem];

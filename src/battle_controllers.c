@@ -858,7 +858,8 @@ static bool8 NativeBattleCommandValid(const u8 *data, u16 size, u8 bufferId)
     case CONTROLLER_EXPUPDATE:
 #ifdef PORTABLE
         if (data[0] == CONTROLLER_EXPUPDATE && WorldCoop_IsBattle())
-            return WorldCoop_RewardPacketValid(data, size);
+            return WorldCoop_RewardPacketValid(data, size)
+                || WorldCoop_CatchPacketValid(data, size);
 #endif
         if (data[1] >= PARTY_SIZE)
             return FALSE;
@@ -1039,7 +1040,10 @@ static bool8 NativeBattleReplyValid(u8 battler, const u8 *data)
             || request[0] == CONTROLLER_EXPUPDATE || request[0] == CONTROLLER_DRAWPARTYSTATUSSUMMARY;
     case CONTROLLER_ONERETURNVALUE:
     case CONTROLLER_ONERETURNVALUE_DUPLICATE:
-        return request[0] == CONTROLLER_OPENBAG && (data[1] | (data[2] << 8)) < ITEMS_COUNT;
+        return request[0] == CONTROLLER_OPENBAG && data[3] == 0
+            && (WorldCoop_IsBattle()
+                ? !(battler & BIT_SIDE) && WorldCoop_BallReplyValid(data[1] | (data[2] << 8))
+                : (data[1] | (data[2] << 8)) < ITEMS_COUNT);
     }
     return FALSE;
 }

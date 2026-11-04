@@ -4318,7 +4318,11 @@ static void HandleTurnActionSelectionState(void)
                     }
                     break;
                 case B_ACTION_USE_ITEM:
-                    if (gBattleTypeFlags & (BATTLE_TYPE_LINK
+                    if (
+#ifdef PORTABLE
+                        (!WorldCoop_IsBattle() || WorldCoop_IsTrainer()) &&
+#endif
+                        gBattleTypeFlags & (BATTLE_TYPE_LINK
                                             | BATTLE_TYPE_FRONTIER_NO_PYRAMID
                                             | BATTLE_TYPE_EREADER_TRAINER
                                             | BATTLE_TYPE_RECORDED_LINK))
@@ -5205,10 +5209,12 @@ static void HandleEndTurn_FinishBattle(void)
 #ifdef PORTABLE
         if (WorldCoop_IsBattle())
         {
-            /* Wild escape scripts end locally and never execute endlinkbattle.
-             * Send the same end record as the win/loss script before parking
-             * the master, so both humans reach the validated completion gate. */
+            /* Catch and escape scripts do not execute endlinkbattle. Drain
+             * the final capture receipt before sending the shared end record. */
+            if (gBattleControllerExecFlags)
+                return;
             if (gBattleOutcome == B_OUTCOME_RAN
+             || gBattleOutcome == B_OUTCOME_CAUGHT
              || gBattleOutcome == B_OUTCOME_PLAYER_TELEPORTED
              || gBattleOutcome == B_OUTCOME_MON_FLED
              || gBattleOutcome == B_OUTCOME_MON_TELEPORTED)
@@ -5461,7 +5467,9 @@ static void CoopPrivateRewards(void)
 {
     if (gPaletteFade.active || gBattleControllerExecFlags)
         return;
-    if (WorldCoop_NextReward())
+    if (WorldCoop_BeginCatchRewards())
+        BattleScriptExecute(BattleScript_CoopPrivateCatch);
+    else if (WorldCoop_NextReward())
         BattleScriptExecute(sCoopExpScript);
     else if (!sCoopTrainerPrizeDone && gBattleOutcome == B_OUTCOME_WON)
     {
