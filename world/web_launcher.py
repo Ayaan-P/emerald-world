@@ -175,6 +175,15 @@ class LauncherBridge:
                 if not isinstance(name, str):
                     raise SessionError('Choose a saved world.')
                 self.remote_paths = self.session.rejoin_friend(name)
+            elif action == 'reconnect':
+                if self.session.state is None or self.session.remote_trainer is None:
+                    raise SessionError('Join a saved world first.')
+                name = self.session.state.name
+                if not any(item['name'] == name for item in self.session.friend_worlds()):
+                    raise SessionError('This connection is no longer saved. Import a new invitation.')
+                self.session.disconnect()
+                self.remote_paths = None
+                self.remote_paths = self.session.rejoin_friend(name)
             elif action == 'launch':
                 if self.remote_paths is None or self.session.state is None:
                     raise SessionError('Join a world before launching your trainer.')

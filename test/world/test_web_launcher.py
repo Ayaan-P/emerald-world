@@ -171,6 +171,23 @@ class WebLauncherTests(unittest.TestCase):
         self.assertFalse(result[0]['ready'])
         self.assertEqual(result[0]['help'], 'Install bubblewrap.')
 
+    def test_reconnect_uses_only_current_saved_world(self):
+        self.session.state = Path('/tmp/world1')
+        self.session.remote_trainer = 'May'
+        self.session.friend_worlds.return_value = [{'name': 'world1', 'trainer': 'May'}]
+        self.session.rejoin_friend.return_value = {'profile': Path('/tmp/world1/trainers/May')}
+        self.bridge.action('reconnect', {})
+        self.session.disconnect.assert_called_once_with()
+        self.session.rejoin_friend.assert_called_once_with('world1')
+        self.assertEqual(self.bridge.remote_paths, {'profile': Path('/tmp/world1/trainers/May')})
+
+    def test_reconnect_without_saved_bookmark_does_not_disconnect(self):
+        self.session.state = Path('/tmp/world1')
+        self.session.remote_trainer = 'May'
+        with self.assertRaisesRegex(SessionError, 'no longer saved'):
+            self.bridge.action('reconnect', {})
+        self.session.disconnect.assert_not_called()
+
     def test_switching_worlds_requires_disconnect(self):
         self.session.state = Path('/tmp/connected')
         with self.assertRaisesRegex(SessionError, 'Disconnect'):

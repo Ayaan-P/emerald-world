@@ -65,6 +65,17 @@ describe('player launcher', () => {
     await waitFor(() => expect(perform).toHaveBeenCalledWith('offline', { world: 'remote-1234', copy: true }));
   });
 
+  it('explains game closure before reconnecting', async () => {
+    loadState.mockResolvedValue({ ...snapshot(), connected: true, trainer: 'May', games: ['May'] });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /^reconnect$/i }));
+    const modal = screen.getByRole('dialog');
+    expect(modal.textContent).toMatch(/save in the game first/i);
+    expect(perform).not.toHaveBeenCalled();
+    fireEvent.click(within(modal).getByRole('button', { name: /^reconnect$/i }));
+    await waitFor(() => expect(perform).toHaveBeenCalledWith('reconnect', {}));
+  });
+
   it('shows only reported nearby trainers and connection state', async () => {
     loadState.mockResolvedValue({ ...snapshot(), connected: true, trainer: 'May', games: ['May'],
       presence: { state: 'connected', nearby: [{ trainer: 'Brendan', ready: true, rendered: true }] } });
