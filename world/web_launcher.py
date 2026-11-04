@@ -38,6 +38,7 @@ class LauncherBridge:
         self.session = session
         self.binary = Path(binary)
         self.remote_paths = None
+        self.browser_input = None
         self.lock = threading.RLock()
         from .hosting_ui import HostedLauncher
         self.hosted = HostedLauncher(session)
@@ -151,6 +152,11 @@ class LauncherBridge:
                     'games': [name for name, (process, _paths) in self.session.games.items()
                               if process.poll() is None], 'status': self.session.status}
 
+    def stop_browser_input(self):
+        if self.browser_input is not None:
+            self.browser_input.close()
+            self.browser_input = None
+
     def action(self, action, payload):
         with self.lock:
             if action in ('join', 'rejoin', 'host_create', 'host_resume', 'host_join'):
@@ -227,6 +233,7 @@ class LauncherBridge:
                     raise SessionError('Choose a saved world.')
                 self.remote_paths = self.session.rejoin_friend(name)
             elif action == 'reconnect':
+                self.stop_browser_input()
                 if self.session.state is None or self.session.remote_trainer is None:
                     raise SessionError('Join a saved world first.')
                 name = self.session.state.name
@@ -284,11 +291,13 @@ class LauncherBridge:
                     raise SessionError('Choose an existing offline adventure.')
                 self._start_offline(world, trainer)
             elif action == 'leave':
+                self.stop_browser_input()
                 trainer = payload.get('game', self.session.remote_trainer)
                 if not trainer:
                     raise SessionError('No connected trainer is selected.')
                 self.session.leave_game(trainer)
             elif action == 'disconnect':
+                self.stop_browser_input()
                 self.session.disconnect()
                 self.remote_paths = None
             elif action == 'favorite':
@@ -323,6 +332,24 @@ class LauncherBridge:
                 if not isinstance(name, str):
                     raise SessionError('Choose a saved world.')
                 self.session.forget_friend(name)
+            elif action == 'screen_info':
+                from .browser_input import BrowserInput
+                return BrowserInput(self.session).info()
+            elif action == 'screen_start':
+                from .browser_input import BrowserInput
+                self.stop_browser_input()
+                control = BrowserInput(self.session)
+                control.start()
+                self.browser_input = control
+                return {'active': True}
+            elif action == 'screen_keys':
+                if self.browser_input is None:
+                    raise SessionError('Start the in-page view first.')
+                self.browser_input.apply(payload.get('keys'))
+                return {'active': True}
+            elif action == 'screen_stop':
+                self.stop_browser_input()
+                return {'active': False}
             else:
                 raise SessionError('Unknown launcher action.')
             return self.snapshot()
@@ -395,6 +422,8 @@ def handler_for(bridge, capability, port, dist=DIST):
                 if not isinstance(data, dict) or set(data) != {'action', 'payload'} or not isinstance(data['action'], str) or not isinstance(data['payload'], dict):
                     raise ValueError
                 if data['action'] == 'quit' and not data['payload']:
+                    with bridge.lock:
+                        bridge.stop_browser_input()
                     self.send_json(200, {'status': 'Launcher is closing.'})
                     threading.Thread(target=self.server.shutdown, daemon=True).start()
                     return
@@ -464,6 +493,7 @@ def main(argv=None):
     finally:
         server.server_close()
         with bridge.lock:
+            bridge.stop_browser_input()
             session.close()
     return 0
 

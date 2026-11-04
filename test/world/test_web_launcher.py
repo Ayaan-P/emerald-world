@@ -241,6 +241,19 @@ class WebLauncherTests(unittest.TestCase):
                 install_shortcut(directory)
             self.assertEqual(target.read_text(), 'custom shortcut')
 
+    def test_browser_control_stops_before_disconnect(self):
+        control = Mock()
+        self.bridge.browser_input = control
+        self.bridge.action('disconnect', {})
+        control.close.assert_called_once_with()
+        self.session.disconnect.assert_called_once_with()
+        self.assertIsNone(self.bridge.browser_input)
+
+    def test_browser_input_actions_require_an_active_controller(self):
+        with self.assertRaises(SessionError):
+            self.bridge.action('screen_keys', {'keys': ['KeyZ']})
+        self.assertEqual(self.bridge.action('screen_stop', {}), {'active': False})
+
     def test_auth_requires_exact_host_capability_and_post_origin(self):
         handler_type = handler_for(self.bridge, 'secret', 8912)
         handler = handler_type.__new__(handler_type)
