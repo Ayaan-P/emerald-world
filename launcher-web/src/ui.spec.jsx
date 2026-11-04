@@ -29,6 +29,18 @@ describe('player launcher', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('accepts a dropped invitation without connecting until confirmed', async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /join a world/i }));
+    const modal = screen.getByRole('dialog');
+    const raw = JSON.stringify({ version: 1, trainer: 'May' });
+    fireEvent.drop(within(modal).getByRole('button', { name: /choose invitation file/i }), {
+      dataTransfer: { files: [{ name: 'invite.json', size: raw.length, text: async () => raw }] },
+    });
+    await waitFor(() => expect(within(modal).getByRole('button', { name: /^join world$/i }).disabled).toBe(false));
+    expect(perform).not.toHaveBeenCalled();
+  });
+
   it('imports an invitation only after the player chooses to join', async () => {
     const { container } = render(<App />);
     fireEvent.click(await screen.findByRole('button', { name: /join a world/i }));
