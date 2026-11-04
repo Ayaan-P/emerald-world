@@ -21,7 +21,6 @@
 #include "platform/world_rally.h"
 #include "platform/world_menu.h"
 #include <string.h>
-#include <stdlib.h>
 #include <stdio.h>
 #ifndef _WIN32
 #include <unistd.h>
