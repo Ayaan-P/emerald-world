@@ -1,0 +1,55 @@
+{
+  "feature": "partial-roadmap-54-native-summary-detail",
+  "status": "not_run",
+  "gate": "Run only when parent authorizes integrated RC. Use isolated synthetic fixtures, never human profiles.",
+  "controls": "Local party or stored box Pokemon > Summary > Pokemon Skills > SELECT. SELECT or B closes detail only. Close before changing pages or Pokemon.",
+  "automated": "python3 -m unittest discover -s test/world -p test_native_summary_detail.py",
+  "cases": [
+    {
+      "id": "local-party-visible-control",
+      "steps": "Open a local non-egg party Pokemon Summary. Move right to Skills. Observe SELECT: IV/EV. Press SELECT.",
+      "expect": "Native in-game panel displays Stat, IV, EV, all six named stats, Hidden Power type and power. Hint changes to SELECT/B: Back. No web UI or telemetry is needed. Text fits without row overlap or clipping."
+    },
+    {
+      "id": "raw-per-stat-order-and-legacy-ev",
+      "steps": "Use distinct synthetic IVs and EVs in HP, Attack, Defense, Speed, Sp. Atk and Sp. Def, including stored EV values 0, 1, 252, 253, 254 and 255. Inspect the panel.",
+      "expect": "Every value matches its named stored MON_DATA field exactly, including 253-255. Nothing is clamped or recalculated. No total EV or per-stat cap is modified."
+    },
+    {
+      "id": "hidden-power-extremes",
+      "steps": "Inspect all-zero IVs, then all-31 IVs in separate synthetic Pokemon, whether or not Hidden Power is learned.",
+      "expect": "All-zero IVs show Fighting with power 30. All-31 IVs show Dark with power 70. The displayed type never includes Normal or Mystery."
+    },
+    {
+      "id": "hidden-power-battle-parity",
+      "steps": "After authorization, run the focused helper test and compare mixed IV fixtures with the existing Cmd_hiddenpowercalc formula. Include Speed, Sp. Atk and Sp. Def differing in both low bits.",
+      "expect": "Helper covers every low-two-bit combination with unchanged results after setting upper IV bits. Native UI displays the corresponding type name and power. No battle state is written by inspection."
+    },
+    {
+      "id": "modal-lifecycle-and-freshness",
+      "steps": "With detail open press each direction, A and L/R. Close with SELECT, reopen, close with B, then change party member and page and return. Repeat opening and closing. Finally close Summary.",
+      "expect": "Navigation is ignored while modal. SELECT and B close only detail, restoring item, ribbons, stats and EXP without tile corruption. The next open reflects the newly selected Pokemon. Hint exists only on Skills. Normal Summary B-close works after the modal closes. No window or tile allocation leak."
+    },
+    {
+      "id": "local-box-and-traded-local",
+      "steps": "Inspect a real local stored-box array Pokemon and a legitimately traded Pokemon now in the local party with a different OT. Also inspect an arbitrary temporary copy including a held moving-box Pokemon.",
+      "expect": "Real local box and traded-local party can show details. Temporary summary copies have no hint and SELECT does nothing. Ownership is based on trusted local storage, not OT name or ID."
+    },
+    {
+      "id": "private-view-fail-closed",
+      "steps": "Exercise a partner trade summary, local lock-moves trade summary, multi battle, shared co-op temporary party, regular in-battle Summary, Battle Factory and Slateport Battle Tent rental summary.",
+      "expect": "No detail hint or panel in any of these contexts. SELECT must not expose another trainer's IVs or EVs, including when gPlayerParty temporarily contains mixed-owner battle data. No private party telemetry or protocol change."
+    },
+    {
+      "id": "egg-bad-egg-and-allocation-failure",
+      "steps": "Use synthetic egg and bad-egg fixtures and an instrumented window allocation failure when opening detail.",
+      "expect": "Eggs and bad eggs have no detail hint or panel. Allocation failure leaves normal Skills usable without invalid window access."
+    },
+    {
+      "id": "read-only-save-and-stock-gba",
+      "steps": "Compare isolated party and storage bytes before and after repeated inspection. Run parent integrated native build and authorized GBA ROM neutrality checks against the pinned base.",
+      "expect": "Inspection leaves party, box and saved Pokemon data unchanged. Global MAX_PER_STAT_EVS remains 255. All shared-source additions are PORTABLE guarded. GBA output matches the baseline when checked by the established toolchain."
+    }
+  ],
+  "explicitly_out_of_scope": ["252 EV cap policy or migration", "Bag search/sort", "Dex Mega/area/ability tabs", "HM tools", "full roadmap 54 acceptance"]
+}
