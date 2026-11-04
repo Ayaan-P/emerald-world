@@ -7,8 +7,16 @@ a private team, bag and save while exploring a shared world.
 
 `main` is the current development and playable co-op baseline. Start new work
 from `origin/main` and target PRs to `main`. `rc` is a historical integration
-branch, not the current release. This is not a complete shared-campaign or
-production-ready multiplayer release.
+branch, not the current release. The Linux release-candidate work includes the
+React launcher, private backups, user-local packaging and lifecycle fixes; it
+is not a claim of complete shared-campaign or Windows play acceptance.
+See [Player release scope](docs/PLAYER_RELEASE_SCOPE.md) for current behavior,
+recovery limits and the remaining friend-owned Windows gate.
+
+The current launcher is built with `npm ci && npm run build` in `launcher-web`,
+then opened with `python3 -m world.web_launcher` from the repository root.
+The browser opens the launcher; **Play opens a separate native game window**.
+The older tkinter source launcher remains a fallback, not the packaged player UI.
 
 ## What is available now?
 
