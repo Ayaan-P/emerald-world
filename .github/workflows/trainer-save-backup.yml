@@ -1,0 +1,35 @@
+name: Trainer save backup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'world/save_backup.py'
+      - 'world/launcher.py'
+      - 'world/offline.py'
+      - 'test/world/test_save_backup.py'
+      - '.github/workflows/trainer-save-backup.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'world/save_backup.py'
+      - 'world/launcher.py'
+      - 'world/offline.py'
+      - 'test/world/test_save_backup.py'
+      - '.github/workflows/trainer-save-backup.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out source without stored credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Check safe trainer-save backup
+        run: python3 -m unittest test.world.test_save_backup -v
