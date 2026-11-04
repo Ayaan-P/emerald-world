@@ -1,0 +1,31 @@
+name: React launcher setup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/setup_react_launcher.py'
+      - 'test/world/test_setup_react_launcher.py'
+      - '.github/workflows/react-launcher-setup.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/setup_react_launcher.py'
+      - 'test/world/test_setup_react_launcher.py'
+      - '.github/workflows/react-launcher-setup.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out source without stored credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Check setup orchestration
+        run: python3 -m unittest test.world.test_setup_react_launcher -v
