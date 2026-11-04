@@ -48,6 +48,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes build-essential libpng-dev libsdl2-dev xvfb xserver-xephyr xdotool bubblewrap
+      - name: Check isolated namespace support
+        run: >-
+          bwrap --unshare-all --die-with-parent --clearenv
+          --ro-bind /usr /usr --ro-bind /lib /lib --ro-bind /lib64 /lib64
+          --proc /proc --dev /dev --tmpfs /tmp -- /usr/bin/true
       - name: Restore pinned upstream build inputs
         run: python3 scripts/restore_upstream_assets.py
       - name: Build native game
