@@ -156,7 +156,7 @@ class LibraryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             session.create_world('overflow')
 
-    def test_play_tab_exposes_labels_details_delete_and_restore(self):
+    def test_launcher_exposes_library_details_delete_and_restore(self):
         import sys
         from types import SimpleNamespace
         from unittest.mock import Mock, MagicMock, patch
@@ -168,6 +168,8 @@ class LibraryTests(unittest.TestCase):
                 return self.value
             def set(self, value):
                 self.value = value
+            def trace_add(self, *args):
+                return 'mock-trace'
         widgets = []
         def widget(*args, **kwargs):
             result = MagicMock()
@@ -175,8 +177,9 @@ class LibraryTests(unittest.TestCase):
             widgets.append(result)
             return result
         ttk = SimpleNamespace(**{name: widget for name in
-            ('Frame', 'Label', 'Notebook', 'Combobox', 'Entry', 'Button', 'Treeview', 'Scrollbar')})
-        fake = SimpleNamespace(StringVar=Variable, Canvas=widget, ttk=ttk, filedialog=Mock())
+            ('Frame', 'Label', 'Notebook', 'Combobox', 'Entry', 'Button', 'Treeview', 'Scrollbar', 'Style', 'Progressbar')})
+        fake = SimpleNamespace(StringVar=Variable, Canvas=widget, Text=widget, ttk=ttk,
+                               filedialog=Mock(), font=SimpleNamespace(nametofont=Mock()))
         session = DesktopSession(self.root)
         session.create_world('stable')
         with patch.dict(sys.modules, {'tkinter': fake}):
@@ -184,6 +187,11 @@ class LibraryTests(unittest.TestCase):
             try:
                 labels = {item.options.get('text') for item in widgets}
                 self.assertTrue({'Rename / save tags', 'Move to Deleted', 'Restore deleted world'} <= labels)
+                self.assertTrue({'1. Choose your world', '2. Host or join', '3. Play as your trainer',
+                                 'Import friend invitation', 'Connect remote TLS'} <= labels)
+                self.assertEqual(set(app.page_canvases),
+                                 {'Play', 'Connect friends', 'Optional GM', 'Settings', 'World library'})
+                self.assertEqual(len(app.inputs), len(app.fields))
                 self.assertTrue(hasattr(app, 'play_canvas'))
                 self.assertIn('world_label', app.fields)
                 self.assertIn('world_tags', app.fields)
