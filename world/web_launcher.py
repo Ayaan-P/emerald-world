@@ -9,6 +9,7 @@ import base64
 import binascii
 import hashlib
 import hmac
+import importlib.util
 import json
 import os
 import re
@@ -226,6 +227,29 @@ class LauncherBridge:
                 if not isinstance(name, str):
                     raise SessionError('Choose a saved world.')
                 self.remote_paths = self.session.rejoin_friend(name)
+            elif action == 'save_backup_info':
+                return {'available': importlib.util.find_spec('world.save_backup') is not None}
+            elif action == 'save_backup':
+                if importlib.util.find_spec('world.save_backup') is None:
+                    raise SessionError('Save backup support is not installed yet.')
+                world, trainer, offline = payload.get('world'), payload.get('trainer'), payload.get('offline')
+                if not isinstance(world, str) or not isinstance(trainer, str) or type(offline) is not bool:
+                    raise SessionError('Choose a saved trainer profile.')
+                if offline:
+                    known = any(item['world'] == world and item['trainer'] == trainer for item in self.offline_saves())
+                else:
+                    known = any(item['name'] == world and item['trainer'] == trainer for item in self.session.friend_worlds())
+                if not known:
+                    raise SessionError('Choose an available saved trainer profile.')
+                from .save_backup import backup_save
+                try:
+                    with tempfile.TemporaryDirectory(prefix='emerald-save-backup-') as directory:
+                        destination = Path(directory) / 'trainer.sav'
+                        backup_save(self.session._world(world), trainer, destination, offline=offline)
+                        encoded = base64.b64encode(destination.read_bytes()).decode('ascii')
+                except (OSError, ValueError):
+                    raise SessionError('Could not back up this save. Close the game and check that the profile has a save.') from None
+                return {'data': encoded, 'filename': 'emerald-trainer-backup.sav'}
             elif action == 'reconnect':
                 if self.session.state is None or self.session.remote_trainer is None:
                     raise SessionError('Join a saved world first.')

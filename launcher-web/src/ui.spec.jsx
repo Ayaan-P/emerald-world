@@ -202,6 +202,25 @@ describe('player launcher', () => {
     await waitFor(() => expect(perform).toHaveBeenCalledWith('rename', { world: 'remote-1234', label: 'Our Hoenn' }));
   });
 
+  it('backs up a saved trainer only when requested', async () => {
+    const originalCreate = URL.createObjectURL, originalRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = vi.fn(() => 'blob:private-save'); URL.revokeObjectURL = vi.fn();
+    perform.mockImplementation(async action => action === 'save_backup_info' ? { available: true } :
+      { data: 'AQID', filename: 'emerald-trainer-backup.sav' });
+    try {
+      render(<App />);
+      fireEvent.click(await screen.findByRole('button', { name: /save backups/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /create backup/i }));
+      await waitFor(() => expect(perform).toHaveBeenCalledWith('save_backup', {
+        world: 'remote-1234', trainer: 'May', offline: false,
+      }));
+      expect(await screen.findByRole('link', { name: /download save/i })).toBeTruthy();
+      expect(screen.queryByText('AQID')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: /^done$/i }));
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:private-save');
+    } finally { URL.createObjectURL = originalCreate; URL.revokeObjectURL = originalRevoke; }
+  });
+
   it('confirms before closing a running offline game', async () => {
     loadState.mockResolvedValue({ ...snapshot(), games: ['offline/May'] });
     render(<App />);

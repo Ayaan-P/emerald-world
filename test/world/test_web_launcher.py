@@ -1,6 +1,7 @@
 """Unit checks for the local launcher bridge. No live world or game is used."""
 import base64
 import json
+import importlib.util
 import os
 import time
 import tempfile
@@ -240,6 +241,27 @@ class WebLauncherTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 install_shortcut(directory)
             self.assertEqual(target.read_text(), 'custom shortcut')
+
+    @unittest.skipUnless(importlib.util.find_spec('world.save_backup') is not None, 'save backup module is not installed')
+    def test_backup_exports_only_a_known_profile_without_modifying_save(self):
+        from world.friend_worlds import remember
+        from world.launcher import profile_paths
+        root = Path(self.tmp.name)
+        world = root / 'remote-1234'; world.mkdir(mode=0o700)
+        remember(world, self.invitation())
+        paths = profile_paths(world, 'Trainer')
+        paths['profile'].mkdir(parents=True, mode=0o700)
+        paths['save'].write_bytes(b'synthetic progress')
+        session = DesktopSession(root)
+        try:
+            bridge = LauncherBridge(session, '/nonexistent/game')
+            result = bridge.action('save_backup', {'world': 'remote-1234', 'trainer': 'Trainer', 'offline': False})
+            self.assertEqual(base64.b64decode(result['data']), b'synthetic progress')
+            self.assertEqual(paths['save'].read_bytes(), b'synthetic progress')
+            with self.assertRaises(SessionError):
+                bridge.action('save_backup', {'world': 'remote-1234', 'trainer': 'Other', 'offline': False})
+        finally:
+            session.close()
 
     def test_auth_requires_exact_host_capability_and_post_origin(self):
         handler_type = handler_for(self.bridge, 'secret', 8912)
