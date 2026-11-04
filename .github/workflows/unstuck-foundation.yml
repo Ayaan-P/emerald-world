@@ -1,0 +1,34 @@
+name: Unstuck foundation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/platform/native_unstuck.c'
+      - 'src/platform/world_unstuck.c'
+      - 'src/platform/unstuck_landing.c'
+      - 'include/platform/unstuck_landing.h'
+      - 'include/platform/*unstuck.h'
+      - 'test/world/test_*unstuck*.py'
+      - '.github/workflows/unstuck-foundation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  policy-and-storage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout source without stored credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Generate native map and heal-location constants
+        run: |
+          make -C tools/mapjson
+          make -C tools/jsonproc
+          make generated -j2
+      - name: Exercise destination, boxed and private cooldown policy
+        run: PYTHONPATH=.:test/world python3 -m unittest test.world.test_world_unstuck test.world.test_native_unstuck_clock -v
