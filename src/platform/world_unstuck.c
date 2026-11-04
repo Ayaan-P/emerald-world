@@ -20,6 +20,7 @@
 #include "constants/flags.h"
 #include "constants/vars.h"
 #include "constants/map_types.h"
+#include "constants/metatile_behaviors.h"
 #include "constants/heal_locations.h"
 #include "constants/maps.h"
 #include "constants/global.h"
@@ -88,6 +89,52 @@ bool8 WorldUnstuck_ConservativelyBoxed(void)
     }
     return TRUE;
 }
+static bool8 Unstuck_EventHazard(const struct MapEvents *events, int x, int y)
+{
+    unsigned i;
+    for (i=0; i<events->warpCount; i++)
+        if (events->warps[i].x==x && events->warps[i].y==y) return TRUE;
+    for (i=0; i<events->coordEventCount; i++)
+        if (events->coordEvents[i].x==x && events->coordEvents[i].y==y) return TRUE;
+    for (i=0; i<events->objectEventCount; i++) {
+        const struct ObjectEventTemplate *object=&events->objectEvents[i];
+        if (object->flagId && FlagGet(object->flagId)) continue;
+        if (abs(x-object->x) <= object->movementRangeX && abs(y-object->y) <= object->movementRangeY) return TRUE;
+    }
+    return FALSE;
+}
+
+bool8 WorldUnstuck_BuildLoadedGrid(u8 *plain, u8 *clear, unsigned capacity)
+{
+    const struct MapLayout *layout=gMapHeader.mapLayout;
+    const struct MapEvents *events=gMapHeader.events;
+    unsigned x, y, i, width, height;
+    if (!plain || !clear || plain==clear || !gSaveBlock1Ptr || gMain.callback2 != CB2_Overworld
+        || !layout || !events || !gBackupMapLayout.map
+        || (events->warpCount && !events->warps) || (events->coordEventCount && !events->coordEvents)
+        || (events->objectEventCount && !events->objectEvents)
+        || layout->width <= 0 || layout->height <= 0 || layout->width > 128 || layout->height > 128
+        || layout->width * layout->height > 8192) return FALSE;
+    width=layout->width; height=layout->height;
+    if (capacity < width * height || gBackupMapLayout.width < (int)width + MAP_OFFSET_W
+        || gBackupMapLayout.height < (int)height + MAP_OFFSET_H) return FALSE;
+    for (y=0; y<height; y++) for (x=0; x<width; x++) {
+        unsigned cell=x+y*width;
+        int gx=x+MAP_OFFSET, gy=y+MAP_OFFSET;
+        plain[cell] = !MapGridGetCollisionAt(gx,gy)
+            && MapGridGetElevationAt(gx,gy)==ELEVATION_DEFAULT
+            && MapGridGetMetatileBehaviorAt(gx,gy)==MB_NORMAL
+            && !Unstuck_EventHazard(events,x,y);
+        clear[cell]=plain[cell];
+        for (i=0; clear[cell] && i<OBJECT_EVENTS_COUNT; i++) {
+            const struct ObjectEvent *object=&gObjectEvents[i];
+            if (object->active && !object->isPlayer && object->currentCoords.x==gx && object->currentCoords.y==gy)
+                clear[cell]=FALSE;
+        }
+    }
+    return TRUE;
+}
+
 bool8 WorldUnstuck_AllowedDeparture(void)
 {
     if (!gSaveBlock1Ptr || !FlagGet(FLAG_SYS_POKEMON_GET)

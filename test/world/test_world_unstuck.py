@@ -32,6 +32,50 @@ int main(void) {
 '''
         self.compile_and_run(source)
 
+    def test_loaded_grid_rejects_hazards_and_actual_occupied_tiles(self):
+        source = r'''
+#include <assert.h>
+#include <string.h>
+#include "src/platform/world_unstuck.c"
+struct MapHeader gMapHeader;
+struct BackupMapLayout gBackupMapLayout;
+struct ObjectEvent gObjectEvents[OBJECT_EVENTS_COUNT];
+struct SaveBlock1 *gSaveBlock1Ptr;
+struct Main gMain;
+void CB2_Overworld(void) {}
+static int blockedX=-1, blockedY=-1, specialX=-1, specialY=-1;
+u8 MapGridGetCollisionAt(s32 x,s32 y) { return x==blockedX && y==blockedY; }
+u8 MapGridGetElevationAt(s32 x,s32 y) { (void)x;(void)y;return ELEVATION_DEFAULT; }
+s32 MapGridGetMetatileBehaviorAt(s32 x,s32 y) { return x==specialX && y==specialY ? 1 : MB_NORMAL; }
+bool8 FlagGet(u16 flag) { (void)flag;return FALSE; }
+int main(void) {
+ static u16 map[400]; static struct SaveBlock1 save; u8 plain[25], clear[25];
+ gSaveBlock1Ptr=&save; gMain.callback2=CB2_Overworld;
+ struct MapLayout layout={.width=5,.height=5};
+ struct WarpEvent warp={.x=1,.y=1};
+ struct CoordEvent coord={.x=2,.y=1};
+ struct ObjectEventTemplate npc={.x=3,.y=1,.movementRangeX=1,.movementRangeY=0};
+ struct MapEvents events={.warpCount=1,.warps=&warp,.coordEventCount=1,.coordEvents=&coord,.objectEventCount=1,.objectEvents=&npc};
+ gMapHeader.mapLayout=&layout; gMapHeader.events=&events;
+ gBackupMapLayout.width=20; gBackupMapLayout.height=19; gBackupMapLayout.map=map;
+ memset(plain,77,sizeof(plain)); memset(clear,77,sizeof(clear));
+ gMain.callback2=NULL; assert(!WorldUnstuck_BuildLoadedGrid(plain,clear,25));
+ assert(plain[0]==77 && clear[0]==77); gMain.callback2=CB2_Overworld;
+ assert(!WorldUnstuck_BuildLoadedGrid(plain,clear,24)); assert(plain[0]==77 && clear[0]==77);
+ blockedX=7;blockedY=7;specialX=8;specialY=7;
+ gObjectEvents[0].active=1; gObjectEvents[0].isPlayer=1; gObjectEvents[0].currentCoords.x=9;gObjectEvents[0].currentCoords.y=9;
+ gObjectEvents[1].active=1; gObjectEvents[1].currentCoords.x=10;gObjectEvents[1].currentCoords.y=9;
+ assert(WorldUnstuck_BuildLoadedGrid(plain,clear,25));
+ assert(!plain[0] && !plain[1]); /* collision, non-normal */
+ assert(!plain[1+1*5] && !plain[2+1*5] && !plain[3+1*5]); /* events and NPC range */
+ assert(plain[2+2*5] && clear[2+2*5]); /* own player excluded */
+ assert(plain[3+2*5] && !clear[3+2*5]); /* other live object */
+ assert(!WorldUnstuck_BuildLoadedGrid(plain,plain,25));
+ return 0;
+}
+'''
+        self.compile_and_run(source)
+
     def test_departure_and_story_gates_fail_closed(self):
         source = r'''
 #include <assert.h>
