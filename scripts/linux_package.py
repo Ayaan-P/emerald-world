@@ -101,7 +101,7 @@ def assemble(binary, web_dist, version, output):
                 url = urlsplit(value)
                 if url.scheme or url.netloc or url.query or url.fragment:
                     raise ValueError('Frontend index must reference local release assets only')
-                name = unquote(url.path).lstrip('/')
+                name = Path(unquote(url.path).lstrip('/')).as_posix()
                 if not name or '..' in Path(name).parts or 'launcher-web/dist/' + name not in frozen:
                     raise ValueError(f'Missing frontend asset referenced by index: {value}')
     IndexAssets().feed(frozen['launcher-web/dist/index.html'][0].decode('utf-8'))

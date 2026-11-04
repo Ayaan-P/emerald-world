@@ -37,6 +37,11 @@ class LinuxPackageTests(unittest.TestCase):
         self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
         return output / ('EmeraldWorld-' + version + '-linux-x86_64.tar.gz')
 
+    def test_relative_vite_index_asset_paths_are_supported(self):
+        (self.dist / 'index.html').write_text('<html><script src="./assets/main.js"></script></html>')
+        archive = self.package()
+        self.assertTrue(archive.is_file())
+
     def test_webp_assets_used_by_real_frontend_are_included(self):
         asset = self.dist / 'assets/hoenn.webp'
         asset.write_bytes(b'webp packaging fixture')
