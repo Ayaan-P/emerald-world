@@ -53,6 +53,16 @@ describe('player launcher', () => {
     await waitFor(() => expect(perform).toHaveBeenCalledWith('offline', { world: 'remote-1234', copy: true }));
   });
 
+  it('renames a saved world locally', async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /your worlds/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^rename$/i }));
+    const modal = screen.getByRole('dialog');
+    fireEvent.change(within(modal).getByLabelText(/world name/i), { target: { value: 'Our Hoenn' } });
+    fireEvent.click(within(modal).getByRole('button', { name: /save name/i }));
+    await waitFor(() => expect(perform).toHaveBeenCalledWith('rename', { world: 'remote-1234', label: 'Our Hoenn' }));
+  });
+
   it('confirms before closing a running offline game', async () => {
     loadState.mockResolvedValue({ ...snapshot(), games: ['offline/May'] });
     render(<App />);

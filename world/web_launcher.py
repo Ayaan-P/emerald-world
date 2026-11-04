@@ -37,11 +37,14 @@ class LauncherBridge:
 
     def snapshot(self):
         with self.lock:
-            labels = {item['key']: item['display_name'] for item in self.session.world_library()}
+            from .world_library import _read_metadata
             worlds = []
             for item in self.session.friend_worlds():
                 key = item['name']
-                label = labels.get(key, key)
+                try:
+                    label = _read_metadata(self.session._world(key))['display_name']
+                except (OSError, ValueError, TypeError, KeyError):
+                    label = key  # A bad local label must not hide a saved connection.
                 if label == key and key.startswith('remote-'):
                     label = 'Friend’s world · ' + key[-4:]
                 worlds.append({'key': key, 'name': label, 'trainer': item['trainer']})
@@ -119,6 +122,18 @@ class LauncherBridge:
             elif action == 'disconnect':
                 self.session.disconnect()
                 self.remote_paths = None
+            elif action == 'rename':
+                name, label = payload.get('world'), payload.get('label')
+                if not isinstance(name, str) or not isinstance(label, str):
+                    raise SessionError('Choose a world and a name.')
+                if not any(item['name'] == name for item in self.session.friend_worlds()):
+                    raise SessionError('Choose a saved world.')
+                from .world_library import _read_metadata
+                try:
+                    tags = _read_metadata(self.session._world(name))['tags']
+                    self.session.rename_world(name, label, tags)
+                except (OSError, ValueError, KeyError, TypeError):
+                    raise SessionError('Could not save that name. Use 1 to 80 characters.') from None
             elif action == 'forget':
                 name = payload.get('world')
                 if not isinstance(name, str):

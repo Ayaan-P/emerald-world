@@ -5,7 +5,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import Mock, patch
 
-from world.session import SessionError
+from world.session import DesktopSession, SessionError
 from world.web_launcher import LauncherBridge, handler_for, install_shortcut
 
 
@@ -58,13 +58,13 @@ class WebLauncherTests(unittest.TestCase):
         self.session.friend_worlds.return_value = [
             {'name': 'remote-12345678', 'trainer': 'May'},
             {'name': 'remote-abcdefgh', 'trainer': 'Brendan'}]
-        self.session.world_library.return_value = [
-            {'key': 'remote-abcdefgh', 'display_name': 'Our Hoenn'}]
+        self.session._world.side_effect = lambda key: Path('/tmp') / key
         running, exited = Mock(), Mock()
         running.poll.return_value = None
         exited.poll.return_value = 0
         self.session.games = {'May': (running, {}), 'Brendan': (exited, {})}
-        result = self.bridge.snapshot()
+        with patch('world.world_library._read_metadata', side_effect=[{'display_name': 'remote-12345678'}, {'display_name': 'Our Hoenn'}]):
+            result = self.bridge.snapshot()
         self.assertEqual(result['worlds'][0]['name'], 'Friend’s world · 5678')
         self.assertEqual(result['worlds'][1]['name'], 'Our Hoenn')
         self.assertEqual(result['games'], ['May'])
@@ -84,6 +84,31 @@ class WebLauncherTests(unittest.TestCase):
         with self.assertRaises(SessionError):
             self.bridge.action('offline', {'world': 'world1', 'copy': False})
         self.session.launch_offline.assert_not_called()
+
+    def test_remote_saved_world_uses_existing_private_label(self):
+        from world.friend_worlds import remember
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            world = root / 'remote-1234'
+            world.mkdir(mode=0o700)
+            remember(world, self.invitation())
+            session = DesktopSession(root)
+            session.rename_world('remote-1234', 'Our Hoenn', [])
+            try:
+                result = LauncherBridge(session, '/nonexistent/game').snapshot()
+                self.assertEqual(result['worlds'][0]['name'], 'Our Hoenn')
+                (world / '.library.json').write_text('{bad json')
+                result = LauncherBridge(session, '/nonexistent/game').snapshot()
+                self.assertEqual(result['worlds'][0]['name'], 'Friend’s world · 1234')
+            finally:
+                session.close()
+
+    def test_rename_preserves_existing_world_tags(self):
+        self.session.friend_worlds.return_value = [{'name': 'world1', 'trainer': 'May'}]
+        self.session._world.return_value = Path('/tmp/world1')
+        with patch('world.world_library._read_metadata', return_value={'display_name': 'Old', 'tags': ['friends']}):
+            self.bridge.action('rename', {'world': 'world1', 'label': 'Hoenn'})
+        self.session.rename_world.assert_called_once_with('world1', 'Hoenn', ['friends'])
 
     def test_setup_reports_game_dependencies_without_tkinter(self):
         checks = [('tkinter', False, 'Tk only'), ('bwrap', False, 'Install bubblewrap.'),
