@@ -12,23 +12,24 @@ production-ready multiplayer release.
 
 ## What is available now?
 
-The gameplay snapshot documented here is [`02080a4`](https://github.com/Ayaan-P/emerald-world/commit/02080a4140372be54c5115e605257cae96da45e6),
-including the launcher update [#90](https://github.com/Ayaan-P/emerald-world/pull/90),
-private catching [#91](https://github.com/Ayaan-P/emerald-world/pull/91), the
-[resolved follower OT defect #102](https://github.com/Ayaan-P/emerald-world/issues/102),
-and merged co-op hardening. See [Co-op status](docs/COOP_STATUS.md) for the full
-merged/draft list, evidence matrix and remaining acceptance work.
+The verified gameplay baseline is [`ee3c130`](https://github.com/Ayaan-P/emerald-world/commit/ee3c130f96ea0be47e20ebd28bd46218f587cc65),
+including durable private saves and trade/completion hardening
+[#131](https://github.com/Ayaan-P/emerald-world/pull/131), and dedicated hosting
+with full four-client Linux WAN acceptance
+[#132](https://github.com/Ayaan-P/emerald-world/pull/132).
+See [Co-op status](docs/COOP_STATUS.md) for current evidence and explicitly
+separated historical verification records.
 
 | Feature | Availability and evidence boundary |
 |---|---|
-| Shared exploration and tag invitations | Two human-controlled Linux clients have played locally. Presence infrastructure also supports four players, but full four-client native presence acceptance is not established. |
+| Shared exploration and tag invitations | Four native Linux clients passed real pinned-TLS WAN acceptance with all twelve directed peer sprites, ordinary walking, normal player menus and two bilateral Tag pairs. |
 | Shared wild and ordinary trainer battles | Available after both players consent to tag up. The maintainer manually completed the shared May encounter locally. Special encounters are not universally verified. |
 | Combat roster | Each human brings the first **three usable Pokémon**. Both retain their private parties of up to six outside the temporary combat layout. This is not six combat Pokémon per human. |
-| Private wild catching | Both host and follower catches into party and full-party PC have local native acceptance. Only the thrower pays a ball and receives the catch. The exact combined-main follower/PC run also passed ordinary save/reload/resave. |
+| Private wild catching | Earlier host/follower and full-party PC cases passed locally. The latest four-client WAN run passed two simultaneous pair battles and private owner-only catches, including one pair completing while the other remained active. All four saved, reloaded and re-saved. |
 | Battle bag | Poké Balls in supported shared wild battles only. Trainer battle BAG use is rejected. Other co-op battle items and a complete shared battle bag are not supported. |
 | Story progress | Individual. Each player currently needs to initiate and win their own trainer encounter for it to count in their game. This accepted limitation is tracked in [#89](https://github.com/Ayaan-P/emerald-world/issues/89). |
-| PvP and trading | Existing menu paths remain available. This release does not provide fresh end-to-end acceptance of them. Trade hardening remains draft work. |
-| Remote play | TLS invitations and saved friend connections exist. Current catching acceptance is local, not a fresh WAN or Windows guest acceptance. No live server deployment is implied. |
+| PvP and trading | Existing menu paths remain available. Checked private save/trade commits and fresh trade consent are merged through #131. Fresh native PvP/trade acceptance is not established by the WAN wild-catching run. |
+| Remote play | Dedicated authority deployed and verified live with existing world, identities and TLS material preserved. Full four-client Linux WAN catching and persistence passed. This is not Windows guest or 32/64-player throughput acceptance. |
 
 **Both peers must build the same updated native source with co-op protocol v3.**
 An older client being visible in the world does not prove matching gameplay
