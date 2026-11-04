@@ -102,7 +102,9 @@ class LinkProtocol:
             if len(self._tag_actor) + 2 > self.max_players:
                 raise LinkError('capacity')
             self.sessions._near(presence, actor, value, coop=True)
-            tag = _Tag(self._new_id(), actor, value, now + 15)
+            # Human consent includes reading the invitation and switching windows.
+            # This deadline is authoritative for both client invitation views.
+            tag = _Tag(self._new_id(), actor, value, now + 60, next_keepalive=now + 10)
             self._tags[tag.id] = tag
             self._tag_actor[actor] = self._tag_actor[value] = tag.id
             return [(value, f'T OFFER {tag.id} {actor}\n')]
@@ -190,6 +192,11 @@ class LinkProtocol:
         for tag in tuple(self._tags.values()):
             if not tag.active and now >= tag.deadline:
                 output.extend(self._end_tag(tag))
+            elif not tag.active and now >= tag.next_keepalive:
+                # Keep pending consent alive through the 30-second TLS idle
+                # lease without renewing its deadline or granting admission.
+                output.extend((actor, f'T WAIT {tag.id}\n') for actor in tag.participants)
+                tag.next_keepalive = now + 10
             elif tag.active and now >= tag.next_keepalive:
                 # Reassert only the existing authority range bit. A durable tag
                 # otherwise leaves LINK silent until the TLS relay expires it.

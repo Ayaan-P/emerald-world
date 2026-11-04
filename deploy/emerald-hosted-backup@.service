@@ -1,0 +1,19 @@
+# Optional reviewed template. Never stops or conflicts with the hosted service.
+# Instance must be a fresh operator-chosen run ID. Existing archives are refused.
+[Unit]
+Description=Cold hosted Emerald backup (%i)
+
+[Service]
+Type=oneshot
+User=emerald-world
+Group=emerald-world
+WorkingDirectory=/opt/emerald-world
+EnvironmentFile=/etc/emerald-world/hosted-backup.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -m world.hosting_backup backup --root ${HOSTED_ROOT} --cert ${HOSTED_TLS_CERT} --key ${HOSTED_TLS_KEY} --archive /var/backups/emerald-world/hosted-%i.tar
+UMask=0077
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/backups/emerald-world
+RestrictAddressFamilies=AF_UNIX

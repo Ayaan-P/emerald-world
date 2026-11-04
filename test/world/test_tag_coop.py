@@ -48,7 +48,33 @@ class TagCoopTests(unittest.TestCase):
         self.send('alice', 'T OFFER bob')
         self.assertEqual(self.send('alice', 'T ACCEPT 100'), [('alice', 'T ERROR NOT_TARGET\n')])
         self.assertEqual(self.send('eve', 'T ACCEPT 100'), [('eve', 'T ERROR NOT_MEMBER\n')])
-        self.assertEqual(self.p.tick(now=15), [('alice', 'T END 100\n'), ('bob', 'T END 100\n')])
+        self.assertEqual(self.p.tick(now=15), [('alice', 'T WAIT 100\n'), ('bob', 'T WAIT 100\n')])
+        self.assertEqual(self.p.tick(now=59.999), [('alice', 'T WAIT 100\n'), ('bob', 'T WAIT 100\n')])
+        self.assertEqual(self.p.tick(now=60), [('alice', 'T END 100\n'), ('bob', 'T END 100\n')])
+        self.assertEqual(self.send('bob', 'T ACCEPT 100', now=60),
+                         [('bob', 'T ERROR UNKNOWN_SESSION\n')])
+        self.assertFalse(self.p._tags)
+
+    def test_human_can_accept_just_before_deadline_but_not_at_deadline(self):
+        self.send('alice', 'T OFFER bob', now=0)
+        self.assertEqual(self.send('bob', 'T ACCEPT 100', now=59.999),
+                         [('alice', 'T WAIT 100\n'), ('bob', 'T WAIT 100\n'),
+                          ('alice', 'T ACTIVE 100 bob 1\n'), ('bob', 'T ACTIVE 100 alice 1\n')])
+        self.assertFalse(any('T END' in line for _, line in self.p.tick(now=60)))
+        self.setUp()
+        self.send('alice', 'T OFFER bob', now=0)
+        self.assertEqual(self.send('bob', 'T ACCEPT 100', now=60),
+                         [('alice', 'T END 100\n'), ('bob', 'T END 100\n'),
+                          ('bob', 'T ERROR UNKNOWN_SESSION\n')])
+
+    def test_pending_tag_keepalive_does_not_grant_consent_or_extend_expiry(self):
+        self.send('alice', 'T OFFER bob', now=0)
+        for now in (10, 20, 30, 40, 50):
+            self.assertEqual(self.p.tick(now=now),
+                             [('alice', 'T WAIT 100\n'), ('bob', 'T WAIT 100\n')])
+            self.assertFalse(self.p._tags[100].active)
+        self.assertEqual(self.p.tick(now=60),
+                         [('alice', 'T END 100\n'), ('bob', 'T END 100\n')])
 
     def test_busy_and_out_of_range_never_autoadmit(self):
         self.tag()

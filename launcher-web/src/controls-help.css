@@ -1,0 +1,8 @@
+.controls-help { margin: 1rem 0 2rem; padding: 1rem 1.25rem; border: 1px solid var(--border, #d8d5c8); border-radius: 12px; }
+.controls-help summary { cursor: pointer; font-weight: 700; }
+.controls-help p { margin: .8rem 0; line-height: 1.5; }
+.controls-help dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: .6rem 1.5rem; margin: 1rem 0; }
+.controls-help dl div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem; }
+.controls-help dt { opacity: .8; }
+.controls-help dd { margin: 0; font-weight: 700; }
+.controls-help summary:focus-visible { outline: 3px solid #8f742e; outline-offset: 4px; }
