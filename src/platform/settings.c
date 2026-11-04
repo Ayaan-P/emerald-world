@@ -359,6 +359,17 @@ static u32 BindingsHeld(const Uint8 *keyboard, const struct PadState *pads, int 
     return held;
 }
 
+bool Input_KeyIsBound(SDL_Scancode key)
+{
+    if (key <= SDL_SCANCODE_UNKNOWN || key >= SDL_NUM_SCANCODES)
+        return false;
+    for (int i = 0; i < NUM_BINDINGS; i++)
+        for (int j = 0; j < sBindings[i].numKeys; j++)
+            if (sBindings[i].keys[j] == key)
+                return true;
+    return false;
+}
+
 u16 Input_GetButtons(bool *speedUp)
 {
     struct PadState pads[MAX_CONTROLLERS];
