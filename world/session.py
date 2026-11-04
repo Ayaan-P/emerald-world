@@ -737,79 +737,186 @@ class DesktopApp:
         self.closing = False
         self.remote_paths = None
         self.buttons = []
+        self.inputs = []
         self.fields = {}
         window.title('Emerald World')
         window.protocol('WM_DELETE_WINDOW', self.close)
-        frame = ttk.Frame(window, padding=14)
+        window.geometry('900x760')
+        window.minsize(740, 560)
+        from tkinter import font as tkfont
+        family = tkfont.nametofont('TkDefaultFont').actual('family')
+        style = ttk.Style(window)
+        # Keep the desktop theme and its focus/disabled states. Only establish
+        # typography and spacing, rather than painting over native controls.
+        style.configure('Title.TLabel', font=(family, 20, 'bold'))
+        style.configure('Section.TLabel', font=(family, 12, 'bold'))
+        style.configure('TButton', padding=(12, 7))
+        style.configure('TNotebook.Tab', padding=(12, 7))
+        style.configure('Treeview', rowheight=28)
+        frame = ttk.Frame(window, padding=18)
         frame.grid(sticky='nsew')
         window.columnconfigure(0, weight=1)
         window.rowconfigure(0, weight=1)
         frame.columnconfigure(0, weight=1)
-        self.root_label = tk.StringVar(value='Worlds root: ' + str(session.root))
-        ttk.Label(frame, text='Emerald World', font=('Sans', 18, 'bold')).grid(row=0, column=0, sticky='w')
-        ttk.Label(frame, textvariable=self.root_label).grid(row=1, column=0, sticky='w')
+        frame.rowconfigure(2, weight=1)
+        self.root_label = tk.StringVar(value='Worlds folder: ' + str(session.root))
+        ttk.Label(frame, text='Emerald World', style='Title.TLabel').grid(row=0, column=0, sticky='w')
+        root_label = ttk.Label(frame, textvariable=self.root_label, wraplength=820)
+        root_label.grid(row=1, column=0, sticky='w', pady=(4, 0))
         self.notebook = ttk.Notebook(frame)
-        self.notebook.grid(row=2, column=0, sticky='nsew', pady=12)
+        self.notebook.grid(row=2, column=0, sticky='nsew', pady=(16, 12))
         pages = {}
-        for title in ('Play', 'Connect friends', 'Optional GM', 'Settings'):
-            pages[title] = ttk.Frame(self.notebook, padding=12)
-            self.notebook.add(pages[title], text=title)
-            pages[title].columnconfigure(1, weight=1)
-        # The library and trainer controls remain reachable on small desktops.
-        play_outer = pages['Play']
-        play_outer.columnconfigure(0, weight=1)
-        play_outer.rowconfigure(0, weight=1)
-        self.play_canvas = tk.Canvas(play_outer, width=760, height=500, highlightthickness=0)
-        self.play_canvas.grid(row=0, column=0, sticky='nsew')
-        play_scroll = ttk.Scrollbar(play_outer, orient='vertical', command=self.play_canvas.yview)
-        play_scroll.grid(row=0, column=1, sticky='ns')
-        self.play_canvas.configure(yscrollcommand=play_scroll.set)
-        pages['Play'] = ttk.Frame(self.play_canvas)
-        pages['Play'].columnconfigure(1, weight=1)
-        play_content = self.play_canvas.create_window((0, 0), window=pages['Play'], anchor='nw')
-        pages['Play'].bind('<Configure>', lambda event: self.play_canvas.configure(scrollregion=self.play_canvas.bbox('all')))
-        self.play_canvas.bind('<Configure>', lambda event: self.play_canvas.itemconfigure(play_content, width=event.width))
+        self.page_canvases = {}
+        canvas_for_page = {}
+        self.page_notes = {}
+        for title in ('Play', 'Connect friends', 'Optional GM', 'Settings', 'World library'):
+            outer = ttk.Frame(self.notebook, padding=12)
+            self.notebook.add(outer, text=title)
+            outer.columnconfigure(0, weight=1)
+            outer.rowconfigure(0, weight=1)
+            canvas = tk.Canvas(outer, width=760, height=400, highlightthickness=0,
+                               background=style.lookup('TFrame', 'background'))
+            canvas.grid(row=0, column=0, sticky='nsew')
+            scroll = ttk.Scrollbar(outer, orient='vertical', command=canvas.yview)
+            scroll.grid(row=0, column=1, sticky='ns', padx=(8, 0))
+            canvas.configure(yscrollcommand=scroll.set)
+            page = ttk.Frame(canvas)
+            page.columnconfigure(1, weight=1)
+            content = canvas.create_window((0, 0), window=page, anchor='nw')
+            page.bind('<Configure>', lambda event, c=canvas: c.configure(scrollregion=c.bbox('all')))
+            canvas.bind('<Configure>', lambda event, c=canvas, item=content, p=page:
+                        self._resize_page(event, c, item, p))
+            pages[title] = page
+            self.page_canvases[title] = canvas
+            canvas_for_page[page] = canvas
+            self.page_notes[page] = []
+        self.play_canvas = self.page_canvases['Play']
         page, row = pages['Play'], 0
+        def heading(text):
+            nonlocal row
+            ttk.Label(page, text=text, style='Section.TLabel').grid(
+                row=row, column=0, columnspan=3, sticky='w', pady=(16 if row else 0, 6))
+            row += 1
         def note(text):
             nonlocal row
-            ttk.Label(page, text=text, wraplength=700, justify='left').grid(row=row, column=0, columnspan=3, sticky='w', pady=6)
+            label = ttk.Label(page, text=text, wraplength=700, justify='left')
+            label.grid(row=row, column=0, columnspan=3, sticky='ew', pady=(0, 10))
+            self.page_notes[page].append(label)
             row += 1
         def field(key, label, value='', browse=False):
             nonlocal row
-            ttk.Label(page, text=label).grid(row=row, column=0, sticky='w')
+            ttk.Label(page, text=label).grid(row=row, column=0, sticky='w', padx=(0, 12))
             variable = tk.StringVar(value=value)
             self.fields[key] = variable
-            entry = ttk.Combobox(page, textvariable=variable, width=48) if key in ('world', 'trainer', 'deleted_world', 'friend_world') else ttk.Entry(page, textvariable=variable, width=50)
-            entry.grid(row=row, column=1, sticky='ew', pady=4)
+            state = 'readonly' if key in ('deleted_world', 'friend_world') else 'normal'
+            entry = (ttk.Combobox(page, textvariable=variable, width=30, state=state)
+                     if key in ('world', 'trainer', 'deleted_world', 'friend_world') else
+                     ttk.Entry(page, textvariable=variable, width=30))
+            entry.grid(row=row, column=1, sticky='ew', pady=5)
+            self.inputs.append((entry, state))
+            entry.bind('<FocusIn>', lambda event, c=canvas_for_page[page]: self._reveal_control(event, c))
             if browse:
                 def choose():
                     selected = filedialog.askopenfilename(parent=window, initialdir=str(self.session.root))
                     if selected:
                         variable.set(selected)
-                ttk.Button(page, text='Choose file', command=choose).grid(row=row, column=2)
+                button = ttk.Button(page, text='Browse…', command=choose)
+                button.grid(row=row, column=2, padx=(8, 0))
+                self.buttons.append(button)
+                button.bind('<FocusIn>', lambda event, c=canvas_for_page[page]: self._reveal_control(event, c))
             row += 1
             return entry
         def actions(items):
             nonlocal row
             bar = ttk.Frame(page)
-            bar.grid(row=row, column=0, columnspan=3, sticky='w', pady=8)
-            for label, operation in items:
+            bar.grid(row=row, column=0, columnspan=3, sticky='w', pady=(6, 12))
+            for index, (label, operation) in enumerate(items):
                 button = ttk.Button(bar, text=label, command=lambda op=operation: self.submit(op))
-                button.pack(side='left', padx=3)
+                button.grid(row=index // 3, column=index % 3, sticky='w', padx=(0, 8), pady=3)
                 self.buttons.append(button)
+                button.bind('<FocusIn>', lambda event, c=canvas_for_page[page]: self._reveal_control(event, c))
             row += 1
-        note('1. Choose a saved world or type a new name and create it. Host starts the world on this computer. Join local connects to a world already hosted here.')
-        note('World library (32 worlds). Labels and tags do not change save paths. Disconnect before hosting a different selected world.')
+        heading('1. Choose your world')
+        note('Choose a saved world, or enter a new key and create one. Keys use letters, digits, _ or -. Rename worlds and manage saves in World library.')
+        self.world_entry = field('world', 'World key')
+        self.world_entry.bind('<<ComboboxSelected>>', self.show_world_details)
+        actions([('Create world', self.create), ('Refresh worlds', self.refresh)])
+        heading('2. Host or join')
+        note('Host starts the selected world on this computer. Join local uses a world already hosted here. For a friend on another computer, open Connect friends. Disconnect before switching worlds.')
+        actions([('Host selected', self.host), ('Join local', self.join_local)])
+        heading('3. Play as your trainer')
+        note('Choose a trainer to resume, or type a new name. Each human keeps their own team, bag and save.')
+        self.trainer_entry = field('trainer', 'Human trainer', 'alice')
+        actions([('Launch / resume trainer', self.launch), ('Disconnect', self.disconnect)])
+        note('Play in the native game window. Save from its menu before disconnecting. Closing this launcher stops only its own games and host.')
+        heading('Offline play')
+        note('Offline play uses a separate save and never merges progress back. Choose a saved world and trainer above. Copying requires that trainer’s online game to be stopped. Resuming needs no host or invitation.')
+        actions([('Play offline / resume copy', self.launch_offline), ('Copy online and play offline', self.copy_offline)])
+        heading('AI-controlled trainer')
+        note('An AI trainer is a separate player for Hermes or another external agent, not the optional Luna GM. No agent attaches to your human game. After launch, copy the verified endpoint and SDK command from connection details below. Remote AI players need their own trainer invitation and TLS connection.')
+        field('ai_trainer', 'AI trainer name', 'hermes')
+        actions([('Launch AI-controlled trainer', self.launch_ai)])
+
+        page, row = pages['Connect friends'], 0
+        heading('Join a friend')
+        note('Get a private invitation from your host through a trusted channel. Only trust its bundled certificate pin when you trust that source. Import fills in connection details but does not connect.')
+        actions([('Import friend invitation', self.import_friend_invitation)])
+        note('For a legacy invitation, choose a separate local world key in Play and enter the host address and trusted pin below. After connecting, return to Play and launch your assigned trainer.')
+        field('remote', 'Host address (HOST:PORT)', '127.0.0.1:8765')
+        field('pin', 'Trusted SHA256 certificate pin')
+        field('invitation', 'Private trainer invitation', browse=True)
+        actions([('Connect remote TLS', self.connect)])
+        heading('Rejoin a saved friend')
+        note('Successful connections are remembered privately here. Rejoin uses the same trusted certificate and trainer. Forget removes only the saved connection, not your progress.')
+        self.friend_entry = field('friend_world', 'Saved friend world')
+        self.friend_hint = tk.StringVar()
+        hint = ttk.Label(page, textvariable=self.friend_hint, wraplength=700)
+        hint.grid(row=row, column=0, columnspan=3, sticky='ew', pady=(0, 6))
+        self.page_notes[page].append(hint)
+        row += 1
+        actions([('Rejoin saved friend', self.rejoin_friend), ('Forget saved friend', self.forget_friend)])
+        heading('Invite someone to your world')
+        note('First host a world in Play, then enable secure sharing. Export one private invitation per friend and send it through a trusted channel. Its bundled TLS pin is trustworthy only when received from you through that channel.')
+        note('For wildcard or local listeners, enter an explicit advertised address reachable by your friend. No relay is provided.')
+        field('listen', 'Listen address', '127.0.0.1:8765')
+        field('advertised', 'Advertised address (HOST:PORT)')
+        field('invite_trainer', 'Friend trainer name', 'bob')
+        actions([('Enable secure sharing', self.share), ('Save trainer invitation', self.invite)])
+
+        page, row = pages['Optional GM'], 0
+        heading('Optional Luna GM')
+        note('The adventure and multiplayer work without enabling the GM. Only the host can start Luna. Model: openai-codex/gpt-6-luna.')
+        actions([('Start Luna GM (host)', self.start_gm), ('Stop GM (host)', self.stop_gm)])
+        field('intent', 'Player intention (optional)')
+        actions([('Submit intention', self.submit_intent), ('Refresh intent status', self.refresh_intents)])
+        page, row = pages['Settings'], 0
+        heading('Game display')
+        note('A dedicated nested Xephyr display keeps the native game away from your desktop X socket. Start a new display here, or explicitly select an existing dedicated display. Existing displays are never stopped by this launcher.')
+        field('display', 'Dedicated game display', display or '')
+        actions([('Start dedicated game display', self.start_display)])
+        heading('Files and saves')
+        field('binary', 'Native game binary', str(binary), browse=True)
+        field('seed', 'Seed save for NEW trainer', browse=True)
+        note('Seed saves are optional. They are copied only when explicitly selected and never overwrite an existing trainer. Leave blank to start a new adventure or resume. Your personal HOME is never mounted into the native game.')
+        actions([('Choose worlds folder', self.choose_root)])
+        heading('TLS files (optional)')
+        note('Leave both blank to use the host’s generated TLS material, or select an existing certificate and its matching private key.')
+        field('cert', 'Existing TLS certificate', browse=True)
+        field('key', 'Matching TLS private key', browse=True)
+
+        page, row = pages['World library'], 0
+        heading('Your saved worlds')
+        note('Up to 32 worlds. Select a row to use that world in Play. Display names and tags never change save paths. Disconnect before hosting a different world.')
         library = ttk.Frame(page)
         library.grid(row=row, column=0, columnspan=3, sticky='ew')
         library.columnconfigure(0, weight=1)
-        self.library_tree = ttk.Treeview(library, columns=('tags', 'trainers'), height=3, selectmode='browse')
-        self.library_tree.heading('#0', text='World label (stable key)')
+        self.library_tree = ttk.Treeview(library, columns=('tags', 'trainers'), height=5, selectmode='browse')
+        self.library_tree.heading('#0', text='Display name (world key)')
         self.library_tree.heading('tags', text='Tags')
-        self.library_tree.heading('trainers', text='Trainer profiles')
-        self.library_tree.column('#0', width=260)
-        self.library_tree.column('tags', width=160)
-        self.library_tree.column('trainers', width=160)
+        self.library_tree.heading('trainers', text='Trainers')
+        self.library_tree.column('#0', width=260, minwidth=160)
+        self.library_tree.column('tags', width=140, minwidth=80)
+        self.library_tree.column('trainers', width=160, minwidth=100)
         self.library_tree.grid(row=0, column=0, sticky='ew')
         scroll = ttk.Scrollbar(library, orient='vertical', command=self.library_tree.yview)
         scroll.grid(row=0, column=1, sticky='ns')
@@ -817,65 +924,86 @@ class DesktopApp:
         self.library_tree.bind('<<TreeviewSelect>>', self.select_library_world)
         row += 1
         self.library_details = tk.StringVar(value='Choose a world to see its details.')
-        ttk.Label(page, textvariable=self.library_details, wraplength=700, justify='left').grid(
-            row=row, column=0, columnspan=3, sticky='w')
+        details = ttk.Label(page, textvariable=self.library_details, wraplength=700, justify='left')
+        details.grid(row=row, column=0, columnspan=3, sticky='ew', pady=(10, 4))
+        self.page_notes[page].append(details)
         row += 1
-        self.world_entry = field('world', 'Stable world key / new key')
-        self.world_entry.bind('<<ComboboxSelected>>', self.show_world_details)
         field('world_label', 'Display name')
         field('world_tags', 'Tags (comma separated)')
-        actions([('Rename / save tags', self.rename_selected_world), ('Move to Deleted', self.delete_selected_world)])
+        actions([('Rename / save tags', self.rename_selected_world), ('Refresh worlds', self.refresh)])
+        heading('Deleted worlds')
+        note('Move the selected world and all its trainer saves to Deleted. You can restore it later. Stop its hosts, games and GM workers first.')
+        actions([('Move to Deleted', self.delete_selected_world)])
         self.deleted_entry = field('deleted_world', 'Deleted world to restore')
         actions([('Restore deleted world', self.restore_selected_world)])
-        actions([('Refresh worlds', self.refresh), ('Create world', self.create),
-                 ('Host selected', self.host), ('Join local', self.join_local)])
-        note('2. Human trainer: choose a trainer to resume or type a new name. Each trainer has their own team, bag and save.')
-        self.trainer_entry = field('trainer', 'Human trainer name', 'alice')
-        actions([('Launch / resume trainer', self.launch), ('Disconnect', self.disconnect)])
-        note('Offline play uses a separate save. It never joins the world or merges progress back. Choose a saved world and trainer. Copying requires that trainer\'s online game to be stopped. Resuming needs no host or invitation.')
-        actions([('Play offline / resume copy', self.launch_offline), ('Copy online and play offline', self.copy_offline)])
-        note('AI-controlled trainer: launch a distinct trainer for Hermes or another external agent. This is a player, not the optional Luna GM. No agent attaches to your human game. Copy the verified endpoint and SDK command from live status after launch. Remote AI players need their own trainer invitation and TLS connection.')
-        field('ai_trainer', 'AI-controlled trainer name', 'hermes')
-        actions([('Launch AI-controlled trainer', self.launch_ai)])
-        note('Play in the native game window. Save from its menu before disconnecting. Closing the launcher stops only its own games and host. Friend connections use the next tab.')
-        page, row = pages['Connect friends'], 0
-        note('Successful friend connections are remembered privately on this computer. Rejoin uses the same trusted certificate and trainer. Forget removes only the saved connection, not your progress.')
-        self.friend_entry = field('friend_world', 'Saved friend world')
-        actions([('Rejoin saved friend', self.rejoin_friend), ('Forget saved friend', self.forget_friend)])
-        note('Host: first host a world in Play, then enable secure sharing. Export one private invitation per friend and send it through a trusted channel. Its bundled TLS pin is trustworthy only when received from you through that channel. For wildcard or local listeners, enter an explicit advertised address reachable by your friend. No relay is provided.')
-        field('listen', 'Listen address', '127.0.0.1:8765')
-        field('advertised', 'Advertised friend address (HOST:PORT)')
-        field('invite_trainer', 'Friend trainer name', 'bob')
-        actions([('Enable secure sharing', self.share), ('Save trainer invitation', self.invite)])
-        note('Friend: choose a separate local save name in Play, then enter the host address, trusted pin and invitation here. Connect, then return to Play and launch your assigned trainer.')
-        field('remote', 'Remote host:port', '127.0.0.1:8765')
-        field('pin', 'Trusted SHA256 certificate pin')
-        field('invitation', 'Private trainer invitation', browse=True)
-        actions([('Import friend invitation', self.import_friend_invitation)])
-        actions([('Connect remote TLS', self.connect)])
-        page, row = pages['Optional GM'], 0
-        note('The adventure and multiplayer work without enabling the GM. Only the host can start Luna. Model: openai-codex/gpt-6-luna.')
-        field('intent', 'Optional player intention')
-        actions([('Start Luna GM (host)', self.start_gm), ('Stop GM (host)', self.stop_gm)])
-        actions([('Submit intention', self.submit_intent), ('Refresh intent status', self.refresh_intents)])
-        page, row = pages['Settings'], 0
-        note('A dedicated nested Xephyr display keeps the native game away from your desktop X socket. Start a new display here, or explicitly select an existing dedicated display. Existing displays are never stopped by this launcher.')
-        field('display', 'Dedicated game display', display or '')
-        actions([('Start dedicated game display', self.start_display)])
-        field('binary', 'Native game binary', str(binary), browse=True)
-        field('seed', 'Optional seed save for NEW trainer', browse=True)
-        field('cert', 'Optional existing TLS certificate', browse=True)
-        field('key', 'Matching TLS private key', browse=True)
-        actions([('Choose worlds folder', self.choose_root)])
-        note('Seed saves are copied only when explicitly selected and never overwrite an existing trainer. Leave blank to start a new adventure or resume. Your personal HOME is never mounted into the native game.')
         self.message = tk.StringVar(value=session.status)
         from .host_controls import HostControlsPanel
         self.host_controls = HostControlsPanel(self)
-        ttk.Label(frame, text='Live connection and players', font=('Sans', 11, 'bold')).grid(row=3, column=0, sticky='w')
-        ttk.Label(frame, textvariable=self.message, wraplength=760, justify='left').grid(row=4, column=0, sticky='w', pady=8)
+        self.activity = tk.StringVar(value='Connection and activity')
+        status_header = ttk.Frame(frame)
+        status_header.grid(row=3, column=0, sticky='ew')
+        status_header.columnconfigure(0, weight=1)
+        ttk.Label(status_header, textvariable=self.activity, style='Section.TLabel').grid(row=0, column=0, sticky='w')
+        self.progress = ttk.Progressbar(status_header, mode='indeterminate', length=100)
+        self.progress.grid(row=0, column=1, sticky='e')
+        status = ttk.Frame(frame)
+        status.grid(row=4, column=0, sticky='ew', pady=(8, 0))
+        status.columnconfigure(0, weight=1)
+        self.status_text = tk.Text(status, height=5, width=1, wrap='word',
+                                   font='TkDefaultFont', relief='flat', padx=10, pady=8,
+                                   background=style.lookup('TEntry', 'fieldbackground') or 'white',
+                                   foreground=style.lookup('TLabel', 'foreground') or 'black')
+        self.status_text.grid(row=0, column=0, sticky='ew')
+        status_scroll = ttk.Scrollbar(status, orient='vertical', command=self.status_text.yview)
+        status_scroll.grid(row=0, column=1, sticky='ns')
+        self.status_text.configure(yscrollcommand=status_scroll.set)
+        self.last_status = None
+        self.message.trace_add('write', self._render_status)
+        self._render_status()
+        frame.bind('<Configure>', lambda event: root_label.configure(wraplength=max(200, event.width - 36)))
         self.refresh()
         self.after_id = window.after(150, self.tick)
         window.bind('<Destroy>', self.destroyed, add='+')
+        for event in ('<Button-4>', '<Button-5>', '<MouseWheel>'):
+            window.bind(event, self._scroll_page, add='+')
+
+    def _scroll_page(self, event):
+        # Bind only to this launcher. Selectors and the status box retain their
+        # own scrolling instead of also moving the containing page.
+        widget = event.widget
+        if widget.winfo_class() in ('TCombobox', 'Treeview', 'Text', 'TScrollbar'):
+            return
+        while widget is not None:
+            if widget in self.page_canvases.values():
+                direction = -1 if event.num == 4 or event.delta > 0 else 1
+                widget.yview_scroll(direction * 3, 'units')
+                return 'break'
+            widget = getattr(widget, 'master', None)
+
+    def _reveal_control(self, event, canvas):
+        bounds = canvas.bbox('all')
+        if not bounds:
+            return
+        top = event.widget.winfo_rooty() - canvas.winfo_rooty()
+        bottom = top + event.widget.winfo_height()
+        offset = top if top < 0 else max(0, bottom - canvas.winfo_height())
+        if offset:
+            canvas.yview_moveto((canvas.canvasy(0) + offset) / max(1, bounds[3]))
+
+    def _resize_page(self, event, canvas, content, page):
+        canvas.itemconfigure(content, width=event.width)
+        for label in self.page_notes[page]:
+            label.configure(wraplength=max(200, event.width - 20))
+
+    def _render_status(self, *args):
+        text = self.message.get()
+        if text == self.last_status:
+            return
+        self.last_status = text
+        self.status_text.configure(state='normal')
+        self.status_text.delete('1.0', 'end')
+        self.status_text.insert('1.0', text)
+        self.status_text.configure(state='disabled')
 
     def destroyed(self, event):
         if event.widget is self.window and self.after_id is not None:
@@ -907,7 +1035,7 @@ class DesktopApp:
             self.session = replacement
             self.remote_paths = None
             self.fields['world'].set('')
-            self.root_label.set('Worlds root: ' + str(replacement.root))
+            self.root_label.set('Worlds folder: ' + str(replacement.root))
             self.refresh()
 
     def values(self):
@@ -917,6 +1045,9 @@ class DesktopApp:
         if hasattr(self, 'friend_entry'):
             friends = [item['name'] for item in self.session.friend_worlds()]
             self.friend_entry['values'] = friends
+            if hasattr(self, 'friend_hint'):
+                self.friend_hint.set('' if friends else
+                    'No saved friend connections yet. Use Import friend invitation above to get started.')
             if self.fields['friend_world'].get() not in friends:
                 self.fields['friend_world'].set(friends[0] if friends else '')
         names = [item['name'] for item in self.session.worlds()]
@@ -964,6 +1095,8 @@ class DesktopApp:
         self.refresh()
 
     def select_library_world(self, event=None):
+        if self.pending is not None or self.closing:
+            return
         selected = self.library_tree.selection()
         if selected:
             self.fields['world'].set(selected[0])
@@ -975,7 +1108,10 @@ class DesktopApp:
         key = self.fields['world'].get().strip()
         card = next((item for item in self.library_cards if item['key'] == key), None)
         if card is None:
-            self.library_details.set('Choose a saved world. New names create a separate stable world key.')
+            self.library_details.set(
+                'No saved worlds yet. In Play, enter a world key and choose Create world.'
+                if not self.library_cards else
+                'Select a saved world to see its details. Create a new world from Play.')
             return
         self.fields['world_label'].set(card['display_name'])
         self.fields['world_tags'].set(', '.join(card['tags']))
@@ -1131,8 +1267,21 @@ class DesktopApp:
                                                         _endpoint(value['remote']), value['pin'])
         self.fields['trainer'].set(self.remote_paths['profile'].name)
 
+    def _set_busy(self, busy):
+        """Lock editable presentation state while a submitted operation is pending."""
+        for button in self.buttons:
+            button.state(['disabled'] if busy else ['!disabled'])
+        for control, idle_state in getattr(self, 'inputs', []):
+            control.configure(state='disabled' if busy else idle_state)
+        if hasattr(self, 'activity'):
+            self.activity.set('Working. Please wait…' if busy else 'Connection and activity')
+            if busy:
+                self.progress.start()
+            else:
+                self.progress.stop()
+
     def submit(self, operation):
-        if self.pending is not None:
+        if self.pending is not None or self.closing:
             return
         # Tk reads and file dialogs stay on the UI thread. Network and bounded
         # author cleanup run in a serialized worker so the window stays live.
@@ -1150,23 +1299,20 @@ class DesktopApp:
             else:
                 self.pending = self.executor.submit(self._share, value)
             self.message.set('Starting session operation. The window remains available...')
-            for button in self.buttons:
-                button.state(['disabled'])
+            self._set_busy(True)
             return
         if operation == self.submit_intent:
             value = self.values()
             self.pending_kind = 'intent'
             self.pending = self.executor.submit(self.session.submit_intent, value['trainer'], value['intent'])
             self.message.set('Sending intention over the authenticated world connection...')
-            for button in self.buttons:
-                button.state(['disabled'])
+            self._set_busy(True)
             return
         if operation in (self.start_gm, self.stop_gm, self.disconnect, self.refresh_intents):
             self.pending_kind = operation.__name__
             self.pending = self.executor.submit(operation)
             self.message.set('Updating session. Waiting for owned work to finish...')
-            for button in self.buttons:
-                button.state(['disabled'])
+            self._set_busy(True)
             return
         if operation == self.rejoin_friend:
             name = self.values()['friend_world']
@@ -1176,8 +1322,7 @@ class DesktopApp:
             self.pending_kind = 'rejoin_friend'
             self.pending = self.executor.submit(self.session.rejoin_friend, name)
             self.message.set('Rejoining saved friend world and verifying TLS pin...')
-            for button in self.buttons:
-                button.state(['disabled'])
+            self._set_busy(True)
             return
         if operation == self.connect:
             from .transport import _endpoint
@@ -1191,8 +1336,7 @@ class DesktopApp:
             self.pending = self.executor.submit(self.session.connect_remote, value['world'],
                                                 value['invitation'], endpoint, value['pin'])
             self.message.set('Connecting and verifying TLS pin...')
-            for button in self.buttons:
-                button.state(['disabled'])
+            self._set_busy(True)
             return
         try:
             operation()
@@ -1245,8 +1389,7 @@ class DesktopApp:
                 self.executor.shutdown(wait=True)
                 self.window.destroy()
                 return
-            for button in self.buttons:
-                button.state(['!disabled'])
+            self._set_busy(self.closing)
         if self.closing and self.pending is None:
             self.pending_kind = 'close'
             self.pending = self.executor.submit(self.session.close)
@@ -1267,6 +1410,7 @@ class DesktopApp:
 
     def close(self):
         self.closing = True
+        self._set_busy(True)
         self.message.set('Closing owned games and connections. Saves are kept.')
 
 

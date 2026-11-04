@@ -595,7 +595,7 @@ class SessionTests(unittest.TestCase):
             app = session.DesktopApp(window, session.DesktopSession(Path(tmp)), Path('/usr/bin/false'), None)
             try:
                 self.assertEqual([app.notebook.tab(tab, 'text') for tab in app.notebook.tabs()],
-                                 ['Play', 'Connect friends', 'Optional GM', 'Settings'])
+                                 ['Play', 'Connect friends', 'Optional GM', 'Settings', 'World library', 'Host controls'])
                 buttons = {button.cget('text'): button for button in app.buttons}
                 buttons['Host selected'].invoke()
                 self.assertIn('Choose an existing world', app.message.get())
