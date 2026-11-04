@@ -19,6 +19,7 @@
 #include "platform/world_bridge.h"
 #include "platform/world_travel.h"
 #include "platform/world_rally.h"
+#include "platform/world_menu.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -64,7 +65,8 @@ static bool8 FieldReady(void)
         && !ScriptContext_IsEnabled() && !ArePlayerFieldControlsLocked()
         && !gPlayerAvatar.tileTransitionState && !gWirelessCommType
         && !NativeLink_IsActive() && !WorldActivity_OwnsFieldInput()
-        && !WorldTravel_OwnsFieldInput() && !WorldTravel_NativeFlyRunning();
+        && !WorldTravel_OwnsFieldInput() && !WorldTravel_NativeFlyRunning()
+        && !WorldMenu_OwnsFieldInput();
 }
 
 static bool8 Eligible(void)

@@ -2,6 +2,8 @@
 
 Emerald World is a growing native-PC multiplayer Pokémon world, not a permanently stock-GBA ruleset or a finished product once the launcher works.
 
+Vanilla remains the working default. Expanded rules/content are opt-in and must not silently replace the default campaign, roster or mechanics. Growing beyond vanilla is a product goal, not permission to stop maintaining it.
+
 ## Content and mechanics target
 
 Classic ROM-hack capabilities belong in scope. Explicit priorities include Mega Evolution and a National Dex covering the current species roster, with the associated forms, species data/assets and supporting modern mechanics. The exact upstream revision/configuration and implemented coverage must be stated honestly; importing data is not proof every mechanic works.
