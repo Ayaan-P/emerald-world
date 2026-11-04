@@ -2447,6 +2447,49 @@ static const struct ObjectEventTemplate *GetObjectEventTemplateByLocalIdAndMap(u
     return FindObjectEventTemplateByLocalId(localId, templates, count);
 }
 
+#ifdef PORTABLE
+// Persistence follows campaign identity, never the runtime pool index. Special
+// actors without a map template (world remotes and followers) are transient.
+bool8 ObjectEventIsPersistent(const struct ObjectEvent *objectEvent)
+{
+    const struct MapHeader *mapHeader;
+    const struct ObjectEventTemplate *templates;
+    u8 count;
+
+    if (!objectEvent->active)
+        return FALSE;
+    if (objectEvent->isPlayer)
+        return objectEvent->localId == LOCALID_PLAYER;
+    if (objectEvent->localId == LOCALID_NONE || objectEvent->localId >= LOCALID_PLAYER)
+        return FALSE;
+
+    if (objectEvent->mapNum == gSaveBlock1Ptr->location.mapNum
+     && objectEvent->mapGroup == gSaveBlock1Ptr->location.mapGroup)
+    {
+        if (gMapHeader.events == NULL)
+            return FALSE;
+        templates = gSaveBlock1Ptr->objectEventTemplates;
+        if (CurrentBattlePyramidLocation() != PYRAMID_LOCATION_NONE)
+            count = GetNumBattlePyramidObjectEvents();
+        else if (InTrainerHill())
+            count = HILL_TRAINERS_PER_FLOOR;
+        else
+            count = gMapHeader.events->objectEventCount;
+        if (count > OBJECT_EVENT_TEMPLATES_COUNT)
+            count = OBJECT_EVENT_TEMPLATES_COUNT;
+    }
+    else
+    {
+        mapHeader = Overworld_GetMapHeaderByGroupAndId(objectEvent->mapGroup, objectEvent->mapNum);
+        if (mapHeader == NULL || mapHeader->events == NULL)
+            return FALSE;
+        templates = mapHeader->events->objectEvents;
+        count = mapHeader->events->objectEventCount;
+    }
+    return FindObjectEventTemplateByLocalId(objectEvent->localId, templates, count) != NULL;
+}
+#endif
+
 static const struct ObjectEventTemplate *FindObjectEventTemplateByLocalId(u8 localId, const struct ObjectEventTemplate *templates, u8 count)
 {
     u8 i;

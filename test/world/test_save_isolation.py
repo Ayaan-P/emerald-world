@@ -47,19 +47,32 @@ typedef u8 bool8;
 #define WB_BUFFER 65536
 #define WB_LOCALID 224
 #define WB_MARKER 0x5742
-#define OBJECT_EVENTS_COUNT 16
+#define SAVED_OBJECT_EVENTS_COUNT 16
+#ifdef PORTABLE
+#define OBJECT_EVENTS_COUNT 64
+#define MAX_SPRITES 128
+#else
+#define OBJECT_EVENTS_COUNT SAVED_OBJECT_EVENTS_COUNT
 #define MAX_SPRITES 64
+#endif
+#define OBJECT_EVENT_TEMPLATES_COUNT 64
+#define LOCALID_PLAYER 255
+#define LOCALID_NONE 0
+#define PYRAMID_LOCATION_NONE 0
+#define HILL_TRAINERS_PER_FLOOR 2
 #define MAP_OFFSET 7
 #define MAP_OFFSET_W 15
 #define MAP_OFFSET_H 14
 struct ObjectEvent { u8 active, isPlayer, localId, mapGroup, mapNum, spriteId, graphicsId; int scriptState; };
+struct ObjectEventTemplate { u8 localId; };
 struct SpriteFrameImage { unsigned size; };
 struct Sprite { u8 inUse; short data[8]; const struct SpriteFrameImage *images; };
 struct Graphics { unsigned size; };
 struct MapLayout { int width, height; };
 struct SaveBlock {
-    struct ObjectEvent objectEvents[OBJECT_EVENTS_COUNT];
+    struct ObjectEvent objectEvents[SAVED_OBJECT_EVENTS_COUNT];
     u16 mapView[MAP_OFFSET_W * MAP_OFFSET_H];
+    struct ObjectEventTemplate objectEventTemplates[OBJECT_EVENT_TEMPLATES_COUNT];
     struct { int x, y; } pos;
     struct { int mapGroup, mapNum; } location;
 };
@@ -69,7 +82,16 @@ static struct ObjectEvent gObjectEvents[OBJECT_EVENTS_COUNT];
 static struct Sprite gSprites[MAX_SPRITES];
 static u16 sBackupMapData[32 * 32];
 static struct { u16 *map; int width, height; } gBackupMapLayout;
-static struct { const struct MapLayout *mapLayout; } gMapHeader;
+struct MapEvents { u8 objectEventCount; const struct ObjectEventTemplate *objectEvents; };
+struct MapHeader { const struct MapLayout *mapLayout; const struct MapEvents *events; };
+static struct MapHeader gMapHeader;
+static const struct MapEvents events = {2, save.objectEventTemplates};
+static const struct MapHeader *Overworld_GetMapHeaderByGroupAndId(u8 group, u8 num) {
+    return group == 0 && num == 9 ? &gMapHeader : NULL;
+}
+static u8 CurrentBattlePyramidLocation(void) { return PYRAMID_LOCATION_NONE; }
+static u8 GetNumBattlePyramidObjectEvents(void) { return 0; }
+static bool8 InTrainerHill(void) { return FALSE; }
 static const struct MapLayout layout = {18, 18};
 static int overworld = 1;
 static int draws;
@@ -103,6 +125,9 @@ static void Setup(void) {
     memset(sBackupMapData, 0, sizeof(sBackupMapData));
     sWorld.enabled = TRUE;
     gMapHeader.mapLayout = &layout;
+    gMapHeader.events = &events;
+    save.objectEventTemplates[0].localId = 1;
+    save.objectEventTemplates[1].localId = 2;
     gBackupMapLayout.map = sBackupMapData;
     gBackupMapLayout.width = gBackupMapLayout.height = 32;
     save.location.mapGroup = sWorld.group = 0;
@@ -151,7 +176,10 @@ class SaveIsolation(unittest.TestCase):
         helpers = "".join(function(bridge, name) for name in
                           ("Owned", "RemoveRemote", "SameGrid", "GridCoords", "Raw",
                            "RestoreTiles", "WorldBridge_PrepareSave"))
-        saves = function(load, "SaveObjectEvents") + function(load, "LoadObjectEvents")
+        movement = (ROOT / "src/event_object_movement.c").read_text()
+        saves = function(movement, "FindObjectEventTemplateByLocalId")
+        saves += function(movement, "ObjectEventIsPersistent")
+        saves += function(load, "SaveObjectEvents") + function(load, "LoadObjectEvents")
         saves += function(field, "SaveMapView")
         rally = (ROOT / "include/platform/world_rally.h").read_text()
         rally_types = rally[rally.index("#define WORLD_RALLY_ROSTER"):rally.index("/* Main/game thread only.")]
@@ -175,13 +203,14 @@ class SaveIsolation(unittest.TestCase):
     def test_portable_includes_are_guarded(self):
         for name in ("src/load_save.c", "src/fieldmap.c"):
             source = (ROOT / name).read_text()
-            self.assertRegex(source, r'#ifdef PORTABLE\s+#include "platform/world_bridge.h"\s+#endif')
+            self.assertRegex(source, r'#ifdef PORTABLE\s+#include "platform/world_bridge.h"')
 
     def test_private_script_changes_and_reused_npc_slots_survive_cleanup(self):
         self.compile_and_run(r'''
     struct ObjectEvent npc;
     /* The engine reused the remote slot: the sprite marker no longer matches. */
     gSprites[2].data[7] = 0;
+    gObjectEvents[2].localId = 2; /* Reallocated to an actual campaign identity. */
     gObjectEvents[2].scriptState = 123;
     npc = gObjectEvents[2];
     /* A script has superseded the overlay since its application. */
@@ -205,7 +234,7 @@ class SaveIsolation(unittest.TestCase):
     assert(save.mapView[8 * MAP_OFFSET_W + 8] == 0x6077);
 ''')
 
-    def test_disabled_and_nonportable_saves_retain_original_behavior(self):
+    def test_disabled_world_still_filters_transients_only_on_portable(self):
         for portable in (True, False):
             with self.subTest(portable=portable):
                 self.compile_and_run(r'''
@@ -215,7 +244,12 @@ class SaveIsolation(unittest.TestCase):
     SaveObjectEvents();
     SaveMapView();
     RoundTrip();
+#ifdef PORTABLE
+    assert(memcmp(objects, gObjectEvents, 2 * sizeof(objects[0])) == 0);
+    assert(!gObjectEvents[2].active);
+#else
     assert(memcmp(objects, gObjectEvents, sizeof(objects)) == 0);
+#endif
     assert(save.mapView[8 * MAP_OFFSET_W + 8] == 0x3c01);
 ''', portable=portable)
         # A nonportable build must not call the bridge even if its fixture is enabled.

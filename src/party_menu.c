@@ -193,8 +193,13 @@ struct PartyMenuInternal
     MainCallback exitCallback;
     u32 chooseHalf:1;
     u32 lastSelectedSlot:3;  // Used to return to same slot when going left/right bewtween columns
+#ifdef PORTABLE
+    u32 spriteIdConfirmPokeball:8;
+    u32 spriteIdCancelPokeball:8;
+#else
     u32 spriteIdConfirmPokeball:7;
     u32 spriteIdCancelPokeball:7;
+#endif
     u32 messageId:14;
     u8 windowId[3];
 #ifdef PORTABLE
@@ -521,8 +526,13 @@ static void InitPartyMenu(u8 menuType, u8 layout, u8 partyAction, bool8 keepCurs
         sPartyMenuInternal->task = task;
         sPartyMenuInternal->exitCallback = NULL;
         sPartyMenuInternal->lastSelectedSlot = 0;
+#ifdef PORTABLE
+        sPartyMenuInternal->spriteIdConfirmPokeball = SPRITE_NONE;
+        sPartyMenuInternal->spriteIdCancelPokeball = SPRITE_NONE;
+#else
         sPartyMenuInternal->spriteIdConfirmPokeball = 0x7F;
         sPartyMenuInternal->spriteIdCancelPokeball = 0x7F;
+#endif
 
         if (menuType == PARTY_MENU_TYPE_CHOOSE_HALF)
             sPartyMenuInternal->chooseHalf = TRUE;

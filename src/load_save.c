@@ -15,6 +15,7 @@
 #include "agb_flash.h"
 #ifdef PORTABLE
 #include "platform/world_bridge.h"
+#include "event_object_movement.h"
 #endif
 
 static void ApplyNewEncryptionKeyToAllEncryptedData(u32 encryptionKey);
@@ -204,16 +205,50 @@ void SaveObjectEvents(void)
 #ifdef PORTABLE
     // Synchronous warps can copy objects before the next bridge frame cleanup.
     WorldBridge_PrepareSave();
-#endif
+    {
+        int pass;
+        int savedId;
+
+        memset(gSaveBlock1Ptr->objectEvents, 0, sizeof(gSaveBlock1Ptr->objectEvents));
+        // Reserve the player even if its runtime slot is outside the save array.
+        // Keep original indices when possible, without moving the live objects.
+        for (pass = 0; pass < 2; pass++)
+        {
+            for (i = 0; i < OBJECT_EVENTS_COUNT; i++)
+            {
+                if (!!gObjectEvents[i].isPlayer != (pass == 0)
+                 || !ObjectEventIsPersistent(&gObjectEvents[i]))
+                    continue;
+                savedId = i;
+                if (savedId >= SAVED_OBJECT_EVENTS_COUNT || gSaveBlock1Ptr->objectEvents[savedId].active)
+                {
+                    for (savedId = 0; savedId < SAVED_OBJECT_EVENTS_COUNT; savedId++)
+                        if (!gSaveBlock1Ptr->objectEvents[savedId].active)
+                            break;
+                }
+                // Extra campaign objects are respawned from templates on load.
+                if (savedId < SAVED_OBJECT_EVENTS_COUNT)
+                    gSaveBlock1Ptr->objectEvents[savedId] = gObjectEvents[i];
+            }
+        }
+    }
+#else
     for (i = 0; i < OBJECT_EVENTS_COUNT; i++)
         gSaveBlock1Ptr->objectEvents[i] = gObjectEvents[i];
+#endif
 }
 
 void LoadObjectEvents(void)
 {
     int i;
 
+#ifdef PORTABLE
+    // Never let stale high runtime slots survive a saved-game load.
+    memset(gObjectEvents, 0, sizeof(gObjectEvents));
+    for (i = 0; i < SAVED_OBJECT_EVENTS_COUNT; i++)
+#else
     for (i = 0; i < OBJECT_EVENTS_COUNT; i++)
+#endif
         gObjectEvents[i] = gSaveBlock1Ptr->objectEvents[i];
 }
 

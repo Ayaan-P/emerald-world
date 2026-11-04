@@ -2,7 +2,11 @@
 #define GUARD_SPRITE_H
 
 #define OAM_MATRIX_COUNT 32
+#ifdef PORTABLE
+#define MAX_SPRITES 128
+#else
 #define MAX_SPRITES 64
+#endif
 #define SPRITE_NONE 0xFF
 #define TAG_NONE 0xFFFF
 

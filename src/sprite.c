@@ -3,7 +3,11 @@
 #include "main.h"
 #include "palette.h"
 
+#ifdef PORTABLE
+#define MAX_SPRITE_COPY_REQUESTS MAX_SPRITES
+#else
 #define MAX_SPRITE_COPY_REQUESTS 64
+#endif
 
 #define sAnchorX data[6]
 #define sAnchorY data[7]
@@ -291,6 +295,13 @@ EWRAM_DATA s16 gSpriteCoordOffsetY = 0;
 EWRAM_DATA struct OamMatrix gOamMatrices[OAM_MATRIX_COUNT] = {0};
 EWRAM_DATA bool8 gAffineAnimsDisabled = FALSE;
 
+#ifdef PORTABLE
+STATIC_ASSERT(MAX_SPRITES <= ARRAY_COUNT(gMain.oamBuffer), NativeSpritesFitOamBuffer);
+STATIC_ASSERT(sizeof(gMain.oamBuffer) == OAM_SIZE, NativeOamTransferSize);
+STATIC_ASSERT(MAX_SPRITES < SPRITE_NONE, NativeSpriteSentinelFitsU8);
+STATIC_ASSERT(MAX_SPRITES <= 128, NativeSignedSpriteIdsFit);
+#endif
+
 void ResetSpriteData(void)
 {
     ResetOamRange(0, 128);
@@ -298,7 +309,12 @@ void ResetSpriteData(void)
     ClearSpriteCopyRequests();
     ResetAffineAnimData();
     FreeSpriteTileRanges();
+#ifdef PORTABLE
+    // The native rasterizer reads the entire hardware OAM, not just 64 entries.
+    gOamLimit = MAX_SPRITES;
+#else
     gOamLimit = 64;
+#endif
     gReservedSpriteTileCount = 0;
     AllocSpriteTiles(0);
     gSpriteCoordOffsetX = 0;

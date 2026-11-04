@@ -51,6 +51,13 @@ static u8 HandleReplaceSector(u16, const struct SaveSectorLocation *);
 }
 #define SAVEBLOCK_CHUNK(structure, chunkNum) SAVEBLOCK_CHUNK_OF_SIZE(sizeof(structure), chunkNum)
 
+#ifdef PORTABLE
+// Both current and old-64-bit serializers copy this prefix verbatim.
+STATIC_ASSERT(sizeof(struct ObjectEvent) == 0x24, SavedObjectEventSize);
+STATIC_ASSERT(offsetof(struct SaveBlock1, objectEvents) == 0xA30, SavedObjectEventsOffset);
+STATIC_ASSERT(sizeof(((struct SaveBlock1 *)0)->objectEvents) == 0x240, SavedObjectEventsSize);
+STATIC_ASSERT(offsetof(struct SaveBlock1, objectEventTemplates) == 0xC70, SavedObjectEventsEnd);
+#endif
 #ifdef VER_64BIT
 /*
  * On 64-bit builds SaveBlock1 is bigger in memory than on the GBA, because it

@@ -17,6 +17,15 @@ static void ScriptMovement_MoveObjects(u8 taskId);
 static void ScriptMovement_TakeStep(u8 taskId, u8 moveScrId, u8 objEventId, const u8 *movementScript);
 
 static EWRAM_DATA const u8 *sMovementScripts[OBJECT_EVENTS_COUNT] = {0};
+#ifdef PORTABLE
+// Native movement slots must not spill out of task.data or a 16-bit mask.
+static EWRAM_DATA u8 sMovementObjectIds[OBJECT_EVENTS_COUNT] = {0};
+static EWRAM_DATA bool8 sMovementFinished[OBJECT_EVENTS_COUNT] = {0};
+#define MOVEMENT_OBJECT_IDS(taskId) ((void)(taskId), sMovementObjectIds)
+STATIC_ASSERT(OBJECT_EVENTS_COUNT < LOCALID_PLAYER, NativeMovementSentinelFits);
+#else
+#define MOVEMENT_OBJECT_IDS(taskId) ((u8 *)&gTasks[taskId].data[1])
+#endif
 
 bool8 ScriptMovement_StartObjectMovementScript(u8 localId, u8 mapNum, u8 mapGroup, const u8 *movementScript)
 {
@@ -59,12 +68,20 @@ void ScriptMovement_UnfreezeObjectEvents(void)
 static void ScriptMovement_StartMoveObjects(u8 priority)
 {
     u8 taskId;
+#ifndef PORTABLE
     u8 i;
+#endif
 
     taskId = CreateTask(ScriptMovement_MoveObjects, priority);
 
+#ifdef PORTABLE
+    (void)taskId;
+    memset(sMovementObjectIds, LOCALID_PLAYER, sizeof(sMovementObjectIds));
+    memset(sMovementFinished, 0, sizeof(sMovementFinished));
+#else
     for (i = 1; i < NUM_TASK_DATA; i++)
         gTasks[taskId].data[i] = 0xFFFF;
+#endif
 }
 
 static u8 GetMoveObjectsTaskId(void)
@@ -106,7 +123,7 @@ static u8 GetMovementScriptIdFromObjectEventId(u8 taskId, u8 objEventId)
     u8 *moveScriptId;
     u8 i;
 
-    moveScriptId = (u8 *)&gTasks[taskId].data[1];
+    moveScriptId = MOVEMENT_OBJECT_IDS(taskId);
     for (i = 0; i < OBJECT_EVENTS_COUNT; i++, moveScriptId++)
     {
         if (*moveScriptId == objEventId)
@@ -119,7 +136,7 @@ static void LoadObjectEventIdPtrFromMovementScript(u8 taskId, u8 moveScrId, u8 *
 {
     u8 i;
 
-    *pObjEventId = (u8 *)&gTasks[taskId].data[1];
+    *pObjEventId = MOVEMENT_OBJECT_IDS(taskId);
     for (i = 0; i < moveScrId; i++, (*pObjEventId)++)
         ;
 }
@@ -142,24 +159,39 @@ static void LoadObjectEventIdFromMovementScript(u8 taskId, u8 moveScrId, u8 *obj
 
 static void ClearMovementScriptFinished(u8 taskId, u8 moveScrId)
 {
+#ifdef PORTABLE
+    (void)taskId;
+    sMovementFinished[moveScrId] = FALSE;
+#else
     u16 mask = ~gBitTable[moveScrId];
 
     gTasks[taskId].data[0] &= mask;
+#endif
 }
 
 static void SetMovementScriptFinished(u8 taskId, u8 moveScrId)
 {
+#ifdef PORTABLE
+    (void)taskId;
+    sMovementFinished[moveScrId] = TRUE;
+#else
     gTasks[taskId].data[0] |= gBitTable[moveScrId];
+#endif
 }
 
 static bool8 IsMovementScriptFinished(u8 taskId, u8 moveScrId)
 {
+#ifdef PORTABLE
+    (void)taskId;
+    return sMovementFinished[moveScrId];
+#else
     u16 moveScriptFinished = (u16)gTasks[taskId].data[0] & gBitTable[moveScrId];
 
     if (moveScriptFinished != 0)
         return TRUE;
     else
         return FALSE;
+#endif
 }
 
 static void SetMovementScript(u8 moveScrId, const u8 *movementScript)
@@ -184,7 +216,7 @@ static void ScriptMovement_UnfreezeActiveObjects(u8 taskId)
     u8 *pObjEventId;
     u8 i;
 
-    pObjEventId = (u8 *)&gTasks[taskId].data[1];
+    pObjEventId = MOVEMENT_OBJECT_IDS(taskId);
     for (i = 0; i < OBJECT_EVENTS_COUNT; i++, pObjEventId++)
     {
         if (*pObjEventId != 0xFF)
