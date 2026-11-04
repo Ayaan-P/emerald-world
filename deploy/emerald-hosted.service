@@ -1,0 +1,29 @@
+[Unit]
+Description=Emerald hosted-world management and independent world authorities
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=emerald-world
+Group=emerald-world
+WorkingDirectory=/opt/emerald-world/hosted-current
+EnvironmentFile=/etc/emerald-hosted.conf
+ExecStart=/usr/bin/python3 -m world.hosting start --root /var/lib/emerald-hosted/state --cert /var/lib/emerald-hosted/tls/server.pem --key /var/lib/emerald-hosted/tls/server.key --advertise-host ${EMERALD_HOST} --game-listen-host 0.0.0.0 --management-advertise ${EMERALD_HOST}:8766 --listen 0.0.0.0:8766 --port-start 9001 --port-end 9016 --max-worlds 16
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=45
+UMask=0077
+StateDirectory=emerald-hosted
+StateDirectoryMode=0700
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/emerald-hosted
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LimitNOFILE=8192
+TasksMax=4096
+
+[Install]
+WantedBy=multi-user.target
