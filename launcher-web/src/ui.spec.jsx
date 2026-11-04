@@ -3,6 +3,7 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App } from './main';
+import GameMirror from './GameMirror';
 import { loadState, perform } from './api';
 
 vi.mock('./api', () => ({ loadState: vi.fn(), perform: vi.fn(), forgetCapability: vi.fn() }));
@@ -16,6 +17,64 @@ beforeEach(() => { loadState.mockResolvedValue(snapshot()); perform.mockResolved
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('player launcher', () => {
+  it('mirrors a user-selected window and sends keys only while controlling it', async () => {
+    const track = new EventTarget(); track.readyState = 'live'; track.stop = vi.fn();
+    const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
+    const picker = vi.fn().mockResolvedValue(stream);
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getDisplayMedia: picker } });
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
+    perform.mockImplementation(async action => action === 'screen_info' ? { available: true } : { active: true });
+    try {
+      render(<GameMirror gameRunning onBack={() => {}} />);
+      const choose = await screen.findByRole('button', { name: /choose game display/i });
+      await waitFor(() => expect(choose.disabled).toBe(false));
+      fireEvent.click(choose);
+      const surface = await screen.findByRole('application', { name: /game screen/i });
+      await waitFor(() => expect(surface.querySelector('video').srcObject).toBe(stream));
+      expect(picker).toHaveBeenCalledOnce();
+      expect(perform).toHaveBeenCalledWith('screen_start', {});
+      fireEvent.focus(surface); fireEvent.keyDown(surface, { code: 'KeyZ' });
+      await waitFor(() => expect(perform).toHaveBeenCalledWith('screen_keys', { keys: ['KeyZ'] }));
+      fireEvent.blur(surface);
+      await waitFor(() => expect(perform).toHaveBeenCalledWith('screen_keys', { keys: [] }));
+      fireEvent.click(screen.getByRole('button', { name: /stop preview/i }));
+      await waitFor(() => expect(perform).toHaveBeenCalledWith('screen_stop', {}));
+      expect(track.stop).toHaveBeenCalled();
+    } finally { play.mockRestore(); delete navigator.mediaDevices; }
+  });
+
+  it('abandons a pending picker if the game closes', async () => {
+    let resolvePicker;
+    const picker = vi.fn().mockImplementation(() => new Promise(resolve => { resolvePicker = resolve; }));
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getDisplayMedia: picker } });
+    perform.mockImplementation(async action => action === 'screen_info' ? { available: true } : { active: true });
+    const track = new EventTarget(); track.readyState = 'live'; track.stop = vi.fn();
+    const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
+    try {
+      const view = render(<GameMirror gameRunning onBack={() => {}} />);
+      const choose = await screen.findByRole('button', { name: /choose game display/i });
+      await waitFor(() => expect(choose.disabled).toBe(false));
+      fireEvent.click(choose);
+      view.rerender(<GameMirror gameRunning={false} onBack={() => {}} />);
+      resolvePicker(stream);
+      await waitFor(() => expect(track.stop).toHaveBeenCalledOnce());
+      expect(perform.mock.calls.some(call => call[0] === 'screen_start')).toBe(false);
+    } finally { delete navigator.mediaDevices; }
+  });
+
+  it('does not start browser control if window sharing is cancelled', async () => {
+    const picker = vi.fn().mockRejectedValue(new DOMException('cancel', 'NotAllowedError'));
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getDisplayMedia: picker } });
+    perform.mockImplementation(async action => action === 'screen_info' ? { available: true } : { active: true });
+    try {
+      render(<GameMirror gameRunning onBack={() => {}} />);
+      const choose = await screen.findByRole('button', { name: /choose game display/i });
+      await waitFor(() => expect(choose.disabled).toBe(false)); fireEvent.click(choose);
+      expect((await screen.findByRole('status')).textContent).toMatch(/cancelled/i);
+      expect(perform.mock.calls.some(call => call[0] === 'screen_start')).toBe(false);
+    } finally { delete navigator.mediaDevices; }
+  });
+
   it('prevents joining with a missing or oversized invitation', async () => {
     const { container } = render(<App />);
     fireEvent.click(await screen.findByRole('button', { name: /join a world/i }));
