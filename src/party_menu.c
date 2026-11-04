@@ -1,6 +1,7 @@
 #include "global.h"
 #ifdef PORTABLE
 #include "platform/world_coop.h"
+#include "platform/party_autoheal.h"
 #endif
 #include "malloc.h"
 #include "battle.h"
@@ -196,7 +197,11 @@ struct PartyMenuInternal
     u32 spriteIdCancelPokeball:7;
     u32 messageId:14;
     u8 windowId[3];
+#ifdef PORTABLE
+    u8 actions[9]; // One more field action, including four possible field moves.
+#else
     u8 actions[8];
+#endif
     u8 numActions;
     // In vanilla Emerald, only the first 0xB0 hwords (0x160 bytes) are actually used.
     // However, a full 0x100 hwords (0x200 bytes) are allocated.
@@ -461,6 +466,14 @@ static void ShiftMoveSlot(struct Pokemon *, u8, u8);
 static void BlitBitmapToPartyWindow_LeftColumn(u8, u8, u8, u8, u8, bool8);
 static void BlitBitmapToPartyWindow_RightColumn(u8, u8, u8, u8, u8, bool8);
 static void CursorCb_Summary(u8);
+#ifdef PORTABLE
+static void CursorCb_AutoHeal(u8);
+#define MENU_AUTO_HEAL 0xFE
+static const u8 sText_AutoHeal[] = _("AUTO HEAL");
+static const u8 sText_AutoHealUsed[] = _("Used owned medicine.\nFainted POKéMON were skipped.");
+static const u8 sText_AutoHealNothing[] = _("No owned medicine can help\nyour party right now.");
+static const u8 sText_AutoHealRefused[] = _("Auto-heal is unavailable\nright now.");
+#endif
 static void CursorCb_Switch(u8);
 static void CursorCb_Cancel1(u8);
 static void CursorCb_Item(u8);
@@ -2562,6 +2575,13 @@ static u8 DisplaySelectionWindow(u8 windowType)
 
     for (i = 0; i < sPartyMenuInternal->numActions; i++)
     {
+#ifdef PORTABLE
+        if (sPartyMenuInternal->actions[i] == MENU_AUTO_HEAL)
+        {
+            AddTextPrinterParameterized4(sPartyMenuInternal->windowId[0], FONT_NORMAL, cursorDimension, (i * 16) + 1, letterSpacing, 0, sFontColorTable[3], 0, sText_AutoHeal);
+            continue;
+        }
+#endif
         u8 fontColorsId = (sPartyMenuInternal->actions[i] >= MENU_FIELD_MOVES) ? 4 : 3;
         AddTextPrinterParameterized4(sPartyMenuInternal->windowId[0], FONT_NORMAL, cursorDimension, (i * 16) + 1, letterSpacing, 0, sFontColorTable[fontColorsId], 0, sCursorOptions[sPartyMenuInternal->actions[i]].text);
     }
@@ -2642,6 +2662,10 @@ static void SetPartyMonFieldSelectionActions(struct Pokemon *mons, u8 slotId)
         else
             AppendToList(sPartyMenuInternal->actions, &sPartyMenuInternal->numActions, MENU_ITEM);
     }
+#ifdef PORTABLE
+    if (WorldAutoHeal_Available())
+        AppendToList(sPartyMenuInternal->actions, &sPartyMenuInternal->numActions, MENU_AUTO_HEAL);
+#endif
     AppendToList(sPartyMenuInternal->actions, &sPartyMenuInternal->numActions, MENU_CANCEL1);
 }
 
@@ -2770,11 +2794,59 @@ static void Task_HandleSelectionMenuInput(u8 taskId)
             break;
         default:
             PartyMenuRemoveWindow(&sPartyMenuInternal->windowId[2]);
+#ifdef PORTABLE
+            if (sPartyMenuInternal->actions[input] == MENU_AUTO_HEAL)
+            {
+                CursorCb_AutoHeal(taskId);
+                break;
+            }
+#endif
             sCursorOptions[sPartyMenuInternal->actions[input]].func(taskId);
             break;
         }
     }
 }
+
+#ifdef PORTABLE
+static void Task_AutoHealMessage(u8 taskId)
+{
+    if (!IsPartyMenuTextPrinterActive() && JOY_NEW(A_BUTTON | B_BUTTON))
+    {
+        ClearStdWindowAndFrameToTransparent(WIN_MSG, FALSE);
+        ClearWindowTilemap(WIN_MSG);
+        CursorCb_Cancel1(taskId);
+        ScheduleBgCopyTilemapToVram(2);
+    }
+}
+
+static void CursorCb_AutoHeal(u8 taskId)
+{
+    enum AutoHealResult result = AUTO_HEAL_REFUSED;
+    u8 slot;
+    PlaySE(SE_SELECT);
+    /* Only this idle Party selection task may invoke the synchronous commit. */
+    if (gMain.callback2 == CB2_UpdatePartyMenu
+        && gTasks[taskId].func == Task_HandleSelectionMenuInput)
+        result = WorldAutoHeal_Run();
+    PartyMenuRemoveWindow(&sPartyMenuInternal->windowId[0]);
+    PartyMenuRemoveWindow(&sPartyMenuInternal->windowId[1]);
+    if (result == AUTO_HEAL_USED)
+    {
+        for (slot = 0; slot < gPlayerPartyCount; slot++)
+        {
+            DisplayPartyPokemonData(slot);
+            SetPartyMonAilmentGfx(&gPlayerParty[slot], &sPartyMenuBoxes[slot]);
+            UpdatePartyMonHPBar(sPartyMenuBoxes[slot].monSpriteId, &gPlayerParty[slot]);
+            CopyWindowToVram(sPartyMenuBoxes[slot].windowId, COPYWIN_GFX);
+        }
+        ScheduleBgCopyTilemapToVram(0);
+    }
+    DisplayPartyMenuMessage(result == AUTO_HEAL_USED ? sText_AutoHealUsed
+        : result == AUTO_HEAL_NOTHING ? sText_AutoHealNothing : sText_AutoHealRefused, TRUE);
+    ScheduleBgCopyTilemapToVram(2);
+    gTasks[taskId].func = Task_AutoHealMessage;
+}
+#endif
 
 static void CursorCb_Summary(u8 taskId)
 {
