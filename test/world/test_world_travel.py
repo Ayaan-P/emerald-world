@@ -104,6 +104,9 @@ static int line(const char *text) { char copy[128]; strcpy(copy, text); return L
 int main(void) {
     strcpy(sWorld.trainer, "viewer"); strcpy(sWorld.token, "secret");
     QueueHello(0);
+    assert(strstr(sWorld.output, " SOCIALTRAVELCHATRALLY\n"));
+    assert(!line("ERROR AUTH") && sWorld.rallyLegacy && !sWorld.travelLegacy);
+    QueueHello(0);
     assert(strstr(sWorld.output, " SOCIALTRAVELCHAT\n"));
     assert(!line("ERROR AUTH") && sWorld.travelLegacy && !sWorld.chatLegacy);
     QueueHello(0);
@@ -116,6 +119,114 @@ int main(void) {
     return 0;
 }
 ''', unit='world_bridge')
+
+    def test_rally_snapshot_is_atomic_bounded_and_bound_to_own_roster(self):
+        self.run_c(r'''
+static int line(const char *text) { char copy[256]; strcpy(copy, text); return Line(copy); }
+int main(void) {
+    struct WorldRallySnapshot rally;
+    strcpy(sWorld.trainer, "guest"); sWorld.connected=1;
+    assert(line("BEGIN 1"));
+    assert(line("RALLY 1 1 1 1 owner 2"));
+    assert(line("RALLYMEM owner 2 0"));
+    assert(!WorldBridge_RallySnapshot(&rally));
+    assert(!line("END")); /* Partial roster does not publish. */
+    sWorld.staging=0;
+    assert(line("BEGIN 1")); assert(line("RALLY 1 1 1 1 owner 2"));
+    assert(line("RALLYMEM owner 2 0")); assert(line("RALLYMEM guest 1 1"));
+    assert(line("END"));
+    assert(WorldBridge_RallySnapshot(&rally) && rally.id==1 && rally.count==2);
+    assert(line("BEGIN 2")); assert(!line("RALLY 2 1 1 0 owner 5"));
+    sWorld.staging=0;
+    assert(line("BEGIN 2")); assert(line("RALLY 2 1 1 0 owner 2"));
+    assert(line("RALLYMEM owner 2 0")); assert(!line("RALLYMEM guest 1 0"));
+    sWorld.staging=0;
+    assert(line("BEGIN 2")); assert(line("RALLY 2 1 1 0 owner 1"));
+    assert(line("RALLYMEM owner 2 0")); assert(!line("END")); /* Not a member. */
+    assert(WorldBridge_RallySnapshot(&rally) && rally.id==1);
+    sWorld.snapshotAge=181; assert(!WorldBridge_RallySnapshot(&rally));
+    sWorld.snapshotAge=0; sWorld.connected=0;
+    assert(!WorldBridge_RallySnapshot(&rally));
+    return 0;
+}
+''', unit='world_bridge')
+
+    def test_rally_recovery_record_is_private_and_bound_to_trainer_save(self):
+        self.run_c(r'''
+struct SaveBlock2 *gSaveBlock2Ptr;
+const char *WorldBridge_TrainerName(void) { return "guest"; }
+int main(void) {
+    char directory[]="/tmp/emerald-rally-XXXXXX", config[256], ledger[256];
+    struct SaveBlock2 save={0};
+    struct RallyAnchor anchor={0};
+    struct stat st;
+    int fd;
+    assert(mkdtemp(directory));
+    snprintf(config,sizeof(config),"%s/world.conf",directory);
+    snprintf(ledger,sizeof(ledger),"%s/world.conf.rally",directory);
+    gSaveBlock2Ptr=&save; save.playerTrainerId[0]=77;
+    WorldRally_Init(config); LoadAnchor(); assert(sRally.ledgerOK && !sRally.anchored);
+    assert(!WorldRally_GetAutoJoin());
+    anchor.magic=0x52414c31; strcpy(anchor.trainer,"guest"); anchor.trainerId[0]=77;
+    anchor.group=11; anchor.num=3; anchor.x=4; anchor.y=4; anchor.elevation=3;
+    fd=open(ledger,O_WRONLY|O_CREAT|O_EXCL,0600); assert(fd>=0);
+    assert(write(fd,&anchor,sizeof(anchor))==(ssize_t)sizeof(anchor)); close(fd);
+    assert(!stat(ledger,&st) && !(st.st_mode&077));
+    WorldRally_Init(config); LoadAnchor();
+    assert(sRally.anchored && sRally.recover && sRally.anchor.elevation==3);
+    assert(sRally.anchor.x==4 && sRally.anchor.y==4);
+    save.playerTrainerId[0]=78;
+    WorldRally_Init(config); LoadAnchor(); assert(!sRally.ledgerOK && !sRally.anchored);
+    save.playerTrainerId[0]=77; assert(!chmod(ledger,0644));
+    WorldRally_Init(config); LoadAnchor(); assert(!sRally.ledgerOK);
+    assert(!unlink(ledger)); assert(!symlink("/dev/null",ledger));
+    WorldRally_Init(config); LoadAnchor(); assert(!sRally.ledgerOK);
+    assert(!unlink(ledger));
+    WorldRally_Init(config); LoadAnchor(); assert(sRally.ledgerOK);
+    close(sRally.directory); sRally.directory=-1;
+    assert(!rmdir(directory));
+    return 0;
+}
+''', unit='world_rally')
+
+    def test_rally_disconnect_defers_recovery_while_battle_trade_or_script_owns_field(self):
+        self.run_c(r'''
+struct SaveBlock1 *gSaveBlock1Ptr;
+struct SaveBlock2 *gSaveBlock2Ptr;
+struct Main gMain;
+struct PaletteFadeControl gPaletteFade;
+struct PlayerAvatar gPlayerAvatar;
+u8 gWirelessCommType;
+static int nativeActive, activityOwns, scriptActive, controls, travelOwns, flying;
+void CB1_Overworld(void) {}
+void CB2_Overworld(void) {}
+int NativeLink_IsActive(void) { return nativeActive; }
+int WorldActivity_OwnsFieldInput(void) { return activityOwns; }
+bool8 WorldTravel_OwnsFieldInput(void) { return travelOwns; }
+bool8 WorldTravel_NativeFlyRunning(void) { return flying; }
+bool8 ScriptContext_IsEnabled(void) { return scriptActive; }
+bool8 ArePlayerFieldControlsLocked(void) { return controls; }
+int main(void) {
+    static struct SaveBlock1 save;
+    static struct SaveBlock2 save2;
+    gSaveBlock1Ptr=&save; gSaveBlock2Ptr=&save2;
+    gMain.callback1=CB1_Overworld; gMain.callback2=CB2_Overworld;
+    assert(FieldReady());
+    sRally.anchored=1; sRally.consent=9; sRally.pending=3;
+    gMain.inBattle=1; WorldRally_Disconnected();
+    assert(sRally.recover && sRally.anchored && !sRally.consent && !sRally.pending);
+    assert(gMain.inBattle && !FieldReady());
+    gMain.inBattle=0; nativeActive=1; assert(!FieldReady()); nativeActive=0;
+    activityOwns=1; assert(!FieldReady()); activityOwns=0;
+    scriptActive=1; assert(!FieldReady()); scriptActive=0;
+    controls=1; assert(!FieldReady()); controls=0;
+    travelOwns=1; assert(!FieldReady()); travelOwns=0;
+    flying=1; assert(!FieldReady()); flying=0;
+    assert(FieldReady());
+    assert(!save.flags[0] && !save2.playerTrainerId[0]);
+    return 0;
+}
+''', unit='world_rally')
 
     def test_travel_is_blocked_during_battle_link_and_activity_handoffs(self):
         self.run_c(r'''

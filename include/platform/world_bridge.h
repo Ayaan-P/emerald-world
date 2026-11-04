@@ -3,6 +3,7 @@
 #ifdef PORTABLE
 #include <stdio.h>
 #include "gba/types.h"
+#include "platform/world_rally.h"
 
 /* NULL config is a strict no-op. Invalid explicit config returns FALSE.
  * Optional visible_peers 1..8 bounds locally rendered humans (default 8).
@@ -36,6 +37,9 @@ void WorldBridge_PrepareSave(void);
 void WorldBridge_Close(void);
 /* SDL-side chat never locks, scripts, pauses, or writes the native game. */
 int WorldBridge_ChatSend(const char *target, const char *text);
+/* Typed rally transport. A stale/disconnected snapshot is never returned. */
+bool8 WorldBridge_RallySend(unsigned action, unsigned id, unsigned arg);
+bool8 WorldBridge_RallySnapshot(struct WorldRallySnapshot *out);
 unsigned WorldBridge_ChatCount(void);
 const char *WorldBridge_ChatStatus(void);
 void WorldBridge_ChatLine(unsigned index, char *out, unsigned size);
