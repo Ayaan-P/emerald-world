@@ -1141,7 +1141,16 @@ bool8 LinkFullSave_SetLastSectorSignature(void)
     // Link trades use incremental flash writes instead of HandleSavingData.
     // Publish the completed slot only after its final signature is installed.
     if (!gDamagedSaveSectors)
-        Platform_StoreSaveFile();
+    {
+        if (!Platform_StoreSaveFile())
+        {
+            // A host I/O failure is not damaged flash. Preserve the backup slot
+            // and do not let the link callback acknowledge a durable save yet.
+            gSaveAttemptStatus = SAVE_STATUS_ERROR;
+            return TRUE;
+        }
+        gSaveAttemptStatus = SAVE_STATUS_OK;
+    }
 #endif
     if (gDamagedSaveSectors)
         DoSaveFailedScreen(SAVE_NORMAL);
@@ -1362,7 +1371,12 @@ void Task_LinkFullSave(u8 taskId)
     case 8:
         if (IsLinkTaskFinished())
         {
+#ifdef PORTABLE
+            if (LinkFullSave_SetLastSectorSignature())
+                break;
+#else
             LinkFullSave_SetLastSectorSignature();
+#endif
             tState = 9;
         }
         break;
