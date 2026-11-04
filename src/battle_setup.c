@@ -50,6 +50,7 @@
 
 #ifdef PORTABLE
 #include "platform/world_activity.h"
+#include "platform/dexnav_native.h"
 static bool8 sWorldWildFallback;
 #endif
 
@@ -388,6 +389,10 @@ static void CreateBattleStartTask(u8 transition, u16 song)
 {
     u8 taskId = CreateTask(Task_BattleStart, 1);
 
+#ifdef PORTABLE
+    DexNavNative_CancelForOtherBattle();
+#endif
+
     gTasks[taskId].tTransition = transition;
     PlayMapChosenOrBattleBGM(song);
 }
@@ -614,6 +619,9 @@ void StartRegiBattle(void)
 
 static void CB2_EndWildBattle(void)
 {
+#ifdef PORTABLE
+    DexNavNative_BattleFinished(gBattleOutcome);
+#endif
     CpuFill16(0, (void *)(BG_PLTT), BG_PLTT_SIZE);
     ResetOamRange(0, 128);
 
@@ -659,6 +667,7 @@ void BattleSetup_RecordWorldWildBattle(void)
 void BattleSetup_EndWorldWildBattle(void)
 {
     unsigned i;
+    DexNavNative_BattleFinished(gBattleOutcome);
     /* A shared victory does not prevent a private whiteout when this trainer
      * has no usable Pokemon. Do not change the partner's battle result. */
     for (i = 0; i < PARTY_SIZE; ++i)

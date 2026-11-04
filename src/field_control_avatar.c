@@ -38,6 +38,8 @@
 #ifdef PORTABLE
 #include "platform/world_activity.h"
 #include "platform/world_bridge.h"
+#include "platform/dexnav_native.h"
+#include "dexnav.h"
 #endif
 
 static EWRAM_DATA u8 sWildEncounterImmunitySteps = 0;
@@ -103,6 +105,8 @@ void FieldGetPlayerInput(struct FieldInput *input, u16 newKeys, u16 heldKeys)
     newKeys &= heldKeys;
     newKeys = WorldActivity_FilterFieldKeys(newKeys);
     heldKeys = WorldActivity_FilterFieldKeys(heldKeys);
+    DexNavNative_SetInput(newKeys, heldKeys, !forcedMove
+        && (tileTransitionState == T_NOT_MOVING || tileTransitionState == T_TILE_CENTER));
 #endif
 
     if ((tileTransitionState == T_TILE_CENTER && forcedMove == FALSE) || tileTransitionState == T_NOT_MOVING)
@@ -163,6 +167,11 @@ int ProcessPlayerFieldInput(struct FieldInput *input)
     if (TryRunOnFrameMapScript() == TRUE)
         return TRUE;
 
+#ifdef PORTABLE
+    if (DexNavNative_HandleInput())
+        return TRUE;
+#endif
+
     if (input->pressedBButton && TrySetupDiveEmergeScript() == TRUE)
         return TRUE;
     if (input->tookStep)
@@ -172,7 +181,11 @@ int ProcessPlayerFieldInput(struct FieldInput *input)
         if (TryStartStepBasedScript(&position, metatileBehavior, playerDirection) == TRUE)
             return TRUE;
     }
-    if (input->checkStandardWildEncounter && CheckStandardWildEncounter(metatileBehavior) == TRUE)
+    if (input->checkStandardWildEncounter
+#ifdef PORTABLE
+        && !gDexNavNativeState.searching
+#endif
+        && CheckStandardWildEncounter(metatileBehavior) == TRUE)
         return TRUE;
     if (input->heldDirection && input->dpadDirection == playerDirection)
     {
@@ -505,6 +518,10 @@ static bool8 TryStartStepBasedScript(struct MapPosition *position, u16 metatileB
         return TRUE;
     if (UpdateRepelCounter() == TRUE)
         return TRUE;
+#ifdef PORTABLE
+    if (OnStep_DexNavSearch())
+        return TRUE;
+#endif
     return FALSE;
 }
 
