@@ -46,6 +46,12 @@
 #include "constants/battle_frontier.h"
 #include "constants/rgb.h"
 #include "constants/songs.h"
+#ifdef PORTABLE
+#include "platform/world_bridge.h"
+#include "platform/world_travel.h"
+static bool8 StartMenuFriendsCallback(void);
+static const u8 sText_Friends[] = _("FRIENDS");
+#endif
 
 // Menu actions
 enum
@@ -63,6 +69,9 @@ enum
     MENU_ACTION_REST_FRONTIER,
     MENU_ACTION_RETIRE_FRONTIER,
     MENU_ACTION_PYRAMID_BAG
+#ifdef PORTABLE
+    , MENU_ACTION_FRIENDS
+#endif
 };
 
 // Save status
@@ -194,6 +203,9 @@ static const struct MenuAction sStartMenuItems[] =
     [MENU_ACTION_REST_FRONTIER]   = {gText_MenuRest,    {.u8_void = StartMenuSaveCallback}},
     [MENU_ACTION_RETIRE_FRONTIER] = {gText_MenuRetire,  {.u8_void = StartMenuBattlePyramidRetireCallback}},
     [MENU_ACTION_PYRAMID_BAG]     = {gText_MenuBag,     {.u8_void = StartMenuBattlePyramidBagCallback}}
+#ifdef PORTABLE
+    , [MENU_ACTION_FRIENDS] = {sText_Friends, {.u8_void = StartMenuFriendsCallback}}
+#endif
 };
 
 static const struct BgTemplate sBgTemplates_LinkBattleSave[] =
@@ -333,6 +345,9 @@ static void BuildNormalStartMenu(void)
     AddStartMenuAction(MENU_ACTION_PLAYER);
     AddStartMenuAction(MENU_ACTION_SAVE);
     AddStartMenuAction(MENU_ACTION_OPTION);
+#ifdef PORTABLE
+    if (WorldBridge_Enabled()) AddStartMenuAction(MENU_ACTION_FRIENDS);
+#endif
     AddStartMenuAction(MENU_ACTION_EXIT);
 }
 
@@ -449,17 +464,23 @@ static void RemoveExtraStartMenuWindows(void)
 static bool32 PrintStartMenuActions(s8 *pIndex, u32 count)
 {
     s8 index = *pIndex;
+#ifdef PORTABLE
+    u8 lineHeight = sNumStartMenuActions == 9 ? 14 : 16;
+#define ACTION_Y (index * lineHeight + 9)
+#else
+#define ACTION_Y ((index << 4) + 9)
+#endif
 
     do
     {
         if (sStartMenuItems[sCurrentStartMenuActions[index]].func.u8_void == StartMenuPlayerNameCallback)
         {
-            PrintPlayerNameOnWindow(GetStartMenuWindowId(), sStartMenuItems[sCurrentStartMenuActions[index]].text, 8, (index << 4) + 9);
+            PrintPlayerNameOnWindow(GetStartMenuWindowId(), sStartMenuItems[sCurrentStartMenuActions[index]].text, 8, ACTION_Y);
         }
         else
         {
             StringExpandPlaceholders(gStringVar4, sStartMenuItems[sCurrentStartMenuActions[index]].text);
-            AddTextPrinterParameterized(GetStartMenuWindowId(), FONT_NORMAL, gStringVar4, 8, (index << 4) + 9, TEXT_SKIP_DRAW, NULL);
+            AddTextPrinterParameterized(GetStartMenuWindowId(), FONT_NORMAL, gStringVar4, 8, ACTION_Y, TEXT_SKIP_DRAW, NULL);
         }
 
         index++;
@@ -475,6 +496,7 @@ static bool32 PrintStartMenuActions(s8 *pIndex, u32 count)
 
     *pIndex = index;
     return FALSE;
+#undef ACTION_Y
 }
 
 static bool32 InitStartMenuStep(void)
@@ -508,7 +530,11 @@ static bool32 InitStartMenuStep(void)
             sInitStartMenuData[0]++;
         break;
     case 5:
-        sStartMenuCursorPos = InitMenuNormal(GetStartMenuWindowId(), FONT_NORMAL, 0, 9, 16, sNumStartMenuActions, sStartMenuCursorPos);
+        sStartMenuCursorPos = InitMenuNormal(GetStartMenuWindowId(), FONT_NORMAL, 0, 9,
+#ifdef PORTABLE
+            sNumStartMenuActions == 9 ? 14 :
+#endif
+            16, sNumStartMenuActions, sStartMenuCursorPos);
         CopyWindowToVram(GetStartMenuWindowId(), COPYWIN_MAP);
         return TRUE;
     }
@@ -617,6 +643,9 @@ static bool8 HandleStartMenuInput(void)
 
         if (gMenuCallback != StartMenuSaveCallback
             && gMenuCallback != StartMenuExitCallback
+#ifdef PORTABLE
+            && gMenuCallback != StartMenuFriendsCallback
+#endif
             && gMenuCallback != StartMenuSafariZoneRetireCallback
             && gMenuCallback != StartMenuBattlePyramidRetireCallback)
         {
@@ -743,6 +772,16 @@ static bool8 StartMenuOptionCallback(void)
 
     return FALSE;
 }
+
+#ifdef PORTABLE
+static bool8 StartMenuFriendsCallback(void)
+{
+    RemoveExtraStartMenuWindows();
+    HideStartMenu();
+    WorldTravel_RequestMenu();
+    return TRUE;
+}
+#endif
 
 static bool8 StartMenuExitCallback(void)
 {

@@ -46,6 +46,10 @@
 #include "constants/region_map_sections.h"
 #include "constants/rgb.h"
 #include "constants/songs.h"
+#ifdef PORTABLE
+#include "platform/summary_detail.h"
+#include "platform/world_coop.h"
+#endif
 
 enum {
     PSS_PAGE_INFO,
@@ -100,6 +104,9 @@ enum {
 #define PSS_DATA_WINDOW_SKILLS_STATS_LEFT 2 // HP, Attack, Defense
 #define PSS_DATA_WINDOW_SKILLS_STATS_RIGHT 3 // Sp. Attack, Sp. Defense, Speed
 #define PSS_DATA_WINDOW_EXP 4 // Exp, next level
+#ifdef PORTABLE
+#define PSS_DATA_WINDOW_SKILLS_DETAIL_HINT 5
+#endif
 
 // Dynamic fields for the Battle Moves and Contest Moves pages.
 #define PSS_DATA_WINDOW_MOVE_NAMES 0
@@ -186,12 +193,21 @@ static EWRAM_DATA struct PokemonSummaryScreenData
     bool8 handleDeoxys;
     s16 switchCounter; // Used for various switch statement cases that decompress/load graphics or Pokémon data
     u8 unk_filler4[6];
+#ifdef PORTABLE
+    u8 detailWindowId;
+#endif
 } *sMonSummaryScreen = NULL;
 EWRAM_DATA u8 gLastViewedMonIndex = 0;
 static EWRAM_DATA u8 sMoveSlotToReplace = 0;
 ALIGNED(4) static EWRAM_DATA u8 sAnimDelayTaskId = 0;
 
 // forward declarations
+#ifdef PORTABLE
+static bool8 CanShowSummaryDetail(void);
+static void PrintSummaryDetailHint(void);
+static void OpenSummaryDetail(void);
+static void CloseSummaryDetail(void);
+#endif
 static bool8 LoadGraphics(void);
 static void CB2_InitSummaryScreen(void);
 static void InitBGs(void);
@@ -1105,6 +1121,9 @@ void ShowPokemonSummaryScreen(u8 mode, void *mons, u8 monIndex, u8 maxMonIndex, 
     sMonSummaryScreen->curMonIndex = monIndex;
     sMonSummaryScreen->maxMonIndex = maxMonIndex;
     sMonSummaryScreen->callback = callback;
+#ifdef PORTABLE
+    sMonSummaryScreen->detailWindowId = WINDOW_NONE;
+#endif
 
     if (mode == SUMMARY_MODE_BOX)
         sMonSummaryScreen->isBoxMon = TRUE;
@@ -1533,6 +1552,22 @@ static void Task_HandleInput(u8 taskId)
 {
     if (MenuHelpers_ShouldWaitForLinkRecv() != TRUE && !gPaletteFade.active)
     {
+#ifdef PORTABLE
+        // Keep the snapshot modal so page/party transitions cannot leave stale data.
+        if (sMonSummaryScreen->detailWindowId != WINDOW_NONE)
+        {
+            if (!CanShowSummaryDetail() || JOY_NEW(SELECT_BUTTON | B_BUTTON))
+                CloseSummaryDetail();
+            return;
+        }
+        if (JOY_NEW(SELECT_BUTTON)
+            && sMonSummaryScreen->currPageIndex == PSS_PAGE_SKILLS
+            && CanShowSummaryDetail())
+        {
+            OpenSummaryDetail();
+            return;
+        }
+#endif
         if (JOY_NEW(DPAD_UP))
         {
             ChangeSummaryPokemon(taskId, -1);
@@ -2963,6 +2998,10 @@ static void ClearPageWindowTilemaps(u8 page)
         ClearWindowTilemap(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATS_LEFT);
         ClearWindowTilemap(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATS_RIGHT);
         ClearWindowTilemap(PSS_LABEL_WINDOW_POKEMON_SKILLS_EXP);
+#ifdef PORTABLE
+        // The hint belongs to Skills, not the shared top-right move prompt.
+        RemoveWindowByIndex(PSS_DATA_WINDOW_SKILLS_DETAIL_HINT);
+#endif
         break;
     case PSS_PAGE_BATTLE_MOVES:
         if (sMonSummaryScreen->mode == SUMMARY_MODE_SELECT_MOVE)
@@ -3305,6 +3344,170 @@ static void PrintEggMemo(void)
     PrintTextOnWindow(AddWindowFromTemplateList(sPageInfoTemplate, PSS_DATA_WINDOW_INFO_MEMO), text, 0, 1, 0, 0);
 }
 
+#ifdef PORTABLE
+// Skills uses tiles through 566. The modal and hint do not overwrite stock windows.
+static const struct WindowTemplate sSummaryDetailTemplate =
+{
+    .bg = 0,
+    .tilemapLeft = 10,
+    .tilemapTop = 4,
+    .width = 20,
+    .height = 14,
+    .paletteNum = 6,
+    .baseBlock = 600,
+};
+static const struct WindowTemplate sSummaryDetailHintTemplate =
+{
+    .bg = 0,
+    .tilemapLeft = 18,
+    .tilemapTop = 0,
+    .width = 12,
+    .height = 2,
+    .paletteNum = 7,
+    .baseBlock = 880,
+};
+static const u8 sText_SummaryDetailHint[] = _("SELECT: IV/EV");
+static const u8 sText_SummaryDetailBack[] = _("SELECT/B: Back");
+static const u8 sText_SummaryDetailStat[] = _("Stat");
+static const u8 sText_SummaryDetailIV[] = _("IV");
+static const u8 sText_SummaryDetailEV[] = _("EV");
+static const u8 sText_SummaryDetailHP[] = _("HP");
+static const u8 sText_SummaryDetailAttack[] = _("Attack");
+static const u8 sText_SummaryDetailDefense[] = _("Defense");
+static const u8 sText_SummaryDetailSpeed[] = _("Speed");
+static const u8 sText_SummaryDetailSpAtk[] = _("Sp. Atk");
+static const u8 sText_SummaryDetailSpDef[] = _("Sp. Def");
+static const u8 sText_SummaryDetailHiddenPower[] = _("Hidden Power");
+static const u8 sText_SummaryDetailPower[] = _("Power");
+
+static bool8 CanShowSummaryDetail(void)
+{
+    u8 box;
+
+    // A multi/co-op party can be a temporary mixed-owner projection. Do not
+    // infer privacy from OT IDs (legitimate traded local mons have other OTs).
+    if (WorldCoop_IsBattle() || WorldCoop_IsPrivateRewards() || gMain.inBattle
+        || InBattleFactory() || InSlateportBattleTent()
+        || sMonSummaryScreen->summary.isEgg || sMonSummaryScreen->summary.sanity
+        || GetMonData(&sMonSummaryScreen->currentMon, MON_DATA_SANITY_IS_BAD_EGG)
+        || sMonSummaryScreen->curMonIndex > sMonSummaryScreen->maxMonIndex)
+        return FALSE;
+
+    if (sMonSummaryScreen->mode == SUMMARY_MODE_NORMAL
+        && !sMonSummaryScreen->isBoxMon
+        && sMonSummaryScreen->monList.mons == gPlayerParty
+        && sMonSummaryScreen->maxMonIndex < PARTY_SIZE)
+        return TRUE;
+
+    // Only a real local box array is trusted, never an arbitrary summary copy.
+    if (sMonSummaryScreen->mode == SUMMARY_MODE_BOX
+        && sMonSummaryScreen->isBoxMon
+        && sMonSummaryScreen->maxMonIndex < IN_BOX_COUNT)
+    {
+        for (box = 0; box < TOTAL_BOXES_COUNT; box++)
+            if (sMonSummaryScreen->monList.boxMons == GetBoxedMonPtr(box, 0))
+                return TRUE;
+    }
+    return FALSE;
+}
+
+static void PrintSummaryDetailHint(void)
+{
+    u8 *windowId = &sMonSummaryScreen->windowIds[PSS_DATA_WINDOW_SKILLS_DETAIL_HINT];
+
+    if (!CanShowSummaryDetail())
+    {
+        RemoveWindowByIndex(PSS_DATA_WINDOW_SKILLS_DETAIL_HINT);
+        return;
+    }
+    if (*windowId == WINDOW_NONE)
+        *windowId = AddWindow(&sSummaryDetailHintTemplate);
+    if (*windowId == WINDOW_NONE)
+        return;
+    FillWindowPixelBuffer(*windowId, PIXEL_FILL(0));
+    PrintTextOnWindow(*windowId, sMonSummaryScreen->detailWindowId == WINDOW_NONE
+        ? sText_SummaryDetailHint : sText_SummaryDetailBack, 0, 1, 0, 0);
+    PutWindowTilemap(*windowId);
+    CopyWindowToVram(*windowId, COPYWIN_FULL);
+}
+
+static void PrintSummaryDetailText(u8 windowId, const u8 *text, u8 x, u8 y)
+{
+    // Twelve-pixel rows need the small font, not the stock sixteen-pixel font.
+    AddTextPrinterParameterized4(windowId, FONT_SMALL, x, y, 0, 0, sTextColors[8], 0, text);
+}
+
+static void OpenSummaryDetail(void)
+{
+    static const s32 ivFields[6] =
+    {
+        MON_DATA_HP_IV, MON_DATA_ATK_IV, MON_DATA_DEF_IV,
+        MON_DATA_SPEED_IV, MON_DATA_SPATK_IV, MON_DATA_SPDEF_IV,
+    };
+    static const s32 evFields[6] =
+    {
+        MON_DATA_HP_EV, MON_DATA_ATK_EV, MON_DATA_DEF_EV,
+        MON_DATA_SPEED_EV, MON_DATA_SPATK_EV, MON_DATA_SPDEF_EV,
+    };
+    static const u8 *const labels[6] =
+    {
+        sText_SummaryDetailHP, sText_SummaryDetailAttack, sText_SummaryDetailDefense,
+        sText_SummaryDetailSpeed, sText_SummaryDetailSpAtk, sText_SummaryDetailSpDef,
+    };
+    u8 ivs[6];
+    u8 stat, type, power;
+    u8 windowId;
+
+    if (!CanShowSummaryDetail())
+        return;
+    windowId = AddWindow(&sSummaryDetailTemplate);
+    if (windowId == WINDOW_NONE)
+        return;
+    sMonSummaryScreen->detailWindowId = windowId;
+    FillWindowPixelBuffer(windowId, PIXEL_FILL(13));
+    PrintSummaryDetailText(windowId, sText_SummaryDetailStat, 4, 0);
+    PrintSummaryDetailText(windowId, sText_SummaryDetailIV, 84, 0);
+    PrintSummaryDetailText(windowId, sText_SummaryDetailEV, 120, 0);
+    for (stat = 0; stat < 6; stat++)
+    {
+        u8 y = 16 + stat * 12;
+        // Read the existing summary copy. No writes or stat recalculation,
+        // including for legacy mons with 253-255 EVs in a stat.
+        ivs[stat] = GetMonData(&sMonSummaryScreen->currentMon, ivFields[stat]);
+        PrintSummaryDetailText(windowId, labels[stat], 4, y);
+        ConvertIntToDecimalStringN(gStringVar1, ivs[stat], STR_CONV_MODE_RIGHT_ALIGN, 2);
+        PrintSummaryDetailText(windowId, gStringVar1, 84, y);
+        ConvertIntToDecimalStringN(gStringVar1,
+            GetMonData(&sMonSummaryScreen->currentMon, evFields[stat]), STR_CONV_MODE_RIGHT_ALIGN, 3);
+        PrintSummaryDetailText(windowId, gStringVar1, 120, y);
+    }
+    SummaryDetail_CalculateHiddenPower(ivs, &type, &power);
+    PrintSummaryDetailText(windowId, sText_SummaryDetailHiddenPower, 4, 88);
+    PrintSummaryDetailText(windowId, sText_SummaryDetailPower, 115, 88);
+    PrintSummaryDetailText(windowId, gTypeNames[type], 4, 100);
+    ConvertIntToDecimalStringN(gStringVar1, power, STR_CONV_MODE_LEFT_ALIGN, 2);
+    PrintSummaryDetailText(windowId, gStringVar1, 120, 100);
+    PutWindowTilemap(windowId);
+    CopyWindowToVram(windowId, COPYWIN_FULL);
+    PrintSummaryDetailHint();
+    PlaySE(SE_SELECT);
+}
+
+static void CloseSummaryDetail(void)
+{
+    u8 windowId = sMonSummaryScreen->detailWindowId;
+
+    ClearWindowTilemap(windowId);
+    RemoveWindow(windowId);
+    sMonSummaryScreen->detailWindowId = WINDOW_NONE;
+    // The underlying buffers were never modified. Restore their tilemaps.
+    PutPageWindowTilemaps(PSS_PAGE_SKILLS);
+    PrintSummaryDetailHint();
+    ScheduleBgCopyTilemapToVram(0);
+    PlaySE(SE_SELECT);
+}
+#endif
+
 static void PrintSkillsPageText(void)
 {
     PrintHeldItemName();
@@ -3314,6 +3517,9 @@ static void PrintSkillsPageText(void)
     BufferRightColumnStats();
     PrintRightColumnStats();
     PrintExpPointsNextLevel();
+#ifdef PORTABLE
+    PrintSummaryDetailHint();
+#endif
 }
 
 static void Task_PrintSkillsPage(u8 taskId)
@@ -3344,6 +3550,9 @@ static void Task_PrintSkillsPage(u8 taskId)
         PrintExpPointsNextLevel();
         break;
     case 8:
+#ifdef PORTABLE
+        PrintSummaryDetailHint();
+#endif
         DestroyTask(taskId);
         return;
     }

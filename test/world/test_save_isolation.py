@@ -40,6 +40,7 @@ typedef u8 bool8;
 #define TRUE 1
 #define FALSE 0
 #define WB_PEERS 8
+#define WB_TRAVEL_PEERS 63
 #define WB_OBJECTS 8
 #define WB_REMOTES (WB_PEERS + WB_OBJECTS)
 #define WB_TILES 128

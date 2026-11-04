@@ -1471,10 +1471,29 @@ void BattleSetup_StartRematchBattle(void)
 }
 
 #ifdef PORTABLE
+bool8 BattleSetup_CanShareWorldTrainerCredit(u16 trainerId)
+{
+    if (trainerId <= TRAINER_NONE || trainerId >= TRAINERS_COUNT)
+        return FALSE;
+
+    /* Gym teams (including rematches) and the League belong to the player
+     * whose script started the encounter. A guest must still beat their own
+     * boss, even when its local trainerbattle continuation is directly visible. */
+    switch (gTrainers[trainerId].trainerClass)
+    {
+    case TRAINER_CLASS_LEADER:
+    case TRAINER_CLASS_ELITE_FOUR:
+    case TRAINER_CLASS_CHAMPION:
+        return FALSE;
+    default:
+        return TRUE;
+    }
+}
+
 bool8 BattleSetup_ResumeWorldTrainerScript(u16 trainerId)
 {
     u8 i;
-    if (HasTrainerBeenFought(trainerId))
+    if (!BattleSetup_CanShareWorldTrainerCredit(trainerId) || HasTrainerBeenFought(trainerId))
         return FALSE;
     /* Only a locally present, direct trainerbattle command can authorize a
      * local story continuation. No script address is supplied by the peer.
@@ -1899,7 +1918,7 @@ void BattleSetup_RegisterWorldTrainerInMatchCall(u16 trainerId)
 {
     /* A guest without a recognized story continuation still defeated this
      * trainer locally. Never borrow the owner's selected trainer context. */
-    if (trainerId > TRAINER_NONE && trainerId < TRAINERS_COUNT && FlagGet(FLAG_HAS_MATCH_CALL))
+    if (BattleSetup_CanShareWorldTrainerCredit(trainerId) && FlagGet(FLAG_HAS_MATCH_CALL))
     {
         u32 matchCallFlagId = GetTrainerMatchCallFlag(trainerId);
         if (matchCallFlagId != 0xFFFF)

@@ -40,6 +40,7 @@ class LauncherBridge:
         self.binary = Path(binary)
         self.remote_paths = None
         self.browser_input = None
+        self.browser_input_session = None
         self.lock = threading.RLock()
         from .hosting_ui import HostedLauncher
         self.hosted = HostedLauncher(session)
@@ -171,9 +172,13 @@ class LauncherBridge:
                               if process.poll() is None], 'status': self.session.status}
 
     def stop_browser_input(self):
-        if self.browser_input is not None:
-            self.browser_input.close()
-            self.browser_input = None
+        # Also used by launcher shutdown. Serialize teardown with HTTP lifecycle
+        # actions so a late close cannot release a replacement relay's keys.
+        with self.lock:
+            control, self.browser_input = self.browser_input, None
+            self.browser_input_session = None
+            if control is not None:
+                control.close()
 
     def action(self, action, payload):
         with self.lock:
@@ -389,16 +394,26 @@ class LauncherBridge:
                 from .browser_input import BrowserInput
                 self.stop_browser_input()
                 control = BrowserInput(self.session)
-                control.start()
+                try:
+                    control.start()
+                except Exception:
+                    control.close()
+                    raise
                 self.browser_input = control
-                return {'active': True}
+                self.browser_input_session = secrets.token_urlsafe(32)
+                return {'active': True, 'session': self.browser_input_session}
             elif action == 'screen_keys':
-                if self.browser_input is None:
+                if (self.browser_input is None or not isinstance(payload.get('session'), str)
+                        or payload['session'] != self.browser_input_session):
                     raise SessionError('Start the in-page view first.')
                 self.browser_input.apply(payload.get('keys'))
                 return {'active': True}
             elif action == 'screen_stop':
-                self.stop_browser_input()
+                # Missing or obsolete ownership is deliberately a no-op. A reply
+                # to an unmounted preview can arrive after its successor starts.
+                if (isinstance(payload.get('session'), str)
+                        and payload['session'] == self.browser_input_session):
+                    self.stop_browser_input()
                 return {'active': False}
             else:
                 raise SessionError('Unknown launcher action.')

@@ -35,6 +35,7 @@
 #include "constants/map_groups.h"
 #include "platform/world_bridge.h"
 #include "platform/world_activity.h"
+#include "platform/world_travel.h"
 #include "platform/world_catalog.h"
 #ifndef _WIN32
 #include <unistd.h>
@@ -47,6 +48,7 @@
 /* Per-recipient relevance window, NOT the server's configurable population.
  * The server selects at most eight peers; the stock field pool may draw fewer. */
 #define WB_PEERS 8
+#define WB_TRAVEL_PEERS 63
 #define WB_OBJECTS 8
 #define WB_REMOTES (WB_PEERS + WB_OBJECTS)
 #define WB_TILES 128
@@ -58,16 +60,25 @@
 struct Peer { char id[26], text[58]; unsigned group, num, x, y, facing, gfx, ready; };
 struct Tile { unsigned group, num, x, y, metatile, collision; };
 struct Meeting { unsigned seq, group, num, x, y; char player[25], target[25]; };
+struct ChatMessage { unsigned seq; char sender[25], target[25], text[121]; };
+struct TravelPeer { struct Peer peer; unsigned ttl; };
 struct Snapshot {
     unsigned revision, peerCount, tileCount, objectCount;
     struct Peer peers[WB_REMOTES];
     struct Tile tiles[WB_TILES];
     struct Meeting meeting;
+    unsigned chatCount;
+    char chatStatus[12];
+    struct ChatMessage chat[16];
+    bool8 travel;
+    unsigned travelCount, travelExpected;
+    struct TravelPeer friends[WB_TRAVEL_PEERS];
 };
 struct Remote { char id[26]; u8 object, sprite, group, num; };
 struct Applied { struct Tile tile; u16 original, raw; };
 static struct {
-    bool8 enabled, connected, connecting, staging;
+    bool8 enabled, connected, connecting, staging, chatProbe, chatLegacy, chatAvailable;
+    bool8 travelProbe, travelLegacy, travelAvailable;
 #ifdef _WIN32
     SOCKET fd;
     bool8 winsockStarted;
@@ -79,7 +90,7 @@ static struct {
     char socketPath[108], trainer[25], token[65], telemetry[1024];
     char input[WB_BUFFER], output[4096];
     size_t inputSize, outputSize, outputSent;
-    unsigned seq, retry, handshakePolls, stagedBytes, generation, appliedGeneration;
+    unsigned seq, retry, handshakePolls, stagedBytes, generation, appliedGeneration, snapshotAge;
     bool8 tilesLive;
     struct Snapshot live, stage;
     struct Peer field;
@@ -327,15 +338,80 @@ static void Disconnect(void)
     sWorld.fd = -1;
 #endif
     sWorld.connected = sWorld.connecting = sWorld.staging = FALSE;
+    sWorld.chatProbe = sWorld.chatAvailable = FALSE;
+    sWorld.travelProbe = sWorld.travelAvailable = FALSE;
     sWorld.inputSize = sWorld.outputSize = sWorld.outputSent = 0;
     sWorld.retry = 30;
     sWorld.live.peerCount = sWorld.live.tileCount = sWorld.live.objectCount = 0;
+    sWorld.live.chatCount = 0;
+    sWorld.live.travel = FALSE;
+    sWorld.live.travelCount = 0;
+    sWorld.live.chatStatus[0] = 0;
     sWorld.pendingObject[0] = 0;
     memset(&sWorld.live.meeting, 0, sizeof(sWorld.live.meeting));
     sWorld.generation++;
 }
 
 bool8 WorldBridge_Enabled(void) { return sWorld.enabled; }
+
+bool8 WorldBridge_GetPeer(unsigned index, struct WorldBridgePeer *peer)
+{
+    unsigned i;
+    if (!peer || !sWorld.connected || sWorld.snapshotAge > 180) return FALSE;
+    for (i = 0; i < sWorld.live.peerCount; i++) {
+        const struct Peer *p = &sWorld.live.peers[i];
+        if (p->id[0] == '@') continue;
+        if (index--) continue;
+        strcpy(peer->name, p->id);
+        peer->group = p->group; peer->num = p->num;
+        peer->x = p->x; peer->y = p->y; peer->ready = p->ready;
+        return TRUE;
+    }
+    return FALSE;
+}
+
+bool8 WorldBridge_TravelTileClear(unsigned group, unsigned num, unsigned x, unsigned y)
+{
+    unsigned i;
+    if (!sWorld.connected || sWorld.snapshotAge > 180 || !MapCoords(group, num, x, y)) return FALSE;
+    for (i = 0; i < sWorld.live.travelCount; i++) {
+        const struct TravelPeer *f = &sWorld.live.friends[i];
+        const struct Peer *p = &f->peer;
+        if (p->group == group && p->num == num
+         && (sWorld.snapshotAge >= f->ttl || (p->x == x && p->y == y))) return FALSE;
+    }
+    for (i = 0; i < sWorld.live.peerCount; i++) {
+        const struct Peer *p = &sWorld.live.peers[i];
+        if (p->group == group && p->num == num && p->x == x && p->y == y) return FALSE;
+    }
+    /* A changed tile is outside the base-map reachability proof, even if the
+     * authority currently marks it passable. Never turn a gate into a shortcut. */
+    for (i = 0; i < sWorld.live.tileCount; i++) {
+        const struct Tile *t = &sWorld.live.tiles[i];
+        if (t->group == group && t->num == num && t->x == x && t->y == y) return FALSE;
+    }
+    return TRUE;
+}
+
+bool8 WorldBridge_GetTravelPeer(unsigned index, struct WorldBridgePeer *peer)
+{
+    unsigned i;
+    if (!peer || !sWorld.connected || sWorld.snapshotAge > 180) return FALSE;
+    /* Render relevance is incomplete occupancy information. Old authorities
+     * keep chat/presence, but cannot authorize a safe friend landing. */
+    if (!sWorld.live.travel) return FALSE;
+    for (i = 0; i < sWorld.live.travelCount; i++) {
+        const struct TravelPeer *f = &sWorld.live.friends[i];
+        const struct Peer *p = &f->peer;
+        if (sWorld.snapshotAge >= f->ttl) continue;
+        if (index--) continue;
+        strcpy(peer->name, p->id);
+        peer->group = p->group; peer->num = p->num;
+        peer->x = p->x; peer->y = p->y; peer->ready = p->ready;
+        return TRUE;
+    }
+    return FALSE;
+}
 
 const char *WorldBridge_TrainerName(void)
 {
@@ -473,9 +549,21 @@ static bool8 Line(char *line)
     }
     if (!n) return FALSE;
     if (!sWorld.connected) {
+        if (sWorld.travelProbe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
+            sWorld.travelLegacy = TRUE;
+            return FALSE;
+        }
+        /* An older server rejects the optional role before presence is live.
+         * Retry once using the legacy role, without weakening authentication. */
+        if (sWorld.chatProbe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
+            sWorld.chatLegacy = TRUE;
+            return FALSE;
+        }
         if (n != 4 || strcmp(tokens[0], "WELCOME") || strcmp(tokens[1], "1")
          || strcmp(tokens[2], sWorld.trainer) || !Decimal(tokens[3], &v[0])) return FALSE;
         sWorld.connected = TRUE;
+        sWorld.chatAvailable = sWorld.chatProbe;
+        sWorld.travelAvailable = sWorld.travelProbe;
         sWorld.live.revision = v[0];
         return TRUE;
     }
@@ -490,8 +578,11 @@ static bool8 Line(char *line)
     if (!sWorld.staging) return FALSE;
     if (!strcmp(tokens[0], "END")) {
         if (n != 1) return FALSE;
+        if ((sWorld.travelAvailable && !sWorld.stage.travel)
+         || sWorld.stage.travelCount != sWorld.stage.travelExpected) return FALSE;
         if (sWorld.live.meeting.seq != sWorld.stage.meeting.seq) sWorld.meetingAge = 0;
         sWorld.live = sWorld.stage;
+        sWorld.snapshotAge = 0;
         sWorld.generation++;
         sWorld.staging = FALSE;
         return TRUE;
@@ -506,6 +597,69 @@ static bool8 Line(char *line)
         if (!MapCoords(v[1],v[2],v[3],v[4])) return FALSE;
         m->seq=v[0]; m->group=v[1]; m->num=v[2]; m->x=v[3]; m->y=v[4];
         strcpy(m->player,tokens[2]); strcpy(m->target,tokens[3]);
+        return TRUE;
+    }
+    if (!strcmp(tokens[0], "CHATSTATUS")) {
+        if (n != 2 || sWorld.stage.chatStatus[0]
+         || (strcmp(tokens[1], "ready") && strcmp(tokens[1], "sent")
+          && strcmp(tokens[1], "slow") && strcmp(tokens[1], "unavailable"))) return FALSE;
+        strcpy(sWorld.stage.chatStatus, tokens[1]);
+        return TRUE;
+    }
+    if (!strcmp(tokens[0], "CHATMSG")) {
+        struct ChatMessage *message;
+        size_t length, j;
+        bool8 visible = FALSE;
+        if (n != 5 || sWorld.stage.chatCount == 16 || !Decimal(tokens[1], &v[0]) || !v[0]
+         || !Identifier(tokens[2]) || (strcmp(tokens[3], "*") && !Identifier(tokens[3]))
+         || (strcmp(tokens[3], "*") && strcmp(tokens[3], sWorld.trainer)
+          && strcmp(tokens[2], sWorld.trainer))
+         || (sWorld.stage.chatCount && v[0] <= sWorld.stage.chat[sWorld.stage.chatCount-1].seq)) return FALSE;
+        length = strlen(tokens[4]);
+        if (!length || length % 2 || length > 240) return FALSE;
+        message = &sWorld.stage.chat[sWorld.stage.chatCount];
+        for (i = 0; i < length / 2; i++) {
+            unsigned c = 0;
+            for (j = 0; j < 2; j++) {
+                char h = tokens[4][2*i+j];
+                if (h >= '0' && h <= '9') c = c * 16 + h - '0';
+                else if (h >= 'a' && h <= 'f') c = c * 16 + h - 'a' + 10;
+                else return FALSE;
+            }
+            if (c < 32 || c > 126) return FALSE;
+            if (c != 32) visible = TRUE;
+            message->text[i] = c;
+        }
+        if (!visible) return FALSE;
+        message->text[i] = 0;
+        message->seq = v[0];
+        strcpy(message->sender, tokens[2]);
+        strcpy(message->target, tokens[3]);
+        sWorld.stage.chatCount++;
+        return TRUE;
+    }
+    if (!strcmp(tokens[0], "TRAVEL")) {
+        if (n != 2 || sWorld.stage.travel || !Decimal(tokens[1], &v[0]) || v[0] > WB_TRAVEL_PEERS) return FALSE;
+        sWorld.stage.travel = TRUE;
+        sWorld.stage.travelExpected = v[0];
+        return TRUE;
+    }
+    if (!strcmp(tokens[0], "FRIEND")) {
+        struct TravelPeer *f;
+        struct Peer *peer;
+        if (n != 10 || !sWorld.stage.travel || !Identifier(tokens[1])
+         || !strcmp(tokens[1], sWorld.trainer)
+         || sWorld.stage.travelCount >= sWorld.stage.travelExpected) return FALSE;
+        for (i = 0; i < 8; i++) if (!Decimal(tokens[i + 2], &v[i])) return FALSE;
+        if (!MapCoords(v[0], v[1], v[2], v[3]) || v[4] < 1 || v[4] > 4
+         || v[5] > 255 || v[6] > 1 || v[7] > 180) return FALSE;
+        for (i = 0; i < sWorld.stage.travelCount; i++)
+            if (!strcmp(sWorld.stage.friends[i].peer.id, tokens[1])) return FALSE;
+        f = &sWorld.stage.friends[sWorld.stage.travelCount++];
+        peer = &f->peer;
+        strcpy(peer->id, tokens[1]);
+        peer->group=v[0]; peer->num=v[1]; peer->x=v[2]; peer->y=v[3];
+        peer->facing=v[4]; peer->gfx=v[5]; peer->ready=v[6]; f->ttl=v[7];
         return TRUE;
     }
     if (!strcmp(tokens[0], "PEER")) {
@@ -568,15 +722,23 @@ static bool8 SocketOpen(void)
 #endif
 }
 
-static void QueueHello(void)
+static void QueueHello(bool8 headless)
 {
-    sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
 #ifdef _WIN32
-        "EWLOCAL1 %s\nHELLO 1 %s %s SOCIAL\n", sWorld.loopbackToken,
+    (void)headless;
+    sWorld.chatProbe = FALSE;
+    sWorld.travelProbe = !sWorld.travelLegacy;
+    sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
+        "EWLOCAL1 %s\nHELLO 1 %s %s %s\n", sWorld.loopbackToken, sWorld.trainer, sWorld.token,
+        sWorld.travelProbe ? "SOCIALTRAVEL" : "SOCIAL");
 #else
-        "HELLO 1 %s %s SOCIAL\n",
+    sWorld.chatProbe = !headless && !sWorld.chatLegacy;
+    sWorld.travelProbe = !sWorld.travelLegacy;
+    sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
+        "HELLO 1 %s %s %s\n", sWorld.trainer, sWorld.token,
+        sWorld.travelProbe ? (sWorld.chatProbe ? "SOCIALTRAVELCHAT" : "SOCIALTRAVEL")
+            : (sWorld.chatProbe ? "SOCIALCHAT" : "SOCIAL"));
 #endif
-        sWorld.trainer, sWorld.token);
 }
 
 static void Flush(void)
@@ -607,7 +769,7 @@ static void Flush(void)
     if (sWorld.outputSent == sWorld.outputSize) sWorld.outputSent = sWorld.outputSize = 0;
 }
 
-static void Connect(void)
+static void Connect(bool8 headless)
 {
 #ifdef _WIN32
     struct sockaddr_in addr;
@@ -647,7 +809,7 @@ static void Connect(void)
     sWorld.handshakePolls = WB_HANDSHAKE_POLLS;
     sWorld.seq = 0;
     sWorld.shownMeeting = 0;
-    QueueHello();
+    QueueHello(headless);
 }
 
 static void Receive(bool8 headless)
@@ -741,6 +903,52 @@ static void Fingerprint(const void *data, size_t size, char out[17])
     for (i = 0; i < size; i++) hash = (hash ^ p[i]) * 0x100000001b3ULL;
     snprintf(out, 17, "%016llx", (unsigned long long)hash);
 }
+
+int WorldBridge_ChatSend(const char *target, const char *text)
+{
+    char hex[241];
+    size_t i, length = strlen(text);
+    bool8 visible = FALSE;
+    if (!sWorld.connected || !sWorld.chatAvailable || sWorld.outputSize || !length || length > 120
+     || (strcmp(target, "*") && !Identifier(target)) || sWorld.seq == UINT_MAX) return 0;
+    for (i = 0; i < length; i++) {
+        unsigned c = (unsigned char)text[i];
+        if (c < 32 || c > 126) return 0;
+        if (c != 32) visible = TRUE;
+        hex[2*i] = "0123456789abcdef"[c >> 4];
+        hex[2*i+1] = "0123456789abcdef"[c & 15];
+    }
+    if (!visible) return 0;
+    hex[2*i] = 0;
+    sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
+        "CHAT %u %s %s\n", ++sWorld.seq, target, hex);
+    Flush();
+    return 1;
+}
+
+unsigned WorldBridge_ChatCount(void)
+{
+    return sWorld.live.chatCount;
+}
+
+const char *WorldBridge_ChatStatus(void)
+{
+    return !sWorld.connected ? "offline" : !sWorld.chatAvailable ? "unsupported" : sWorld.live.chatStatus;
+}
+
+void WorldBridge_ChatLine(unsigned index, char *out, unsigned size)
+{
+    const struct ChatMessage *message;
+    if (!size) return;
+    out[0] = 0;
+    if (index >= sWorld.live.chatCount) return;
+    message = &sWorld.live.chat[index];
+    if (!strcmp(message->target, "*"))
+        snprintf(out, size, "%s: %s", message->sender, message->text);
+    else
+        snprintf(out, size, "%s > %s: %s", message->sender, message->target, message->text);
+}
+
 
 static void SendState(void)
 {
@@ -963,7 +1171,7 @@ static void SyncDialogue(void)
     char talkPeer[25];
     bool8 talk = WorldActivity_TakeTalkRequest(talkPeer);
     const struct Meeting *meeting = &sWorld.live.meeting;
-    if (WorldActivity_OwnsFieldInput()) {
+    if (WorldActivity_OwnsFieldInput() || WorldTravel_OwnsFieldInput()) {
         sWorld.shownMeeting = meeting->seq;
         sWorld.pendingObject[0] = 0;
         sWorld.dialogueKeys = 0;
@@ -1062,6 +1270,7 @@ u16 WorldBridge_FilterInput(u16 keys)
     u16 pressed = keys & ~sWorld.previousKeys;
     if (!sWorld.enabled) return keys;
     sWorld.previousKeys = keys;
+    if (WorldTravel_OwnsFieldInput()) return 0;
     if (WorldActivity_OwnsFieldInput()) return keys;
     if (sWorld.dialogueActive) {
         sWorld.dialogueKeys |= pressed & (A_BUTTON | B_BUTTON);
@@ -1100,7 +1309,8 @@ void WorldBridge_WriteJSON(FILE *file, u32 frame)
 {
     unsigned i, count = 0;
     const struct ObjectEvent *p = Overworld() ? &gObjectEvents[gPlayerAvatar.objectEventId] : NULL;
-    fprintf(file, "{\"trainer\":\"%s\",\"frame\":%u,\"connected\":%s,\"revision\":%u,\"ready\":%s,\"map\":[%d,%d],\"pos\":[%d,%d],\"peers\":[",
+    fprintf(file, "{\"chat_count\":%u,\"in_battle\":%s,\"trainer\":\"%s\",\"frame\":%u,\"connected\":%s,\"revision\":%u,\"ready\":%s,\"map\":[%d,%d],\"pos\":[%d,%d],\"peers\":[",
+        sWorld.live.chatCount, gMain.inBattle ? "true" : "false",
         sWorld.trainer, frame, sWorld.connected ? "true" : "false", sWorld.live.revision, Ready() ? "true" : "false",
         gSaveBlock1Ptr ? gSaveBlock1Ptr->location.mapGroup : -1, gSaveBlock1Ptr ? gSaveBlock1Ptr->location.mapNum : -1,
         p ? p->currentCoords.x - MAP_OFFSET : 0, p ? p->currentCoords.y - MAP_OFFSET : 0);
@@ -1166,7 +1376,16 @@ void WorldBridge_WriteJSON(FILE *file, u32 frame)
         fprintf(file, "%s{\"map\":[%u,%u],\"pos\":[%u,%u],\"original\":%u,\"raw\":%u}",
             i ? "," : "", a->tile.group, a->tile.num, a->tile.x, a->tile.y, a->original, a->raw);
     }
-    fprintf(file, "]}");
+    fprintf(file, "],\"travel_available\":%s,\"friends\":[", sWorld.travelAvailable ? "true" : "false");
+    {
+        struct WorldBridgePeer friend;
+        for (i = 0; WorldBridge_GetTravelPeer(i, &friend); i++)
+            fprintf(file, "%s{\"trainer\":\"%s\",\"map\":[%u,%u],\"pos\":[%u,%u],\"ready\":%s}",
+                i ? "," : "", friend.name, friend.group, friend.num, friend.x, friend.y, friend.ready ? "true" : "false");
+    }
+    fputs("],\"travel\":", file);
+    WorldTravel_WriteJSON(file);
+    fputc('}', file);
 }
 
 void WorldBridge_Poll(bool8 headless)
@@ -1174,7 +1393,7 @@ void WorldBridge_Poll(bool8 headless)
     if (!sWorld.enabled) return;
     if (!SocketOpen()) {
         if (sWorld.retry) sWorld.retry--;
-        else Connect();
+        else Connect(headless);
     }
     if (SocketOpen() && !sWorld.connected) {
         /* Include connection setup and partial replies in one attempt budget.
@@ -1199,6 +1418,8 @@ void WorldBridge_AfterFrame(u32 frame)
     char path[1100];
     if (!sWorld.enabled) return;
     UpdateFieldPresence();
+    if (sWorld.snapshotAge <= 180) sWorld.snapshotAge++;
+    WorldTravel_Update();
     SyncDialogue();
     SyncEngine();
     if (frame % 6 == 0) SendState();
@@ -1227,6 +1448,7 @@ void WorldBridge_Close(void)
 {
     unsigned i;
     if (!sWorld.enabled) return;
+    WorldTravel_Close();
     RestoreTiles();
     if (Overworld()) for (i = 0; i < WB_REMOTES; i++) RemoveRemote(i);
     Disconnect();

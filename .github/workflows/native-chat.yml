@@ -1,0 +1,77 @@
+name: Native multiplayer chat
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/platform/world_chat.c'
+      - 'src/platform/world_bridge.c'
+      - 'src/platform/settings.c'
+      - 'world/server.py'
+      - 'test/world/test_chat*.py'
+      - '.github/workflows/native-chat.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  chat-components:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout source without stored credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install SDL development files
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential libsdl2-dev
+      - name: Generate native map constants
+        run: |
+          make -C tools/mapjson
+          tools/mapjson/mapjson groups emerald data/maps/map_groups.json data/maps include/constants
+          tools/mapjson/mapjson layouts emerald data/layouts/layouts.json data/layouts include/constants
+      - name: Run socket, composer, protocol and remapped-key tests
+        run: PYTHONPATH=.:test/world python3 -m unittest test.world.test_chat test.world.test_chat_in_memory test.world.test_window_identity -v
+
+  native-chat-acceptance:
+    # Full native flows run once on the frozen integrated RC. Keep this
+    # optional runner path explicit; never weaken the engine sandbox for CI.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout source without stored credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install isolated build and display prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential libpng-dev libsdl2-dev xvfb xserver-xephyr xdotool bubblewrap
+      - name: Check isolated namespace support
+        run: >-
+          bwrap --unshare-all --die-with-parent --clearenv
+          --ro-bind /usr /usr --ro-bind /lib /lib --ro-bind /lib64 /lib64
+          --proc /proc --dev /dev --tmpfs /tmp -- /usr/bin/true
+      - name: Restore pinned upstream build inputs
+        run: python3 scripts/restore_upstream_assets.py
+      - name: Build native game
+        run: make -j2 linux CFLAGS=-g WERROR=1
+      - name: Generate a disposable first-battle save
+        run: python3 test/headless/smoke.py ./pokeemerald64 --out build/chat-seed
+      - name: Exercise two disposable native clients with default keys
+        run: >-
+          xvfb-run -a -s '-screen 0 1280x1024x24'
+          sh -c 'python3 test/world/native_chat_acceptance.py --binary ./pokeemerald64 --seed build/chat-seed/first_battle/game.sav --out build/chat-native-default --parent-display "$DISPLAY"'
+      - name: Exercise remapped Start and chat fallback
+        run: >-
+          xvfb-run -a -s '-screen 0 1280x1024x24'
+          sh -c 'python3 test/world/native_chat_acceptance.py --binary ./pokeemerald64 --seed build/chat-seed/first_battle/game.sav --out build/chat-native-remapped --parent-display "$DISPLAY" --start-key-t'
+      - name: Exercise fallback against a simulated older server
+        run: >-
+          xvfb-run -a -s '-screen 0 1280x1024x24'
+          sh -c 'python3 test/world/native_chat_acceptance.py --binary ./pokeemerald64 --seed build/chat-seed/first_battle/game.sav --out build/chat-native-legacy --parent-display "$DISPLAY" --legacy-server'
+      # No ROMs, binaries, saves, credentials or screenshots are uploaded.

@@ -66,6 +66,11 @@ static double timeScale;
 static u16 localButtons, remoteButtons;
 static int localReads, resets, fullscreen;
 static const char *trainer;
+static int chatBlocks;
+static unsigned WindowHeight(void) { return DISPLAY_HEIGHT; }
+static int WorldChat_BlocksInput(void) { return chatBlocks; }
+static int WorldChat_Event(const SDL_Event *event) { return chatBlocks && event->type == SDL_KEYDOWN; }
+void TestChat(int blocks) { chatBlocks = blocks; }
 static int SDL_PollEvent(SDL_Event *event) {
     if (!pending) return 0;
     *event = next; pending = 0; return 1;
@@ -87,6 +92,7 @@ void TestReset(int ai, unsigned local, unsigned remote) {
     isRunning = true; paused = speedUp = videoScaleChanged = false;
     videoScale = 1; timeScale = 1.0;
     localReads = resets = fullscreen = pending = 0;
+    chatBlocks = 0;
     trainer = NULL;
 }
 void TestEvent(int type, int key, int mod) {
@@ -144,6 +150,17 @@ class WindowIdentityTests(unittest.TestCase):
         self.lib.TestReset(0, 0x21, 0)
         self.assertEqual(self.lib.Platform_GetKeyInput(), 0x21)
         self.assertEqual(self.lib.TestLocalReads(), 1)
+
+    def test_chat_neutralizes_game_input_without_pausing(self):
+        self.lib.TestReset(0, 0x3ff, 0)
+        self.lib.TestChat(1)
+        self.lib.TestEvent(2, 10, 1)
+        self.lib.ProcessEvents()
+        self.assertEqual(self.lib.Platform_GetKeyInput(), 0)
+        self.assertEqual(self.lib.TestResets(), 0)
+        self.assertEqual(self.lib.TestPaused(), 0)
+        self.assertEqual(self.lib.TestTimeScale(), 1.0)
+        self.assertEqual(self.lib.TestLocalReads(), 0)
 
     def test_ai_events_cannot_pause_reset_or_fast_forward(self):
         self.lib.TestReset(1, 0x3ff, 0)

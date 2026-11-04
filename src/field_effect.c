@@ -1358,6 +1358,31 @@ static void SpriteCB_HallOfFameMonitor(struct Sprite *sprite)
 #undef sSpriteId
 #undef sEffectSpriteId
 
+#ifdef PORTABLE
+#include "platform/world_travel.h"
+bool8 WorldTravel_NativeFlyRunning(void)
+{
+    return FuncIsActiveTask(Task_UseFly) || FuncIsActiveTask(Task_FlyIntoMap)
+        || gFieldCallback == FieldCallback_FlyIntoMap;
+}
+
+bool8 WorldTravel_StartNativeFly(unsigned group, unsigned num, s16 x, s16 y, unsigned mon)
+{
+    u8 taskId;
+    if (mon >= PARTY_SIZE || x < 0 || y < 0 || x > 127 || y > 127
+        || gMain.callback2 != CB2_Overworld || gMain.inBattle
+        || gPaletteFade.active || ScriptContext_IsEnabled() || ArePlayerFieldControlsLocked()
+        || !WorldTravel_CanAllocateFly()) return FALSE;
+    taskId = CreateTask(Task_UseFly, 0);
+    if (taskId == TASK_NONE) return FALSE;
+    gTasks[taskId].data[1] = mon + 1;
+    SetWarpDestination(group, num, WARP_ID_NONE, x, y);
+    LockPlayerFieldControls();
+    FreezeObjectEvents();
+    return TRUE;
+}
+#endif
+
 void ReturnToFieldFromFlyMapSelect(void)
 {
     SetMainCallback2(CB2_ReturnToField);
@@ -1383,6 +1408,9 @@ static void Task_UseFly(u8 taskId)
             return;
 
         gFieldEffectArguments[0] = GetCursorSelectionMonId();
+#ifdef PORTABLE
+        if (task->data[1]) gFieldEffectArguments[0] = task->data[1] - 1;
+#endif
         if ((int)gFieldEffectArguments[0] > PARTY_SIZE - 1)
             gFieldEffectArguments[0] = 0;
 
@@ -1429,6 +1457,18 @@ static void Task_FlyIntoMap(u8 taskId)
     }
     if (!FieldEffectActiveListContains(FLDEFF_FLY_IN))
     {
+#ifdef PORTABLE
+        unsigned fallback = WorldTravel_ArrivalFallback();
+        if (fallback)
+        {
+            SetWarpDestinationToHealLocation(fallback);
+            WarpIntoMap();
+            SetMainCallback2(CB2_LoadMap);
+            gFieldCallback = FieldCallback_FlyIntoMap;
+            DestroyTask(taskId);
+            return;
+        }
+#endif
         UnlockPlayerFieldControls();
         UnfreezeObjectEvents();
         DestroyTask(taskId);

@@ -25,6 +25,8 @@ MAX_QUEUE = 65536
 MAX_LINE = 1024
 MAX_CONTROL_LINE = 16384
 MAX_PEERS = 8
+MAX_TRAVEL_PEERS = 63  # The authority admits at most 64 authenticated trainers.
+TRAVEL_FRESH_SECONDS = 3
 MAX_TILES = 128
 STATE_FLUSH_INTERVAL = .5
 
@@ -141,6 +143,7 @@ class WorldServer:
         self.stopping = threading.Event()
         self.connections = {}
         self.peers = {}
+        self.chat_serial = 0
         self.link_channels = {}
         self.sharing: dict | None = None
         self.sharing_listen = None
@@ -353,6 +356,26 @@ class WorldServer:
             candidates.append((distance, name, state))
         for _, name, state in sorted(candidates)[:MAX_PEERS]:
             lines.append('PEER ' + name + ' ' + ' '.join(map(str, state)))
+        if conn.get('travel'):
+            # Separate from render relevance. Include every field occupant so
+            # a ninth trainer cannot become an invisible occupied landing tile.
+            # Remaining lifetime comes from THAT trainer's last accepted state,
+            # never a broadcast caused by somebody else's movement or chat.
+            now = time.monotonic()
+            friends = []
+            for name, peer in sorted(self.peers.items()):
+                state = peer['state']
+                if (name == conn['id'] or peer.get('closing') or state is None
+                        or not (state[6] or peer.get('field'))):
+                    continue
+                ttl = max(0, min(180, int((TRAVEL_FRESH_SECONDS
+                    - (now - peer.get('state_time', now - TRAVEL_FRESH_SECONDS))) * 60)))
+                friends.append('FRIEND ' + name + ' ' + ' '.join(map(str, state)) + ' ' + str(ttl))
+            # Complete roster, never truncate occupancy. max_players <= 64.
+            if len(friends) > MAX_TRAVEL_PEERS:
+                raise ValueError('travel roster exceeds authority capacity')
+            lines.append('TRAVEL ' + str(len(friends)))
+            lines += friends
         lines += ['TILE ' + ' '.join(map(str, tile)) for tile in self.tiles]
         for obj in self.objects:
             lines.append('OBJECT ' + obj['id'] + ' ' + ' '.join(str(obj[k]) for k in ('group','num','x','y','gfx'))
@@ -361,6 +384,9 @@ class WorldServer:
         if conn.get('social') and meeting:
             lines.append('MEET ' + ' '.join(str(meeting[k]) for k in
                 ('seq','player','target','group','num','x','y','signal')))
+        if conn.get('chat'):
+            lines += ['CHATMSG ' + ' '.join(map(str, message)) for message in conn['chat_history']]
+            lines.append('CHATSTATUS ' + conn['chat_status'])
         return '\n'.join(lines + ['END', ''])
 
     def _broadcast(self):
@@ -373,7 +399,9 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 control = len(fields) == 5 and fields[4] == 'CONTROL'
-                social = len(fields) == 5 and fields[4] == 'SOCIAL'
+                chat_capable = len(fields) == 5 and fields[4] in ('SOCIALCHAT', 'SOCIALTRAVELCHAT')
+                travel = len(fields) == 5 and fields[4] in ('SOCIALTRAVEL', 'SOCIALTRAVELCHAT')
+                social = len(fields) == 5 and fields[4] in ('SOCIAL', 'SOCIALCHAT', 'SOCIALTRAVEL', 'SOCIALTRAVELCHAT')
                 link = len(fields) == 5 and fields[4] == 'LINK'
                 if (len(fields) != 4 and not control and not social and not link) or fields[:2] != ['HELLO', '1']:
                     self._error(conn, 'AUTH')
@@ -420,6 +448,10 @@ class WorldServer:
                     return
                 conn['id'] = name
                 conn['social'] = social
+                conn['chat'] = chat_capable
+                conn['travel'] = travel
+                conn['chat_history'] = []
+                conn['chat_status'] = 'ready'
                 self.peers[name] = conn
                 with self.db:
                     self._event('join', name)
@@ -431,6 +463,15 @@ class WorldServer:
                 return
             if conn.get('control'):
                 self._control_line(conn, raw)
+                return
+            if bytes(raw) == b'CHAT_ENABLE' and conn.get('social'):
+                conn['chat'] = True
+                self._queue(conn, self._snapshot(conn))
+                return
+            if fields and fields[0] == 'CHAT':
+                if raw.decode('ascii') != ' '.join(fields):
+                    raise ValueError('noncanonical chat line')
+                self._chat(conn, fields)
                 return
             if fields and fields[0] == 'INTERACT':
                 self._interact(conn, fields)
@@ -475,12 +516,51 @@ class WorldServer:
                 self.pending_states[conn['id']] = data
             self._flush_states(force=False)
             conn['seq'], conn['state'], conn['field'] = seq, state, field
+            conn['state_time'] = time.monotonic()
             self._deliver_links(self.link_protocol.update_presence({
                 name: peer['state'] for name, peer in self.peers.items()
                 if peer['state'] is not None and not peer.get('closing')}))
             self._broadcast()
         except (UnicodeError, ValueError):
             self._error(conn, 'MALFORMED')
+
+    def _chat(self, conn, fields):
+        # Session-only history. Private text never enters durable world events,
+        # GM context, trainer files, or snapshots of non-recipients/legacy peers.
+        if (not conn.get('chat') or len(fields) != 4
+                or (fields[2] != '*' and not ID.fullmatch(fields[2]))
+                or not re.fullmatch(r'(?:[0-9a-f]{2}){1,120}', fields[3])):
+            raise ValueError('invalid chat')
+        text = bytes.fromhex(fields[3])
+        if any(c < 32 or c > 126 for c in text) or not text.strip():
+            raise ValueError('invalid chat text')
+        seq = bounded(fields[1], 0, 2**63-1)
+        if seq <= conn['seq']:
+            self._error(conn, 'STALE')
+            return
+        conn['seq'] = seq
+        target = self.peers.get(fields[2])
+        if fields[2] != '*' and (not target or not target.get('chat') or target.get('closing')):
+            conn['chat_status'] = 'unavailable'
+            self._queue(conn, self._snapshot(conn))
+            return
+        now = time.monotonic()
+        credit = min(4, conn.get('chat_credit', 4) + now - conn.get('chat_time', now))
+        conn['chat_time'] = now
+        if credit < 1:
+            conn['chat_credit'] = credit
+            conn['chat_status'] = 'slow'
+            self._queue(conn, self._snapshot(conn))
+            return
+        conn['chat_credit'] = credit - 1
+        self.chat_serial += 1
+        message = (self.chat_serial, conn['id'], fields[2], fields[3])
+        recipients = self.peers.values() if fields[2] == '*' else (conn, target)
+        for recipient in {id(c): c for c in recipients}.values():
+            if recipient.get('chat') and not recipient.get('closing'):
+                recipient['chat_history'] = (recipient['chat_history'] + [message])[-16:]
+        conn['chat_status'] = 'sent'
+        self._broadcast()
 
     def _deliver_links(self, messages):
         for trainer, line in messages:

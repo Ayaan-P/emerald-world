@@ -2,7 +2,10 @@
 import subprocess
 import time
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+import threading
+
+from world.web_launcher import LauncherBridge
 
 from world.browser_input import BrowserInput
 from world.session import SessionError
@@ -83,6 +86,58 @@ class BrowserInputTests(unittest.TestCase):
         with self.assertRaises(SessionError):
             self.control.apply(['KeyZ'])
         self.assertFalse(self.control.held)
+
+
+class BrowserInputOwnershipTests(unittest.TestCase):
+    def setUp(self):
+        # No processes or display are opened by these lifecycle regressions.
+        self.bridge = LauncherBridge.__new__(LauncherBridge)
+        self.bridge.lock = threading.RLock()
+        self.bridge.session = Mock()
+        self.bridge.browser_input = None
+        self.bridge.browser_input_session = None
+        factory = patch('world.browser_input.BrowserInput')
+        self.factory = factory.start()
+        self.addCleanup(factory.stop)
+        self.old, self.new = Mock(), Mock()
+        self.factory.side_effect = [self.old, self.new]
+
+    def test_late_old_stop_and_keys_cannot_affect_replacement_relay(self):
+        first = self.bridge.action('screen_start', {})
+        second = self.bridge.action('screen_start', {})
+        self.assertNotEqual(first['session'], second['session'])
+        self.old.close.assert_called_once()
+        self.bridge.action('screen_stop', {'session': first['session']})
+        self.new.close.assert_not_called()
+        with self.assertRaises(SessionError):
+            self.bridge.action('screen_keys', {'session': first['session'], 'keys': ['KeyZ']})
+        self.new.apply.assert_not_called()
+        self.bridge.action('screen_keys', {'session': second['session'], 'keys': ['KeyZ']})
+        self.new.apply.assert_called_once_with(['KeyZ'])
+        self.bridge.action('screen_stop', {'session': second['session']})
+        self.new.close.assert_called_once()
+        self.assertIsNone(self.bridge.browser_input_session)
+
+    def test_unscoped_stop_and_keys_never_control_current_relay(self):
+        current = self.bridge.action('screen_start', {})
+        self.bridge.action('screen_stop', {})
+        self.old.close.assert_not_called()
+        with self.assertRaises(SessionError):
+            self.bridge.action('screen_keys', {'keys': ['KeyZ']})
+        self.old.apply.assert_not_called()
+        self.bridge.action('screen_stop', {'session': current['session']})
+        self.old.close.assert_called_once()
+
+    def test_failed_replacement_clears_previous_owner_and_closes_partial_relay(self):
+        current = self.bridge.action('screen_start', {})
+        self.new.start.side_effect = SessionError('Window closed')
+        with self.assertRaises(SessionError):
+            self.bridge.action('screen_start', {})
+        self.old.close.assert_called_once()
+        self.new.close.assert_called_once()
+        self.assertIsNone(self.bridge.browser_input)
+        self.assertIsNone(self.bridge.browser_input_session)
+        self.bridge.action('screen_stop', {'session': current['session']})
 
 
 if __name__ == '__main__':

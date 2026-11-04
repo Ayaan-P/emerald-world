@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App } from './main';
+import GameMirror from './GameMirror';
 import { loadState, perform } from './api';
 
 vi.mock('./api', () => ({ loadState: vi.fn(), perform: vi.fn(), forgetCapability: vi.fn() }));
@@ -16,6 +17,129 @@ beforeEach(() => { loadState.mockResolvedValue(snapshot()); perform.mockResolved
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('player launcher', () => {
+  it('mirrors a user-selected window and sends keys only while controlling it', async () => {
+    const track = new EventTarget(); track.readyState = 'live'; track.stop = vi.fn();
+    const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
+    const picker = vi.fn().mockResolvedValue(stream);
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getDisplayMedia: picker } });
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
+    perform.mockImplementation(async action => action === 'screen_info' ? { available: true } : { active: true, session: 'preview-session' });
+    try {
+      render(<GameMirror gameRunning onBack={() => {}} />);
+      const choose = await screen.findByRole('button', { name: /choose game display/i });
+      await waitFor(() => expect(choose.disabled).toBe(false));
+      fireEvent.click(choose);
+      const surface = await screen.findByRole('application', { name: /game screen/i });
+      await waitFor(() => expect(surface.querySelector('video').srcObject).toBe(stream));
+      expect(picker).toHaveBeenCalledOnce();
+      expect(perform).toHaveBeenCalledWith('screen_start', {});
+      fireEvent.focus(surface); fireEvent.keyDown(surface, { code: 'KeyZ' });
+      await waitFor(() => expect(perform).toHaveBeenCalledWith('screen_keys', { session: 'preview-session', keys: ['KeyZ'] }));
+      fireEvent.blur(surface);
+      await waitFor(() => expect(perform).toHaveBeenCalledWith('screen_keys', { session: 'preview-session', keys: [] }));
+      fireEvent.click(screen.getByRole('button', { name: /stop preview/i }));
+      await waitFor(() => expect(perform).toHaveBeenCalledWith('screen_stop', { session: 'preview-session' }));
+      expect(track.stop).toHaveBeenCalled();
+    } finally { play.mockRestore(); delete navigator.mediaDevices; }
+  });
+
+  it('serializes a pending old start and scopes its late cleanup away from the new preview', async () => {
+    const tracks = [new EventTarget(), new EventTarget()];
+    tracks.forEach(track => { track.readyState = 'live'; track.stop = vi.fn(); });
+    const streams = tracks.map(track => ({ getTracks: () => [track], getVideoTracks: () => [track] }));
+    const picker = vi.fn().mockResolvedValueOnce(streams[0]).mockResolvedValueOnce(streams[1]);
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getDisplayMedia: picker } });
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
+    let resolveOld, starts = 0, owner = null;
+    perform.mockImplementation((action, payload) => {
+      if (action === 'screen_info') return Promise.resolve({ available: true });
+      if (action === 'screen_start') {
+        starts++;
+        if (starts === 1) { owner = 'old'; return new Promise(resolve => { resolveOld = resolve; }); }
+        owner = 'new'; return Promise.resolve({ active: true, session: owner });
+      }
+      if (action === 'screen_stop' && payload.session === owner) owner = null;
+      if (action === 'screen_keys' && payload.session !== owner) return Promise.reject(new Error('Wrong owner'));
+      return Promise.resolve({ active: action !== 'screen_stop' });
+    });
+    try {
+      const old = render(<GameMirror gameRunning onBack={() => {}} />);
+      let choose = await screen.findByRole('button', { name: /choose game display/i });
+      await waitFor(() => expect(choose.disabled).toBe(false)); fireEvent.click(choose);
+      await waitFor(() => expect(starts).toBe(1));
+      old.unmount();
+      expect(tracks[0].stop).toHaveBeenCalled();
+      render(<GameMirror gameRunning onBack={() => {}} />);
+      choose = await screen.findByRole('button', { name: /choose game display/i });
+      await waitFor(() => expect(choose.disabled).toBe(false)); fireEvent.click(choose);
+      await waitFor(() => expect(picker).toHaveBeenCalledTimes(2));
+      expect(starts).toBe(1); // The replacement cannot overtake the pending HTTP start.
+      await act(async () => { resolveOld({ active: true, session: 'old' }); });
+      const surface = await screen.findByRole('application');
+      await waitFor(() => expect(perform).toHaveBeenCalledWith('screen_stop', { session: 'old' }));
+      expect(owner).toBe('new');
+      fireEvent.keyDown(surface, { code: 'KeyZ' });
+      await waitFor(() => expect(perform).toHaveBeenCalledWith('screen_keys', { session: 'new', keys: ['KeyZ'] }));
+      expect(tracks[1].stop).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: /stop preview/i }));
+      await waitFor(() => expect(owner).toBeNull());
+      expect(perform.mock.calls.filter(([action]) => action === 'screen_stop').every(([, payload]) => Boolean(payload.session))).toBe(true);
+    } finally { cleanup(); play.mockRestore(); delete navigator.mediaDevices; }
+  });
+
+  it('stops a relay whose start completes after the game closes', async () => {
+    let resolveStart;
+    const track = new EventTarget(); track.readyState = 'live'; track.stop = vi.fn();
+    const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getDisplayMedia: vi.fn().mockResolvedValue(stream) } });
+    perform.mockImplementation(action => action === 'screen_info' ? Promise.resolve({ available: true })
+      : action === 'screen_start' ? new Promise(resolve => { resolveStart = resolve; }) : Promise.resolve({ active: false }));
+    try {
+      const view = render(<GameMirror gameRunning onBack={() => {}} />);
+      const choose = await screen.findByRole('button', { name: /choose game display/i });
+      await waitFor(() => expect(choose.disabled).toBe(false)); fireEvent.click(choose);
+      await waitFor(() => expect(resolveStart).toBeTypeOf('function'));
+      view.rerender(<GameMirror gameRunning={false} onBack={() => {}} />);
+      expect(track.stop).toHaveBeenCalled();
+      await act(async () => { resolveStart({ active: true, session: 'cancelled' }); });
+      await waitFor(() => expect(perform).toHaveBeenCalledWith('screen_stop', { session: 'cancelled' }));
+      expect(screen.queryByRole('application')).toBeNull();
+      expect(choose.disabled).toBe(true);
+    } finally { delete navigator.mediaDevices; }
+  });
+
+  it('abandons a pending picker if the game closes', async () => {
+    let resolvePicker;
+    const picker = vi.fn().mockImplementation(() => new Promise(resolve => { resolvePicker = resolve; }));
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getDisplayMedia: picker } });
+    perform.mockImplementation(async action => action === 'screen_info' ? { available: true } : { active: true, session: 'preview-session' });
+    const track = new EventTarget(); track.readyState = 'live'; track.stop = vi.fn();
+    const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
+    try {
+      const view = render(<GameMirror gameRunning onBack={() => {}} />);
+      const choose = await screen.findByRole('button', { name: /choose game display/i });
+      await waitFor(() => expect(choose.disabled).toBe(false));
+      fireEvent.click(choose);
+      view.rerender(<GameMirror gameRunning={false} onBack={() => {}} />);
+      resolvePicker(stream);
+      await waitFor(() => expect(track.stop).toHaveBeenCalledOnce());
+      expect(perform.mock.calls.some(call => call[0] === 'screen_start')).toBe(false);
+    } finally { delete navigator.mediaDevices; }
+  });
+
+  it('does not start browser control if window sharing is cancelled', async () => {
+    const picker = vi.fn().mockRejectedValue(new DOMException('cancel', 'NotAllowedError'));
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getDisplayMedia: picker } });
+    perform.mockImplementation(async action => action === 'screen_info' ? { available: true } : { active: true, session: 'preview-session' });
+    try {
+      render(<GameMirror gameRunning onBack={() => {}} />);
+      const choose = await screen.findByRole('button', { name: /choose game display/i });
+      await waitFor(() => expect(choose.disabled).toBe(false)); fireEvent.click(choose);
+      expect((await screen.findByRole('status')).textContent).toMatch(/cancelled/i);
+      expect(perform.mock.calls.some(call => call[0] === 'screen_start')).toBe(false);
+    } finally { delete navigator.mediaDevices; }
+  });
+
   it('prevents joining with a missing or oversized invitation', async () => {
     const { container } = render(<App />);
     fireEvent.click(await screen.findByRole('button', { name: /join a world/i }));
