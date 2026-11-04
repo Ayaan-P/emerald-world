@@ -14,7 +14,7 @@ python3 -m world.hosted_profile_backup backup \
   --destination /path/to/private-backup/host-profile.json
 ```
 
-The command validates the profile locally, creates a new file with mode 0600, and never contacts the hosting service. It refuses to overwrite an existing destination. If the directory is on removable storage, ensure the filesystem supports Unix ownership and permissions, or use an encrypted archive that preserves them.
+The command validates the profile locally, creates a new file with mode 0600, and never contacts the hosting service. It refuses to overwrite an existing destination. The destination filesystem must support Unix ownership, hard links, and directory synchronization. If synchronization fails after publication, a completed destination may exist; inspect it before retrying. For removable storage, use an encrypted filesystem or archive that preserves permissions.
 
 ## Restore on another device
 

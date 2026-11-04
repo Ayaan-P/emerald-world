@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from world.hosted_profile_backup import copy_profile, read_profile
 
@@ -77,6 +78,15 @@ class ProfileBackupTests(unittest.TestCase):
         with self.assertRaises(OSError):
             copy_profile(self.source, linked)
         self.assertEqual(target.read_text(), 'untouched')
+
+    def test_failed_publish_leaves_no_partial_backup(self):
+        target = self.root / 'out.json'
+        with patch('world.hosted_profile_backup.os.link', side_effect=OSError('fixture failure')):
+            with self.assertRaises(OSError):
+                copy_profile(self.source, target)
+        self.assertFalse(target.exists())
+        self.assertFalse(list(self.root.glob('.emerald-owner-*.tmp')))
+        self.assertEqual(read_profile(self.source), self.value)
 
     def test_rejects_group_writable_destination(self):
         directory = self.root / 'shared'
