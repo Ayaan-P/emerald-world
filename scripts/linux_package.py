@@ -14,7 +14,7 @@ import tarfile
 
 REPO = Path(__file__).resolve().parents[1]
 VERSION = re.compile(r'[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?')
-WEB_SUFFIXES = {'.html', '.js', '.css', '.svg', '.png', '.ico', '.woff', '.woff2', '.ttf'}
+WEB_SUFFIXES = {'.html', '.js', '.css', '.svg', '.png', '.webp', '.ico', '.woff', '.woff2', '.ttf'}
 
 
 def plain(path):

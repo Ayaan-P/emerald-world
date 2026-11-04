@@ -37,6 +37,15 @@ class LinuxPackageTests(unittest.TestCase):
         self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
         return output / ('EmeraldWorld-' + version + '-linux-x86_64.tar.gz')
 
+    def test_webp_assets_used_by_real_frontend_are_included(self):
+        asset = self.dist / 'assets/hoenn.webp'
+        asset.write_bytes(b'webp packaging fixture')
+        archive = self.package()
+        with tarfile.open(archive) as stream:
+            payload = stream.extractfile('EmeraldWorld-1.2.3-linux-x86_64/launcher-web/dist/assets/hoenn.webp')
+            assert payload is not None
+            self.assertEqual(payload.read(), asset.read_bytes())
+
     def extract(self, archive):
         target = self.root / ('extracted-' + archive.parent.name)
         target.mkdir()
