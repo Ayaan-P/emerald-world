@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App } from './main';
 import { loadState, perform } from './api';
 vi.mock('./api', () => ({ loadState: vi.fn(), perform: vi.fn(), forgetCapability: vi.fn() }));
@@ -22,4 +22,22 @@ it('validates the solo profile before starting the adventure', async () => {
   expect(input.getAttribute('aria-invalid')).toBe('false');
   expect(input.getAttribute('aria-describedby')).toBe('solo-trainer-help');
   expect(perform).not.toHaveBeenCalled();
+});
+
+
+it('lets the player cancel a stalled save import without starting with a stale file', async () => {
+  let finish;
+  const pending = new Promise(resolve => { finish = resolve; });
+  const { container } = render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: /play solo/i }));
+  const modal = screen.getByRole('dialog');
+  const input = container.querySelector('input[accept^=".sav"]');
+  fireEvent.change(input, { target: { files: [{ name: 'slow.sav', size: 3, arrayBuffer: () => pending }] } });
+  expect(within(modal).getByRole('button', { name: /start adventure/i }).disabled).toBe(true);
+  fireEvent.click(within(modal).getByRole('button', { name: /cancel import/i }));
+  expect(within(modal).getByRole('button', { name: /start adventure/i }).disabled).toBe(false);
+  await act(async () => { finish(new Uint8Array([1, 2, 3]).buffer); await pending; });
+  expect(within(modal).queryByText('slow.sav')).toBeNull();
+  fireEvent.click(within(modal).getByRole('button', { name: /start adventure/i }));
+  await waitFor(() => expect(perform).toHaveBeenCalledWith('solo_new', { trainer: 'Player' }));
 });
