@@ -11,7 +11,10 @@ from world.web_launcher import LauncherBridge, handler_for, install_shortcut
 
 class WebLauncherTests(unittest.TestCase):
     def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
         self.session = Mock()
+        self.session.root = Path(self.tmp.name)
         self.session.friend_worlds.return_value = []
         self.session.world_library.return_value = []
         self.session.state = None
@@ -102,6 +105,31 @@ class WebLauncherTests(unittest.TestCase):
                 self.assertEqual(result['worlds'][0]['name'], 'Friend’s world · 1234')
             finally:
                 session.close()
+
+    def test_solo_profiles_remain_visible_without_a_bookmark(self):
+        from world.offline import offline_profile
+        root = Path(self.tmp.name)
+        with offline_profile(root / 'solo-abc123', 'May') as paths:
+            paths['save'].write_bytes(b'private fixture')
+        session = DesktopSession(root)
+        try:
+            result = LauncherBridge(session, '/nonexistent/game').snapshot()
+            self.assertEqual(result['offline_saves'], [{'world': 'solo-abc123', 'trainer': 'May', 'name': 'Solo adventure · c123'}])
+            self.assertEqual(result['worlds'], [])
+        finally:
+            session.close()
+
+    def test_new_solo_starts_a_new_isolated_world(self):
+        self.session.managed_display = Mock(display=':90')
+        with patch('scripts.linux_client.binary_ready', return_value=True), patch('world.web_launcher.secrets.token_hex', return_value='abc123'):
+            self.bridge.action('solo_new', {'trainer': 'May'})
+        self.session.launch_offline.assert_called_once_with('solo-abc123', 'May', Path('/nonexistent/game'), ':90', copy_online=False)
+        self.session.connect_remote.assert_not_called()
+
+    def test_unknown_solo_profile_cannot_be_resumed(self):
+        with self.assertRaises(SessionError):
+            self.bridge.action('solo_resume', {'world': 'unknown', 'trainer': 'May'})
+        self.session.launch_offline.assert_not_called()
 
     def test_rename_preserves_existing_world_tags(self):
         self.session.friend_worlds.return_value = [{'name': 'world1', 'trainer': 'May'}]

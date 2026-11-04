@@ -9,7 +9,7 @@ vi.mock('./api', () => ({ loadState: vi.fn(), perform: vi.fn(), forgetCapability
 
 const snapshot = () => ({
   worlds: [{ key: 'remote-1234', name: 'Our Hoenn', trainer: 'May' }],
-  connected: false, trainer: null, games: [], setup: [], status: 'Ready',
+  offline_saves: [], connected: false, trainer: null, games: [], setup: [], status: 'Ready',
 });
 
 beforeEach(() => { loadState.mockResolvedValue(snapshot()); perform.mockResolvedValue(snapshot()); });
@@ -51,6 +51,22 @@ describe('player launcher', () => {
     expect(modal.textContent).toMatch(/never merges back/i);
     fireEvent.click(within(modal).getByRole('button', { name: /copy online save/i }));
     await waitFor(() => expect(perform).toHaveBeenCalledWith('offline', { world: 'remote-1234', copy: true }));
+  });
+
+  it('starts a solo adventure without an invitation', async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /^play solo$/i }));
+    const modal = screen.getByRole('dialog');
+    fireEvent.change(within(modal).getByLabelText(/trainer profile/i), { target: { value: 'May' } });
+    fireEvent.click(within(modal).getByRole('button', { name: /start adventure/i }));
+    await waitFor(() => expect(perform).toHaveBeenCalledWith('solo_new', { trainer: 'May' }));
+  });
+
+  it('can resume an offline adventure with no saved connection', async () => {
+    loadState.mockResolvedValue({ ...snapshot(), worlds: [], offline_saves: [{ world: 'solo-a', trainer: 'May', name: 'Solo adventure' }] });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /^continue$/i }));
+    await waitFor(() => expect(perform).toHaveBeenCalledWith('solo_resume', { world: 'solo-a', trainer: 'May' }));
   });
 
   it('renames a saved world locally', async () => {

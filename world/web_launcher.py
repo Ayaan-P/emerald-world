@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import stat
@@ -35,6 +36,54 @@ class LauncherBridge:
         self.remote_paths = None
         self.lock = threading.RLock()
 
+    def offline_saves(self):
+        """List private offline profiles without opening their save contents."""
+        def private_dir(path, mask=0o077):
+            try:
+                info = path.lstat()
+                return stat.S_ISDIR(info.st_mode) and info.st_uid == os.geteuid() and not info.st_mode & mask
+            except OSError:
+                return False
+
+        found = []
+        from .world_library import _read_metadata
+        for world in sorted(self.session.root.iterdir()):
+            if not re.fullmatch(r'[A-Za-z0-9_-]{1,48}', world.name) or world.name == 'Deleted':
+                continue
+            if not private_dir(world, 0o022):
+                continue
+            offline = world / '.offline'
+            trainers = offline / 'trainers'
+            if not private_dir(offline) or not private_dir(trainers):
+                continue
+            try:
+                marker = (offline / '.offline-copy').lstat()
+                if not stat.S_ISREG(marker.st_mode) or marker.st_uid != os.geteuid() or marker.st_nlink != 1 or marker.st_mode & 0o077:
+                    continue
+            except OSError:
+                continue
+            try:
+                label = _read_metadata(world)['display_name']
+            except (OSError, ValueError, TypeError, KeyError):
+                label = world.name
+            if label == world.name:
+                label = ('Solo adventure' if world.name.startswith('solo-') else 'Offline adventure') + ' · ' + world.name[-4:]
+            for trainer in sorted(trainers.iterdir()):
+                if re.fullmatch(r'[A-Za-z0-9_-]{1,24}', trainer.name) and private_dir(trainer):
+                    found.append({'world': world.name, 'trainer': trainer.name, 'name': label})
+        return found
+
+    def _start_offline(self, world, trainer, copy=False):
+        if self.session.state is not None or any(p.poll() is None for p, _ in self.session.games.values()):
+            raise SessionError('Disconnect and close any running game before playing offline.')
+        from scripts.linux_client import binary_ready, discover_display
+        if not binary_ready(self.binary):
+            raise SessionError('The native game is not built. Follow INSTALL_PC.md first.')
+        if self.session.managed_display is None:
+            self.session.start_display(discover_display())
+        self.session.launch_offline(world, trainer, self.binary,
+                                    self.session.managed_display.display, copy_online=copy)
+
     def snapshot(self):
         with self.lock:
             from .world_library import _read_metadata
@@ -51,7 +100,7 @@ class LauncherBridge:
             from scripts.linux_client import prerequisites
             setup = [{'name': name, 'ready': ready, 'help': help_text}
                      for name, ready, help_text in prerequisites(self.binary) if name != 'tkinter']
-            return {'worlds': worlds, 'setup': setup, 'connected': self.session.state is not None,
+            return {'worlds': worlds, 'offline_saves': self.offline_saves(), 'setup': setup, 'connected': self.session.state is not None,
                     'trainer': self.session.remote_trainer,
                     'games': [name for name, (process, _paths) in self.session.games.items()
                               if process.poll() is None], 'status': self.session.status}
@@ -105,15 +154,20 @@ class LauncherBridge:
                 selected = next((item for item in self.session.friend_worlds() if item['name'] == world), None)
                 if selected is None:
                     raise SessionError('Choose a saved world.')
-                if self.session.state is not None or any(p.poll() is None for p, _ in self.session.games.values()):
-                    raise SessionError('Disconnect and close any running game before playing offline.')
-                from scripts.linux_client import binary_ready, discover_display
-                if not binary_ready(self.binary):
-                    raise SessionError('The native game is not built. Follow INSTALL_PC.md first.')
-                if self.session.managed_display is None:
-                    self.session.start_display(discover_display())
-                self.session.launch_offline(world, selected['trainer'], self.binary,
-                                            self.session.managed_display.display, copy_online=copy)
+                self._start_offline(world, selected['trainer'], copy)
+            elif action == 'solo_new':
+                trainer = payload.get('trainer')
+                if not isinstance(trainer, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,24}', trainer):
+                    raise SessionError('Use 1 to 24 letters, numbers, underscores or hyphens for your trainer.')
+                world = 'solo-' + secrets.token_hex(12)
+                if os.path.lexists(self.session.root / world):
+                    raise SessionError('Could not create a new adventure. Please try again.')
+                self._start_offline(world, trainer)
+            elif action == 'solo_resume':
+                world, trainer = payload.get('world'), payload.get('trainer')
+                if not any(item['world'] == world and item['trainer'] == trainer for item in self.offline_saves()):
+                    raise SessionError('Choose an existing offline adventure.')
+                self._start_offline(world, trainer)
             elif action == 'leave':
                 trainer = payload.get('game', self.session.remote_trainer)
                 if not trainer:

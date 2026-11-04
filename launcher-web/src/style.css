@@ -4,3 +4,5 @@
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
 
 .field-label{display:block;color:#c9ddcb;font-size:11px;font-weight:700;margin:0 0 8px}.text-input{width:100%;border:1px solid #a8d5ad4d;border-radius:9px;background:#071d15;color:#eff8ec;padding:12px 14px;outline-offset:3px}
+
+.solo-list{display:grid;gap:9px}.solo-item{display:flex;align-items:center;gap:14px;padding:14px 16px;border:1px solid #c2dfbf1e;border-radius:12px;background:#102c20}.field-hint{font-size:11px!important;margin:8px 0 0!important;color:#91ad99!important}@media(max-width:500px){.solo-item{flex-wrap:wrap}.solo-item .button{margin-left:52px}}
