@@ -26,6 +26,7 @@ bool8 DexNavNative_Available(void);
 void DexNavNative_SetInput(u16 newKeys, u16 heldKeys, bool8 canAct);
 bool8 DexNavNative_HandleInput(void);
 bool8 DexNavNative_ShouldCreep(u16 heldKeys);
+bool8 DexNavNative_ElevationMismatchAt(u8 elevation, s16 x, s16 y);
 void DexNavNative_SetCreeping(bool8 creeping);
 bool8 DexNavNative_IsCreeping(void);
 void DexNavNative_BattleFinished(u8 outcome);

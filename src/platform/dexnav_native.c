@@ -258,6 +258,17 @@ bool8 DexNav_RequestOpen(void)
     return TRUE;
 }
 
+/* Match the existing native movement helper without exporting its private API. */
+bool8 DexNavNative_ElevationMismatchAt(u8 elevation, s16 x, s16 y)
+{
+    u8 mapElevation;
+    if (elevation == ELEVATION_TRANSITION)
+        return FALSE;
+    mapElevation = MapGridGetElevationAt(x, y);
+    return mapElevation != ELEVATION_TRANSITION
+        && mapElevation != ELEVATION_MULTI_LEVEL && mapElevation != elevation;
+}
+
 bool8 DexNavNative_ShouldCreep(u16 heldKeys)
 {
     return gDexNavNativeState.searching && (heldKeys & L_BUTTON)
