@@ -412,6 +412,8 @@ void WorldActivity_ReturnFromCoopWildBattle(void)
     bool8 trainer = WorldCoop_IsTrainer();
     u16 trainerId = WorldCoop_TrainerId();
     bool8 localScript;
+    bool8 guestCredit = trainerCallback == NULL && trainer && gBattleOutcome == B_OUTCOME_WON
+        && BattleSetup_CanShareWorldTrainerCredit(trainerId);
     sActivity.trainerCallback = NULL;
     WorldCoop_Abort();
     CloseMenu();
@@ -419,8 +421,9 @@ void WorldActivity_ReturnFromCoopWildBattle(void)
     NativeLink_Abort();
     gFieldLinkPlayerCount = 0;
     SetMainCallback1(CB1_Overworld);
-    localScript = trainerCallback == NULL && trainer && gBattleOutcome == B_OUTCOME_WON
-        && BattleSetup_ResumeWorldTrainerScript(trainerId);
+    /* Only the owner resumes a Gym/League script. Gate the fallback defeat
+     * flag too, or skipping a badge script would still consume a guest's boss. */
+    localScript = guestCredit && BattleSetup_ResumeWorldTrainerScript(trainerId);
     if (trainerCallback == NULL && !localScript)
         ScriptContext_Init();
     /* The owner's suspended script still owns its field lock and NPCs. */
@@ -438,7 +441,7 @@ void WorldActivity_ReturnFromCoopWildBattle(void)
         trainerCallback();
     else if (!localScript)
     {
-        if (trainer && gBattleOutcome == B_OUTCOME_WON)
+        if (guestCredit)
         {
             BattleSetup_RegisterWorldTrainerInMatchCall(trainerId);
             SetTrainerFlag(trainerId);
