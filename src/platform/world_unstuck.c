@@ -16,6 +16,7 @@
 #include "script.h"
 #include "platform/native_link.h"
 #include "platform/world_activity.h"
+#include "platform/world_catalog.h"
 #include "constants/battle_frontier.h"
 #include "constants/flags.h"
 #include "constants/vars.h"
@@ -102,6 +103,41 @@ static bool8 Unstuck_EventHazard(const struct MapEvents *events, int x, int y)
         if (abs(x-object->x) <= object->movementRangeX && abs(y-object->y) <= object->movementRangeY) return TRUE;
     }
     return FALSE;
+}
+
+bool8 WorldUnstuck_BuildStaticGrid(unsigned group, unsigned num, const struct MapHeader *map,
+                                   u8 *plain, unsigned capacity)
+{
+    const struct WorldCatalogMap *catalog=WorldCatalog_Find(group,num);
+    const struct MapLayout *layout;
+    const struct MapEvents *events;
+    unsigned x,y,width,height;
+    if (!plain || !catalog || !map || map != Overworld_GetMapHeaderByGroupAndId(group,num)) return FALSE;
+    layout=map->mapLayout; events=map->events;
+    if (!layout || !events || !layout->map || !layout->primaryTileset || !layout->secondaryTileset
+        || !layout->primaryTileset->metatileAttributes || !layout->secondaryTileset->metatileAttributes
+        || (events->warpCount && !events->warps) || (events->coordEventCount && !events->coordEvents)
+        || (events->objectEventCount && !events->objectEvents)
+        || layout->width <= 0 || layout->height <= 0 || layout->width > 128 || layout->height > 128
+        || layout->width * layout->height > 8192) return FALSE;
+    width=layout->width; height=layout->height;
+    if (width != catalog->width || height != catalog->height || capacity < width*height
+        || !WorldCatalog_Coords(group,num,width-1,height-1)) return FALSE;
+    for (y=0; y<height; y++) for (x=0; x<width; x++) {
+        unsigned cell=x+y*width, id;
+        u16 block=layout->map[cell];
+        const u16 *attributes;
+        plain[cell]=FALSE;
+        if (block==MAPGRID_UNDEFINED || UNPACK_COLLISION(block)
+            || UNPACK_ELEVATION(block)!=ELEVATION_DEFAULT) continue;
+        id=UNPACK_METATILE(block);
+        if (!WorldCatalog_Metatile(group,num,id)) continue;
+        attributes=id<NUM_METATILES_IN_PRIMARY ? layout->primaryTileset->metatileAttributes : layout->secondaryTileset->metatileAttributes;
+        if (UNPACK_BEHAVIOR(attributes[id<NUM_METATILES_IN_PRIMARY ? id : id-NUM_METATILES_IN_PRIMARY]) != MB_NORMAL
+            || Unstuck_EventHazard(events,x,y)) continue;
+        plain[cell]=TRUE;
+    }
+    return TRUE;
 }
 
 bool8 WorldUnstuck_BuildLoadedGrid(u8 *plain, u8 *clear, unsigned capacity)

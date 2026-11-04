@@ -32,6 +32,37 @@ int main(void) {
 '''
         self.compile_and_run(source)
 
+    def test_static_grid_checks_catalog_geometry_and_event_hazards(self):
+        source = r'''
+#include <assert.h>
+#include <string.h>
+#include "src/platform/world_unstuck.c"
+static struct MapHeader destination;
+struct MapHeader const *const Overworld_GetMapHeaderByGroupAndId(u16 group,u16 num) { return group==0 && num==0 ? &destination : NULL; }
+bool8 FlagGet(u16 flag) { (void)flag;return FALSE; }
+int main(void) {
+ static u16 map[900], attrs[512]; u8 grid[900];
+ struct Tileset tiles={.metatileAttributes=attrs};
+ struct MapLayout layout={.width=30,.height=30,.map=map,.primaryTileset=&tiles,.secondaryTileset=&tiles};
+ struct WarpEvent warp={.x=1,.y=1};
+ struct ObjectEventTemplate npc={.x=3,.y=1,.movementRangeX=1,.movementRangeY=0};
+ struct MapEvents events={.warpCount=1,.warps=&warp,.objectEventCount=1,.objectEvents=&npc};
+ destination.mapLayout=&layout; destination.events=&events;
+ for(unsigned i=0;i<900;i++) map[i]=PACK_ELEVATION(ELEVATION_DEFAULT);
+ map[0] |= PACK_COLLISION(1); attrs[1]=1; map[1] |= 1;
+ memset(grid,77,sizeof(grid));
+ assert(!WorldUnstuck_BuildStaticGrid(0,0,&destination,grid,899)); assert(grid[0]==77);
+ assert(WorldUnstuck_BuildStaticGrid(0,0,&destination,grid,900));
+ assert(!grid[0] && !grid[1]); /* collision and non-normal */
+ assert(!grid[1+30] && !grid[2+30] && !grid[3+30]); /* warp and NPC range */
+ assert(grid[2+2*30]);
+ layout.width=29; assert(!WorldUnstuck_BuildStaticGrid(0,0,&destination,grid,900));
+ assert(!WorldUnstuck_BuildStaticGrid(99,99,&destination,grid,900));
+ return 0;
+}
+'''
+        self.compile_and_run(source)
+
     def test_loaded_grid_rejects_hazards_and_actual_occupied_tiles(self):
         source = r'''
 #include <assert.h>
