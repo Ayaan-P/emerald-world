@@ -50,6 +50,8 @@ class LauncherBridge:
 
     def action(self, action, payload):
         with self.lock:
+            if action in ('join', 'rejoin') and any(p.poll() is None for p, _ in self.session.games.values()):
+                raise SessionError('Close your running game before switching worlds.')
             if action == 'join':
                 raw = payload.get('invitation')
                 if not isinstance(raw, str) or len(raw.encode('utf-8')) > 4096:
@@ -81,8 +83,25 @@ class LauncherBridge:
                 if self.session.managed_display is None:
                     self.session.start_display(discover_display())
                 self.session.launch(self.remote_paths, self.binary, self.session.managed_display.display)
+            elif action == 'offline':
+                world = payload.get('world')
+                copy = payload.get('copy')
+                if not isinstance(world, str) or type(copy) is not bool:
+                    raise SessionError('Choose a saved world and offline mode.')
+                selected = next((item for item in self.session.friend_worlds() if item['name'] == world), None)
+                if selected is None:
+                    raise SessionError('Choose a saved world.')
+                if self.session.state is not None or any(p.poll() is None for p, _ in self.session.games.values()):
+                    raise SessionError('Disconnect and close any running game before playing offline.')
+                from scripts.linux_client import binary_ready, discover_display
+                if not binary_ready(self.binary):
+                    raise SessionError('The native game is not built. Follow INSTALL_PC.md first.')
+                if self.session.managed_display is None:
+                    self.session.start_display(discover_display())
+                self.session.launch_offline(world, selected['trainer'], self.binary,
+                                            self.session.managed_display.display, copy_online=copy)
             elif action == 'leave':
-                trainer = self.session.remote_trainer
+                trainer = payload.get('game', self.session.remote_trainer)
                 if not trainer:
                     raise SessionError('No connected trainer is selected.')
                 self.session.leave_game(trainer)

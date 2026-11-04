@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from world.session import SessionError
 from world.web_launcher import LauncherBridge, handler_for
@@ -67,6 +67,30 @@ class WebLauncherTests(unittest.TestCase):
         self.assertEqual(result['worlds'][0]['name'], 'Friend’s world · 5678')
         self.assertEqual(result['worlds'][1]['name'], 'Our Hoenn')
         self.assertEqual(result['games'], ['May'])
+
+    def test_offline_uses_saved_trainer_and_explicit_copy_choice(self):
+        self.session.friend_worlds.return_value = [{'name': 'world1', 'trainer': 'May'}]
+        self.session.managed_display = Mock(display=':90')
+        with patch('scripts.linux_client.binary_ready', return_value=True):
+            self.bridge.action('offline', {'world': 'world1', 'copy': True, 'trainer': 'someone-else'})
+        self.session.launch_offline.assert_called_once_with('world1', 'May', Path('/nonexistent/game'), ':90', copy_online=True)
+
+    def test_offline_refuses_active_session_and_unknown_world(self):
+        self.session.friend_worlds.return_value = [{'name': 'world1', 'trainer': 'May'}]
+        with self.assertRaises(SessionError):
+            self.bridge.action('offline', {'world': 'elsewhere', 'copy': False})
+        self.session.state = Path('/tmp/world1')
+        with self.assertRaises(SessionError):
+            self.bridge.action('offline', {'world': 'world1', 'copy': False})
+        self.session.launch_offline.assert_not_called()
+
+    def test_running_offline_game_blocks_rejoin(self):
+        process = Mock()
+        process.poll.return_value = None
+        self.session.games = {'offline/May': (process, {})}
+        with self.assertRaises(SessionError):
+            self.bridge.action('rejoin', {'world': 'world1'})
+        self.session.rejoin_friend.assert_not_called()
 
     def test_auth_requires_exact_host_capability_and_post_origin(self):
         handler_type = handler_for(self.bridge, 'secret', 8912)
