@@ -201,6 +201,11 @@ static EWRAM_DATA struct {
     u8 partnerSelectStatus;
     u8 playerConfirmStatus;
     u8 partnerConfirmStatus;
+#ifdef PORTABLE
+    bool8 nativeConfirmed;
+    u8 nativeConfirmedPlayer;
+    u8 nativeConfirmedPartner;
+#endif
     u8 filler_7C[2];
     u8 partnerCursorPosition;
     u16 linkData[20];
@@ -1371,6 +1376,8 @@ static bool8 NativeTradeSelectionValid(u16 selection, u8 party)
 static void Leader_ReadLinkBuffer(u8 mpId, u8 status)
 {
 #ifdef PORTABLE
+    bool8 selectionChanged = FALSE;
+
     if (NativeLink_IsActive())
     {
         if (((status & 1) && !NativeTradeBlockSizeValid(0, 20))
@@ -1382,6 +1389,14 @@ static void Leader_ReadLinkBuffer(u8 mpId, u8 status)
         if ((status & 2) && gBlockRecvBuffer[1][0] == LINKCMD_READY_TO_TRADE
          && !NativeTradeSelectionValid(gBlockRecvBuffer[1][1], TRADE_PARTNER))
             return;
+        // Consent belongs to the displayed pair, not to a later replacement offer.
+        // Discard confirmations in this same receive batch as well: they may
+        // have been sent before the other peer changed the displayed pair.
+        if (((status & 1) && (gBlockRecvBuffer[0][0] == LINKCMD_READY_TO_TRADE
+                         || gBlockRecvBuffer[0][0] == LINKCMD_REQUEST_CANCEL))
+         || ((status & 2) && (gBlockRecvBuffer[1][0] == LINKCMD_READY_TO_TRADE
+                         || gBlockRecvBuffer[1][0] == LINKCMD_REQUEST_CANCEL)))
+            selectionChanged = TRUE;
     }
 #endif
     if (status & 1)
@@ -1424,6 +1439,13 @@ static void Leader_ReadLinkBuffer(u8 mpId, u8 status)
         }
         TradeResetReceivedFlag(1);
     }
+#ifdef PORTABLE
+    if (selectionChanged)
+    {
+        sTradeMenu->playerConfirmStatus = sTradeMenu->partnerConfirmStatus = STATUS_NONE;
+        sTradeMenu->nativeConfirmed = FALSE;
+    }
+#endif
 }
 
 static void Follower_ReadLinkBuffer(u8 mpId, u8 status)
@@ -1442,6 +1464,25 @@ static void Follower_ReadLinkBuffer(u8 mpId, u8 status)
          || !NativeTradeSelectionValid(sTradeMenu->cursorPosition, TRADE_PLAYER))
             return;
     }
+    if (NativeLink_IsActive() && (status & 1)
+     && gBlockRecvBuffer[0][0] == LINKCMD_START_TRADE)
+    {
+        // START is not consent. Only this trainer's Yes authorizes this exact pair.
+        if (!sTradeMenu->nativeConfirmed
+         || sTradeMenu->nativeConfirmedPlayer != sTradeMenu->cursorPosition
+         || sTradeMenu->nativeConfirmedPartner != sTradeMenu->partnerCursorPosition)
+        {
+            NativeTradeReject();
+            return;
+        }
+        sTradeMenu->nativeConfirmed = FALSE;
+    }
+    if (NativeLink_IsActive() && (status & 1)
+     && (gBlockRecvBuffer[0][0] == LINKCMD_SET_MONS_TO_TRADE
+      || gBlockRecvBuffer[0][0] == LINKCMD_BOTH_CANCEL_TRADE
+      || gBlockRecvBuffer[0][0] == LINKCMD_PARTNER_CANCEL_TRADE
+      || gBlockRecvBuffer[0][0] == LINKCMD_PLAYER_CANCEL_TRADE))
+        sTradeMenu->nativeConfirmed = FALSE;
 #endif
     if (status & 1)
     {
@@ -1572,6 +1613,20 @@ static void _SetLinkData(u16 *linkData, u16 linkCmd, u16 cursorPosition)
 
 static void SetLinkData(u16 linkCmd, u16 cursorPosition)
 {
+#ifdef PORTABLE
+    if (NativeLink_IsActive())
+    {
+        if (linkCmd == LINKCMD_INIT_BLOCK)
+        {
+            sTradeMenu->nativeConfirmed = TRUE;
+            sTradeMenu->nativeConfirmedPlayer = sTradeMenu->cursorPosition;
+            sTradeMenu->nativeConfirmedPartner = sTradeMenu->partnerCursorPosition;
+        }
+        else if (linkCmd == LINKCMD_READY_TO_TRADE || linkCmd == LINKCMD_REQUEST_CANCEL
+              || linkCmd == LINKCMD_READY_CANCEL_TRADE)
+            sTradeMenu->nativeConfirmed = FALSE;
+    }
+#endif
     _SetLinkData(sTradeMenu->linkData, linkCmd, cursorPosition);
 }
 
@@ -1826,7 +1881,16 @@ static bool32 CheckMonsBeforeTrade(void)
 
 static void CB_ProcessConfirmTradeInput(void)
 {
+#ifdef PORTABLE
+    s8 input = Menu_ProcessInputNoWrapClearOnChoose();
+
+    // Keep normal menu cleanup, but never let simultaneous A+B authorize a trade.
+    if (NativeLink_IsActive() && JOY_NEW(B_BUTTON))
+        input = MENU_B_PRESSED;
+    switch (input)
+#else
     switch (Menu_ProcessInputNoWrapClearOnChoose())
+#endif
     {
     case 0: // YES, Confirm selection
         if (!CheckMonsBeforeTrade())
@@ -5006,7 +5070,12 @@ static void CB2_SaveAndEndTrade(void)
     case 42:
         if (_IsLinkTaskFinished())
         {
+#ifdef PORTABLE
+            if (LinkFullSave_SetLastSectorSignature())
+                break;
+#else
             LinkFullSave_SetLastSectorSignature();
+#endif
             gMain.state = 5;
         }
         break;
@@ -5306,7 +5375,12 @@ static void CB2_SaveAndEndWirelessTrade(void)
     case 8:
         if (_IsLinkTaskFinished())
         {
+#ifdef PORTABLE
+            if (LinkFullSave_SetLastSectorSignature())
+                break;
+#else
             LinkFullSave_SetLastSectorSignature();
+#endif
             gMain.state = 9;
         }
         break;

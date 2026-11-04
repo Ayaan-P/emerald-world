@@ -96,9 +96,10 @@ int main(void) {
     def test_remote_cursor_rejected_before_assignment(self):
         source = (ROOT / 'src/trade.c').read_text()
         helpers = ['NativeTradeReject', 'NativeTradeSelectionValid'] if 'static bool8 NativeTradeSelectionValid(' in source else []
-        self.compile_run(helpers + ['SetSelectedMon', 'Leader_ReadLinkBuffer', 'Follower_ReadLinkBuffer'], COMMON + r'''
+        self.compile_run(helpers + ['SetSelectedMon', 'Leader_ReadLinkBuffer', 'Follower_ReadLinkBuffer', '_SetLinkData', 'SetLinkData'], COMMON + r'''
 #define TRADE_PLAYER 0
 #define TRADE_PARTNER 1
+#define STATUS_NONE 0
 #define STATUS_CANCEL 2
 #define STATUS_READY 1
 #define PALETTES_ALL 0
@@ -110,21 +111,106 @@ int main(void) {
 #define CB_HANDLE_TRADE_CANCELED 1
 #define CB_PRINT_IS_THIS_OKAY 2
 #define CB_WAIT_TO_START_TRADE 3
+#define QUEUE_DELAY_DATA 0
+#define QUEUE_SEND_DATA 0
 enum { LINKCMD_REQUEST_CANCEL, LINKCMD_READY_TO_TRADE, LINKCMD_INIT_BLOCK,
 LINKCMD_READY_CANCEL_TRADE, LINKCMD_BOTH_CANCEL_TRADE, LINKCMD_PARTNER_CANCEL_TRADE,
 LINKCMD_SET_MONS_TO_TRADE, LINKCMD_START_TRADE, LINKCMD_PLAYER_CANCEL_TRADE };
 struct { u8 partyCounts[2], cursorPosition, partnerCursorPosition;
 u8 playerSelectStatus, partnerSelectStatus, playerConfirmStatus, partnerConfirmStatus;
-u8 callbackId, drawSelectedMonState[2], selectedMonIdx[2]; } menu, *sTradeMenu=&menu;
+u8 callbackId, drawSelectedMonState[2], selectedMonIdx[2];
+bool8 nativeConfirmed;
+u8 nativeConfirmedPlayer, nativeConfirmedPartner;
+u16 linkData[20]; } menu, *sTradeMenu=&menu;
 u16 gBlockRecvBuffer[2][128];
 int resets;
 void TradeResetReceivedFlag(int n) { resets++; receivedSizes[n]=0; }
 void BeginNormalPaletteFade(int a,int b,int c,int d,int e) {}
 void PrintTradeMessage(int n) {}
 void rbox_fill_rectangle(int n) {}
+void QueueAction(int delay, int action) {}
 ''', r'''
 int main(void) {
  menu.partyCounts[0]=2; menu.partyCounts[1]=1;
+ // A peer cannot start the animation before this trainer confirms this pair.
+ receivedSizes[0]=20;
+ gBlockRecvBuffer[0][0]=LINKCMD_START_TRADE;
+ menu.callbackId=99; aborted=0;
+ Follower_ReadLinkBuffer(1,1);
+ assert(aborted && menu.callbackId==99);
+ menu.cursorPosition=0; menu.partnerCursorPosition=6;
+ SetLinkData(LINKCMD_INIT_BLOCK,0);
+ aborted=0; receivedSizes[0]=20;
+ Follower_ReadLinkBuffer(1,1);
+ assert(!aborted && menu.callbackId==CB_WAIT_TO_START_TRADE);
+ // The start authorization is single-use even if START is replayed.
+ menu.callbackId=99; aborted=0; receivedSizes[0]=20;
+ Follower_ReadLinkBuffer(1,1);
+ assert(aborted && menu.callbackId==99);
+ for(int cancel=0;cancel<3;cancel++) {
+  SetLinkData(LINKCMD_INIT_BLOCK,0);
+  const u16 changes[]={LINKCMD_READY_TO_TRADE,LINKCMD_READY_CANCEL_TRADE,LINKCMD_REQUEST_CANCEL};
+  SetLinkData(changes[cancel],0);
+  aborted=0; receivedSizes[0]=20; menu.callbackId=99;
+  Follower_ReadLinkBuffer(1,1);
+  assert(aborted && menu.callbackId==99);
+ }
+ SetLinkData(LINKCMD_INIT_BLOCK,0);
+ menu.cursorPosition=1;
+ aborted=0; receivedSizes[0]=20; menu.callbackId=99;
+ Follower_ReadLinkBuffer(1,1);
+ assert(aborted && menu.callbackId==99);
+ menu.cursorPosition=0;
+ SetLinkData(LINKCMD_INIT_BLOCK,0);
+ menu.partnerCursorPosition=7;
+ aborted=0; receivedSizes[0]=20;
+ Follower_ReadLinkBuffer(1,1);
+ assert(aborted && menu.callbackId==99);
+ menu.partnerCursorPosition=6;
+ const u16 remoteChanges[]={LINKCMD_SET_MONS_TO_TRADE,LINKCMD_BOTH_CANCEL_TRADE,
+                           LINKCMD_PARTNER_CANCEL_TRADE,LINKCMD_PLAYER_CANCEL_TRADE};
+ for(int i=0;i<4;i++) {
+  SetLinkData(LINKCMD_INIT_BLOCK,0);
+  gBlockRecvBuffer[0][0]=remoteChanges[i]; gBlockRecvBuffer[0][1]=0;
+  receivedSizes[0]=20; aborted=0;
+  Follower_ReadLinkBuffer(1,1); assert(!aborted);
+  gBlockRecvBuffer[0][0]=LINKCMD_START_TRADE;
+  receivedSizes[0]=20; menu.callbackId=99;
+  Follower_ReadLinkBuffer(1,1); assert(aborted && menu.callbackId==99);
+ }
+ // The stock non-native link path does not acquire this portable authorization.
+ active=0; aborted=0; receivedSizes[0]=20;
+ Follower_ReadLinkBuffer(1,1);
+ assert(!aborted && menu.callbackId==CB_WAIT_TO_START_TRADE);
+ active=1;
+ // A replacement offer or cancellation cannot reuse consent to the old pair.
+ for(int peer=0;peer<2;peer++) {
+  for(int cancel=0;cancel<2;cancel++) {
+   receivedSizes[0]=receivedSizes[1]=20;
+   menu.playerConfirmStatus=menu.partnerConfirmStatus=STATUS_READY;
+   gBlockRecvBuffer[peer][0]=cancel ? LINKCMD_REQUEST_CANCEL : LINKCMD_READY_TO_TRADE;
+   gBlockRecvBuffer[peer][1]=0;
+   aborted=0;
+   Leader_ReadLinkBuffer(0,1<<peer);
+   assert(!aborted);
+   assert(menu.playerConfirmStatus==STATUS_NONE && menu.partnerConfirmStatus==STATUS_NONE);
+  }
+ }
+ // Simultaneous old confirmation and replacement offer must invalidate both.
+ for(int peer=0;peer<2;peer++) {
+  receivedSizes[0]=receivedSizes[1]=20;
+  menu.playerConfirmStatus=menu.partnerConfirmStatus=STATUS_READY;
+  gBlockRecvBuffer[peer][0]=LINKCMD_READY_TO_TRADE;
+  gBlockRecvBuffer[peer][1]=0;
+  gBlockRecvBuffer[peer^1][0]=LINKCMD_INIT_BLOCK;
+  Leader_ReadLinkBuffer(0,3);
+  assert(menu.playerConfirmStatus==STATUS_NONE && menu.partnerConfirmStatus==STATUS_NONE);
+ }
+ // Fresh consent to the new pair is still accepted.
+ receivedSizes[0]=receivedSizes[1]=20;
+ gBlockRecvBuffer[0][0]=gBlockRecvBuffer[1][0]=LINKCMD_INIT_BLOCK;
+ Leader_ReadLinkBuffer(0,3);
+ assert(menu.playerConfirmStatus==STATUS_READY && menu.partnerConfirmStatus==STATUS_READY);
  for(int len=0;len<=256;len++) {
   if(len==20) continue;
   for(int peer=0;peer<2;peer++) {
@@ -154,6 +240,39 @@ int main(void) {
  receivedSizes[0]=20;
  menu.cursorPosition=2; aborted=0; Follower_ReadLinkBuffer(1,1); assert(aborted);
  aborted=0; SetSelectedMon(255); assert(aborted);
+ return 0;
+}
+''')
+
+    def test_native_confirm_cancel_wins_over_simultaneous_yes(self):
+        self.compile_run(['CB_ProcessConfirmTradeInput'], COMMON + r'''
+typedef int8_t s8;
+#define B_BUTTON 2
+#define MENU_B_PRESSED -1
+#define JOY_NEW(button) (newKeys & (button))
+#define QUEUE_DELAY_MSG 0
+#define QUEUE_STANDBY 0
+#define LINKCMD_READY_CANCEL_TRADE 12
+#define CB_IDLE 1
+#define CB_PARTNER_MON_INVALID 2
+struct { int callbackId; } menu, *sTradeMenu=&menu;
+int newKeys, choice, checks, cancels, menus;
+int Menu_ProcessInputNoWrapClearOnChoose(void) { menus++; return choice; }
+int CheckMonsBeforeTrade(void) { checks++; return 0; }
+int IsLinkTradeTaskFinished(void) { return 1; }
+void QueueAction(int delay,int action) {}
+void SetLinkData(int command,int value) { assert(command==LINKCMD_READY_CANCEL_TRADE); cancels++; }
+void PutWindowTilemap(int window) {}
+''', r'''
+int main(void) {
+ active=1; choice=0; newKeys=B_BUTTON;
+ CB_ProcessConfirmTradeInput();
+ assert(checks==0 && cancels==1 && menu.callbackId==CB_IDLE);
+ newKeys=0; CB_ProcessConfirmTradeInput();
+ assert(checks==1 && cancels==1 && menu.callbackId==CB_IDLE);
+ // Non-native stock controls retain their existing behavior.
+ active=0; newKeys=B_BUTTON; CB_ProcessConfirmTradeInput();
+ assert(checks==2 && cancels==1 && menus==3);
  return 0;
 }
 ''')
