@@ -1,11 +1,12 @@
 """Unit checks for the local launcher bridge. No live world or game is used."""
 import json
+import tempfile
 from pathlib import Path
 import unittest
 from unittest.mock import Mock, patch
 
 from world.session import SessionError
-from world.web_launcher import LauncherBridge, handler_for
+from world.web_launcher import LauncherBridge, handler_for, install_shortcut
 
 
 class WebLauncherTests(unittest.TestCase):
@@ -100,6 +101,19 @@ class WebLauncherTests(unittest.TestCase):
         with self.assertRaises(SessionError):
             self.bridge.action('rejoin', {'world': 'world1'})
         self.session.rejoin_friend.assert_not_called()
+
+    def test_shortcut_is_idempotent_and_never_overwrites(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary) / 'applications'
+            target = install_shortcut(directory)
+            self.assertEqual(target, directory / 'emerald-world-react.desktop')
+            original = target.read_text()
+            self.assertIn('-m world.web_launcher', original)
+            self.assertEqual(install_shortcut(directory), target)
+            target.write_text('custom shortcut')
+            with self.assertRaises(ValueError):
+                install_shortcut(directory)
+            self.assertEqual(target.read_text(), 'custom shortcut')
 
     def test_auth_requires_exact_host_capability_and_post_origin(self):
         handler_type = handler_for(self.bridge, 'secret', 8912)

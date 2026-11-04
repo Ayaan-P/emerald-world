@@ -11,6 +11,8 @@ import json
 import os
 from pathlib import Path
 import secrets
+import stat
+import sys
 import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -200,13 +202,47 @@ def handler_for(bridge, capability, port, dist=DIST):
     return Handler
 
 
+def install_shortcut(directory=None):
+    """Install a distinct, idempotent user shortcut without replacing files."""
+    from scripts.linux_client import exec_token
+    directory = Path(directory or Path.home() / '.local/share/applications').absolute()
+    if directory.resolve() != directory:
+        raise ValueError('Application directory cannot contain symlinks.')
+    # Validate all interpolated fields before creating anything.
+    interpreter = Path(sys.executable).resolve()
+    command = exec_token(interpreter) + ' -m world.web_launcher'
+    exec_token(REPO)
+    content = ('[Desktop Entry]\nType=Application\nName=Emerald World React (Experimental)\n'
+               'Comment=Open the experimental Emerald World launcher\n'
+               f'Exec={command}\nPath={REPO}\nTerminal=false\nCategories=Game;\n')
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    target = directory / 'emerald-world-react.desktop'
+    try:
+        fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+    except FileExistsError:
+        fd = os.open(target, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, 'rb') as stream:
+            info = os.fstat(stream.fileno())
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                    or stream.read(len(content.encode()) + 1) != content.encode()):
+                raise ValueError('An existing shortcut was left unchanged.')
+    else:
+        with os.fdopen(fd, 'w') as output:
+            output.write(content)
+    return target
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worlds-root', type=Path, default=Path.home() / '.local/share/emerald-world/worlds')
     parser.add_argument('--binary', type=Path)
+    parser.add_argument('--install', action='store_true', help='add a separate user application shortcut')
     args = parser.parse_args(argv)
     if not (DIST / 'index.html').is_file():
         parser.error('Build launcher-web with npm ci and npm run build first.')
+    if args.install:
+        print(f'Installed experimental launcher shortcut: {install_shortcut()}')
+        return 0
     from scripts.linux_client import discover_binary
     session = DesktopSession(DesktopSession.create_root(args.worlds_root.absolute()))
     bridge = LauncherBridge(session, args.binary or discover_binary())
