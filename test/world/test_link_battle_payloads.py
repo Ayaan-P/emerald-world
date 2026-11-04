@@ -133,6 +133,135 @@ static void WorldCoop_ObserveController(u8 battler, const u8 *data) {
             result = subprocess.run([str(path / 'test')], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_move_reply_cannot_bypass_bounds_with_another_action(self):
+        self.run_c(r'''
+ for (int coop=0;coop<2;coop++) {
+  for (int action=0;action<=B_ACTION_UNK_14;action++) {
+   if (action==B_ACTION_USE_MOVE || action==B_ACTION_EXEC_SCRIPT) continue;
+   for (int slot=4;slot<256;slot++) {
+    memset(gTasks,0,sizeof(gTasks));
+    memset(gBattleBufferB,0xA5,sizeof(gBattleBufferB));
+    active=1; aborted=resets=0; sNativeBattlePayloadFailed=FALSE;
+    coopMode=coop; source=1; localPlayer=0;
+    gBattleTypeFlags=BATTLE_TYPE_LINK_IN_BATTLE|BATTLE_TYPE_IS_MASTER;
+    u8 battler=coop?2:1;
+    sNativeBattleRequestPending[battler]=TRUE;
+    sNativeBattleReplyUsed[battler]=FALSE;
+    sNativeBattleRequest[battler][0]=CONTROLLER_CHOOSEMOVE;
+    u8 *p=(u8 *)gBlockRecvBuffer[source]; memset(p,0,16);
+    p[0]=B_COMM_TO_ENGINE; p[1]=battler; p[4]=8;
+    p[8]=CONTROLLER_TWORETURNVALUES; p[9]=action; p[10]=slot; p[11]=0;
+    TryReceiveLinkBattleData();
+    if (!aborted) Task_HandleCopyReceivedLinkBuffersData(0);
+    assert(aborted==1 && !sNativeBattleReplyUsed[battler]);
+    for(int i=0;i<512;i++) assert(gBattleBufferB[battler][i]==0xA5);
+   }
+  }
+ }
+ ''')
+
+    def test_legitimate_move_selection_and_cancel_replies(self):
+        self.run_c(r'''
+ for (int coop=0;coop<2;coop++) {
+  for (int move=0;move<5;move++) {
+   for (int target=0;target<4;target++) {
+    memset(gTasks,0,sizeof(gTasks));
+    active=1; aborted=resets=0; sNativeBattlePayloadFailed=FALSE;
+    coopMode=coop; source=1; localPlayer=0;
+    gBattleTypeFlags=BATTLE_TYPE_LINK_IN_BATTLE|BATTLE_TYPE_IS_MASTER;
+    u8 battler=coop?2:1;
+    sNativeBattleRequestPending[battler]=TRUE;
+    sNativeBattleReplyUsed[battler]=FALSE;
+    sNativeBattleRequest[battler][0]=CONTROLLER_CHOOSEMOVE;
+    u8 *p=(u8 *)gBlockRecvBuffer[source]; memset(p,0,16);
+    p[0]=B_COMM_TO_ENGINE; p[1]=battler; p[4]=8;
+    p[8]=CONTROLLER_TWORETURNVALUES; p[9]=B_ACTION_EXEC_SCRIPT;
+    p[10]=move==4?255:move; p[11]=move==4?255:target;
+    TryReceiveLinkBattleData(); Task_HandleCopyReceivedLinkBuffersData(0);
+    assert(!aborted && resets==1 && sNativeBattleReplyUsed[battler]);
+    assert(!memcmp(gBattleBufferB[battler],p+8,8));
+   }
+  }
+ }
+ ''')
+
+    def test_move_reply_byte_matrix_is_request_bound(self):
+        self.run_c(r'''
+ u8 data[4]={CONTROLLER_TWORETURNVALUES,0,0,0};
+ sNativeBattleRequestPending[0]=TRUE;
+ sNativeBattleRequest[0][0]=CONTROLLER_CHOOSEMOVE;
+ for(unsigned action=0;action<256;action++) {
+  data[1]=action;
+  for(unsigned move=0;move<256;move++) {
+   data[2]=move;
+   for(unsigned target=0;target<256;target++) {
+    data[3]=target;
+    bool8 expected=action==B_ACTION_EXEC_SCRIPT
+       && ((move==255 && target==255) || (move<4 && target<4));
+    assert(NativeBattleReplyValid(0,data)==expected);
+   }
+  }
+ }
+ // Valid contents do not waive pending-request or one-use requirements.
+ data[1]=B_ACTION_EXEC_SCRIPT; data[2]=data[3]=0;
+ sNativeBattleRequestPending[0]=FALSE;
+ assert(!NativeBattleReplyValid(0,data));
+ sNativeBattleRequestPending[0]=TRUE; sNativeBattleReplyUsed[0]=TRUE;
+ assert(!NativeBattleReplyValid(0,data));
+ ''')
+
+    def test_real_move_reply_emitter_all_owner_mappings(self):
+        self.run_c(r'''
+ for(int coop=0;coop<2;coop++)
+ for(int local=0;local<2;local++)
+ for(int master=0;master<2;master++)
+ for(int battler=0;battler<4;battler++) {
+  if(coop && (battler&1)) continue;
+  for(int choice=0;choice<17;choice++) {
+   memset(gTasks,0,sizeof(gTasks));
+   active=1; aborted=resets=0; sNativeBattlePayloadFailed=FALSE;
+   gLinkErrorOccurred=0; coopMode=coop; localPlayer=local;
+   gBattleTypeFlags=BATTLE_TYPE_LINK|BATTLE_TYPE_LINK_IN_BATTLE|BATTLE_TYPE_DOUBLE;
+   if(master) gBattleTypeFlags|=BATTLE_TYPE_IS_MASTER;
+   source=NativeBattleOwner(battler); gActiveBattler=battler;
+   sNativeBattleRequestPending[battler]=TRUE;
+   sNativeBattleReplyUsed[battler]=FALSE;
+   sNativeBattleRequest[battler][0]=CONTROLLER_CHOOSEMOVE;
+   u16 selection=choice==16?0xFFFF:((choice/4)<<8)|(choice%4);
+   BtlController_EmitTwoReturnValues(B_COMM_TO_ENGINE,B_ACTION_EXEC_SCRIPT,selection);
+   receivedSize=gTasks[sLinkSendTaskId].tCurrentBlock_End;
+   if(source!=localPlayer) {
+    // The real emitter suppresses replies from non-owning mirror controllers.
+    assert(receivedSize==0);
+    continue;
+   }
+   assert(receivedSize==16);
+   memcpy(gBlockRecvBuffer[source],gLinkBattleSendBuffer,receivedSize);
+   TryReceiveLinkBattleData(); Task_HandleCopyReceivedLinkBuffersData(0);
+   assert(!aborted && !gLinkErrorOccurred && resets==1);
+   assert(sNativeBattleReplyUsed[battler]);
+   assert(!memcmp(gBattleBufferB[battler],gLinkBattleSendBuffer+8,8));
+   // A repeated response in the same request cannot become a second action.
+   TryReceiveLinkBattleData(); Task_HandleCopyReceivedLinkBuffersData(0);
+   assert(aborted==1 && gLinkErrorOccurred);
+  }
+ }
+ ''', emitters=('BtlController_EmitTwoReturnValues',))
+
+    def test_non_move_two_value_requests_keep_existing_semantics(self):
+        self.run_c(r'''
+ const u8 requests[]={CONTROLLER_CHOOSEACTION,CONTROLLER_EXPUPDATE,
+                      CONTROLLER_DRAWPARTYSTATUSSUMMARY};
+ u8 data[4]={CONTROLLER_TWORETURNVALUES,B_ACTION_USE_MOVE,0,0};
+ sNativeBattleRequestPending[0]=TRUE;
+ for(unsigned i=0;i<sizeof(requests);i++) {
+  sNativeBattleRequest[0][0]=requests[i];
+  assert(NativeBattleReplyValid(0,data));
+ }
+ sNativeBattleRequest[0][0]=CONTROLLER_OPENBAG;
+ assert(!NativeBattleReplyValid(0,data));
+ ''')
+
     def test_remote_cannot_issue_engine_commands(self):
         self.run_c(r'''
  u8 *p=(u8 *)gBlockRecvBuffer[source];

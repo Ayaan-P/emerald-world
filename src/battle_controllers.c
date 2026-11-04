@@ -1028,7 +1028,14 @@ static bool8 NativeBattleReplyValid(u8 battler, const u8 *data)
         }
         return TRUE;
     case CONTROLLER_TWORETURNVALUES:
-        return request[0] == CONTROLLER_CHOOSEACTION || request[0] == CONTROLLER_CHOOSEMOVE
+        /* The engine indexes its move table from bytes 2/3 after CHOOSEMOVE,
+         * regardless of the action byte. Do not let another action disguise
+         * an unchecked move index or target as an otherwise valid reply. */
+        if (request[0] == CONTROLLER_CHOOSEMOVE)
+            return data[1] == B_ACTION_EXEC_SCRIPT
+                && ((data[2] == 0xFF && data[3] == 0xFF)
+                    || (data[2] < MAX_MON_MOVES && data[3] < MAX_BATTLERS_COUNT));
+        return request[0] == CONTROLLER_CHOOSEACTION
             || request[0] == CONTROLLER_EXPUPDATE || request[0] == CONTROLLER_DRAWPARTYSTATUSSUMMARY;
     case CONTROLLER_ONERETURNVALUE:
     case CONTROLLER_ONERETURNVALUE_DUPLICATE:
