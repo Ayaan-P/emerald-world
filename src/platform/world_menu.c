@@ -35,11 +35,11 @@ enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, RALLY, DISPATCH };
 enum Action { FRIENDS, STORY, DEXNAV, BACK, MODE, SCOPE, REQUEST, READY,
     LATER, CANCEL, GO, FINISH, RETURN, STAY, ACTION_COUNT };
 enum Page { CONTROLS, ROSTER, STATUS, PAGE_COUNT };
-enum { WINDOW_WIDTH = 28, WINDOW_HEIGHT = 18, LINE_HEIGHT = 12,
-    SCREEN_LINES = WINDOW_HEIGHT * 8 / LINE_HEIGHT, TEXT_BYTES = 96 };
+enum { WORLD_MENU_WIDTH = 28, WORLD_MENU_HEIGHT = 18, LINE_HEIGHT = 12,
+    SCREEN_LINES = WORLD_MENU_HEIGHT * 8 / LINE_HEIGHT, TEXT_BYTES = 96 };
 struct Row { enum Action action; const char *label, *reason; };
 struct Screen { char lines[SCREEN_LINES][TEXT_BYTES]; };
-static const struct WindowTemplate sWindow = {0, 1, 1, WINDOW_WIDTH, WINDOW_HEIGHT, 15, 0x125};
+static const struct WindowTemplate sWindow = {0, 1, 1, WORLD_MENU_WIDTH, WORLD_MENU_HEIGHT, 15, 0x125};
 static struct {
     enum MenuState state;
     enum Page page;
@@ -236,7 +236,7 @@ static void Wrap(struct Screen *screen, unsigned row, unsigned end, const char *
             line[n] = text[n];
             line[n + 1] = 0;
             Encode(encoded, line);
-            if (GetStringWidth(FONT_SMALL, encoded, 0) > WINDOW_WIDTH * 8 - 16) break;
+            if (GetStringWidth(FONT_SMALL, encoded, 0) > WORLD_MENU_WIDTH * 8 - 16) break;
             if (text[n] == ' ') space = n;
             n++;
         }
