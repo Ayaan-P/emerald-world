@@ -54,8 +54,11 @@ def _uint(text, limit):
 
 
 class LinkProtocol:
-    def __init__(self, *, clock=time.monotonic, id_factory=None):
-        self.sessions = LinkSessions(clock=clock)
+    def __init__(self, *, clock=time.monotonic, id_factory=None, max_players=8):
+        if type(max_players) is not int or not 1 <= max_players <= 64:
+            raise ValueError('max_players must be between 1 and 64')
+        self.max_players = max_players
+        self.sessions = LinkSessions(clock=clock, max_sessions=max_players // 2 or 1)
         self.id_factory = id_factory or (lambda: secrets.randbits(64))
         self._wire = {}
         self._internal = {}
@@ -95,7 +98,7 @@ class LinkProtocol:
                 raise LinkError('self_offer')
             if actor in self._tag_actor or value in self._tag_actor:
                 raise LinkError('busy')
-            if len(self._tag_actor) >= 8:
+            if len(self._tag_actor) + 2 > self.max_players:
                 raise LinkError('capacity')
             self.sessions._near(presence, actor, value, coop=True)
             tag = _Tag(self._new_id(), actor, value, now + 15)

@@ -449,7 +449,7 @@ class WorldTests(unittest.TestCase):
         from world.server import WorldServer
         from world.client import WorldClient
         with tempfile.TemporaryDirectory(prefix='ew-', dir='/home/ayaan/projects/emerald-world-research') as root:
-            server = WorldServer(root + '/socket', root + '/state')
+            server = WorldServer(root + '/socket', root + '/state', max_players=8)
             ids = [server.create_identity('p' + str(i)) for i in range(9)]
             server.start()
             clients = []

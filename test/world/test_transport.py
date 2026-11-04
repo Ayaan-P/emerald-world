@@ -269,11 +269,15 @@ class TransportTests(unittest.TestCase):
         for path in (server.admin_path, self.root / 'other.sock'):
             with self.assertRaises(ValueError):
                 HostBroker(path, self.cert, self.key)
+        for material in ('certificate.pem', 'private-key.pem'):
+            unsafe = Path(server.socket_path).parent.parent / 'trainers' / material
+            with self.assertRaisesRegex(ValueError, 'game-visible'):
+                HostBroker(server.socket_path, unsafe, unsafe)
         for options in ({}, {'fingerprint':'x'*64}, {'fingerprint':'a'*63},
                         {'fingerprint':'a'*64, 'cafile':self.cert}):
             with self.assertRaises(ValueError):
                 ClientBroker(self.root / 'unused.sock', ('127.0.0.1', 1), **options)
-        for n in (0, 9):
+        for n in (0, 1025):
             with self.assertRaises(ValueError):
                 HostBroker(server.socket_path, self.cert, self.key, max_clients=n)
         host = self.host(server)
@@ -287,7 +291,7 @@ class TransportTests(unittest.TestCase):
 
     def test_stalled_handshakes_bounded_to_eight_workers_and_clean_shutdown(self):
         server, _ = self.start_world()
-        host = self.host(server, handshake_timeout=5)
+        host = self.host(server, handshake_timeout=5, max_clients=8)
         sockets = [socket.create_connection(host.address, timeout=2) for _ in range(8)]
         for sock in sockets:
             self.addCleanup(sock.close)
