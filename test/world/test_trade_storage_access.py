@@ -102,6 +102,7 @@ void CloseLink(void) {}
 void UnlockPlayerFieldControls(void) { locked = FALSE; }
 void UnfreezeObjectEvents(void) {}
 void BattleSetup_ResumeWorldWildBattle(void) { assert(0); }
+void BattleSetup_ResumeWorldTrainerBattle(void) { assert(0); }
 void DestroyTask(u8 task) { destroys++; }
 void ClearStdWindowAndFrame(u8 window, bool8 copy) {}
 void RemoveWindow(u8 window) { removes++; }

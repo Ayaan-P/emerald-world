@@ -29,7 +29,7 @@ jobs:
           tools/mapjson/mapjson groups emerald data/maps/map_groups.json data/maps include/constants
           tools/mapjson/mapjson layouts emerald data/layouts/layouts.json data/layouts include/constants
       - name: Protocol and actual-source C regressions (no native game sessions)
-        run: PYTHONPATH=.:test/world python3 -m unittest test_coop_catching test_tag_coop test_link_protocol test_link_sessions test_trainer_abort_wire_regression test_link_battle_payloads test_coop_controller_repro -v
+        run: PYTHONPATH=.:test/world python3 -m unittest test_coop_catching test_tag_coop test_link_protocol test_link_sessions test_trainer_abort_wire_regression test_link_battle_payloads test_coop_controller_repro test_native_save_commit test_native_save_component test_native_save_io test_trade_save_commit test_coop_faint_friendship test_coop_completion_echo test_coop_completion_peers test_link_trade_payloads test_trade_storage_access test_coop_engine -v
 
   linux-build:
     runs-on: ubuntu-24.04

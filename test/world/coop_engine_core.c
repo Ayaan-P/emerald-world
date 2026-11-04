@@ -113,11 +113,24 @@ void PrepareBufferDataTransferLink(u8 id, u16 size, u8 *data)
 }
 void MarkBattlerForControllerExec(u8 battler) {}
 
+/* This fixture exercises defeat completion. Catch ownership/encryption has
+ * its own stock-accessor fixture in coop_catching_core.c. Fail on accidental
+ * entry rather than inventing a catch or mutating an unmodelled bag/PC. */
+u8 gBattlerAttacker, gBattlerTarget;
+u16 gLastUsedItem;
+struct SaveBlock2 *gSaveBlock2Ptr;
+bool8 IsPokemonStorageFull(void) { assert(!"unexpected catch storage query"); return TRUE; }
+bool8 CheckBagHasItem(u16 item, u16 count) { assert(!"unexpected catch bag query"); return FALSE; }
+bool8 RemoveBagItem(u16 item, u16 count) { assert(!"unexpected catch bag removal"); return FALSE; }
+u16 SpeciesToNationalPokedexNum(u16 species) { assert(!"unexpected catch dex query"); return 0; }
+s8 GetSetPokedexFlag(u16 species, u8 operation) { assert(!"unexpected catch dex mutation"); return 0; }
+void SetMonData(struct Pokemon *mon, s32 field, const void *data) { assert(!"unexpected catch setter"); }
+
 bool8 SendBlock(u8 mask, const void *src, u16 size)
 {
     u8 peer = local ^ 1;
     assert(size <= 256);
-    if (size == sizeof(struct CoopCompletion))
+    if (sCoop.state == COOP_BATTLE && size == sizeof(struct CoopCompletion))
     {
         lastCompletion = *(const struct CoopCompletion *)src;
         completionSends++;
@@ -125,6 +138,8 @@ bool8 SendBlock(u8 mask, const void *src, u16 size)
         {
             assert(completionCount[peer] < 8);
             completionQueue[peer][completionCount[peer]++] = lastCompletion;
+            assert(completionCount[local] < 8);
+            completionQueue[local][completionCount[local]++] = lastCompletion;
         }
         return TRUE;
     }
@@ -135,9 +150,11 @@ bool8 SendBlock(u8 mask, const void *src, u16 size)
         struct CoopHeader header = *(const struct CoopHeader *)src;
         header.owner = remoteOwner;
         header.count = 3;
-        header.environment = BATTLE_ENVIRONMENT_CAVE;
-        header.weather = WEATHER_SANDSTORM;
-        header.seed = 0xABC123;
+        header.environment = remoteOwner ? BATTLE_ENVIRONMENT_CAVE : 0;
+        header.weather = remoteOwner ? WEATHER_SANDSTORM : 0;
+        header.seed = remoteOwner ? 0xABC123 : 0;
+        header.kind = header.trainer = 0;
+        header.enemyCount = remoteOwner ? 1 : 0;
         memcpy(gBlockRecvBuffer[peer], &header, size);
     }
     else
@@ -145,7 +162,7 @@ bool8 SendBlock(u8 mask, const void *src, u16 size)
         struct CoopMonBlock block = *(const struct CoopMonBlock *)src;
         memset(&block.mon, 0, sizeof(block.mon));
         if (block.phase <= 3) block.mon = remoteParty[block.phase - 1];
-        else if (remoteOwner) block.mon = remoteWild;
+        else if (remoteOwner && block.phase == 4) block.mon = remoteWild;
         if (block.phase == corruptPhase) block.mon.box.checksum++;
         memcpy(gBlockRecvBuffer[peer], &block, size);
     }
@@ -203,7 +220,7 @@ static void Reset(u8 slot, bool8 own)
 static void Exchange(void)
 {
     int i;
-    for (i = 0; i < 6 && gMain.callback2 != CB2_InitBattle; i++) CB2_Exchange();
+    for (i = 0; i < COOP_CONFIRM + 2 && gMain.callback2 != CB2_InitBattle; i++) CB2_Exchange();
 }
 
 struct PeerFixture
@@ -213,6 +230,11 @@ struct PeerFixture
     u16 indexes[MAX_BATTLERS_COUNT];
     bool8 connected;
 };
+u16 gTrainerBattleOpponent_A;
+const struct Trainer gTrainers[TRAINERS_COUNT] = {0};
+void WorldCoop_CreateTrainerParty(void) { assert(!"unexpected trainer entry"); }
+void BattleSetup_RecordWorldTrainerBattle(void) {}
+void BattleSetup_RecordWorldWildBattle(void) {}
 static struct PeerFixture peers[2];
 
 static void SavePeer(void)
@@ -236,7 +258,7 @@ static void DeliverCompletion(void)
     for (unsigned i = 0; i < completionCount[local]; i++)
     {
         struct CoopCompletion *packet = &completionQueue[local][i];
-        assert(WorldCoop_ReceiveCompletion((u8 *)packet, sizeof(*packet), local ^ 1) == 1);
+        assert(WorldCoop_ReceiveCompletion((u8 *)packet, sizeof(*packet), packet->sender) == 1);
     }
     completionCount[local] = 0;
 }
@@ -248,7 +270,7 @@ static void AsymmetricCompletion(void)
     {
         Reset(peer, peer == 0); Exchange(); WorldCoop_InitControllers();
         sCoop.seed = 0x123;
-        sCoop.wild = FixtureMon(100, 3000);
+        sCoop.enemies[0] = FixtureMon(100, 3000);
         packet[5] = 1 | (1 << MULTI_PARTY_SIZE);
         WorldCoop_RecordDefeat(packet);
         gPlayerParty[peer * MULTI_PARTY_SIZE].hp = 10 + peer;
@@ -274,13 +296,15 @@ static void AsymmetricCompletion(void)
      * used as readiness, and the faster peer has not torn anything down. */
     LoadPeer(1); DeliverCompletion();
     assert(!WorldCoop_ReadyForPrivateRewards()); /* READY */
+    DeliverCompletion(); /* Local READY echo, not a completion point. */
     assert(!WorldCoop_ReadyForPrivateRewards()); /* COMMIT */
+    assert(!WorldCoop_ReadyForPrivateRewards()); /* COMMIT only queued. */
     SavePeer();
     LoadPeer(0);
-    /* Delay peer 1's COMMIT receipt, but deliver its READY first. */
-    assert(completionCount[0] == 2);
-    assert(WorldCoop_ReceiveCompletion((u8 *)&completionQueue[0][0], sizeof(struct CoopCompletion), 1) == 1);
+    DeliverCompletion(); /* Local READY, partner READY, partner COMMIT. */
     assert(!WorldCoop_ReadyForPrivateRewards());
+    assert(!WorldCoop_ReadyForPrivateRewards()); /* Local COMMIT is not echoed. */
+    DeliverCompletion();
     assert(WorldCoop_CompletionCommitted());
     SavePeer();
     LoadPeer(1); DeliverCompletion();
@@ -388,7 +412,7 @@ int main(void)
     assert(gPlayerParty[3].hp == 11);
     /* The partner is paused after ENDLINKBATTLE ACK, before its fade finishes. */
     assert(!WorldCoop_ReadyForPrivateRewards());
-    assert(lastCompletion.phase == 6 && active && sCoop.staged);
+    assert(lastCompletion.phase == COOP_READY && active && sCoop.staged);
     for (int n = 0; n < 20; n++) assert(!WorldCoop_ReadyForPrivateRewards());
     assert(!sCoop.commitSent && active);
     {
@@ -396,7 +420,9 @@ int main(void)
         peer.sender = 0;
         assert(WorldCoop_ReceiveCompletion((u8 *)&peer, sizeof(peer), 0) == 1);
         assert(!WorldCoop_ReadyForPrivateRewards());
-        assert(lastCompletion.phase == 7 && WorldCoop_CompletionCommitted());
+        assert(lastCompletion.phase == COOP_COMMIT && !WorldCoop_ReadyForPrivateRewards());
+        assert(WorldCoop_ReceiveCompletion((u8 *)&lastCompletion, sizeof(lastCompletion), local) == 1);
+        assert(WorldCoop_CompletionCommitted());
         /* Partner closes after receiving our COMMIT, before we consume theirs. */
         active = FALSE;
         assert(WorldCoop_ReadyForPrivateRewards());
@@ -453,15 +479,15 @@ int main(void)
     {
         struct CoopCompletion packet = {0};
         packet.magic = COOP_MAGIC; packet.version = COOP_VERSION;
-        packet.phase = 6; packet.seed = sCoop.seed;
+        packet.phase = COOP_READY; packet.seed = sCoop.seed;
         packet.sender = 1; packet.outcome = B_OUTCOME_WON;
         /* A reopen cannot adopt an old battle into the new link generation. */
         packet.generation = testGeneration = 18;
         assert(WorldCoop_ReceiveCompletion((u8 *)&packet, sizeof(packet), 1) == -1);
         packet.generation = testGeneration = 17;
-        packet.phase = 7;
+        packet.phase = COOP_COMMIT;
         assert(WorldCoop_ReceiveCompletion((u8 *)&packet, sizeof(packet), 1) == -1);
-        packet.phase = 6; packet.sender = 0;
+        packet.phase = COOP_READY; packet.sender = 0;
         assert(WorldCoop_ReceiveCompletion((u8 *)&packet, sizeof(packet), 1) == -1);
         packet.sender = 1; packet.seed++;
         assert(WorldCoop_ReceiveCompletion((u8 *)&packet, sizeof(packet), 1) == -1);
