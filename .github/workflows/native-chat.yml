@@ -28,6 +28,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes build-essential libsdl2-dev
+      - name: Generate native map constants
+        run: |
+          make -C tools/mapjson
+          tools/mapjson/mapjson groups emerald data/maps/map_groups.json data/maps include/constants
+          tools/mapjson/mapjson layouts emerald data/layouts/layouts.json data/layouts include/constants
       - name: Run socket, composer, protocol and remapped-key tests
         run: PYTHONPATH=.:test/world python3 -m unittest test.world.test_chat test.world.test_chat_in_memory test.world.test_window_identity -v
 
