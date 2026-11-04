@@ -133,7 +133,7 @@ def main():
             class LegacyRoleServer(WorldServer):
                 def _line(self, conn, raw):
                     # Previous servers reject the unknown role before auth.
-                    if conn['id'] is None and raw.split()[-1:] == [b'SOCIALCHAT']:
+                    if conn['id'] is None and raw.split()[-1:] in ([b'SOCIALCHAT'], [b'SOCIALTRAVEL'], [b'SOCIALTRAVELCHAT']):
                         self._error(conn, 'AUTH')
                         return
                     return super()._line(conn, raw)

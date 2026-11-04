@@ -198,6 +198,7 @@ static int WorldCatalog_Metatile(unsigned g,unsigned n,unsigned t) {(void)g;(voi
         source += r'''
 static int line(const char *s) {char b[1024];strcpy(b,s);return Line(b);}
 int main(void) {
+ sWorld.travelLegacy=1; /* Exercise the existing chat-only authority fallback. */
  strcpy(sWorld.trainer,"alice");strcpy(sWorld.token,"secret");
  QueueHello(0); assert(strstr(sWorld.output," SOCIALCHAT\n") && sWorld.chatProbe);
  assert(!line("ERROR AUTH") && sWorld.chatLegacy);

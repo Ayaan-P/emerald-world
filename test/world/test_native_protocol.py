@@ -115,7 +115,7 @@ class NativeProtocol(unittest.TestCase):
                 candidate.sendall(b"ERROR AUTH\n")
                 candidate.close()
                 continue
-            self.assertEqual(hello.decode(), f"HELLO 1 alice {self.token} SOCIAL\n")
+            self.assertEqual(hello.decode(), f"HELLO 1 alice {self.token} SOCIALTRAVEL\n")
             self.conn = candidate
             break
         assert self.conn is not None, 'presence role never connected'
@@ -166,9 +166,22 @@ class NativeProtocol(unittest.TestCase):
     def test_disabled_state_is_unchanged(self):
         self.assertNotIn("world", self.launch(False))
 
+    def test_cross_map_travel_roster_is_separate_atomic_and_preserves_busy(self):
+        self.connect()
+        self.conn.sendall(b'BEGIN 7\nTRAVEL 1\nFRIEND bob 0 10 6 6 1 7 0 180\n')
+        self.assertEqual(self.step()['world']['friends'], [])
+        self.conn.sendall(b'END\n')
+        world = self.step()['world']
+        self.assertEqual(world['peers'], [])
+        self.assertEqual(world['friends'], [{'trainer': 'bob', 'map': [0, 10], 'pos': [6, 6], 'ready': False}])
+        self.step(181)
+        self.assertEqual(self.step()['world']['friends'], [])
+        self.conn.sendall(b'BEGIN 8\nTRAVEL 1\nFRIEND bob 0 10 6 6 1 7 1 0\nEND\n')
+        self.assertEqual(self.step()['world']['friends'], [])
+
     def test_fragmented_chat_receipt_is_atomic_and_not_game_dialogue(self):
         self.connect()
-        self.conn.sendall(b'BEGIN 7\nCHATMSG 1 bob * 48656c6c6f21\nCHATSTATUS ready\n')
+        self.conn.sendall(b'BEGIN 7\nTRAVEL 0\nCHATMSG 1 bob * 48656c6c6f21\nCHATSTATUS ready\n')
         state = self.step()['world']
         self.assertEqual(state['chat_count'], 0)
         self.assertFalse(state['dialogue_active'])
@@ -176,12 +189,12 @@ class NativeProtocol(unittest.TestCase):
         state = self.step()['world']
         self.assertEqual(state['chat_count'], 1)
         self.assertFalse(state['dialogue_active'])
-        self.conn.sendall(b'BEGIN 8\nCHATMSG 2 bob alice ff\nEND\n')
+        self.conn.sendall(b'BEGIN 8\nTRAVEL 0\nCHATMSG 2 bob alice ff\nEND\n')
         self.assertFalse(self.step()['world']['connected'])
 
     def test_fragmented_snapshot_is_atomic(self):
         self.connect()
-        self.conn.sendall(b"BEGIN 7\nPEER bob 0 9 5 5 1 0 1\n")
+        self.conn.sendall(b"BEGIN 7\nTRAVEL 0\nPEER bob 0 9 5 5 1 0 1\n")
         self.assertEqual(self.step()["world"]["revision"], 0)
         self.conn.sendall(b"EN")
         self.assertEqual(self.step()["world"]["revision"], 0)
@@ -194,11 +207,11 @@ class NativeProtocol(unittest.TestCase):
     def test_object_snapshot_is_atomic_and_literal_text_is_validated(self):
         self.connect()
         text = 'Hello trainer!'.encode().hex()
-        self.conn.sendall(f'BEGIN 8\nOBJECT guide 0 1 10 12 7 {text}\n'.encode())
+        self.conn.sendall(f'BEGIN 8\nTRAVEL 0\nOBJECT guide 0 1 10 12 7 {text}\n'.encode())
         self.assertEqual(self.step()['world']['revision'], 0)
         self.conn.sendall(b'END\n')
         self.assertEqual(self.step()['world']['revision'], 8)
-        self.conn.sendall(b'BEGIN 9\nOBJECT guide 0 1 10 12 7 24626164\nEND\n')
+        self.conn.sendall(b'BEGIN 9\nTRAVEL 0\nOBJECT guide 0 1 10 12 7 24626164\nEND\n')
         self.assertFalse(self.step()['world']['connected'])
         self.assertEqual(self.step()['world']['revision'], 8)
 
@@ -218,7 +231,7 @@ class NativeProtocol(unittest.TestCase):
         group, num = state['map']
         x, y = state['pos']
         text = 'Welcome trainer!'.encode().hex()
-        self.conn.sendall(f'BEGIN 9\nOBJECT guide {group} {num} {x} {y+1} 7 {text}\nEND\n'.encode())
+        self.conn.sendall(f'BEGIN 9\nTRAVEL 0\nOBJECT guide {group} {num} {x} {y+1} 7 {text}\nEND\n'.encode())
         world = self.step()['world']
         self.assertEqual(world['objects'][0]['id'], 'guide')
         self.assertEqual(world['object_count'], 1)
@@ -237,12 +250,12 @@ class NativeProtocol(unittest.TestCase):
         self.assertFalse(world['dialogue_active'])
         self.step(2)
         self.assertTrue(self.step()['world']['ready'])
-        self.conn.sendall(b'BEGIN 10\nEND\n')
+        self.conn.sendall(b'BEGIN 10\nTRAVEL 0\nEND\n')
         self.assertEqual(self.step()['world']['objects'], [])
 
     def test_malformed_snapshot_disconnects(self):
         self.connect()
-        self.conn.sendall(b"BEGIN 8\nTILE 0 9 -1 2 1024 2\nEND\n")
+        self.conn.sendall(b"BEGIN 8\nTRAVEL 0\nTILE 0 9 -1 2 1024 2\nEND\n")
         state = self.step()["world"]
         self.assertFalse(state["connected"])
         self.assertEqual(state["revision"], 0)
@@ -259,12 +272,12 @@ class NativeProtocol(unittest.TestCase):
         self.assertTrue(state['world']['ready'])
         self.step(1,'DOWN');state=self.step(20)
         group,num=state['map'];x,y=state['pos']
-        self.conn.sendall(f'BEGIN 9\nPEER bob {group} {num} {x} {y+1} 1 7 1\nEND\n'.encode())
+        self.conn.sendall(f'BEGIN 9\nTRAVEL 0\nPEER bob {group} {num} {x} {y+1} 1 7 1\nEND\n'.encode())
         self.assertEqual(self.step()['world']['peers'][0]['trainer'],'bob')
         world=self.step(1,'A')['world']
         self.assertFalse(world['dialogue_active'])
         self.assertRegex(self.conn.recv(32768).decode(), r'MEET \d+ bob\n')
-        self.conn.sendall(f'BEGIN 10\nPEER bob {group} {num} {x} {y+1} 1 7 1\nMEET 10 alice bob {group} {num} {x} {y+1} explore\n'.encode())
+        self.conn.sendall(f'BEGIN 10\nTRAVEL 0\nPEER bob {group} {num} {x} {y+1} 1 7 1\nMEET 10 alice bob {group} {num} {x} {y+1} explore\n'.encode())
         self.assertFalse(self.step()['world']['dialogue_active'])
         self.conn.sendall(b'END\n')
         # Native messages use the trainer's normal text speed. Let the longer
@@ -278,20 +291,20 @@ class NativeProtocol(unittest.TestCase):
         self.assertFalse(self.step(1,'A')['world']['dialogue_active'])
         self.step(2)
         self.assertTrue(self.step()['world']['ready'])
-        self.conn.sendall(b'BEGIN 11\nEND\n')
+        self.conn.sendall(b'BEGIN 11\nTRAVEL 0\nEND\n')
         self.assertIsNone(self.step()['world']['meeting'])
 
     def test_peer_bound_is_enforced(self):
         self.connect()
         rows = "".join(f"PEER peer{i} 0 9 5 5 1 0 1\n" for i in range(9))
-        self.conn.sendall(("BEGIN 5\n" + rows + "END\n").encode())
+        self.conn.sendall(("BEGIN 5\nTRAVEL 0\n" + rows + "END\n").encode())
         self.assertFalse(self.step()["world"]["connected"])
 
     def test_tile_bound_is_enforced(self):
         self.connect()
         # Route 110 is large enough for 129 unique, in-bounds cells.
         rows = "".join(f"TILE 0 25 {i % 10} {i // 10} 1 1\n" for i in range(129))
-        self.conn.sendall(("BEGIN 5\n" + rows + "END\n").encode())
+        self.conn.sendall(("BEGIN 5\nTRAVEL 0\n" + rows + "END\n").encode())
         self.assertFalse(self.step()["world"]["connected"])
 
     def test_state_hashes_and_reconnect(self):
@@ -305,7 +318,7 @@ class NativeProtocol(unittest.TestCase):
         self.step(120)
         self.conn, _ = self.listener.accept()
         self.conn.settimeout(3)
-        self.assertEqual(self.conn.recv(1024).decode(), f"HELLO 1 alice {self.token} SOCIAL\n")
+        self.assertEqual(self.conn.recv(1024).decode(), f"HELLO 1 alice {self.token} SOCIALTRAVEL\n")
 
     @unittest.skipUnless(os.environ.get("EMERALD_WORLD_SAVE"), "needs fresh acceptance save")
     def test_engine_sprite_and_tile_restore(self):
@@ -323,7 +336,7 @@ class NativeProtocol(unittest.TestCase):
         x, y = state["pos"]
         # Adjacent cell on the fresh acceptance map, provided by parent.
         x += 1
-        self.conn.sendall(f"BEGIN 9\nPEER bob {group} {num} {x} {y} 2 0 1\nTILE {group} {num} {x} {y} 1 1\nEND\n".encode())
+        self.conn.sendall(f"BEGIN 9\nTRAVEL 0\nPEER bob {group} {num} {x} {y} 2 0 1\nTILE {group} {num} {x} {y} 1 1\nEND\n".encode())
         world = self.step()["world"]
         self.assertEqual(len(world["peers"]), 1)
         peer = world["peers"][0]
@@ -331,7 +344,7 @@ class NativeProtocol(unittest.TestCase):
         self.assertLess(peer["object_id"], 16)
         self.assertLess(peer["sprite_id"], 64)
         self.assertEqual(world["tiles"][0]["raw"] & 0xFFF, 0xC01)
-        self.conn.sendall(b"BEGIN 10\nEND\n")
+        self.conn.sendall(b"BEGIN 10\nTRAVEL 0\nEND\n")
         world = self.step()["world"]
         self.assertEqual(world["peers"], [])
         self.assertEqual(world["tiles"], [])

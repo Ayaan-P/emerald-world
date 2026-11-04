@@ -173,10 +173,12 @@ static bool8 TravelStoryReady(unsigned group, unsigned num)
 enum { TRAVEL_IDLE, TRAVEL_REQUEST, TRAVEL_FRIENDS, TRAVEL_CONFIRM, TRAVEL_MESSAGE };
 static struct {
     unsigned state, count, delay, group, num;
+    unsigned page;
+    bool8 nextPage;
     u8 window;
     bool8 locked, flightActive;
     unsigned flightGroup, flightNum, flightHeal;
-    char names[8][25], target[25];
+    char names[6][25], target[25];
     const char *status;
     s16 landingX, landingY;
 } sTravel = { .window = WINDOW_NONE, .status = "idle" };
@@ -201,7 +203,7 @@ unsigned WorldTravel_ArrivalFallback(void)
     sTravel.flightActive = FALSE;
     x = gSaveBlock1Ptr->pos.x;
     y = gSaveBlock1Ptr->pos.y;
-    for (i = 0; WorldBridge_GetPeer(i, &peer); i++)
+    for (i = 0; WorldBridge_GetTravelPeer(i, &peer); i++)
     {
         if (strcmp(peer.name, sTravel.target)) continue;
         valid = peer.ready && peer.group == sTravel.flightGroup && peer.num == sTravel.flightNum
@@ -283,6 +285,7 @@ void WorldTravel_Close(void)
     sTravel.locked = FALSE;
     sTravel.flightActive = FALSE;
     sTravel.state = TRAVEL_IDLE;
+    sTravel.page = 0;
 }
 
 static bool8 TravelWindow(void)
@@ -303,14 +306,23 @@ static void TravelFriends(void)
     if (!TravelWindow()) return;
     TravelPrint("Friends   Choose a trainer to Fly to", 0);
     sTravel.count = 0;
-    for (i = 0; i < ARRAY_COUNT(sTravel.names) && WorldBridge_GetPeer(i, &peer); i++)
+    /* Leave room for page controls without enlarging the field window.
+     * Confirmation re-resolves the chosen identity against live presence. */
+    if (sTravel.page && !WorldBridge_GetTravelPeer(sTravel.page * ARRAY_COUNT(sTravel.names), &peer))
+        sTravel.page = 0;
+    for (i = 0; i < ARRAY_COUNT(sTravel.names)
+        && WorldBridge_GetTravelPeer(sTravel.page * ARRAY_COUNT(sTravel.names) + i, &peer); i++)
     {
         strcpy(sTravel.names[sTravel.count++], peer.name);
         TravelPrint(peer.name, 24 + i * 12);
     }
-    TravelPrint("Cancel", 24 + sTravel.count * 12);
+    sTravel.nextPage = WorldBridge_GetTravelPeer((sTravel.page + 1) * ARRAY_COUNT(sTravel.names), &peer);
+    i = sTravel.count;
+    if (sTravel.nextPage) TravelPrint("Next page", 24 + i++ * 12);
+    if (sTravel.page) TravelPrint("Previous page", 24 + i++ * 12);
+    TravelPrint("Cancel", 24 + i * 12);
     if (!sTravel.count) TravelPrint("No friends are connected.", 48);
-    InitMenuNormal(sTravel.window, FONT_SMALL, 0, 24, 12, sTravel.count + 1, sTravel.count ? 0 : sTravel.count);
+    InitMenuNormal(sTravel.window, FONT_SMALL, 0, 24, 12, i + 1, 0);
     CopyWindowToVram(sTravel.window, COPYWIN_FULL);
     sTravel.state = TRAVEL_FRIENDS;
     sTravel.status = "Choose a friend.";
@@ -343,9 +355,9 @@ static const char *TravelDestination(struct WorldBridgePeer *peer, unsigned *mon
     if (i == gPlayerPartyCount || i == PARTY_SIZE) return "A Pokemon must know Fly.";
     *mon = i;
     if (!Overworld_MapTypeAllowsTeleportAndFly(gMapHeader.mapType)) return "You cannot Fly from here.";
-    for (i = 0; WorldBridge_GetPeer(i, peer); i++)
+    for (i = 0; WorldBridge_GetTravelPeer(i, peer); i++)
         if (!strcmp(peer->name, sTravel.target)) break;
-    if (strcmp(peer->name, sTravel.target) || !WorldBridge_GetPeer(i, peer)) return "Your friend is no longer connected.";
+    if (strcmp(peer->name, sTravel.target) || !WorldBridge_GetTravelPeer(i, peer)) return "Your friend is no longer connected.";
     if (!peer->ready) return "Your friend is busy. Try again later.";
     flag = VisitedFlag(peer->group, peer->num);
     if (!flag) return "Your friend must be outside\nin a town or city.";
@@ -419,6 +431,10 @@ void WorldTravel_Update(void)
     if (choice == MENU_NOTHING_CHOSEN) return;
     if (sTravel.state == TRAVEL_FRIENDS)
     {
+        if (choice >= 0 && sTravel.nextPage && (unsigned)choice == sTravel.count)
+        { sTravel.page++; TravelFriends(); return; }
+        if (choice >= 0 && sTravel.page && (unsigned)choice == sTravel.count + sTravel.nextPage)
+        { sTravel.page--; TravelFriends(); return; }
         if (choice < 0 || (unsigned)choice >= sTravel.count) { WorldTravel_Close(); return; }
         strcpy(sTravel.target, sTravel.names[choice]);
         if (!TravelWindow()) return;

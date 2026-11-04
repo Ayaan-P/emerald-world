@@ -9,6 +9,9 @@ on:
       - 'src/field_effect.c'
       - 'src/start_menu.c'
       - 'test/world/test_world_travel.py'
+      - 'test/world/test_travel_roster.py'
+      - 'test/world/test_presence_handshake.py'
+      - 'world/server.py'
       - '.github/workflows/friend-travel.yml'
   workflow_dispatch:
 
@@ -30,7 +33,7 @@ jobs:
           make -C tools/jsonproc
           make generated -j2
       - name: Run travel, co-op, interaction and private-save tests
-        run: PYTHONPATH=.:test/world python3 -m unittest test.world.test_world_travel test.world.test_world_activity test.world.test_interactions test.world.test_save_isolation -v
+        run: PYTHONPATH=.:test/world python3 -m unittest test.world.test_world_travel test.world.test_travel_roster test.world.test_presence_handshake test.world.test_world_activity test.world.test_interactions test.world.test_save_isolation -v
 
   native-refusal-acceptance:
     runs-on: ubuntu-24.04

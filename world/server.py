@@ -25,6 +25,8 @@ MAX_QUEUE = 65536
 MAX_LINE = 1024
 MAX_CONTROL_LINE = 16384
 MAX_PEERS = 8
+MAX_TRAVEL_PEERS = 63  # The authority admits at most 64 authenticated trainers.
+TRAVEL_FRESH_SECONDS = 3
 MAX_TILES = 128
 STATE_FLUSH_INTERVAL = .5
 
@@ -354,6 +356,26 @@ class WorldServer:
             candidates.append((distance, name, state))
         for _, name, state in sorted(candidates)[:MAX_PEERS]:
             lines.append('PEER ' + name + ' ' + ' '.join(map(str, state)))
+        if conn.get('travel'):
+            # Separate from render relevance. Include every field occupant so
+            # a ninth trainer cannot become an invisible occupied landing tile.
+            # Remaining lifetime comes from THAT trainer's last accepted state,
+            # never a broadcast caused by somebody else's movement or chat.
+            now = time.monotonic()
+            friends = []
+            for name, peer in sorted(self.peers.items()):
+                state = peer['state']
+                if (name == conn['id'] or peer.get('closing') or state is None
+                        or not (state[6] or peer.get('field'))):
+                    continue
+                ttl = max(0, min(180, int((TRAVEL_FRESH_SECONDS
+                    - (now - peer.get('state_time', now - TRAVEL_FRESH_SECONDS))) * 60)))
+                friends.append('FRIEND ' + name + ' ' + ' '.join(map(str, state)) + ' ' + str(ttl))
+            # Complete roster, never truncate occupancy. max_players <= 64.
+            if len(friends) > MAX_TRAVEL_PEERS:
+                raise ValueError('travel roster exceeds authority capacity')
+            lines.append('TRAVEL ' + str(len(friends)))
+            lines += friends
         lines += ['TILE ' + ' '.join(map(str, tile)) for tile in self.tiles]
         for obj in self.objects:
             lines.append('OBJECT ' + obj['id'] + ' ' + ' '.join(str(obj[k]) for k in ('group','num','x','y','gfx'))
@@ -377,8 +399,9 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 control = len(fields) == 5 and fields[4] == 'CONTROL'
-                chat_capable = len(fields) == 5 and fields[4] == 'SOCIALCHAT'
-                social = len(fields) == 5 and fields[4] in ('SOCIAL', 'SOCIALCHAT')
+                chat_capable = len(fields) == 5 and fields[4] in ('SOCIALCHAT', 'SOCIALTRAVELCHAT')
+                travel = len(fields) == 5 and fields[4] in ('SOCIALTRAVEL', 'SOCIALTRAVELCHAT')
+                social = len(fields) == 5 and fields[4] in ('SOCIAL', 'SOCIALCHAT', 'SOCIALTRAVEL', 'SOCIALTRAVELCHAT')
                 link = len(fields) == 5 and fields[4] == 'LINK'
                 if (len(fields) != 4 and not control and not social and not link) or fields[:2] != ['HELLO', '1']:
                     self._error(conn, 'AUTH')
@@ -426,6 +449,7 @@ class WorldServer:
                 conn['id'] = name
                 conn['social'] = social
                 conn['chat'] = chat_capable
+                conn['travel'] = travel
                 conn['chat_history'] = []
                 conn['chat_status'] = 'ready'
                 self.peers[name] = conn
@@ -492,6 +516,7 @@ class WorldServer:
                 self.pending_states[conn['id']] = data
             self._flush_states(force=False)
             conn['seq'], conn['state'], conn['field'] = seq, state, field
+            conn['state_time'] = time.monotonic()
             self._deliver_links(self.link_protocol.update_presence({
                 name: peer['state'] for name, peer in self.peers.items()
                 if peer['state'] is not None and not peer.get('closing')}))

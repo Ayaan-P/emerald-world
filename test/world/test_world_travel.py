@@ -22,6 +22,101 @@ class WorldTravelTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             subprocess.run([str(binary)], check=True)
 
+    def test_travel_roster_is_atomic_separate_bounded_and_per_peer_fresh(self):
+        self.run_c(r'''
+static int line(const char *text) {
+    char copy[256]; strcpy(copy, text); return Line(copy);
+}
+int main(void) {
+    struct WorldBridgePeer peer;
+    sWorld.connected = 1;
+    strcpy(sWorld.trainer, "viewer");
+    assert(line("BEGIN 1"));
+    assert(line("TRAVEL 1"));
+    assert(line("FRIEND friend 0 10 6 6 1 7 0 60"));
+    assert(!WorldBridge_GetTravelPeer(0, &peer));
+    assert(line("END"));
+    assert(sWorld.live.peerCount == 0);
+    assert(WorldBridge_GetTravelPeer(0, &peer) && !peer.ready && peer.num == 10);
+    assert(!WorldBridge_TravelTileClear(0, 10, 6, 6));
+    assert(WorldBridge_TravelTileClear(0, 10, 5, 6));
+    sWorld.snapshotAge = 60;
+    assert(!WorldBridge_GetTravelPeer(0, &peer));
+    assert(!WorldBridge_TravelTileClear(0, 10, 5, 6));
+    assert(line("BEGIN 2")); assert(line("TRAVEL 1"));
+    assert(line("FRIEND friend 0 10 6 6 1 7 1 0")); assert(line("END"));
+    assert(!WorldBridge_GetTravelPeer(0, &peer)); /* Other traffic cannot refresh friend. */
+    assert(!WorldBridge_TravelTileClear(0, 10, 5, 6));
+    assert(line("BEGIN 3")); assert(line("TRAVEL 0")); assert(line("END"));
+    assert(!WorldBridge_GetTravelPeer(0, &peer));
+    assert(line("BEGIN 4")); assert(line("TRAVEL 1"));
+    assert(line("FRIEND friend 0 10 6 6 1 7 1 180"));
+    assert(!line("FRIEND friend 0 10 6 6 1 7 1 180")); /* Duplicate. */
+    sWorld.staging = 0;
+    assert(line("BEGIN 4")); assert(line("TRAVEL 1"));
+    assert(!line("END")); /* Incomplete roster cannot publish. */
+    sWorld.staging = 0;
+    assert(line("BEGIN 4")); assert(!line("TRAVEL 64"));
+    sWorld.connected = 0;
+    assert(!WorldBridge_GetTravelPeer(0, &peer));
+    return 0;
+}
+''', unit='world_bridge')
+
+    def test_full_world_roster_never_uses_render_capacity_or_misses_ninth_occupant(self):
+        self.run_c(r'''
+static int line(const char *text) { char copy[256]; strcpy(copy, text); return Line(copy); }
+int main(void) {
+    char row[128];
+    struct WorldBridgePeer peer;
+    strcpy(sWorld.trainer, "viewer"); sWorld.connected = 1;
+    assert(line("BEGIN 1")); assert(line("TRAVEL 63"));
+    for (unsigned i=0;i<63;i++) {
+        snprintf(row,sizeof(row),"FRIEND friend%02u 0 10 %u 6 1 7 1 180",i,i==8?7:6);
+        assert(line(row));
+    }
+    for (unsigned i=0;i<8;i++) {
+        snprintf(row,sizeof(row),"PEER friend%02u 0 9 5 5 1 7 1",i);
+        assert(line(row));
+    }
+    assert(line("END"));
+    assert(sWorld.live.peerCount==8 && sWorld.live.travelCount==63);
+    assert(WorldBridge_GetTravelPeer(62,&peer) && !strcmp(peer.name,"friend62"));
+    assert(!WorldBridge_GetTravelPeer(63,&peer));
+    assert(!WorldBridge_TravelTileClear(0,10,7,6));
+    assert(WorldBridge_TravelTileClear(0,10,8,6));
+    /* An expired non-target occupant makes the whole destination uncertain. */
+    sWorld.live.friends[8].ttl=0;
+    assert(!WorldBridge_TravelTileClear(0,10,8,6));
+    assert(line("BEGIN 2")); assert(line("TRAVEL 63"));
+    for (unsigned i=0;i<63;i++) {
+        snprintf(row,sizeof(row),"FRIEND friend%02u 0 10 6 6 1 7 1 180",i);
+        assert(line(row));
+    }
+    assert(!line("FRIEND overflow 0 10 6 6 1 7 1 180"));
+    return 0;
+}
+''', unit='world_bridge')
+
+    def test_travel_handshake_falls_back_without_losing_chat_or_looping(self):
+        self.run_c(r'''
+static int line(const char *text) { char copy[128]; strcpy(copy, text); return Line(copy); }
+int main(void) {
+    strcpy(sWorld.trainer, "viewer"); strcpy(sWorld.token, "secret");
+    QueueHello(0);
+    assert(strstr(sWorld.output, " SOCIALTRAVELCHAT\n"));
+    assert(!line("ERROR AUTH") && sWorld.travelLegacy && !sWorld.chatLegacy);
+    QueueHello(0);
+    assert(strstr(sWorld.output, " SOCIALCHAT\n"));
+    assert(!line("ERROR AUTH") && sWorld.chatLegacy);
+    QueueHello(0);
+    assert(strstr(sWorld.output, " SOCIAL\n"));
+    assert(line("WELCOME 1 viewer 1"));
+    assert(!sWorld.chatAvailable);
+    return 0;
+}
+''', unit='world_bridge')
+
     def test_travel_is_blocked_during_battle_link_and_activity_handoffs(self):
         self.run_c(r'''
 struct SaveBlock1 *gSaveBlock1Ptr;
@@ -125,12 +220,13 @@ int main(void) {
     gMapHeader.events = &events;
     gMapHeader.mapLayout = &layout;
     for (unsigned i = 0; i < 40 * 40; i++) map[i] = PACK_ELEVATION(ELEVATION_DEFAULT);
-    sWorld.connected = 1; sWorld.live.peerCount = 1;
-    strcpy(sWorld.live.peers[0].id, "friend");
-    sWorld.live.peers[0].group = save.location.mapGroup;
-    sWorld.live.peers[0].num = save.location.mapNum;
-    sWorld.live.peers[0].x = 6; sWorld.live.peers[0].y = 5;
-    sWorld.live.peers[0].ready = 1;
+    sWorld.connected = 1; sWorld.live.travel = 1; sWorld.live.travelCount = 1;
+    sWorld.live.friends[0].ttl = 180;
+    strcpy(sWorld.live.friends[0].peer.id, "friend");
+    sWorld.live.friends[0].peer.group = save.location.mapGroup;
+    sWorld.live.friends[0].peer.num = save.location.mapNum;
+    sWorld.live.friends[0].peer.x = 6; sWorld.live.friends[0].peer.y = 5;
+    sWorld.live.friends[0].peer.ready = 1;
     strcpy(sTravel.target, "friend");
     sTravel.flightGroup = save.location.mapGroup;
     sTravel.flightNum = save.location.mapNum;
@@ -139,14 +235,14 @@ int main(void) {
     sTravel.flightActive = 1;
     assert(!WorldTravel_ArrivalFallback());
     sTravel.flightActive = 1;
-    sWorld.live.peers[0].ready = 0;
+    sWorld.live.friends[0].peer.ready = 0;
     assert(WorldTravel_ArrivalFallback() == sTravel.flightHeal);
     assert(!sTravel.flightActive);
-    sWorld.live.peers[0].ready = 1;
-    sWorld.live.peers[0].x = 5; /* now occupies the chosen landing */
+    sWorld.live.friends[0].peer.ready = 1;
+    sWorld.live.friends[0].peer.x = 5; /* now occupies the chosen landing */
     sTravel.flightActive = 1;
     assert(WorldTravel_ArrivalFallback() == sTravel.flightHeal);
-    sWorld.live.peers[0].x = 6;
+    sWorld.live.friends[0].peer.x = 6;
     map[12 + 12 * 40] |= MAPGRID_IMPASSABLE;
     sTravel.flightActive = 1;
     assert(WorldTravel_ArrivalFallback() == sTravel.flightHeal);
@@ -267,6 +363,7 @@ int main(void) {
     assert(WorldBridge_GetPeer(0, &peer));
     assert(!strcmp(peer.name, "friend") && peer.ready && peer.x == 5 && peer.y == 6);
     assert(!WorldBridge_GetPeer(1, &peer));
+    assert(!WorldBridge_GetTravelPeer(0, &peer)); /* Render slots cannot substitute for a travel roster. */
     assert(!WorldBridge_TravelTileClear(0, 9, 5, 6));
     assert(WorldBridge_TravelTileClear(0, 9, 4, 6));
     sWorld.live.tileCount = 1;

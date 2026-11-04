@@ -48,6 +48,7 @@
 /* Per-recipient relevance window, NOT the server's configurable population.
  * The server selects at most eight peers; the stock field pool may draw fewer. */
 #define WB_PEERS 8
+#define WB_TRAVEL_PEERS 63
 #define WB_OBJECTS 8
 #define WB_REMOTES (WB_PEERS + WB_OBJECTS)
 #define WB_TILES 128
@@ -60,6 +61,7 @@ struct Peer { char id[26], text[58]; unsigned group, num, x, y, facing, gfx, rea
 struct Tile { unsigned group, num, x, y, metatile, collision; };
 struct Meeting { unsigned seq, group, num, x, y; char player[25], target[25]; };
 struct ChatMessage { unsigned seq; char sender[25], target[25], text[121]; };
+struct TravelPeer { struct Peer peer; unsigned ttl; };
 struct Snapshot {
     unsigned revision, peerCount, tileCount, objectCount;
     struct Peer peers[WB_REMOTES];
@@ -68,11 +70,15 @@ struct Snapshot {
     unsigned chatCount;
     char chatStatus[12];
     struct ChatMessage chat[16];
+    bool8 travel;
+    unsigned travelCount, travelExpected;
+    struct TravelPeer friends[WB_TRAVEL_PEERS];
 };
 struct Remote { char id[26]; u8 object, sprite, group, num; };
 struct Applied { struct Tile tile; u16 original, raw; };
 static struct {
     bool8 enabled, connected, connecting, staging, chatProbe, chatLegacy, chatAvailable;
+    bool8 travelProbe, travelLegacy, travelAvailable;
 #ifdef _WIN32
     SOCKET fd;
     bool8 winsockStarted;
@@ -333,10 +339,13 @@ static void Disconnect(void)
 #endif
     sWorld.connected = sWorld.connecting = sWorld.staging = FALSE;
     sWorld.chatProbe = sWorld.chatAvailable = FALSE;
+    sWorld.travelProbe = sWorld.travelAvailable = FALSE;
     sWorld.inputSize = sWorld.outputSize = sWorld.outputSent = 0;
     sWorld.retry = 30;
     sWorld.live.peerCount = sWorld.live.tileCount = sWorld.live.objectCount = 0;
     sWorld.live.chatCount = 0;
+    sWorld.live.travel = FALSE;
+    sWorld.live.travelCount = 0;
     sWorld.live.chatStatus[0] = 0;
     sWorld.pendingObject[0] = 0;
     memset(&sWorld.live.meeting, 0, sizeof(sWorld.live.meeting));
@@ -365,6 +374,12 @@ bool8 WorldBridge_TravelTileClear(unsigned group, unsigned num, unsigned x, unsi
 {
     unsigned i;
     if (!sWorld.connected || sWorld.snapshotAge > 180 || !MapCoords(group, num, x, y)) return FALSE;
+    for (i = 0; i < sWorld.live.travelCount; i++) {
+        const struct TravelPeer *f = &sWorld.live.friends[i];
+        const struct Peer *p = &f->peer;
+        if (p->group == group && p->num == num
+         && (sWorld.snapshotAge >= f->ttl || (p->x == x && p->y == y))) return FALSE;
+    }
     for (i = 0; i < sWorld.live.peerCount; i++) {
         const struct Peer *p = &sWorld.live.peers[i];
         if (p->group == group && p->num == num && p->x == x && p->y == y) return FALSE;
@@ -376,6 +391,26 @@ bool8 WorldBridge_TravelTileClear(unsigned group, unsigned num, unsigned x, unsi
         if (t->group == group && t->num == num && t->x == x && t->y == y) return FALSE;
     }
     return TRUE;
+}
+
+bool8 WorldBridge_GetTravelPeer(unsigned index, struct WorldBridgePeer *peer)
+{
+    unsigned i;
+    if (!peer || !sWorld.connected || sWorld.snapshotAge > 180) return FALSE;
+    /* Render relevance is incomplete occupancy information. Old authorities
+     * keep chat/presence, but cannot authorize a safe friend landing. */
+    if (!sWorld.live.travel) return FALSE;
+    for (i = 0; i < sWorld.live.travelCount; i++) {
+        const struct TravelPeer *f = &sWorld.live.friends[i];
+        const struct Peer *p = &f->peer;
+        if (sWorld.snapshotAge >= f->ttl) continue;
+        if (index--) continue;
+        strcpy(peer->name, p->id);
+        peer->group = p->group; peer->num = p->num;
+        peer->x = p->x; peer->y = p->y; peer->ready = p->ready;
+        return TRUE;
+    }
+    return FALSE;
 }
 
 const char *WorldBridge_TrainerName(void)
@@ -514,6 +549,10 @@ static bool8 Line(char *line)
     }
     if (!n) return FALSE;
     if (!sWorld.connected) {
+        if (sWorld.travelProbe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
+            sWorld.travelLegacy = TRUE;
+            return FALSE;
+        }
         /* An older server rejects the optional role before presence is live.
          * Retry once using the legacy role, without weakening authentication. */
         if (sWorld.chatProbe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
@@ -524,6 +563,7 @@ static bool8 Line(char *line)
          || strcmp(tokens[2], sWorld.trainer) || !Decimal(tokens[3], &v[0])) return FALSE;
         sWorld.connected = TRUE;
         sWorld.chatAvailable = sWorld.chatProbe;
+        sWorld.travelAvailable = sWorld.travelProbe;
         sWorld.live.revision = v[0];
         return TRUE;
     }
@@ -538,6 +578,8 @@ static bool8 Line(char *line)
     if (!sWorld.staging) return FALSE;
     if (!strcmp(tokens[0], "END")) {
         if (n != 1) return FALSE;
+        if ((sWorld.travelAvailable && !sWorld.stage.travel)
+         || sWorld.stage.travelCount != sWorld.stage.travelExpected) return FALSE;
         if (sWorld.live.meeting.seq != sWorld.stage.meeting.seq) sWorld.meetingAge = 0;
         sWorld.live = sWorld.stage;
         sWorld.snapshotAge = 0;
@@ -594,6 +636,30 @@ static bool8 Line(char *line)
         strcpy(message->sender, tokens[2]);
         strcpy(message->target, tokens[3]);
         sWorld.stage.chatCount++;
+        return TRUE;
+    }
+    if (!strcmp(tokens[0], "TRAVEL")) {
+        if (n != 2 || sWorld.stage.travel || !Decimal(tokens[1], &v[0]) || v[0] > WB_TRAVEL_PEERS) return FALSE;
+        sWorld.stage.travel = TRUE;
+        sWorld.stage.travelExpected = v[0];
+        return TRUE;
+    }
+    if (!strcmp(tokens[0], "FRIEND")) {
+        struct TravelPeer *f;
+        struct Peer *peer;
+        if (n != 10 || !sWorld.stage.travel || !Identifier(tokens[1])
+         || !strcmp(tokens[1], sWorld.trainer)
+         || sWorld.stage.travelCount >= sWorld.stage.travelExpected) return FALSE;
+        for (i = 0; i < 8; i++) if (!Decimal(tokens[i + 2], &v[i])) return FALSE;
+        if (!MapCoords(v[0], v[1], v[2], v[3]) || v[4] < 1 || v[4] > 4
+         || v[5] > 255 || v[6] > 1 || v[7] > 180) return FALSE;
+        for (i = 0; i < sWorld.stage.travelCount; i++)
+            if (!strcmp(sWorld.stage.friends[i].peer.id, tokens[1])) return FALSE;
+        f = &sWorld.stage.friends[sWorld.stage.travelCount++];
+        peer = &f->peer;
+        strcpy(peer->id, tokens[1]);
+        peer->group=v[0]; peer->num=v[1]; peer->x=v[2]; peer->y=v[3];
+        peer->facing=v[4]; peer->gfx=v[5]; peer->ready=v[6]; f->ttl=v[7];
         return TRUE;
     }
     if (!strcmp(tokens[0], "PEER")) {
@@ -661,13 +727,17 @@ static void QueueHello(bool8 headless)
 #ifdef _WIN32
     (void)headless;
     sWorld.chatProbe = FALSE;
+    sWorld.travelProbe = !sWorld.travelLegacy;
     sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
-        "EWLOCAL1 %s\nHELLO 1 %s %s SOCIAL\n", sWorld.loopbackToken, sWorld.trainer, sWorld.token);
+        "EWLOCAL1 %s\nHELLO 1 %s %s %s\n", sWorld.loopbackToken, sWorld.trainer, sWorld.token,
+        sWorld.travelProbe ? "SOCIALTRAVEL" : "SOCIAL");
 #else
     sWorld.chatProbe = !headless && !sWorld.chatLegacy;
+    sWorld.travelProbe = !sWorld.travelLegacy;
     sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
         "HELLO 1 %s %s %s\n", sWorld.trainer, sWorld.token,
-        sWorld.chatProbe ? "SOCIALCHAT" : "SOCIAL");
+        sWorld.travelProbe ? (sWorld.chatProbe ? "SOCIALTRAVELCHAT" : "SOCIALTRAVEL")
+            : (sWorld.chatProbe ? "SOCIALCHAT" : "SOCIAL"));
 #endif
 }
 
@@ -1305,6 +1375,13 @@ void WorldBridge_WriteJSON(FILE *file, u32 frame)
         const struct Applied *a = &sWorld.restored[i];
         fprintf(file, "%s{\"map\":[%u,%u],\"pos\":[%u,%u],\"original\":%u,\"raw\":%u}",
             i ? "," : "", a->tile.group, a->tile.num, a->tile.x, a->tile.y, a->original, a->raw);
+    }
+    fprintf(file, "],\"travel_available\":%s,\"friends\":[", sWorld.travelAvailable ? "true" : "false");
+    {
+        struct WorldBridgePeer friend;
+        for (i = 0; WorldBridge_GetTravelPeer(i, &friend); i++)
+            fprintf(file, "%s{\"trainer\":\"%s\",\"map\":[%u,%u],\"pos\":[%u,%u],\"ready\":%s}",
+                i ? "," : "", friend.name, friend.group, friend.num, friend.x, friend.y, friend.ready ? "true" : "false");
     }
     fputs("],\"travel\":", file);
     WorldTravel_WriteJSON(file);

@@ -43,14 +43,16 @@ typedef uint16_t u16;
 #define TRUE 1
 #define ARRAY_COUNT(a) (sizeof(a)/sizeof((a)[0]))
 static bool8 MapCoords(unsigned g,unsigned n,unsigned x,unsigned y) {
-    return g < 2 && n < 2 && x < 64 && y < 64;
+    return g < 2 && n < 16 && x < 64 && y < 64;
 }
 static bool8 WorldCatalog_Metatile(unsigned g,unsigned n,unsigned t) {
     return g < 2 && n < 2 && t < 1024;
 }
 ''' + declarations
+        source += 'struct WorldBridgePeer { char name[25]; unsigned group,num,x,y; bool8 ready; };\n'
         for name in ('Identifier', 'Decimal', 'ObjectText', 'Disconnect', 'Line',
-                     'SocketOpen', 'QueueHello', 'Flush', 'Connect', 'Receive', 'WorldBridge_Poll'):
+                     'SocketOpen', 'QueueHello', 'Flush', 'Connect', 'Receive', 'WorldBridge_Poll',
+                     'WorldBridge_GetPeer', 'WorldBridge_GetTravelPeer'):
             source += function(bridge, name)
         source += r'''
 void start(const char *path) {
@@ -63,6 +65,24 @@ void finish(void) { Disconnect();sWorld.enabled=FALSE; }
 unsigned ready(void) { return sWorld.connected; }
 unsigned peer_count(void) { return sWorld.live.peerCount; }
 unsigned input_size(void) { return sWorld.inputSize; }
+unsigned friend_count(void) {
+    unsigned i=0; struct WorldBridgePeer peer;
+    while (WorldBridge_GetTravelPeer(i, &peer)) i++;
+    return i;
+}
+unsigned friend_map(void) {
+    struct WorldBridgePeer peer;
+    return WorldBridge_GetTravelPeer(0, &peer) ? peer.num : 999;
+}
+unsigned friend_ready(void) {
+    struct WorldBridgePeer peer;
+    return WorldBridge_GetTravelPeer(0, &peer) && peer.ready;
+}
+void send_state(void) {
+    sWorld.outputSize=snprintf(sWorld.output,sizeof(sWorld.output),
+        "STATE %u 0 9 5 5 1 7 1 0000000000000000 0000000000000000\n",++sWorld.seq);
+    Flush();
+}
 '''
         (p/'presence.c').write_text(source)
         subprocess.run(['cc', '-shared', '-fPIC', '-std=c99', '-Wall', '-Wextra',
@@ -102,7 +122,7 @@ unsigned input_size(void) { return sWorld.inputSize; }
         self.peer, _ = self.listener.accept()
         self.peer.settimeout(.1)
         self.pump()
-        self.assertEqual(self.peer.recv(4096), b'HELLO 1 alice ' + b'a'*64 + b' SOCIAL\n')
+        self.assertEqual(self.peer.recv(4096), b'HELLO 1 alice ' + b'a'*64 + b' SOCIALTRAVELCHAT\n')
 
     def incoming(self, data):
         self.peer.sendall(data)
@@ -116,7 +136,7 @@ unsigned input_size(void) { return sWorld.inputSize; }
         self.peer = None
         self.pump(31)
         self.accept()
-        self.incoming(b'WELCOME 1 alice 7\nBEGIN 7\nPEER bob 0 1 10 12 1 7 1\nEND\n')
+        self.incoming(b'WELCOME 1 alice 7\nBEGIN 7\nTRAVEL 0\nPEER bob 0 1 10 12 1 7 1\nEND\n')
         self.assertEqual(self.lib.ready(), 1)
         self.assertEqual(self.lib.peer_count(), 1)
 
@@ -146,7 +166,7 @@ unsigned input_size(void) { return sWorld.inputSize; }
         self.assertEqual(self.lib.input_size(), 0)
 
     def test_ready_presence_stays_alive_and_reconnect_clears_stale_peers(self):
-        self.incoming(b'WELCOME 1 alice 7\nBEGIN 7\nPEER bob 0 1 10 12 1 7 1\nEND\n')
+        self.incoming(b'WELCOME 1 alice 7\nBEGIN 7\nTRAVEL 0\nPEER bob 0 1 10 12 1 7 1\nEND\n')
         self.assertEqual(self.lib.peer_count(), 1)
         self.pump(1000)
         self.assertEqual(self.lib.ready(), 1)
@@ -156,7 +176,7 @@ unsigned input_size(void) { return sWorld.inputSize; }
         self.assertEqual(self.lib.peer_count(), 0)
         self.pump(31)
         self.accept()
-        self.incoming(b'WELCOME 1 alice 8\nBEGIN 8\nEND\n')
+        self.incoming(b'WELCOME 1 alice 8\nBEGIN 8\nTRAVEL 0\nEND\n')
         self.assertEqual(self.lib.ready(), 1)
         self.assertEqual(self.lib.peer_count(), 0)
 
@@ -198,6 +218,52 @@ unsigned input_size(void) { return sWorld.inputSize; }
             admitted()
             with server.lock:
                 self.assertEqual(server.db.execute('SELECT count(*) FROM identities').fetchone()[0], 1)
+        finally:
+            self.lib.finish()
+            server.close()
+
+    def test_real_authority_cross_map_roster_reaches_native_parser_without_render_slots(self):
+        from world.server import WorldServer
+        self.lib.finish()
+        path = Path(self.tmp.name) / 'travel.sock'
+        server = WorldServer(str(path), Path(self.tmp.name) / 'travel-world')
+        server.create_identity('alice', token='a' * 64)
+        server.create_identity('bob', token='b' * 64)
+        server.start()
+
+        def until(predicate):
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                self.pump()
+                if predicate():
+                    return
+                time.sleep(.005)
+            self.fail('cross-map authority/native parser condition timed out')
+
+        try:
+            self.lib.start(str(path).encode())
+            until(lambda: self.lib.ready())
+            self.lib.send_state()
+            with socket.socket(socket.AF_UNIX) as bob:
+                bob.settimeout(2)
+                bob.connect(str(path))
+                bob.sendall(b'HELLO 1 bob ' + b'b' * 64 + b' SOCIAL\n')
+                self.assertTrue(bob.recv(4096).startswith(b'WELCOME 1 bob '))
+                # An authenticated synthetic transport fixture, not earned Fly gameplay.
+                bob.sendall(b'FIELD 1 0 10 6 6 1 7 0 0000000000000000 0000000000000000\n')
+                until(lambda: self.lib.friend_count() == 1)
+                self.assertEqual(self.lib.peer_count(), 0)
+                self.assertEqual(self.lib.friend_map(), 10)
+                self.assertEqual(self.lib.friend_ready(), 0)
+                bob.sendall(b'STATE 2 0 10 6 6 1 7 1 0000000000000000 0000000000000000\n')
+                until(lambda: self.lib.friend_ready())
+                time.sleep(3.1)
+                self.lib.send_state()  # Viewer activity must not refresh Bob.
+                until(lambda: self.lib.friend_count() == 0)
+                bob.sendall(b'STATE 3 0 10 6 6 1 7 1 0000000000000000 0000000000000000\n')
+                until(lambda: self.lib.friend_count() == 1)
+            until(lambda: self.lib.friend_count() == 0)
+            self.assertEqual(self.lib.peer_count(), 0)
         finally:
             self.lib.finish()
             server.close()
