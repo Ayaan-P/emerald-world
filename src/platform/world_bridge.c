@@ -805,7 +805,18 @@ static void SyncEngine(void)
         }
         for (i = 0; i < WB_REMOTES; i++) if (!strcmp(sWorld.remotes[i].id, p->id)) { r = &sWorld.remotes[i]; break; }
         if (!r) {
-            for (i = 0; i < WB_REMOTES; i++) if (!sWorld.remotes[i].id[0]) { r = &sWorld.remotes[i]; break; }
+            for (i = 0; i < WB_REMOTES; i++) {
+                unsigned id;
+                bool8 collision = FALSE;
+                if (sWorld.remotes[i].id[0]) continue;
+                /* A native object or template may own one reserved local ID.
+                 * Skip that ID, not this peer: later slots can still host it. */
+                for (id = 0; id < OBJECT_EVENTS_COUNT; id++)
+                    if (gObjectEvents[id].active && gObjectEvents[id].localId == WB_LOCALID + i) collision = TRUE;
+                if (gMapHeader.events) for (id = 0; id < gMapHeader.events->objectEventCount; id++)
+                    if (gSaveBlock1Ptr->objectEventTemplates[id].localId == WB_LOCALID + i) collision = TRUE;
+                if (!collision) { r = &sWorld.remotes[i]; break; }
+            }
             if (!r) continue;
         }
         /* Standard NPC palettes cannot overwrite the local avatar's palette.
