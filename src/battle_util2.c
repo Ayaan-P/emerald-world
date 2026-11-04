@@ -11,6 +11,9 @@
 #include "random.h"
 #include "battle_scripts.h"
 #include "constants/battle_string_ids.h"
+#ifdef PORTABLE
+#include "platform/world_coop.h"
+#endif
 
 void AllocateBattleResources(void)
 {
@@ -104,6 +107,22 @@ void AdjustFriendshipOnBattleFaint(u8 battler)
     {
         AdjustFriendship(&gPlayerParty[gBattlerPartyIndexes[battler]], FRIENDSHIP_EVENT_FAINT_SMALL);
     }
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle())
+    {
+        u8 activeBattler = gActiveBattler;
+        u8 friendship = GetMonData(&gPlayerParty[gBattlerPartyIndexes[battler]], MON_DATA_FRIENDSHIP);
+
+        /* Only the master runs faint processing. Publish the absolute result
+         * through the normal controllers so the owner's private merge retains
+         * the penalty too, rather than losing the slave's friendship change. */
+        gBattleMons[battler].friendship = friendship;
+        gActiveBattler = battler;
+        BtlController_EmitSetMonData(B_COMM_TO_CONTROLLER, REQUEST_FRIENDSHIP_BATTLE, 0, sizeof(friendship), &friendship);
+        MarkBattlerForControllerExec(battler);
+        gActiveBattler = activeBattler;
+    }
+#endif
 }
 
 void SwitchPartyOrderInGameMulti(u8 battler, u8 arg1)
