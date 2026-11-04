@@ -302,6 +302,54 @@ class WebLauncherTests(unittest.TestCase):
             self.bridge.action('screen_keys', {'keys': ['KeyZ']})
         self.assertEqual(self.bridge.action('screen_stop', {}), {'active': False})
 
+    def test_server_close_drains_actions_longer_than_socket_timeout(self):
+        import http.client
+        import threading
+        from http.server import ThreadingHTTPServer
+
+        entered, release, closed = threading.Event(), threading.Event(), threading.Event()
+        def action(action, payload):
+            entered.set()
+            if not release.wait(10):
+                raise AssertionError('test did not release action')
+            return {'finished': True}
+        self.bridge.action = action
+        server = ThreadingHTTPServer(('127.0.0.1', 0), handler_for(self.bridge, 'secret', 0))
+        server.daemon_threads = False
+        server.RequestHandlerClass = handler_for(self.bridge, 'secret', server.server_port)
+        worker = threading.Thread(target=server.handle_request)
+        connection = http.client.HTTPConnection('127.0.0.1', server.server_port, timeout=10)
+        closer = None
+        try:
+            worker.start()
+            connection.request('POST', '/api/action', json.dumps({'action': 'connect', 'payload': {}}),
+                               {'Authorization': 'Bearer secret',
+                                'Origin': f'http://127.0.0.1:{server.server_port}',
+                                'Content-Type': 'application/json'})
+            self.assertTrue(entered.wait(3))
+            worker.join(3)
+            def close():
+                server.server_close()
+                closed.set()
+            closer = threading.Thread(target=close)
+            closer.start()
+            timeout = server.RequestHandlerClass.timeout
+            self.assertIsNotNone(timeout)
+            assert timeout is not None
+            self.assertFalse(closed.wait(timeout + 0.1))
+            release.set()
+            response = connection.getresponse()
+            self.assertEqual(response.status, 200)
+            self.assertEqual(json.loads(response.read()), {'finished': True})
+            self.assertTrue(closed.wait(3))
+        finally:
+            release.set()
+            connection.close()
+            worker.join(3)
+            if closer is not None:
+                closer.join(3)
+            server.server_close()
+
     def test_auth_requires_exact_host_capability_and_post_origin(self):
         handler_type = handler_for(self.bridge, 'secret', 8912)
         handler = handler_type.__new__(handler_type)

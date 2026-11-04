@@ -410,6 +410,10 @@ def handler_for(bridge, capability, port, dist=DIST):
     host = f'127.0.0.1:{port}'
 
     class Handler(BaseHTTPRequestHandler):
+        # Bound abandoned preconnect/header/body reads, not session action time.
+        # Non-daemon workers still finish launch/connect before session cleanup.
+        timeout = 2
+
         def log_message(self, *_args):
             pass  # Invitations and capabilities never belong in logs.
 
