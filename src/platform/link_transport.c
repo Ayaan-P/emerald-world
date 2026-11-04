@@ -487,6 +487,9 @@ static int Line(char *line)
     }
     if (!strcmp(t[0], "T")) {
         if (!Decimal(t[2], UINT64_MAX, &sid) || !sid) return 0;
+        /* A pending-consent keepalive never creates or accepts an invitation.
+         * It may already be in flight when the player declines locally. */
+        if (!strcmp(t[1], "WAIT")) return n == 3;
         if (!strcmp(t[1], "OFFER")) {
             if (n != 4 || !Identifier(t[3]) || !strcmp(t[3], sLink.trainer)
              || sLink.tagPeer[0] || sLink.tag) return 0;
