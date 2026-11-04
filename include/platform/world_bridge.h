@@ -11,6 +11,10 @@
  * Public telemetry roster includes relevant peers even without a sprite. */
 bool8 WorldBridge_Init(const char *configPath);
 bool8 WorldBridge_Enabled(void);
+/* Committed presence only; stale/disconnected snapshots are unavailable. */
+struct WorldBridgePeer { char name[25]; unsigned group, num, x, y; bool8 ready; };
+bool8 WorldBridge_GetPeer(unsigned index, struct WorldBridgePeer *peer);
+bool8 WorldBridge_TravelTileClear(unsigned group, unsigned num, unsigned x, unsigned y);
 /* Validated local identity for window labels; never returns credentials. */
 const char *WorldBridge_TrainerName(void);
 /* Pump sockets while a native link tick waits, without mutating engine state. */
