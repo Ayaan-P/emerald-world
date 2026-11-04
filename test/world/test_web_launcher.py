@@ -94,6 +94,12 @@ class WebLauncherTests(unittest.TestCase):
         self.assertFalse(result[0]['ready'])
         self.assertEqual(result[0]['help'], 'Install bubblewrap.')
 
+    def test_switching_worlds_requires_disconnect(self):
+        self.session.state = Path('/tmp/connected')
+        with self.assertRaisesRegex(SessionError, 'Disconnect'):
+            self.bridge.action('rejoin', {'world': 'world2'})
+        self.session.rejoin_friend.assert_not_called()
+
     def test_running_offline_game_blocks_rejoin(self):
         process = Mock()
         process.poll.return_value = None

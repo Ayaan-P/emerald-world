@@ -55,8 +55,11 @@ class LauncherBridge:
 
     def action(self, action, payload):
         with self.lock:
-            if action in ('join', 'rejoin') and any(p.poll() is None for p, _ in self.session.games.values()):
-                raise SessionError('Close your running game before switching worlds.')
+            if action in ('join', 'rejoin'):
+                if any(p.poll() is None for p, _ in self.session.games.values()):
+                    raise SessionError('Close your running game before switching worlds.')
+                if self.session.state is not None:
+                    raise SessionError('Disconnect from your current world first.')
             if action == 'join':
                 raw = payload.get('invitation')
                 if not isinstance(raw, str) or len(raw.encode('utf-8')) > 4096:
