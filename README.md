@@ -35,7 +35,7 @@ separated historical verification records.
 | Combat roster | Each human brings the first **three usable Pokémon**. Both retain their private parties of up to six outside the temporary combat layout. This is not six combat Pokémon per human. |
 | Private wild catching | Earlier host/follower and full-party PC cases passed locally. The latest four-client WAN run passed two simultaneous pair battles and private owner-only catches, including one pair completing while the other remained active. All four saved, reloaded and re-saved. |
 | Battle bag | Poké Balls in supported shared wild battles only. Trainer battle BAG use is rejected. Other co-op battle items and a complete shared battle bag are not supported. |
-| Story progress | Individual. Each player currently needs to initiate and win their own trainer encounter for it to count in their game. This accepted limitation is tracked in [#89](https://github.com/Ayaan-P/emerald-world/issues/89). |
+| Story progress | Private story progression, not blanket flag mirroring. Ordinary shared trainer defeat credit exists, but some rival/story continuations still require each player's own encounter/script. See [Player release scope](docs/PLAYER_RELEASE_SCOPE.md). |
 | PvP and trading | Existing menu paths remain available. Checked private save/trade commits and fresh trade consent are merged through #131. Fresh native PvP/trade acceptance is not established by the WAN wild-catching run. |
 | Remote play | Dedicated authority deployed and verified live with existing world, identities and TLS material preserved. Full four-client Linux WAN catching and persistence passed. This is not Windows guest or 32/64-player throughput acceptance. |
 
