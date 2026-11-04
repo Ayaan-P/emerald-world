@@ -165,6 +165,14 @@ class LauncherBridge:
                 try:
                     if action == 'host_enroll':
                         self.hosted.enroll(payload.get('access'))
+                    elif action == 'host_restore':
+                        self.hosted.restore_profile(payload.get('profile'))
+                    elif action == 'host_export':
+                        backup = self.hosted.export_profile()
+                        result = self.snapshot()
+                        result['download'] = backup
+                        result['download_kind'] = 'backup'
+                        return result
                     elif action == 'host_refresh':
                         self.hosted.refresh()
                     elif action == 'host_create':

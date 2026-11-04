@@ -79,6 +79,33 @@ describe('player launcher', () => {
     await waitFor(() => expect(perform).toHaveBeenCalledWith('host_create', { name: 'Our Hoenn', trainer: 'May' }));
   });
 
+  it('restores an owner profile from a chosen backup', async () => {
+    const hosting = { available: true, backup_available: true, enrolled: false, loaded: false, worlds: [], pending: null };
+    loadState.mockResolvedValue({ ...snapshot(), hosting });
+    const { container } = render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /create a world/i }));
+    const modal = screen.getByRole('dialog');
+    fireEvent.click(within(modal).getByRole('button', { name: /^use backup$/i }));
+    const raw = JSON.stringify({ kind: 'host-profile', pin: 'a'.repeat(64) });
+    const file = { name: 'owner.json', size: raw.length, text: async () => raw };
+    fireEvent.change(container.querySelector('input[type=file]'), { target: { files: [file] } });
+    await within(modal).findByText('owner.json');
+    fireEvent.click(within(modal).getByRole('button', { name: /^restore account$/i }));
+    await waitFor(() => expect(perform).toHaveBeenCalledWith('host_restore', { profile: raw }));
+  });
+
+  it('warns before exporting the owner credential', async () => {
+    const hosting = { available: true, backup_available: true, enrolled: true, loaded: true, worlds: [], pending: null };
+    loadState.mockResolvedValue({ ...snapshot(), hosting });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /back up account/i }));
+    const modal = screen.getByRole('dialog');
+    expect(modal.textContent).toMatch(/anyone with it can manage/i);
+    expect(perform).not.toHaveBeenCalled();
+    fireEvent.click(within(modal).getByRole('button', { name: /create backup/i }));
+    await waitFor(() => expect(perform).toHaveBeenCalledWith('host_export', {}));
+  });
+
   it('asks before creating access for another world owner', async () => {
     const hosted = { available: true, enrolled: true, loaded: true, worlds: [], pending: null };
     loadState.mockResolvedValue({ ...snapshot(), hosting: hosted });

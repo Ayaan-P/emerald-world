@@ -33,3 +33,5 @@ cd launcher-web && npm test && npm run test:ui && npm run build
 These checks do not run a real multiplayer session or exercise the native game. A graphical Linux desktop and native prerequisites are required for an end-to-end run. Windows and macOS are not supported by this experimental launcher.
 
 Hosted worlds use a private HOST ACCESS file to enroll an owner account. A host owner can create and resume worlds and download one-trainer join invitations. World-join invitations are private credentials: share them through a trusted channel. A pending creation is retried with the same request ID to avoid duplicate worlds after an uncertain result. The existing single-world service is not modified by this launcher.
+
+If the separate hosted-profile backup module from PR #137 is installed, **Back up account** downloads a private owner credential and **Restore account** imports it on another device. Treat this file like a password: it grants control of hosted worlds. Downloads may be readable according to your browser and folder permissions; move the file to encrypted private storage. Restoring does not back up player saves or verify the server is reachable.
