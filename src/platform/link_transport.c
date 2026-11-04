@@ -532,7 +532,9 @@ static int Line(char *line)
         sLink.offered = 0; sLink.accepting = 0; memset(&sLink.pending, 0, sizeof(sLink.pending)); return 1;
     }
     if (!strcmp(t[1], "ABORT") && n == 3) {
-        if (!sLink.session && sLink.offered == 4) sLink.offered = 0;
+        /* An outgoing offer has no session ID yet. An unrelated terminal
+         * record must not cancel it before its own ADMIT or ERROR arrives. */
+        if (sid == sLink.pending.id && sLink.offered == 4) sLink.offered = 0;
         if (sid == sLink.session) {
             NativeLink_EndSession(sid);
             sLink.session = 0; sLink.mode = sLink.slot = 0;
