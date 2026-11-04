@@ -55,23 +55,24 @@ export function App() {
     return () => { active = false; clearInterval(timer); };
   }, [busy]);
 
+  const dialogOpen = Boolean(dialog);
   useEffect(() => {
-    if (!dialog) return;
+    if (!dialogOpen) return;
     const previous = document.activeElement;
     const modal = document.querySelector('[role="dialog"]');
     modal?.focus();
     const onKey = event => {
-      if (event.key === 'Escape' && !busy) { setDialog(null); setError(''); }
+      if (event.key === 'Escape' && !busyRef.current) { setDialog(null); setError(''); }
       if (event.key !== 'Tab' || !modal) return;
-      const controls = [...modal.querySelectorAll('button:not(:disabled), input:not(:disabled), [href], [tabindex]:not([tabindex="-1"])')].filter(el => el.offsetParent !== null && el.tabIndex >= 0);
+      const controls = [...modal.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])')].filter(el => el.offsetParent !== null && el.tabIndex >= 0);
       if (!controls.length) { event.preventDefault(); return; }
       const first = controls[0], last = controls[controls.length - 1];
-      if (event.shiftKey && (document.activeElement === first || document.activeElement === modal)) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement) || document.activeElement === modal)) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
     };
     document.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('keydown', onKey); previous?.focus?.(); };
-  }, [dialog, busy]);
+    return () => { document.removeEventListener('keydown', onKey); if (previous?.isConnected) previous.focus?.(); };
+  }, [dialogOpen]);
 
   useEffect(() => {
     if (!dialog) { setInvitation(null); setFileName(''); setPasteText(''); setInviteMode('file'); setInviteKind('native'); setInviteFingerprint(''); hostFileRequest.current++; setHostFingerprint(''); setHostAccess(null); setHostFileName(''); setHostMode('access'); seedRequest.current++; setSoloSeed(null); setSoloSeedName(''); setSeedLoading(false); }
