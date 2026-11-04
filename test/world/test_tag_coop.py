@@ -17,6 +17,18 @@ class TagCoopTests(unittest.TestCase):
         self.assertEqual(self.send('bob', 'T ACCEPT 100'),
                          [('alice', 'T ACTIVE 100 bob 1\n'), ('bob', 'T ACTIVE 100 alice 1\n')])
 
+    def test_active_tag_refreshes_existing_range_wire_before_tls_idle_expiry(self):
+        self.tag()
+        for now in (10, 20, 30, 40):
+            self.assertEqual(self.p.tick(now=now),
+                             [('alice', 'T RANGE 100 1\n'), ('bob', 'T RANGE 100 1\n')])
+        # A keepalive must never turn an out-of-range tag into consent/admission.
+        self.pos['bob'][6] = 0
+        self.p.update_presence(self.pos)
+        self.assertEqual(self.p.tick(now=50),
+                         [('alice', 'T RANGE 100 0\n'), ('bob', 'T RANGE 100 0\n')])
+        self.assertEqual(self.p.tick(now=51), [])
+
     def test_bilateral_tag_and_atomic_coop_first_offer_wins(self):
         self.tag()
         self.assertEqual(self.send('bob', 'L OFFER 4 alice'),

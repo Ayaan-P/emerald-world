@@ -29,6 +29,7 @@ class _Tag:
     deadline: float
     active: bool = False
     in_range: int = 0
+    next_keepalive: float = 0
     coop_wire: int | None = None
 
     @property
@@ -123,6 +124,7 @@ class LinkProtocol:
         self.sessions._near(presence, *tag.participants, coop=True)
         tag.active = True
         tag.in_range = 1
+        tag.next_keepalive = now + 10
         return [(a, f'T ACTIVE {tag.id} {b} 1\n')
                 for a, b in ((tag.proposer, tag.target), (tag.target, tag.proposer))]
 
@@ -184,9 +186,16 @@ class LinkProtocol:
     def tick(self, *, now=None):
         output = self._deliver(self.sessions.tick(now=now).events)
         now = self.sessions._last_now
+        assert now is not None  # sessions.tick established the authority clock.
         for tag in tuple(self._tags.values()):
             if not tag.active and now >= tag.deadline:
                 output.extend(self._end_tag(tag))
+            elif tag.active and now >= tag.next_keepalive:
+                # Reassert only the existing authority range bit. A durable tag
+                # otherwise leaves LINK silent until the TLS relay expires it.
+                output.extend((actor, f'T RANGE {tag.id} {tag.in_range}\n')
+                              for actor in tag.participants)
+                tag.next_keepalive = now + 10
         return output
 
     def reserved(self, trainers):
