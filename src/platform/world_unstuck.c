@@ -15,6 +15,7 @@
 #include "safari_zone.h"
 #include "script.h"
 #include "platform/native_link.h"
+#include "platform/link_transport.h"
 #include "platform/world_activity.h"
 #include "platform/world_catalog.h"
 #include "constants/battle_frontier.h"
@@ -180,6 +181,8 @@ bool8 WorldUnstuck_AllowedDeparture(void)
         || gPlayerAvatar.tileTransitionState || (gPlayerAvatar.flags & PLAYER_AVATAR_FLAG_UNDERWATER)
         || gMapHeader.mapType == MAP_TYPE_UNDERWATER || gWirelessCommType
         || NativeLink_IsActive() || WorldActivity_OwnsFieldInput()
+        || LinkTransport_OfferPending() || LinkTransport_TagOfferPending()
+        || LinkTransport_PendingInvitation() || LinkTransport_PendingTag()
         || GetSafariZoneFlag() || InBattlePike() || CurrentBattlePyramidLocation() != PYRAMID_LOCATION_NONE
         || InMultiPartnerRoom()) return FALSE;
     /* Restrict to places where a normal Fly/Teleport or Escape Rope departure

@@ -31,6 +31,10 @@ static struct MapHeader destination;
 void CB1_Overworld(void) {}
 void CB2_Overworld(void) {}
 int NativeLink_IsActive(void) { return 0; }
+int LinkTransport_OfferPending(void) { return 0; }
+int LinkTransport_TagOfferPending(void) { return 0; }
+const struct LinkTransportInvitation *LinkTransport_PendingInvitation(void) { return NULL; }
+const LinkTransportInvitation *LinkTransport_PendingTag(void) { return NULL; }
 int WorldActivity_OwnsFieldInput(void) { return 0; }
 bool8 ScriptContext_IsEnabled(void) { return FALSE; }
 bool32 GetSafariZoneFlag(void) { return FALSE; }
@@ -203,11 +207,16 @@ struct PaletteFadeControl gPaletteFade;
 struct PlayerAvatar gPlayerAvatar;
 struct MapHeader gMapHeader;
 u8 gWirelessCommType;
-static int havePokemon=1, nativeActive, activityOwns, scriptActive, specialArea, flyAllowed=1, league, cleared;
+static int havePokemon=1, nativeActive, activityOwns, scriptActive, specialArea, flyAllowed=1, league, cleared, pendingOffer, pendingTag, incomingOffer, incomingTag;
+static struct LinkTransportInvitation invitation;
 static u16 city, sky;
 void CB1_Overworld(void) {}
 void CB2_Overworld(void) {}
 int NativeLink_IsActive(void) { return nativeActive; }
+int LinkTransport_OfferPending(void) { return pendingOffer; }
+int LinkTransport_TagOfferPending(void) { return pendingTag; }
+const struct LinkTransportInvitation *LinkTransport_PendingInvitation(void) { return incomingOffer ? &invitation : NULL; }
+const LinkTransportInvitation *LinkTransport_PendingTag(void) { return incomingTag ? &invitation : NULL; }
 int WorldActivity_OwnsFieldInput(void) { return activityOwns; }
 bool8 ScriptContext_IsEnabled(void) { return scriptActive; }
 bool32 GetSafariZoneFlag(void) { return specialArea; }
@@ -224,6 +233,10 @@ int main(void) {
  havePokemon=0; assert(!WorldUnstuck_AllowedDeparture()); havePokemon=1;
  nativeActive=1; assert(!WorldUnstuck_AllowedDeparture()); nativeActive=0;
  activityOwns=1; assert(!WorldUnstuck_AllowedDeparture()); activityOwns=0;
+ pendingOffer=1; assert(!WorldUnstuck_AllowedDeparture()); pendingOffer=0;
+ pendingTag=1; assert(!WorldUnstuck_AllowedDeparture()); pendingTag=0;
+ incomingOffer=1; assert(!WorldUnstuck_AllowedDeparture()); incomingOffer=0;
+ incomingTag=1; assert(!WorldUnstuck_AllowedDeparture()); incomingTag=0;
  scriptActive=1; assert(!WorldUnstuck_AllowedDeparture()); scriptActive=0;
  gMain.inBattle=1; assert(!WorldUnstuck_AllowedDeparture()); gMain.inBattle=0;
  gPaletteFade.active=1; assert(!WorldUnstuck_AllowedDeparture()); gPaletteFade.active=0;
