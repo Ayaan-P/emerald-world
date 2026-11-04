@@ -20,6 +20,10 @@ def available():
                ('world.hosting_client', 'world.hosting_protocol', 'world.hosting_session'))
 
 
+def backup_available():
+    return importlib.util.find_spec('world.hosted_profile_backup') is not None
+
+
 class HostedLauncher:
     def __init__(self, session):
         self.session = session
@@ -72,12 +76,12 @@ class HostedLauncher:
 
     def state(self):
         if not available():
-            return {'available': False, 'enrolled': False, 'loaded': False, 'worlds': [], 'pending': None}
+            return {'available': False, 'backup_available': False, 'enrolled': False, 'loaded': False, 'worlds': [], 'pending': None}
         try:
             pending = self.pending_create()
         except (OSError, ValueError, SessionError):
             pending = {'invalid': True}
-        return {'available': True, 'enrolled': self.enrolled(), 'loaded': self.loaded,
+        return {'available': True, 'backup_available': backup_available(), 'enrolled': self.enrolled(), 'loaded': self.loaded,
                 'worlds': self.worlds,
                 'pending': {'name': pending['name'], 'trainer': pending['trainer']} if pending and not pending.get('invalid') else pending}
 
@@ -112,6 +116,40 @@ class HostedLauncher:
         else:
             write_private(self.marker, {'profile_sha256': digest})
         self.worlds, self.loaded = [], False
+
+    def export_profile(self):
+        self._ready()
+        if not backup_available():
+            raise SessionError('Host account backup support is not installed yet.')
+        from .hosted_profile_backup import read_profile
+        return json.dumps(read_profile(self.profile), separators=(',', ':'))
+
+    def restore_profile(self, raw):
+        if not available() or not backup_available():
+            raise SessionError('Host account backup support is not installed yet.')
+        self._root()
+        from .hosted_profile_backup import read_profile, copy_profile
+        from .hosting_client import write_private
+        # Never replace an account, or associate an orphaned creation request
+        # or enrollment marker with a different credential.
+        if not os.path.lexists(self.profile) and (os.path.lexists(self.pending) or os.path.lexists(self.marker)):
+            raise SessionError('Existing account state was left unchanged. Resolve it before restoring.')
+        with tempfile.TemporaryDirectory(prefix='emerald-host-restore-') as directory:
+            source = self._write_temp(raw, directory)
+            incoming = read_profile(source)
+            if os.path.lexists(self.profile):
+                if read_profile(self.profile) != incoming:
+                    raise SessionError('A different host account already exists on this device. It was not changed.')
+            else:
+                copy_profile(source, self.profile)
+        digest = hashlib.sha256(self.profile.read_bytes()).hexdigest()
+        if os.path.lexists(self.marker):
+            if self._private(self.marker) != {'profile_sha256': digest}:
+                raise SessionError('An existing account marker was left unchanged.')
+        else:
+            write_private(self.marker, {'profile_sha256': digest})
+        self.worlds, self.loaded = [], False
+        self.session.status = 'Host account restored locally. Refresh hosted worlds to verify access.'
 
     @staticmethod
     def _world(item):
