@@ -36,6 +36,9 @@ jobs:
         run: PYTHONPATH=.:test/world python3 -m unittest test.world.test_world_travel test.world.test_travel_roster test.world.test_presence_handshake test.world.test_world_activity test.world.test_interactions test.world.test_save_isolation -v
 
   native-refusal-acceptance:
+    # Full native flows run once on the frozen integrated RC. Keep this
+    # optional runner path explicit; never weaken the engine sandbox for CI.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
