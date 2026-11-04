@@ -2,6 +2,8 @@
 
 This is a browser-based Linux launcher backed by the existing Python `DesktopSession`. It does not replace the Tk launcher. A trusted invitation connects to a remote world. Hosted-world creation, account enrollment, and friend invites activate only when the hosted-world backend from PR #136 is installed and its separate management service has been configured. The current existing single-world deployment does not itself provide this management API.
 
+For a guided one-command frontend setup and optional application shortcut, see [React launcher setup](../docs/REACT_LAUNCHER_SETUP.md).
+
 ## Run
 
 1. Complete the Linux game build and runtime prerequisites in `INSTALL_PC.md`, including the native executable and Xephyr.
