@@ -1,8 +1,14 @@
 #if defined(PORTABLE) && !defined(_WIN32)
 #include "global.h"
+#include <time.h>
+#include <string.h>
 #include "heal_location.h"
 #include "event_object_movement.h"
 #include "fieldmap.h"
+#include "field_effect.h"
+#include "field_player_avatar.h"
+#include "event_object_lock.h"
+#include "task.h"
 #include "metatile_behavior.h"
 #include "battle_pike.h"
 #include "battle_pyramid.h"
@@ -15,6 +21,8 @@
 #include "safari_zone.h"
 #include "script.h"
 #include "platform/native_link.h"
+#include "platform/native_unstuck.h"
+#include "platform/world_bridge.h"
 #include "platform/link_transport.h"
 #include "platform/world_activity.h"
 #include "platform/world_catalog.h"
@@ -173,7 +181,7 @@ bool8 WorldUnstuck_BuildLoadedGrid(u8 *plain, u8 *clear, unsigned capacity)
     return TRUE;
 }
 
-bool8 WorldUnstuck_AllowedDeparture(void)
+static bool8 WorldUnstuck_FieldStateSafe(void)
 {
     if (!gSaveBlock1Ptr || !FlagGet(FLAG_SYS_POKEMON_GET)
         || gMain.callback1 != CB1_Overworld || gMain.callback2 != CB2_Overworld
@@ -185,6 +193,12 @@ bool8 WorldUnstuck_AllowedDeparture(void)
         || LinkTransport_PendingInvitation() || LinkTransport_PendingTag()
         || GetSafariZoneFlag() || InBattlePike() || CurrentBattlePyramidLocation() != PYRAMID_LOCATION_NONE
         || InMultiPartnerRoom()) return FALSE;
+    return TRUE;
+}
+
+bool8 WorldUnstuck_AllowedDeparture(void)
+{
+    if (!WorldUnstuck_FieldStateSafe()) return FALSE;
     /* Restrict to places where a normal Fly/Teleport or Escape Rope departure
      * is supported. Special interiors and story-locked maps fail closed. */
     return Overworld_MapTypeAllowsTeleportAndFly(gMapHeader.mapType) || gMapHeader.allowEscaping;
@@ -216,7 +230,7 @@ enum WorldUnstuckPlanResult WorldUnstuck_Plan(struct WorldUnstuckPlan *out)
     player=&gObjectEvents[gPlayerAvatar.objectEventId];
     if (!player->active || !player->isPlayer) return UNSTUCK_PLAN_BLOCKED;
     x=player->currentCoords.x-MAP_OFFSET; y=player->currentCoords.y-MAP_OFFSET;
-    if (x<0 || y<0 || gSaveBlock1Ptr->location.mapGroup<0 || gSaveBlock1Ptr->location.mapNum<0
+    if (x<0 || y<0 || x>127 || y>127 || gSaveBlock1Ptr->location.mapGroup<0 || gSaveBlock1Ptr->location.mapNum<0
         || !WorldCatalog_Coords(gSaveBlock1Ptr->location.mapGroup,gSaveBlock1Ptr->location.mapNum,x,y))
         return UNSTUCK_PLAN_BLOCKED;
     plan.healId=WorldUnstuck_HealDestination(&gSaveBlock1Ptr->lastHealLocation,gSaveBlock2Ptr->playerGender);
@@ -240,7 +254,7 @@ bool8 WorldUnstuck_RevalidateArrival(const struct WorldUnstuckPlan *plan, bool8 
     const struct ObjectEvent *player;
     const struct HealLocation *heal;
     if (!plan || !occupancyComplete || !gSaveBlock1Ptr || !gSaveBlock2Ptr
-        || !WorldUnstuck_AllowedDeparture() || gPlayerAvatar.objectEventId >= OBJECT_EVENTS_COUNT)
+        || !WorldUnstuck_FieldStateSafe() || gPlayerAvatar.objectEventId >= OBJECT_EVENTS_COUNT)
         return FALSE;
     catalog=WorldCatalog_Find(plan->destinationGroup,plan->destinationNum);
     heal=GetHealLocation(plan->healId);
@@ -259,5 +273,60 @@ bool8 WorldUnstuck_RevalidateArrival(const struct WorldUnstuckPlan *plan, bool8 
         || !WorldUnstuck_BuildLoadedGrid(plain,clear,sizeof(plain))) return FALSE;
     return Unstuck_IsPlannedLandingStillSafe(plain,clear,catalog->width,catalog->height,
                                             plan->spawnX,plan->spawnY,plan->landingX,plan->landingY);
+}
+EWRAM_DATA static struct WorldUnstuckPlan sUnstuckPlan;
+EWRAM_DATA static bool8 sUnstuckActive;
+
+void WorldUnstuck_Reset(void)
+{
+    sUnstuckActive=FALSE;
+    memset(&sUnstuckPlan,0,sizeof(sUnstuckPlan));
+}
+
+enum WorldUnstuckUseResult WorldUnstuck_Begin(void)
+{
+    struct WorldUnstuckPlan plan;
+    enum NativeUnstuckResult reservation;
+    time_t now;
+    unsigned i;
+    if (WorldBridge_Enabled()) return UNSTUCK_USE_ONLINE_UNSUPPORTED;
+    if (sUnstuckActive || WorldUnstuck_Plan(&plan) != UNSTUCK_PLAN_OK) return UNSTUCK_USE_BLOCKED;
+    /* CreateTask returns slot zero on exhaustion; verify capacity first. */
+    for (i=0; i<NUM_TASKS; i++) if (!gTasks[i].isActive) break;
+    if (i==NUM_TASKS) return UNSTUCK_USE_BLOCKED;
+    now=time(NULL);
+    if (now<=0) return UNSTUCK_USE_STORAGE_ERROR;
+    reservation=NativeUnstuck_ReserveCurrent((uint64_t)now,WorldUnstuck_ConservativelyBoxed(),NULL);
+    if (reservation==NATIVE_UNSTUCK_COOLDOWN) return UNSTUCK_USE_COOLDOWN;
+    if (reservation!=NATIVE_UNSTUCK_ALLOWED) return UNSTUCK_USE_STORAGE_ERROR;
+    sUnstuckPlan=plan; sUnstuckActive=TRUE;
+    /* Match the engine's own Teleport setup for bikes, surfing and field flags. */
+    Overworld_ResetStateAfterTeleport();
+    SetPlayerAvatarTransitionFlags(PLAYER_AVATAR_FLAG_ON_FOOT);
+    LockPlayerFieldControls(); FreezeObjectEvents();
+    FldEff_TeleportWarpOut();
+    return UNSTUCK_USE_STARTED;
+}
+
+bool8 WorldUnstuck_SetPlannedWarp(void)
+{
+    if (!sUnstuckActive) return FALSE;
+    SetWarpDestination(sUnstuckPlan.destinationGroup,sUnstuckPlan.destinationNum,WARP_ID_NONE,
+                       sUnstuckPlan.landingX,sUnstuckPlan.landingY);
+    return TRUE;
+}
+
+bool8 WorldUnstuck_CompleteArrival(void)
+{
+    bool8 safe;
+    if (!sUnstuckActive) return FALSE;
+    /* This prototype is strictly offline. A connected game's remote occupancy
+     * is never treated as complete by this path. */
+    safe=!WorldBridge_Enabled() && WorldUnstuck_RevalidateArrival(&sUnstuckPlan,TRUE);
+    sUnstuckActive=FALSE;
+    if (safe) return FALSE;
+    SetWarpDestination(sUnstuckPlan.originGroup,sUnstuckPlan.originNum,WARP_ID_NONE,
+                       sUnstuckPlan.originX,sUnstuckPlan.originY);
+    return TRUE;
 }
 #endif

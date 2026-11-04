@@ -1,4 +1,7 @@
 #include "global.h"
+#if defined(PORTABLE) && !defined(_WIN32)
+#include "platform/world_unstuck.h"
+#endif
 #include "decompress.h"
 #include "event_object_movement.h"
 #include "field_camera.h"
@@ -2461,7 +2464,10 @@ static void TeleportWarpOutFieldEffect_End(struct Task *task)
 
         if (BGMusicStopped() == TRUE)
         {
-            SetWarpDestinationToLastHealLocation();
+#if defined(PORTABLE) && !defined(_WIN32)
+            if (!WorldUnstuck_SetPlannedWarp())
+#endif
+                SetWarpDestinationToLastHealLocation();
             WarpIntoMap();
             SetMainCallback2(CB2_LoadMap);
             gFieldCallback = FieldCallback_TeleportWarpIn;
@@ -2562,6 +2568,15 @@ static void TeleportWarpInFieldEffect_SpinGround(struct Task *task)
         task->data[1] = 8;
         if ((++task->data[2]) > 4 && task->data[14] == objectEvent->facingDirection)
         {
+#if defined(PORTABLE) && !defined(_WIN32)
+            if (WorldUnstuck_CompleteArrival()) {
+                WarpIntoMap();
+                SetMainCallback2(CB2_LoadMap);
+                gFieldCallback = FieldCallback_TeleportWarpIn;
+                DestroyTask(FindTaskIdByFunc(Task_TeleportWarpIn));
+                return;
+            }
+#endif
             UnlockPlayerFieldControls();
             CameraObjectReset();
             UnfreezeObjectEvents();

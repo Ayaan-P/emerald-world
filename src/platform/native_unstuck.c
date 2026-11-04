@@ -14,6 +14,21 @@
 #define COOLDOWN_SECONDS 300u
 #define RECORD_SIZE 32u
 #define PREFIX "EWUNSTUCK1 "
+static char sSavePath[4096];
+
+bool NativeUnstuck_SetSavePath(const char *savePath)
+{
+    size_t length = savePath ? strlen(savePath) : 0;
+    sSavePath[0] = 0;
+    if (!length || length >= sizeof(sSavePath) || savePath[0] != '/') return false;
+    memcpy(sSavePath, savePath, length + 1);
+    return true;
+}
+
+enum NativeUnstuckResult NativeUnstuck_ReserveCurrent(uint64_t now, bool boxed, unsigned *remaining)
+{
+    return NativeUnstuck_Reserve(sSavePath, now, boxed, remaining);
+}
 
 enum NativeUnstuckResult NativeUnstuck_Reserve(const char *savePath, uint64_t now,
                                                 bool boxed, unsigned *remaining)

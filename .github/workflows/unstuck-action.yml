@@ -1,0 +1,41 @@
+name: Offline Unstuck prototype
+on:
+  pull_request:
+    branches: [dot/unstuck-safety-foundation]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  components:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Generate map constants
+        run: |
+          make -C tools/mapjson
+          make -C tools/jsonproc
+          make generated -j2
+      - name: Test production components and menu
+        run: PYTHONPATH=.:test/world python3 -m unittest test.world.test_world_unstuck test.world.test_native_unstuck_clock test.world.test_unstuck_action test.world.test_unstuck_menu -v
+  native-offline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install native build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential libpng-dev libsdl2-dev
+      - name: Restore pinned build inputs
+        run: python3 scripts/restore_upstream_assets.py
+      - name: Compile native game with warnings as errors
+        run: make -j2 linux CFLAGS=-g WERROR=1
+      - name: Generate disposable test save with standalone smoke
+        run: python3 test/headless/smoke.py ./pokeemerald64 --out build/unstuck-seed --update-expected
+      - name: Exercise the offline menu and warp
+        run: python3 test/headless/unstuck_acceptance.py --binary ./pokeemerald64 --seed build/unstuck-seed/first_battle/game.sav

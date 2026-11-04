@@ -46,6 +46,20 @@
 #include "constants/battle_frontier.h"
 #include "constants/rgb.h"
 #include "constants/songs.h"
+#if defined(PORTABLE) && !defined(_WIN32)
+#include "platform/world_bridge.h"
+#include "platform/world_unstuck.h"
+static bool8 StartMenuUnstuckCallback(void);
+static bool8 UnstuckMenuCallback(void);
+static u8 UnstuckYesNoCallback(void);
+static u8 UnstuckChoiceCallback(void);
+static u8 UnstuckDismissCallback(void);
+static const u8 sText_Unstuck[] = _("UNSTUCK");
+static const u8 sText_UnstuckConfirm[] = _("Return to last safe place?\nSave first. Five-minute wait.");
+static const u8 sText_UnstuckCooldown[] = _("Please wait before\nusing UNSTUCK again.");
+static const u8 sText_UnstuckUnavailable[] = _("UNSTUCK is unavailable here.");
+static const u8 sText_UnstuckStorage[] = _("Could not safely check the cooldown.");
+#endif
 
 // Menu actions
 enum
@@ -63,6 +77,9 @@ enum
     MENU_ACTION_REST_FRONTIER,
     MENU_ACTION_RETIRE_FRONTIER,
     MENU_ACTION_PYRAMID_BAG
+#if defined(PORTABLE) && !defined(_WIN32)
+    , MENU_ACTION_UNSTUCK
+#endif
 };
 
 // Save status
@@ -194,6 +211,9 @@ static const struct MenuAction sStartMenuItems[] =
     [MENU_ACTION_REST_FRONTIER]   = {gText_MenuRest,    {.u8_void = StartMenuSaveCallback}},
     [MENU_ACTION_RETIRE_FRONTIER] = {gText_MenuRetire,  {.u8_void = StartMenuBattlePyramidRetireCallback}},
     [MENU_ACTION_PYRAMID_BAG]     = {gText_MenuBag,     {.u8_void = StartMenuBattlePyramidBagCallback}}
+#if defined(PORTABLE) && !defined(_WIN32)
+    , [MENU_ACTION_UNSTUCK] = {sText_Unstuck, {.u8_void = StartMenuUnstuckCallback}}
+#endif
 };
 
 static const struct BgTemplate sBgTemplates_LinkBattleSave[] =
@@ -333,6 +353,9 @@ static void BuildNormalStartMenu(void)
     AddStartMenuAction(MENU_ACTION_PLAYER);
     AddStartMenuAction(MENU_ACTION_SAVE);
     AddStartMenuAction(MENU_ACTION_OPTION);
+#if defined(PORTABLE) && !defined(_WIN32)
+    if (!WorldBridge_Enabled()) AddStartMenuAction(MENU_ACTION_UNSTUCK);
+#endif
     AddStartMenuAction(MENU_ACTION_EXIT);
 }
 
@@ -449,17 +472,23 @@ static void RemoveExtraStartMenuWindows(void)
 static bool32 PrintStartMenuActions(s8 *pIndex, u32 count)
 {
     s8 index = *pIndex;
+#if defined(PORTABLE) && !defined(_WIN32)
+    u8 lineHeight = sNumStartMenuActions == 9 ? 14 : 16;
+#define UNSTUCK_ACTION_Y (index * lineHeight + 9)
+#else
+#define UNSTUCK_ACTION_Y ((index << 4) + 9)
+#endif
 
     do
     {
         if (sStartMenuItems[sCurrentStartMenuActions[index]].func.u8_void == StartMenuPlayerNameCallback)
         {
-            PrintPlayerNameOnWindow(GetStartMenuWindowId(), sStartMenuItems[sCurrentStartMenuActions[index]].text, 8, (index << 4) + 9);
+            PrintPlayerNameOnWindow(GetStartMenuWindowId(), sStartMenuItems[sCurrentStartMenuActions[index]].text, 8, UNSTUCK_ACTION_Y);
         }
         else
         {
             StringExpandPlaceholders(gStringVar4, sStartMenuItems[sCurrentStartMenuActions[index]].text);
-            AddTextPrinterParameterized(GetStartMenuWindowId(), FONT_NORMAL, gStringVar4, 8, (index << 4) + 9, TEXT_SKIP_DRAW, NULL);
+            AddTextPrinterParameterized(GetStartMenuWindowId(), FONT_NORMAL, gStringVar4, 8, UNSTUCK_ACTION_Y, TEXT_SKIP_DRAW, NULL);
         }
 
         index++;
@@ -474,6 +503,7 @@ static bool32 PrintStartMenuActions(s8 *pIndex, u32 count)
     while (count != 0);
 
     *pIndex = index;
+#undef UNSTUCK_ACTION_Y
     return FALSE;
 }
 
@@ -508,7 +538,11 @@ static bool32 InitStartMenuStep(void)
             sInitStartMenuData[0]++;
         break;
     case 5:
-        sStartMenuCursorPos = InitMenuNormal(GetStartMenuWindowId(), FONT_NORMAL, 0, 9, 16, sNumStartMenuActions, sStartMenuCursorPos);
+        sStartMenuCursorPos = InitMenuNormal(GetStartMenuWindowId(), FONT_NORMAL, 0, 9,
+#if defined(PORTABLE) && !defined(_WIN32)
+            sNumStartMenuActions == 9 ? 14 :
+#endif
+            16, sNumStartMenuActions, sStartMenuCursorPos);
         CopyWindowToVram(GetStartMenuWindowId(), COPYWIN_MAP);
         return TRUE;
     }
@@ -616,6 +650,9 @@ static bool8 HandleStartMenuInput(void)
         gMenuCallback = sStartMenuItems[sCurrentStartMenuActions[sStartMenuCursorPos]].func.u8_void;
 
         if (gMenuCallback != StartMenuSaveCallback
+#if defined(PORTABLE) && !defined(_WIN32)
+            && gMenuCallback != StartMenuUnstuckCallback
+#endif
             && gMenuCallback != StartMenuExitCallback
             && gMenuCallback != StartMenuSafariZoneRetireCallback
             && gMenuCallback != StartMenuBattlePyramidRetireCallback)
@@ -805,6 +842,63 @@ static bool8 StartMenuBattlePyramidBagCallback(void)
 
     return FALSE;
 }
+
+#if defined(PORTABLE) && !defined(_WIN32)
+static bool8 StartMenuUnstuckCallback(void)
+{
+    ClearStdWindowAndFrame(GetStartMenuWindowId(), FALSE);
+    RemoveStartMenuWindow();
+    ShowSaveMessage(sText_UnstuckConfirm, UnstuckYesNoCallback);
+    gMenuCallback = UnstuckMenuCallback;
+    return FALSE;
+}
+
+static u8 UnstuckYesNoCallback(void)
+{
+    DisplayYesNoMenuWithDefault(1);
+    sSaveDialogCallback = UnstuckChoiceCallback;
+    return SAVE_IN_PROGRESS;
+}
+
+static u8 UnstuckChoiceCallback(void)
+{
+    enum WorldUnstuckUseResult result;
+    switch (Menu_ProcessInputNoWrapClearOnChoose()) {
+    case 0:
+        result=WorldUnstuck_Begin();
+        if (result==UNSTUCK_USE_STARTED) return SAVE_SUCCESS;
+        ShowSaveMessage(result==UNSTUCK_USE_COOLDOWN ? sText_UnstuckCooldown
+            : result==UNSTUCK_USE_STORAGE_ERROR ? sText_UnstuckStorage : sText_UnstuckUnavailable,
+            UnstuckDismissCallback);
+        return SAVE_IN_PROGRESS;
+    case MENU_B_PRESSED:
+    case 1:
+        return SAVE_CANCELED;
+    }
+    return SAVE_IN_PROGRESS;
+}
+
+static u8 UnstuckDismissCallback(void)
+{
+    return JOY_NEW(A_BUTTON | B_BUTTON) ? SAVE_CANCELED : SAVE_IN_PROGRESS;
+}
+
+static bool8 UnstuckMenuCallback(void)
+{
+    switch (RunSaveCallback()) {
+    case SAVE_CANCELED:
+        ClearDialogWindowAndFrameToTransparent(0, FALSE);
+        InitStartMenu();
+        gMenuCallback=HandleStartMenuInput;
+        return FALSE;
+    case SAVE_SUCCESS:
+        ClearDialogWindowAndFrameToTransparent(0, TRUE);
+        /* Teleport owns the field lock and releases it only after validation. */
+        return TRUE;
+    }
+    return FALSE;
+}
+#endif
 
 static bool8 SaveStartCallback(void)
 {

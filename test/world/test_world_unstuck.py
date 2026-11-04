@@ -82,6 +82,10 @@ int main(void) {
  gBackupMapLayout.width=layout.width+MAP_OFFSET_W;gBackupMapLayout.height=layout.height+MAP_OFFSET_H;
  assert(!WorldUnstuck_RevalidateArrival(&plan,FALSE)); /* no freshness proof */
  assert(WorldUnstuck_RevalidateArrival(&plan,TRUE));
+ /* Arrival can legitimately be inside the player's home, even though
+  * departure from that map is forbidden. */
+ gMapHeader.mapType=MAP_TYPE_INDOOR; assert(!WorldUnstuck_AllowedDeparture());
+ assert(WorldUnstuck_RevalidateArrival(&plan,TRUE));
  gObjectEvents[1].active=1;gObjectEvents[1].currentCoords=gObjectEvents[0].currentCoords;
  assert(!WorldUnstuck_RevalidateArrival(&plan,TRUE));gObjectEvents[1].active=0;
  blockedX=plan.landingX+MAP_OFFSET;blockedY=plan.landingY+MAP_OFFSET;

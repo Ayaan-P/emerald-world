@@ -12,6 +12,9 @@ enum NativeUnstuckResult {
 };
 /* Reserves a use before a warp. The sidecar is private to the selected save.
  * On a storage or clock failure the caller must not warp. No save bytes change. */
+/* Register the already-opened private save. No sidecar is opened here. */
+bool NativeUnstuck_SetSavePath(const char *savePath);
+enum NativeUnstuckResult NativeUnstuck_ReserveCurrent(uint64_t now, bool boxed, unsigned *remaining);
 enum NativeUnstuckResult NativeUnstuck_Reserve(const char *savePath, uint64_t now,
                                                 bool boxed, unsigned *remaining);
 #endif
