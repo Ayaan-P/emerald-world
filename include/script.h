@@ -38,6 +38,10 @@ void UnlockPlayerFieldControls(void);
 bool8 ArePlayerFieldControlsLocked(void);
 void ScriptContext_Init(void);
 bool8 ScriptContext_IsEnabled(void);
+#ifdef PORTABLE
+/* Exact continuation identity, including scripts that own the field lock. */
+bool8 ScriptContext_IsAt(const u8 *ptr);
+#endif
 bool8 ScriptContext_RunScript(void);
 void ScriptContext_SetupScript(const u8 *ptr);
 void ScriptContext_Stop(void);

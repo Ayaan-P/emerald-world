@@ -1,0 +1,72 @@
+{
+  "feature": "repeat-repel-owned-choice",
+  "validation_status": "Not executed. Cases for the parent's single integrated RC3 validation, not a separate harness.",
+  "access": "In a PORTABLE build, use a Repel from the bag in eligible solo field play and walk until the existing VAR_REPEL_STEP_COUNT expires. One owned strength prompts yes/no; multiple strengths show owned items plus Cancel. No launcher setting.",
+  "provenance": {
+    "repository": "https://github.com/rh-hideout/pokeemerald-expansion",
+    "commit": "c460a8661dfa0598ae25d42a968c690ecbf489c6",
+    "credit": "Native repeat-Repel adapted from RHH's pokeemerald-expansion, based on pret/pokeemerald. Contributor credits remain upstream; no individual module authorship is inferred.",
+    "readme": "https://github.com/rh-hideout/pokeemerald-expansion/blob/c460a8661dfa0598ae25d42a968c690ecbf489c6/README.md",
+    "contributors": "https://github.com/rh-hideout/pokeemerald-expansion/blob/c460a8661dfa0598ae25d42a968c690ecbf489c6/CREDITS.md",
+    "sources": ["src/sprays.c:29-116", "data/scripts/repel.inc:23-152", "src/script_menu.c:452-472"],
+    "adaptations": ["Explicit native item IDs 86,83,84", "Repels only, no Lures", "No persistent last-item state", "Exact script continuation ownership", "Native menu resource refusal", "Revalidated removal before counter write"],
+    "rights": "Attribution is not a blanket license or asset redistribution grant. No new graphics/audio assets imported."
+  },
+  "cases": [
+    {
+      "id": "empty",
+      "setup": "Expire with no owned Repel, Super Repel or Max Repel.",
+      "expect": "Original expiry message only; no selection, inventory change or counter restart. Field input resumes."
+    },
+    {
+      "id": "single-each",
+      "setup": "Repeat separately with only Repel (86), only Super Repel (83), only Max Repel (84) owned.",
+      "action": "Choose Yes.",
+      "expect": "Prompt names the owned item. Exactly one is removed, existing counter restarts at 100/200/250 respectively, success sound/message name the consumed item. Normal steps decrement it."
+    },
+    {
+      "id": "single-no-b",
+      "setup": "One owned strength remains at expiry.",
+      "action": "Repeat with No and B.",
+      "expect": "Neither path consumes or restarts. No success message/sound. Field control restored."
+    },
+    {
+      "id": "multiple-subsets",
+      "setup": "Repeat with each two-strength subset and all three strengths owned, with neighboring native item IDs also owned.",
+      "action": "Choose each offered strength in separate runs.",
+      "expect": "Only owned Repels appear, ordered Repel/Super/Max, plus Cancel. Correct selected identity is consumed once and its stock duration is set. Neighboring non-Repels never appear."
+    },
+    {
+      "id": "multiple-cancel",
+      "setup": "Two or three strengths owned at expiry.",
+      "action": "Repeat with B and explicit Cancel.",
+      "expect": "No inventory/counter mutation or success feedback. Menu window/task removed and normal field input returns."
+    },
+    {
+      "id": "context-entry-and-accept",
+      "setup": "Exercise refusal before entry and after prompt using controlled integrated RC fixtures, never live human saves.",
+      "variants": ["battle", "wireless/link players", "NativeLink battle/trade/co-op reservation", "WorldCoop battle/private rewards", "owned activity", "pending encounter", "Union/MultiPartner room", "Pike/Pyramid or Pyramid bag", "non-overworld callback", "palette transition", "missing saves"],
+      "expect": "No choice offered in ineligible entry contexts. If eligibility changes during an offer, accept refuses without consumption or counter write. Native Pike/Pyramid/Union expiry exclusions remain unchanged."
+    },
+    {
+      "id": "transaction-reject",
+      "setup": "After a valid offer, separately remove the selected last item, replace counter with nonzero, change save/map identity, submit out-of-range or B result, and force RemoveBagItem refusal in the integrated fixture.",
+      "expect": "Every case refuses without counter write or additional consumption; no success feedback. Selection refers to the offered identity, not reordered current bag slots. A second commit cannot consume again."
+    },
+    {
+      "id": "script-ownership",
+      "setup": "Exercise the real expiry script, then attempt direct Begin/Draw/Commit calls and calls from an unrelated script continuation.",
+      "expect": "Real expiry can prompt and commit despite its enabled script/field lock. Unrelated/direct calls fail exact continuation checks. Cancel clears transient authorization."
+    },
+    {
+      "id": "menu-refusal",
+      "setup": "Multiple strengths owned; exhaust tasks/windows or hold another choice task in a controlled integrated fixture before drawing.",
+      "expect": "No invalid task/window access or stranded waitstate. Refusal closes the expiry flow without consuming."
+    },
+    {
+      "id": "persistence-and-baseline",
+      "setup": "Use disposable integrated RC saves. Save/reload while a Repel remains active, and compare the stock non-PORTABLE branch in the parent's existing baseline checks.",
+      "expect": "Existing bag/counter save semantics remain. No SaveBlock growth, last-item var or sidecar. No guarantee of remembered strength. Stock GBA script and menu path remain selected without PORTABLE. No claim of compiled ROM neutrality until parent verification."
+    }
+  ]
+}
