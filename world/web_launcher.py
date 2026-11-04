@@ -16,6 +16,7 @@ import stat
 import sys
 import tempfile
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 import webbrowser
@@ -84,6 +85,42 @@ class LauncherBridge:
         self.session.launch_offline(world, trainer, self.binary,
                                     self.session.managed_display.display, copy_online=copy)
 
+    def game_presence(self):
+        """Read only fresh, sanitized telemetry from this launcher's own game."""
+        trainer = self.session.remote_trainer
+        game = self.session.games.get(trainer) if trainer else None
+        if game is None or game[0].poll() is not None:
+            return None
+        try:
+            path = game[1]['telemetry']
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(fd, 'r') as source:
+                info = os.fstat(source.fileno())
+                if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                        or info.st_nlink != 1 or info.st_size > 65536 or not 0 <= time.time() - info.st_mtime <= 5):
+                    raise ValueError('stale telemetry')
+                value = json.loads(source.read(65537))
+            if (not isinstance(value, dict) or value.get('trainer') != trainer
+                    or type(value.get('connected')) is not bool
+                    or type(value.get('revision')) is not int or value['revision'] < 0
+                    or type(value.get('frame')) is not int or value['frame'] < 0):
+                raise ValueError('invalid telemetry')
+            nearby = None
+            roster = value.get('roster')
+            if value['connected'] and isinstance(roster, list) and len(roster) <= 8:
+                nearby = []
+                for peer in roster:
+                    if (not isinstance(peer, dict) or not isinstance(peer.get('trainer'), str)
+                            or not re.fullmatch(r'[A-Za-z0-9_-]{1,24}', peer['trainer'])
+                            or peer.get('nearby') is not True
+                            or type(peer.get('ready')) is not bool
+                            or type(peer.get('rendered')) is not bool):
+                        continue
+                    nearby.append({'trainer': peer['trainer'], 'ready': peer['ready'], 'rendered': peer['rendered']})
+            return {'state': 'connected' if value['connected'] else 'disconnected', 'nearby': nearby}
+        except (OSError, ValueError, TypeError, KeyError, UnicodeError):
+            return {'state': 'waiting', 'nearby': []}
+
     def snapshot(self):
         with self.lock:
             from .world_library import _read_metadata
@@ -100,7 +137,7 @@ class LauncherBridge:
             from scripts.linux_client import prerequisites
             setup = [{'name': name, 'ready': ready, 'help': help_text}
                      for name, ready, help_text in prerequisites(self.binary) if name != 'tkinter']
-            return {'worlds': worlds, 'offline_saves': self.offline_saves(), 'setup': setup, 'connected': self.session.state is not None,
+            return {'worlds': worlds, 'offline_saves': self.offline_saves(), 'presence': self.game_presence(), 'setup': setup, 'connected': self.session.state is not None,
                     'trainer': self.session.remote_trainer,
                     'games': [name for name, (process, _paths) in self.session.games.items()
                               if process.poll() is None], 'status': self.session.status}

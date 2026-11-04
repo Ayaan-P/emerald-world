@@ -9,7 +9,7 @@ vi.mock('./api', () => ({ loadState: vi.fn(), perform: vi.fn(), forgetCapability
 
 const snapshot = () => ({
   worlds: [{ key: 'remote-1234', name: 'Our Hoenn', trainer: 'May' }],
-  offline_saves: [], connected: false, trainer: null, games: [], setup: [], status: 'Ready',
+  offline_saves: [], presence: null, connected: false, trainer: null, games: [], setup: [], status: 'Ready',
 });
 
 beforeEach(() => { loadState.mockResolvedValue(snapshot()); perform.mockResolvedValue(snapshot()); });
@@ -51,6 +51,15 @@ describe('player launcher', () => {
     expect(modal.textContent).toMatch(/never merges back/i);
     fireEvent.click(within(modal).getByRole('button', { name: /copy online save/i }));
     await waitFor(() => expect(perform).toHaveBeenCalledWith('offline', { world: 'remote-1234', copy: true }));
+  });
+
+  it('shows only reported nearby trainers and connection state', async () => {
+    loadState.mockResolvedValue({ ...snapshot(), connected: true, trainer: 'May', games: ['May'],
+      presence: { state: 'connected', nearby: [{ trainer: 'Brendan', ready: true, rendered: true }] } });
+    render(<App />);
+    expect(await screen.findByText('Brendan')).toBeTruthy();
+    expect(screen.getByText('Game connected')).toBeTruthy();
+    expect(screen.getByText('Available')).toBeTruthy();
   });
 
   it('starts a solo adventure without an invitation', async () => {

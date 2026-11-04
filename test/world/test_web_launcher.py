@@ -1,5 +1,7 @@
 """Unit checks for the local launcher bridge. No live world or game is used."""
 import json
+import os
+import time
 import tempfile
 from pathlib import Path
 import unittest
@@ -105,6 +107,21 @@ class WebLauncherTests(unittest.TestCase):
                 self.assertEqual(result['worlds'][0]['name'], 'Friend’s world · 1234')
             finally:
                 session.close()
+
+    def test_presence_uses_only_fresh_sanitized_own_game_telemetry(self):
+        telemetry = Path(self.tmp.name) / 'telemetry.json'
+        telemetry.write_text(json.dumps({'trainer': 'May', 'connected': True, 'revision': 1, 'frame': 2,
+            'roster': [{'trainer': 'Brendan', 'nearby': True, 'ready': True, 'rendered': True},
+                       {'trainer': 'Hidden', 'nearby': False, 'ready': True, 'rendered': True},
+                       {'trainer': '../bad', 'nearby': True, 'ready': True, 'rendered': True}]}))
+        process = Mock()
+        process.poll.return_value = None
+        self.session.remote_trainer = 'May'
+        self.session.games = {'May': (process, {'telemetry': telemetry})}
+        presence = self.bridge.game_presence()
+        self.assertEqual(presence, {'state': 'connected', 'nearby': [{'trainer': 'Brendan', 'ready': True, 'rendered': True}]})
+        os.utime(telemetry, (time.time() - 30, time.time() - 30))
+        self.assertEqual(self.bridge.game_presence()['state'], 'waiting')
 
     def test_solo_profiles_remain_visible_without_a_bookmark(self):
         from world.offline import offline_profile
