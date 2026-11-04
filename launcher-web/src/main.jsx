@@ -17,6 +17,8 @@ export function App() {
   const [invitation, setInvitation] = useState(null);
   const [fileName, setFileName] = useState('');
   const [dragging, setDragging] = useState(false);
+  const [inviteMode, setInviteMode] = useState('file');
+  const [pasteText, setPasteText] = useState('');
   const [worldName, setWorldName] = useState('');
   const [soloTrainer, setSoloTrainer] = useState('Player');
   const [worldSearch, setWorldSearch] = useState('');
@@ -51,6 +53,10 @@ export function App() {
     return () => { document.removeEventListener('keydown', onKey); previous?.focus?.(); };
   }, [dialog, busy]);
 
+  useEffect(() => {
+    if (!dialog) { setInvitation(null); setFileName(''); setPasteText(''); setInviteMode('file'); }
+  }, [dialog]);
+
   async function run(action, payload = {}) {
     setBusy(true); setError('');
     try {
@@ -66,16 +72,22 @@ export function App() {
     finally { setBusy(false); }
   }
 
+  function acceptInvitation(raw, label) {
+    setInvitation(null); setFileName(''); setError('');
+    if (new TextEncoder().encode(raw).length > 4096) { setError('That invitation is too large. Ask your host for a new one.'); return; }
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error();
+      setInvitation(raw); setFileName(label);
+    } catch { setError('That is not a valid invitation. Ask your host for a new one.'); }
+  }
+
   async function chooseInvitation(file) {
     setInvitation(null); setFileName(''); setError('');
     if (!file) return;
     if (file.size > 4096) { setError('That invitation is too large. Ask your host for a new one.'); return; }
-    try {
-      const raw = await file.text();
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error();
-      setInvitation(raw); setFileName(file.name);
-    } catch { setError('That file is not a valid invitation. Ask your host for a new one.'); }
+    try { acceptInvitation(await file.text(), file.name); }
+    catch { setError('That file could not be read. Choose it again.'); }
   }
 
   const nav = [
@@ -114,7 +126,7 @@ export function App() {
     </main>
     {error && !dialog && <div className="toast" role="alert"><span>{error}</span><button aria-label="Dismiss" onClick={() => setError('')}><X size={16} /></button></div>}
     {dialog && <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget && !busy) { setDialog(null); setError(''); } }}><section className="modal" role="dialog" tabIndex={-1} aria-modal="true" aria-labelledby="modal-title"><button className="modal-close icon-button" aria-label="Close" onClick={() => { setDialog(null); setError(''); }} disabled={busy}><X size={20} /></button>
-      {dialog === 'join' && <><div className="modal-icon"><UsersRound size={22} /></div><span className="eyebrow gold">BETTER TOGETHER</span><h2 id="modal-title">Join a world</h2><p>Choose the private invitation your host shared with you. We’ll use it to connect your trainer securely.</p><input ref={fileRef} className="visually-hidden" tabIndex={-1} type="file" accept=".json,application/json" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; chooseInvitation(file); }} /><button className={`upload ${fileName ? 'chosen' : ''} ${dragging ? 'dragging' : ''}`} onClick={() => fileRef.current?.click()} onDragOver={event => { event.preventDefault(); if (!busy) setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); if (!busy) chooseInvitation(event.dataTransfer.files?.[0]); }} disabled={busy}><span className="upload-icon">{fileName ? <Check size={21} /> : <ArrowDownToLine size={21} />}</span><span><strong>{fileName || 'Choose invitation file'}</strong><small>{fileName ? 'Ready to connect' : 'Drop the file here or browse'}</small></span><ArrowRight size={17} /></button><div className="security-note"><LockKeyhole size={15} /> Only import invitations from someone you trust. Your invitation is private.</div>{error && <p className="inline-error" role="alert">{error}</p>}<div className="modal-actions"><button className="button ghost" onClick={() => { setDialog(null); setError(''); }} disabled={busy}>Cancel</button><button className="button primary" onClick={() => run('join', { invitation })} disabled={!invitation || busy}>{busy ? <LoaderCircle size={17} className="spin" /> : <><span>Join world</span><ArrowRight size={17} /></>}</button></div></>}
+      {dialog === 'join' && <><div className="modal-icon"><UsersRound size={22} /></div><span className="eyebrow gold">BETTER TOGETHER</span><h2 id="modal-title">Join a world</h2><p>Choose the private invitation your host shared with you. We’ll use it to connect your trainer securely.</p><div className="invite-tabs" aria-label="Invitation method"><button type="button" aria-pressed={inviteMode === 'file'} onClick={() => { setInviteMode('file'); setInvitation(null); setFileName(''); setError(''); }}>From a file</button><button type="button" aria-pressed={inviteMode === 'paste'} onClick={() => { setInviteMode('paste'); setInvitation(null); setFileName(''); setError(''); }}>Paste invitation</button></div>{inviteMode === 'file' ? <><input ref={fileRef} className="visually-hidden" tabIndex={-1} type="file" accept=".json,application/json" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; chooseInvitation(file); }} /><button className={`upload ${fileName ? 'chosen' : ''} ${dragging ? 'dragging' : ''}`} onClick={() => fileRef.current?.click()} onDragOver={event => { event.preventDefault(); if (!busy) setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); if (!busy) chooseInvitation(event.dataTransfer.files?.[0]); }} disabled={busy}><span className="upload-icon">{fileName ? <Check size={21} /> : <ArrowDownToLine size={21} />}</span><span><strong>{fileName || 'Choose invitation file'}</strong><small>{fileName ? 'Ready to connect' : 'Drop the file here or browse'}</small></span><ArrowRight size={17} /></button></> : <><label className="field-label" htmlFor="invite-paste">Invitation JSON</label><textarea id="invite-paste" className="text-input invite-paste" maxLength={4096} autoComplete="off" value={pasteText} onChange={event => { setPasteText(event.target.value); setInvitation(null); setFileName(''); }} placeholder="Paste the invitation shared by your host" spellCheck={false} /><button className="button small ghost paste-confirm" disabled={busy || !pasteText} onClick={() => acceptInvitation(pasteText, 'Pasted invitation')}>{invitation ? 'Invitation ready' : 'Use invitation'}</button></>}<div className="security-note"><LockKeyhole size={15} /> Only import invitations from someone you trust. Your invitation is private.</div>{error && <p className="inline-error" role="alert">{error}</p>}<div className="modal-actions"><button className="button ghost" onClick={() => { setDialog(null); setError(''); }} disabled={busy}>Cancel</button><button className="button primary" onClick={() => run('join', { invitation })} disabled={!invitation || busy}>{busy ? <LoaderCircle size={17} className="spin" /> : <><span>Join world</span><ArrowRight size={17} /></>}</button></div></>}
       {dialog === 'solo' && <><div className="modal-icon"><Gamepad2 size={22} /></div><span className="eyebrow gold">YOUR OWN ADVENTURE</span><h2 id="modal-title">Play solo</h2><p>Start a new offline adventure without an invitation. Your save stays on this device and is separate from online worlds.</p><label className="field-label" htmlFor="solo-trainer">Trainer profile</label><input className="text-input" id="solo-trainer" maxLength={24} value={soloTrainer} onChange={event => setSoloTrainer(event.target.value)} /><p className="field-hint">Letters, numbers, underscores and hyphens. This labels your local profile.</p>{error && <p className="inline-error" role="alert">{error}</p>}<div className="modal-actions"><button className="button ghost" onClick={() => setDialog(null)}>Cancel</button><button className="button primary" disabled={busy || !soloTrainer.trim()} onClick={() => run('solo_new', { trainer: soloTrainer })}>Start adventure <ArrowRight size={16} /></button></div></>}
       {dialog === 'create' && <><div className="modal-icon"><Leaf size={22} /></div><span className="eyebrow gold">A NEW ADVENTURE</span><h2 id="modal-title">Create a world</h2><p>Creating worlds on the hosted service is the direction for Emerald World. The server’s world-creation service isn’t available in this client yet, so this button won’t create a local world by mistake.</p><div className="modal-actions"><button className="button primary" onClick={() => setDialog(null)}>Got it</button></div></>}
       {dialog?.type === 'offline' && <><div className="modal-icon"><Gamepad2 size={22} /></div><span className="eyebrow gold">A SEPARATE ADVENTURE</span><h2 id="modal-title">Play offline</h2><p>Play as <strong>{dialog.world.trainer}</strong> in {dialog.world.name}. Offline progress is kept in a separate save and never merges back into your online world.</p><p>Start a fresh offline save or resume an existing one. You can also make a one-time copy of your online save if no offline save exists yet.</p>{error && <p className="inline-error" role="alert">{error}</p>}<div className="modal-actions"><button className="button ghost" disabled={busy} onClick={() => run('offline', { world: dialog.world.key, copy: true })}>Copy online save</button><button className="button primary" disabled={busy} onClick={() => run('offline', { world: dialog.world.key, copy: false })}>Start or resume</button></div></>}

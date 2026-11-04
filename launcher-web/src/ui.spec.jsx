@@ -55,6 +55,19 @@ describe('player launcher', () => {
     await waitFor(() => expect(perform).toHaveBeenCalledWith('join', { invitation: raw }));
   });
 
+  it('lets the player paste a private invitation and confirm the connection', async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /join a world/i }));
+    const modal = screen.getByRole('dialog');
+    fireEvent.click(within(modal).getByRole('button', { name: /paste invitation/i }));
+    const raw = JSON.stringify({ version: 1, trainer: 'May' });
+    fireEvent.change(within(modal).getByLabelText(/invitation json/i), { target: { value: raw } });
+    fireEvent.click(within(modal).getByRole('button', { name: /^use invitation$/i }));
+    expect(perform).not.toHaveBeenCalled();
+    fireEvent.click(within(modal).getByRole('button', { name: /^join world$/i }));
+    await waitFor(() => expect(perform).toHaveBeenCalledWith('join', { invitation: raw }));
+  });
+
   it('makes the separate offline copy choice explicit', async () => {
     render(<App />);
     fireEvent.click(await screen.findByRole('button', { name: /your worlds/i }));
