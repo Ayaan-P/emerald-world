@@ -169,6 +169,8 @@ class LauncherBridge:
                         self.hosted.refresh()
                     elif action == 'host_create':
                         self.remote_paths = self.hosted.create(payload.get('name'), payload.get('trainer'))
+                    elif action == 'host_ack':
+                        self.hosted.acknowledge_create()
                     elif action == 'host_resume':
                         self.remote_paths = self.hosted.resume(payload.get('world'))
                     elif action == 'host_join':

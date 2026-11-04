@@ -29,6 +29,7 @@ class HostedLauncher:
         self.worlds = []
         self.loaded = False
         self.invite_requests = {}
+        self.completed_request = None
 
     def _private(self, path):
         from .hosting_client import read_private
@@ -168,11 +169,19 @@ class HostedLauncher:
         world = self._world(result['world'])
         if (world['name'], world['trainer']) != (name, trainer):
             raise SessionError('The server returned an unexpected world. Retry the pending request.')
-        # Retry remains safe until both remote creation and local connection succeed.
-        self.pending.unlink()
+        # Keep the idempotency record until the browser acknowledges receipt.
+        # If the HTTP response is lost, a later retry must use the same ID.
+        self.completed_request = pending['request_id']
         self._remember_name(result)
         self.worlds = [item for item in self.worlds if item['id'] != world['id']] + [world]
         return result['paths']
+
+    def acknowledge_create(self):
+        pending = self.pending_create()
+        if pending is None or self.completed_request != pending['request_id']:
+            raise SessionError('No completed creation is awaiting confirmation.')
+        self.pending.unlink()
+        self.completed_request = None
 
     def resume(self, world_id):
         self._ready()

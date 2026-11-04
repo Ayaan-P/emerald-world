@@ -106,6 +106,10 @@ export function App() {
         forgetCapability(); setState(empty); setReady(false); setDialog(null);
         setError('Launcher closed. You can close this window.'); return;
       }
+      if (action === 'host_create') {
+        try { Object.assign(next, await perform('host_ack', {})); }
+        catch { setError('Your world connected, but confirmation is pending. Refresh your hosted worlds before creating another.'); }
+      }
       if (next.download) {
         const url = URL.createObjectURL(new Blob([next.download], { type: 'application/json' }));
         delete next.download;

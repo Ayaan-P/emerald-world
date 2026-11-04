@@ -42,6 +42,7 @@ class HostedAdapterContract(unittest.TestCase):
                 self.assertTrue(hosted.enrolled())
                 paths = hosted.create('Our Hoenn', 'May')
                 self.assertEqual(paths, {'profile': Path(tmp) / 'profile'})
+                hosted.acknowledge_create()
                 self.assertEqual(json.loads(hosted.invite(world['id'])), invitation)
             self.assertNotIn('a' * 64, json.dumps(hosted.state()))
             self.assertNotIn('d' * 64, json.dumps(hosted.state()))

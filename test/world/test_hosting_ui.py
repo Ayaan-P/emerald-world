@@ -56,9 +56,24 @@ class HostingUiTests(unittest.TestCase):
             self.hosted.create('Different world', 'May')
         result = self.hosted.create('Our Hoenn', 'May')
         self.assertEqual(result, {'profile': 'local'})
+        self.assertTrue(self.hosted.pending.exists())
+        self.hosted.acknowledge_create()
         self.assertFalse(self.hosted.pending.exists())
         self.assertEqual(self.owner.create.call_args_list[0].kwargs['request_id'], pending['request_id'])
         self.assertEqual(self.owner.create.call_args_list[1].kwargs['request_id'], pending['request_id'])
+
+    def test_unacknowledged_success_is_retried_with_the_same_request(self):
+        world = {'id': '1234567890abcdef', 'name': 'Our Hoenn', 'trainer': 'May'}
+        self.owner.create.return_value = {'world': world, 'paths': {'profile': 'local'}}
+        self.hosted.create('Our Hoenn', 'May')
+        first_id = self.owner.create.call_args.kwargs['request_id']
+        # Simulate losing the response before the UI can acknowledge it.
+        self.assertTrue(self.hosted.pending.exists())
+        self.hosted.completed_request = None
+        self.hosted.create('Our Hoenn', 'May')
+        self.assertEqual(self.owner.create.call_args.kwargs['request_id'], first_id)
+        self.hosted.acknowledge_create()
+        self.assertFalse(self.hosted.pending.exists())
 
     def test_list_refuses_unexpected_private_fields(self):
         self.owner.list.return_value = [{'id': '1234567890abcdef', 'name': 'World', 'trainer': 'May', 'token': 'secret'}]
