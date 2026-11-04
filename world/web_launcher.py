@@ -175,10 +175,17 @@ class LauncherBridge:
                         self.remote_paths = self.hosted.resume(payload.get('world'))
                     elif action == 'host_join':
                         self.remote_paths = self.hosted.join(payload.get('invitation'), payload.get('trainer'))
+                    elif action == 'host_invite_account':
+                        invitation = self.hosted.invite_owner()
+                        result = self.snapshot()
+                        result['download'] = invitation
+                        result['download_kind'] = 'owner'
+                        return result
                     elif action == 'host_invite':
                         invitation = self.hosted.invite(payload.get('world'))
                         result = self.snapshot()
                         result['download'] = invitation
+                        result['download_kind'] = 'friend'
                         return result
                     else:
                         raise SessionError('Unknown hosted-world action.')

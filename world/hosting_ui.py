@@ -202,6 +202,18 @@ class HostedLauncher:
             self._remember_name(result)
             return result['paths']
 
+    def invite_owner(self):
+        self._ready()
+        from .hosting_client import HostingClient
+        request_id = self.invite_requests.setdefault('owner', secrets.token_hex(16))
+        with tempfile.TemporaryDirectory(prefix='emerald-host-invite-') as directory:
+            destination = Path(directory) / 'host-access.json'
+            HostingClient.from_file(self.profile).invite_account(destination, request_id=request_id)
+            value = self._private(destination)
+            raw = json.dumps(value, separators=(',', ':'))
+        self.invite_requests.pop('owner', None)
+        return raw
+
     def invite(self, world_id):
         self._ready()
         from .hosting_client import HostingClient

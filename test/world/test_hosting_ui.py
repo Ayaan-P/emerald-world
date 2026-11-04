@@ -81,6 +81,14 @@ class HostingUiTests(unittest.TestCase):
             self.hosted.refresh()
         self.assertEqual(self.hosted.worlds, [])
 
+    def test_owner_invitation_is_generated_to_private_temporary_file(self):
+        def issue(destination, *, request_id):
+            write_private(destination, {'kind': 'host-access', 'token': 'example'})
+        self.owner.invite_account.side_effect = issue
+        raw = self.hosted.invite_owner()
+        self.assertEqual(json.loads(raw)['kind'], 'host-access')
+        self.owner.invite_account.assert_called_once()
+
     def test_join_uses_private_temporary_file_and_returns_only_paths(self):
         seen = {}
         def join(path, trainer):

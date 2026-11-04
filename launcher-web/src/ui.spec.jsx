@@ -79,6 +79,18 @@ describe('player launcher', () => {
     await waitFor(() => expect(perform).toHaveBeenCalledWith('host_create', { name: 'Our Hoenn', trainer: 'May' }));
   });
 
+  it('asks before creating access for another world owner', async () => {
+    const hosted = { available: true, enrolled: true, loaded: true, worlds: [], pending: null };
+    loadState.mockResolvedValue({ ...snapshot(), hosting: hosted });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /invite an owner/i }));
+    const modal = screen.getByRole('dialog');
+    expect(modal.textContent).toMatch(/own hosted-world account/i);
+    expect(perform).not.toHaveBeenCalled();
+    fireEvent.click(within(modal).getByRole('button', { name: /create access file/i }));
+    await waitFor(() => expect(perform).toHaveBeenCalledWith('host_invite_account', {}));
+  });
+
   it('offers a private invitation as a download without showing its contents', async () => {
     const hosted = { available: true, enrolled: true, loaded: true, pending: null,
       worlds: [{ id: '1234567890abcdef', name: 'Our Hoenn', trainer: 'May' }] };
