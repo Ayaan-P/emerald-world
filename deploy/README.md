@@ -125,3 +125,85 @@ The new checks exercise the actual authority, framed loopback pinned TLS,
 subprocess dedicated CLI, private invitations, SIGTERM/reopen persistence,
 more than eight trainers with multiple channels, 16 independent pair reservations
 and bounded nearest-eight views. No SDK or native emulator is started.
+
+## Self-service hosted-world backend (separate deployment)
+
+`world.hosting` adds owner-account enrollment, world creation/list/resume and
+private per-friend invitations. It starts an independent authority and pinned TLS
+broker per world. It does not read, seed or replicate player save files. This is
+a management/backend implementation, not an installed or integrated launcher UI.
+Existing single-world services and their state must remain unchanged.
+
+The separate `deploy/emerald-hosted.service` template expects a reviewed source
+release at `/opt/emerald-world/hosted-current`, the existing `emerald-world`
+service user, and `/etc/emerald-hosted.conf` containing `EMERALD_HOST=HOSTNAME`.
+Ship the complete `world` Python package **and `world/map_catalog.json`**. Use a
+new private root `/var/lib/emerald-hosted`, with a separately provisioned TLS
+certificate/key in `tls/server.pem` and `tls/server.key`. Bootstrap once, as the
+service user, **before** starting the management service:
+
+```sh
+python3 -m world.hosting create-account \
+  --root /var/lib/emerald-hosted/state \
+  --cert /var/lib/emerald-hosted/tls/server.pem \
+  --key /var/lib/emerald-hosted/tls/server.key \
+  --advertise-host HOSTNAME --game-listen-host 0.0.0.0 \
+  --management-advertise HOSTNAME:8766 --invitation-out PRIVATE_HOST_ACCESS_FILE
+```
+
+The operator must explicitly expose management TCP 8766 and the bounded game
+port pool 9001–9016. These are new endpoints, not changes to the existing 8765
+friend world. Registered worlds, ports and credentials survive service restart;
+a missing registered world database fails closed, never silently creates a new
+world. Sixteen is an allocation limit, not a load-tested concurrency promise.
+The template is not deployed by tests or by importing any module.
+
+### Launcher integration (no GUI changes in this backend)
+
+`HostingClient.enroll(access_file, profile_file)` exchanges private HOST ACCESS
+for a client-generated owner credential; the credential is persisted before the
+request so enrollment can safely retry. The bootstrap owner can use
+`.invite_account(destination, request_id=...)` to invite independent owners
+remotely—friends do not require SSH or operator-created accounts. Other owners
+cannot sponsor accounts or access someone else's owned worlds.
+
+`world.hosting_session.HostedWorldSession(desktop_session, host_profile)` supplies:
+
+- `.create(name, trainer, request_id=stable_id)` → create and connect.
+- `.resume(world_id)` → reconnect the owner to the same private profile.
+- `.join(private_join_file, trainer)` → redeem and connect a friend; no owner
+  profile or host account is required for joining.
+
+Results contain `world` metadata (including the friendly name), stable local
+`key`, and ordinary native `paths`; no bearer credential is returned by the
+adapter. Use the launcher's existing `desktop_session.launch(paths, ...)` and
+Disconnect controls. The adapter never starts a game, creates a save, selects a
+starter, edits flags or changes an existing private save. Remote connections
+are remembered by the existing friend-world backend. The launcher must render
+remote-world metadata itself; the existing local-world library is not a remote
+world listing. Its UI integration remains a separate collaborator task.
+
+For friend invitations use `HostingClient.from_file(host_profile).invite(
+world_id, private_destination, request_id=stable_id)`. Share only that private
+join file. A join invitation binds to one trainer; retrying that same claim is
+safe, while taking an existing identity or claiming a different trainer is
+rejected. Native v1 invitations and save isolation are unchanged. Never log API
+results containing `invitation`, access files or owner profiles; never publish
+these files or private acceptance traces.
+
+Run the actual local HTTPS/authority/native-session handoff regressions with:
+
+```sh
+python3 -m unittest test.world.test_hosting test.world.test_hosting_session -v
+```
+
+These tests do not establish deployed WAN management or native gameplay. The
+opt-in `test/world/hosted_native_acceptance.py` instead runs real native clients
+from **empty** private profiles with ordinary player SDK buttons, the original
+new-game/starter sequence, save/Continue, bilateral Tag and owner leave/return.
+It requires explicit private native invitations, a matched ready marker and
+`--allow-launch`. `--through-dex` additionally attempts the stock individual May,
+Pokédex and Poké Ball sequence; it must not be reported passed unless executed.
+Story/intro progression remains private per trainer; ordinary shared trainer
+victories grant both players trainer credit, but a guest's first shared May win
+alone does not complete that guest's separate opening storyline.
