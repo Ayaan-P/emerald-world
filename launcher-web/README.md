@@ -25,7 +25,7 @@ Your save stays on this computer. Under Your worlds, Play offline starts or resu
 
 ```sh
 python3 -m unittest test.world.test_web_launcher
-cd launcher-web && npm test && npm run build
+cd launcher-web && npm test && npm run test:ui && npm run build
 ```
 
 These checks do not run a real multiplayer session or exercise the native game. A graphical Linux desktop and native prerequisites are required for an end-to-end run. Windows and macOS are not supported by this experimental launcher.

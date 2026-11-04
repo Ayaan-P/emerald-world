@@ -69,7 +69,10 @@ class LauncherBridge:
                     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
                     with os.fdopen(fd, 'w') as out:
                         out.write(raw)
-                    invitation = read_invitation(path)
+                    try:
+                        invitation = read_invitation(path)
+                    except (OSError, ValueError):
+                        raise SessionError('Invalid invitation. Ask your host to share a fresh file privately.') from None
                     if invitation.get('version') != 1:
                         raise SessionError('This invitation needs the legacy launcher.')
                     endpoint = invitation['endpoint']

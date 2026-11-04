@@ -41,7 +41,7 @@ class WebLauncherTests(unittest.TestCase):
 
     def test_duplicate_invitation_keys_and_oversized_files_are_rejected(self):
         raw = json.dumps(self.invitation()).replace('"version": 1', '"version": 1, "version": 1')
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(SessionError, 'Invalid invitation'):
             self.bridge.action('join', {'invitation': raw})
         with self.assertRaises(SessionError):
             self.bridge.action('join', {'invitation': 'x' * 4097})

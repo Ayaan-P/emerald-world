@@ -42,4 +42,5 @@ jobs:
         working-directory: launcher-web
         run: |
           npm test
+          npm run test:ui
           npm run build
