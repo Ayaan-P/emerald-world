@@ -9,7 +9,7 @@ This is progress toward the wider roadmap, not a claim of full parity. It preser
 - Native room/private chat and a Friends menu are integrated. Friends use a separate authenticated cross-map roster, not the limited same-map render slots. Fly still requires the player's own earned badge, a party member knowing Fly, a personally visited destination, safe field state, fresh friend information and a clear landing; cancellation/fallback must not grant progress.
 - Gym/League guest participation does not consume the guest's boss, award their badge, or resume the owner's progression script. Ordinary shared trainer credit remains supported.
 - Read-only Summary detail exposes local Pokémon IVs, EVs and stock Hidden Power type/power. No EV migration, stat recalculation, save-format change or private opponent-party export is introduced.
-- Native Party auto-heal is being integrated as the remaining part of this batch. It must consume applicable owned medicine rather than invent items, and must not revive fainted Pokémon or operate inside an unsafe shared/battle context.
+- Native Party AUTO HEAL consumes applicable owned HP/status medicine in stock-price/item-ID order. It skips fainted Pokémon and eggs, and refuses unsafe shared/battle contexts. Enigma effects, reusable flutes, PP/EV items and revives are excluded. This is per-unit cheapest selection, not a minimum-total-spend optimizer.
 
 ## Honest remaining scope
 
