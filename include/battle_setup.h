@@ -68,6 +68,7 @@ u16 CountBattledRematchTeams(u16 trainerId);
 void BattleSetup_ResumeWorldWildBattle(void);
 void BattleSetup_ResumeWorldTrainerBattle(void);
 void BattleSetup_RecordWorldTrainerBattle(void);
+bool8 BattleSetup_CanShareWorldTrainerCredit(u16 trainerId);
 bool8 BattleSetup_ResumeWorldTrainerScript(u16 trainerId);
 void BattleSetup_RegisterWorldTrainerInMatchCall(u16 trainerId);
 void BattleSetup_RecordWorldWildBattle(void);
