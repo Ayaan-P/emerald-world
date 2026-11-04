@@ -126,6 +126,7 @@ class WorldServer:
         self.stopping = threading.Event()
         self.connections = {}
         self.peers = {}
+        self.chat_serial = 0
         self.link_channels = {}
         self.link_protocol = LinkProtocol()
         self.tiles = []
@@ -333,6 +334,9 @@ class WorldServer:
         if conn.get('social') and meeting:
             lines.append('MEET ' + ' '.join(str(meeting[k]) for k in
                 ('seq','player','target','group','num','x','y','signal')))
+        if conn.get('chat'):
+            lines += ['CHATMSG ' + ' '.join(map(str, message)) for message in conn['chat_history']]
+            lines.append('CHATSTATUS ' + conn['chat_status'])
         return '\n'.join(lines + ['END', ''])
 
     def _broadcast(self):
@@ -392,6 +396,9 @@ class WorldServer:
                     return
                 conn['id'] = name
                 conn['social'] = social
+                conn['chat'] = False
+                conn['chat_history'] = []
+                conn['chat_status'] = 'ready'
                 self.peers[name] = conn
                 with self.db:
                     self._event('join', name)
@@ -403,6 +410,15 @@ class WorldServer:
                 return
             if conn.get('control'):
                 self._control_line(conn, raw)
+                return
+            if bytes(raw) == b'CHAT_ENABLE' and conn.get('social'):
+                conn['chat'] = True
+                self._queue(conn, self._snapshot(conn))
+                return
+            if fields and fields[0] == 'CHAT':
+                if raw.decode('ascii') != ' '.join(fields):
+                    raise ValueError('noncanonical chat line')
+                self._chat(conn, fields)
                 return
             if fields and fields[0] == 'INTERACT':
                 self._interact(conn, fields)
@@ -453,6 +469,44 @@ class WorldServer:
             self._broadcast()
         except (UnicodeError, ValueError):
             self._error(conn, 'MALFORMED')
+
+    def _chat(self, conn, fields):
+        # Session-only history. Private text never enters durable world events,
+        # GM context, trainer files, or snapshots of non-recipients/legacy peers.
+        if (not conn.get('chat') or len(fields) != 4
+                or (fields[2] != '*' and not ID.fullmatch(fields[2]))
+                or not re.fullmatch(r'(?:[0-9a-f]{2}){1,120}', fields[3])):
+            raise ValueError('invalid chat')
+        text = bytes.fromhex(fields[3])
+        if any(c < 32 or c > 126 for c in text) or not text.strip():
+            raise ValueError('invalid chat text')
+        seq = bounded(fields[1], 0, 2**63-1)
+        if seq <= conn['seq']:
+            self._error(conn, 'STALE')
+            return
+        conn['seq'] = seq
+        target = self.peers.get(fields[2])
+        if fields[2] != '*' and (not target or not target.get('chat') or target.get('closing')):
+            conn['chat_status'] = 'unavailable'
+            self._queue(conn, self._snapshot(conn))
+            return
+        now = time.monotonic()
+        credit = min(4, conn.get('chat_credit', 4) + now - conn.get('chat_time', now))
+        conn['chat_time'] = now
+        if credit < 1:
+            conn['chat_credit'] = credit
+            conn['chat_status'] = 'slow'
+            self._queue(conn, self._snapshot(conn))
+            return
+        conn['chat_credit'] = credit - 1
+        self.chat_serial += 1
+        message = (self.chat_serial, conn['id'], fields[2], fields[3])
+        recipients = self.peers.values() if fields[2] == '*' else (conn, target)
+        for recipient in {id(c): c for c in recipients}.values():
+            if recipient.get('chat') and not recipient.get('closing'):
+                recipient['chat_history'] = (recipient['chat_history'] + [message])[-16:]
+        conn['chat_status'] = 'sent'
+        self._broadcast()
 
     def _deliver_links(self, messages):
         for trainer, line in messages:

@@ -56,16 +56,20 @@
 struct Peer { char id[26], text[58]; unsigned group, num, x, y, facing, gfx, ready; };
 struct Tile { unsigned group, num, x, y, metatile, collision; };
 struct Meeting { unsigned seq, group, num, x, y; char player[25], target[25]; };
+struct ChatMessage { unsigned seq; char sender[25], target[25], text[121]; };
 struct Snapshot {
     unsigned revision, peerCount, tileCount, objectCount;
     struct Peer peers[WB_REMOTES];
     struct Tile tiles[WB_TILES];
     struct Meeting meeting;
+    unsigned chatCount;
+    char chatStatus[12];
+    struct ChatMessage chat[16];
 };
 struct Remote { char id[26]; u8 object, sprite, group, num; };
 struct Applied { struct Tile tile; u16 original, raw; };
 static struct {
-    bool8 enabled, connected, connecting, staging;
+    bool8 enabled, connected, connecting, staging, chatRequested;
 #ifdef _WIN32
     SOCKET fd;
     bool8 winsockStarted;
@@ -316,9 +320,12 @@ static void Disconnect(void)
     sWorld.fd = -1;
 #endif
     sWorld.connected = sWorld.connecting = sWorld.staging = FALSE;
+    sWorld.chatRequested = FALSE;
     sWorld.inputSize = sWorld.outputSize = sWorld.outputSent = 0;
     sWorld.retry = 30;
     sWorld.live.peerCount = sWorld.live.tileCount = sWorld.live.objectCount = 0;
+    sWorld.live.chatCount = 0;
+    sWorld.live.chatStatus[0] = 0;
     sWorld.pendingObject[0] = 0;
     memset(&sWorld.live.meeting, 0, sizeof(sWorld.live.meeting));
     sWorld.generation++;
@@ -488,6 +495,45 @@ static bool8 Line(char *line)
         if (!MapCoords(v[1],v[2],v[3],v[4])) return FALSE;
         m->seq=v[0]; m->group=v[1]; m->num=v[2]; m->x=v[3]; m->y=v[4];
         strcpy(m->player,tokens[2]); strcpy(m->target,tokens[3]);
+        return TRUE;
+    }
+    if (!strcmp(tokens[0], "CHATSTATUS")) {
+        if (n != 2 || sWorld.stage.chatStatus[0]
+         || (strcmp(tokens[1], "ready") && strcmp(tokens[1], "sent")
+          && strcmp(tokens[1], "slow") && strcmp(tokens[1], "unavailable"))) return FALSE;
+        strcpy(sWorld.stage.chatStatus, tokens[1]);
+        return TRUE;
+    }
+    if (!strcmp(tokens[0], "CHATMSG")) {
+        struct ChatMessage *message;
+        size_t length, j;
+        bool8 visible = FALSE;
+        if (n != 5 || sWorld.stage.chatCount == 16 || !Decimal(tokens[1], &v[0]) || !v[0]
+         || !Identifier(tokens[2]) || (strcmp(tokens[3], "*") && !Identifier(tokens[3]))
+         || (strcmp(tokens[3], "*") && strcmp(tokens[3], sWorld.trainer)
+          && strcmp(tokens[2], sWorld.trainer))
+         || (sWorld.stage.chatCount && v[0] <= sWorld.stage.chat[sWorld.stage.chatCount-1].seq)) return FALSE;
+        length = strlen(tokens[4]);
+        if (!length || length % 2 || length > 240) return FALSE;
+        message = &sWorld.stage.chat[sWorld.stage.chatCount];
+        for (i = 0; i < length / 2; i++) {
+            unsigned c = 0;
+            for (j = 0; j < 2; j++) {
+                char h = tokens[4][2*i+j];
+                if (h >= '0' && h <= '9') c = c * 16 + h - '0';
+                else if (h >= 'a' && h <= 'f') c = c * 16 + h - 'a' + 10;
+                else return FALSE;
+            }
+            if (c < 32 || c > 126) return FALSE;
+            if (c != 32) visible = TRUE;
+            message->text[i] = c;
+        }
+        if (!visible) return FALSE;
+        message->text[i] = 0;
+        message->seq = v[0];
+        strcpy(message->sender, tokens[2]);
+        strcpy(message->target, tokens[3]);
+        sWorld.stage.chatCount++;
         return TRUE;
     }
     if (!strcmp(tokens[0], "PEER")) {
@@ -720,6 +766,51 @@ static void Fingerprint(const void *data, size_t size, char out[17])
     size_t i;
     for (i = 0; i < size; i++) hash = (hash ^ p[i]) * 0x100000001b3ULL;
     snprintf(out, 17, "%016llx", (unsigned long long)hash);
+}
+
+int WorldBridge_ChatSend(const char *target, const char *text)
+{
+    char hex[241];
+    size_t i, length = strlen(text);
+    bool8 visible = FALSE;
+    if (!sWorld.connected || sWorld.outputSize || !length || length > 120
+     || (strcmp(target, "*") && !Identifier(target)) || sWorld.seq == UINT_MAX) return 0;
+    for (i = 0; i < length; i++) {
+        unsigned c = (unsigned char)text[i];
+        if (c < 32 || c > 126) return 0;
+        if (c != 32) visible = TRUE;
+        hex[2*i] = "0123456789abcdef"[c >> 4];
+        hex[2*i+1] = "0123456789abcdef"[c & 15];
+    }
+    if (!visible) return 0;
+    hex[2*i] = 0;
+    sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
+        "CHAT %u %s %s\n", ++sWorld.seq, target, hex);
+    Flush();
+    return 1;
+}
+
+unsigned WorldBridge_ChatCount(void)
+{
+    return sWorld.live.chatCount;
+}
+
+const char *WorldBridge_ChatStatus(void)
+{
+    return !sWorld.connected ? "offline" : sWorld.live.chatStatus;
+}
+
+void WorldBridge_ChatLine(unsigned index, char *out, unsigned size)
+{
+    const struct ChatMessage *message;
+    if (!size) return;
+    out[0] = 0;
+    if (index >= sWorld.live.chatCount) return;
+    message = &sWorld.live.chat[index];
+    if (!strcmp(message->target, "*"))
+        snprintf(out, size, "%s: %s", message->sender, message->text);
+    else
+        snprintf(out, size, "%s > %s: %s", message->sender, message->target, message->text);
 }
 
 static void SendState(void)
@@ -1044,7 +1135,8 @@ void WorldBridge_WriteJSON(FILE *file, u32 frame)
 {
     unsigned i, count = 0;
     const struct ObjectEvent *p = Overworld() ? &gObjectEvents[gPlayerAvatar.objectEventId] : NULL;
-    fprintf(file, "{\"trainer\":\"%s\",\"frame\":%u,\"connected\":%s,\"revision\":%u,\"ready\":%s,\"map\":[%d,%d],\"pos\":[%d,%d],\"peers\":[",
+    fprintf(file, "{\"chat_count\":%u,\"in_battle\":%s,\"trainer\":\"%s\",\"frame\":%u,\"connected\":%s,\"revision\":%u,\"ready\":%s,\"map\":[%d,%d],\"pos\":[%d,%d],\"peers\":[",
+        sWorld.live.chatCount, gMain.inBattle ? "true" : "false",
         sWorld.trainer, frame, sWorld.connected ? "true" : "false", sWorld.live.revision, Ready() ? "true" : "false",
         gSaveBlock1Ptr ? gSaveBlock1Ptr->location.mapGroup : -1, gSaveBlock1Ptr ? gSaveBlock1Ptr->location.mapNum : -1,
         p ? p->currentCoords.x - MAP_OFFSET : 0, p ? p->currentCoords.y - MAP_OFFSET : 0);
@@ -1109,6 +1201,16 @@ void WorldBridge_Poll(bool8 headless)
         sWorld.handshakePolls--;
     }
     if (SocketOpen()) Receive(headless);
+#ifndef _WIN32
+    /* Keep the original presence handshake for legacy/Windows peers. Chat
+     * snapshots are explicit opt-in and never change a legacy parser's wire. */
+    if (!headless && sWorld.connected && !sWorld.chatRequested && !sWorld.outputSize) {
+        strcpy(sWorld.output, "CHAT_ENABLE\n");
+        sWorld.outputSize = strlen(sWorld.output);
+        sWorld.chatRequested = TRUE;
+        Flush();
+    }
+#endif
 }
 
 void WorldBridge_BeforeFrame(u32 frame, bool8 headless)

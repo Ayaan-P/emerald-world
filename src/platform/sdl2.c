@@ -28,6 +28,7 @@
 #include "platform/system.h"
 #include "platform/test_state.h"
 #include "platform/world_bridge.h"
+#include "platform/world_chat.h"
 #include "platform/world_activity.h"
 #include "platform/player_control.h"
 #include "platform/native_link.h"
@@ -76,6 +77,11 @@ static const char *sWorldShotPath;
 static bool sWorldBootstrap;
 static u32 sWorldFrame;
 static const char *sPlayerControlPath;
+
+static unsigned WindowHeight(void)
+{
+    return DISPLAY_HEIGHT + (WorldBridge_Enabled() ? WORLD_CHAT_HEIGHT : 0);
+}
 
 extern void AgbMain(void);
 
@@ -193,6 +199,10 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    // Text events belong only to an explicitly opened chat composer. SDL may
+    // otherwise queue the opening T as draft content before the first open.
+    SDL_StopTextInput();
+
     // Mappings for controllers SDL doesn't know, from https://github.com/mdqinc/SDL_GameControllerDB
     {
         char path[1024];
@@ -209,7 +219,7 @@ int main(int argc, char **argv)
     }
 
     videoScale = gSettings.scale;
-    sdlWindow = SDL_CreateWindow(WindowTitle(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, DISPLAY_WIDTH * videoScale, DISPLAY_HEIGHT * videoScale,
+    sdlWindow = SDL_CreateWindow(WindowTitle(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, DISPLAY_WIDTH * videoScale, WindowHeight() * videoScale,
                                  SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | (gSettings.fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
     if (sdlWindow == NULL)
     {
@@ -227,7 +237,7 @@ int main(int argc, char **argv)
     SDL_SetRenderDrawColor(sdlRenderer, 255, 255, 255, 255);
     SDL_RenderClear(sdlRenderer);
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
-    SDL_RenderSetLogicalSize(sdlRenderer, DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    SDL_RenderSetLogicalSize(sdlRenderer, DISPLAY_WIDTH, WindowHeight());
     // Whole pixels only, with borders in fullscreen
     SDL_RenderSetIntegerScale(sdlRenderer, SDL_TRUE);
 
@@ -332,14 +342,18 @@ int main(int argc, char **argv)
 
             if (videoScaleChanged)
             {
-                SDL_SetWindowSize(sdlWindow, DISPLAY_WIDTH * videoScale, DISPLAY_HEIGHT * videoScale);
+                SDL_SetWindowSize(sdlWindow, DISPLAY_WIDTH * videoScale, WindowHeight() * videoScale);
                 videoScaleChanged = false;
             }
         }
 
         lastGameTime = curGameTime;
 
-        SDL_RenderCopy(sdlRenderer, sdlTexture, NULL, NULL);
+        {
+            SDL_Rect game = {0, WindowHeight() - DISPLAY_HEIGHT, DISPLAY_WIDTH, DISPLAY_HEIGHT};
+            SDL_RenderCopy(sdlRenderer, sdlTexture, NULL, &game);
+            WorldChat_Draw(sdlRenderer);
+        }
         SDL_RenderPresent(sdlRenderer);
     }
 
@@ -492,6 +506,7 @@ void ProcessEvents(void)
 
     while (SDL_PollEvent(&event))
     {
+        if (sPlayerControlPath == NULL && WorldChat_Event(&event)) continue;
         switch (event.type)
         {
         case SDL_QUIT:
@@ -532,8 +547,8 @@ void ProcessEvents(void)
                 videoScale = 0;
                 if (w / DISPLAY_WIDTH > videoScale)
                     videoScale = w / DISPLAY_WIDTH;
-                if (h / DISPLAY_HEIGHT > videoScale)
-                    videoScale = h / DISPLAY_HEIGHT;
+                if (h / WindowHeight() > videoScale)
+                    videoScale = h / WindowHeight();
                 if (videoScale < 1)
                     videoScale = 1;
 
@@ -545,7 +560,7 @@ void ProcessEvents(void)
 
     // Physical speed-up belongs to the human window, never the AI controller.
     speedUp = false;
-    if (sPlayerControlPath == NULL)
+    if (sPlayerControlPath == NULL && !WorldChat_BlocksInput())
         Input_GetButtons(&speedUp);
     timeScale = speedUp ? 5.0 : 1.0;
 }
@@ -564,6 +579,7 @@ u16 Platform_GetKeyInput(void)
     // A configured AI controller owns its input even while idle or disconnected.
     if (sPlayerControlPath != NULL)
         return PlayerControl_Buttons();
+    if (WorldChat_BlocksInput()) return 0;
     return Input_GetButtons(NULL);
 }
 

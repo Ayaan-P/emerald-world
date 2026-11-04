@@ -20,6 +20,8 @@ void LoadSettings(const char *path);
 void Input_HandleEvent(const SDL_Event *event);
 // The GBA buttons held on the keyboard and the controllers, as KEYINPUT bits
 u16 Input_GetButtons(bool *speedUp);
+// Includes every loaded game and fast-forward binding, not just defaults.
+bool Input_KeyIsBound(SDL_Scancode key);
 
 // The headless test mode's keyboard and controller. Input names are "key:" and
 // a key, or "pad:" and a controller input, like in the settings file.
