@@ -23,6 +23,11 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # official v4
         with:
           persist-credentials: false
+      - name: Generate map constants for production C fixtures
+        run: |
+          make -C tools/mapjson
+          tools/mapjson/mapjson groups emerald data/maps/map_groups.json data/maps include/constants
+          tools/mapjson/mapjson layouts emerald data/layouts/layouts.json data/layouts include/constants
       - name: Protocol and actual-source C regressions (no native game sessions)
         run: PYTHONPATH=.:test/world python3 -m unittest test_coop_catching test_tag_coop test_link_protocol test_link_sessions test_trainer_abort_wire_regression test_link_battle_payloads test_coop_controller_repro -v
 
