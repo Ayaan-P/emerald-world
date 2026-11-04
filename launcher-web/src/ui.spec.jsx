@@ -107,6 +107,18 @@ describe('player launcher', () => {
     await waitFor(() => expect(perform).toHaveBeenCalledWith('solo_new', { trainer: 'May' }));
   });
 
+  it('copies an optional save into a new solo adventure', async () => {
+    const { container } = render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /^play solo$/i }));
+    const modal = screen.getByRole('dialog');
+    const bytes = new Uint8Array([1, 2, 3]);
+    const file = { name: 'emerald.sav', size: bytes.length, arrayBuffer: async () => bytes.buffer };
+    fireEvent.change(container.querySelector('input[accept^=".sav"]'), { target: { files: [file] } });
+    await within(modal).findByText('emerald.sav');
+    fireEvent.click(within(modal).getByRole('button', { name: /start adventure/i }));
+    await waitFor(() => expect(perform).toHaveBeenCalledWith('solo_new', { trainer: 'Player', seed: 'AQID' }));
+  });
+
   it('can resume an offline adventure with no saved connection', async () => {
     loadState.mockResolvedValue({ ...snapshot(), worlds: [], offline_saves: [{ world: 'solo-a', trainer: 'May', name: 'Solo adventure' }] });
     render(<App />);

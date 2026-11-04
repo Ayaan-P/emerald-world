@@ -1,4 +1,5 @@
 """Unit checks for the local launcher bridge. No live world or game is used."""
+import base64
 import json
 import os
 import time
@@ -142,6 +143,25 @@ class WebLauncherTests(unittest.TestCase):
             self.bridge.action('solo_new', {'trainer': 'May'})
         self.session.launch_offline.assert_called_once_with('solo-abc123', 'May', Path('/nonexistent/game'), ':90', copy_online=False)
         self.session.connect_remote.assert_not_called()
+
+    def test_solo_import_stages_private_copy_and_removes_temporary_file(self):
+        self.session.managed_display = Mock(display=':90')
+        seen = {}
+        def start(*args, **kwargs):
+            path = kwargs['seed_save']
+            seen['path'], seen['data'], seen['mode'] = path, path.read_bytes(), path.stat().st_mode & 0o777
+        self.session.launch_offline.side_effect = start
+        fixture = b'private save fixture'
+        with patch('scripts.linux_client.binary_ready', return_value=True), patch('world.web_launcher.secrets.token_hex', return_value='abc123'):
+            self.bridge.action('solo_new', {'trainer': 'May', 'seed': base64.b64encode(fixture).decode()})
+        self.assertEqual(seen['data'], fixture)
+        self.assertEqual(seen['mode'], 0o600)
+        self.assertFalse(seen['path'].exists())
+
+    def test_solo_import_rejects_invalid_data_without_launching(self):
+        with self.assertRaises(SessionError):
+            self.bridge.action('solo_new', {'trainer': 'May', 'seed': 'not base64!?'})
+        self.session.launch_offline.assert_not_called()
 
     def test_unknown_solo_profile_cannot_be_resumed(self):
         with self.assertRaises(SessionError):

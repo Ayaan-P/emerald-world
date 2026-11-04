@@ -341,13 +341,13 @@ class DesktopSession:
         self.status = f'Game display {display} ready. Return to Play and launch your trainer.'
         return display
 
-    def launch_offline(self, world, trainer, binary=REPO/'build/pokeemerald64', display=':93', copy_online=False):
+    def launch_offline(self, world, trainer, binary=REPO/'build/pokeemerald64', display=':93', copy_online=False, *, seed_save=None):
         from .offline import offline_profile
         state = self._world(world)
         # Snapshot preparation and native play acquire the same destination lock.
         # A competing start between them fails closed instead of sharing a save.
         try:
-            with offline_profile(state, trainer, copy_online=copy_online) as paths:
+            with offline_profile(state, trainer, seed_save=seed_save, copy_online=copy_online) as paths:
                 offline_paths = dict(paths)
         except ValueError as exc:
             raise SessionError(str(exc)) from None

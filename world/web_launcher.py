@@ -5,6 +5,8 @@ listener is loopback-only and its per-launch capability stays in the browser
 fragment, not in an HTTP request URL or server log.
 """
 import argparse
+import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -26,7 +28,8 @@ from .session import DesktopSession, SessionError
 from .transport import read_invitation
 
 DIST = REPO / 'launcher-web' / 'dist'
-MAX_BODY = 32768
+MAX_BODY = 1500000
+MAX_SAVE = 1048576
 
 
 class LauncherBridge:
@@ -74,7 +77,7 @@ class LauncherBridge:
                     found.append({'world': world.name, 'trainer': trainer.name, 'name': label})
         return found
 
-    def _start_offline(self, world, trainer, copy=False):
+    def _start_offline(self, world, trainer, copy=False, seed_save=None):
         if self.session.state is not None or any(p.poll() is None for p, _ in self.session.games.values()):
             raise SessionError('Disconnect and close any running game before playing offline.')
         from scripts.linux_client import binary_ready, discover_display
@@ -82,8 +85,11 @@ class LauncherBridge:
             raise SessionError('The native game is not built. Follow INSTALL_PC.md first.')
         if self.session.managed_display is None:
             self.session.start_display(discover_display())
+        options = {'copy_online': copy}
+        if seed_save is not None:
+            options['seed_save'] = seed_save
         self.session.launch_offline(world, trainer, self.binary,
-                                    self.session.managed_display.display, copy_online=copy)
+                                    self.session.managed_display.display, **options)
 
     def game_presence(self):
         """Read only fresh, sanitized telemetry from this launcher's own game."""
@@ -209,7 +215,24 @@ class LauncherBridge:
                 world = 'solo-' + secrets.token_hex(12)
                 if os.path.lexists(self.session.root / world):
                     raise SessionError('Could not create a new adventure. Please try again.')
-                self._start_offline(world, trainer)
+                seed = payload.get('seed')
+                if seed is None:
+                    self._start_offline(world, trainer)
+                else:
+                    if not isinstance(seed, str) or len(seed) > 1400000:
+                        raise SessionError('Choose a save file no larger than 1 MiB.')
+                    try:
+                        data = base64.b64decode(seed, validate=True)
+                    except (ValueError, binascii.Error):
+                        raise SessionError('That save file could not be read.') from None
+                    if not 0 < len(data) <= MAX_SAVE:
+                        raise SessionError('Choose a nonempty save file no larger than 1 MiB.')
+                    with tempfile.TemporaryDirectory(prefix='emerald-save-') as directory:
+                        path = Path(directory) / 'seed.sav'
+                        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                        with os.fdopen(fd, 'wb') as output:
+                            output.write(data)
+                        self._start_offline(world, trainer, seed_save=path)
             elif action == 'solo_resume':
                 world, trainer = payload.get('world'), payload.get('trainer')
                 if not any(item['world'] == world and item['trainer'] == trainer for item in self.offline_saves()):
