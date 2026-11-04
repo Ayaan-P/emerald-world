@@ -18,7 +18,8 @@ class SaveBackupTests(unittest.TestCase):
         self.world = self.root / 'world'
         self.world.mkdir(mode=0o700)
         self.paths = profile_paths(self.world, 'May')
-        self.paths['profile'].mkdir(parents=True, mode=0o700)
+        self.paths['profile'].parent.mkdir(mode=0o700)
+        self.paths['profile'].mkdir(mode=0o700)
         self.fixture = b'synthetic save bytes'
         self.paths['save'].write_bytes(self.fixture)
         self.destination = self.root / 'backup.sav'
