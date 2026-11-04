@@ -24,7 +24,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Protocol and actual-source C regressions (no native game sessions)
-        run: python3 -m unittest test.world.test_tag_coop test.world.test_link_protocol test.world.test_link_sessions test.world.test_trainer_abort_wire_regression -v
+        run: PYTHONPATH=.:test/world python3 -m unittest test_tag_coop test_link_protocol test_link_sessions test_trainer_abort_wire_regression -v
 
   linux-build:
     runs-on: ubuntu-24.04

@@ -39,7 +39,7 @@ end-to-end human multiplayer or WAN recovery.
 Locally, the focused checks do not launch game clients:
 
 ```sh
-python3 -m unittest test.world.test_tag_coop test.world.test_link_protocol test.world.test_link_sessions test.world.test_trainer_abort_wire_regression -v
+PYTHONPATH=.:test/world python3 -m unittest test_tag_coop test_link_protocol test_link_sessions test_trainer_abort_wire_regression -v
 ```
 
 Keep runtime worlds, saves, invitations, credentials and generated executables
