@@ -220,7 +220,8 @@ void WorldChat_Draw(SDL_Renderer *renderer)
     SDL_RenderFillRect(renderer, &strip);
     SDL_SetRenderDrawColor(renderer, 210,235,220,255);
     status = WorldBridge_ChatStatus();
-    if (!strcmp(status, "slow")) status = "Slow down. Message not sent.";
+    if (!strcmp(status, "unsupported")) status = "Server does not support chat.";
+    else if (!strcmp(status, "slow")) status = "Slow down. Message not sent.";
     else if (!strcmp(status, "unavailable")) status = "Trainer unavailable. Not sent.";
     if (sChat.editing && sChat.hint[0]) snprintf(heading, sizeof(heading), "%s", sChat.hint);
     else snprintf(heading, sizeof(heading), "Chat %s | %s | PgUp/PgDn", status, shortcut);

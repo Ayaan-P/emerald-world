@@ -192,13 +192,24 @@ static int MapCoords(unsigned g,unsigned n,unsigned x,unsigned y) {return g<35 &
 static int WorldCatalog_Metatile(unsigned g,unsigned n,unsigned t) {(void)g;(void)n;return t<1024;}
 '''+declarations
         source += 'static void Flush(void) {sWorld.outputSize=0;}\n'
-        for name in ('Identifier', 'Decimal', 'ObjectText', 'Line', 'WorldBridge_ChatSend',
+        for name in ('Identifier', 'Decimal', 'ObjectText', 'Line', 'QueueHello', 'WorldBridge_ChatSend',
                      'WorldBridge_ChatCount', 'WorldBridge_ChatStatus', 'WorldBridge_ChatLine'):
             source += function(bridge, name)
         source += r'''
 static int line(const char *s) {char b[1024];strcpy(b,s);return Line(b);}
 int main(void) {
- sWorld.connected=1;strcpy(sWorld.trainer,"alice");
+ strcpy(sWorld.trainer,"alice");strcpy(sWorld.token,"secret");
+ QueueHello(0); assert(strstr(sWorld.output," SOCIALCHAT\n") && sWorld.chatProbe);
+ assert(!line("ERROR AUTH") && sWorld.chatLegacy);
+ QueueHello(0); assert(strstr(sWorld.output," SOCIAL\n") && !sWorld.chatProbe);
+ assert(line("WELCOME 1 alice 0")); assert(!sWorld.chatAvailable);
+ assert(!strcmp(WorldBridge_ChatStatus(),"unsupported"));
+ assert(!WorldBridge_ChatSend("*","must not send"));
+ sWorld.connected=0; sWorld.chatLegacy=0; QueueHello(1);
+ assert(strstr(sWorld.output," SOCIAL\n") && !sWorld.chatProbe);
+ QueueHello(0); assert(line("WELCOME 1 alice 0") && sWorld.chatAvailable);
+ sWorld.outputSize=0;
+
  assert(line("BEGIN 1"));
  assert(line("CHATMSG 1 bob * 486920746865726521"));
  assert(line("CHATSTATUS sent"));

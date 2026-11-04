@@ -57,6 +57,26 @@ class ChatRoutingTests(unittest.TestCase):
         self.server._line(self.alice, b'CHAT\t2 * 61')
         self.server._error.assert_called_once_with(self.alice, 'MALFORMED')
 
+    def test_server_negotiates_chat_without_changing_legacy_hello(self):
+        import sqlite3
+        from types import SimpleNamespace
+        self.server.db = sqlite3.connect(':memory:')
+        self.addCleanup(self.server.db.close)
+        self.server.db.execute('CREATE TABLE identities (id TEXT, token TEXT)')
+        token = 'ab' * 32
+        self.server.db.executemany('INSERT INTO identities VALUES (?, ?)', [('new', token), ('old', token)])
+        self.server.peers = {}
+        self.server.host_controls = SimpleNamespace(rejection=lambda name: None)
+        self.server.max_players = 8
+        self.server._event = Mock()
+        for name, role, expected in [('new', 'SOCIALCHAT', True), ('old', 'SOCIAL', False)]:
+            conn = {'id': None, 'closing': False, 'state': None}
+            self.server._line(conn, f'HELLO 1 {name} {token} {role}'.encode())
+            self.assertEqual(conn['id'], name)
+            self.assertTrue(conn['social'])
+            self.assertEqual(conn['chat'], expected)
+        self.assertNotIn('CHAT', self.server._snapshot(self.server.peers['old']))
+
     def test_invalid_text_and_unopted_sender_rejected(self):
         for payload in ('00', '2020', 'ff', 'a', '61' * 121):
             with self.subTest(payload=payload), self.assertRaises(ValueError):

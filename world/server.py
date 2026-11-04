@@ -377,7 +377,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 control = len(fields) == 5 and fields[4] == 'CONTROL'
-                social = len(fields) == 5 and fields[4] == 'SOCIAL'
+                chat_capable = len(fields) == 5 and fields[4] == 'SOCIALCHAT'
+                social = len(fields) == 5 and fields[4] in ('SOCIAL', 'SOCIALCHAT')
                 link = len(fields) == 5 and fields[4] == 'LINK'
                 if (len(fields) != 4 and not control and not social and not link) or fields[:2] != ['HELLO', '1']:
                     self._error(conn, 'AUTH')
@@ -424,7 +425,7 @@ class WorldServer:
                     return
                 conn['id'] = name
                 conn['social'] = social
-                conn['chat'] = False
+                conn['chat'] = chat_capable
                 conn['chat_history'] = []
                 conn['chat_status'] = 'ready'
                 self.peers[name] = conn

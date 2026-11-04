@@ -71,7 +71,7 @@ struct Snapshot {
 struct Remote { char id[26]; u8 object, sprite, group, num; };
 struct Applied { struct Tile tile; u16 original, raw; };
 static struct {
-    bool8 enabled, connected, connecting, staging, chatRequested;
+    bool8 enabled, connected, connecting, staging, chatProbe, chatLegacy, chatAvailable;
 #ifdef _WIN32
     SOCKET fd;
     bool8 winsockStarted;
@@ -331,7 +331,7 @@ static void Disconnect(void)
     sWorld.fd = -1;
 #endif
     sWorld.connected = sWorld.connecting = sWorld.staging = FALSE;
-    sWorld.chatRequested = FALSE;
+    sWorld.chatProbe = sWorld.chatAvailable = FALSE;
     sWorld.inputSize = sWorld.outputSize = sWorld.outputSent = 0;
     sWorld.retry = 30;
     sWorld.live.peerCount = sWorld.live.tileCount = sWorld.live.objectCount = 0;
@@ -480,9 +480,16 @@ static bool8 Line(char *line)
     }
     if (!n) return FALSE;
     if (!sWorld.connected) {
+        /* An older server rejects the optional role before presence is live.
+         * Retry once using the legacy role, without weakening authentication. */
+        if (sWorld.chatProbe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
+            sWorld.chatLegacy = TRUE;
+            return FALSE;
+        }
         if (n != 4 || strcmp(tokens[0], "WELCOME") || strcmp(tokens[1], "1")
          || strcmp(tokens[2], sWorld.trainer) || !Decimal(tokens[3], &v[0])) return FALSE;
         sWorld.connected = TRUE;
+        sWorld.chatAvailable = sWorld.chatProbe;
         sWorld.live.revision = v[0];
         return TRUE;
     }
@@ -614,15 +621,19 @@ static bool8 SocketOpen(void)
 #endif
 }
 
-static void QueueHello(void)
+static void QueueHello(bool8 headless)
 {
-    sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
 #ifdef _WIN32
-        "EWLOCAL1 %s\nHELLO 1 %s %s SOCIAL\n", sWorld.loopbackToken,
+    (void)headless;
+    sWorld.chatProbe = FALSE;
+    sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
+        "EWLOCAL1 %s\nHELLO 1 %s %s SOCIAL\n", sWorld.loopbackToken, sWorld.trainer, sWorld.token);
 #else
-        "HELLO 1 %s %s SOCIAL\n",
+    sWorld.chatProbe = !headless && !sWorld.chatLegacy;
+    sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
+        "HELLO 1 %s %s %s\n", sWorld.trainer, sWorld.token,
+        sWorld.chatProbe ? "SOCIALCHAT" : "SOCIAL");
 #endif
-        sWorld.trainer, sWorld.token);
 }
 
 static void Flush(void)
@@ -653,7 +664,7 @@ static void Flush(void)
     if (sWorld.outputSent == sWorld.outputSize) sWorld.outputSent = sWorld.outputSize = 0;
 }
 
-static void Connect(void)
+static void Connect(bool8 headless)
 {
 #ifdef _WIN32
     struct sockaddr_in addr;
@@ -693,7 +704,7 @@ static void Connect(void)
     sWorld.handshakePolls = WB_HANDSHAKE_POLLS;
     sWorld.seq = 0;
     sWorld.shownMeeting = 0;
-    QueueHello();
+    QueueHello(headless);
 }
 
 static void Receive(bool8 headless)
@@ -793,7 +804,7 @@ int WorldBridge_ChatSend(const char *target, const char *text)
     char hex[241];
     size_t i, length = strlen(text);
     bool8 visible = FALSE;
-    if (!sWorld.connected || sWorld.outputSize || !length || length > 120
+    if (!sWorld.connected || !sWorld.chatAvailable || sWorld.outputSize || !length || length > 120
      || (strcmp(target, "*") && !Identifier(target)) || sWorld.seq == UINT_MAX) return 0;
     for (i = 0; i < length; i++) {
         unsigned c = (unsigned char)text[i];
@@ -817,7 +828,7 @@ unsigned WorldBridge_ChatCount(void)
 
 const char *WorldBridge_ChatStatus(void)
 {
-    return !sWorld.connected ? "offline" : sWorld.live.chatStatus;
+    return !sWorld.connected ? "offline" : !sWorld.chatAvailable ? "unsupported" : sWorld.live.chatStatus;
 }
 
 void WorldBridge_ChatLine(unsigned index, char *out, unsigned size)
@@ -1267,7 +1278,7 @@ void WorldBridge_Poll(bool8 headless)
     if (!sWorld.enabled) return;
     if (!SocketOpen()) {
         if (sWorld.retry) sWorld.retry--;
-        else Connect();
+        else Connect(headless);
     }
     if (SocketOpen() && !sWorld.connected) {
         /* Include connection setup and partial replies in one attempt budget.
@@ -1276,15 +1287,6 @@ void WorldBridge_Poll(bool8 headless)
         sWorld.handshakePolls--;
     }
     if (SocketOpen()) Receive(headless);
-#ifndef _WIN32
-    /* Keep existing presence handshake; chat snapshots require opt-in. */
-    if (!headless && sWorld.connected && !sWorld.chatRequested && !sWorld.outputSize) {
-        strcpy(sWorld.output, "CHAT_ENABLE\n");
-        sWorld.outputSize = strlen(sWorld.output);
-        sWorld.chatRequested = TRUE;
-        Flush();
-    }
-#endif
 }
 
 void WorldBridge_BeforeFrame(u32 frame, bool8 headless)
