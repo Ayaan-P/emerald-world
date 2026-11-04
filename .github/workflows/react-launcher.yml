@@ -1,0 +1,45 @@
+name: React launcher
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'launcher-web/**'
+      - 'world/web_launcher.py'
+      - 'test/world/test_web_launcher.py'
+      - '.github/workflows/react-launcher.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'launcher-web/**'
+      - 'world/web_launcher.py'
+      - 'test/world/test_web_launcher.py'
+      - '.github/workflows/react-launcher.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  launcher:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source without stored credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install offline helper prerequisite
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes bubblewrap
+      - name: Check Python bridge
+        run: python3 -m unittest test.world.test_web_launcher test.world.test_offline_desktop -q
+      - name: Install locked frontend dependencies
+        working-directory: launcher-web
+        run: npm ci
+      - name: Test frontend and build
+        working-directory: launcher-web
+        run: |
+          npm test
+          npm run build
