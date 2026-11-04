@@ -31,6 +31,7 @@ def main():
     parser.add_argument('--parent-display', required=True)
     parser.add_argument('--display', default=':138')
     parser.add_argument('--start-key-t', action='store_true', help='verify remapped Start and the visible Ctrl+T chat fallback')
+    parser.add_argument('--legacy-server', action='store_true', help='simulate a prior server rejecting the new optional role')
     args = parser.parse_args()
     out = args.out.resolve()
     if not out.is_relative_to(ROOT/'build'):
@@ -128,7 +129,17 @@ def main():
         processes.append(display)
         until('nested X socket',xsocket.is_socket,5)
         world=out/'w'
-        server=WorldServer(world/'transport/world.sock',world)
+        if args.legacy_server:
+            class LegacyRoleServer(WorldServer):
+                def _line(self, conn, raw):
+                    # Previous servers reject the unknown role before auth.
+                    if conn['id'] is None and raw.split()[-1:] == [b'SOCIALCHAT']:
+                        self._error(conn, 'AUTH')
+                        return
+                    return super()._line(conn, raw)
+            server=LegacyRoleServer(world/'transport/world.sock',world)
+        else:
+            server=WorldServer(world/'transport/world.sock',world)
         server.start()
         paths={n:prepare_profile(world,n,args.seed) for n in ('alice','bob')}
         startup=wait(300)+tap('START')+wait(120)+tap('START')+wait(200)+tap('A')+wait(200)+tap('A')+wait(200)
@@ -153,6 +164,18 @@ def main():
             until(name+' human input handoff',boot_done.exists,5)
             x('keyup','space')
         record('Both natives loaded independent copied fixtures into the field')
+        if args.legacy_server:
+            time.sleep(2)
+            for name in paths:
+                assert state(name).get('connected')
+                assert hashlib.sha256(paths[name]['save'].read_bytes()).hexdigest()==initial_hashes[name]
+            with server.lock:
+                assert set(server.peers) == set(paths)
+                assert all(not peer.get('chat') for peer in server.peers.values())
+            assert hashlib.sha256(args.seed.read_bytes()).hexdigest()==seed_hash
+            record('Both clients fell back to legacy presence and remained connected without chat')
+            report['ok']=True
+            return 0
         if args.start_key_t:
             x('windowfocus','--sync',windows['alice'])
             start_frame=state('alice')['frame']
