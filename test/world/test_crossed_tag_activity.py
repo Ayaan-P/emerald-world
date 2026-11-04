@@ -44,7 +44,8 @@ typedef void (*MainCallback)(void);
 struct LinkTransportInvitation { uint64_t id; unsigned mode; char name[25]; };
 static struct LinkTransportInvitation incoming;
 static unsigned shown, closed, rejected, ready = 1, partyReady = 1, showOk = 1, outgoing = 1;
-static int native;
+static int native, privateRewards;
+static int WorldCoop_IsPrivateRewards(void) {return privateRewards;}
 static void CB2_ReturnToFieldFromMultiplayer(void) {}
 static struct { MainCallback callback2; } gMain;
 static unsigned gWirelessCommType, gLinkType, gFieldLinkPlayerCount, gLocalLinkPlayerId;
@@ -103,6 +104,7 @@ static void reset(void) {
 '''
 MAIN = r'''
 int main(void) {
+    (void)WorldCoop_IsPrivateRewards;
     reset();
     WorldActivity_Update(); /* incoming OFFER delivered; BUSY not yet received */
     assert(outgoing); /* no fabricated response or implicit acceptance */
@@ -134,6 +136,29 @@ int main(void) {
     /* Authority expiry/disconnect must retire the prompt immediately. */
     reset();WorldActivity_Update();incoming.id=0;WorldActivity_Update();
     assert(sActivity.state==IDLE && !accepted);
+    /* Proposer and recipient both follow authority END, not emulated frames. */
+    reset();incoming.id=0;
+    for (unsigned frame=0;frame<7200;frame++) {
+        WorldActivity_Update();
+        assert(sActivity.state==WAIT_TAG && !accepted);
+    }
+    outgoing=0;WorldActivity_Update();assert(sActivity.state==IDLE);
+    /* Link inactivity during private EXP/evolution is intentional, not a failure.
+     * Neither case may release field ownership or fabricate readiness. */
+    reset();incoming.id=0;sActivity.state=NATIVE;sActivity.mode=NATIVE_LINK_COOP;
+    native=0;privateRewards=1;ready=0;
+    WorldActivity_Update();
+    assert(sActivity.state==NATIVE && !ready && !native);
+    assert(!strcmp(sActivity.status,"tagged encounter complete; finishing private rewards"));
+    privateRewards=0;WorldActivity_Update();
+    assert(strstr(sActivity.status,"connection lost") && sActivity.state==NATIVE);
+    privateRewards=1;sActivity.mode=NATIVE_LINK_SINGLE;WorldActivity_Update();
+    assert(strstr(sActivity.status,"connection lost"));
+    sActivity.mode=NATIVE_LINK_TRADE;WorldActivity_Update();
+    assert(strstr(sActivity.status,"connection lost"));
+    sActivity.state=RETURNING;WorldActivity_Update();assert(sActivity.state==RETURNING);
+    ready=1;WorldActivity_Update();assert(sActivity.state==IDLE);
+    assert(!strcmp(sActivity.status,"native activity returned"));
     return 0;
 }
 '''

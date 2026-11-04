@@ -211,6 +211,11 @@ int WorldCoop_IsBattle(void)
     return sCoop.state == COOP_EXCHANGE || sCoop.state == COOP_BATTLE;
 }
 
+bool8 WorldCoop_IsPrivateRewards(void)
+{
+    return sCoop.state == COOP_REWARDS;
+}
+
 u8 WorldCoop_Environment(void) { return sCoop.environment; }
 u8 WorldCoop_FieldWeather(void) { return sCoop.weather; }
 
