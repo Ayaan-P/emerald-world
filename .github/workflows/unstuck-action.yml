@@ -16,8 +16,8 @@ jobs:
       - name: Generate map constants
         run: |
           make -C tools/mapjson
-          tools/mapjson/mapjson groups emerald data/maps/map_groups.json data/maps include/constants
-          tools/mapjson/mapjson layouts emerald data/layouts/layouts.json data/layouts include/constants
+          make -C tools/jsonproc
+          make generated -j2
       - name: Test production components and menu
         run: PYTHONPATH=.:test/world python3 -m unittest test.world.test_world_unstuck test.world.test_native_unstuck_clock test.world.test_unstuck_action test.world.test_unstuck_menu -v
   native-offline:
