@@ -81,43 +81,68 @@ class ExpansionSession:
         self.stop = threading.Event()
         self.error = None
 
+    def _receive_snapshots(self, client, finished):
+        try:
+            while not finished.is_set():
+                snapshot = dict(client.snapshot(), engine=ENGINE, mode='presence-only', multiplayer=False)
+                temporary = self.paths['telemetry'].with_suffix('.tmp')
+                temporary.write_text(json.dumps(snapshot))
+                temporary.replace(self.paths['telemetry'])
+        except (OSError, ValueError) as exc:
+            if not finished.is_set() and not self.stop.is_set():
+                self.error = str(exc)
+
+    def _publish_presence(self, client):
+        seq = 0
+        started = time.monotonic()
+        while not self.stop.wait(0.1):
+            path = self.paths['profile'] / 'presence.json'
+            try:
+                if time.time() - path.stat().st_mtime > 2:
+                    raise ValueError('Expansion presence stopped advancing')
+                state = json.loads(path.read_text())
+            except FileNotFoundError:
+                if time.monotonic() - started > 5:
+                    raise ValueError('Expansion binary did not publish presence')
+                continue
+            if state.get('schema') != 1 or state.get('engine') != ENGINE:
+                raise ValueError('unsupported Expansion presence schema')
+            seq += 1
+            if state.get('field'):
+                coordinates = [state[key] for key in ('group', 'num', 'x', 'y')]
+                if any(type(value) is not int or not 0 <= value <= limit
+                       for value, limit in zip(coordinates, (255, 255, 32767, 32767))):
+                    raise ValueError('invalid Expansion presence coordinates')
+                # FIELD is the SOCIAL protocol's visible-but-busy state.
+                # Zero hashes mean unavailable, not portable ownership.
+                values = [seq, *coordinates, 1, 0, 0]
+                message = 'FIELD ' + ' '.join(map(str, values)) + ' ' + '0'*16 + ' ' + '0'*16 + '\n'
+                client.sock.sendall(message.encode('ascii'))
+            else:
+                client.send_state(seq, 0, 0, 0, 0, 1, 7, 0, '0'*16, '0'*16)
+
     def _presence(self):
+        import socket
         from .client import WorldClient
         try:
             config = dict(line.split(' ', 1) for line in self.paths['config'].read_text().splitlines())
             with WorldClient(config['socket'], self.trainer, config['token'], timeout=1, social=True) as client:
-                client.snapshot()
-                seq = 0
-                started = time.monotonic()
-                while not self.stop.wait(0.1):
-                    path = self.paths['profile'] / 'presence.json'
+                # One reader owns the buffered stream. It drains broadcasts even
+                # before the engine starts and independently of our publish rate.
+                client.sock.settimeout(None)
+                finished = threading.Event()
+                reader = threading.Thread(target=self._receive_snapshots, args=(client, finished),
+                                          daemon=True, name='expansion-snapshots')
+                reader.start()
+                try:
+                    self._publish_presence(client)
+                finally:
+                    finished.set()
                     try:
-                        if time.time() - path.stat().st_mtime > 2:
-                            raise ValueError('Expansion presence stopped advancing')
-                        state = json.loads(path.read_text())
-                    except FileNotFoundError:
-                        if time.monotonic() - started > 5:
-                            raise ValueError('Expansion binary did not publish presence')
-                        continue
-                    if state.get('schema') != 1 or state.get('engine') != ENGINE:
-                        raise ValueError('unsupported Expansion presence schema')
-                    seq += 1
-                    if state.get('field'):
-                        coordinates = [state[key] for key in ('group', 'num', 'x', 'y')]
-                        if any(type(value) is not int or not 0 <= value <= limit
-                               for value, limit in zip(coordinates, (255, 255, 32767, 32767))):
-                            raise ValueError('invalid Expansion presence coordinates')
-                        # FIELD is the SOCIAL protocol's visible-but-busy state.
-                        # Zero hashes mean unavailable, not portable ownership.
-                        values = [seq, *coordinates, 1, 0, 0]
-                        message = 'FIELD ' + ' '.join(map(str, values)) + ' ' + '0'*16 + ' ' + '0'*16 + '\n'
-                        client.sock.sendall(message.encode('ascii'))
-                    else:
-                        client.send_state(seq, 0, 0, 0, 0, 1, 7, 0, '0'*16, '0'*16)
-                    snapshot = dict(client.snapshot(), engine=ENGINE, mode='presence-only', multiplayer=False)
-                    temporary = self.paths['telemetry'].with_suffix('.tmp')
-                    temporary.write_text(json.dumps(snapshot))
-                    temporary.replace(self.paths['telemetry'])
+                        client.sock.shutdown(socket.SHUT_RDWR)
+                    except OSError:
+                        pass
+                    reader.join(timeout=2)
         except (OSError, ValueError, KeyError) as exc:
             self.error = str(exc)
 
