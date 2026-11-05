@@ -36,6 +36,13 @@ class FreshnessTests(unittest.TestCase):
         self.peers['bob']['state_time']=self.clock.now
         self.assertIn('PEER bob ',self.s._snapshot(self.peers['alice']))
 
+    def test_stale_travel_occupant_remains_in_roster_with_zero_lifetime(self):
+        self.peers['alice']['travel']=True
+        self.clock.now+=4;self.peers['alice']['state_time']=self.clock.now
+        snapshot=self.s._snapshot(self.peers['alice'])
+        self.assertIn('TRAVEL 1\nFRIEND bob 0 1 11 12 4 7 1 0\n',snapshot)
+        self.assertNotIn('PEER bob ',snapshot)
+
     def test_expired_trainer_cannot_receive_field_meeting(self):
         self.clock.now+=4;self.peers['alice']['state_time']=self.clock.now
         self.s._line(self.peers['alice'],b'MEET 1 bob')
