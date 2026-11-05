@@ -139,7 +139,7 @@ class LauncherBridge:
         found = []
         for item in self.session.worlds():
             path = Path(item['path'])
-            if not re.fullmatch(r'expedition-[0-9a-f]{24}', path.name):
+            if not re.fullmatch(r'(?:expedition-[0-9a-f]{24}|e-[A-Za-z0-9_-]{12})', path.name):
                 continue
             try:
                 label = _read_metadata(path)['display_name']
@@ -181,7 +181,17 @@ class LauncherBridge:
                      for name, ready, help_text in prerequisites(self.binary) if name != 'tkinter']
             server = self.session.server
             local_host = server is not None and not getattr(server, '_closed', True)
+            areas, archive_error = [], None
+            archive_enabled = bool(local_host and getattr(server, 'archive_generated_areas', False))
+            if archive_enabled:
+                try:
+                    areas = self.session.list_generated_areas()
+                except Exception:
+                    archive_error = 'Saved areas could not be loaded. Reopen the local host and try again.'
             return {'local_worlds': self.local_expeditions(),
+                    'generated_areas': areas, 'area_archive': archive_enabled,
+                    'area_archive_error': archive_error,
+                    'wilds_authoring': bool(local_host and server.wilds_map is not None),
                     'local_host': local_host,
                     'cave_authoring': server is not None and local_host and server.cave_map is not None,
                     'cave_persistent': bool(server is not None and local_host and server.persist_generated_cave),
@@ -269,7 +279,7 @@ class LauncherBridge:
                     if (not isinstance(label, str) or not 1 <= len(label.strip()) <= 80
                             or any(ord(c) < 32 for c in label)):
                         raise SessionError('Use 1 to 80 printable characters for the expedition name.')
-                    name = 'expedition-' + secrets.token_hex(12)
+                    name = 'e-' + secrets.token_urlsafe(9)
                     self.session.create_world(name)
                     self.session.rename_world(name, label.strip(), [])
                 else:
@@ -292,12 +302,23 @@ class LauncherBridge:
                 if (self.session.state is None or payload.get('world') != self.session.state.name
                         or self.session.server is None):
                     raise SessionError('Host the selected local expedition before generating a cave.')
+                kind = payload.get('kind', 'cave')
+                if kind not in ('cave', 'wilds'):
+                    raise SessionError('Choose a cave or outdoor area.')
                 try:
-                    self.session.author_shared_cave(payload.get('theme'))
+                    self.session.author_shared_cave(payload.get('theme'), wilds=kind == 'wilds')
                 except SessionError:
                     raise
                 except Exception:
                     raise SessionError('Cave generation could not complete. Check model login and local host setup before retrying.') from None
+            elif action == 'activate_area':
+                if payload.get('confirmed') is not True:
+                    raise SessionError('Confirm changing the active generated area.')
+                if (self.session.server is None or self.session.state is None
+                        or payload.get('world') != self.session.state.name):
+                    raise SessionError('The hosted world changed. Choose a saved area from the current local host.')
+                self.session.activate_generated_area(payload.get('identity'),
+                    expected_server=self.session.server, expected_state=self.session.state)
             elif action == 'join':
                 raw = payload.get('invitation')
                 if not isinstance(raw, str) or len(raw.encode('utf-8')) > 4096:

@@ -36,11 +36,11 @@ enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, RALLY, DISPATCH };
 #if GENERATED_MAP_WILDS
 #define GEN_EXPLORE_LABEL "Explore generated area"
 #define GEN_LEAVE_LABEL "Leave generated area"
-#define GEN_BLOCKED_LABEL "Stand outside on foot; online needs a ready shared cave."
+#define GEN_BLOCKED_LABEL "Stand outside on foot; online needs a ready shared area."
 #else
-#define GEN_EXPLORE_LABEL "Explore generated cave"
-#define GEN_LEAVE_LABEL "Leave generated cave"
-#define GEN_BLOCKED_LABEL "Stand outside on foot; online needs a ready shared cave."
+#define GEN_EXPLORE_LABEL "Explore generated area"
+#define GEN_LEAVE_LABEL "Leave generated area"
+#define GEN_BLOCKED_LABEL "Stand outside on foot; online needs a ready shared area."
 #endif
 enum Action { FRIENDS, STORY, DEXNAV, BACK, MODE, SCOPE, REQUEST, READY,
     LATER, CANCEL, GO, FINISH, RETURN, STAY,
@@ -383,7 +383,7 @@ static void Dispatch(void)
     if (sMenu.pending == GEN_CAVE)
     {
         accepted = GeneratedMap_IsInside() ? GeneratedMap_Leave() : GeneratedMap_Enter();
-        sMenu.notice = accepted ? NULL : "Generated cave unavailable in this field state.";
+        sMenu.notice = accepted ? NULL : "Generated area unavailable in this field state.";
         return;
     }
 #endif

@@ -253,6 +253,7 @@ export function App() {
       {page === 'play' && <PlayerHome state={state} ready={ready} busy={busy}
         onLocalOpen={(action, payload, key) => requestPlay(action, payload, key, { playAfter: false })}
         onAuthorCave={payload => run('author_cave', payload)}
+        onActivateArea={payload => run('activate_area', payload)}
         onJoin={() => { setError(''); setDialog('join'); }} onCreate={openCreate}
         onSolo={() => { setError(''); setDialog('solo'); }} onWorlds={() => go('worlds')}
         onLaunch={() => run('launch')} onScreen={() => go('screen')} onClose={game => setDialog({ type: 'leave', game })}

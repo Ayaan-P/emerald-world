@@ -16,7 +16,7 @@ function WorldTile({ title, subtitle, onPlay, onInvite, disabled, playing }) {
 }
 
 export default function PlayerHome({ state, ready, busy, onJoin, onCreate, onSolo, onWorlds,
-  onLocalOpen, onAuthorCave, onPlaySaved, onPlayHosted, onPlayOffline, onLaunch, onScreen, onClose, onDisconnect, onReconnect, onHostRefresh, onHostInvite, onInviteOwner, onBackupOwner }) {
+  onLocalOpen, onAuthorCave, onActivateArea, onPlaySaved, onPlayHosted, onPlayOffline, onLaunch, onScreen, onClose, onDisconnect, onReconnect, onHostRefresh, onHostInvite, onInviteOwner, onBackupOwner }) {
   const onlineGame = state.connected && state.trainer && state.games.includes(state.trainer);
   const offlineGame = state.games.find(game => game.startsWith('offline/'));
   const playing = Boolean(onlineGame || offlineGame);
@@ -41,7 +41,7 @@ export default function PlayerHome({ state, ready, busy, onJoin, onCreate, onSol
 
     {playing ? <section className="journey-status"><span className={`dot ${state.presence?.state === 'disconnected' ? 'error-dot' : 'online'}`} /><div><strong>{state.presence?.state === 'disconnected' ? 'Your game reports a lost connection' : 'Your game is running'}</strong><p>{state.presence?.state === 'disconnected' ? 'Save if you can. Reconnecting closes the game and cannot restore an interrupted battle or trade.' : 'Switch to the game window to play. F11 toggles its fullscreen mode. Save before closing.'}</p></div>{state.connected && !state.local_host && <button className="button small ghost" disabled={disabled} onClick={onReconnect}>Reconnect</button>}{state.connected && <button className="button small ghost" disabled={disabled} onClick={onDisconnect}>Disconnect</button>}</section> : state.connected ? <section className="journey-status"><span className="dot idle" /><div><strong>{savedWorld ? savedWorld.name : 'World session open'}</strong><p>Click Play now above. The game opens in a separate window for now.</p></div>{!state.local_host && <button className="button small ghost" disabled={disabled} onClick={onReconnect}>Reconnect</button>}<button className="button small ghost" disabled={disabled} onClick={onDisconnect}>Disconnect</button></section> : featured ? <section className="journey-status"><span className="dot idle" /><div><strong>Ready when you are</strong><p>Play now opens your selected game in a separate window.</p></div></section> : <section className="journey-guide" aria-label="How it works"><div><span>01</span><strong>Choose a world</strong><p>Create with host access, join with a private invitation, or play solo.</p></div><div><span>02</span><strong>Start playing</strong><p>The game opens in its own window. Your launcher keeps the connection.</p></div><div><span>03</span><strong>Keep your progress</strong><p>Save in the game. Your trainer's progress stays on this device.</p></div></section>}
 
-    <ExpeditionPanel state={state} ready={ready} busy={busy} onOpen={onLocalOpen} onAuthor={onAuthorCave} />
+    <ExpeditionPanel state={state} ready={ready} busy={busy} onOpen={onLocalOpen} onAuthor={onAuthorCave} onActivate={onActivateArea} />
 
     <ControlsHelp />
 
