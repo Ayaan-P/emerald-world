@@ -860,7 +860,12 @@ static bool8 NativeBattleCommandValid(const u8 *data, u16 size, u8 bufferId)
         if (data[0] == CONTROLLER_EXPUPDATE && WorldCoop_IsBattle())
             return WorldCoop_RewardPacketValid(data, size)
                 || WorldCoop_CatchPacketValid(data, size)
-                || WorldCoop_MedicinePacketValid(data, size);
+                || WorldCoop_MedicinePacketValid(data, size)
+#if COOP_FULL_SIX_READY
+                || WorldCoop_RosterRequestValid(data, size)
+                || WorldCoop_RosterMirrorValid(data, size)
+#endif
+                ;
 #endif
         if (data[1] >= PARTY_SIZE)
             return FALSE;
@@ -1006,6 +1011,11 @@ static bool8 NativeBattleReplyValid(u8 battler, const u8 *data)
     switch (data[0])
     {
     case CONTROLLER_DATATRANSFER:
+#if COOP_FULL_SIX_READY
+        if (WorldCoop_IsBattle() && request[0] == CONTROLLER_EXPUPDATE
+         && request[1] == WORLD_COOP_ROSTER_REQUEST_TAG)
+            return WorldCoop_RosterReplyValid(battler, data + 4, data[2] | (data[3] << 8));
+#endif
         if (request[0] != CONTROLLER_GETMONDATA || request[1] != REQUEST_ALL_BATTLE)
             return FALSE;
         mask = request[2];
@@ -1021,6 +1031,11 @@ static bool8 NativeBattleReplyValid(u8 battler, const u8 *data)
         return TRUE;
     case CONTROLLER_CHOSENMONRETURNVALUE:
         if (request[0] != CONTROLLER_CHOOSEPOKEMON
+         || (WorldCoop_IsBattle() && data[1] > PARTY_SIZE
+#if COOP_FULL_SIX_READY
+             && !WorldCoop_RosterChoiceValid(battler, data[1])
+#endif
+            )
          || (WorldCoop_IsBattle() && !(battler & BIT_SIDE) && data[1] < PARTY_SIZE
              && data[1] / MULTI_PARTY_SIZE != NativeBattleOwner(battler)))
             return FALSE;

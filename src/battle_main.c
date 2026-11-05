@@ -2350,7 +2350,11 @@ static void EndLinkBattleInSteps(void)
 
             for (i = 0; i < battlerCount && (gLinkPlayers[i].version & 0xFF) == VERSION_EMERALD; i++);
 
-            if (!gSaveBlock2Ptr->frontier.disableRecordBattle && i == battlerCount)
+            if (!gSaveBlock2Ptr->frontier.disableRecordBattle && i == battlerCount
+#if defined(PORTABLE) && COOP_FULL_SIX_READY
+                && !WorldCoop_IsBattle()
+#endif
+               )
             {
                 if (FlagGet(FLAG_SYS_FRONTIER_PASS))
                 {
@@ -3080,10 +3084,21 @@ void BeginBattleIntro(void)
 
 static void BattleMainCB1(void)
 {
+#ifdef PORTABLE
+    /* The six-party switch menu temporarily displays only this trainer's
+     * private party. Pause battle/controller mutation until it restores the
+     * shared staging array, including the remainder of the opening frame. */
+    if (WorldCoop_FullPartyMenuActive()) return;
+#endif
     gBattleMainFunc();
 
     for (gActiveBattler = 0; gActiveBattler < gBattlersCount; gActiveBattler++)
+    {
+#ifdef PORTABLE
+        if (WorldCoop_FullPartyMenuActive()) break;
+#endif
         gBattlerControllerFuncs[gActiveBattler]();
+    }
 }
 
 static void BattleStartClearSetData(void)
@@ -4522,6 +4537,20 @@ static void HandleTurnActionSelectionState(void)
                     }
                     break;
                 case B_ACTION_SWITCH:
+#if defined(PORTABLE) && COOP_FULL_SIX_READY
+                    if (WorldCoop_IsBattle() && (WorldCoop_RosterActionActive(gActiveBattler)
+                     || (gBattleBufferB[gActiveBattler][1] & 0x80)))
+                    {
+                        int result;
+                        if (WorldCoop_RosterActionActive(gActiveBattler))
+                            result = WorldCoop_AdvanceRosterAction(gActiveBattler);
+                        else
+                            result = WorldCoop_BeginRosterAction(gActiveBattler, gBattleBufferB[gActiveBattler][1],
+                                                                 &gBattleBufferB[gActiveBattler][2]);
+                        if (result < 0) { NativeLink_Abort(); return; }
+                        if (!result) return;
+                    }
+#endif
                     if (gBattleBufferB[gActiveBattler][1] == PARTY_SIZE)
                     {
                         gBattleCommunication[gActiveBattler] = STATE_BEFORE_ACTION_CHOSEN;

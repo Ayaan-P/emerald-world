@@ -167,7 +167,7 @@ class CoopPotionFlow(unittest.TestCase):
  def test_owner_execution_and_abort_refund(self):
   with tempfile.TemporaryDirectory() as d:
    p=Path(d);(p/'test.c').write_text(HARNESS)
-   cmd=['cc','-std=gnu99','-DPORTABLE','-D_(x)=x','-ffunction-sections','-fdata-sections','-Wno-error','-iquote',str(ROOT/'include'),'-iquote',str(ROOT),str(p/'test.c'),str(ROOT/'src/platform/world_coop_potion.c'),'-Wl,--gc-sections','-o',str(p/'test')]
+   cmd=['cc','-std=gnu99','-DPORTABLE','-D_(x)=x','-ffunction-sections','-fdata-sections','-Wno-error','-iquote',str(ROOT/'include'),'-iquote',str(ROOT),str(p/'test.c'),str(ROOT/'src/platform/world_coop_potion.c'),str(ROOT/'src/platform/world_coop_roster.c'),'-Wl,--gc-sections','-o',str(p/'test')]
    q=subprocess.run(cmd,capture_output=True,text=True);self.assertEqual(q.returncode,0,q.stderr)
    q=subprocess.run([str(p/'test')],capture_output=True,text=True);self.assertEqual(q.returncode,0,q.stderr)
 if __name__=='__main__':unittest.main()
