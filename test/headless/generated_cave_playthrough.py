@@ -30,7 +30,12 @@ def run(binary, seed, out):
         wrapper = root/'run-native'
         wrapper.write_text('#!/bin/sh\nexec ' + shlex.quote(str(binary)) + ' --generated-map ' + shlex.quote(str(cave)) + ' "$@"\n')
         wrapper.chmod(0o700)
-        game = driver.Game(str(wrapper), str(out), save=str(seed), max_frames=20000)
+        try:
+            game = driver.Game(str(wrapper), str(out), save=str(seed), max_frames=20000)
+        except Exception as error:
+            stderr_path = out/'stderr.txt'
+            details = stderr_path.read_text(errors='replace')[-4000:] if stderr_path.exists() else 'no native stderr'
+            raise RuntimeError(f'native startup failed: {details}') from error
         save_before = hashlib.sha256(Path(game.save_path).read_bytes()).digest()
         try:
             driver.continue_game(game)

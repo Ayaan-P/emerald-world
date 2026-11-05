@@ -48,4 +48,14 @@ class CaveHarnessContract(unittest.TestCase):
             self.assertEqual(FakeGame.last.a,4)
             self.assertEqual((out/'game.sav').read_bytes(),b'disposable')
 
+    def test_native_startup_failure_exposes_stderr(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);seed=root/'seed';seed.write_bytes(b'disposable');out=root/'out'
+            def fail(binary,out_dir,save,max_frames):
+                (Path(out_dir)/'stderr.txt').write_text('native diagnostic')
+                raise RuntimeError('exited')
+            with patch.object(module.driver,'Game',side_effect=fail):
+                with self.assertRaisesRegex(RuntimeError,'native diagnostic'):
+                    module.run('/bin/true',seed,out)
+
 if __name__=='__main__':unittest.main()
