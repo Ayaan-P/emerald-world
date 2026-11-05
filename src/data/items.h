@@ -1,3 +1,8 @@
+#ifdef PORTABLE
+static const u8 sMegaStoneDesc[] = _("A stone held by a compatible\nPOKéMON to Mega Evolve.");
+static const u8 sMegaRingDesc[] = _("A mysterious ring that enables\nMega Evolution in battle.");
+#endif
+
 const struct Item gItems[] =
 {
     [ITEM_NONE] =
@@ -4537,4 +4542,91 @@ const struct Item gItems[] =
         .type = ITEM_USE_BAG_MENU,
         .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
     },
+    #ifdef PORTABLE
+    [ITEM_VENUSAURITE] = {
+        .name = _("VENUSAURITE"), .itemId = ITEM_VENUSAURITE, .price = 0,
+        .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+        .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+    },
+    [ITEM_CHARIZARDITE_Y] = {
+        .name = _("CHARIZARDITEY"), .itemId = ITEM_CHARIZARDITE_Y, .price = 0,
+        .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+        .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+    },
+    [ITEM_ALAKAZITE] = {
+        .name = _("ALAKAZITE"), .itemId = ITEM_ALAKAZITE, .price = 0,
+        .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+        .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+    },
+    [ITEM_SLOWBRONITE] = {
+        .name = _("SLOWBRONITE"), .itemId = ITEM_SLOWBRONITE, .price = 0,
+        .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+        .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+    },
+    [ITEM_GENGARITE] = {
+        .name = _("GENGARITE"), .itemId = ITEM_GENGARITE, .price = 0,
+        .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+        .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+    },
+    [ITEM_STARMINITE] = {
+        .name = _("STARMINITE"), .itemId = ITEM_STARMINITE, .price = 0,
+        .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+        .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+    },
+    [ITEM_MEWTWONITE_Y] = {
+        .name = _("MEWTWONITE Y"), .itemId = ITEM_MEWTWONITE_Y, .price = 0,
+        .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+        .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+    },
+    [ITEM_TYRANITARITE] = {
+        .name = _("TYRANITARITE"), .itemId = ITEM_TYRANITARITE, .price = 0,
+        .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+        .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+    },
+    [ITEM_SCEPTILITE] = {
+        .name = _("SCEPTILITE"), .itemId = ITEM_SCEPTILITE, .price = 0,
+        .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+        .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+    },
+    [ITEM_BLAZIKENITE] = {
+        .name = _("BLAZIKENITE"), .itemId = ITEM_BLAZIKENITE, .price = 0,
+        .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+        .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+    },
+    [ITEM_SWAMPERTITE] = {
+        .name = _("SWAMPERTITE"), .itemId = ITEM_SWAMPERTITE, .price = 0,
+        .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+        .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+    },
+    [ITEM_MEDICHAMITE] = {
+        .name = _("MEDICHAMITE"), .itemId = ITEM_MEDICHAMITE, .price = 0,
+        .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+        .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+    },
+    [ITEM_MANECTITE] = {
+        .name = _("MANECTITE"), .itemId = ITEM_MANECTITE, .price = 0,
+        .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+        .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+    },
+    [ITEM_CHIMECHITE] = {
+        .name = _("CHIMECHITE"), .itemId = ITEM_CHIMECHITE, .price = 0,
+        .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+        .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+    },
+    [ITEM_LATIASITE] = {
+        .name = _("LATIASITE"), .itemId = ITEM_LATIASITE, .price = 0,
+        .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+        .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+    },
+    [ITEM_LATIOSITE] = {
+        .name = _("LATIOSITE"), .itemId = ITEM_LATIOSITE, .price = 0,
+        .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+        .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+    },
+    [ITEM_MEGA_RING] = {
+        .name = _("MEGA RING"), .itemId = ITEM_MEGA_RING, .price = 0,
+        .description = sMegaRingDesc, .importance = 1, .pocket = POCKET_KEY_ITEMS,
+        .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+    },
+    #endif
 };

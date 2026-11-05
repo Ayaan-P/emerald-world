@@ -1,0 +1,13 @@
+# Mega Evolution work in progress
+
+This draft is disabled and not playable. `MEGA_FEATURE_READY` defaults to 0. Do not merge, enable it for valuable saves, or treat its focused tests as a native build or gameplay verification.
+
+The battle-only form catalog covers 16 native species with types and abilities already present in the current game. Stats, types, abilities and stone names are adapted from pokeemerald-expansion-native bb3fd057061cdd7e6a9e79b76abb41924ee44ecc; this is not a wholesale Expansion port. Logical form identifiers are never written as party species. Existing Gen 3 abilities may differ from modern behavior.
+
+The experimental path includes a native-only battle announcement, per-trainer selection and once-per-battle state, stat calculation from the party's level, IVs, EVs and nature, guarded move-choice transport and a matching native-link rule bit. When explicitly compiled with the gate enabled, a preliminary turn hook applies queued stats before moves, and the World menu has a settings toggle and a temporary stone-and-ring acquisition menu. These hooks are incomplete and must not be enabled: Form visuals and battle cleanup are not implemented or verified. A preliminary native controller event carries form identity and party slot to both players and waits for acknowledgements. The owning client gets move-selection eligibility from the master and checks its own Ring, with the master revalidating the choice. Actual multiplayer synchronization remains unverified. A preliminary ability sequence invokes existing switch-in ability effects and waits for their scripts, but it needs native gameplay verification and modern-mechanics review. A preliminary switch-in hook restores a form by trainer and battle-party slot without altering the underlying party; real switching and co-op ownership still need verification. The preliminary ordering also needs gameplay validation.
+
+The working branch appends native-only item IDs 377–393 for stones and a Mega Ring. A save compatibility and migration strategy is required before real saves use them: older builds and Expansion have different item registries. Existing item icons are placeholders. Donor art has not been committed; its provenance and redistribution permissions need resolution.
+
+World > Gameplay settings contains the existing Party EXP, reusable TM and move-category toggles. All remain opt-in. Mega options are hidden while the feature gate is off.
+
+Component tests cover form calculations, trainer ownership, the game adapter and link rule matching with stubs. They do not establish native build success, actual co-op behavior, persistence, visuals or gameplay. The combined native candidate must be built and tested before release.

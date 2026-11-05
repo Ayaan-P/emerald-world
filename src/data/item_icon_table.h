@@ -401,6 +401,25 @@ const u32 *const gItemIconTable[ITEMS_COUNT + 1][2] =
     // Emerald-only key items
     [ITEM_MAGMA_EMBLEM] = {gItemIcon_MagmaEmblem, gItemIconPalette_MagmaEmblem},
     [ITEM_OLD_SEA_MAP] = {gItemIcon_OldSeaMap, gItemIconPalette_OldSeaMap},
+    #ifdef PORTABLE
+    [ITEM_VENUSAURITE] = {gItemIcon_FireStone, gItemIconPalette_FireStone},
+    [ITEM_CHARIZARDITE_Y] = {gItemIcon_FireStone, gItemIconPalette_FireStone},
+    [ITEM_ALAKAZITE] = {gItemIcon_FireStone, gItemIconPalette_FireStone},
+    [ITEM_SLOWBRONITE] = {gItemIcon_FireStone, gItemIconPalette_FireStone},
+    [ITEM_GENGARITE] = {gItemIcon_FireStone, gItemIconPalette_FireStone},
+    [ITEM_STARMINITE] = {gItemIcon_FireStone, gItemIconPalette_FireStone},
+    [ITEM_MEWTWONITE_Y] = {gItemIcon_FireStone, gItemIconPalette_FireStone},
+    [ITEM_TYRANITARITE] = {gItemIcon_FireStone, gItemIconPalette_FireStone},
+    [ITEM_SCEPTILITE] = {gItemIcon_FireStone, gItemIconPalette_FireStone},
+    [ITEM_BLAZIKENITE] = {gItemIcon_FireStone, gItemIconPalette_FireStone},
+    [ITEM_SWAMPERTITE] = {gItemIcon_FireStone, gItemIconPalette_FireStone},
+    [ITEM_MEDICHAMITE] = {gItemIcon_FireStone, gItemIconPalette_FireStone},
+    [ITEM_MANECTITE] = {gItemIcon_FireStone, gItemIconPalette_FireStone},
+    [ITEM_CHIMECHITE] = {gItemIcon_FireStone, gItemIconPalette_FireStone},
+    [ITEM_LATIASITE] = {gItemIcon_FireStone, gItemIconPalette_FireStone},
+    [ITEM_LATIOSITE] = {gItemIcon_FireStone, gItemIconPalette_FireStone},
+    [ITEM_MEGA_RING] = {gItemIcon_Orb, gItemIconPalette_RedOrb},
+    #endif
     // Return to field arrow
     [ITEMS_COUNT] = {gItemIcon_ReturnToFieldArrow, gItemIconPalette_ReturnToFieldArrow},
 };

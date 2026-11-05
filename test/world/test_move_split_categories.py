@@ -27,9 +27,9 @@ int NativeLink_IsActive(void) {return linked;}
 #include "battle_move_split.h"
 #include "battle_rules_wire.h"
 int main(void) {
- assert(BattleRules_LinkType(0x2233,1)==0xA233);
- assert(BattleRules_LinkType(0x2233,0)==0x2233);
- assert(BattleRules_LinkType(0x1111,1)==0x1111);
+ assert(BattleRules_LinkType(0x2233,1,0)==0xA233);
+ assert(BattleRules_LinkType(0x2233,0,0)==0x2233);
+ assert(BattleRules_LinkType(0x1111,1,1)==0x1111);
  flag=0;
  assert(BattleMove_IsSpecial(MOVE_FIRE_PUNCH,TYPE_FIRE));
  assert(BattleMove_IsSpecial(MOVE_BITE,TYPE_DARK));
@@ -73,7 +73,7 @@ int main(void) {
         link=(ROOT/'src/link.c').read_text()
         scripts=(ROOT/'src/battle_script_commands.c').read_text()
         self.assertIn('disableRecordBattle = BattleRules_UseModernSplit()',battle)
-        self.assertIn('BattleRules_LinkType(gLinkType, FlagGet(FLAG_MODERN_MOVE_SPLIT))',link)
+        self.assertIn('BattleRules_LinkType(gLinkType, FlagGet(FLAG_MODERN_MOVE_SPLIT),',link)
         self.assertIn('BattleMove_IsPhysical(gCurrentMove, moveType)',scripts)
         self.assertIn('BattleRules_UseModernSplit() && gSpecialStatuses[gBattlerTarget].physicalDmg',scripts)
 

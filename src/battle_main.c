@@ -3,6 +3,8 @@
 #include "platform/world_coop.h"
 #include "platform/native_link.h"
 #include "platform/world_activity.h"
+#include "platform/mega_game.h"
+#include "platform/mega_wire.h"
 #endif
 #include "battle.h"
 #include "battle_move_split.h"
@@ -154,6 +156,12 @@ EWRAM_DATA u8 gBattleTextBuff3[TEXT_BUFF_ARRAY_COUNT] = {0};
 // for gDisplayedStringBattle and overflows into this array. If it
 // is removed (and none of the buffers above are increased in size)
 // it will instead overflow into useful data.
+#ifdef PORTABLE
+EWRAM_DATA static bool8 sMegaTurnHandled = FALSE;
+EWRAM_DATA static u8 sMegaTurnIndex = 0;
+EWRAM_DATA static u8 sMegaAbilityPhase = 0;
+EWRAM_DATA static bool8 sMegaAbilityChanged = FALSE;
+#endif
 EWRAM_DATA static u32 sFlickerArray[25] = {0};
 EWRAM_DATA u32 gBattleTypeFlags = 0;
 EWRAM_DATA u8 gBattleEnvironment = 0;
@@ -733,7 +741,13 @@ static void CB2_InitBattleInternal(void)
     gMain.inBattle = TRUE;
     // Recorded battles do not yet store a rules version; never create a replay
     // that might silently be played later with a different damage model.
+#ifdef PORTABLE
+    MegaGame_Reset();
+    gSaveBlock2Ptr->frontier.disableRecordBattle = BattleRules_UseModernSplit()
+        || (MEGA_FEATURE_READY && FlagGet(FLAG_MEGA_EVOLUTION));
+#else
     gSaveBlock2Ptr->frontier.disableRecordBattle = BattleRules_UseModernSplit();
+#endif
 
     for (i = 0; i < PARTY_SIZE; i++)
         AdjustFriendship(&gPlayerParty[i], FRIENDSHIP_EVENT_LEAGUE_BATTLE);
@@ -4483,6 +4497,22 @@ static void HandleTurnActionSelectionState(void)
                         UpdateBattlerPartyOrdersOnSwitch();
                         return;
                     default:
+                    {
+#ifdef PORTABLE
+                        bool8 megaRequested = FALSE;
+                        if ((gBattleBufferB[gActiveBattler][2] | (gBattleBufferB[gActiveBattler][3] << 8)) != 0xFFFF
+                         && (gBattleBufferB[gActiveBattler][2] & MEGA_MOVE_CHOICE_BIT))
+                        {
+                            megaRequested = TRUE;
+                            gBattleBufferB[gActiveBattler][2] &= ~MEGA_MOVE_CHOICE_BIT;
+                            if (!MegaGame_CanQueue(gActiveBattler))
+                            {
+                                if (NativeLink_IsActive()) NativeLink_Abort();
+                                gBattleCommunication[gActiveBattler] = STATE_BEFORE_ACTION_CHOSEN;
+                                return;
+                            }
+                        }
+#endif
                         RecordedBattle_CheckMovesetChanges(B_RECORD_MODE_PLAYBACK);
                         if ((gBattleBufferB[gActiveBattler][2] | (gBattleBufferB[gActiveBattler][3] << 8)) == 0xFFFF)
                         {
@@ -4500,6 +4530,15 @@ static void HandleTurnActionSelectionState(void)
                         }
                         else
                         {
+#ifdef PORTABLE
+                            if (megaRequested && !MegaGame_Queue(gActiveBattler))
+                            {
+                                if (NativeLink_IsActive()) NativeLink_Abort();
+                                gBattleCommunication[gActiveBattler] = STATE_BEFORE_ACTION_CHOSEN;
+                                return;
+                            }
+                            MegaGame_ClearSelection(gActiveBattler);
+#endif
                             if (!(gBattleTypeFlags & BATTLE_TYPE_PALACE))
                             {
                                 RecordedBattle_SetBattlerAction(gActiveBattler, gBattleBufferB[gActiveBattler][2]);
@@ -4511,6 +4550,7 @@ static void HandleTurnActionSelectionState(void)
                             gBattleCommunication[gActiveBattler]++;
                         }
                         break;
+                    }
                     }
                     break;
                 case B_ACTION_USE_ITEM:
@@ -5033,6 +5073,11 @@ static void CheckFocusPunch_ClearVarsBeforeTurnStarts(void)
     }
 
     TryClearRageStatuses();
+#ifdef PORTABLE
+    sMegaTurnHandled = FALSE;
+    sMegaTurnIndex = sMegaAbilityPhase = 0;
+    sMegaAbilityChanged = FALSE;
+#endif
     gCurrentTurnActionNumber = 0;
     gCurrentActionFuncId = gActionsByTurnOrder[gCurrentTurnActionNumber];
     gDynamicBasePower = 0;
@@ -5048,6 +5093,73 @@ static void RunTurnActionsFunctions(void)
 {
     if (gBattleOutcome != 0)
         gCurrentActionFuncId = B_ACTION_FINISHED;
+#ifdef PORTABLE
+    if (MEGA_FEATURE_READY && !sMegaTurnHandled && gCurrentActionFuncId == B_ACTION_USE_MOVE)
+    {
+        /* Ability scripts run asynchronously and return here through the
+         * normal callback stack. Do not start a second event over a pending
+         * animation/script or proceed to a move until the sequence drains. */
+        while (sMegaTurnIndex < gBattlersCount)
+        {
+            u8 battler = gBattlerByTurnOrder[sMegaTurnIndex];
+            if (sMegaAbilityPhase == 0)
+            {
+                u8 oldAbility = gBattleMons[battler].ability;
+                bool8 applied = FALSE;
+                if (gChosenActionByBattler[battler] == B_ACTION_USE_MOVE
+                 && !gProtectStructs[battler].noValidMoves)
+                    applied = MegaGame_Apply(battler);
+                else
+                    MegaGame_CancelQueue(battler);
+                if (!applied)
+                {
+                    sMegaTurnIndex++;
+                    continue;
+                }
+                sMegaAbilityChanged = oldAbility != gBattleMons[battler].ability;
+                sMegaAbilityPhase = 3;
+                if (MegaGame_PublishForm(battler, MEGA_WIRE_ACTIVATE))
+                    return;
+            }
+            if (sMegaAbilityPhase == 3)
+            {
+                /* In link battles both controllers must see and ACK the form
+                 * before an ability script or move can be dispatched. */
+                if (gBattleControllerExecFlags) return;
+                sMegaAbilityPhase = 4;
+                gBattleScripting.battler = battler;
+                BattleScriptPushCursorAndCallback(BattleScript_MegaEvolved);
+                return;
+            }
+            if (sMegaAbilityPhase == 4)
+            {
+                if (!sMegaAbilityChanged)
+                {
+                    sMegaAbilityPhase = 0;
+                    sMegaTurnIndex++;
+                    continue;
+                }
+                sMegaAbilityPhase = 1;
+                if (AbilityBattleEffects(ABILITYEFFECT_ON_SWITCHIN, battler, 0, 0, 0))
+                    return;
+            }
+            if (sMegaAbilityPhase == 1)
+            {
+                if (AbilityBattleEffects(ABILITYEFFECT_INTIMIDATE1, 0, 0, 0, 0))
+                    return;
+                sMegaAbilityPhase = 2;
+            }
+            if (sMegaAbilityPhase == 2)
+            {
+                if (AbilityBattleEffects(ABILITYEFFECT_TRACE, 0, 0, 0, 0))
+                    return;
+                sMegaAbilityPhase = 0;
+                sMegaTurnIndex++;
+            }
+        }
+        sMegaTurnHandled = TRUE;
+    }
+#endif
 
     *(&gBattleStruct->savedTurnActionNumber) = gCurrentTurnActionNumber;
     sTurnActionsFuncsTable[gCurrentActionFuncId]();

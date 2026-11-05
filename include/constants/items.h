@@ -417,7 +417,29 @@
 #define ITEM_MAGMA_EMBLEM 375
 #define ITEM_OLD_SEA_MAP 376
 
+// Appended native items preserve every existing Emerald item ID.
+#ifdef PORTABLE
+#define ITEM_VENUSAURITE 377
+#define ITEM_CHARIZARDITE_Y 378
+#define ITEM_ALAKAZITE 379
+#define ITEM_SLOWBRONITE 380
+#define ITEM_GENGARITE 381
+#define ITEM_STARMINITE 382
+#define ITEM_MEWTWONITE_Y 383
+#define ITEM_TYRANITARITE 384
+#define ITEM_SCEPTILITE 385
+#define ITEM_BLAZIKENITE 386
+#define ITEM_SWAMPERTITE 387
+#define ITEM_MEDICHAMITE 388
+#define ITEM_MANECTITE 389
+#define ITEM_CHIMECHITE 390
+#define ITEM_LATIASITE 391
+#define ITEM_LATIOSITE 392
+#define ITEM_MEGA_RING 393
+#define ITEMS_COUNT 394
+#else
 #define ITEMS_COUNT 377
+#endif
 
 // A special item id associated with "Cancel"/"Exit" etc. in a list of items or decorations
 // Its icon is defined at ITEMS_COUNT as the "return to field" arrow
