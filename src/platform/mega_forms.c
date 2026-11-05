@@ -40,6 +40,15 @@ u8 MegaForm_Find(u16 species, u8 stone)
     return MEGA_FORM_NONE;
 }
 
+u8 MegaForm_FirstStone(u16 species)
+{
+    u8 i;
+    if (!species) return MEGA_STONE_NONE;
+    for (i = 1; i < MEGA_FORM_COUNT; i++)
+        if (sMegaForms[i].baseSpecies == species) return sMegaForms[i].stone;
+    return MEGA_STONE_NONE;
+}
+
 u8 MegaStone_FromItem(u16 item)
 {
     switch (item)

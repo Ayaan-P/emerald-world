@@ -20,6 +20,10 @@
 #include "platform/world_activity.h"
 #include "platform/world_bridge.h"
 #include "platform/world_menu.h"
+#include "platform/mega_game.h"
+#include "platform/mega_forms.h"
+#include "item.h"
+#include "constants/items.h"
 #include "platform/world_rally.h"
 #include "platform/world_travel.h"
 #include "constants/characters.h"
@@ -31,8 +35,8 @@
 
 /* One field window, not another Start-menu row or another input consumer.
  * Lists are rebuilt from live state, but focus is an action identity. */
-enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, RALLY, DISPATCH };
-enum Action { FRIENDS, STORY, DEXNAV, PARTY_EXP, REUSABLE_TMS, MOVE_SPLIT, BACK, MODE, SCOPE, REQUEST, READY,
+enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, SETTINGS, MEGA_KIT_MENU, RALLY, DISPATCH };
+enum Action { FRIENDS, STORY, DEXNAV, GAMEPLAY, MEGA_KIT, MEGA_RULE, MEGA_SLOT0, MEGA_SLOT1, MEGA_SLOT2, MEGA_SLOT3, MEGA_SLOT4, MEGA_SLOT5, PARTY_EXP, REUSABLE_TMS, MOVE_SPLIT, BACK, MODE, SCOPE, REQUEST, READY,
     LATER, CANCEL, GO, FINISH, RETURN, STAY, ACTION_COUNT };
 enum Page { CONTROLS, ROSTER, STATUS, PAGE_COUNT };
 enum { WORLD_MENU_WIDTH = 28, WORLD_MENU_HEIGHT = 18, LINE_HEIGHT = 12,
@@ -156,12 +160,40 @@ static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 onlin
         AddRow(rows, &n, STORY, "Story rally", NULL);
         AddRow(rows, &n, DEXNAV, "DexNav", DexNavNative_Available() ? NULL :
             "DexNav needs a Pokedex and conscious party outside restricted or link areas.");
-        AddRow(rows, &n, PARTY_EXP, FlagGet(FLAG_PARTY_EXP_SHARE) ? "Party EXP: ON" : "Party EXP: OFF", NULL);
-        AddRow(rows, &n, REUSABLE_TMS, FlagGet(FLAG_REUSABLE_TMS) ? "Reusable TMs: ON" : "Reusable TMs: OFF", NULL);
-        AddRow(rows, &n, MOVE_SPLIT, FlagGet(FLAG_MODERN_MOVE_SPLIT) ? "Move split: ON" : "Move split: OFF", NULL);
+        AddRow(rows, &n, GAMEPLAY, "Gameplay settings", NULL);
+#if MEGA_FEATURE_READY
+        AddRow(rows, &n, MEGA_KIT, "Mega stones", NULL);
+#endif
         AddRow(rows, &n, BACK, "Back", NULL);
         return n;
     }
+    if (sMenu.state == SETTINGS)
+    {
+        AddRow(rows, &n, PARTY_EXP, FlagGet(FLAG_PARTY_EXP_SHARE) ? "Party EXP: ON" : "Party EXP: OFF", NULL);
+        AddRow(rows, &n, REUSABLE_TMS, FlagGet(FLAG_REUSABLE_TMS) ? "Reusable TMs: ON" : "Reusable TMs: OFF", NULL);
+        AddRow(rows, &n, MOVE_SPLIT, FlagGet(FLAG_MODERN_MOVE_SPLIT) ? "Move split: ON" : "Move split: OFF", NULL);
+#if MEGA_FEATURE_READY
+        AddRow(rows, &n, MEGA_RULE, FlagGet(FLAG_MEGA_EVOLUTION) ? "Mega Evolution: ON" : "Mega Evolution: OFF", NULL);
+#endif
+        AddRow(rows, &n, BACK, "Back", NULL);
+        return n;
+    }
+#if MEGA_FEATURE_READY
+    if (sMenu.state == MEGA_KIT_MENU)
+    {
+        static const char *const labels[PARTY_SIZE] = {"Party slot 1", "Party slot 2", "Party slot 3", "Party slot 4", "Party slot 5", "Party slot 6"};
+        unsigned i;
+        for (i = 0; i < gPlayerPartyCount && i < PARTY_SIZE; i++)
+        {
+            u16 species = GetMonData(&gPlayerParty[i], MON_DATA_SPECIES);
+            const char *reason = GetMonData(&gPlayerParty[i], MON_DATA_IS_EGG) ? "Eggs cannot Mega Evolve." :
+                !MegaForm_FirstStone(species) ? "No supported Mega form for this Pokemon yet." : NULL;
+            AddRow(rows, &n, MEGA_SLOT0 + i, labels[i], reason);
+        }
+        AddRow(rows, &n, BACK, "Back", NULL);
+        return n;
+    }
+#endif
     AddRow(rows, &n, MODE, WorldRally_GetAutoJoin() ? "Mode AUTO-JOIN" : "Mode ASK", NULL);
     AddRow(rows, &n, SCOPE, sMenu.scope ? "Scope World" : "Scope Nearby", r->id ?
         "Scope applies to your next request. It cannot change a running rally." : NULL);
@@ -262,9 +294,9 @@ static void Draw(const struct Row *rows, unsigned count, unsigned selected,
     char text[TEXT_BYTES];
     u8 encoded[TEXT_BYTES];
     unsigned i;
-    if (sMenu.state == FEATURES)
+    if (sMenu.state == FEATURES || sMenu.state == SETTINGS || sMenu.state == MEGA_KIT_MENU)
     {
-        Line(&screen, 0, "WORLD");
+        Line(&screen, 0, sMenu.state == SETTINGS ? "GAMEPLAY" : sMenu.state == MEGA_KIT_MENU ? "MEGA STONES" : "WORLD");
         Line(&screen, 1, "Up/Down choose. A open. B close.");
     }
     else
@@ -273,7 +305,7 @@ static void Draw(const struct Row *rows, unsigned count, unsigned selected,
         Line(&screen, 0, text);
         Line(&screen, 1, "Left/Right controls roster status");
     }
-    if (sMenu.state == FEATURES || sMenu.page == CONTROLS)
+    if (sMenu.state == FEATURES || sMenu.state == SETTINGS || sMenu.state == MEGA_KIT_MENU || sMenu.page == CONTROLS)
     {
         for (i = 0; i < count; i++)
         {
@@ -291,6 +323,8 @@ static void Draw(const struct Row *rows, unsigned count, unsigned selected,
             sMenu.focus == PARTY_EXP ? "Participants split EXP. Healthy bench gets half each. Save to keep this setting. NPC partner battles use vanilla rules." :
             sMenu.focus == REUSABLE_TMS ? "Teach with owned TMs without consuming them. Save to keep this setting." :
             sMenu.focus == MOVE_SPLIT ? "Modern categories. Both players must match. Battle recording unavailable. Save to keep." :
+            sMenu.focus == MEGA_RULE ? "Enable Mega Evolution. Both players must match. Save to keep this setting." :
+            sMenu.focus == MEGA_KIT ? "Choose a party slot for a compatible stone and Mega Ring." :
             "A choose. B back. Check status for local requirements.");
     }
     else if (sMenu.page == ROSTER)
@@ -465,7 +499,7 @@ void WorldMenu_Update(void)
         sMenu.page = (sMenu.page + (JOY_NEW(DPAD_LEFT) ? PAGE_COUNT - 1 : 1)) % PAGE_COUNT;
         sMenu.dirty = TRUE;
     }
-    if (sMenu.state == FEATURES || sMenu.page == CONTROLS)
+    if (sMenu.state == FEATURES || sMenu.state == SETTINGS || sMenu.state == MEGA_KIT_MENU || sMenu.page == CONTROLS)
     {
         if (JOY_REPEAT(DPAD_UP) && selected) selected--;
         if (JOY_REPEAT(DPAD_DOWN) && selected + 1 < count) selected++;
@@ -481,6 +515,50 @@ void WorldMenu_Update(void)
                 sMenu.dirty = TRUE;
                 return;
             }
+            else if (sMenu.focus == GAMEPLAY)
+            {
+                sMenu.state = SETTINGS;
+                sMenu.page = CONTROLS;
+                sMenu.focus = PARTY_EXP;
+                sMenu.dirty = TRUE;
+                return;
+            }
+#if MEGA_FEATURE_READY
+            else if (sMenu.focus == MEGA_KIT)
+            {
+                sMenu.state = MEGA_KIT_MENU;
+                sMenu.page = CONTROLS;
+                sMenu.focus = MEGA_SLOT0;
+                sMenu.dirty = TRUE;
+                return;
+            }
+            else if (sMenu.focus >= MEGA_SLOT0 && sMenu.focus <= MEGA_SLOT5)
+            {
+                unsigned slot = sMenu.focus - MEGA_SLOT0;
+                u8 stone = MegaForm_FirstStone(GetMonData(&gPlayerParty[slot], MON_DATA_SPECIES));
+                u16 item = MegaStone_Item(stone);
+                bool8 addedRing = FALSE;
+                if (!CheckBagHasItem(ITEM_MEGA_RING, 1))
+                {
+                    if (!AddBagItem(ITEM_MEGA_RING, 1))
+                    { sMenu.notice = "No room for the Mega Ring."; return; }
+                    addedRing = TRUE;
+                }
+                if (!item || !AddBagItem(item, 1))
+                {
+                    if (addedRing && !RemoveBagItem(ITEM_MEGA_RING, 1))
+                        sMenu.notice = "Stone not added. Ring remains; save only if wanted.";
+                    else sMenu.notice = "No room for the stone. No kit was added.";
+                }
+                else sMenu.notice = "Mega Ring and stone ready. Save to keep them.";
+            }
+            else if (sMenu.focus == MEGA_RULE)
+            {
+                if (FlagGet(FLAG_MEGA_EVOLUTION)) FlagClear(FLAG_MEGA_EVOLUTION);
+                else FlagSet(FLAG_MEGA_EVOLUTION);
+                sMenu.notice = "Mega setting changed. Save the game to keep it.";
+            }
+#endif
             else if (sMenu.focus == STORY)
             {
                 sMenu.state = RALLY;

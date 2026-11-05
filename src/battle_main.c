@@ -155,6 +155,9 @@ EWRAM_DATA u8 gBattleTextBuff3[TEXT_BUFF_ARRAY_COUNT] = {0};
 // for gDisplayedStringBattle and overflows into this array. If it
 // is removed (and none of the buffers above are increased in size)
 // it will instead overflow into useful data.
+#ifdef PORTABLE
+EWRAM_DATA static bool8 sMegaTurnHandled = FALSE;
+#endif
 EWRAM_DATA static u32 sFlickerArray[25] = {0};
 EWRAM_DATA u32 gBattleTypeFlags = 0;
 EWRAM_DATA u8 gBattleEnvironment = 0;
@@ -5066,6 +5069,9 @@ static void CheckFocusPunch_ClearVarsBeforeTurnStarts(void)
     }
 
     TryClearRageStatuses();
+#ifdef PORTABLE
+    sMegaTurnHandled = FALSE;
+#endif
     gCurrentTurnActionNumber = 0;
     gCurrentActionFuncId = gActionsByTurnOrder[gCurrentTurnActionNumber];
     gDynamicBasePower = 0;
@@ -5081,6 +5087,24 @@ static void RunTurnActionsFunctions(void)
 {
     if (gBattleOutcome != 0)
         gCurrentActionFuncId = B_ACTION_FINISHED;
+#ifdef PORTABLE
+    if (MEGA_FEATURE_READY && !sMegaTurnHandled && gCurrentActionFuncId == B_ACTION_USE_MOVE)
+    {
+        u8 i;
+        sMegaTurnHandled = TRUE;
+        // The selection was queued after move validation. Switches and items
+        // precede moves; apply each surviving queued form before the first move.
+        for (i = 0; i < gBattlersCount; i++)
+        {
+            u8 battler = gBattlerByTurnOrder[i];
+            if (gChosenActionByBattler[battler] == B_ACTION_USE_MOVE
+             && !gProtectStructs[battler].noValidMoves)
+                MegaGame_Apply(battler);
+            else
+                MegaGame_CancelQueue(battler);
+        }
+    }
+#endif
 
     *(&gBattleStruct->savedTurnActionNumber) = gCurrentTurnActionNumber;
     sTurnActionsFuncsTable[gCurrentActionFuncId]();
