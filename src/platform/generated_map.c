@@ -11,11 +11,18 @@
 #include "platform/world_rally.h"
 #include "platform/generated_map.h"
 #include "constants/maps.h"
+#if GENERATED_WILDS_GUIDE
+#include "constants/event_object_movement.h"
+#endif
 #if GENERATED_CAVE_WILDLIFE
 #include "wild_encounter.h"
 #include "constants/species.h"
 #endif
 #include <string.h>
+
+/* The native-only script references this fixed-size literal buffer even when
+ * the optional feature is disabled. It never contains control codes. */
+u8 gGeneratedWildsGuideText[58] = {0xFF};
 
 #if GENERATED_MAP_READY
 /* Both supported sizes fit the native backup-map buffer with the view border.
@@ -38,6 +45,13 @@ static u8 sLargeTemplate[LARGE_CELLS];
 static bool8 sLargeStaged, sLargeActive, sLargeShared;
 #if GENERATED_MAP_WILDS
 static bool8 sLargeWilds;
+#if GENERATED_WILDS_GUIDE
+static bool8 sGuideStaged, sGuideActive;
+static u8 sGuideGfx;
+static struct MapEvents sGuideEvents;
+static struct ObjectEventTemplate sGuideObjects[OBJECT_EVENT_TEMPLATES_COUNT];
+extern const u8 GeneratedWorld_Wilds_EventScript_Guide[];
+#endif
 #endif
 #endif
 static bool8 sHasTemplate;
@@ -196,6 +210,9 @@ bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size)
     sLargeStaged = sLargeShared = FALSE;
 #if GENERATED_MAP_WILDS
     sLargeWilds = FALSE;
+#if GENERATED_WILDS_GUIDE
+    sGuideStaged = FALSE;
+#endif
 #endif
 #endif
 #if GENERATED_CAVE_PROFILES
@@ -244,6 +261,9 @@ static bool8 StageLarge(const u8 *cells, u32 size, bool8 shared)
     sLargeStaged = TRUE; sLargeShared = shared; sHasTemplate = FALSE;
 #if GENERATED_MAP_WILDS
     sLargeWilds = FALSE;
+#if GENERATED_WILDS_GUIDE
+    sGuideStaged = FALSE;
+#endif
 #endif
 #if GENERATED_CAVE_PROFILES
     sEncounterProfile = 0; sSharedEncounterProfile = FALSE;
@@ -270,6 +290,69 @@ bool8 GeneratedMap_StageWildsTemplate(const u8 *cells, u32 size)
     return TRUE;
 #else
     (void)cells; (void)size; return FALSE;
+#endif
+}
+#if GENERATED_MAP_READY && GENERATED_WILDS_GUIDE
+static bool8 ValidateGuideText(const u8 *meta, u32 size)
+{
+    unsigned i, n, line = 0, lines = 1, visible = 0;
+    if (!meta || size != GENERATED_GUIDE_BYTES || (meta[0] != 7 && meta[0] != 8)) return FALSE;
+    n = meta[1]; if (!n || n > 57) return FALSE;
+    for (i = 0; i < n; i++) {
+        u8 c = meta[2 + i];
+        if (c == '\n') { if (!line || !visible || ++lines > 2) return FALSE; line = visible = 0; }
+        else {
+            if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+                  || c == ' ' || c == '.' || c == ',' || c == '!' || c == '?' || c == '\'' || c == '-')) return FALSE;
+            if (++line > 28) return FALSE;
+            if (c != ' ') visible++;
+        }
+    }
+    if (!line || !visible) return FALSE;
+    for (i = n; i < 57; i++) if (meta[2 + i]) return FALSE;
+    return TRUE;
+}
+static bool8 ValidateGuideGeometry(const u8 *cells, u32 size)
+{
+    u8 seen[LARGE_CELLS] = {0}; u16 queue[LARGE_CELLS], head=0, tail=0, i;
+    const unsigned guide = LARGE_SIDE + 2;
+    if (!cells || size != LARGE_CELLS || cells[guide] != '.' || cells[2 * LARGE_SIDE + 1] != '.') return FALSE;
+    queue[tail++] = LARGE_SIDE + 1; seen[LARGE_SIDE + 1] = TRUE;
+    while (head < tail) {
+        s16 pos=queue[head++], neighbors[4]={pos-LARGE_SIDE,pos+1,pos+LARGE_SIDE,pos-1}; unsigned d;
+        for (d=0;d<4;d++) { s16 next=neighbors[d];
+            if (next>=0 && next<LARGE_CELLS && next!=(s16)guide && cells[next]=='.' && !seen[next]) {
+                seen[next]=TRUE; queue[tail++]=next;
+            }
+        }
+    }
+    for (i=0;i<LARGE_CELLS;i++) if (i!=guide && cells[i]=='.' && !seen[i]) return FALSE;
+    return TRUE;
+}
+static void EncodeGuideText(const u8 *meta)
+{
+    unsigned i;
+    for (i=0;i<meta[1];i++) {
+        u8 c=meta[2+i], v=0;
+        if(c>='A' && c<='Z') v=0xBB+c-'A';
+        else if(c>='a' && c<='z') v=0xD5+c-'a';
+        else if(c>='0' && c<='9') v=0xA1+c-'0';
+        else switch(c) {case '\n':v=0xFE;break;case '.':v=0xAD;break;case ',':v=0xB8;break;
+            case '!':v=0xAB;break;case '?':v=0xAC;break;case '\'':v=0xB4;break;case '-':v=0xAE;break;default:break;}
+        gGeneratedWildsGuideText[i]=v;
+    }
+    gGeneratedWildsGuideText[meta[1]]=0xFF;
+}
+#endif
+bool8 GeneratedMap_StageGuidedWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_WILDS_GUIDE
+    if (!ValidateGuideText(metadata,metaSize) || !ValidateGuideGeometry(cells,size)) return FALSE;
+    if (!StageLarge(cells,size,FALSE)) return FALSE;
+    sLargeWilds=TRUE; sGuideStaged=TRUE; sGuideGfx=metadata[0]; EncodeGuideText(metadata);
+    return TRUE;
+#else
+    (void)metadata;(void)metaSize;(void)cells;(void)size;return FALSE;
 #endif
 }
 bool8 GeneratedMap_StageSharedWildsTemplate(const u8 *cells, u32 size)
@@ -594,6 +677,9 @@ bool8 GeneratedMap_Enter(void)
     sSeenInside = FALSE;
 #if GENERATED_MAP_LARGE
     sLargeActive = sLargeStaged && (!WorldBridge_Enabled() || sLargeShared);
+#if GENERATED_WILDS_GUIDE
+    sGuideActive = sLargeActive && sLargeWilds && sGuideStaged;
+#endif
     if (sLargeActive) {
         u16 i;
 #if GENERATED_MAP_WILDS
@@ -662,6 +748,19 @@ const struct MapLayout *GeneratedMap_ResolveLayout(const struct MapLayout *base)
     {
         sSeenInside = TRUE;
         sLayout = *base;
+#if GENERATED_WILDS_GUIDE
+        if (sGuideActive && sLargeWilds && gMapHeader.events) {
+            sGuideEvents = *gMapHeader.events;
+            memset(sGuideObjects, 0, sizeof(sGuideObjects));
+            sGuideObjects[0].localId = 1;
+            sGuideObjects[0].graphicsId = sGuideGfx;
+            sGuideObjects[0].x = 2; sGuideObjects[0].y = 1; sGuideObjects[0].elevation = 3;
+            sGuideObjects[0].movementType = MOVEMENT_TYPE_FACE_LEFT;
+            sGuideObjects[0].script = GeneratedWorld_Wilds_EventScript_Guide;
+            sGuideEvents.objectEventCount = 1; sGuideEvents.objectEvents = sGuideObjects;
+            gMapHeader.events = &sGuideEvents;
+        }
+#endif
 #if GENERATED_MAP_LARGE
         sLayout.width = sLayout.height = sLargeActive ? LARGE_SIDE : GEN_SIDE;
         sLayout.map = sLargeActive ? sLargeTiles : sTiles;

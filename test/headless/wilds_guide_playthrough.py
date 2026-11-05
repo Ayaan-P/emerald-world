@@ -1,0 +1,47 @@
+"""Observe and talk to a generated outdoor guide in the actual native game."""
+import argparse
+import hashlib
+from pathlib import Path
+import shlex
+import tempfile
+import driver
+from large_cave_playthrough import flee
+from world.wilds_guide import encode
+
+
+def run(binary,seed,out):
+    binary,seed,out=map(lambda p:Path(p).resolve(),(binary,seed,out));out.mkdir(parents=True,exist_ok=True)
+    rows=['#'*63]+['#'+'.'*61+'#']*61+['#'*63]
+    blob=encode({'rows':rows,'spawn':[1,1],'exit':[61,61]},7,'Welcome, traveler!')
+    with tempfile.TemporaryDirectory(prefix='wilds-guide-') as t:
+        root=Path(t);area=root/'area.bin';area.write_bytes(blob)
+        wrapper=root/'run';wrapper.write_text('#!/bin/sh\nexec '+shlex.quote(str(binary))+' --generated-map '+shlex.quote(str(area))+' "$@"\n');wrapper.chmod(0o700)
+        game=driver.Game(str(wrapper),str(out),save=str(seed),max_frames=30000)
+        before=hashlib.sha256(Path(game.save_path).read_bytes()).digest()
+        try:
+            driver.continue_game(game);driver.walk_to(game,6,11);driver.leave_map(game,'DOWN');driver.wait_until(game,lambda s:s.free)
+            origin=(tuple(game.state.map),game.state.pos)
+            game.tap('START',gap=30);game.tap('DOWN',times=5);game.tap('A',gap=60);game.tap('DOWN',times=2);game.tap('A',gap=90)
+            driver.wait_until(game,lambda s:s.map_name=='GeneratedWorld_Wilds' and s.free)
+            if (2,1) not in game.state.objects:raise RuntimeError(f'guide not present: {game.state.objects}')
+            game.press('RIGHT',1);game.wait(12);game.press('A',2);game.wait(20)
+            if not game.state.script and not game.state.locked:raise RuntimeError('interacting with guide did not open dialogue')
+            driver.finish_dialog(game)
+            for _ in range(20):
+                if game.state.battle:flee(game)
+                if game.state.pos==(1,2):break
+                game.press('DOWN',16);game.wait(20)
+            if game.state.pos!=(1,2):raise RuntimeError(f'guide blocked route: {game.state}')
+            if game.state.battle:flee(game)
+            driver.wait_until(game,lambda s:s.free)
+            game.tap('START',gap=30);game.tap('UP');game.tap('A',gap=60);game.tap('UP');game.tap('A',gap=90)
+            driver.wait_until(game,lambda s:tuple(s.map)==origin[0] and s.free)
+            if game.state.pos!=origin[1]:raise RuntimeError('guided wilds returned to wrong position')
+        finally:code=game.finish()
+        if code:raise RuntimeError(f'native client exited {code}')
+        if hashlib.sha256(Path(game.save_path).read_bytes()).digest()!=before:raise RuntimeError('disposable save changed')
+    print('PASS: generated native guide appeared, opened dialogue, left a route and returned without writing the save')
+
+if __name__=='__main__':
+    p=argparse.ArgumentParser();p.add_argument('--binary',required=True);p.add_argument('--seed-save',required=True);p.add_argument('--out',required=True)
+    a=p.parse_args();run(a.binary,a.seed_save,a.out)
