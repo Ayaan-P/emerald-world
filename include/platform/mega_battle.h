@@ -22,9 +22,11 @@ struct MegaBattleStats {
 };
 typedef u16 (*MegaNatureAdjust)(u8 nature, u16 stat, u8 statIndex);
 void MegaBattle_Reset(struct MegaBattleState *state);
-u8 MegaBattle_Activate(struct MegaBattleState *state, u8 owner, u8 slot,
-                       u16 species, u8 stone, bool8 hasKey, bool8 conscious);
 u8 MegaBattle_GetForm(const struct MegaBattleState *state, u8 owner, u8 slot);
 bool8 MegaForm_Calculate(u8 form, const struct MegaStatInput *input,
                          MegaNatureAdjust nature, struct MegaBattleStats *result);
+u8 MegaBattle_Transform(struct MegaBattleState *state, u8 owner, u8 slot,
+                        u16 species, u8 stone, bool8 hasKey, bool8 conscious,
+                        const struct MegaStatInput *input, MegaNatureAdjust nature,
+                        struct MegaBattleStats *result);
 #endif

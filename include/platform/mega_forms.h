@@ -47,4 +47,6 @@ struct MegaFormData {
 };
 const struct MegaFormData *MegaForm_Get(u8 form);
 u8 MegaForm_Find(u16 species, u8 stone);
+u8 MegaStone_FromItem(u16 item);
+u16 MegaStone_Item(u8 stone);
 #endif

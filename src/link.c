@@ -31,6 +31,7 @@
 #ifdef PORTABLE
 #include "platform/native_link.h"
 #include "platform/battle_rules_wire.h"
+#include "platform/mega_game.h"
 #endif
 
 // Window IDs for the link error screens
@@ -387,7 +388,8 @@ void OpenLink(void)
 #ifdef PORTABLE
         if (NativeLink_IsActive())
         {
-            u16 wireLinkType = BattleRules_LinkType(gLinkType, FlagGet(FLAG_MODERN_MOVE_SPLIT));
+            u16 wireLinkType = BattleRules_LinkType(gLinkType, FlagGet(FLAG_MODERN_MOVE_SPLIT),
+                MEGA_FEATURE_READY && FlagGet(FLAG_MEGA_EVOLUTION));
             NativeLink_SetCommandSource(gSendCmd);
             // Only the wire value carries the rules revision; gLinkType and
             // ordinary GBA link data are unchanged.

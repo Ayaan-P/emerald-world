@@ -1,7 +1,9 @@
+#ifdef PORTABLE
 #include "global.h"
 #include "constants/species.h"
 #include "constants/pokemon.h"
 #include "constants/abilities.h"
+#include "constants/items.h"
 #include "platform/mega_forms.h"
 
 /* Stats, types and abilities from pokeemerald-expansion-native bb3fd057.
@@ -37,3 +39,52 @@ u8 MegaForm_Find(u16 species, u8 stone)
         if (sMegaForms[i].baseSpecies == species && sMegaForms[i].stone == stone) return i;
     return MEGA_FORM_NONE;
 }
+
+u8 MegaStone_FromItem(u16 item)
+{
+    switch (item)
+    {
+    case ITEM_VENUSAURITE: return MEGA_STONE_VENUSAURITE;
+    case ITEM_CHARIZARDITE_Y: return MEGA_STONE_CHARIZARDITE_Y;
+    case ITEM_ALAKAZITE: return MEGA_STONE_ALAKAZITE;
+    case ITEM_SLOWBRONITE: return MEGA_STONE_SLOWBRONITE;
+    case ITEM_GENGARITE: return MEGA_STONE_GENGARITE;
+    case ITEM_STARMINITE: return MEGA_STONE_STARMINITE;
+    case ITEM_MEWTWONITE_Y: return MEGA_STONE_MEWTWONITE_Y;
+    case ITEM_TYRANITARITE: return MEGA_STONE_TYRANITARITE;
+    case ITEM_SCEPTILITE: return MEGA_STONE_SCEPTILITE;
+    case ITEM_BLAZIKENITE: return MEGA_STONE_BLAZIKENITE;
+    case ITEM_SWAMPERTITE: return MEGA_STONE_SWAMPERTITE;
+    case ITEM_MEDICHAMITE: return MEGA_STONE_MEDICHAMITE;
+    case ITEM_MANECTITE: return MEGA_STONE_MANECTITE;
+    case ITEM_CHIMECHITE: return MEGA_STONE_CHIMECHITE;
+    case ITEM_LATIASITE: return MEGA_STONE_LATIASITE;
+    case ITEM_LATIOSITE: return MEGA_STONE_LATIOSITE;
+    default: return MEGA_STONE_NONE;
+    }
+}
+
+u16 MegaStone_Item(u8 stone)
+{
+    switch (stone)
+    {
+    case MEGA_STONE_VENUSAURITE: return ITEM_VENUSAURITE;
+    case MEGA_STONE_CHARIZARDITE_Y: return ITEM_CHARIZARDITE_Y;
+    case MEGA_STONE_ALAKAZITE: return ITEM_ALAKAZITE;
+    case MEGA_STONE_SLOWBRONITE: return ITEM_SLOWBRONITE;
+    case MEGA_STONE_GENGARITE: return ITEM_GENGARITE;
+    case MEGA_STONE_STARMINITE: return ITEM_STARMINITE;
+    case MEGA_STONE_MEWTWONITE_Y: return ITEM_MEWTWONITE_Y;
+    case MEGA_STONE_TYRANITARITE: return ITEM_TYRANITARITE;
+    case MEGA_STONE_SCEPTILITE: return ITEM_SCEPTILITE;
+    case MEGA_STONE_BLAZIKENITE: return ITEM_BLAZIKENITE;
+    case MEGA_STONE_SWAMPERTITE: return ITEM_SWAMPERTITE;
+    case MEGA_STONE_MEDICHAMITE: return ITEM_MEDICHAMITE;
+    case MEGA_STONE_MANECTITE: return ITEM_MANECTITE;
+    case MEGA_STONE_CHIMECHITE: return ITEM_CHIMECHITE;
+    case MEGA_STONE_LATIASITE: return ITEM_LATIASITE;
+    case MEGA_STONE_LATIOSITE: return ITEM_LATIOSITE;
+    default: return ITEM_NONE;
+    }
+}
+#endif
