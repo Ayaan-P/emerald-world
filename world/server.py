@@ -898,6 +898,20 @@ class WorldServer:
             self.job = (self.executor.submit(run_tick), 'tick', None, cursor)
 
     def _loop(self):
+        try:
+            self._run_loop()
+        finally:
+            # A dead authority must not leave established clients hanging on
+            # open sockets. The owner still performs ordinary close/cleanup.
+            self.stopping.set()
+            if self.selector is not None:
+                for key in list(self.selector.get_map().values()):
+                    try:
+                        key.fileobj.close()
+                    except OSError:
+                        pass
+
+    def _run_loop(self):
         while not self.stopping.is_set():
             for key, mask in self.selector.select(0.025):
                 with self.lock:

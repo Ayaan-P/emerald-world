@@ -7,6 +7,34 @@ from pathlib import Path
 from world.server import WorldServer
 
 class CloseFailureTests(unittest.TestCase):
+    def test_loop_failure_closes_clients_even_before_owner_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);server=WorldServer(root/'socket',root/'world')
+            server.pending_states['alice']={'id':'alice','seq':1,'state':[0,1,10,12,4,7,1],
+                'party_hash':'a'*16,'bag_hash':'b'*16}
+            server.next_state_flush=0
+            server.db.set_authorizer(lambda op,arg,*_: sqlite3.SQLITE_DENY
+                if op==sqlite3.SQLITE_TRANSACTION and arg=='COMMIT' else sqlite3.SQLITE_OK)
+            class Endpoint:
+                closed=False
+                def close(self):self.closed=True
+            class Key:
+                def __init__(self,endpoint):self.fileobj=endpoint
+            class Selector:
+                def __init__(self, endpoints):self.items={i:Key(e) for i,e in enumerate(endpoints)}
+                def select(self,timeout):return []
+                def get_map(self):return self.items
+                def close(self):pass
+            listener,client=Endpoint(),Endpoint()
+            server.selector=Selector([listener,client])
+            try:
+                with self.assertRaises(sqlite3.Error):server._loop()
+                self.assertTrue(listener.closed)
+                self.assertTrue(client.closed)
+                self.assertTrue(server.stopping.is_set())
+            finally:
+                server.db.set_authorizer(None);server.close()
+
     def test_failed_flush_closes_database_and_releases_world_lifecycle_lock(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory); state=root/'world'
