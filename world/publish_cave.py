@@ -9,13 +9,13 @@ import json
 from pathlib import Path
 import sys
 from .client import admin_request
-from .shared_cave import SharedCave, SIZE
+from .shared_cave import SharedCave, MAX_SIZE
 from .cave_blueprint import proposal_from_blueprint, MAX_INPUT
 
 
 def publish(template, admin_socket):
     with Path(template).open('rb') as stream:
-        blob = stream.read(SIZE + 1)
+        blob = stream.read(MAX_SIZE + 1)
     return publish_bytes(blob, admin_socket)
 
 

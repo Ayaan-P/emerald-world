@@ -23,7 +23,7 @@ class CaveEcology(unittest.TestCase):
                 self.assertEqual(blob,export_generated_cave.encode(PROPOSAL,encounter_profile=name))
                 self.assertEqual(blob[:9],b'EWGMAP02'+bytes([number]))
                 self.assertEqual(blob[9:],old[8:])
-                with self.assertRaises(ValueError):offline_cave.SharedCave(blob)
+                self.assertEqual(offline_cave.SharedCave(blob).profile,number)
         for bad in ('unknown',True,None,1):
             with self.assertRaises(ValueError):offline_cave.encode_profile(PROPOSAL,bad)
         bad={**PROPOSAL,'spawn':[True,1]}
@@ -80,16 +80,17 @@ typedef uint8_t u8;typedef uint16_t u16;typedef uint32_t u32;typedef int16_t s16
 #define GEN_CELLS 961
 #define GENERATED_MAP_TEMPLATE_BYTES 961
 static u8 sTemplate[GEN_CELLS];static bool8 sHasTemplate,sPrepared,inside=1,online;
-static u8 sEncounterProfile;
+static u8 sEncounterProfile;static bool8 sSharedEncounterProfile;
 static bool8 GeneratedMap_IsInside(void){return inside;}
 static bool8 WorldBridge_Enabled(void){return online;}
 static FILE *NativeFile_Open(const char *p,const char *m){return fopen(p,m);}
-''' + ''.join(function(generated,n) for n in ('GeneratedMap_StageTemplate','GeneratedMap_SetEncounterProfile','GeneratedMap_EncounterProfile')) + function(sdl,'LoadGeneratedMapTemplate') + r'''
+''' + ''.join(function(generated,n) for n in ('GeneratedMap_StageTemplate','GeneratedMap_SetEncounterProfile','GeneratedMap_SetSharedEncounterProfile','GeneratedMap_EncounterProfile')) + function(sdl,'LoadGeneratedMapTemplate') + r'''
 int main(int argc,char **argv){u8 old[961];if(argc!=5)return 1;
  if(!LoadGeneratedMapTemplate(argv[1]))return 2;sPrepared=1;
  if(GeneratedMap_EncounterProfile()!=1)return 3;
- online=1;if(GeneratedMap_EncounterProfile())return 4;online=0;
- inside=0;if(GeneratedMap_EncounterProfile())return 5;inside=1;
+ online=1;if(GeneratedMap_EncounterProfile())return 4;
+ if(!GeneratedMap_SetSharedEncounterProfile(1) || GeneratedMap_EncounterProfile()!=1)return 10;
+ online=0;inside=0;if(GeneratedMap_EncounterProfile())return 5;inside=1;
  memcpy(old,sTemplate,sizeof(old));
  if(LoadGeneratedMapTemplate(argv[2]) || memcmp(old,sTemplate,sizeof(old)) || GeneratedMap_EncounterProfile()!=1)return 6;
  if(LoadGeneratedMapTemplate(argv[3]) || memcmp(old,sTemplate,sizeof(old)) || GeneratedMap_EncounterProfile()!=1)return 7;

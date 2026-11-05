@@ -9,7 +9,9 @@ from hashlib import sha256
 
 SIDE = 31
 MAGIC = b'EWGMAP01'
+MAGIC_PROFILE = b'EWGMAP02'
 SIZE = len(MAGIC) + SIDE * SIDE
+MAX_SIZE = SIZE + 1
 
 
 class CaveError(ValueError):
@@ -18,9 +20,16 @@ class CaveError(ValueError):
 
 class SharedCave:
     def __init__(self, blob):
-        if type(blob) is not bytes or len(blob) != SIZE or blob[:8] != MAGIC:
+        if type(blob) is not bytes:
             raise CaveError('invalid cave template')
-        cells = blob[8:]
+        if len(blob) == SIZE and blob[:8] == MAGIC:
+            self.profile = None
+            cells = blob[8:]
+        elif len(blob) == MAX_SIZE and blob[:8] == MAGIC_PROFILE and blob[8] <= 3:
+            self.profile = blob[8]
+            cells = blob[9:]
+        else:
+            raise CaveError('invalid cave template')
         if any(c not in (ord('.'), ord('#')) for c in cells):
             raise CaveError('invalid cave cell')
         rows = tuple(cells[y * SIDE:(y + 1) * SIDE] for y in range(SIDE))
@@ -47,7 +56,8 @@ class SharedCave:
         return type(x) is int and type(y) is int and 0 <= x < SIDE and 0 <= y < SIDE and self._rows[y][x] == ord('.')
 
     def frames(self):
-        frames = [f'CAVE BEGIN {self.identity}']
+        suffix = '' if self.profile is None else f' {self.profile}'
+        frames = [f'CAVE BEGIN {self.identity}{suffix}']
         frames.extend(f'CAVE ROW {self.identity} {i} {row.decode("ascii")}' for i, row in enumerate(self._rows))
         frames.append(f'CAVE END {self.identity}')
         return '\n'.join(frames) + '\n'

@@ -95,6 +95,9 @@ static struct {
     bool8 rallyProbe, rallyLegacy, rallyAvailable;
 #if GENERATED_MAP_READY
     bool8 caveProbe, caveLegacy, caveAvailable, caveReturning;
+#if GENERATED_CAVE_PROFILES
+    bool8 caveV2Probe, caveV2Legacy;
+#endif
     enum CaveState caveState;
     unsigned caveTimeout, caveRetry;
     char caveExpected[WORLD_CAVE_ID + 1];
@@ -391,6 +394,9 @@ static void Disconnect(void)
     sWorld.travelProbe = sWorld.travelAvailable = FALSE;
 #if GENERATED_MAP_READY
     sWorld.caveProbe = sWorld.caveAvailable = sWorld.caveReturning = FALSE;
+#if GENERATED_CAVE_PROFILES
+    sWorld.caveV2Probe = FALSE;
+#endif
     sWorld.caveState = CAVE_DISABLED;
     sWorld.caveTimeout = sWorld.caveRetry = 0;
     sWorld.caveExpected[0] = 0;
@@ -609,6 +615,12 @@ invalid:
 static bool8 CaveProbeRejected(unsigned n, char **tokens)
 {
     if (sWorld.caveProbe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
+#if GENERATED_CAVE_PROFILES
+        if (sWorld.caveV2Probe) {
+            sWorld.caveV2Legacy = TRUE;
+            return TRUE;
+        }
+#endif
         sWorld.caveLegacy = TRUE;
         return TRUE;
     }
@@ -630,7 +642,8 @@ static bool8 CaveLine(unsigned n, char **tokens)
         sWorld.caveRetry = 0;
         return TRUE;
     }
-    if (n == 2 && !strcmp(tokens[1], "NONE") && sWorld.caveState == CAVE_WAIT) {
+    if (n == 2 && !strcmp(tokens[1], "NONE")
+     && (sWorld.caveState == CAVE_WAIT || sWorld.caveState == CAVE_WAIT_RESET)) {
         sWorld.caveState = (GeneratedMap_IsInside() || GeneratedMap_EntryPending()) ? CAVE_RETURN_NONE : CAVE_DISABLED;
         return TRUE;
     }
@@ -644,22 +657,32 @@ static bool8 CaveLine(unsigned n, char **tokens)
         sWorld.caveExpected[0] = 0;
         sWorld.caveState = CAVE_READY;return TRUE;
     }
-    if (sWorld.caveState == CAVE_WAIT_RESET && n == 3 && !strcmp(tokens[1], "BEGIN")) {
+    if (sWorld.caveState == CAVE_WAIT_RESET && (n == 3 || n == 4) && !strcmp(tokens[1], "BEGIN")) {
         sWorld.caveState = CAVE_WAIT;
         sWorld.caveTimeout = 600;
     }
     if (sWorld.caveState != CAVE_WAIT) return FALSE;
-    if (n == 3 && !strcmp(tokens[1], "BEGIN") && sWorld.caveExpected[0]
+    if ((n == 3 || n == 4) && !strcmp(tokens[1], "BEGIN") && sWorld.caveExpected[0]
      && strcmp(tokens[2], sWorld.caveExpected)) return FALSE;
+#if GENERATED_CAVE_PROFILES
+    if (n == 4 && !strcmp(tokens[1], "BEGIN") && !sWorld.caveV2Probe) return FALSE;
+#endif
     result = WorldCaveWire_Feed(&sWorld.caveWire, n, (const char *const *)tokens);
     if (result < 0) return FALSE;
     if (result == 1) {
         if ((GeneratedMap_IsInside() || GeneratedMap_EntryPending())
+#if GENERATED_CAVE_PROFILES
+         && !GeneratedMap_MatchesPreparedProfile(sWorld.caveWire.cells, WORLD_CAVE_CELLS, sWorld.caveWire.profile))
+#else
          && !GeneratedMap_MatchesPrepared(sWorld.caveWire.cells, WORLD_CAVE_CELLS))
+#endif
             sWorld.caveState = CAVE_MISMATCH;
-        else if (GeneratedMap_StageTemplate(sWorld.caveWire.cells, WORLD_CAVE_CELLS))
+        else if (GeneratedMap_StageTemplate(sWorld.caveWire.cells, WORLD_CAVE_CELLS)) {
+#if GENERATED_CAVE_PROFILES
+            if (sWorld.caveWire.version == 2 && !GeneratedMap_SetSharedEncounterProfile(sWorld.caveWire.profile)) return FALSE;
+#endif
             sWorld.caveState = CAVE_ACK;
-        else return FALSE;
+        } else return FALSE;
     }
     return TRUE;
 }
@@ -921,7 +944,14 @@ static void QueueHello(bool8 headless)
     sWorld.rallyProbe = !sWorld.rallyLegacy;
 #if GENERATED_MAP_READY
     sWorld.caveProbe = !sWorld.caveLegacy;
-    if (sWorld.caveProbe) suffix = "CAVE";
+    if (sWorld.caveProbe) {
+#if GENERATED_CAVE_PROFILES
+        sWorld.caveV2Probe = !sWorld.caveV2Legacy;
+        suffix = sWorld.caveV2Probe ? "CAVE2" : "CAVE";
+#else
+        suffix = "CAVE";
+#endif
+    }
 #endif
 #ifdef _WIN32
     (void)headless;
@@ -1182,6 +1212,9 @@ static void CavePump(void)
         sWorld.caveReturning = FALSE;
         if (sWorld.caveState == CAVE_MISMATCH) {
             if (!GeneratedMap_StageTemplate(sWorld.caveWire.cells, WORLD_CAVE_CELLS)) { Disconnect(); return; }
+#if GENERATED_CAVE_PROFILES
+            if (sWorld.caveWire.version == 2 && !GeneratedMap_SetSharedEncounterProfile(sWorld.caveWire.profile)) { Disconnect(); return; }
+#endif
             sWorld.caveState = CAVE_ACK;
         } else sWorld.caveState = CAVE_DISABLED;
     }

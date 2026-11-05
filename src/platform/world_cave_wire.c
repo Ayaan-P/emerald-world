@@ -31,19 +31,21 @@ static void Block(u32 state[8], const u8 block[64])
     state[0]+=a;state[1]+=b;state[2]+=c;state[3]+=d;
     state[4]+=e;state[5]+=f;state[6]+=g;state[7]+=h;
 }
-static void Digest(const u8 *cells, char hex[65])
+static void Digest(const u8 *cells, u8 version, u8 profile, char hex[65])
 {
     static const u8 magic[8]={'E','W','G','M','A','P','0','1'};
     static const char alphabet[]="0123456789abcdef";
     u32 state[8]={0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
-    /* 969 bytes + 0x80 + length fits exactly sixteen 64-byte blocks. */
-    u8 block[64]; unsigned i,j,offset; const unsigned length=8+WORLD_CAVE_CELLS;
+    /* Both 969-byte v1 and 970-byte v2 fit sixteen padded blocks. */
+    u8 block[64]; unsigned i,j,offset; const unsigned extra = version == 2 ? 1 : 0;
+    const unsigned length=8+extra+WORLD_CAVE_CELLS;
     for(offset=0;offset<1024;offset+=64) {
         memset(block,0,sizeof(block));
         for(i=0;i<64;i++) {
             unsigned p=offset+i;
-            if(p<8) block[i]=magic[p];
-            else if(p<length) block[i]=cells[p-8];
+            if(p<8) block[i]=(p==7 && version==2) ? '2' : magic[p];
+            else if(extra && p==8) block[i]=profile;
+            else if(p<length) block[i]=cells[p-8-extra];
             else if(p==length) block[i]=0x80;
         }
         if(offset==960) {
@@ -75,8 +77,14 @@ int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned n, const char *const
     if (strcmp(t[0],"CAVE")) return -1;
     if (n==3 && !strcmp(t[1],"BEGIN")) {
         if(wire->active || !WorldCaveWire_ValidId(t[2])) return -1;
-        memcpy(wire->id,t[2],65);wire->nextRow=0;wire->active=TRUE;return 0;
+        memcpy(wire->id,t[2],65);wire->nextRow=0;wire->version=1;wire->profile=0;wire->active=TRUE;return 0;
     }
+#if GENERATED_CAVE_PROFILES
+    if (n==4 && !strcmp(t[1],"BEGIN")) {
+        if(wire->active || !WorldCaveWire_ValidId(t[2]) || strlen(t[3]) != 1 || t[3][0]<'0' || t[3][0]>'3') return -1;
+        memcpy(wire->id,t[2],65);wire->nextRow=0;wire->version=2;wire->profile=t[3][0]-'0';wire->active=TRUE;return 0;
+    }
+#endif
     if(!wire->active || n<3 || strcmp(wire->id,t[2])) return -1;
     if(n==5 && !strcmp(t[1],"ROW")) {
         const char *p=t[3];
@@ -88,7 +96,7 @@ int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned n, const char *const
     }
     if(n==3 && !strcmp(t[1],"END")) {
         if(wire->nextRow!=WORLD_CAVE_SIDE) return -1;
-        Digest(wire->cells,digest);
+        Digest(wire->cells,wire->version,wire->profile,digest);
         if(strcmp(digest,wire->id)) return -1;
         wire->active=FALSE;return 1;
     }

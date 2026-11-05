@@ -106,9 +106,12 @@ def main(argv=None):
     target = parser.add_mutually_exclusive_group()
     target.add_argument('--admin-socket', type=Path, help='also publish to the local owner authority')
     target.add_argument('--offline-output', type=Path, help='write a new offline template with model-selected encounter profile')
+    parser.add_argument('--shared-ecology', action='store_true', help='publish a model-selected encounter profile to a compatible shared cave host')
     args = parser.parse_args(argv)
+    if args.shared_ecology and args.admin_socket is None:
+        parser.error('--shared-ecology requires --admin-socket')
     try:
-        proposal, blob = author(args.theme, args.timeout, offline_ecology=args.offline_output is not None)
+        proposal, blob = author(args.theme, args.timeout, offline_ecology=args.offline_output is not None or args.shared_ecology)
         if args.offline_output is not None:
             with args.offline_output.open('xb') as out:
                 out.write(blob)

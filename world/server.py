@@ -448,8 +448,11 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
-                cave_capable = role.endswith('CAVE')
-                if cave_capable:
+                cave_profile = role.endswith('CAVE2')
+                cave_capable = cave_profile or role.endswith('CAVE')
+                if cave_profile:
+                    role = role[:-5]
+                elif cave_capable:
                     role = role[:-4]
                 control = role == 'CONTROL'
                 chat_capable = role in ('SOCIALCHAT', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELCHATRALLY')
@@ -505,6 +508,7 @@ class WorldServer:
                 conn['id'] = name
                 conn['social'] = social
                 conn['cave_capable'] = cave_capable
+                conn['cave_profile'] = cave_profile
                 conn['cave_offer'] = conn['cave_ack'] = None
                 conn['cave_revoked'] = []
                 conn['chat'] = chat_capable
@@ -531,7 +535,8 @@ class WorldServer:
                     self._error(conn, 'CAVE')
                     return
                 if fields == ['CAVE', 'GET']:
-                    if self.shared_cave is None:
+                    if self.shared_cave is None or (self.shared_cave.profile is not None and not conn.get('cave_profile')):
+                        conn['cave_offer'] = None
                         self._queue(conn, 'CAVE NONE\n')
                         return
                     now = time.monotonic()
@@ -1248,9 +1253,9 @@ def main(argv=None):
     try:
         cave_template = None
         if args.generated_cave_template is not None:
-            from .shared_cave import SIZE
+            from .shared_cave import MAX_SIZE
             with args.generated_cave_template.open('rb') as stream:
-                cave_template = stream.read(SIZE + 1)
+                cave_template = stream.read(MAX_SIZE + 1)
         server = WorldServer(game_socket, state, admin_path=args.admin_socket,
                              max_players=args.max_players, max_controls=args.max_controls,
                              connection_headroom=args.connection_headroom, cave_template=cave_template,

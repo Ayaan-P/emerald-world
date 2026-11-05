@@ -1,6 +1,9 @@
 #ifndef GUARD_PLATFORM_WORLD_CAVE_WIRE_H
 #define GUARD_PLATFORM_WORLD_CAVE_WIRE_H
 #ifdef PORTABLE
+#ifndef GENERATED_CAVE_PROFILES
+#define GENERATED_CAVE_PROFILES 0
+#endif
 #define WORLD_CAVE_SIDE 31
 #define WORLD_CAVE_CELLS (WORLD_CAVE_SIDE * WORLD_CAVE_SIDE)
 #define WORLD_CAVE_ID 64
@@ -9,6 +12,7 @@ struct WorldCaveWire
     u8 cells[WORLD_CAVE_CELLS];
     char id[WORLD_CAVE_ID + 1];
     u8 nextRow;
+    u8 version, profile;
     bool8 active;
 };
 /* 0: accepted partial; 1: complete; -1: invalid. Only BEGIN/ROW/END. */

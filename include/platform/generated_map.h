@@ -19,6 +19,8 @@ struct MapLayout;
 #define GENERATED_MAP_TEMPLATE_BYTES (31 * 31)
 bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size);
 bool8 GeneratedMap_SetEncounterProfile(u8 profile);
+bool8 GeneratedMap_SetSharedEncounterProfile(u8 profile);
+bool8 GeneratedMap_MatchesPreparedProfile(const u8 *cells, u32 size, u8 profile);
 u8 GeneratedMap_EncounterProfile(void);
 /* Reload an optional offline template immediately before entry. */
 bool8 Platform_ReloadGeneratedMap(void);

@@ -29,6 +29,7 @@ static u8 sTemplate[GEN_CELLS];
 static bool8 sHasTemplate;
 #if GENERATED_CAVE_PROFILES
 static u8 sEncounterProfile;
+static bool8 sSharedEncounterProfile;
 #endif
 static struct MapLayout sLayout;
 static struct WarpData sReturn, sPreviousDynamicWarp;
@@ -146,6 +147,7 @@ bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size)
     sHasTemplate = TRUE;
 #if GENERATED_CAVE_PROFILES
     sEncounterProfile = 0;
+    sSharedEncounterProfile = FALSE;
 #endif
     return TRUE;
 #else
@@ -160,6 +162,20 @@ bool8 GeneratedMap_SetEncounterProfile(u8 profile)
 #if GENERATED_MAP_READY && GENERATED_CAVE_PROFILES
     if (!sHasTemplate || profile > 3) return FALSE;
     sEncounterProfile = profile;
+    sSharedEncounterProfile = FALSE;
+    return TRUE;
+#else
+    (void)profile;
+    return FALSE;
+#endif
+}
+
+bool8 GeneratedMap_SetSharedEncounterProfile(u8 profile)
+{
+#if GENERATED_MAP_READY && GENERATED_CAVE_PROFILES
+    if (!sHasTemplate || profile > 3) return FALSE;
+    sEncounterProfile = profile;
+    sSharedEncounterProfile = TRUE;
     return TRUE;
 #else
     (void)profile;
@@ -170,7 +186,8 @@ bool8 GeneratedMap_SetEncounterProfile(u8 profile)
 u8 GeneratedMap_EncounterProfile(void)
 {
 #if GENERATED_MAP_READY && GENERATED_CAVE_PROFILES
-    if (sPrepared && sHasTemplate && GeneratedMap_IsInside() && !WorldBridge_Enabled())
+    if (sPrepared && sHasTemplate && GeneratedMap_IsInside()
+     && (!WorldBridge_Enabled() || sSharedEncounterProfile))
         return sEncounterProfile;
 #endif
     return 0;
@@ -230,6 +247,15 @@ bool8 GeneratedMap_MatchesPrepared(const u8 *cells, u32 size)
 #else
     (void)cells; (void)size;
     return FALSE;
+#endif
+}
+
+bool8 GeneratedMap_MatchesPreparedProfile(const u8 *cells, u32 size, u8 profile)
+{
+#if GENERATED_MAP_READY && GENERATED_CAVE_PROFILES
+    return profile <= 3 && profile == sEncounterProfile && GeneratedMap_MatchesPrepared(cells, size);
+#else
+    return profile == 0 && GeneratedMap_MatchesPrepared(cells, size);
 #endif
 }
 
