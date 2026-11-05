@@ -26,13 +26,14 @@
 #include "platform/native_link.h"
 #include "platform/world_activity.h"
 #include "platform/world_coop.h"
+#include "platform/world_coop_potion.h"
 #include <string.h>
 
 /* No saved data or pointers cross this boundary. The native Pokemon layout is
  * exactly the 100-byte GBA layout on every supported native architecture. */
 STATIC_ASSERT(sizeof(struct Pokemon) == 100, CoopPokemonWireSize);
 enum { COOP_IDLE, COOP_EXCHANGE, COOP_BATTLE, COOP_REWARDS };
-enum { COOP_MAGIC = 0x4357, COOP_VERSION = 3, COOP_TIMEOUT = 1800,
+enum { COOP_MAGIC = 0x4357, COOP_VERSION = 4, COOP_TIMEOUT = 1800,
        COOP_CONFIRM = 4 + PARTY_SIZE, COOP_READY = COOP_CONFIRM + 1, COOP_COMMIT = COOP_CONFIRM + 2 };
 struct CoopHeader
 {
@@ -72,7 +73,10 @@ static struct
 {
     u8 catchOwner;
     bool8 catchDelivered;
-    u16 pendingBall;
+    u16 pendingBall, pendingPotion;
+    u16 potionSpent[4];
+    u16 potionHeal, potionItem;
+    u8 potionAction, potionBattler;
     struct Pokemon caughtMon;
     u8 readySent, commitSent, commitEchoed, peerReady, peerCommit, peerOutcome, peerReward;
     u8 state, phase, local, ownerPeer, count, originalCount;
@@ -248,8 +252,28 @@ void WorldCoop_SetPartyMenuOrder(bool8 inMenuOrder)
     sCoop.partyMenuOrder = inMenuOrder;
 }
 
+static const u16 sCoopPotions[] = { ITEM_POTION, ITEM_SUPER_POTION, ITEM_HYPER_POTION, ITEM_MAX_POTION };
+
+static bool8 WorldCoop_RefundPotions(void)
+{
+    u8 i;
+    for (i = 0; i < ARRAY_COUNT(sCoopPotions); i++)
+    {
+        if (sCoop.potionSpent[i])
+        {
+            /* The consumed stack or slot is available: no battle operation
+             * adds medicine to this private bag. */
+            if (!AddBagItem(sCoopPotions[i], sCoop.potionSpent[i]))
+                return FALSE; /* Leave the remaining ledger intact. */
+            sCoop.potionSpent[i] = 0;
+        }
+    }
+    return TRUE;
+}
+
 void WorldCoop_Abort(void)
 {
+    WorldCoop_RefundPotions();
     if (sCoop.staged)
     {
         memcpy(gPlayerParty, sCoop.original, sizeof(sCoop.original));
@@ -435,8 +459,12 @@ int WorldCoop_StartBattle(bool8 encounterOwner)
      || GetLinkPlayerCount() != 2 || GetMultiplayerId() > 1
      || (encounterOwner && !sCoop.captured))
         return 0;
+    /* A failed refund must never be discarded by a new battle. */
+    if (!WorldCoop_RefundPotions()) return 0;
     sCoop.readySent = sCoop.commitSent = sCoop.commitEchoed = sCoop.peerReady = sCoop.peerCommit = FALSE;
     sCoop.catchOwner = sCoop.catchDelivered = sCoop.pendingBall = 0;
+    sCoop.pendingPotion = sCoop.potionAction = 0;
+    memset(sCoop.potionSpent, 0, sizeof(sCoop.potionSpent));
     sCoop.count = 0;
     memset(sCoop.selected, 0, sizeof(sCoop.selected));
     for (i = 0; i < PARTY_SIZE && sCoop.count < MULTI_PARTY_SIZE; i++)
@@ -564,6 +592,118 @@ bool8 WorldCoop_GetPublicMon(u8 battler, struct WorldCoopPublicMon *mon)
         return FALSE;
     *mon = sCoop.publicMons[battler];
     return TRUE;
+}
+
+bool8 WorldCoop_CanSelectBattleItem(u16 item)
+{
+    return WorldCoop_CanSelectBall(item)
+        || (sCoop.state == COOP_BATTLE && WorldCoop_IsPotion(item));
+}
+
+bool8 WorldCoop_CanUsePotion(u16 item)
+{
+    struct Pokemon *mon;
+    u8 battler = gBattlerInMenuId, slot;
+    if (sCoop.state != COOP_BATTLE || !WorldCoop_IsPotion(item)
+     || battler != sCoop.local * 2 || !CheckBagHasItem(item, 1)) return FALSE;
+    slot = gBattlerPartyIndexes[battler];
+    if (slot >= PARTY_SIZE || slot / MULTI_PARTY_SIZE != sCoop.local) return FALSE;
+    mon = &gPlayerParty[slot];
+    return WorldCoop_PotionHeal(item, GetMonData(mon, MON_DATA_HP),
+                                GetMonData(mon, MON_DATA_MAX_HP)) != 0;
+}
+
+bool8 WorldCoop_ItemReplyValid(u16 reply)
+{
+    if (sCoop.state != COOP_BATTLE) return FALSE;
+    if (!reply) return TRUE;
+    if ((reply & 0xFF00) == WORLD_COOP_POTION_REPLY)
+        return WorldCoop_IsPotion(reply & 0xFF);
+    return WorldCoop_BallReplyValid(reply);
+}
+
+u16 WorldCoop_SelectBattleItem(u16 item)
+{
+    sCoop.pendingPotion = 0;
+    if (WorldCoop_IsPotion(item))
+    {
+        if (!WorldCoop_CanUsePotion(item)) return 0;
+        sCoop.pendingPotion = item;
+        return WORLD_COOP_POTION_REPLY | item;
+    }
+    return WorldCoop_SelectBall(item);
+}
+
+bool8 WorldCoop_PotionPacketValid(const u8 *data, u16 size)
+{
+    u32 generation;
+    u16 hp, maxHP;
+    if (sCoop.state != COOP_BATTLE || sCoop.generation != NativeLink_Generation()
+     || size != 16 || data[0] != CONTROLLER_EXPUPDATE || data[1] != WORLD_COOP_POTION_TAG
+     || data[2] < 1 || data[2] > 2 || !WorldCoop_IsPotion(data[3])) return FALSE;
+    memcpy(&generation, data + 4, sizeof(generation));
+    hp = data[8] | (data[9] << 8); maxHP = data[10] | (data[11] << 8);
+    return generation == sCoop.generation && !data[12] && !data[13] && !data[14] && !data[15]
+        && WorldCoop_PotionHeal(data[3], hp, maxHP) != 0;
+}
+
+bool8 WorldCoop_ConsumePotion(const u8 *data)
+{
+    u16 hp, maxHP, item;
+    u8 i, slot;
+    struct Pokemon *mon;
+    if (!WorldCoop_PotionPacketValid(data, 16) || data[2] != sCoop.local + 1
+     || gActiveBattler != sCoop.local * 2) return FALSE;
+    item = data[3]; slot = gBattlerPartyIndexes[gActiveBattler];
+    if (slot >= PARTY_SIZE || slot / MULTI_PARTY_SIZE != sCoop.local
+     || sCoop.pendingPotion != item) return FALSE;
+    mon = &gPlayerParty[slot];
+    hp = data[8] | (data[9] << 8); maxHP = data[10] | (data[11] << 8);
+    if (GetMonData(mon, MON_DATA_HP) != hp || GetMonData(mon, MON_DATA_MAX_HP) != maxHP) return FALSE;
+    for (i = 0; i < ARRAY_COUNT(sCoopPotions) && sCoopPotions[i] != item; i++);
+    if (i == ARRAY_COUNT(sCoopPotions) || sCoop.potionSpent[i] == 0xFFFF
+     || !RemoveBagItem(item, 1)) return FALSE;
+    sCoop.potionSpent[i]++;
+    sCoop.pendingPotion = 0;
+    return TRUE;
+}
+
+bool8 WorldCoop_PotionActionActive(u8 battler)
+{
+    return sCoop.state == COOP_BATTLE && sCoop.potionAction && sCoop.potionBattler == battler;
+}
+
+int WorldCoop_BeginPotionAction(u8 battler, u16 reply)
+{
+    u8 packet[12] = { CONTROLLER_EXPUPDATE, WORLD_COOP_POTION_TAG, 0, 0 };
+    u16 item = reply & 0xFF, hp, maxHP;
+    u32 generation = sCoop.generation;
+    if (sCoop.state != COOP_BATTLE || sCoop.potionAction || (battler & BIT_SIDE)
+     || battler >= MAX_BATTLERS_COUNT || !WorldCoop_ItemReplyValid(reply)
+     || (reply & 0xFF00) != WORLD_COOP_POTION_REPLY) return -1;
+    hp = gBattleMons[battler].hp; maxHP = gBattleMons[battler].maxHP;
+    sCoop.potionHeal = WorldCoop_PotionHeal(item, hp, maxHP);
+    if (!sCoop.potionHeal) return -1;
+    packet[2] = battler / 2 + 1; packet[3] = item;
+    memcpy(packet + 4, &generation, sizeof(generation));
+    packet[8] = hp; packet[9] = hp >> 8; packet[10] = maxHP; packet[11] = maxHP >> 8;
+    sCoop.potionAction = TRUE; sCoop.potionBattler = battler; sCoop.potionItem = item;
+    gActiveBattler = battler;
+    PrepareBufferDataTransferLink(B_COMM_TO_CONTROLLER, sizeof(packet), packet);
+    MarkBattlerForControllerExec(battler);
+    return 0;
+}
+
+int WorldCoop_AdvancePotionAction(u8 battler)
+{
+    if (!WorldCoop_PotionActionActive(battler)) return -1;
+    if (gBattleControllerExecFlags) return 0;
+    sCoop.potionAction = FALSE;
+    if (gBattleBufferB[battler][0] != CONTROLLER_TWORETURNVALUES
+     || gBattleBufferB[battler][1] != 1 || gBattleBufferB[battler][2] || gBattleBufferB[battler][3]) return -1;
+    gLastUsedItem = sCoop.potionItem;
+    gBattleMoveDamage = -(s32)sCoop.potionHeal;
+    return 1;
 }
 
 /* The owner supplies only private, ball-specific context. No partner bag or
@@ -963,6 +1103,10 @@ bool8 WorldCoop_PreparePrivateRewards(void)
     if (!WorldCoop_CompletionCommitted())
         return FALSE;
     valid = BuildPrivateParty(merged);
+    if (valid)
+        memset(sCoop.potionSpent, 0, sizeof(sCoop.potionSpent));
+    else
+        WorldCoop_RefundPotions();
     memcpy(gPlayerParty, valid ? merged : sCoop.original, sizeof(merged));
     gPlayerPartyCount = sCoop.originalCount;
     gBattlerPartyIndexes[0] = sCoop.slots[active < sCoop.count ? active : 0];

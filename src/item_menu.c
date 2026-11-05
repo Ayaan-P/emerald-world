@@ -1537,7 +1537,7 @@ static void OpenContextMenu(u8 taskId)
     case ITEMMENULOCATION_WALLY:
         if (GetItemBattleUsage(gSpecialVar_ItemId)
 #ifdef PORTABLE
-            && (!WorldCoop_IsBattle() || WorldCoop_CanSelectBall(gSpecialVar_ItemId))
+            && (!WorldCoop_IsBattle() || WorldCoop_CanSelectBattleItem(gSpecialVar_ItemId))
 #endif
            )
         {
@@ -1993,7 +1993,7 @@ static void ItemMenu_UseInBattle(u8 taskId)
 {
     if (GetItemBattleFunc(gSpecialVar_ItemId)
 #ifdef PORTABLE
-        && (!WorldCoop_IsBattle() || WorldCoop_CanSelectBall(gSpecialVar_ItemId))
+        && (!WorldCoop_IsBattle() || WorldCoop_CanSelectBattleItem(gSpecialVar_ItemId))
 #endif
        )
     {
