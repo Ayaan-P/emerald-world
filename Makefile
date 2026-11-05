@@ -6,6 +6,8 @@ REVISION    := 0
 MODERN      ?= 0
 KEEP_TEMPS  ?= 0
 PORTABLE    ?= 0
+GENERATED_MAP_READY ?= 0
+GENERATED_MAP_AUTOTILE ?= 0
 IS64BIT     ?= 1
 TARGET_OS       ?= NONE
 
@@ -280,7 +282,9 @@ ifeq ($(MODERN),0)
   LIBPATH := -L ../../tools/agbcc/lib
   LIB := $(LIBPATH) -lgcc -lc -L../../libagbsyscall -lagbsyscall
 else ifeq ($(PORTABLE),1)
-  CPPFLAGS += -std=gnu99 -D NONMATCHING -D PORTABLE -D UBFIX $(CPPFLAGS64) $(PLATFORM_INCLUDES)
+  # Sources are preprocessed in a separate command before cc1; feature
+  # switches must be here, not only in CFLAGS passed to the compiler stage.
+  CPPFLAGS += -std=gnu99 -D NONMATCHING -D PORTABLE -D UBFIX -DGENERATED_MAP_READY=$(GENERATED_MAP_READY) -DGENERATED_MAP_AUTOTILE=$(GENERATED_MAP_AUTOTILE) $(CPPFLAGS64) $(PLATFORM_INCLUDES)
   ifneq ($(SDL_DIR),)
     CPPFLAGS += -I$(SDL_DIR)/include
   endif
