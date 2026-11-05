@@ -115,7 +115,7 @@ class NativeProtocol(unittest.TestCase):
                 candidate.sendall(b"ERROR AUTH\n")
                 candidate.close()
                 continue
-            self.assertEqual(hello.decode(), f"HELLO 1 alice {self.token} SOCIALTRAVEL\n")
+            self.assertEqual(hello.decode(), f"HELLO 1 alice {self.token} SOCIALTRAVELRALLY\n")
             self.conn = candidate
             break
         assert self.conn is not None, 'presence role never connected'
@@ -318,7 +318,7 @@ class NativeProtocol(unittest.TestCase):
         self.step(120)
         self.conn, _ = self.listener.accept()
         self.conn.settimeout(3)
-        self.assertEqual(self.conn.recv(1024).decode(), f"HELLO 1 alice {self.token} SOCIALTRAVEL\n")
+        self.assertEqual(self.conn.recv(1024).decode(), f"HELLO 1 alice {self.token} SOCIALTRAVELRALLY\n")
 
     @unittest.skipUnless(os.environ.get("EMERALD_WORLD_SAVE"), "needs fresh acceptance save")
     def test_engine_sprite_and_tile_restore(self):

@@ -1,4 +1,7 @@
 #include "global.h"
+#ifdef PORTABLE
+#include "platform/dexnav_native.h"
+#endif
 #include "malloc.h"
 #include "apprentice.h"
 #include "battle.h"
@@ -6677,6 +6680,12 @@ static s32 GetWildMonTableIdInAlteringCave(u16 species)
 
 void SetWildMonHeldItem(void)
 {
+#ifdef PORTABLE
+    /* DexNav generated this exact private encounter before co-op capture. Keep
+     * its item (including NONE) instead of rerolling only the solo path. */
+    if (DexNavNative_OwnsWildMon())
+        return;
+#endif
     if (!(gBattleTypeFlags & (BATTLE_TYPE_LEGENDARY | BATTLE_TYPE_TRAINER | BATTLE_TYPE_PYRAMID | BATTLE_TYPE_PIKE)))
     {
         u16 rnd = Random() % 100;

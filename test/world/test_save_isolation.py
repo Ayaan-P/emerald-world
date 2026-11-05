@@ -153,7 +153,9 @@ class SaveIsolation(unittest.TestCase):
                            "RestoreTiles", "WorldBridge_PrepareSave"))
         saves = function(load, "SaveObjectEvents") + function(load, "LoadObjectEvents")
         saves += function(field, "SaveMapView")
-        source = PREAMBLE + state + helpers + saves + SETUP
+        rally = (ROOT / "include/platform/world_rally.h").read_text()
+        rally_types = rally[rally.index("#define WORLD_RALLY_ROSTER"):rally.index("/* Main/game thread only.")]
+        source = PREAMBLE + rally_types + state + helpers + saves + SETUP
         source += "int main(void) { Setup();\n" + body + "\nreturn 0; }\n"
         with tempfile.TemporaryDirectory(prefix="emerald-save-isolation-") as tmp:
             cfile = Path(tmp) / "boundary.c"

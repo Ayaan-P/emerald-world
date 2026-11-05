@@ -113,6 +113,41 @@ static void DrawMultichoiceMenu(u8 left, u8 top, u8 multichoiceId, bool8 ignoreB
     InitMultichoiceCheckWrap(ignoreBPress, count, windowId, multichoiceId);
 }
 
+#ifdef PORTABLE
+/* RHH pokeemerald-expansion DrawMultichoiceMenuInternal, pinned at
+ * c460a8661dfa0598ae25d42a968c690ecbf489c6. See its README.md/CREDITS.md.
+ * Caller-supplied Repel actions, same native render/input/cleanup core.
+ * The stock menu path above is deliberately unchanged for GBA. */
+bool8 ScriptMenu_DrawRepelChoice(u8 left, u8 top, const struct MenuAction *actions, u8 count)
+{
+    int i, width = 0;
+    u8 windowId, newWidth;
+    struct WindowTemplate template;
+    if (count < 2 || count > 4 || actions == NULL
+        || GetTaskCount() >= NUM_TASKS
+        || FuncIsActiveTask(Task_HandleMultichoiceInput)
+        || FuncIsActiveTask(Task_HandleYesNoInput)
+        || FuncIsActiveTask(Task_HandleMultichoiceGridInput))
+        return FALSE;
+    for (i = 0; i < count; i++)
+        width = DisplayTextAndGetWidth(actions[i].text, width);
+    newWidth = ConvertPixelWidthToTileWidth(width);
+    left = ScriptMenu_AdjustLeftCoordFromWidth(left, newWidth);
+    template = CreateWindowTemplate(0, left + 1, top + 1, newWidth, count * 2, 15, 100);
+    windowId = AddWindow(&template);
+    if (windowId == WINDOW_NONE)
+        return FALSE;
+    PutWindowTilemap(windowId);
+    SetStandardWindowBorderStyle(windowId, FALSE);
+    PrintMenuTable(windowId, count, actions);
+    InitMenuInUpperLeftCornerNormal(windowId, count, 0);
+    ScheduleBgCopyTilemapToVram(0);
+    /* 0 has no cable-club help renderer. B remains enabled. */
+    InitMultichoiceCheckWrap(FALSE, count, windowId, 0);
+    return TRUE;
+}
+#endif
+
 #define tLeft           data[0]
 #define tTop            data[1]
 #define tRight          data[2]

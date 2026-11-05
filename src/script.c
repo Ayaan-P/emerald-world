@@ -228,6 +228,15 @@ bool8 ScriptContext_IsEnabled(void)
         return FALSE;
 }
 
+#ifdef PORTABLE
+bool8 ScriptContext_IsAt(const u8 *ptr)
+{
+    return sGlobalScriptContextStatus == CONTEXT_RUNNING
+        && sGlobalScriptContext.mode == SCRIPT_MODE_BYTECODE
+        && sGlobalScriptContext.scriptPtr == ptr;
+}
+#endif
+
 // Re-initializes the global script context to zero.
 void ScriptContext_Init(void)
 {

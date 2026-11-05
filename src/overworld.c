@@ -1,4 +1,7 @@
 #include "global.h"
+#ifdef PORTABLE
+#include "dexnav.h"
+#endif
 #include "overworld.h"
 #include "battle_pyramid.h"
 #include "battle_setup.h"
@@ -631,6 +634,9 @@ static void SetPlayerCoordsFromWarp(void)
 
 void WarpIntoMap(void)
 {
+#ifdef PORTABLE
+    ResetDexNavSearch();
+#endif
     ApplyCurrentWarp();
     LoadCurrentMapData();
     SetPlayerCoordsFromWarp();
@@ -793,6 +799,10 @@ bool8 SetDiveWarpDive(u16 x, u16 y)
 void LoadMapFromCameraTransition(u8 mapGroup, u8 mapNum)
 {
     s32 paletteIndex;
+
+#ifdef PORTABLE
+    ResetDexNavSearch();
+#endif
 
     SetWarpDestination(mapGroup, mapNum, WARP_ID_NONE, -1, -1);
 

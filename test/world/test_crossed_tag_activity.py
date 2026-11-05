@@ -52,6 +52,7 @@ static unsigned gWirelessCommType, gLinkType, gFieldLinkPlayerCount, gLocalLinkP
 static unsigned gReceivedRemoteLinkPlayers, gBattleTypeFlags, gSpecialVar_0x8004;
 static unsigned gSelectedTradeMonPositions[2];
 static int NativeLink_IsActive(void) {return native;}
+static void DexNavNative_PrepareNativeActivity(bool8 preserveEncounter) {(void)preserveEncounter;}
 static unsigned LinkTransport_Mode(void) {return 0;}
 static const char *LinkTransport_TagPeer(void) {return NULL;}
 static int FieldReady(void) {return ready;}

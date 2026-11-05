@@ -23,6 +23,7 @@
 #include "platform/link_transport.h"
 #include "platform/world_activity.h"
 #include "platform/world_coop.h"
+#include "platform/dexnav_native.h"
 #include <string.h>
 
 enum { IDLE, MENU, INVITATION, WAIT_ADMIT, CONNECTING, NATIVE, RETURNING, WAIT_TAG };
@@ -337,6 +338,7 @@ int WorldActivity_TakeTalkRequest(char peer[25])
 
 void WorldActivity_ReturnToField(void)
 {
+    DexNavNative_AbandonBattle();
     /* An incomplete exchange is neither a victory nor a defeat. Discard the
      * suspended trainer script, rather than invoking its ordinary result
      * callback (which would white out or award local trainer progression). */
@@ -576,6 +578,7 @@ void WorldActivity_Update(void)
         sActivity.status = "native activity running";
         if (sActivity.mode == NATIVE_LINK_COOP)
         {
+            DexNavNative_PrepareNativeActivity(LinkTransport_CoopOwner() && !sActivity.trainerCaptured);
             if (!WorldCoop_StartBattle(LinkTransport_CoopOwner()))
             { Stop("tagged battle unavailable"); return; }
             sActivity.wildCaptured = sActivity.encounterPending = FALSE;
@@ -584,6 +587,7 @@ void WorldActivity_Update(void)
         }
         else if (sActivity.mode == NATIVE_LINK_TRADE)
         {
+            DexNavNative_PrepareNativeActivity(FALSE);
             gBattleTypeFlags = 0;
             gSpecialVar_0x8004 = USING_TRADE_CENTER;
             gSelectedTradeMonPositions[TRADE_PLAYER] = 0;
@@ -591,8 +595,12 @@ void WorldActivity_Update(void)
             CleanupOverworldWindowsAndTilemaps();
             SetMainCallback2(CB2_StartCreateTradeMenu);
         }
-        else if (!WorldActivity_StartNativeBattle(sActivity.mode))
-            Stop("native battle task unavailable");
+        else
+        {
+            DexNavNative_PrepareNativeActivity(FALSE);
+            if (!WorldActivity_StartNativeBattle(sActivity.mode))
+                Stop("native battle task unavailable");
+        }
         return;
     }
     if (sActivity.state == NATIVE)

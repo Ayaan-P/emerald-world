@@ -20,6 +20,7 @@ import sys
 from .build_catalog import validate_coords, validate_tile
 from .mechanics import validate_objects
 from .link_protocol import LinkProtocol
+from .rally import RallyCoordinator
 
 MAX_QUEUE = 65536
 MAX_LINE = 1024
@@ -143,6 +144,7 @@ class WorldServer:
         self.stopping = threading.Event()
         self.connections = {}
         self.peers = {}
+        self.rally = RallyCoordinator(self.peers)
         self.chat_serial = 0
         self.link_channels = {}
         self.sharing: dict | None = None
@@ -326,6 +328,7 @@ class WorldServer:
             del self.link_channels[conn['id']]
             self._deliver_links(self.link_protocol.disconnect(conn['id']))
         if conn['id'] and self.peers.get(conn['id']) is conn:
+            self.rally.disconnect(conn)
             self._flush_states()
             del self.peers[conn['id']]
             channel = self.link_channels.get(conn['id'])
@@ -387,6 +390,7 @@ class WorldServer:
         if conn.get('chat'):
             lines += ['CHATMSG ' + ' '.join(map(str, message)) for message in conn['chat_history']]
             lines.append('CHATSTATUS ' + conn['chat_status'])
+        lines += self.rally.snapshot(conn)
         return '\n'.join(lines + ['END', ''])
 
     def _broadcast(self):
@@ -399,9 +403,9 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 control = len(fields) == 5 and fields[4] == 'CONTROL'
-                chat_capable = len(fields) == 5 and fields[4] in ('SOCIALCHAT', 'SOCIALTRAVELCHAT')
-                travel = len(fields) == 5 and fields[4] in ('SOCIALTRAVEL', 'SOCIALTRAVELCHAT')
-                social = len(fields) == 5 and fields[4] in ('SOCIAL', 'SOCIALCHAT', 'SOCIALTRAVEL', 'SOCIALTRAVELCHAT')
+                chat_capable = len(fields) == 5 and fields[4] in ('SOCIALCHAT', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELCHATRALLY')
+                travel = len(fields) == 5 and fields[4] in ('SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
+                social = len(fields) == 5 and fields[4] in ('SOCIAL', 'SOCIALCHAT', 'SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
                 link = len(fields) == 5 and fields[4] == 'LINK'
                 if (len(fields) != 4 and not control and not social and not link) or fields[:2] != ['HELLO', '1']:
                     self._error(conn, 'AUTH')
@@ -467,6 +471,10 @@ class WorldServer:
             if bytes(raw) == b'CHAT_ENABLE' and conn.get('social'):
                 conn['chat'] = True
                 self._queue(conn, self._snapshot(conn))
+                return
+            if fields and fields[0] == 'RALLY':
+                self.rally.process(conn, fields)
+                self._broadcast()
                 return
             if fields and fields[0] == 'CHAT':
                 if raw.decode('ascii') != ' '.join(fields):
@@ -954,6 +962,7 @@ class WorldServer:
             with self.lock:
                 self._flush_states(force=False)
                 self._deliver_links(self.link_protocol.tick())
+                self.rally.tick()
                 self._poll_controls()
                 self._poll_mechanics()
 

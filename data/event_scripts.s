@@ -1043,6 +1043,9 @@ Common_EventScript_LegendaryFlewAway::
 	.include "data/text/mauville_man.inc"
 	.include "data/text/trainers.inc"
 	.include "data/scripts/repel.inc"
+	.ifdef PORTABLE
+	.include "data/scripts/dexnav.inc"
+	.endif
 	.include "data/scripts/safari_zone.inc"
 	.include "data/scripts/roulette.inc"
 	.include "data/text/pokedex_rating.inc"

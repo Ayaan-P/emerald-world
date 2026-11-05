@@ -46,9 +46,10 @@ def main():
             assert alice.telemetry()['travel']['phase'] == 'idle'
             before = [hashlib.sha256(g.paths['save'].read_bytes()).hexdigest() for g in games]
             alice.tap('START')
-            # Friends is immediately above EXIT in the native pause menu.
-            # Go to EXIT by wrapping UP from the first row, then one row UP.
+            # WORLD replaces the former Friends row above EXIT.
             alice.tap('UP', times=2)
+            alice.tap('A')
+            alice.tap('UP')  # WORLD initially focuses Story rally; Friends is above.
             alice.tap('A')
             assert alice.telemetry()['travel']['phase'] == 'friends', alice.telemetry()
             alice.tap('A')
@@ -64,7 +65,9 @@ def main():
             # Closing restores ordinary field controls without saving either trainer.
             assert alice.state.free, alice.state
             alice.tap('START')
-            alice.tap('A')  # pause cursor remains on Friends
+            alice.tap('A')  # pause cursor remains on WORLD
+            alice.tap('UP')
+            alice.tap('A')  # Friends inside WORLD
             assert alice.telemetry()['travel']['phase'] == 'friends'
             alice.press('A+B+START+SELECT', 2)
             alice.wait(2)

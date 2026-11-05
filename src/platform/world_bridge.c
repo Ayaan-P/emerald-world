@@ -36,6 +36,8 @@
 #include "platform/world_bridge.h"
 #include "platform/world_activity.h"
 #include "platform/world_travel.h"
+#include "platform/world_rally.h"
+#include "platform/world_menu.h"
 #include "platform/world_catalog.h"
 #ifndef _WIN32
 #include <unistd.h>
@@ -73,12 +75,16 @@ struct Snapshot {
     bool8 travel;
     unsigned travelCount, travelExpected;
     struct TravelPeer friends[WB_TRAVEL_PEERS];
+    bool8 rallySeen;
+    unsigned rallyExpected;
+    struct WorldRallySnapshot rally;
 };
 struct Remote { char id[26]; u8 object, sprite, group, num; };
 struct Applied { struct Tile tile; u16 original, raw; };
 static struct {
     bool8 enabled, connected, connecting, staging, chatProbe, chatLegacy, chatAvailable;
     bool8 travelProbe, travelLegacy, travelAvailable;
+    bool8 rallyProbe, rallyLegacy, rallyAvailable;
 #ifdef _WIN32
     SOCKET fd;
     bool8 winsockStarted;
@@ -330,6 +336,7 @@ static void RestoreTiles(void)
 
 static void Disconnect(void)
 {
+    WorldRally_Disconnected();
 #ifdef _WIN32
     if (sWorld.fd != INVALID_SOCKET) closesocket(sWorld.fd);
     sWorld.fd = INVALID_SOCKET;
@@ -529,6 +536,7 @@ bool8 WorldBridge_Init(const char *configPath)
         sWorld.winsockStarted = TRUE;
     }
 #endif
+    WorldRally_Init(configPath);
     sWorld.enabled = TRUE;
     return TRUE;
 invalid:
@@ -549,6 +557,10 @@ static bool8 Line(char *line)
     }
     if (!n) return FALSE;
     if (!sWorld.connected) {
+        if (sWorld.rallyProbe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
+            sWorld.rallyLegacy = TRUE;
+            return FALSE;
+        }
         if (sWorld.travelProbe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
             sWorld.travelLegacy = TRUE;
             return FALSE;
@@ -562,6 +574,7 @@ static bool8 Line(char *line)
         if (n != 4 || strcmp(tokens[0], "WELCOME") || strcmp(tokens[1], "1")
          || strcmp(tokens[2], sWorld.trainer) || !Decimal(tokens[3], &v[0])) return FALSE;
         sWorld.connected = TRUE;
+        sWorld.rallyAvailable = sWorld.rallyProbe;
         sWorld.chatAvailable = sWorld.chatProbe;
         sWorld.travelAvailable = sWorld.travelProbe;
         sWorld.live.revision = v[0];
@@ -580,11 +593,48 @@ static bool8 Line(char *line)
         if (n != 1) return FALSE;
         if ((sWorld.travelAvailable && !sWorld.stage.travel)
          || sWorld.stage.travelCount != sWorld.stage.travelExpected) return FALSE;
+        if (sWorld.stage.rally.count != sWorld.stage.rallyExpected) return FALSE;
+        if (sWorld.stage.rally.id) {
+            bool8 own = FALSE, owner = FALSE;
+            for (i = 0; i < sWorld.stage.rally.count; i++) {
+                if (!strcmp(sWorld.stage.rally.members[i].name, sWorld.trainer)) own = TRUE;
+                if (!strcmp(sWorld.stage.rally.members[i].name, sWorld.stage.rally.owner)) owner = TRUE;
+            }
+            if (!own || !owner) return FALSE;
+        }
         if (sWorld.live.meeting.seq != sWorld.stage.meeting.seq) sWorld.meetingAge = 0;
         sWorld.live = sWorld.stage;
         sWorld.snapshotAge = 0;
         sWorld.generation++;
         sWorld.staging = FALSE;
+        return TRUE;
+    }
+    if (!strcmp(tokens[0], "RALLY")) {
+        struct WorldRallySnapshot *r = &sWorld.stage.rally;
+        if (n != 7 || sWorld.stage.rallySeen) return FALSE;
+        for (i = 0; i < 4; i++) if (!Decimal(tokens[i+1], &v[i])) return FALSE;
+        if (!Decimal(tokens[6], &v[4]) || v[4] > WORLD_RALLY_ROSTER) return FALSE;
+        if (!v[0]) {
+            if (v[1] || v[2] || v[3] || v[4] || strcmp(tokens[5], "-")) return FALSE;
+        } else if (v[1] < 1 || v[1] > 4 || v[2] != WORLD_RALLY_ROXANNE
+                   || v[3] > 1 || !v[4] || !Identifier(tokens[5])) return FALSE;
+        r->id=v[0]; r->phase=v[1]; r->scene=v[2]; r->scope=v[3];
+        strcpy(r->owner, tokens[5]);
+        sWorld.stage.rallyExpected = v[4];
+        sWorld.stage.rallySeen = TRUE;
+        return TRUE;
+    }
+    if (!strcmp(tokens[0], "RALLYMEM")) {
+        struct WorldRallySnapshot *r = &sWorld.stage.rally;
+        struct WorldRallyMember *m;
+        if (n != 4 || !sWorld.stage.rallySeen || !Identifier(tokens[1])
+         || r->count >= sWorld.stage.rallyExpected || !Decimal(tokens[2], &v[0])
+         || !Decimal(tokens[3], &v[1]) || v[0] < 1 || v[0] > 8 || v[1] >= WORLD_RALLY_ROSTER) return FALSE;
+        for (i = 0; i < r->count; i++)
+            if (!strcmp(r->members[i].name, tokens[1]) || r->members[i].slot == v[1]) return FALSE;
+        if ((!v[1]) != (!strcmp(tokens[1], r->owner))) return FALSE;
+        m = &r->members[r->count++];
+        strcpy(m->name, tokens[1]); m->state=v[0]; m->slot=v[1];
         return TRUE;
     }
     if (!strcmp(tokens[0], "MEET")) {
@@ -724,19 +774,21 @@ static bool8 SocketOpen(void)
 
 static void QueueHello(bool8 headless)
 {
+    sWorld.rallyProbe = !sWorld.rallyLegacy;
 #ifdef _WIN32
     (void)headless;
     sWorld.chatProbe = FALSE;
     sWorld.travelProbe = !sWorld.travelLegacy;
     sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
         "EWLOCAL1 %s\nHELLO 1 %s %s %s\n", sWorld.loopbackToken, sWorld.trainer, sWorld.token,
-        sWorld.travelProbe ? "SOCIALTRAVEL" : "SOCIAL");
+        sWorld.rallyProbe ? "SOCIALTRAVELRALLY" : sWorld.travelProbe ? "SOCIALTRAVEL" : "SOCIAL");
 #else
     sWorld.chatProbe = !headless && !sWorld.chatLegacy;
     sWorld.travelProbe = !sWorld.travelLegacy;
     sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
         "HELLO 1 %s %s %s\n", sWorld.trainer, sWorld.token,
-        sWorld.travelProbe ? (sWorld.chatProbe ? "SOCIALTRAVELCHAT" : "SOCIALTRAVEL")
+        sWorld.rallyProbe ? (sWorld.chatProbe ? "SOCIALTRAVELCHATRALLY" : "SOCIALTRAVELRALLY")
+            : sWorld.travelProbe ? (sWorld.chatProbe ? "SOCIALTRAVELCHAT" : "SOCIALTRAVEL")
             : (sWorld.chatProbe ? "SOCIALCHAT" : "SOCIAL"));
 #endif
 }
@@ -924,6 +976,23 @@ int WorldBridge_ChatSend(const char *target, const char *text)
         "CHAT %u %s %s\n", ++sWorld.seq, target, hex);
     Flush();
     return 1;
+}
+
+bool8 WorldBridge_RallySend(unsigned action, unsigned id, unsigned arg)
+{
+    if (!sWorld.connected || !sWorld.rallyAvailable || sWorld.outputSize || sWorld.seq == UINT_MAX
+     || action > WORLD_RALLY_FAIL || arg > 3) return FALSE;
+    sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
+        "RALLY %u %u %u %u\n", ++sWorld.seq, action, id, arg);
+    Flush();
+    return TRUE;
+}
+
+bool8 WorldBridge_RallySnapshot(struct WorldRallySnapshot *out)
+{
+    if (!out || !sWorld.connected || sWorld.snapshotAge > 180 || !sWorld.live.rallySeen) return FALSE;
+    *out = sWorld.live.rally;
+    return TRUE;
 }
 
 unsigned WorldBridge_ChatCount(void)
@@ -1416,10 +1485,12 @@ void WorldBridge_AfterFrame(u32 frame)
 {
     FILE *file;
     char path[1100];
+    WorldMenu_Update();
     if (!sWorld.enabled) return;
     UpdateFieldPresence();
     if (sWorld.snapshotAge <= 180) sWorld.snapshotAge++;
     WorldTravel_Update();
+    WorldRally_Update();
     SyncDialogue();
     SyncEngine();
     if (frame % 6 == 0) SendState();
