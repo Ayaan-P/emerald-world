@@ -21,6 +21,7 @@
 #define GEN_FLOOR 0x3333
 #define GEN_WALL 0x0722
 #define GEN_EXIT 0x3323
+#define GEN_AUTOFLOOR 0x331b
 #define GEN_MAX_NODES 225
 
 static u16 sTiles[GEN_CELLS];
@@ -70,6 +71,37 @@ static void BuildMaze(u32 seed)
     sTiles[28 * GEN_SIDE + 29] = GEN_FLOOR;
     sTiles[29 * GEN_SIDE + 29] = GEN_EXIT;
 }
+#if GENERATED_MAP_AUTOTILE
+/* Cave of Origin's common wall edges, indexed by walkable neighbors N/E/S/W.
+ * Shape only: each selected wall remains blocked, with the same elevation.
+ * A separate pass prevents the chosen art from affecting neighbor masks. */
+static void GeneratedMap_Autotile(void)
+{
+    static const u16 walls[16] = {
+        0x322, 0x332, 0x322, 0x31a, 0x329, 0x329, 0x32a, 0x330,
+        0x320, 0x318, 0x322, 0x330, 0x328, 0x330, 0x330, 0x330
+    };
+    u8 walkable[GEN_CELLS];
+    u16 i;
+    for (i = 0; i < GEN_CELLS; i++)
+        walkable[i] = sTiles[i] == GEN_FLOOR || sTiles[i] == GEN_EXIT;
+    for (i = 0; i < GEN_CELLS; i++)
+    {
+        unsigned x = i % GEN_SIDE, y = i / GEN_SIDE, mask = 0;
+        if (walkable[i])
+        {
+            if (sTiles[i] != GEN_EXIT) sTiles[i] = GEN_AUTOFLOOR;
+            continue;
+        }
+        if (y > 0 && walkable[i - GEN_SIDE]) mask |= 1;
+        if (x + 1 < GEN_SIDE && walkable[i + 1]) mask |= 2;
+        if (y + 1 < GEN_SIDE && walkable[i + GEN_SIDE]) mask |= 4;
+        if (x > 0 && walkable[i - 1]) mask |= 8;
+        sTiles[i] = 0x400 | walls[mask];
+    }
+}
+#endif
+
 #endif
 
 /* Accept only inert, bounded geometry. Stage atomically after validating the
@@ -161,7 +193,11 @@ bool8 GeneratedMap_MatchesPrepared(const u8 *cells, u32 size)
     if (!cells || size != GEN_CELLS || !sPrepared
      || (!GeneratedMap_IsInside() && !GeneratedMap_EntryPending())) return FALSE;
     for (i = 0; i < GEN_CELLS; i++)
-        if ((cells[i] == '.') != (sTiles[i] == GEN_FLOOR || sTiles[i] == GEN_EXIT)) return FALSE;
+        if ((cells[i] == '.') != (sTiles[i] == GEN_FLOOR || sTiles[i] == GEN_EXIT
+#if GENERATED_MAP_AUTOTILE
+                               || sTiles[i] == GEN_AUTOFLOOR
+#endif
+                               )) return FALSE;
     return TRUE;
 #else
     (void)cells; (void)size;
@@ -218,6 +254,9 @@ bool8 GeneratedMap_Enter(void)
     }
     else
         BuildMaze(gMain.vblankCounter1 ^ ((u32)sReturn.mapGroup << 24) ^ ((u32)sReturn.mapNum << 16));
+#if GENERATED_MAP_AUTOTILE
+    GeneratedMap_Autotile();
+#endif
     sPrepared = TRUE;
     SetWarpDestination(MAP_GROUP(MAP_GENERATED_WORLD_CAVE), MAP_NUM(MAP_GENERATED_WORLD_CAVE), WARP_ID_NONE, 1, 1);
     StoreInitialPlayerAvatarState();

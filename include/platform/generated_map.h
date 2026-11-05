@@ -6,6 +6,10 @@
 #define GENERATED_MAP_READY 0
 #endif
 
+#ifndef GENERATED_MAP_AUTOTILE
+#define GENERATED_MAP_AUTOTILE 0
+#endif
+
 #ifdef PORTABLE
 struct MapLayout;
 #define GENERATED_MAP_TEMPLATE_BYTES (31 * 31)
