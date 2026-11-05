@@ -42,6 +42,7 @@ struct Save save,*gSaveBlock1Ptr=&save;
 struct { u32 vblankCounter1; } gMain;
 struct { int mapType; struct MapLayout *mapLayout; } gMapHeader;
 static int online,foot=1,warps; static struct WarpData destination;
+static const char *sGeneratedMapPath;
 static s16 playerX=15,playerY=16;
 void PlayerGetDestCoords(s16 *x,s16 *y){*x=playerX;*y=playerY;}
 int WorldBridge_Enabled(void){return online;}
@@ -59,7 +60,9 @@ int main(int argc, char **argv){
  for(unsigned seed=1;seed<=100;seed++){
   save.location=(struct WarpData){3,4,0,8,9};save.dynamicWarp=(struct WarpData){7,8,9,10,11};save.pos.x=2;save.pos.y=3;gMain.vblankCounter1=seed;gMapHeader.mapType=1;gMapHeader.mapLayout=&base;playerX=15;playerY=16;
   online=1;assert(!GeneratedMap_CanEnter()&&!GeneratedMap_Enter());online=0;
-  foot=0;assert(!GeneratedMap_CanEnter());foot=1;assert(GeneratedMap_Enter());
+  foot=0;assert(!GeneratedMap_CanEnter());foot=1;
+  sGeneratedMapPath="/nonexistent-generated-map-fixture";int oldWarps=warps;assert(!GeneratedMap_Enter() && warps==oldWarps && save.dynamicWarp.mapGroup==7);
+  sGeneratedMapPath=NULL;assert(GeneratedMap_Enter());
   assert(destination.mapGroup==EXPECTED_GROUP && destination.mapNum==0 && destination.x==1 && destination.y==1);
   save.location=destination;assert(GeneratedMap_IsInside());
   const struct MapLayout *map=GeneratedMap_ResolveLayout(&base);assert(map!=&base && map->width==31 && map->height==31);
@@ -99,15 +102,22 @@ int main(int argc, char **argv){
  assert(GeneratedMap_Leave());save.location=destination;GeneratedMap_ResolveLayout(&base);
  /* The actual SDL loader stages a file from the Python exporter into the
   * actual native map generator, with no emulator or rendering involved. */
- assert(LoadGeneratedMapTemplate(argv[1]));
+ assert(LoadGeneratedMapTemplate(argv[1]));sGeneratedMapPath=argv[1];
  assert(GeneratedMap_Enter());save.location=destination;
  templated=GeneratedMap_ResolveLayout(&base);
  for(int y=1;y<30;y++)for(int x=1;x<30;x++)
   assert(templated->map[y*31+x]==((x==29 && y==29)?0x3323:0x3333));
  assert(GeneratedMap_Leave());save.location=destination;GeneratedMap_ResolveLayout(&base);
+ /* Updating the template while the client is running is observed on the
+  * next entry; the loaded map itself is never changed underneath a player. */
+ FILE *f=fopen(argv[1],"r+b");assert(f && !fseek(f,8+2*31+2,SEEK_SET));assert(fputc('#',f)=='#');assert(!fclose(f));
+ assert(GeneratedMap_Enter());save.location=destination;templated=GeneratedMap_ResolveLayout(&base);
+ assert(templated->map[2*31+2]==0x0722);
+ assert(GeneratedMap_Leave());save.location=destination;GeneratedMap_ResolveLayout(&base);
  return 0;
 }'''
-  loader=function((ROOT/'src/platform/sdl2.c').read_text(),'LoadGeneratedMapTemplate')
+  source=(ROOT/'src/platform/sdl2.c').read_text()
+  loader=function(source,'LoadGeneratedMapTemplate')+function(source,'Platform_ReloadGeneratedMap')
   harness=harness.replace('/* LOADER_BODY */',loader)
   with tempfile.TemporaryDirectory() as d:
    p=Path(d);(p/'platform').mkdir();(p/'constants').mkdir();(p/'global.h').write_text('#ifndef G\n#define G\n'+global_h+'\n#endif\n')

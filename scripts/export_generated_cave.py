@@ -3,12 +3,14 @@
 
 Input is a JSON object containing exactly ``rows``, ``spawn`` and ``exit``.
 Rows are 31 strings of 31 '.' (floor) or '#' (wall) characters. This tool does
-not call a model or run content as code. It never overwrites an existing file.
+not call a model or run content as code. It only replaces an existing file with an explicit --replace option.
 """
 import argparse
 from collections import deque
 import json
+import os
 from pathlib import Path
+import tempfile
 
 SIDE = 31
 MAGIC = b'EWGMAP01'
@@ -49,6 +51,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('proposal', type=Path)
     parser.add_argument('output', type=Path)
+    parser.add_argument('--replace', action='store_true', help='atomically replace the output, if it already exists')
     args = parser.parse_args()
     try:
         with args.proposal.open('rb') as stream:
@@ -56,8 +59,25 @@ def main():
         if len(raw) > MAX_INPUT:
             raise ValueError('proposal exceeds size limit')
         data = encode(json.loads(raw))
-        with args.output.open('xb') as stream:
-            stream.write(data)
+        if args.proposal.resolve() == args.output.resolve():
+            raise ValueError('proposal and output must be different files')
+        if args.output.exists() and os.path.samefile(args.proposal, args.output):
+            raise ValueError('proposal and output must not be the same file')
+        if args.replace:
+            # The temporary file is in the destination directory so a client
+            # observes either the old complete template or the new one.
+            fd, temp_path = tempfile.mkstemp(prefix='.generated-cave-', dir=args.output.parent)
+            try:
+                with os.fdopen(fd, 'wb') as stream:
+                    stream.write(data)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(temp_path, args.output)
+            finally:
+                if os.path.exists(temp_path): os.unlink(temp_path)
+        else:
+            with args.output.open('xb') as stream:
+                stream.write(data)
     except (ValueError, OSError, UnicodeError) as error:
         parser.exit(1, f'Cannot export cave: {error}\n')
 

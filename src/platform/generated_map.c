@@ -152,7 +152,8 @@ bool8 GeneratedMap_Enter(void)
 {
 #if GENERATED_MAP_READY
     s16 x, y;
-    if (!GeneratedMap_CanEnter() || !GetReturnCoords(&x, &y)) return FALSE;
+    if (!GeneratedMap_CanEnter() || !GetReturnCoords(&x, &y)
+     || !Platform_ReloadGeneratedMap()) return FALSE;
     sReturn = gSaveBlock1Ptr->location;
     sReturn.warpId = WARP_ID_NONE;
     sReturn.x = x;

@@ -150,6 +150,11 @@ static bool LoadGeneratedMapTemplate(const char *path)
     return valid;
 }
 
+bool8 Platform_ReloadGeneratedMap(void)
+{
+    return !sGeneratedMapPath || LoadGeneratedMapTemplate(sGeneratedMapPath);
+}
+
 int main(int argc, char **argv)
 {
     if (!ParseArgs(argc, argv))
