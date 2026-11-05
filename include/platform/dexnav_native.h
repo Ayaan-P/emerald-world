@@ -31,6 +31,8 @@ void DexNavNative_SetCreeping(bool8 creeping);
 bool8 DexNavNative_IsCreeping(void);
 void DexNavNative_BattleFinished(u8 outcome);
 void DexNavNative_CancelForOtherBattle(void);
+void DexNavNative_PrepareNativeActivity(bool8 preserveEncounter);
+void DexNavNative_AbandonBattle(void);
 void DexNavNative_SetBattleOwner(u16 species);
 bool8 DexNavNative_OwnsWildMon(void);
 

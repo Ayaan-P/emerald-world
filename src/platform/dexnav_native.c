@@ -3,6 +3,7 @@
 #include "global.h"
 #include "platform/dexnav_native.h"
 #include "dexnav.h"
+#include "battle.h"
 #include "battle_main.h"
 #include "battle_pike.h"
 #include "battle_pyramid.h"
@@ -288,18 +289,38 @@ bool8 DexNavNative_OwnsWildMon(void)
         && sBattleOwner == GetMonData(&gEnemyParty[0], MON_DATA_SPECIES)
         && sBattlePersonality == GetMonData(&gEnemyParty[0], MON_DATA_PERSONALITY);
 }
+void DexNavNative_AbandonBattle(void)
+{
+    sBattleOwner = SPECIES_NONE;
+    sBattlePersonality = 0;
+    gDexNavSpecies = SPECIES_NONE;
+    gDexNavNativeState.dexNavChain = 0;
+}
+void DexNavNative_PrepareNativeActivity(bool8 preserveEncounter)
+{
+    /* Relinquish the field allocation before any battle/trade heap transition.
+     * Only the authenticated final-mon owner may retain encounter credit. */
+    EndDexNavSearch();
+    if (!preserveEncounter || !DexNavNative_OwnsWildMon())
+        DexNavNative_AbandonBattle();
+}
 void DexNavNative_CancelForOtherBattle(void)
 {
-    EndDexNavSearch();
-    if (sBattleOwner == SPECIES_NONE)
-        gDexNavNativeState.dexNavChain = 0;
+    DexNavNative_PrepareNativeActivity(!(gBattleTypeFlags & (BATTLE_TYPE_TRAINER | BATTLE_TYPE_LINK)));
 }
 void DexNavNative_BattleFinished(u8 outcome)
 {
     u16 species = sBattleOwner;
+    bool8 identity = DexNavNative_OwnsWildMon();
     sBattleOwner = SPECIES_NONE;  /* Consume before any return callback or whiteout. */
-    if (species == SPECIES_NONE || species >= NUM_SPECIES)
+    sBattlePersonality = 0;
+    if (!identity || species == SPECIES_NONE || species >= NUM_SPECIES)
+    {
+        if (species != SPECIES_NONE)
+            gDexNavNativeState.dexNavChain = 0;
+        gDexNavSpecies = SPECIES_NONE;
         return;
+    }
     if (outcome == B_OUTCOME_WON || outcome == B_OUTCOME_CAUGHT)
     {
         if (gDexNavNativeState.dexNavSearchLevels[species] < 255)
