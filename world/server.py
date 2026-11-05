@@ -72,7 +72,7 @@ class WorldServer:
             raise ValueError('generated area archive requires persistent generated caves')
         self.archive_generated_areas = archive_generated_areas
         self.shared_cave = SharedCave(cave_template) if cave_template is not None else None
-        if self.shared_cave and (self.wilds_map if self.shared_cave.version in (6, 7) else self.cave_map) is None:
+        if self.shared_cave and (self.wilds_map if self.shared_cave.version in (6, 7, 8) else self.cave_map) is None:
             raise ValueError('generated map missing from catalog')
         if type(max_players) is not int or not 1 <= max_players <= 64:
             raise ValueError('max_players must be between 1 and 64')
@@ -144,12 +144,12 @@ class WorldServer:
             row = self.db.execute('SELECT template FROM generated_cave WHERE singleton=1').fetchone()
             if row is not None:
                 self.shared_cave = SharedCave(row[0])
-                if (self.wilds_map if self.shared_cave.version in (6, 7) else self.cave_map) is None:
+                if (self.wilds_map if self.shared_cave.version in (6, 7, 8) else self.cave_map) is None:
                     raise ValueError('generated map missing from catalog')
             if self.archive_generated_areas:
                 self.db.execute('CREATE TABLE IF NOT EXISTS generated_area_archive (identity TEXT PRIMARY KEY, label TEXT NOT NULL, kind TEXT NOT NULL, template BLOB NOT NULL, created INTEGER NOT NULL)')
                 if row is not None:
-                    kind = 'wilds' if self.shared_cave.version in (6, 7) else 'cave'
+                    kind = 'wilds' if self.shared_cave.version in (6, 7, 8) else 'cave'
                     self.db.execute('INSERT OR IGNORE INTO generated_area_archive (identity,label,kind,template,created) VALUES (?,?,?,?,?)',
                                     (self.shared_cave.identity, 'Outdoor area' if kind == 'wilds' else 'Cave', kind, row[0], int(time.time())))
         self.db.commit()
@@ -460,7 +460,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
-                cave_guide = role.endswith('CAVE7')
+                cave_cast = role.endswith('CAVE8')
+                cave_guide = cave_cast or role.endswith('CAVE7')
                 cave_wilds = cave_guide or role.endswith('CAVE6')
                 cave_large_wildlife = cave_wilds or role.endswith('CAVE5')
                 cave_large = cave_large_wildlife or role.endswith('CAVE4')
@@ -531,6 +532,7 @@ class WorldServer:
                 conn['cave_large_wildlife'] = cave_large_wildlife
                 conn['cave_wilds'] = cave_wilds
                 conn['cave_guide'] = cave_guide
+                conn['cave_cast'] = cave_cast
                 conn['cave_offer'] = conn['cave_ack'] = None
                 conn['cave_revoked'] = []
                 conn['chat'] = chat_capable
@@ -558,6 +560,7 @@ class WorldServer:
                     return
                 if fields == ['CAVE', 'GET']:
                     if (self.shared_cave is None
+                            or (self.shared_cave.version == 8 and not conn.get('cave_cast'))
                             or (self.shared_cave.version == 7 and not conn.get('cave_guide'))
                             or (self.shared_cave.version == 6 and not conn.get('cave_wilds'))
                             or (self.shared_cave.version == 5 and not conn.get('cave_large_wildlife'))
@@ -630,7 +633,7 @@ class WorldServer:
             limits = [255, 255, 32767, 32767, 4, 65535, 1]
             state = [bounded(v, 0, limit) for v, limit in zip(fields[2:9], limits)]
             if tuple(state[:2]) in (self.cave_map, self.wilds_map):
-                active_map = self.wilds_map if self.shared_cave and self.shared_cave.version in (6, 7) else self.cave_map
+                active_map = self.wilds_map if self.shared_cave and self.shared_cave.version in (6, 7, 8) else self.cave_map
                 if tuple(state[:2]) != active_map:
                     raise ValueError('wrong generated map')
                 if (self.shared_cave and conn.get('cave_capable') and conn.get('cave_revoked')
@@ -886,7 +889,7 @@ class WorldServer:
                 self.db.execute('INSERT OR REPLACE INTO generated_cave (singleton, template) VALUES (1, ?)', (blob,))
                 if self.archive_generated_areas:
                     identity = hashlib.sha256(blob).hexdigest()
-                    kind = 'wilds' if blob[:8] in (b'EWGMAP06', b'EWGMAP07') else 'cave'
+                    kind = 'wilds' if blob[:8] in (b'EWGMAP06', b'EWGMAP07', b'EWGMAP08') else 'cave'
                     display = label if label is not None else ('Outdoor area' if kind == 'wilds' else 'Cave')
                     self.db.execute('INSERT OR IGNORE INTO generated_area_archive (identity,label,kind,template,created) VALUES (?,?,?,?,?)',
                                     (identity, display, kind, blob, int(time.time())))
@@ -901,7 +904,7 @@ class WorldServer:
         if label is not None and (type(label) is not str or not label or len(label) > 80 or any(ord(c) < 32 or ord(c) == 127 for c in label)):
             raise ValueError('invalid generated area label')
         with self.lock:
-            if (self.wilds_map if candidate.version in (6, 7) else self.cave_map) is None:
+            if (self.wilds_map if candidate.version in (6, 7, 8) else self.cave_map) is None:
                 raise ValueError('generated map missing from catalog')
             if self.shared_cave and candidate.identity == self.shared_cave.identity:
                 self._persist_cave(blob, label=label)

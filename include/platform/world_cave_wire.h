@@ -17,7 +17,11 @@
 #ifndef GENERATED_WILDS_GUIDE
 #define GENERATED_WILDS_GUIDE 0
 #endif
+#ifndef GENERATED_WILDS_CAST
+#define GENERATED_WILDS_CAST 0
+#endif
 #define WORLD_CAVE_GUIDE_BYTES 59
+#define WORLD_CAVE_CAST_BYTES 184
 #define WORLD_CAVE_LARGE_SIDE 63
 #define WORLD_CAVE_LARGE_CELLS (WORLD_CAVE_LARGE_SIDE * WORLD_CAVE_LARGE_SIDE)
 #define WORLD_CAVE_SIDE 31
@@ -37,6 +41,10 @@ struct WorldCaveWire
     bool8 wildlifeSeen;
     u8 guide[WORLD_CAVE_GUIDE_BYTES];
     bool8 guideSeen;
+#if GENERATED_WILDS_CAST
+    u8 cast[WORLD_CAVE_CAST_BYTES];
+    bool8 castSeen;
+#endif
     bool8 active;
 };
 /* 0: accepted partial; 1: complete; -1: invalid. Only BEGIN/ROW/END. */

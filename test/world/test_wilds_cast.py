@@ -15,7 +15,7 @@ class WildsCast(unittest.TestCase):
                 p=cave_blueprint.proposal_from_blueprint({**DOC,'style':style,'seed':seed},side=63)
                 cast=[{'gfx':7,'text':'Hello!'},{'gfx':8,'text':'Welcome!'}, {'gfx':7,'text':'Third!'}]
                 b=wilds_cast.encode(p,cast); self.assertEqual(len(b),4161);self.assertEqual(b[:9],b'EWGMAP08\x03')
-                with self.assertRaises(CaveError):SharedCave(b)
+                self.assertEqual(SharedCave(b).version,8)
                 rows=wilds_cast.prepare(p,3)['rows'];blocked=set(wilds_cast.POSITIONS);seen={(1,1)};q=deque(seen)
                 while q:
                     x,y=q.popleft()

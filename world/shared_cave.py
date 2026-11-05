@@ -16,6 +16,7 @@ MAGIC_LARGE = b'EWGMAP04'
 MAGIC_LARGE_WILDLIFE = b'EWGMAP05'
 MAGIC_WILDS = b'EWGMAP06'
 MAGIC_GUIDED_WILDS = b'EWGMAP07'
+MAGIC_CAST_WILDS = b'EWGMAP08'
 LARGE_SIDE = 63
 SIZE = len(MAGIC) + SIDE * SIDE
 PROFILE_SIZE = SIZE + 1
@@ -24,7 +25,8 @@ WILDLIFE_SIZE = PROFILE_SIZE + WILDLIFE_BYTES
 LARGE_SIZE = 8 + LARGE_SIDE * LARGE_SIDE
 LARGE_WILDLIFE_SIZE = LARGE_SIZE + 1 + WILDLIFE_BYTES
 GUIDE_BYTES = 59
-MAX_SIZE = LARGE_SIZE + GUIDE_BYTES
+CAST_BYTES = 184
+MAX_SIZE = LARGE_SIZE + CAST_BYTES
 
 
 class CaveError(ValueError):
@@ -37,6 +39,7 @@ class SharedCave:
             raise CaveError('invalid cave template')
         self.wildlife = None
         self.guide = None
+        self.cast = None
         self.version = 1
         self.side = SIDE
         if len(blob) == SIZE and blob[:8] == MAGIC:
@@ -60,7 +63,13 @@ class SharedCave:
                 if species not in SPECIES.values() or not 1 <= self.wildlife[offset + 2] <= 100:
                     raise CaveError('invalid wildlife slot')
             cells = blob[9 + WILDLIFE_BYTES:]
-        elif len(blob) == MAX_SIZE and blob[:8] == MAGIC_GUIDED_WILDS:
+        elif len(blob) == MAX_SIZE and blob[:8] == MAGIC_CAST_WILDS:
+            from .wilds_cast import validate_wire
+            self.version = 8; self.side = LARGE_SIDE; self.profile = None
+            self.cast = blob[8:8 + CAST_BYTES]; cells = blob[8 + CAST_BYTES:]
+            try: validate_wire(self.cast, cells)
+            except ValueError as exc: raise CaveError(str(exc)) from None
+        elif len(blob) == LARGE_SIZE + GUIDE_BYTES and blob[:8] == MAGIC_GUIDED_WILDS:
             from .wilds_guide import validate_wire
             self.version = 7; self.side = LARGE_SIDE; self.profile = None
             self.guide = blob[8:8 + GUIDE_BYTES]; cells = blob[8 + GUIDE_BYTES:]
@@ -96,7 +105,7 @@ class SharedCave:
         self.identity = sha256(blob).hexdigest()
 
     def walkable(self, x, y):
-        return type(x) is int and type(y) is int and 0 <= x < self.side and 0 <= y < self.side and (self.version != 7 or (x,y) != (2,1)) and self._rows[y][x] == ord('.')
+        return type(x) is int and type(y) is int and 0 <= x < self.side and 0 <= y < self.side and (self.version != 7 or (x,y) != (2,1)) and (self.version != 8 or (x,y) not in ((2,1),(20,20),(40,40))[:self.cast[0]]) and self._rows[y][x] == ord('.')
 
     def frames(self):
         suffix = '' if self.profile is None else f' {self.profile}'
@@ -105,9 +114,12 @@ class SharedCave:
         if self.version == 5: suffix += ' 5'
         if self.version == 6: suffix = ' WILDS'
         if self.version == 7: suffix = ' GUIDE'
+        if self.version == 8: suffix = ' CAST'
         frames = [f'CAVE BEGIN {self.identity}{suffix}']
         if self.wildlife is not None:
             frames.append(f'CAVE WILD {self.identity} {self.wildlife.hex()}')
+        if self.cast is not None:
+            frames.append(f'CAVE CAST {self.identity} {self.cast.hex()}')
         if self.guide is not None:
             frames.append(f'CAVE GUIDE {self.identity} {self.guide.hex()}')
         frames.extend(f'CAVE ROW {self.identity} {i} {row.decode("ascii")}' for i, row in enumerate(self._rows))

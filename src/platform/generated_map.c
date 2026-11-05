@@ -427,16 +427,43 @@ static bool8 ValidateCast(const u8 *meta, u32 metaSize, const u8 *cells, u32 siz
     return TRUE;
 }
 #endif
-bool8 GeneratedMap_StageCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size)
-{
 #if GENERATED_MAP_READY && GENERATED_WILDS_CAST
+static bool8 StageCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size, bool8 shared)
+{
     u8 guide[GENERATED_GUIDE_BYTES];u8 *texts[3]={gGeneratedWildsGuideText,gGeneratedWildsCastText2,gGeneratedWildsCastText3};unsigned j;
-    if(!ValidateCast(metadata,metaSize,cells,size) || !StageLarge(cells,size,FALSE)) return FALSE;
+    if(!ValidateCast(metadata,metaSize,cells,size)) return FALSE;
+    if (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
+        return shared && sCastActive && sLargeShared && !memcmp(metadata,sCastMetadata,GENERATED_CAST_BYTES) && !memcmp(cells,sLargeTemplate,LARGE_CELLS);
+    if(!StageLarge(cells,size,shared)) return FALSE;
     sLargeWilds=TRUE;sCastStaged=TRUE;memcpy(sCastMetadata,metadata,GENERATED_CAST_BYTES);
     for(j=0;j<metadata[0];j++) {const u8 *record=metadata+1+j*61;
         guide[0]=record[0];guide[1]=record[3];memcpy(guide+2,record+4,57);EncodeGuideText(guide,texts[j]);
     }
     return TRUE;
+}
+#endif
+bool8 GeneratedMap_StageCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_WILDS_CAST
+    return StageCastWilds(metadata,metaSize,cells,size,FALSE);
+#else
+    (void)metadata;(void)metaSize;(void)cells;(void)size;return FALSE;
+#endif
+}
+bool8 GeneratedMap_StageSharedCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_WILDS_CAST
+    return StageCastWilds(metadata,metaSize,cells,size,TRUE);
+#else
+    (void)metadata;(void)metaSize;(void)cells;(void)size;return FALSE;
+#endif
+}
+bool8 GeneratedMap_MatchesPreparedCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_WILDS_CAST
+    return metadata && metaSize==GENERATED_CAST_BYTES && cells && size==LARGE_CELLS && sCastActive && sPrepared
+        && (GeneratedMap_IsInside() || GeneratedMap_EntryPending()) && !memcmp(metadata,sCastMetadata,GENERATED_CAST_BYTES)
+        && !memcmp(cells,sLargeTemplate,LARGE_CELLS);
 #else
     (void)metadata;(void)metaSize;(void)cells;(void)size;return FALSE;
 #endif
@@ -457,6 +484,9 @@ bool8 GeneratedMap_MatchesPreparedWilds(const u8 *cells, u32 size)
     return cells && size == LARGE_CELLS && sLargeWilds && sLargeActive && sPrepared
 #if GENERATED_WILDS_GUIDE
         && !sGuideActive
+#if GENERATED_WILDS_CAST
+        && !sCastActive
+#endif
 #endif
         && (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
         && !memcmp(cells, sLargeTemplate, LARGE_CELLS);
@@ -723,6 +753,9 @@ bool8 GeneratedMap_SharedCoordValid(unsigned x, unsigned y)
         return x < LARGE_SIDE && y < LARGE_SIDE
 #if GENERATED_WILDS_GUIDE
             && !(sGuideStaged && sGuideShared && x == 2 && y == 1)
+#if GENERATED_WILDS_CAST
+            && !(sCastStaged && ((x==2 && y==1) || (sCastMetadata[0]>=2 && x==20 && y==20) || (sCastMetadata[0]>=3 && x==40 && y==40)))
+#endif
 #endif
             && sLargeTemplate[y * LARGE_SIDE + x] == '.';
 #endif

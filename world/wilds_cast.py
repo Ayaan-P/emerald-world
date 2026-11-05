@@ -62,3 +62,25 @@ def encode(proposal,cast):
     records.extend(bytes((3-len(cast))*RECORD_BYTES))
     terrain=prepare(proposal,len(cast))
     return MAGIC+bytes([len(cast)])+bytes(records)+encode_wilds(terrain)[8:]
+
+def validate_wire(metadata, cells):
+    """Reject noncanonical metadata and layouts where any character blocks passage."""
+    if type(metadata) is not bytes or len(metadata)!=META_BYTES or type(cells) is not bytes or len(cells)!=SIDE*SIDE:
+        raise ValueError('invalid cast payload')
+    count=metadata[0]
+    if not 1<=count<=3:raise ValueError('invalid cast count')
+    cast=[]
+    for i in range(3):
+        record=metadata[1+i*RECORD_BYTES:1+(i+1)*RECORD_BYTES]
+        if i>=count:
+            if any(record):raise ValueError('invalid cast padding')
+            continue
+        gfx,x,y,n=record[:4]
+        if (x,y)!=POSITIONS[i] or not 1<=n<=57 or any(record[4+n:]):raise ValueError('invalid cast character')
+        try:text=record[4:4+n].decode('ascii')
+        except UnicodeDecodeError:raise ValueError('invalid cast text') from None
+        cast.append({'gfx':gfx,'text':text})
+    try:rows=[cells[y*SIDE:(y+1)*SIDE].decode('ascii') for y in range(SIDE)]
+    except UnicodeDecodeError:raise ValueError('invalid terrain') from None
+    proposal={'rows':rows,'spawn':[1,1],'exit':[61,61]}
+    if encode(proposal,cast)!=MAGIC+metadata+cells:raise ValueError('cast blocks access')
