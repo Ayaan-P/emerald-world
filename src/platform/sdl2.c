@@ -134,18 +134,28 @@ static bool BeginNativeFrame(bool8 headless)
  * Keep argv and SDL_GetPrefPath UTF-8; NativeFile_Open performs the OS conversion. */
 static bool LoadGeneratedMapTemplate(const char *path)
 {
-    static const u8 magic[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '1' };
-    u8 bytes[8 + GENERATED_MAP_TEMPLATE_BYTES];
+    static const u8 magic1[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '1' };
+#if GENERATED_CAVE_PROFILES
+    static const u8 magic2[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '2' };
+#endif
+    u8 bytes[9 + GENERATED_MAP_TEMPLATE_BYTES];
     FILE *file = NativeFile_Open(path, "rb");
     size_t count;
     int extra;
-    bool8 valid;
+    bool8 valid = FALSE;
     if (!file) return false;
     count = fread(bytes, 1, sizeof(bytes), file);
     extra = fgetc(file);
-    valid = count == sizeof(bytes) && extra == EOF && !ferror(file)
-        && !memcmp(bytes, magic, sizeof(magic))
-        && GeneratedMap_StageTemplate(bytes + sizeof(magic), GENERATED_MAP_TEMPLATE_BYTES);
+    if (extra == EOF && !ferror(file))
+    {
+        if (count == 8 + GENERATED_MAP_TEMPLATE_BYTES && !memcmp(bytes, magic1, 8))
+            valid = GeneratedMap_StageTemplate(bytes + 8, GENERATED_MAP_TEMPLATE_BYTES);
+#if GENERATED_CAVE_PROFILES
+        else if (count == 9 + GENERATED_MAP_TEMPLATE_BYTES && !memcmp(bytes, magic2, 8)
+              && bytes[8] <= 3 && GeneratedMap_StageTemplate(bytes + 9, GENERATED_MAP_TEMPLATE_BYTES))
+            valid = GeneratedMap_SetEncounterProfile(bytes[8]);
+#endif
+    }
     if (fclose(file) != 0) valid = FALSE;
     return valid;
 }

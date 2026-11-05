@@ -10,10 +10,16 @@
 #define GENERATED_MAP_AUTOTILE 0
 #endif
 
+#ifndef GENERATED_CAVE_PROFILES
+#define GENERATED_CAVE_PROFILES 0
+#endif
+
 #ifdef PORTABLE
 struct MapLayout;
 #define GENERATED_MAP_TEMPLATE_BYTES (31 * 31)
 bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size);
+bool8 GeneratedMap_SetEncounterProfile(u8 profile);
+u8 GeneratedMap_EncounterProfile(void);
 /* Reload an optional offline template immediately before entry. */
 bool8 Platform_ReloadGeneratedMap(void);
 bool8 GeneratedMap_IsInside(void);

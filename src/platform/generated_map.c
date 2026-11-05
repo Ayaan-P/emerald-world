@@ -27,6 +27,9 @@
 static u16 sTiles[GEN_CELLS];
 static u8 sTemplate[GEN_CELLS];
 static bool8 sHasTemplate;
+#if GENERATED_CAVE_PROFILES
+static u8 sEncounterProfile;
+#endif
 static struct MapLayout sLayout;
 static struct WarpData sReturn, sPreviousDynamicWarp;
 static bool8 sPrepared, sSeenInside;
@@ -141,11 +144,36 @@ bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size)
         if (cells[i] == '.' && !seen[i]) return FALSE;
     memcpy(sTemplate, cells, sizeof(sTemplate));
     sHasTemplate = TRUE;
+#if GENERATED_CAVE_PROFILES
+    sEncounterProfile = 0;
+#endif
     return TRUE;
 #else
     (void)cells; (void)size;
     return FALSE;
 #endif
+}
+
+/* Profiles are offline-only, bounded native table choices, not executable data. */
+bool8 GeneratedMap_SetEncounterProfile(u8 profile)
+{
+#if GENERATED_MAP_READY && GENERATED_CAVE_PROFILES
+    if (!sHasTemplate || profile > 3) return FALSE;
+    sEncounterProfile = profile;
+    return TRUE;
+#else
+    (void)profile;
+    return FALSE;
+#endif
+}
+
+u8 GeneratedMap_EncounterProfile(void)
+{
+#if GENERATED_MAP_READY && GENERATED_CAVE_PROFILES
+    if (sPrepared && sHasTemplate && GeneratedMap_IsInside() && !WorldBridge_Enabled())
+        return sEncounterProfile;
+#endif
+    return 0;
 }
 
 bool8 GeneratedMap_IsInside(void)

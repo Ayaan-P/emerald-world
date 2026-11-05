@@ -75,6 +75,27 @@ class CaveHarnessContract(unittest.TestCase):
             self.assertIn(('RIGHT',1), FakeGame.last.actions)
             self.assertEqual((out/'game.sav').read_bytes(),b'disposable')
 
+    def test_offline_profile_observes_matching_meteor_encounter(self):
+        class MeteorGame(FakeGame):
+            def press(self,button,frames):
+                super().press(button,frames)
+                if len([a for a in self.actions if a[0] in ('LEFT','RIGHT')]) >= 2:
+                    self.state.battle=True
+                    self.state.battle_state={'battlers':[{'side':1,'species':41,'level':16}]}
+        def leave(game,direction): game.state=State('LittlerootTown',(0,9),(7,16))
+        def wait(game,condition,*args,**kwargs):
+            if not condition(game.state):raise AssertionError('unexpected test state')
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);seed=root/'seed';seed.write_bytes(b'disposable');out=root/'out'
+            with patch.object(module.driver,'Game',MeteorGame),patch.object(module.driver,'continue_game'), \
+                 patch.object(module.driver,'walk_to'),patch.object(module.driver,'leave_map',leave), \
+                 patch.object(module.driver,'wait_until',wait),patch('builtins.print'), \
+                 patch.object(module,'encode',wraps=module.encode) as encode:
+                module.run('/bin/true',seed,out,encounter=True,profile='meteor',observe_only=True)
+            self.assertEqual(encode.call_args.kwargs['encounter_profile'],'meteor')
+            self.assertEqual(FakeGame.last.a,2)
+            self.assertEqual((out/'game.sav').read_bytes(),b'disposable')
+
     def test_native_startup_failure_exposes_stderr(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);seed=root/'seed';seed.write_bytes(b'disposable');out=root/'out'

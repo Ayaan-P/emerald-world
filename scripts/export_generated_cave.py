@@ -14,10 +14,12 @@ import tempfile
 
 SIDE = 31
 MAGIC = b'EWGMAP01'
+MAGIC_PROFILE = b'EWGMAP02'
+ENCOUNTER_PROFILES = {'granite': 0, 'meteor': 1, 'ice': 2, 'victory': 3}
 MAX_INPUT = 16384
 
 
-def encode(proposal):
+def encode(proposal, *, encounter_profile=None):
     if type(proposal) is not dict or set(proposal) != {'rows', 'spawn', 'exit'}:
         raise ValueError('expected only rows, spawn and exit')
     if proposal['spawn'] != [1, 1] or proposal['exit'] != [29, 29]:
@@ -44,13 +46,19 @@ def encode(proposal):
                 queue.append((nx, ny))
     if len(visited) != sum(row.count('.') for row in rows):
         raise ValueError('all floor tiles must be connected to spawn')
-    return MAGIC + ''.join(rows).encode('ascii')
+    cells = ''.join(rows).encode('ascii')
+    if encounter_profile is None:
+        return MAGIC + cells
+    if type(encounter_profile) is not str or encounter_profile not in ENCOUNTER_PROFILES:
+        raise ValueError('invalid offline encounter profile')
+    return MAGIC_PROFILE + bytes([ENCOUNTER_PROFILES[encounter_profile]]) + cells
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('proposal', type=Path)
     parser.add_argument('output', type=Path)
+    parser.add_argument('--encounter-profile', choices=tuple(ENCOUNTER_PROFILES), help='opt in to a versioned offline encounter preset')
     parser.add_argument('--replace', action='store_true', help='atomically replace the output, if it already exists')
     args = parser.parse_args()
     try:
@@ -58,7 +66,7 @@ def main():
             raw = stream.read(MAX_INPUT + 1)
         if len(raw) > MAX_INPUT:
             raise ValueError('proposal exceeds size limit')
-        data = encode(json.loads(raw))
+        data = encode(json.loads(raw), encounter_profile=args.encounter_profile)
         if args.proposal.resolve() == args.output.resolve():
             raise ValueError('proposal and output must be different files')
         if args.output.exists() and os.path.samefile(args.proposal, args.output):
