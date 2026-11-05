@@ -874,6 +874,10 @@ static bool8 NativeBattleCommandValid(const u8 *data, u16 size, u8 bufferId)
     case CONTROLLER_PRINTSTRINGPLAYERONLY:
         needed = 4 + sizeof(struct BattleMsgData);
         break;
+    case CONTROLLER_OPENBAG:
+        if (WorldCoop_IsBattle() && (size != 8 || data[4] > 1 || data[5] || data[6] || data[7]))
+            return FALSE;
+        break;
     case CONTROLLER_CHOOSEMOVE:
         needed = 4 + sizeof(struct ChooseMoveStruct);
         break;
@@ -1770,6 +1774,14 @@ void BtlController_EmitChooseItem(u8 bufferId, u8 *battlePartyOrder)
     sBattleBuffersTransferData[0] = CONTROLLER_OPENBAG;
     for (i = 0; i < PARTY_SIZE / 2; i++)
         sBattleBuffersTransferData[1 + i] = battlePartyOrder[i];
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle())
+    {
+        sBattleBuffersTransferData[4] = !!(gBattleMons[gActiveBattler].status2 & STATUS2_CONFUSION);
+        PrepareBufferDataTransfer(bufferId, sBattleBuffersTransferData, 5);
+        return;
+    }
+#endif
     PrepareBufferDataTransfer(bufferId, sBattleBuffersTransferData, 4);
 }
 

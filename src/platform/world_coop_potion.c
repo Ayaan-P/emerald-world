@@ -34,14 +34,16 @@ u16 WorldCoop_HpMedicineHeal(u16 item, u16 hp, u16 maxHP)
 bool8 WorldCoop_IsMedicine(u16 item)
 {
     return WorldCoop_IsHpMedicine(item) || item == ITEM_ANTIDOTE || item == ITEM_BURN_HEAL
-        || item == ITEM_ICE_HEAL || item == ITEM_AWAKENING || item == ITEM_PARALYZE_HEAL;
+        || item == ITEM_ICE_HEAL || item == ITEM_AWAKENING || item == ITEM_PARALYZE_HEAL
+        || item == ITEM_FULL_HEAL || item == ITEM_FULL_RESTORE;
 }
 
-bool8 WorldCoop_MedicineEffect(u16 item, u16 hp, u16 maxHP, u32 status, u16 *heal, u32 *newStatus)
+bool8 WorldCoop_MedicineEffect(u16 item, u16 hp, u16 maxHP, u32 status, bool8 confused, u16 *heal, u32 *newStatus, bool8 *clearConfusion)
 {
     u16 amount = 0;
     u32 mask = 0;
-    if (!heal || !newStatus || !hp || !maxHP || maxHP > 999 || hp > maxHP) return FALSE;
+    bool8 cureConfusion = FALSE;
+    if (!heal || !newStatus || !clearConfusion || !hp || !maxHP || maxHP > 999 || hp > maxHP) return FALSE;
     if (WorldCoop_IsHpMedicine(item)) amount = WorldCoop_HpMedicineHeal(item, hp, maxHP);
     switch (item)
     {
@@ -52,12 +54,19 @@ bool8 WorldCoop_MedicineEffect(u16 item, u16 hp, u16 maxHP, u32 status, u16 *hea
     case ITEM_ICE_HEAL: mask = STATUS1_FREEZE; break;
     case ITEM_AWAKENING: mask = STATUS1_SLEEP; break;
     case ITEM_PARALYZE_HEAL: mask = STATUS1_PARALYSIS; break;
+    case ITEM_FULL_HEAL:
+    case ITEM_FULL_RESTORE:
+        if (status & STATUS1_ANY) mask = STATUS1_ANY | STATUS1_TOXIC_COUNTER;
+        cureConfusion = confused;
+        if (item == ITEM_FULL_RESTORE) amount = maxHP - hp;
+        break;
     default:
         if (!WorldCoop_IsHpMedicine(item)) return FALSE;
     }
-    if (!amount && !(status & mask)) return FALSE;
+    if (!amount && !(status & mask) && !cureConfusion) return FALSE;
     *heal = amount;
     *newStatus = status & ~mask;
+    *clearConfusion = cureConfusion;
     return TRUE;
 }
 
