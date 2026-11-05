@@ -1,0 +1,28 @@
+{
+  "id": "MAP_GENERATED_WORLD_WILDS",
+  "name": "GeneratedWorld_Wilds",
+  "layout": "LAYOUT_GENERATED_WORLD_WILDS",
+  "music": "MUS_ROUTE101",
+  "region_map_section": "MAPSEC_ROUTE_101",
+  "requires_flash": false,
+  "weather": "WEATHER_SUNNY",
+  "map_type": "MAP_TYPE_ROUTE",
+  "allow_cycling": false,
+  "allow_escaping": false,
+  "allow_running": true,
+  "show_map_name": false,
+  "battle_scene": "MAP_BATTLE_SCENE_NORMAL",
+  "connections": null,
+  "object_events": [],
+  "warp_events": [
+    {
+      "x": 61,
+      "y": 61,
+      "elevation": 3,
+      "dest_map": "MAP_DYNAMIC",
+      "dest_warp_id": "WARP_ID_DYNAMIC"
+    }
+  ],
+  "coord_events": [],
+  "bg_events": []
+}

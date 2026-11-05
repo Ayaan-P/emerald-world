@@ -5192,6 +5192,16 @@
       "height": 31,
       "primary_count": 512,
       "secondary_count": 414
+    },
+    {
+      "group": 34,
+      "num": 1,
+      "name": "GeneratedWorld_Wilds",
+      "layout": "LAYOUT_GENERATED_WORLD_WILDS",
+      "width": 20,
+      "height": 20,
+      "primary_count": 512,
+      "secondary_count": 144
     }
   ]
 }

@@ -33,6 +33,15 @@
 /* One field window, not another Start-menu row or another input consumer.
  * Lists are rebuilt from live state, but focus is an action identity. */
 enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, RALLY, DISPATCH };
+#if GENERATED_MAP_WILDS
+#define GEN_EXPLORE_LABEL "Explore generated area"
+#define GEN_LEAVE_LABEL "Leave generated area"
+#define GEN_BLOCKED_LABEL "Stand outside on foot; online needs a ready shared cave."
+#else
+#define GEN_EXPLORE_LABEL "Explore generated cave"
+#define GEN_LEAVE_LABEL "Leave generated cave"
+#define GEN_BLOCKED_LABEL "Stand outside on foot; online needs a ready shared cave."
+#endif
 enum Action { FRIENDS, STORY, DEXNAV, BACK, MODE, SCOPE, REQUEST, READY,
     LATER, CANCEL, GO, FINISH, RETURN, STAY,
 #if GENERATED_MAP_READY
@@ -159,7 +168,7 @@ static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 onlin
     {
 #if GENERATED_MAP_READY
         if (GeneratedMap_IsInside()) {
-            AddRow(rows, &n, GEN_CAVE, "Leave generated cave", NULL);
+            AddRow(rows, &n, GEN_CAVE, GEN_LEAVE_LABEL, NULL);
             AddRow(rows, &n, BACK, "Back", NULL);
             return n;
         }
@@ -169,8 +178,8 @@ static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 onlin
         AddRow(rows, &n, DEXNAV, "DexNav", DexNavNative_Available() ? NULL :
             "DexNav needs a Pokedex and conscious party outside restricted or link areas.");
 #if GENERATED_MAP_READY
-        AddRow(rows, &n, GEN_CAVE, GeneratedMap_IsInside() ? "Leave generated cave" : "Explore generated cave",
-            GeneratedMap_IsInside() || GeneratedMap_CanEnter() ? NULL : "Stand outside on foot; online needs a ready shared cave.");
+        AddRow(rows, &n, GEN_CAVE, GeneratedMap_IsInside() ? GEN_LEAVE_LABEL : GEN_EXPLORE_LABEL,
+            GeneratedMap_IsInside() || GeneratedMap_CanEnter() ? NULL : GEN_BLOCKED_LABEL);
 #endif
         AddRow(rows, &n, BACK, "Back", NULL);
         return n;

@@ -62,6 +62,9 @@ class WorldServer:
         if len(entries) > 1:
             raise ValueError('ambiguous generated cave map')
         self.cave_map = entries[0] if entries else None
+        wilds = [(group, num) for (group, num), item in catalog_maps().items() if item.get('name') == 'GeneratedWorld_Wilds']
+        if len(wilds) > 1: raise ValueError('ambiguous generated wilds map')
+        self.wilds_map = wilds[0] if wilds else None
         if type(persist_generated_cave) is not bool:
             raise ValueError('persist_generated_cave must be a bool')
         self.persist_generated_cave = persist_generated_cave
@@ -197,7 +200,7 @@ class WorldServer:
                 state_json, tiles = self._validated(dict(state=json.loads(row[2]),
                     tiles=[dict(zip(keys, tile)) for tile in stored]))
                 objects = validate_objects(json.loads(row[4]))
-                if self.cave_map is not None and any((obj['group'], obj['num']) == self.cave_map for obj in objects):
+                if any((obj['group'], obj['num']) in (self.cave_map, self.wilds_map) for obj in objects):
                     raise ValueError('persisted object targets generated cave')
                 if type(row[5]) is not int or row[5] < 0:
                     raise ValueError('invalid interaction cursor')
@@ -611,6 +614,8 @@ class WorldServer:
                 return
             limits = [255, 255, 32767, 32767, 4, 65535, 1]
             state = [bounded(v, 0, limit) for v, limit in zip(fields[2:9], limits)]
+            if self.wilds_map is not None and tuple(state[:2]) == self.wilds_map:
+                raise ValueError('generated wilds are offline only')
             if self.cave_map is not None and tuple(state[:2]) == self.cave_map:
                 if (self.shared_cave and conn.get('cave_capable') and conn.get('cave_revoked')
                         and conn.get('cave_ack') != self.shared_cave.identity):
@@ -1011,7 +1016,7 @@ class WorldServer:
         objects = validate_objects(result.get('objects', []))
         from .build_catalog import catalog_maps
         reserved = {(g, n) for (g, n), item in catalog_maps().items()
-                    if item.get('name') == 'GeneratedWorld_Cave'}
+                    if item.get('name') in ('GeneratedWorld_Cave', 'GeneratedWorld_Wilds')}
         if any((obj['group'], obj['num']) in reserved for obj in objects):
             raise ValueError('generated cave cannot have mutable objects')
         if type(tiles) is not list or len(tiles) > MAX_TILES:
