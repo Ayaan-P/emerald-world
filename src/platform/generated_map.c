@@ -11,6 +11,7 @@
 #include "platform/world_rally.h"
 #include "platform/generated_map.h"
 #if GENERATED_WILDS_EVENTS
+#include "field_camera.h"
 #include "event_data.h"
 #endif
 #include "constants/maps.h"
@@ -556,6 +557,21 @@ bool8 GeneratedMap_SetSharedEventRule(const u8 *rule, u32 size)
     return TRUE;
 #else
     (void)rule;(void)size;return FALSE;
+#endif
+}
+bool8 GeneratedMap_SetSharedEventTile(unsigned x, unsigned y, unsigned terrain)
+{
+#if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
+    u16 tile;
+    if(terrain>1 || !sEventActive || !sLargeShared || !GeneratedMap_IsInside()
+       || !GeneratedMap_SharedCoordValid(x,y) || (x==1 && y==1) || (x==61 && (y==60 || y==61)))return FALSE;
+    tile=terrain ? 0x300d : 0x3001;
+    sLargeTiles[y*LARGE_SIDE+x]=tile;
+    MapGridSetMetatileEntryAt(x+MAP_OFFSET,y+MAP_OFFSET,tile);
+    CurrentMapDrawMetatileAt(x+MAP_OFFSET,y+MAP_OFFSET);
+    return TRUE;
+#else
+    (void)x;(void)y;(void)terrain;return FALSE;
 #endif
 }
 bool8 GeneratedMap_StageSharedCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size)

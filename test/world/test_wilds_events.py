@@ -85,6 +85,7 @@ int IsMapTypeOutdoors(int x){return x==1;}int TestPlayerAvatarFlags(int f){retur
 void PlayerGetDestCoords(s16 *x,s16 *y){*x=15;*y=16;}
 void SetWarpDestination(s8 g,s8 n,s8 w,s8 x,s8 y){destination=(struct WarpData){g,n,w,x,y};}
 void SetDynamicWarpWithCoords(int z,s8 g,s8 n,s8 w,s8 x,s8 y){(void)z;save.dynamicWarp=(struct WarpData){g,n,w,x,y};}
+static int tileX,tileY,tileValue,draws;void MapGridSetMetatileEntryAt(int x,int y,u16 value){tileX=x;tileY=y;tileValue=value;}void CurrentMapDrawMetatileAt(int x,int y){(void)x;(void)y;draws++;}
 void StoreInitialPlayerAvatarState(void){}void DoWarp(void){}
 int main(void){u8 graph[1466],badgraph[1466],meta[184],badmeta[184],data[3969],bad[3969];struct MapLayout base={19,26,0,0,0,0};const struct MapLayout *layout;
  assert(fread(graph,1,sizeof(graph),stdin)==sizeof(graph));assert(fread(meta,1,sizeof(meta),stdin)==sizeof(meta));assert(fread(data,1,sizeof(data),stdin)==sizeof(data));memcpy(bad,data,sizeof(data));bad[0]='.';
@@ -103,7 +104,7 @@ int main(void){u8 graph[1466],badgraph[1466],meta[184],badmeta[184],data[3969],b
  assert(gGeneratedWildsGuideText[0]==0xd1 && gGeneratedWildsGuideText[8]==0xff); assert(gMapHeader.events->objectEvents[1].x==20 && gMapHeader.events->objectEvents[1].y==20); assert(gMapHeader.events->objectEvents[2].x==40 && gMapHeader.events->objectEvents[2].y==40); assert(gMapHeader.events->objectEvents[1].script==GeneratedWorld_Wilds_EventScript_Graph);
  for(int i=0;i<3969;i++){u16 tile=layout->map[i];if(i==61*63+61)continue;
  if(data[i]=='.')assert(tile==0x3001||tile==0x300d);else assert(tile==0x0487);}
- assert(GeneratedMap_EventState()==0);assert(!GeneratedMap_SetSharedEventState(5));u8 rule[61]={0,1,1,1,65};assert(!GeneratedMap_SetSharedEventRule(rule,sizeof(rule)));gSpecialVar_LastTalked=2;GeneratedMap_RunEvent();assert(GeneratedMap_EventState()==0 && gGeneratedEventText[0]==0xcd);
+ assert(GeneratedMap_EventState()==0);assert(!GeneratedMap_SetSharedEventState(5));assert(!GeneratedMap_SetSharedEventTile(3,3,1));u8 rule[61]={0,1,1,1,65};assert(!GeneratedMap_SetSharedEventRule(rule,sizeof(rule)));gSpecialVar_LastTalked=2;GeneratedMap_RunEvent();assert(GeneratedMap_EventState()==0 && gGeneratedEventText[0]==0xcd);
  gSpecialVar_LastTalked=1;GeneratedMap_RunEvent();assert(GeneratedMap_EventState()==1 && gGeneratedEventText[0]==0xc2);
  gSpecialVar_LastTalked=2;GeneratedMap_RunEvent();assert(GeneratedMap_EventState()==2);
  gSpecialVar_LastTalked=1;GeneratedMap_RunEvent();assert(GeneratedMap_EventState()==3);
@@ -116,6 +117,7 @@ int main(void){u8 graph[1466],badgraph[1466],meta[184],badmeta[184],data[3969],b
             p=Path(t);(p/'platform').mkdir();(p/'constants').mkdir();(p/'global.h').write_text('#ifndef G\n#define G\n'+global_h+'\n#endif\n')
             for name in ('main.h','overworld.h','field_screen_effect.h','field_player_avatar.h','fieldmap.h'):
                 (p/name).write_text('#include "global.h"\nint IsMapTypeOutdoors(int);int TestPlayerAvatarFlags(int);void SetWarpDestination(s8,s8,s8,s8,s8);void SetDynamicWarpWithCoords(int,s8,s8,s8,s8,s8);void PlayerGetDestCoords(s16*,s16*);void StoreInitialPlayerAvatarState(void);void DoWarp(void);\n#define MAP_OFFSET 7\n')
+            (p/'field_camera.h').write_text('#include "global.h"\nvoid CurrentMapDrawMetatileAt(int,int);void MapGridSetMetatileEntryAt(int,int,u16);\n')
             (p/'event_data.h').write_text('#include "global.h"\nextern u16 gSpecialVar_LastTalked;\n')
             (p/'task.h').write_text('struct Task {int isActive;}; extern struct Task gTasks[16];\n#define NUM_TASKS 16\n')
             (p/'platform/world_rally.h').write_text('struct WorldRallySnapshot{unsigned id;};int WorldRally_HasReturn(void);int WorldRally_GetSnapshot(struct WorldRallySnapshot *);\n')
