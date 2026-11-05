@@ -90,6 +90,19 @@ class FreshnessTests(unittest.TestCase):
         self.s._refresh_link_presence()
         self.assertIn(f'T RANGE {sid} 1'.encode(),self.links['alice']['out'])
 
+    def test_idle_authority_loop_releases_expired_tag_range(self):
+        self.link('alice','T OFFER bob');sid=self.links['bob']['out'].decode().split()[2]
+        self.clear();self.link('bob','T ACCEPT '+sid);self.clear()
+        clock,stop=self.clock,self.s.stopping
+        class IdleSelector:
+            def select(self,timeout):
+                clock.now+=4;stop.set();return []
+        self.s.selector=IdleSelector()
+        try:self.s._loop()
+        finally:self.s.selector=None
+        self.assertIn(f'T RANGE {sid} 0'.encode(),self.links['alice']['out'])
+        self.assertIn(f'T RANGE {sid} 0'.encode(),self.links['bob']['out'])
+
     def test_active_link_is_not_aborted_when_field_state_expires(self):
         self.link('alice','L OFFER 1 bob');sid=self.links['bob']['out'].decode().split()[2]
         self.clear();self.link('bob','L ACCEPT '+sid);self.clear()
