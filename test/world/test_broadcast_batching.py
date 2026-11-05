@@ -73,6 +73,20 @@ class BatchingTests(unittest.TestCase):
         self.assertLessEqual(self.s.broadcasts,21)
         self.assertTrue(all(p['seq']==10 for p in self.peers))
 
+    def test_server_loop_flushes_without_further_network_activity(self):
+        self.state(0,1,10)
+        clock,stop=self.clock,self.s.stopping
+        class IdleSelector:
+            def select(self, timeout):
+                clock.now+=.03
+                if clock.now>=100.09:stop.set()
+                return []
+        self.s.selector=IdleSelector()
+        try:self.s._loop()
+        finally:self.s.selector=None
+        self.assertEqual(self.s.broadcasts,1)
+        self.assertIsNone(self.s.presence_broadcast_due)
+
     def test_immediate_broadcast_absorbs_pending_update(self):
         self.state(0,1,10);self.assertEqual(self.s.broadcasts,0)
         self.s._broadcast();self.assertEqual(self.s.broadcasts,1)
