@@ -4015,6 +4015,13 @@ BattleScript_DoCastformChange::
 	waitmessage B_WAIT_TIME_LONG
 	return
 
+.ifdef PORTABLE
+BattleScript_MegaEvolved::
+	printstring STRINGID_MEGA_EVOLVED
+	waitmessage B_WAIT_TIME_LONG
+	end3
+.endif
+
 BattleScript_IntimidateActivatesEnd3::
 	call BattleScript_PauseIntimidateActivates
 	end3

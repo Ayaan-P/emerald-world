@@ -5126,6 +5126,13 @@ static void RunTurnActionsFunctions(void)
                 /* In link battles both controllers must see and ACK the form
                  * before an ability script or move can be dispatched. */
                 if (gBattleControllerExecFlags) return;
+                sMegaAbilityPhase = 4;
+                gBattleScripting.battler = battler;
+                BattleScriptPushCursorAndCallback(BattleScript_MegaEvolved);
+                return;
+            }
+            if (sMegaAbilityPhase == 4)
+            {
                 if (!sMegaAbilityChanged)
                 {
                     sMegaAbilityPhase = 0;

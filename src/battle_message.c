@@ -517,6 +517,10 @@ static const u8 sText_Trainer2WinText[];
 static const u8 sText_TwoInGameTrainersDefeated[];
 static const u8 sText_Trainer2LoseText[];
 
+#ifdef PORTABLE
+static const u8 sText_MegaEvolved[] = _("{B_SCR_ACTIVE_NAME_WITH_PREFIX}\nMega Evolved!");
+#endif
+
 const u8 *const gBattleStringsTable[BATTLESTRINGS_COUNT - BATTLESTRINGS_TABLE_START] =
 {
     [STRINGID_TRAINER1LOSETEXT - BATTLESTRINGS_TABLE_START] = sText_Trainer1LoseText,
@@ -888,6 +892,9 @@ const u8 *const gBattleStringsTable[BATTLESTRINGS_COUNT - BATTLESTRINGS_TABLE_ST
     [STRINGID_PKMNBOXLANETTESPCFULL - BATTLESTRINGS_TABLE_START] = gText_PkmnTransferredLanettesPCBoxFull,
     [STRINGID_TRAINER1WINTEXT - BATTLESTRINGS_TABLE_START] = sText_Trainer1WinText,
     [STRINGID_TRAINER2WINTEXT - BATTLESTRINGS_TABLE_START] = sText_Trainer2WinText,
+#ifdef PORTABLE
+    [STRINGID_MEGA_EVOLVED - BATTLESTRINGS_TABLE_START] = sText_MegaEvolved,
+#endif
 };
 
 const u16 gMissStringIds[] =
