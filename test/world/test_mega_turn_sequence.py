@@ -19,11 +19,14 @@ typedef unsigned char u8; typedef bool bool8;
 #define ABILITYEFFECT_ON_SWITCHIN 10
 #define ABILITYEFFECT_INTIMIDATE1 11
 #define ABILITYEFFECT_TRACE 12
+#define MEGA_WIRE_ACTIVATE 1
 struct Mon {u8 ability;} gBattleMons[4];
 struct Protect {int noValidMoves;} protect[4], *gProtectStructs=protect;
 u8 gBattlersCount=3, gBattlerByTurnOrder[4]={0,1,2},gChosenActionByBattler[4]={1,1,0};
 u8 sMegaTurnIndex=0,sMegaAbilityPhase=0;bool8 sMegaTurnHandled=false;
-int applyCalls[4],cancelCalls[4],onCalls[4],intimidateCalls,traceCalls;
+int applyCalls[4],cancelCalls[4],onCalls[4],intimidateCalls,traceCalls,publishCalls;
+int gBattleControllerExecFlags;bool8 sMegaAbilityChanged;
+int MegaGame_PublishForm(u8 b,u8 kind) { (void)b;(void)kind;publishCalls++;gBattleControllerExecFlags=1;return 1; }
 int MegaGame_Apply(u8 b) { applyCalls[b]++; if (b==0) {gBattleMons[b].ability=7;return 1;} return 1; }
 void MegaGame_CancelQueue(u8 b) { cancelCalls[b]++; }
 int AbilityBattleEffects(int type,u8 b,int a,int c,int d) {
@@ -38,10 +41,14 @@ void run(void) {
 }
 int main(void) {
  gBattleMons[0].ability=1; gBattleMons[1].ability=2;
- run(); assert(!sMegaTurnHandled && applyCalls[0]==1 && onCalls[0]==1);
+ run(); assert(!sMegaTurnHandled && applyCalls[0]==1 && publishCalls==1 && onCalls[0]==0);
+ run(); assert(!sMegaTurnHandled && applyCalls[0]==1 && onCalls[0]==0); /* waits for ACK */
+ gBattleControllerExecFlags=0;run(); assert(!sMegaTurnHandled && onCalls[0]==1);
  run(); assert(!sMegaTurnHandled && applyCalls[0]==1 && intimidateCalls==1);
  run(); assert(!sMegaTurnHandled && traceCalls==1 && applyCalls[1]==0);
- run(); assert(sMegaTurnHandled && applyCalls[0]==1 && applyCalls[1]==1 && cancelCalls[2]==1);
+ run(); assert(!sMegaTurnHandled && applyCalls[1]==1 && publishCalls==2);
+ gBattleControllerExecFlags=0;run();
+ assert(sMegaTurnHandled && applyCalls[0]==1 && applyCalls[1]==1 && cancelCalls[2]==1);
  assert(onCalls[0]==1 && onCalls[1]==0 && intimidateCalls==2 && traceCalls==2);
  return 0;
 }

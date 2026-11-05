@@ -4,6 +4,7 @@
 #include "platform/native_link.h"
 #include "platform/world_activity.h"
 #include "platform/mega_game.h"
+#include "platform/mega_wire.h"
 #endif
 #include "battle.h"
 #include "battle_move_split.h"
@@ -159,6 +160,7 @@ EWRAM_DATA u8 gBattleTextBuff3[TEXT_BUFF_ARRAY_COUNT] = {0};
 EWRAM_DATA static bool8 sMegaTurnHandled = FALSE;
 EWRAM_DATA static u8 sMegaTurnIndex = 0;
 EWRAM_DATA static u8 sMegaAbilityPhase = 0;
+EWRAM_DATA static bool8 sMegaAbilityChanged = FALSE;
 #endif
 EWRAM_DATA static u32 sFlickerArray[25] = {0};
 EWRAM_DATA u32 gBattleTypeFlags = 0;
@@ -5074,6 +5076,7 @@ static void CheckFocusPunch_ClearVarsBeforeTurnStarts(void)
 #ifdef PORTABLE
     sMegaTurnHandled = FALSE;
     sMegaTurnIndex = sMegaAbilityPhase = 0;
+    sMegaAbilityChanged = FALSE;
 #endif
     gCurrentTurnActionNumber = 0;
     gCurrentActionFuncId = gActionsByTurnOrder[gCurrentTurnActionNumber];
@@ -5108,8 +5111,24 @@ static void RunTurnActionsFunctions(void)
                     applied = MegaGame_Apply(battler);
                 else
                     MegaGame_CancelQueue(battler);
-                if (!applied || oldAbility == gBattleMons[battler].ability)
+                if (!applied)
                 {
+                    sMegaTurnIndex++;
+                    continue;
+                }
+                sMegaAbilityChanged = oldAbility != gBattleMons[battler].ability;
+                sMegaAbilityPhase = 3;
+                if (MegaGame_PublishForm(battler, MEGA_WIRE_ACTIVATE))
+                    return;
+            }
+            if (sMegaAbilityPhase == 3)
+            {
+                /* In link battles both controllers must see and ACK the form
+                 * before an ability script or move can be dispatched. */
+                if (gBattleControllerExecFlags) return;
+                if (!sMegaAbilityChanged)
+                {
+                    sMegaAbilityPhase = 0;
                     sMegaTurnIndex++;
                     continue;
                 }

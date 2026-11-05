@@ -60,6 +60,17 @@ int main(void){
  assert(!memcmp(before,gPlayerParty,sizeof(before)));
  assert(MegaGame_ActiveForm(0)==MEGA_FORM_VENUSAUR_MEGA);
  assert(MegaGame_ActiveForm(2)==MEGA_FORM_GENGAR_MEGA);
+ MegaGame_Reset();
+ assert(!MegaGame_ObserveForm(0,MEGA_FORM_GENGAR_MEGA,0));
+ assert(MegaGame_ObserveForm(0,MEGA_FORM_VENUSAUR_MEGA,0));
+ assert(MegaGame_ObserveForm(0,MEGA_FORM_VENUSAUR_MEGA,0)); /* repeat for re-entry */
+ gBattlerPartyIndexes[0]=1;assert(!MegaGame_ActiveForm(0));
+ assert(MegaGame_ObserveForm(0,MEGA_FORM_VENUSAUR_MEGA,0)); /* event precedes switch animation */
+ assert(!MegaGame_ActiveForm(0));
+ assert(!MegaGame_ObserveForm(0,MEGA_FORM_GENGAR_MEGA,3)); /* other trainer slot */
+ assert(!MegaGame_ObserveForm(0,MEGA_FORM_GENGAR_MEGA,1)); /* one form per owner */
+ gBattlerPartyIndexes[0]=0;assert(MegaGame_ActiveForm(0)==MEGA_FORM_VENUSAUR_MEGA);
+ assert(!memcmp(before,gPlayerParty,sizeof(before)));
  MegaGame_Reset();gBattleMons[0].status2=STATUS2_TRANSFORMED;assert(!MegaGame_CanQueue(0));
  return 0;
 }'''

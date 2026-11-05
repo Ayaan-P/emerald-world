@@ -16,6 +16,7 @@ static struct MegaBattleState sMega;
 static u8 sQueued[MAX_BATTLERS_COUNT];
 static u8 sSelected[MAX_BATTLERS_COUNT];
 static u8 sActiveForm[MAX_BATTLERS_COUNT];
+static u8 sActiveOwner[MAX_BATTLERS_COUNT], sActiveSlot[MAX_BATTLERS_COUNT];
 
 void MegaGame_Reset(void)
 {
@@ -23,6 +24,8 @@ void MegaGame_Reset(void)
     memset(sQueued, 0, sizeof(sQueued));
     memset(sSelected, 0, sizeof(sSelected));
     memset(sActiveForm, 0, sizeof(sActiveForm));
+    memset(sActiveOwner, 0, sizeof(sActiveOwner));
+    memset(sActiveSlot, 0, sizeof(sActiveSlot));
 }
 
 static bool8 MegaGame_Identity(u8 battler, u8 *owner, u8 *slot, struct Pokemon **mon)
@@ -133,6 +136,11 @@ static void MegaGame_SetStats(u8 battler, const struct MegaBattleStats *stats, u
     gBattleMons[battler].spDefense = stats->spDefense; gBattleMons[battler].types[0] = stats->type1;
     gBattleMons[battler].types[1] = stats->type2; gBattleMons[battler].ability = stats->ability;
     sActiveForm[battler] = form;
+    {
+        u8 owner, slot; struct Pokemon *mon;
+        if (MegaGame_Identity(battler, &owner, &slot, &mon))
+        { sActiveOwner[battler] = owner; sActiveSlot[battler] = slot; }
+    }
 }
 
 bool8 MegaGame_Apply(u8 battler)
@@ -162,25 +170,55 @@ bool8 MegaGame_Apply(u8 battler)
 }
 
 /* Called after new switch-in data has replaced the outgoing battle mon. */
-void MegaGame_OnSwitchIn(u8 battler)
+bool8 MegaGame_OnSwitchIn(u8 battler)
 {
     struct Pokemon *mon;
     struct MegaBattleStats stats;
     const struct MegaFormData *data;
     u8 owner, slot, form;
-    if (battler >= MAX_BATTLERS_COUNT) return;
+    if (battler >= MAX_BATTLERS_COUNT) return FALSE;
     sQueued[battler] = sSelected[battler] = sActiveForm[battler] = 0;
-    if (!MEGA_FEATURE_READY || !MegaGame_Identity(battler, &owner, &slot, &mon)) return;
+    if (!MEGA_FEATURE_READY || !MegaGame_Identity(battler, &owner, &slot, &mon)) return FALSE;
     form = MegaBattle_GetForm(&sMega, owner, slot);
     data = MegaForm_Get(form);
     if (!data || data->baseSpecies != gBattleMons[battler].species
      || data->baseSpecies != GetMonData(mon, MON_DATA_SPECIES)
-     || !MegaGame_CalculateStats(battler, mon, form, &stats)) return;
+     || !MegaGame_CalculateStats(battler, mon, form, &stats)) return FALSE;
     MegaGame_SetStats(battler, &stats, form);
+    return TRUE;
+}
+
+/* Accept only an authoritative event matching the currently staged party
+ * slot. This changes transient form identity, never the underlying party. */
+bool8 MegaGame_ObserveForm(u8 battler, u8 form, u8 partyIndex)
+{
+    struct Pokemon *mon;
+    const struct MegaFormData *data;
+    u8 owner, slot;
+    if (!MEGA_FEATURE_READY || battler >= gBattlersCount || battler >= MAX_BATTLERS_COUNT
+     || partyIndex >= PARTY_SIZE) return FALSE;
+    owner = (gBattleTypeFlags & BATTLE_TYPE_MULTI) ? GetBattlerPosition(battler) : GetBattlerSide(battler);
+    if (owner >= MEGA_TRAINERS) return FALSE;
+    if ((gBattleTypeFlags & BATTLE_TYPE_MULTI)
+     && partyIndex / MULTI_PARTY_SIZE != (GetBattlerPosition(battler) >> 1)) return FALSE;
+    slot = (gBattleTypeFlags & BATTLE_TYPE_MULTI) ? partyIndex % MULTI_PARTY_SIZE : partyIndex;
+    mon = GetBattlerSide(battler) == B_SIDE_PLAYER ? &gPlayerParty[partyIndex] : &gEnemyParty[partyIndex];
+    data = MegaForm_Get(form);
+    if (!data || GetMonData(mon, MON_DATA_SPECIES) != data->baseSpecies) return FALSE;
+    if (sMega.used[owner] && sMega.forms[owner][slot] != form) return FALSE;
+    sMega.used[owner] = TRUE;
+    sMega.forms[owner][slot] = form;
+    sActiveForm[battler] = form; sActiveOwner[battler] = owner; sActiveSlot[battler] = slot;
+    return TRUE;
 }
 
 u8 MegaGame_ActiveForm(u8 battler)
 {
-    return battler < MAX_BATTLERS_COUNT ? sActiveForm[battler] : MEGA_FORM_NONE;
+    struct Pokemon *mon;
+    u8 owner, slot;
+    if (battler >= MAX_BATTLERS_COUNT || !sActiveForm[battler]
+     || !MegaGame_Identity(battler, &owner, &slot, &mon)
+     || owner != sActiveOwner[battler] || slot != sActiveSlot[battler]) return MEGA_FORM_NONE;
+    return sActiveForm[battler];
 }
 #endif

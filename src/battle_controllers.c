@@ -16,6 +16,10 @@
 #include "platform/native_link.h"
 #include "platform/world_coop.h"
 #include "platform/mega_game.h"
+#include "platform/mega_forms.h"
+#include "platform/mega_wire.h"
+#include "event_data.h"
+#include "constants/flags.h"
 #include "constants/moves.h"
 #include "constants/items.h"
 #endif
@@ -898,6 +902,10 @@ static bool8 NativeBattleCommandValid(const u8 *data, u16 size, u8 bufferId)
         needed = 2 + data[1] * 3;
         break;
     case CONTROLLER_32:
+        if (MegaWire_IsCandidate(data, size, CONTROLLER_32))
+            return MEGA_FEATURE_READY && bufferId == B_COMM_TO_CONTROLLER
+                && FlagGet(FLAG_MEGA_EVOLUTION)
+                && MegaWire_Valid(data, size, CONTROLLER_32, MEGA_FORM_COUNT, NativeLink_Generation());
         needed = 3 + (data[1] | (data[2] << 8));
         if (needed < 3)
             return FALSE;
@@ -1051,6 +1059,24 @@ static bool8 NativeBattleReplyValid(u8 battler, const u8 *data)
     return FALSE;
 }
 
+/* The existing controller link distributes a command to both views and
+ * waits for both acknowledgements. This only publishes transient form state. */
+bool8 MegaGame_PublishForm(u8 battler, u8 kind)
+{
+    u8 packet[MEGA_WIRE_BYTES], previous, form;
+    if (!MEGA_FEATURE_READY || !(gBattleTypeFlags & BATTLE_TYPE_LINK)
+     || !NativeLink_IsActive() || !NativeLink_Generation()) return FALSE;
+    form = MegaGame_ActiveForm(battler);
+    if (!form || (kind != MEGA_WIRE_ACTIVATE && kind != MEGA_WIRE_REENTER)) return FALSE;
+    MegaWire_Encode(packet, CONTROLLER_32, form, kind, gBattlerPartyIndexes[battler], NativeLink_Generation());
+    previous = gActiveBattler;
+    gActiveBattler = battler;
+    PrepareBufferDataTransferLink(B_COMM_TO_CONTROLLER, sizeof(packet), packet);
+    MarkBattlerForControllerExec(battler);
+    gActiveBattler = previous;
+    return TRUE;
+}
+
 static bool8 NativeBattleRingStateValid(u8 taskId)
 {
     return gTasks[taskId].tCurrentBlock_Start >= 0
@@ -1111,7 +1137,8 @@ void PrepareBufferDataTransferLink(u8 bufferId, u16 size, u8 *data)
         BYTE_TO_SEND(LINK_BUFF_DATA + i) = data[i];
 
 #ifdef PORTABLE
-    if (WorldCoop_IsBattle())
+    if (WorldCoop_IsBattle() || (bufferId == B_COMM_TO_CONTROLLER
+     && size == MEGA_WIRE_BYTES && MegaWire_IsCandidate(data, size, CONTROLLER_32)))
         for (; i < alignedSize; i++)
             BYTE_TO_SEND(LINK_BUFF_DATA + i) = 0;
 #endif
@@ -1431,6 +1458,14 @@ static void Task_HandleCopyReceivedLinkBuffersData(u8 taskId)
                 sNativeBattleRequestPending[battler] = TRUE;
                 memcpy(sNativeBattleRequest[battler], &BYTE_TO_RECEIVE(LINK_BUFF_DATA),
                     sizeof(sNativeBattleRequest[battler]));
+            }
+#endif
+#ifdef PORTABLE
+            if (NativeLink_IsActive() && MegaWire_IsCandidate(&BYTE_TO_RECEIVE(LINK_BUFF_DATA), blockSize, CONTROLLER_32)
+             && !MegaGame_ObserveForm(battler, BYTE_TO_RECEIVE(LINK_BUFF_DATA + 5), BYTE_TO_RECEIVE(LINK_BUFF_DATA + 7)))
+            {
+                AbortNativeBattlePayload();
+                return;
             }
 #endif
             memcpy(gBattleBufferA[battler], &BYTE_TO_RECEIVE(LINK_BUFF_DATA), blockSize);

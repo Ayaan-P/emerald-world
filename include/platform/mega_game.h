@@ -16,7 +16,9 @@ void MegaGame_ClearSelection(u8 battler);
 bool8 MegaGame_Queue(u8 battler);
 void MegaGame_CancelQueue(u8 battler);
 bool8 MegaGame_Apply(u8 battler);
-void MegaGame_OnSwitchIn(u8 battler);
+bool8 MegaGame_OnSwitchIn(u8 battler);
+bool8 MegaGame_PublishForm(u8 battler, u8 kind);
+bool8 MegaGame_ObserveForm(u8 battler, u8 form, u8 partyIndex);
 u8 MegaGame_ActiveForm(u8 battler);
 #endif
 #endif
