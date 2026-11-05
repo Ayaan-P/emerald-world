@@ -104,7 +104,7 @@ int main(void){u8 graph[1466],badgraph[1466],meta[184],badmeta[184],data[3969],b
  assert(gGeneratedWildsGuideText[0]==0xd1 && gGeneratedWildsGuideText[8]==0xff); assert(gMapHeader.events->objectEvents[1].x==20 && gMapHeader.events->objectEvents[1].y==20); assert(gMapHeader.events->objectEvents[2].x==40 && gMapHeader.events->objectEvents[2].y==40); assert(gMapHeader.events->objectEvents[1].script==GeneratedWorld_Wilds_EventScript_Graph);
  for(int i=0;i<3969;i++){u16 tile=layout->map[i];if(i==61*63+61)continue;
  if(data[i]=='.')assert(tile==0x3001||tile==0x300d);else assert(tile==0x0487);}
- assert(GeneratedMap_EventState()==0);assert(!GeneratedMap_SetSharedEventState(5));assert(!GeneratedMap_SetSharedEventTile(3,3,1));u8 rule[61]={0,1,1,1,65};assert(!GeneratedMap_SetSharedEventRule(rule,sizeof(rule)));gSpecialVar_LastTalked=2;GeneratedMap_RunEvent();assert(GeneratedMap_EventState()==0 && gGeneratedEventText[0]==0xcd);
+ assert(GeneratedMap_EventState()==0);assert(!GeneratedMap_SetSharedEventState(5));assert(!GeneratedMap_SetSharedEventTile(3,3,1));u8 tiles[4]={1,3,3,1};assert(!GeneratedMap_SetSharedEventTiles(tiles,sizeof(tiles)));u8 rule[61]={0,1,1,1,65};assert(!GeneratedMap_SetSharedEventRule(rule,sizeof(rule)));gSpecialVar_LastTalked=2;GeneratedMap_RunEvent();assert(GeneratedMap_EventState()==0 && gGeneratedEventText[0]==0xcd);
  gSpecialVar_LastTalked=1;GeneratedMap_RunEvent();assert(GeneratedMap_EventState()==1 && gGeneratedEventText[0]==0xc2);
  gSpecialVar_LastTalked=2;GeneratedMap_RunEvent();assert(GeneratedMap_EventState()==2);
  gSpecialVar_LastTalked=1;GeneratedMap_RunEvent();assert(GeneratedMap_EventState()==3);

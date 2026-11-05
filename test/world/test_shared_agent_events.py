@@ -102,7 +102,7 @@ return r==1 && w.version==9 && w.nextRow==63 && w.nextEventChunk==6 && w.cast[0]
 struct Task {int isActive;};struct Task gTasks[16];
 struct Save save,*gSaveBlock1Ptr=&save;__typeof__(gMain) gMain;__typeof__(gMapHeader) gMapHeader;
 enum CaveState {CAVE_DISABLED,CAVE_IDLE,CAVE_WAIT,CAVE_WAIT_RESET,CAVE_ACK,CAVE_WAIT_OK,CAVE_READY,CAVE_MISMATCH,CAVE_RETURN_NONE};
-static struct {bool8 connected,caveAvailable,staging,caveReturning,caveV2Probe,caveV3Probe,caveV4Probe,caveV5Probe,caveV6Probe,caveV7Probe,caveV8Probe,caveV9Probe;u8 eventHead,eventCount;unsigned eventSetSeq;struct {u8 kind,state,rule[61],x,y,terrain;unsigned sequence;} eventQueue[8];enum CaveState caveState;unsigned caveTimeout,caveRetry,snapshotAge;char caveExpected[65];struct WorldCaveWire caveWire;size_t outputSize;char output[4096];} sWorld;
+static struct {bool8 connected,caveAvailable,staging,caveReturning,caveV2Probe,caveV3Probe,caveV4Probe,caveV5Probe,caveV6Probe,caveV7Probe,caveV8Probe,caveV9Probe;u8 eventHead,eventCount;unsigned eventSetSeq;struct {u8 kind,state,rule[61],x,y,terrain,tiles[193],tilesSize;unsigned sequence;} eventQueue[8];enum CaveState caveState;unsigned caveTimeout,caveRetry,snapshotAge;char caveExpected[65];struct WorldCaveWire caveWire;size_t outputSize;char output[4096];} sWorld;
 static int leaving,disconnected;static struct WarpData destination;static struct MapEvents events;
 const u8 GeneratedWorld_Wilds_EventScript_Guide[]={0};const u8 GeneratedWorld_Wilds_EventScript_Cast2[]={0},GeneratedWorld_Wilds_EventScript_Cast3[]={0},GeneratedWorld_Wilds_EventScript_Graph[]={0};u16 gSpecialVar_LastTalked;extern u8 gGeneratedWildsGuideText[58],gGeneratedEventText[58];
 const char *LinkTransport_TagPeer(void){return 0;}
@@ -159,6 +159,12 @@ int main(void){const char *a="ID_A",*b="ID_B";struct MapLayout base={19,26,0,0,0
  char *invalid[]={"CAVE","EVENTRULE",(char*)a,"6","8","1","9","01"};assert(CaveLine(8,invalid));CavePump();assert(strstr(lastOutput," 6 REJECTED") && GeneratedMap_EventState()==8);
  char *tile[]={"CAVE","EVENTTILE",(char*)a,"7","3","3","1"};assert(CaveLine(7,tile));CavePump();assert(strstr(lastOutput," 7 APPLIED") && tileX==10 && tileY==10 && tileValue==0x300d && draws==1);assert(GeneratedMap_ResolveLayout(&base)->map[3*63+3]==0x300d);
  char *blocked[]={"CAVE","EVENTTILE",(char*)a,"8","2","1","0"};assert(CaveLine(7,blocked));CavePump();assert(strstr(lastOutput," 8 REJECTED") && draws==1);
+ char *tiles[]={"CAVE","EVENTTILES",(char*)a,"9","02030300040401"};assert(CaveLine(5,tiles));CavePump();assert(strstr(lastOutput," 9 APPLIED") && draws==3);assert(GeneratedMap_ResolveLayout(&base)->map[3*63+3]==0x3001 && GeneratedMap_ResolveLayout(&base)->map[4*63+4]==0x300d);
+ char *duplicate[]={"CAVE","EVENTTILES",(char*)a,"10","02030300030301"};assert(CaveLine(5,duplicate));CavePump();assert(strstr(lastOutput," 10 REJECTED") && draws==3);assert(GeneratedMap_ResolveLayout(&base)->map[3*63+3]==0x3001);
+ u8 many[193];many[0]=64;for(int i=0;i<64;i++){many[1+3*i]=3+i%8;many[2+3*i]=3+i/8;many[3+3*i]=i%2;}
+ assert(GeneratedMap_SetSharedEventTiles(many,sizeof(many)) && draws==67);many[1+3*63]=1;many[2+3*63]=1;assert(!GeneratedMap_SetSharedEventTiles(many,sizeof(many)) && draws==67);
+
+
 
  /* The same terrain and characters with a different event graph is a different identity. It must
     leave the old cave before staging or acknowledging the replacement. */
