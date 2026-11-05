@@ -13,6 +13,7 @@ module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
 class State:
     free=True
     battle=False
+    party=[{'species': 252}]
     def __init__(self,name,map_id,pos): self.map_name=name;self.map=map_id;self.pos=pos
 
 class FakeGame:
@@ -50,6 +51,11 @@ class CaveHarnessContract(unittest.TestCase):
 
     def test_encounter_mode_requires_a_visible_expected_opponent(self):
         class EncounterGame(FakeGame):
+            def tap(self,button,times=1,**kwargs):
+                if self.state.battle and button=='A':
+                    self.actions.append((button,times));self.state.battle=False
+                else:
+                    super().tap(button,times,**kwargs)
             def press(self,button,frames):
                 super().press(button,frames)
                 if len([a for a in self.actions if a[0] in ('LEFT','RIGHT')]) >= 2:
@@ -64,7 +70,9 @@ class CaveHarnessContract(unittest.TestCase):
                  patch.object(module.driver,'walk_to'),patch.object(module.driver,'leave_map',leave), \
                  patch.object(module.driver,'wait_until',wait),patch('builtins.print'):
                 module.run('/bin/true',seed,out,encounter=True)
-            self.assertEqual(FakeGame.last.a,2)
+            self.assertEqual(FakeGame.last.a,4)
+            self.assertIn(('DOWN',1), FakeGame.last.actions)
+            self.assertIn(('RIGHT',1), FakeGame.last.actions)
             self.assertEqual((out/'game.sav').read_bytes(),b'disposable')
 
     def test_native_startup_failure_exposes_stderr(self):

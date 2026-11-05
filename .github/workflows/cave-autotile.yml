@@ -55,7 +55,7 @@ jobs:
           PYTHONPATH=.:test/headless timeout 180s python3 test/headless/generated_cave_playthrough.py \
             --binary ./pokeemerald64 --seed-save build/cave-autotile-smoke/first_battle/game.sav \
             --out build/cave-playthrough
-      - name: Trigger a real generated-cave wild encounter offline
+      - name: Encounter, flee and leave the generated cave offline
         run: |
           PYTHONPATH=.:test/headless timeout 180s python3 test/headless/generated_cave_playthrough.py \
             --binary ./pokeemerald64 --seed-save build/cave-autotile-smoke/first_battle/game.sav \

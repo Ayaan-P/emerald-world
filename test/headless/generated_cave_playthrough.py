@@ -80,22 +80,36 @@ def run(binary, seed, out, encounter=False):
                            (63,8),(74,7),(74,8),(74,6),(74,9)}
                 if len(enemies) != 1 or (enemies[0]['species'], enemies[0]['level']) not in allowed:
                     raise RuntimeError(f'unexpected cave encounter: {enemies}')
+                # Advance intro/outcome text and choose RUN. Down and Right are
+                # idempotent on the native two-by-two action menu.
+                for _ in range(12):
+                    if not game.state.battle:
+                        break
+                    game.tap('B', times=6, gap=12)
+                    if not game.state.battle:
+                        break
+                    game.tap('DOWN'); game.tap('RIGHT'); game.tap('A', gap=60)
+                if game.state.battle:
+                    raise RuntimeError('could not flee the generated-cave encounter')
+                driver.wait_until(game, lambda state: state.free)
+                if game.state.map_name != 'GeneratedWorld_Cave' or not game.state.party:
+                    raise RuntimeError(f'wild battle did not return the trainer and party to the cave: {game.state}')
             else:
                 if game.state.battle:
                     driver.fight_battle(game)
                 driver.wait_until(game, lambda state: state.free)
                 if game.state.map_name != 'GeneratedWorld_Cave' or game.state.pos != (2, 1):
                     raise RuntimeError(f'could not walk the generated floor: {game.state}')
-                # Inside, SAVE is absent, shifting WORLD one row above its previous
-                # cursor position. The cave World menu defaults to its Back row.
-                game.tap('START', gap=30)
-                game.tap('UP')
-                game.tap('A', gap=60)
-                game.tap('UP')
-                game.tap('A', gap=90)
-                driver.wait_until(game, lambda state: tuple(state.map) == origin[0] and state.free)
-                if game.state.pos != origin[1]:
-                    raise RuntimeError(f'cave returned to the wrong field position: {game.state}, expected {origin}')
+            # Inside, SAVE is absent, shifting WORLD one row above its previous
+            # cursor position. The cave World menu defaults to its Back row.
+            game.tap('START', gap=30)
+            game.tap('UP')
+            game.tap('A', gap=60)
+            game.tap('UP')
+            game.tap('A', gap=90)
+            driver.wait_until(game, lambda state: tuple(state.map) == origin[0] and state.free)
+            if game.state.pos != origin[1]:
+                raise RuntimeError(f'cave returned to the wrong field position: {game.state}, expected {origin}')
         finally:
             code = game.finish()
         if code != 0:
@@ -103,7 +117,7 @@ def run(binary, seed, out, encounter=False):
         if hashlib.sha256(Path(game.save_path).read_bytes()).digest() != save_before:
             raise RuntimeError('entering/leaving the cave unexpectedly changed the disposable save file')
     if encounter:
-        print('PASS: native generated cave launched a valid visible wild encounter without writing the save')
+        print('PASS: native cave wild encounter, escape and field return without writing the save')
     else:
         print('PASS: native offline generated cave entry, walking, return and save isolation')
 
