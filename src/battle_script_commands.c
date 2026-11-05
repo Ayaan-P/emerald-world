@@ -2,6 +2,7 @@
 #ifdef PORTABLE
 #include "platform/world_coop.h"
 #include "platform/native_link.h"
+#include "platform/mega_game.h"
 #endif
 #include "battle.h"
 #include "battle_move_split.h"
@@ -4714,6 +4715,9 @@ static void Cmd_switchindataupdate(void)
     }
 
     SwitchInClearSetData();
+#ifdef PORTABLE
+    MegaGame_OnSwitchIn(gActiveBattler);
+#endif
 
     if (gBattleTypeFlags & BATTLE_TYPE_PALACE
         && gBattleMons[gActiveBattler].maxHP / 2 >= gBattleMons[gActiveBattler].hp

@@ -45,6 +45,15 @@ int main(void){
  assert(!MegaGame_CanQueue(2)); /* ordinary doubles share one trainer */
  assert(MegaGame_Apply(0));assert(gBattleMons[0].attack==152 && gBattleMons[0].ability==ABILITY_THICK_FAT);
  assert(!memcmp(before,gPlayerParty,sizeof(before)));assert(!MegaGame_CanQueue(0));
+ /* Another slot does not inherit the form; switching the original back in
+  * restores it without spending a second use or writing party data. */
+ gPlayerParty[1].species=SPECIES_GENGAR;before[1]=gPlayerParty[1];
+ gBattlerPartyIndexes[0]=1;gBattleMons[0].species=SPECIES_GENGAR;gBattleMons[0].attack=1;
+ MegaGame_OnSwitchIn(0);assert(!MegaGame_ActiveForm(0));assert(gBattleMons[0].attack==1);
+ gBattlerPartyIndexes[0]=0;gBattleMons[0].species=SPECIES_VENUSAUR;gBattleMons[0].attack=1;
+ MegaGame_OnSwitchIn(0);assert(MegaGame_ActiveForm(0)==MEGA_FORM_VENUSAUR_MEGA);
+ assert(gBattleMons[0].attack==152 && !MegaGame_CanQueue(0));
+ assert(!memcmp(before,gPlayerParty,sizeof(before)));
  MegaGame_Reset();gBattleTypeFlags=BATTLE_TYPE_MULTI;
  assert(MegaGame_Queue(0));assert(MegaGame_Queue(2));
  assert(MegaGame_Apply(0));assert(MegaGame_Apply(2));

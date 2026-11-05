@@ -106,14 +106,43 @@ void MegaGame_CancelQueue(u8 battler)
     if (battler < MAX_BATTLERS_COUNT) sQueued[battler] = FALSE;
 }
 
-bool8 MegaGame_Apply(u8 battler)
+/* Battle-party indices refer to stable underlying party slots; menu order is
+ * a separate permutation. Never identify a form by nickname or personality. */
+static bool8 MegaGame_CalculateStats(u8 battler, struct Pokemon *mon, u8 form,
+                                    struct MegaBattleStats *stats)
 {
     static const u8 ivFields[MEGA_STAT_COUNT] = {MON_DATA_ATK_IV, MON_DATA_DEF_IV, MON_DATA_SPEED_IV, MON_DATA_SPATK_IV, MON_DATA_SPDEF_IV};
     static const u8 evFields[MEGA_STAT_COUNT] = {MON_DATA_ATK_EV, MON_DATA_DEF_EV, MON_DATA_SPEED_EV, MON_DATA_SPATK_EV, MON_DATA_SPDEF_EV};
     struct MegaStatInput input = {0};
+    u8 i;
+    input.level = gBattleMons[battler].level;
+    input.nature = GetNature(mon);
+    for (i = 0; i < MEGA_STAT_COUNT; i++)
+    {
+        input.iv[i] = GetMonData(mon, ivFields[i]);
+        input.ev[i] = GetMonData(mon, evFields[i]);
+    }
+    return MegaForm_Calculate(form, &input, ModifyStatByNature, stats);
+}
+
+static void MegaGame_SetStats(u8 battler, const struct MegaBattleStats *stats, u8 form)
+{
+    /* Never write a Mega species or altered stats into either trainer's party. */
+    gBattleMons[battler].attack = stats->attack; gBattleMons[battler].defense = stats->defense;
+    gBattleMons[battler].speed = stats->speed; gBattleMons[battler].spAttack = stats->spAttack;
+    gBattleMons[battler].spDefense = stats->spDefense; gBattleMons[battler].types[0] = stats->type1;
+    gBattleMons[battler].types[1] = stats->type2; gBattleMons[battler].ability = stats->ability;
+    sActiveForm[battler] = form;
+}
+
+bool8 MegaGame_Apply(u8 battler)
+{
     struct MegaBattleStats stats;
+    struct MegaStatInput input = {0};
     struct Pokemon *mon;
     u8 owner, slot, stone, form, i;
+    static const u8 ivFields[MEGA_STAT_COUNT] = {MON_DATA_ATK_IV, MON_DATA_DEF_IV, MON_DATA_SPEED_IV, MON_DATA_SPATK_IV, MON_DATA_SPDEF_IV};
+    static const u8 evFields[MEGA_STAT_COUNT] = {MON_DATA_ATK_EV, MON_DATA_DEF_EV, MON_DATA_SPEED_EV, MON_DATA_SPATK_EV, MON_DATA_SPDEF_EV};
     if (battler >= MAX_BATTLERS_COUNT || !sQueued[battler]) return FALSE;
     sQueued[battler] = FALSE;
     if (!MegaGame_CanQueue(battler) || !MegaGame_Identity(battler, &owner, &slot, &mon)) return FALSE;
@@ -128,13 +157,26 @@ bool8 MegaGame_Apply(u8 battler)
     form = MegaBattle_Transform(&sMega, owner, slot, gBattleMons[battler].species,
         stone, TRUE, gBattleMons[battler].hp != 0, &input, ModifyStatByNature, &stats);
     if (!form) return FALSE;
-    /* Never write a Mega species or altered stats into either trainer's party. */
-    gBattleMons[battler].attack = stats.attack; gBattleMons[battler].defense = stats.defense;
-    gBattleMons[battler].speed = stats.speed; gBattleMons[battler].spAttack = stats.spAttack;
-    gBattleMons[battler].spDefense = stats.spDefense; gBattleMons[battler].types[0] = stats.type1;
-    gBattleMons[battler].types[1] = stats.type2; gBattleMons[battler].ability = stats.ability;
-    sActiveForm[battler] = form;
+    MegaGame_SetStats(battler, &stats, form);
     return TRUE;
+}
+
+/* Called after new switch-in data has replaced the outgoing battle mon. */
+void MegaGame_OnSwitchIn(u8 battler)
+{
+    struct Pokemon *mon;
+    struct MegaBattleStats stats;
+    const struct MegaFormData *data;
+    u8 owner, slot, form;
+    if (battler >= MAX_BATTLERS_COUNT) return;
+    sQueued[battler] = sSelected[battler] = sActiveForm[battler] = 0;
+    if (!MEGA_FEATURE_READY || !MegaGame_Identity(battler, &owner, &slot, &mon)) return;
+    form = MegaBattle_GetForm(&sMega, owner, slot);
+    data = MegaForm_Get(form);
+    if (!data || data->baseSpecies != gBattleMons[battler].species
+     || data->baseSpecies != GetMonData(mon, MON_DATA_SPECIES)
+     || !MegaGame_CalculateStats(battler, mon, form, &stats)) return;
+    MegaGame_SetStats(battler, &stats, form);
 }
 
 u8 MegaGame_ActiveForm(u8 battler)
