@@ -32,7 +32,7 @@
 /* One field window, not another Start-menu row or another input consumer.
  * Lists are rebuilt from live state, but focus is an action identity. */
 enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, RALLY, DISPATCH };
-enum Action { FRIENDS, STORY, DEXNAV, BACK, MODE, SCOPE, REQUEST, READY,
+enum Action { FRIENDS, STORY, DEXNAV, PARTY_EXP, BACK, MODE, SCOPE, REQUEST, READY,
     LATER, CANCEL, GO, FINISH, RETURN, STAY, ACTION_COUNT };
 enum Page { CONTROLS, ROSTER, STATUS, PAGE_COUNT };
 enum { WORLD_MENU_WIDTH = 28, WORLD_MENU_HEIGHT = 18, LINE_HEIGHT = 12,
@@ -156,6 +156,7 @@ static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 onlin
         AddRow(rows, &n, STORY, "Story rally", NULL);
         AddRow(rows, &n, DEXNAV, "DexNav", DexNavNative_Available() ? NULL :
             "DexNav needs a Pokedex and conscious party outside restricted or link areas.");
+        AddRow(rows, &n, PARTY_EXP, FlagGet(FLAG_PARTY_EXP_SHARE) ? "Party EXP: ON" : "Party EXP: OFF", NULL);
         AddRow(rows, &n, BACK, "Back", NULL);
         return n;
     }
@@ -285,6 +286,7 @@ static void Draw(const struct Row *rows, unsigned count, unsigned selected,
             sMenu.focus == FINISH ? "Ends the visit. Only the encounter owner earns boss credit." :
             sMenu.focus == STAY ? "Keep this position and discard your pre-rally return point." :
             sMenu.focus == STORY ? "Roxanne visit for up to four trainers. Normal two-player battles. Boss credit stays personal." :
+            sMenu.focus == PARTY_EXP ? "Participants split EXP. Healthy bench gets half each. Save to keep this setting. NPC partner battles use vanilla rules." :
             "A choose. B back. Check status for local requirements.");
     }
     else if (sMenu.page == ROSTER)
@@ -483,6 +485,12 @@ void WorldMenu_Update(void)
                 sMenu.dirty = TRUE;
                 return;
             }
+            else if (sMenu.focus == PARTY_EXP)
+            {
+                if (FlagGet(FLAG_PARTY_EXP_SHARE)) FlagClear(FLAG_PARTY_EXP_SHARE);
+                else FlagSet(FLAG_PARTY_EXP_SHARE);
+                sMenu.notice = "Party EXP changed. Save the game to keep this setting.";
+            }
             else if (sMenu.focus == MODE) WorldRally_SetAutoJoin(!WorldRally_GetAutoJoin());
             else if (sMenu.focus == SCOPE) sMenu.scope ^= 1;
             else { Queue(sMenu.focus, r.id); return; }
@@ -493,3 +501,4 @@ void WorldMenu_Update(void)
     Draw(rows, count, selected, &r, online);
 }
 #endif
+
