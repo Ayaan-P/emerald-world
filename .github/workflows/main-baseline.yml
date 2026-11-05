@@ -72,4 +72,6 @@ jobs:
         run: |
           grep -R -- '-DWORLD_EXTENDED_OBJECTS=1' build/*/build_flags.txt
           grep -R -- '-DWORLD_EXTENDED_SPRITES=1' build/*/build_flags.txt
+      - name: Gate-on standalone headless frame and save smoke
+        run: python3 test/headless/smoke.py ./pokeemerald64 --out build/extended-smoke
       # Build only: no generated binary, ROM, save or trainer data is uploaded.

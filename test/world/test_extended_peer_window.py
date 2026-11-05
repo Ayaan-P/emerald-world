@@ -1,6 +1,6 @@
 """Exercise authenticated relevance-window negotiation without sockets."""
 from pathlib import Path
-import subprocess,tempfile,unittest
+import ast,subprocess,tempfile,unittest
 from test_save_isolation import function
 from world.server import WorldServer
 
@@ -57,6 +57,113 @@ int main(void){
 '''
   with tempfile.TemporaryDirectory() as d:
    p=Path(d);(p/'t.c').write_text(code)
+   subprocess.run(['cc','-std=gnu99','-Wall','-Werror',str(p/'t.c'),'-o',str(p/'t')],check=True)
+   subprocess.run([str(p/'t')],check=True)
+
+ def test_native_parser_commits_sixteen_and_rejects_seventeenth(self):
+  bridge=(ROOT/'src/platform/world_bridge.c').read_text()
+  decl=bridge[bridge.index('#define WB_PEERS'):bridge.index('static bool8 Identifier')]
+  code=r"""
+#define _POSIX_C_SOURCE 200809L
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+#include <limits.h>
+#include "platform/world_rally.h"
+#define FALSE 0
+#define TRUE 1
+#define ARRAY_COUNT(a) (sizeof(a)/sizeof((a)[0]))
+static bool8 MapCoords(unsigned a,unsigned b,unsigned c,unsigned d){return a<2 && b<2 && c<64 && d<64;}
+static bool8 WorldCatalog_Metatile(unsigned a,unsigned b,unsigned c){(void)a;(void)b;return c<1024;}
+"""+decl+''.join(function(bridge,n) for n in ('Identifier','Decimal','ObjectText','Line'))+r"""
+static int feed(const char *line){char b[200];strcpy(b,line);return Line(b);}
+int main(void){
+ strcpy(sWorld.trainer,"alice");sWorld.connected=1;
+ assert(feed("BEGIN 1"));
+ for(int i=0;i<16;i++){char b[100];snprintf(b,sizeof(b),"PEER P%02d 1 1 %d 2 1 7 1",i,i);assert(feed(b));}
+ assert(feed("END"));assert(sWorld.live.peerCount==16);
+ assert(feed("BEGIN 2"));
+ for(int i=0;i<16;i++){char b[100];snprintf(b,sizeof(b),"PEER P%02d 1 1 %d 2 1 7 1",i,i);assert(feed(b));}
+ assert(!feed("PEER P16 1 1 16 2 1 7 1"));assert(sWorld.live.peerCount==16);
+ return 0;
+}
+"""
+  code='#include <assert.h>\n'+code
+  with tempfile.TemporaryDirectory() as d:
+   p=Path(d);(p/'t.c').write_text(code)
+   subprocess.run(['cc','-std=gnu99','-Wall','-Werror','-DPORTABLE','-DWORLD_EXTENDED_OBJECTS=1','-iquote',str(ROOT/'include'),str(p/'t.c'),'-o',str(p/'t')],check=True)
+   subprocess.run([str(p/'t')],check=True)
+
+ def test_real_reconciler_selects_sixteen_with_full_native_pool(self):
+  src=(ROOT/'src/platform/world_bridge.c').read_text()
+  code=r"""
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+typedef unsigned char u8; typedef int bool8;
+#define TRUE 1
+#define FALSE 0
+#define WB_PEERS 16
+#define WB_OBJECTS 8
+#define WB_REMOTES 24
+#define OBJECT_EVENTS_COUNT 32
+#define MAX_SPRITES 96
+#define WB_LOCALID 200
+#define WB_MARKER 0x5742
+#define MAP_OFFSET 7
+struct Coord {int x,y;};
+struct ObjectEvent {int active,isPlayer,localId,mapGroup,mapNum,spriteId;struct Coord currentCoords;};
+struct Sprite {int inUse,data[8];};
+struct Remote {char id[26];unsigned object,sprite,group,num;};
+struct Peer {char id[26];unsigned group,num,x,y;};
+struct ObjectEvent gObjectEvents[OBJECT_EVENTS_COUNT];struct Sprite gSprites[MAX_SPRITES];
+struct {struct Remote remotes[WB_REMOTES];struct {unsigned peerCount;struct Peer peers[WB_REMOTES];}live; struct Peer field;unsigned group,num,visiblePeers;} sWorld;
+static bool8 GridCoords(unsigned x,unsigned y){return x<64 && y<64;}
+"""+''.join(function(src,n) for n in ('Owned','NativeNpcAt','SelectPeers'))+r"""
+int main(void){
+ unsigned order[WB_REMOTES];sWorld.group=sWorld.num=1;sWorld.visiblePeers=16;
+ for(int i=0;i<16;i++){gObjectEvents[i].active=1;gObjectEvents[i].currentCoords.x=100+i;gObjectEvents[i].currentCoords.y=100;}
+ sWorld.live.peerCount=16;
+ for(int i=0;i<16;i++){struct Peer *p=&sWorld.live.peers[i];snprintf(p->id,sizeof(p->id),"P%d",i);p->group=p->num=1;p->x=i+1;p->y=2;}
+ assert(SelectPeers(order)==16);for(int i=0;i<16;i++)assert(gObjectEvents[i].active);
+ gObjectEvents[16].active=1;gObjectEvents[16].currentCoords.x=100;gObjectEvents[16].currentCoords.y=100;
+ assert(SelectPeers(order)==15);return 0;
+}
+"""
+  with tempfile.TemporaryDirectory() as d:
+   p=Path(d);(p/'t.c').write_text(code)
+   subprocess.run(['cc','-std=gnu99','-Wall','-Werror',str(p/'t.c'),'-o',str(p/'t')],check=True)
+   subprocess.run([str(p/'t')],check=True)
+
+ def test_actual_reconciler_keeps_sixteen_npcs_and_spawns_sixteen_peers(self):
+  source=(ROOT/'src/platform/world_bridge.c').read_text()
+  tree=ast.parse((ROOT/'test/world/test_presence_reconcile.py').read_text())
+  literals=[node.value.value for node in ast.walk(tree) if isinstance(node,ast.Assign)
+            and any(isinstance(t,ast.Name) and t.id=='fixture' for t in node.targets)
+            and isinstance(node.value,ast.Constant) and isinstance(node.value.value,str)]
+  self.assertEqual(len(literals),1)
+  fixture=literals[0].replace('#define WB_PEERS 8','#define WB_PEERS 16').replace('#define OBJECT_EVENTS_COUNT 16','#define OBJECT_EVENTS_COUNT 32').replace('#define MAX_SPRITES 64','#define MAX_SPRITES 96').replace('#define WB_LOCALID 224','#define WB_LOCALID 200').replace('SpawnSpecialObjectEventParameterized','SpawnWorldObjectEventParameterized')
+  fixture='#define WORLD_EXTENDED_OBJECTS 1\n'+fixture
+  fixture+=''.join(function(source,n) for n in ('Owned','RemoveRemote','NativeNpcAt','SelectPeers','SyncEngine'))
+  fixture+=r"""
+#include <assert.h>
+int main(void){
+ sWorld.tilesLive=TRUE;sWorld.visiblePeers=16;
+ for(int i=0;i<NUM_OBJ_EVENT_GFX;i++)graphics[i].paletteSlot=PALSLOT_NPC_1;
+ for(int i=0;i<16;i++){gObjectEvents[i].active=TRUE;gObjectEvents[i].localId=i+1;gObjectEvents[i].currentCoords=(struct Coords){100+i,100};}
+ sWorld.live.peerCount=16;
+ for(int i=0;i<16;i++){struct Peer *p=&sWorld.live.peers[i];snprintf(p->id,sizeof(p->id),"P%d",i);p->x=i+1;p->y=2;p->facing=1;p->gfx=7;p->ready=1;}
+ SyncEngine();assert(spawned==16);
+ for(int i=0;i<16;i++){assert(gObjectEvents[i].active);assert(Owned(i));assert(sWorld.remotes[i].object>=16);}
+ sWorld.live.peerCount=0;SyncEngine();assert(removed==16);
+ for(int i=0;i<16;i++)assert(gObjectEvents[i].active);
+ return 0;
+}
+"""
+  with tempfile.TemporaryDirectory() as d:
+   p=Path(d);(p/'t.c').write_text(fixture)
    subprocess.run(['cc','-std=gnu99','-Wall','-Werror',str(p/'t.c'),'-o',str(p/'t')],check=True)
    subprocess.run([str(p/'t')],check=True)
 
