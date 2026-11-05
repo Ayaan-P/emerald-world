@@ -1028,35 +1028,14 @@ static void ItemUseInBattle_ShowPartyMenu(u8 taskId)
     }
 }
 
-#ifdef PORTABLE
-static void Task_ConfirmCoopMedicine(u8 taskId)
-{
-    if (JOY_NEW(A_BUTTON))
-    {
-        if (WorldCoop_CanUseMedicine(gSpecialVar_ItemId))
-            Task_FadeAndCloseBagMenu(taskId);
-        else
-            CloseItemMessage(taskId);
-    }
-    else if (JOY_NEW(B_BUTTON))
-        CloseItemMessage(taskId);
-}
-#endif
-
 void ItemUseInBattle_Medicine(u8 taskId)
 {
 #ifdef PORTABLE
     if (WorldCoop_IsBattle() && WorldCoop_IsMedicine(gSpecialVar_ItemId))
-    {
-        static const u8 sText_ActiveMedicine[] = _("Use on your active POKéMON?\nA: Yes   B: No");
-        if (!WorldCoop_CanUseMedicine(gSpecialVar_ItemId))
-            DisplayItemMessage(taskId, FONT_NORMAL, gText_WontHaveEffect, CloseItemMessage);
-        else
-            DisplayItemMessage(taskId, FONT_NORMAL, sText_ActiveMedicine, Task_ConfirmCoopMedicine);
-        return;
-    }
+        gItemUseCB = ItemUseCB_WorldCoopMedicine;
+    else
 #endif
-    gItemUseCB = ItemUseCB_Medicine;
+        gItemUseCB = ItemUseCB_Medicine;
     ItemUseInBattle_ShowPartyMenu(taskId);
 }
 

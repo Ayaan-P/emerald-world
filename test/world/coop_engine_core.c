@@ -127,6 +127,9 @@ bool8 CheckBagHasItem(u16 item, u16 count) { assert(!"unexpected catch bag query
 bool8 RemoveBagItem(u16 item, u16 count) { assert(!"unexpected catch bag removal"); return FALSE; }
 bool8 AddBagItem(u16 item, u16 count) { assert(!"unexpected potion refund"); return FALSE; }
 void BtlController_EmitSetMonData(u8 id,u8 request,u8 mask,u8 size,void *data) { assert(!"unexpected medicine update"); }
+#ifndef COOP_TEST_CUSTOM_GETMON
+void BtlController_EmitGetMonData(u8 id,u8 request,u8 mask) { assert(!"unexpected reserve query"); }
+#endif
 u16 SpeciesToNationalPokedexNum(u16 species) { assert(!"unexpected catch dex query"); return 0; }
 s8 GetSetPokedexFlag(u16 species, u8 operation) { assert(!"unexpected catch dex mutation"); return 0; }
 void SetMonData(struct Pokemon *mon, s32 field, const void *data) { assert(!"unexpected catch setter"); }

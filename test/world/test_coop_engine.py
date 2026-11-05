@@ -27,6 +27,7 @@ class CoopEngineTests(unittest.TestCase):
         start = source.index('static void BattleIntroGetMonsData(void)\n{')
         body = source[start:source.index('\n}', start) + 2]
         code = r'''
+#define COOP_TEST_CUSTOM_GETMON
 #define main CoreMain
 #include "test/world/coop_engine_core.c"
 #undef main

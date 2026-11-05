@@ -158,6 +158,12 @@ BattleScript_WorldCoopMedicineStatus::
 	updatestatusicon BS_ATTACKER
 	moveendcase MOVEEND_MIRROR_MOVE
 	finishaction
+BattleScript_WorldCoopMedicineReserve::
+	playse SE_USE_ITEM
+	printstring STRINGID_COOP_MEDICINE_RESERVE
+	waitmessage B_WAIT_TIME_LONG
+	moveendcase MOVEEND_MIRROR_MOVE
+	finishaction
 .endif
 
 BattleScript_PlayerUsesItem::

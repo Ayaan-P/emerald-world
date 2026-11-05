@@ -398,6 +398,21 @@ static void WorldCoop_ObserveController(u8 battler, const u8 *data) {
  assert(aborted==1 && !gBattleBufferB[1][0] && !gTasks[0].tCurrentBlock_Start);
  ''')
 
+    def test_reserve_query_does_not_replace_public_active_view(self):
+        self.run_c(r'''
+ coopMode=TRUE;gBattleTypeFlags |= BATTLE_TYPE_LINK | BATTLE_TYPE_IS_MASTER;
+ struct BattlePokemon mon={0};mon.species=1;mon.level=10;mon.maxHP=30;mon.hp=0;
+ mon.attack=mon.defense=mon.speed=mon.spAttack=mon.spDefense=20;
+ u8 *p=gLinkBattleRecvBuffer;p[0]=B_COMM_TO_ENGINE;p[1]=0;
+ unsigned n=4+sizeof(mon);n=n-n%4+4;p[4]=n;
+ p[8]=CONTROLLER_DATATRANSFER;p[10]=sizeof(mon);memcpy(p+12,&mon,sizeof(mon));
+ sNativeBattleSources[0]=0;sNativeBattleRequestPending[0]=TRUE;
+ sNativeBattleRequest[0][0]=CONTROLLER_GETMONDATA;sNativeBattleRequest[0][1]=REQUEST_ALL_BATTLE;
+ sNativeBattleRequest[0][2]=1<<1;gBattlerPartyIndexes[0]=0;gTasks[0].tCurrentBlock_End=n+8;
+ Task_HandleCopyReceivedLinkBuffersData(0);
+ assert(!aborted && !observedMon && gBattleBufferB[0][0]==CONTROLLER_DATATRANSFER);
+''')
+
     def test_coop_switch_reply_cannot_select_partners_mon(self):
         for party_slot in [0, 3]:
             with self.subTest(party_slot=party_slot):

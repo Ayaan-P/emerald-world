@@ -4474,6 +4474,26 @@ static bool8 ExecuteTableBasedItemEffect_(u8 partyMonIndex, u16 item, u8 monMove
         return ExecuteTableBasedItemEffect(&gPlayerParty[partyMonIndex], item, partyMonIndex, monMoveIndex);
 }
 
+#ifdef PORTABLE
+void ItemUseCB_WorldCoopMedicine(u8 taskId, TaskFunc task)
+{
+    u8 slot = GetPartyIdFromBattleSlot(gPartyMenu.slotId);
+    struct Pokemon *mon = &gPlayerParty[gPartyMenu.slotId];
+    if (!WorldCoop_SelectMedicineTarget(gSpecialVar_ItemId, slot, mon))
+    {
+        gPartyMenuUseExitCallback = FALSE;
+        PlaySE(SE_SELECT);
+        DisplayPartyMenuMessage(gText_WontHaveEffect, TRUE);
+        ScheduleBgCopyTilemapToVram(2);
+        gTasks[taskId].func = task;
+        return;
+    }
+    /* Choose now; the owner consumes only when this action executes. */
+    gPartyMenuUseExitCallback = TRUE;
+    Task_ClosePartyMenu(taskId);
+}
+#endif
+
 void ItemUseCB_Medicine(u8 taskId, TaskFunc task)
 {
     u16 hp = 0;

@@ -1,0 +1,11 @@
+# Co-op medicine for staged reserves: focused candidate
+
+Stacked on the active-medicine candidate, this adds the native party-menu target selector for the acting trainer's own staged Pokémon in shared wild and trainer battles. It also adds Revive and Max Revive for a fainted staged reserve. Co-op combat still stages at most three Pokémon per trainer; this does not add access to the other private party slots during battle. The other trainer's staged Pokémon cannot be targeted.
+
+The selection maps the visible party-menu slot back to the trainer's stable staged slot and checks their own bag. It does not consume the item. The authoritative engine requests only the selected reserve's battle data from its owner, validates the resulting medicine effect, and sends an owner-scoped, session-bound consumption command. HP and status updates are then applied through the normal controllers, with acknowledgements between writes. Revives use the native half-HP or full-HP amounts. The active battle Pokémon is not rewritten when a reserve is treated. Existing owner-specific abort refunds remain in force.
+
+The reserve data request does not replace the public active-Pokémon observation. The request concerns the existing staged party, not the trainer's unstaged private slots. The battle message names the chosen Pokémon using the existing battle text buffer.
+
+Co-op exchange version increases from 6 to 7 because target slot and item replies change. Both clients must use the same updated candidate; older builds are rejected during exchange. This draft uses battle string ID 382 and places a safe placeholder at 381, which is reserved by the separate Mega Evolution draft. Resolve the shared string-table/count edits when combining those drafts. Do not merge this before its active-medicine dependency.
+
+Focused tests compile production selection, ownership, target-action and refund code against disposable stubs for both owners, including a fainted reserve, a combined HP/status update with controller acknowledgements, wrong-owner rejection and active-mon preservation. Existing co-op and payload regressions also run. This is not a full native build, graphical party-menu test, real two-client battle, disconnect/WAN acceptance or save/reload proof. Use disposable profiles and run the combined candidate before release.
