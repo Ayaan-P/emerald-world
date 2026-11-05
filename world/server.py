@@ -54,7 +54,7 @@ class MeetingUnavailable(ValueError):
 class WorldServer:
     def __init__(self, socket_path, state_dir, mechanics=None, admin_path=None, *,
                  max_players=32, max_controls=None, connection_headroom=8, cave_template=None,
-                 persist_generated_cave=False):
+                 persist_generated_cave=False, archive_generated_areas=False):
         from .build_catalog import catalog_maps
         from .shared_cave import SharedCave
         entries = [(group, num) for (group, num), item in catalog_maps().items()
@@ -68,6 +68,9 @@ class WorldServer:
         if type(persist_generated_cave) is not bool:
             raise ValueError('persist_generated_cave must be a bool')
         self.persist_generated_cave = persist_generated_cave
+        if type(archive_generated_areas) is not bool or (archive_generated_areas and not persist_generated_cave):
+            raise ValueError('generated area archive requires persistent generated caves')
+        self.archive_generated_areas = archive_generated_areas
         self.shared_cave = SharedCave(cave_template) if cave_template is not None else None
         if self.shared_cave and (self.wilds_map if self.shared_cave.version == 6 else self.cave_map) is None:
             raise ValueError('generated map missing from catalog')
@@ -143,6 +146,12 @@ class WorldServer:
                 self.shared_cave = SharedCave(row[0])
                 if (self.wilds_map if self.shared_cave.version == 6 else self.cave_map) is None:
                     raise ValueError('generated map missing from catalog')
+            if self.archive_generated_areas:
+                self.db.execute('CREATE TABLE IF NOT EXISTS generated_area_archive (identity TEXT PRIMARY KEY, label TEXT NOT NULL, kind TEXT NOT NULL, template BLOB NOT NULL, created INTEGER NOT NULL)')
+                if row is not None:
+                    kind = 'wilds' if self.shared_cave.version == 6 else 'cave'
+                    self.db.execute('INSERT OR IGNORE INTO generated_area_archive (identity,label,kind,template,created) VALUES (?,?,?,?,?)',
+                                    (self.shared_cave.identity, 'Outdoor area' if kind == 'wilds' else 'Cave', kind, row[0], int(time.time())))
         self.db.commit()
         os.chmod(self.root / 'world.sqlite3', 0o600)
         from .host_controls import HostControls
@@ -866,23 +875,33 @@ class WorldServer:
                 self._queue(conn, json.dumps(future.result(), ensure_ascii=True) + '\n')
         self.control_jobs = remaining
 
-    def _persist_cave(self, blob):
+    def _persist_cave(self, blob, *, label=None):
         if not self.persist_generated_cave:
             return
         try:
             with self.db:
                 self.db.execute('INSERT OR REPLACE INTO generated_cave (singleton, template) VALUES (1, ?)', (blob,))
+                if self.archive_generated_areas:
+                    identity = hashlib.sha256(blob).hexdigest()
+                    kind = 'wilds' if blob[:8] == b'EWGMAP06' else 'cave'
+                    display = label if label is not None else ('Outdoor area' if kind == 'wilds' else 'Cave')
+                    self.db.execute('INSERT OR IGNORE INTO generated_area_archive (identity,label,kind,template,created) VALUES (?,?,?,?,?)',
+                                    (identity, display, kind, blob, int(time.time())))
+                    if label is not None:
+                        self.db.execute('UPDATE generated_area_archive SET label=? WHERE identity=?', (label, identity))
         except sqlite3.Error:
             raise ValueError('generated cave could not be persisted') from None
 
-    def _replace_cave(self, blob):
+    def _replace_cave(self, blob, *, label=None):
         from .shared_cave import SharedCave
         candidate = SharedCave(blob)  # validate completely before mutating anything
+        if label is not None and (type(label) is not str or not label or len(label) > 80 or any(ord(c) < 32 or ord(c) == 127 for c in label)):
+            raise ValueError('invalid generated area label')
         with self.lock:
             if (self.wilds_map if candidate.version == 6 else self.cave_map) is None:
                 raise ValueError('generated map missing from catalog')
             if self.shared_cave and candidate.identity == self.shared_cave.identity:
-                self._persist_cave(blob)
+                self._persist_cave(blob, label=label)
                 return candidate.identity
             peers = [peer for peer in self.peers.values() if not peer.get('closing')]
             if any(peer.get('in_generated_cave') or
@@ -894,7 +913,7 @@ class WorldServer:
             if any(len(peer['out']) + len(message) > MAX_QUEUE for peer in recipients):
                 raise ValueError('generated cave update is busy')
             old_id = self.shared_cave.identity if self.shared_cave else None
-            self._persist_cave(blob)
+            self._persist_cave(blob, label=label)
             self.shared_cave = candidate
             for peer in recipients:
                 if old_id:
@@ -902,6 +921,24 @@ class WorldServer:
                 peer['cave_offer'] = peer['cave_ack'] = None
                 self._queue(peer, message)
             return candidate.identity
+
+    def list_generated_areas(self):
+        if not self.archive_generated_areas:
+            raise ValueError('generated area archive is not enabled')
+        with self.lock:
+            rows = self.db.execute('SELECT identity,label,kind,created FROM generated_area_archive ORDER BY created DESC, identity').fetchall()
+            active = self.shared_cave.identity if self.shared_cave else None
+            return [dict(identity=i, label=label, kind=kind, created=created, active=i == active)
+                    for i, label, kind, created in rows]
+
+    def activate_generated_area(self, identity):
+        if not self.archive_generated_areas or type(identity) is not str or not re.fullmatch(r'[0-9a-f]{64}', identity):
+            raise ValueError('invalid generated area')
+        with self.lock:
+            row = self.db.execute('SELECT template FROM generated_area_archive WHERE identity=?', (identity,)).fetchone()
+            if row is None or type(row[0]) is not bytes or hashlib.sha256(row[0]).hexdigest() != identity:
+                raise ValueError('generated area unavailable')
+            return self._replace_cave(row[0])
 
     def _admin_line(self, conn, raw):
         conn['closing'] = True

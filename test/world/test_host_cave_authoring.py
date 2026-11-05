@@ -27,7 +27,7 @@ class HostCaveAuthoring(unittest.TestCase):
         with patch('world.author_cave.author',return_value=(self.proposal,self.blob)) as author:
             self.assertEqual(self.session.author_shared_cave('an icy cave'),'id')
             author.assert_called_once_with('an icy cave',large=True,custom_wildlife=True)
-            self.server._replace_cave.assert_called_once_with(self.blob)
+            self.server._replace_cave.assert_called_once_with(self.blob,label='an icy cave')
             self.assertIn('host session',self.session.status)
 
     def test_actual_in_memory_owner_authority_installs_generated_map(self):
@@ -69,6 +69,27 @@ class HostCaveAuthoring(unittest.TestCase):
         with patch('world.author_cave.author',return_value=(self.proposal,self.blob)):
             with self.assertRaises(SessionError) as error:self.session.author_shared_cave('cave')
         self.assertNotIn('occupied',str(error.exception).lower())
+
+    def test_queued_activation_rejects_changed_host(self):
+        old=self.session.server;state=self.session.state;self.session.server=FakeServer()
+        with self.assertRaises(SessionError):
+            self.session.activate_generated_area('a'*64,expected_server=old,expected_state=state)
+
+    def test_ui_saved_area_confirmation_and_submission(self):
+        app=object.__new__(DesktopApp);app.pending=None;app.closing=False;app.session=self.session;app.window=object()
+        app.message=Mock();app.executor=Mock();app._set_busy=Mock();identity='a'*64
+        app.generated_area_ids={'islands ['+identity+']':identity};app.generated_area_owner=(self.session.server,self.session.state);app.values=Mock(return_value={'generated_area':'islands ['+identity+']'})
+        fake_tk=types.ModuleType('tkinter');fake_tk.messagebox=types.SimpleNamespace(askyesno=Mock(return_value=False))
+        with patch.dict('sys.modules',{'tkinter':fake_tk}):
+            app.generated_area_owner=(object(),self.session.state)
+            app.submit(app.activate_generated_area);app.executor.submit.assert_not_called();fake_tk.messagebox.askyesno.assert_not_called()
+            app.generated_area_owner=(self.session.server,self.session.state)
+            app.submit(app.activate_generated_area);app.executor.submit.assert_not_called()
+            fake_tk.messagebox.askyesno.return_value=True;app.submit(app.activate_generated_area)
+            app.executor.submit.assert_called_once_with(self.session.activate_generated_area,identity,expected_server=self.session.server,expected_state=self.session.state)
+            self.assertEqual(app.pending_kind,'activate_generated_area')
+            app.pending=None;app.executor.submit.reset_mock();app.submit(app.refresh_generated_areas)
+            app.executor.submit.assert_called_once_with(self.session.list_generated_areas)
 
     def test_ui_confirmation_and_background_submission(self):
         app=object.__new__(DesktopApp);app.pending=None;app.closing=False;app.session=self.session;app.window=object()

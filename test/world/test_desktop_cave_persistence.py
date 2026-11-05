@@ -24,7 +24,7 @@ class DesktopCavePersistence(unittest.TestCase):
             with patch.object(session,'_world',return_value=path),patch.object(session,'worlds',return_value=[{'path':str(path)}]), \
                  patch('world.world_library.WorldActivityLock',side_effect=lambda *_:FakeLock()), \
                  patch('world.server.WorldServer',MemoryAuthority),patch.object(MemoryAuthority,'start',return_value=None):
-                session.host('world');server=session.server;self.assertTrue(server.persist_generated_cave)
+                session.host('world');server=session.server;self.assertTrue(server.persist_generated_cave);self.assertTrue(server.archive_generated_areas)
                 trainer=server.create_identity('Alice');save=Path(trainer['save_path']);save.write_bytes(b'private trainer save')
                 with patch('world.author_cave.author',return_value=(proposal,blob)):
                     identity=session.author_shared_cave('icy cave')
@@ -33,5 +33,6 @@ class DesktopCavePersistence(unittest.TestCase):
                 session.host('world')
                 try:
                     self.assertEqual(session.server.shared_cave.identity,identity)
+                    self.assertEqual(session.server.list_generated_areas()[0]['identity'],identity)
                     self.assertEqual(save.read_bytes(),b'private trainer save')
                 finally:session.server.close()
