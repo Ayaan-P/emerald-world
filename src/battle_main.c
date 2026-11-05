@@ -157,6 +157,8 @@ EWRAM_DATA u8 gBattleTextBuff3[TEXT_BUFF_ARRAY_COUNT] = {0};
 // it will instead overflow into useful data.
 #ifdef PORTABLE
 EWRAM_DATA static bool8 sMegaTurnHandled = FALSE;
+EWRAM_DATA static u8 sMegaTurnIndex = 0;
+EWRAM_DATA static u8 sMegaAbilityPhase = 0;
 #endif
 EWRAM_DATA static u32 sFlickerArray[25] = {0};
 EWRAM_DATA u32 gBattleTypeFlags = 0;
@@ -5071,6 +5073,7 @@ static void CheckFocusPunch_ClearVarsBeforeTurnStarts(void)
     TryClearRageStatuses();
 #ifdef PORTABLE
     sMegaTurnHandled = FALSE;
+    sMegaTurnIndex = sMegaAbilityPhase = 0;
 #endif
     gCurrentTurnActionNumber = 0;
     gCurrentActionFuncId = gActionsByTurnOrder[gCurrentTurnActionNumber];
@@ -5090,19 +5093,45 @@ static void RunTurnActionsFunctions(void)
 #ifdef PORTABLE
     if (MEGA_FEATURE_READY && !sMegaTurnHandled && gCurrentActionFuncId == B_ACTION_USE_MOVE)
     {
-        u8 i;
-        sMegaTurnHandled = TRUE;
-        // The selection was queued after move validation. Switches and items
-        // precede moves; apply each surviving queued form before the first move.
-        for (i = 0; i < gBattlersCount; i++)
+        /* Ability scripts run asynchronously and return here through the
+         * normal callback stack. Do not start a second event over a pending
+         * animation/script or proceed to a move until the sequence drains. */
+        while (sMegaTurnIndex < gBattlersCount)
         {
-            u8 battler = gBattlerByTurnOrder[i];
-            if (gChosenActionByBattler[battler] == B_ACTION_USE_MOVE
-             && !gProtectStructs[battler].noValidMoves)
-                MegaGame_Apply(battler);
-            else
-                MegaGame_CancelQueue(battler);
+            u8 battler = gBattlerByTurnOrder[sMegaTurnIndex];
+            if (sMegaAbilityPhase == 0)
+            {
+                u8 oldAbility = gBattleMons[battler].ability;
+                bool8 applied = FALSE;
+                if (gChosenActionByBattler[battler] == B_ACTION_USE_MOVE
+                 && !gProtectStructs[battler].noValidMoves)
+                    applied = MegaGame_Apply(battler);
+                else
+                    MegaGame_CancelQueue(battler);
+                if (!applied || oldAbility == gBattleMons[battler].ability)
+                {
+                    sMegaTurnIndex++;
+                    continue;
+                }
+                sMegaAbilityPhase = 1;
+                if (AbilityBattleEffects(ABILITYEFFECT_ON_SWITCHIN, battler, 0, 0, 0))
+                    return;
+            }
+            if (sMegaAbilityPhase == 1)
+            {
+                if (AbilityBattleEffects(ABILITYEFFECT_INTIMIDATE1, 0, 0, 0, 0))
+                    return;
+                sMegaAbilityPhase = 2;
+            }
+            if (sMegaAbilityPhase == 2)
+            {
+                if (AbilityBattleEffects(ABILITYEFFECT_TRACE, 0, 0, 0, 0))
+                    return;
+                sMegaAbilityPhase = 0;
+                sMegaTurnIndex++;
+            }
         }
+        sMegaTurnHandled = TRUE;
     }
 #endif
 
