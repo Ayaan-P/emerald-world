@@ -1,5 +1,6 @@
 """Compile the native generated-map implementation with disposable engine stubs."""
 from pathlib import Path
+from test_save_isolation import function
 import json, subprocess, tempfile, unittest
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -32,6 +33,8 @@ extern struct { int mapType; struct MapLayout *mapLayout; } gMapHeader;
 '''
   harness = r'''
 #include <assert.h>
+#include <stdio.h>
+#include <stdbool.h>
 #include <string.h>
 #include "global.h"
 #include "platform/generated_map.h"
@@ -48,7 +51,10 @@ void SetWarpDestination(s8 g,s8 n,s8 w,s8 x,s8 y){destination=(struct WarpData){
 void SetDynamicWarpWithCoords(int unused,s8 g,s8 n,s8 w,s8 x,s8 y){(void)unused;save.dynamicWarp=(struct WarpData){g,n,w,x,y};}
 void StoreInitialPlayerAvatarState(void){}
 void DoWarp(void){warps++;}
-int main(void){
+FILE *NativeFile_Open(const char *p,const char *m){return fopen(p,m);}
+/* LOADER_BODY */
+int main(int argc, char **argv){
+ assert(argc==2);
  u16 seen[961], queue[961], first[961]; struct MapLayout base={19,26,0,0,0,0};
  for(unsigned seed=1;seed<=100;seed++){
   save.location=(struct WarpData){3,4,0,8,9};save.dynamicWarp=(struct WarpData){7,8,9,10,11};save.pos.x=2;save.pos.y=3;gMain.vblankCounter1=seed;gMapHeader.mapType=1;gMapHeader.mapLayout=&base;playerX=15;playerY=16;
@@ -91,8 +97,18 @@ int main(void){
  const struct MapLayout *templated=GeneratedMap_ResolveLayout(&base);
  for(int i=0;i<961;i++)assert((templated->map[i]==0x3333 || templated->map[i]==0x3323)==(proposal[i]=='.'));
  assert(GeneratedMap_Leave());save.location=destination;GeneratedMap_ResolveLayout(&base);
+ /* The actual SDL loader stages a file from the Python exporter into the
+  * actual native map generator, with no emulator or rendering involved. */
+ assert(LoadGeneratedMapTemplate(argv[1]));
+ assert(GeneratedMap_Enter());save.location=destination;
+ templated=GeneratedMap_ResolveLayout(&base);
+ for(int y=1;y<30;y++)for(int x=1;x<30;x++)
+  assert(templated->map[y*31+x]==((x==29 && y==29)?0x3323:0x3333));
+ assert(GeneratedMap_Leave());save.location=destination;GeneratedMap_ResolveLayout(&base);
  return 0;
 }'''
+  loader=function((ROOT/'src/platform/sdl2.c').read_text(),'LoadGeneratedMapTemplate')
+  harness=harness.replace('/* LOADER_BODY */',loader)
   with tempfile.TemporaryDirectory() as d:
    p=Path(d);(p/'platform').mkdir();(p/'constants').mkdir();(p/'global.h').write_text('#ifndef G\n#define G\n'+global_h+'\n#endif\n')
    for name in ('main.h','overworld.h','field_screen_effect.h','field_player_avatar.h','fieldmap.h'):
@@ -104,6 +120,9 @@ int main(void){
    (p/'test.c').write_text(('#define EXPECTED_GROUP '+str(group)+'\n')+harness.replace('struct { u32 vblankCounter1; } gMain;','__typeof__(gMain) gMain;').replace('struct { int mapType; struct MapLayout *mapLayout; } gMapHeader;','__typeof__(gMapHeader) gMapHeader;'))
    q=subprocess.run(['cc','-std=gnu99','-Wall','-Wextra','-Werror','-DPORTABLE','-DGENERATED_MAP_READY=1','-I',str(p),str(ROOT/'src/platform/generated_map.c'),str(p/'test.c'),'-o',str(p/'test')],capture_output=True,text=True)
    self.assertEqual(q.returncode,0,q.stderr)
-   q=subprocess.run([str(p/'test')],capture_output=True,text=True)
+   rows=['#'*31]+['#'+'.'*29+'#']*29+['#'*31]
+   (p/'proposal.json').write_text(json.dumps({'rows':rows,'spawn':[1,1],'exit':[29,29]}))
+   q=subprocess.run(['python3',str(ROOT/'scripts/export_generated_cave.py'),str(p/'proposal.json'),str(p/'cave.bin')],capture_output=True,text=True);self.assertEqual(q.returncode,0,q.stderr)
+   q=subprocess.run([str(p/'test'),str(p/'cave.bin')],capture_output=True,text=True)
    self.assertEqual(q.returncode,0,q.stderr)
 if __name__=='__main__': unittest.main()
