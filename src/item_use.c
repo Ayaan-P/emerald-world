@@ -1029,11 +1029,11 @@ static void ItemUseInBattle_ShowPartyMenu(u8 taskId)
 }
 
 #ifdef PORTABLE
-static void Task_ConfirmCoopPotion(u8 taskId)
+static void Task_ConfirmCoopMedicine(u8 taskId)
 {
     if (JOY_NEW(A_BUTTON))
     {
-        if (WorldCoop_CanUsePotion(gSpecialVar_ItemId))
+        if (WorldCoop_CanUseMedicine(gSpecialVar_ItemId))
             Task_FadeAndCloseBagMenu(taskId);
         else
             CloseItemMessage(taskId);
@@ -1046,13 +1046,13 @@ static void Task_ConfirmCoopPotion(u8 taskId)
 void ItemUseInBattle_Medicine(u8 taskId)
 {
 #ifdef PORTABLE
-    if (WorldCoop_IsBattle() && WorldCoop_IsPotion(gSpecialVar_ItemId))
+    if (WorldCoop_IsBattle() && WorldCoop_IsMedicine(gSpecialVar_ItemId))
     {
-        static const u8 sText_ActivePotion[] = _("Heal your active POKéMON?\nA: Yes   B: No");
-        if (!WorldCoop_CanUsePotion(gSpecialVar_ItemId))
+        static const u8 sText_ActiveMedicine[] = _("Use on your active POKéMON?\nA: Yes   B: No");
+        if (!WorldCoop_CanUseMedicine(gSpecialVar_ItemId))
             DisplayItemMessage(taskId, FONT_NORMAL, gText_WontHaveEffect, CloseItemMessage);
         else
-            DisplayItemMessage(taskId, FONT_NORMAL, sText_ActivePotion, Task_ConfirmCoopPotion);
+            DisplayItemMessage(taskId, FONT_NORMAL, sText_ActiveMedicine, Task_ConfirmCoopMedicine);
         return;
     }
 #endif
