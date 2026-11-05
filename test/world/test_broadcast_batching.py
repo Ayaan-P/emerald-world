@@ -53,6 +53,21 @@ class BatchingTests(unittest.TestCase):
         self.assertIn(b'TRAVEL 63',self.peers[0]['out'])
         for i in range(64):self.assertEqual(self.peers[i]['state'][2],10+i%10)
 
+    def test_staggered_updates_make_progress_without_per_packet_snapshots(self):
+        for i in range(2,64):
+            name=f'p{i:02}';self.s.create_identity(name)
+            peer=dict(id=name,seq=-1,state=None,closing=False,out=bytearray(),sock=None,
+                      social=True,field=False,chat=False,travel=False)
+            self.s.peers[name]=peer;self.peers.append(peer)
+        for event in range(640):
+            self.clock.now=100+event/640
+            self.s._flush_presence_broadcast()
+            i=event%64;self.state(i,event//64+1,10+i%10)
+        self.clock.now=101.1;self.s._flush_presence_broadcast()
+        self.assertGreaterEqual(self.s.broadcasts,15)
+        self.assertLessEqual(self.s.broadcasts,21)
+        self.assertTrue(all(p['seq']==10 for p in self.peers))
+
     def test_immediate_broadcast_absorbs_pending_update(self):
         self.state(0,1,10);self.assertEqual(self.s.broadcasts,0)
         self.s._broadcast();self.assertEqual(self.s.broadcasts,1)
