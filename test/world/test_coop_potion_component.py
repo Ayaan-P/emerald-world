@@ -26,18 +26,22 @@ int main(void){
  assert(!WorldCoop_HpMedicineHeal(ITEM_POTION,101,100));
  assert(!WorldCoop_HpMedicineHeal(ITEM_POTION,1,1000));
  assert(!WorldCoop_HpMedicineHeal(ITEM_FULL_RESTORE,1,100));
- u16 heal=99;u32 status=99;
- assert(WorldCoop_IsMedicine(ITEM_ANTIDOTE));assert(!WorldCoop_IsMedicine(ITEM_FULL_RESTORE));
- assert(WorldCoop_MedicineEffect(ITEM_ANTIDOTE,40,100,STATUS1_TOXIC_POISON | STATUS1_TOXIC_COUNTER,&heal,&status));
+ u16 heal=99;u32 status=99;bool8 clear=0;
+ assert(WorldCoop_IsMedicine(ITEM_ANTIDOTE));assert(WorldCoop_IsMedicine(ITEM_FULL_RESTORE));
+ assert(WorldCoop_MedicineEffect(ITEM_ANTIDOTE,40,100,STATUS1_TOXIC_POISON | STATUS1_TOXIC_COUNTER,0,&heal,&status,&clear));
  assert(heal==0 && status==0);
- assert(!WorldCoop_MedicineEffect(ITEM_ANTIDOTE,40,100,STATUS1_BURN,&heal,&status));
- assert(WorldCoop_MedicineEffect(ITEM_ICE_HEAL,1,100,STATUS1_FREEZE,&heal,&status) && !status);
- assert(WorldCoop_MedicineEffect(ITEM_PARALYZE_HEAL,1,100,STATUS1_PARALYSIS,&heal,&status) && !status);
- assert(WorldCoop_MedicineEffect(ITEM_BURN_HEAL,40,100,STATUS1_BURN,&heal,&status));
+ assert(!WorldCoop_MedicineEffect(ITEM_ANTIDOTE,40,100,STATUS1_BURN,0,&heal,&status,&clear));
+ assert(WorldCoop_MedicineEffect(ITEM_ICE_HEAL,1,100,STATUS1_FREEZE,0,&heal,&status,&clear) && !status);
+ assert(WorldCoop_MedicineEffect(ITEM_PARALYZE_HEAL,1,100,STATUS1_PARALYSIS,0,&heal,&status,&clear) && !status);
+ assert(WorldCoop_MedicineEffect(ITEM_BURN_HEAL,40,100,STATUS1_BURN,0,&heal,&status,&clear));
  assert(heal==0 && status==0);
- assert(WorldCoop_MedicineEffect(ITEM_AWAKENING,100,100,STATUS1_SLEEP,&heal,&status));
+ assert(WorldCoop_MedicineEffect(ITEM_AWAKENING,100,100,STATUS1_SLEEP,0,&heal,&status,&clear));
  assert(heal==0 && status==0);
- assert(!WorldCoop_MedicineEffect(ITEM_BURN_HEAL,0,100,STATUS1_BURN,&heal,&status));
+ assert(!WorldCoop_MedicineEffect(ITEM_BURN_HEAL,0,100,STATUS1_BURN,0,&heal,&status,&clear));
+ assert(WorldCoop_MedicineEffect(ITEM_FULL_HEAL,100,100,0,1,&heal,&status,&clear));
+ assert(!heal && !status && clear);
+ assert(WorldCoop_MedicineEffect(ITEM_FULL_RESTORE,40,100,STATUS1_BURN,1,&heal,&status,&clear));
+ assert(heal==60 && !status && clear);
  return 0;
 }'''
   with tempfile.TemporaryDirectory() as d:

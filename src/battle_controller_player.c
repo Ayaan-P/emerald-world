@@ -2670,7 +2670,9 @@ void InitMoveSelectionsVarsAndStrings(void)
 static void PlayerHandleChooseItem(void)
 {
     s32 i;
-
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle()) WorldCoop_SetMenuConfusion(gBattleBufferA[gActiveBattler][4] != 0);
+#endif
     BeginNormalPaletteFade(PALETTES_ALL, 0, 0, 0x10, RGB_BLACK);
     gBattlerControllerFuncs[gActiveBattler] = OpenBagAndChooseItem;
     gBattlerInMenuId = gActiveBattler;

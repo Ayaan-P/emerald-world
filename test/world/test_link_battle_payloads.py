@@ -96,6 +96,15 @@ static void MarkBattlerReceivedLinkData(u8 i) { (void)i; dispatched++; }
 
 
 class LinkBattlePayloadTests(unittest.TestCase):
+    def test_coop_bag_confusion_flag_is_bounded(self):
+        self.run_c(r'''
+ coopMode=TRUE;
+ u8 request[8]={CONTROLLER_OPENBAG,0x10,0x32,0x54,1,0,0,0};
+ assert(NativeBattleCommandValid(request,8,B_COMM_TO_CONTROLLER));
+ request[4]=2;assert(!NativeBattleCommandValid(request,8,B_COMM_TO_CONTROLLER));
+ request[4]=1;request[7]=1;assert(!NativeBattleCommandValid(request,8,B_COMM_TO_CONTROLLER));
+''')
+
     def test_potion_response_is_bound_to_pending_request(self):
         self.run_c(r'''
  coopMode=TRUE;

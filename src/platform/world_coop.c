@@ -33,7 +33,7 @@
  * exactly the 100-byte GBA layout on every supported native architecture. */
 STATIC_ASSERT(sizeof(struct Pokemon) == 100, CoopPokemonWireSize);
 enum { COOP_IDLE, COOP_EXCHANGE, COOP_BATTLE, COOP_REWARDS };
-enum { COOP_MAGIC = 0x4357, COOP_VERSION = 5, COOP_TIMEOUT = 1800,
+enum { COOP_MAGIC = 0x4357, COOP_VERSION = 6, COOP_TIMEOUT = 1800,
        COOP_CONFIRM = 4 + PARTY_SIZE, COOP_READY = COOP_CONFIRM + 1, COOP_COMMIT = COOP_CONFIRM + 2 };
 struct CoopHeader
 {
@@ -74,10 +74,11 @@ static struct
     u8 catchOwner;
     bool8 catchDelivered;
     u16 pendingBall, pendingMedicine;
-    u16 medicineSpent[13];
+    u16 medicineSpent[15];
     u16 medicineHeal, medicineItem;
     u32 medicineStatusBefore, medicineStatusAfter;
     u8 medicineAction, medicineBattler;
+    bool8 menuConfused, medicineClearConfusion;
     struct Pokemon caughtMon;
     u8 readySent, commitSent, commitEchoed, peerReady, peerCommit, peerOutcome, peerReward;
     u8 state, phase, local, ownerPeer, count, originalCount;
@@ -255,7 +256,8 @@ void WorldCoop_SetPartyMenuOrder(bool8 inMenuOrder)
 
 static const u16 sCoopMedicines[] = { ITEM_POTION, ITEM_SUPER_POTION, ITEM_HYPER_POTION, ITEM_MAX_POTION,
     ITEM_ANTIDOTE, ITEM_BURN_HEAL, ITEM_ICE_HEAL, ITEM_AWAKENING, ITEM_PARALYZE_HEAL,
-    ITEM_FRESH_WATER, ITEM_SODA_POP, ITEM_LEMONADE, ITEM_MOOMOO_MILK };
+    ITEM_FRESH_WATER, ITEM_SODA_POP, ITEM_LEMONADE, ITEM_MOOMOO_MILK,
+    ITEM_FULL_HEAL, ITEM_FULL_RESTORE };
 
 static bool8 WorldCoop_RefundMedicine(void)
 {
@@ -603,18 +605,24 @@ bool8 WorldCoop_CanSelectBattleItem(u16 item)
         || (sCoop.state == COOP_BATTLE && WorldCoop_IsMedicine(item));
 }
 
+void WorldCoop_SetMenuConfusion(bool8 confused)
+{
+    sCoop.menuConfused = !!confused;
+}
+
 bool8 WorldCoop_CanUseMedicine(u16 item)
 {
     struct Pokemon *mon;
     u8 battler = gBattlerInMenuId, slot;
-    u16 heal; u32 status;
+    u16 heal; u32 status; bool8 cureConfusion;
     if (sCoop.state != COOP_BATTLE || !WorldCoop_IsMedicine(item)
      || battler != sCoop.local * 2 || !CheckBagHasItem(item, 1)) return FALSE;
     slot = gBattlerPartyIndexes[battler];
     if (slot >= PARTY_SIZE || slot / MULTI_PARTY_SIZE != sCoop.local) return FALSE;
     mon = &gPlayerParty[slot];
     return WorldCoop_MedicineEffect(item, GetMonData(mon, MON_DATA_HP),
-        GetMonData(mon, MON_DATA_MAX_HP), GetMonData(mon, MON_DATA_STATUS), &heal, &status);
+        GetMonData(mon, MON_DATA_MAX_HP), GetMonData(mon, MON_DATA_STATUS), sCoop.menuConfused,
+        &heal, &status, &cureConfusion);
 }
 
 bool8 WorldCoop_ItemReplyValid(u16 reply)
@@ -641,7 +649,7 @@ u16 WorldCoop_SelectBattleItem(u16 item)
 bool8 WorldCoop_MedicinePacketValid(const u8 *data, u16 size)
 {
     u32 generation, status, newStatus;
-    u16 hp, maxHP, heal;
+    u16 hp, maxHP, heal; bool8 cureConfusion;
     if (sCoop.state != COOP_BATTLE || sCoop.generation != NativeLink_Generation()
      || size != 20 || data[0] != CONTROLLER_EXPUPDATE || data[1] != WORLD_COOP_MEDICINE_TAG
      || data[2] < 1 || data[2] > 2 || !WorldCoop_IsMedicine(data[3])) return FALSE;
@@ -649,8 +657,8 @@ bool8 WorldCoop_MedicinePacketValid(const u8 *data, u16 size)
     hp = data[8] | (data[9] << 8); maxHP = data[10] | (data[11] << 8);
     status = (u32)data[12] | ((u32)data[13] << 8) | ((u32)data[14] << 16) | ((u32)data[15] << 24);
     return generation == sCoop.generation && !(status & ~0xFFFu)
-        && !data[16] && !data[17] && !data[18] && !data[19]
-        && WorldCoop_MedicineEffect(data[3], hp, maxHP, status, &heal, &newStatus);
+        && data[16] <= 1 && !data[17] && !data[18] && !data[19]
+        && WorldCoop_MedicineEffect(data[3], hp, maxHP, status, data[16], &heal, &newStatus, &cureConfusion);
 }
 
 bool8 WorldCoop_ConsumeMedicine(const u8 *data)
@@ -668,7 +676,8 @@ bool8 WorldCoop_ConsumeMedicine(const u8 *data)
     hp = data[8] | (data[9] << 8); maxHP = data[10] | (data[11] << 8);
     status = (u32)data[12] | ((u32)data[13] << 8) | ((u32)data[14] << 16) | ((u32)data[15] << 24);
     if (GetMonData(mon, MON_DATA_HP) != hp || GetMonData(mon, MON_DATA_MAX_HP) != maxHP
-     || (GetMonData(mon, MON_DATA_STATUS) & STATUS1_ANY) != (status & STATUS1_ANY)) return FALSE;
+     || (GetMonData(mon, MON_DATA_STATUS) & STATUS1_ANY) != (status & STATUS1_ANY)
+     || sCoop.menuConfused != data[16]) return FALSE;
     for (i = 0; i < ARRAY_COUNT(sCoopMedicines) && sCoopMedicines[i] != item; i++);
     if (i == ARRAY_COUNT(sCoopMedicines) || sCoop.medicineSpent[i] == 0xFFFF
      || !RemoveBagItem(item, 1)) return FALSE;
@@ -684,7 +693,7 @@ bool8 WorldCoop_MedicineActionActive(u8 battler)
 
 int WorldCoop_BeginMedicineAction(u8 battler, u16 reply)
 {
-    u8 packet[16] = { CONTROLLER_EXPUPDATE, WORLD_COOP_MEDICINE_TAG, 0, 0 };
+    u8 packet[17] = { CONTROLLER_EXPUPDATE, WORLD_COOP_MEDICINE_TAG, 0, 0 };
     u16 item = reply & 0xFF, hp, maxHP;
     u32 generation = sCoop.generation, status;
     if (sCoop.state != COOP_BATTLE || sCoop.medicineAction || (battler & BIT_SIDE)
@@ -693,12 +702,14 @@ int WorldCoop_BeginMedicineAction(u8 battler, u16 reply)
     hp = gBattleMons[battler].hp; maxHP = gBattleMons[battler].maxHP;
     status = gBattleMons[battler].status1;
     if ((status & ~0xFFFu) || !WorldCoop_MedicineEffect(item, hp, maxHP, status,
-         &sCoop.medicineHeal, &sCoop.medicineStatusAfter)) return -1;
+         !!(gBattleMons[battler].status2 & STATUS2_CONFUSION), &sCoop.medicineHeal,
+         &sCoop.medicineStatusAfter, &sCoop.medicineClearConfusion)) return -1;
     sCoop.medicineStatusBefore = status;
     packet[2] = battler / 2 + 1; packet[3] = item;
     memcpy(packet + 4, &generation, sizeof(generation));
     packet[8] = hp; packet[9] = hp >> 8; packet[10] = maxHP; packet[11] = maxHP >> 8;
     packet[12] = status; packet[13] = status >> 8; packet[14] = status >> 16; packet[15] = status >> 24;
+    packet[16] = !!(gBattleMons[battler].status2 & STATUS2_CONFUSION);
     sCoop.medicineAction = TRUE; sCoop.medicineBattler = battler; sCoop.medicineItem = item;
     gActiveBattler = battler;
     PrepareBufferDataTransferLink(B_COMM_TO_CONTROLLER, sizeof(packet), packet);
@@ -715,6 +726,8 @@ int WorldCoop_AdvanceMedicineAction(u8 battler)
      || gBattleBufferB[battler][1] != 1 || gBattleBufferB[battler][2] || gBattleBufferB[battler][3]) return -1;
     gLastUsedItem = sCoop.medicineItem;
     gBattleMoveDamage = -(s32)sCoop.medicineHeal;
+    if (sCoop.medicineClearConfusion)
+        gBattleMons[battler].status2 &= ~STATUS2_CONFUSION;
     if (sCoop.medicineStatusAfter != sCoop.medicineStatusBefore)
     {
         gBattleMons[battler].status1 = sCoop.medicineStatusAfter;
