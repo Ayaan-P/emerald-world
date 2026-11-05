@@ -51,17 +51,29 @@
 #include <poll.h>
 #endif
 
-/* Per-recipient relevance window, NOT the server's configurable population.
- * The server selects at most eight peers; the stock field pool may draw fewer. */
+/* A negotiated relevance window, not the server's total population.
+ * The experimental native pool can request 32; older servers get 16 or eight. */
 #define WB_PEERS 8
+#if WORLD_EXTENDED_OBJECTS
+#undef WB_PEERS
+#define WB_PEERS 32
+#endif
 #define WB_TRAVEL_PEERS 63
 #define WB_OBJECTS 8
 #define WB_REMOTES (WB_PEERS + WB_OBJECTS)
 #define WB_TILES 128
 #define WB_BUFFER 65536
 #define WB_HANDSHAKE_POLLS 300
+#if WORLD_EXTENDED_OBJECTS
+// 160..199 avoids the Berry Blender reserved local IDs 236..240.
+#define WB_LOCALID 160
+#else
 #define WB_LOCALID 224
+#endif
 #define WB_MARKER 0x5742
+#ifndef WORLD_SMOOTH_PRESENCE
+#define WORLD_SMOOTH_PRESENCE 0
+#endif
 
 struct Peer { char id[26], text[58]; unsigned group, num, x, y, facing, gfx, ready; };
 struct Tile { unsigned group, num, x, y, metatile, collision; };
@@ -87,7 +99,13 @@ struct Snapshot {
 enum CaveState { CAVE_DISABLED, CAVE_IDLE, CAVE_WAIT, CAVE_WAIT_RESET, CAVE_ACK, CAVE_WAIT_OK,
                  CAVE_READY, CAVE_MISMATCH, CAVE_RETURN_NONE };
 #endif
-struct Remote { char id[26]; u8 object, sprite, group, num; };
+struct Remote { char id[26]; u8 object, sprite, group, num;
+#if WORLD_SMOOTH_PRESENCE
+    s16 motionX, motionY;
+    u8 motionDirection;
+    bool8 walking;
+#endif
+};
 struct Applied { struct Tile tile; u16 original, raw; };
 static struct {
     bool8 enabled, connected, connecting, staging, chatProbe, chatLegacy, chatAvailable;
@@ -109,6 +127,9 @@ static struct {
     unsigned caveTimeout, caveRetry;
     char caveExpected[WORLD_CAVE_ID + 1];
     struct WorldCaveWire caveWire;
+#endif
+#if WORLD_EXTENDED_OBJECTS
+    bool8 peer32Probe, peer32Legacy, peer16Probe, peer16Legacy;
 #endif
 #ifdef _WIN32
     SOCKET fd;
@@ -769,8 +790,24 @@ static bool8 Line(char *line)
     }
     if (!n) return FALSE;
     if (!sWorld.connected) {
+#if WORLD_EXTENDED_OBJECTS
+        if (sWorld.peer32Probe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
+            sWorld.peer32Legacy = TRUE;
+            return FALSE;
+        }
+        if (sWorld.peer16Probe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
+            sWorld.peer16Legacy = TRUE;
+            return FALSE;
+        }
+#endif
 #if GENERATED_MAP_READY
-        if (CaveProbeRejected(n, tokens)) return FALSE;
+        if (CaveProbeRejected(n, tokens)) {
+#if WORLD_EXTENDED_OBJECTS
+            /* Each lower cave capability gets a fresh peer-window probe. */
+            sWorld.peer32Legacy = sWorld.peer16Legacy = FALSE;
+#endif
+            return FALSE;
+        }
 #endif
         if (sWorld.rallyProbe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
             sWorld.rallyLegacy = TRUE;
@@ -1034,13 +1071,20 @@ static void QueueHello(bool8 headless)
 #endif
     }
 #endif
+#if WORLD_EXTENDED_OBJECTS
+    sWorld.peer32Probe = !sWorld.peer32Legacy;
+    sWorld.peer16Probe = !sWorld.peer32Probe && !sWorld.peer16Legacy;
+#define WB_PEER_SUFFIX (sWorld.peer32Probe ? "PEER32" : sWorld.peer16Probe ? "PEER16" : "")
+#else
+#define WB_PEER_SUFFIX ""
+#endif
 #ifdef _WIN32
     (void)headless;
     sWorld.chatProbe = FALSE;
     sWorld.travelProbe = !sWorld.travelLegacy;
     role = sWorld.rallyProbe ? "SOCIALTRAVELRALLY" : sWorld.travelProbe ? "SOCIALTRAVEL" : "SOCIAL";
     sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
-        "EWLOCAL1 %s\nHELLO 1 %s %s %s%s\n", sWorld.loopbackToken, sWorld.trainer, sWorld.token, role, suffix);
+        "EWLOCAL1 %s\nHELLO 1 %s %s %s%s%s\n", sWorld.loopbackToken, sWorld.trainer, sWorld.token, role, WB_PEER_SUFFIX, suffix);
 #else
     sWorld.chatProbe = !headless && !sWorld.chatLegacy;
     sWorld.travelProbe = !sWorld.travelLegacy;
@@ -1048,8 +1092,9 @@ static void QueueHello(bool8 headless)
         : sWorld.travelProbe ? (sWorld.chatProbe ? "SOCIALTRAVELCHAT" : "SOCIALTRAVEL")
         : (sWorld.chatProbe ? "SOCIALCHAT" : "SOCIAL");
     sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
-        "HELLO 1 %s %s %s%s\n", sWorld.trainer, sWorld.token, role, suffix);
+        "HELLO 1 %s %s %s%s%s\n", sWorld.trainer, sWorld.token, role, WB_PEER_SUFFIX, suffix);
 #endif
+#undef WB_PEER_SUFFIX
 }
 
 static void Flush(void)
@@ -1391,6 +1436,26 @@ static unsigned SelectPeers(unsigned order[WB_REMOTES])
     return selected;
 }
 
+#if WORLD_SMOOTH_PRESENCE
+// Limit walking animation to graphics with known standard animation tables.
+static bool8 RemoteWalkAnimationSafe(u8 gfx)
+{
+    switch (gfx)
+    {
+    case OBJ_EVENT_GFX_BOY_1:
+    case OBJ_EVENT_GFX_BRENDAN_NORMAL:
+    case OBJ_EVENT_GFX_BRENDAN_MACH_BIKE:
+    case OBJ_EVENT_GFX_BRENDAN_ACRO_BIKE:
+    case OBJ_EVENT_GFX_MAY_NORMAL:
+    case OBJ_EVENT_GFX_MAY_MACH_BIKE:
+    case OBJ_EVENT_GFX_MAY_ACRO_BIKE:
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+#endif
+
 static void SyncEngine(void)
 {
     unsigned i, j, k, order[WB_REMOTES], selected;
@@ -1471,6 +1536,9 @@ static void SyncEngine(void)
         if (p->gfx < NUM_OBJ_EVENT_GFX && GetObjectEventGraphicsInfo(p->gfx)->paletteSlot >= PALSLOT_NPC_1
          && GetObjectEventGraphicsInfo(p->gfx)->paletteSlot <= PALSLOT_NPC_4
          && !GetObjectEventGraphicsInfo(p->gfx)->inanimate) gfx = p->gfx;
+#if WORLD_EXTENDED_OBJECTS && WORLD_MATCHED_TRAINERS
+        else if (p->gfx < NUM_OBJ_EVENT_GFX && WorldPlayerPaletteCompatible(p->gfx)) gfx = p->gfx;
+#endif
         /* A different size needs a fresh OBJ allocation. Replace it during
          * this reconciliation, rather than hiding the peer for a frame. */
         if (r->id[0] && Owned(i) && gObjectEvents[r->object].graphicsId != gfx)
@@ -1483,7 +1551,11 @@ static void SyncEngine(void)
             if (gMapHeader.events) for (id = 0; id < gMapHeader.events->objectEventCount; id++)
                 if (gSaveBlock1Ptr->objectEventTemplates[id].localId == WB_LOCALID + i) collision = TRUE;
             if (collision) continue;
+#if WORLD_EXTENDED_OBJECTS
+            id = SpawnWorldObjectEventParameterized(gfx, MOVEMENT_TYPE_NONE, WB_LOCALID + i,
+#else
             id = SpawnSpecialObjectEventParameterized(gfx, MOVEMENT_TYPE_NONE, WB_LOCALID + i,
+#endif
                 p->x + MAP_OFFSET, p->y + MAP_OFFSET, MapGridGetElevationAt(p->x + MAP_OFFSET, p->y + MAP_OFFSET));
             if (id >= OBJECT_EVENTS_COUNT) continue;
             strcpy(r->id, p->id);
@@ -1494,7 +1566,29 @@ static void SyncEngine(void)
         if (!Owned(i)) continue;
         o = &gObjectEvents[r->object];
         if (o->currentCoords.x != (int)p->x + MAP_OFFSET || o->currentCoords.y != (int)p->y + MAP_OFFSET)
+        {
+#if WORLD_SMOOTH_PRESENCE
+            int dx = (int)p->x + MAP_OFFSET - o->currentCoords.x;
+            int dy = (int)p->y + MAP_OFFSET - o->currentCoords.y;
+            // Interpolate only adjacent human steps. Authority, collision and
+            // interaction positions remain at the committed destination.
+            if (r->id[0] != '@' && RemoteWalkAnimationSafe(o->graphicsId) && ((dx == 0 && (dy == -1 || dy == 1))
+                                  || (dy == 0 && (dx == -1 || dx == 1))))
+            {
+                int nextX = r->motionX - 16 * dx;
+                int nextY = r->motionY - 16 * dy;
+                if (nextX >= -32 && nextX <= 32 && nextY >= -32 && nextY <= 32)
+                {
+                    r->motionX = nextX; r->motionY = nextY;
+                    r->motionDirection = dx < 0 ? DIR_WEST : dx > 0 ? DIR_EAST
+                                             : dy < 0 ? DIR_NORTH : DIR_SOUTH;
+                }
+                else r->motionX = r->motionY = 0;
+            }
+            else r->motionX = r->motionY = 0;
+#endif
             MoveObjectEventToMapCoords(o, p->x + MAP_OFFSET, p->y + MAP_OFFSET);
+        }
         o->initialCoords = o->currentCoords;
         o->currentElevation = o->previousElevation = MapGridGetElevationAt(p->x + MAP_OFFSET, p->y + MAP_OFFSET);
         if (o->facingDirection != p->facing) ObjectEventTurn(o, p->facing);
@@ -1787,12 +1881,51 @@ void WorldBridge_Poll(bool8 headless)
     if (SocketOpen()) Receive(headless);
 }
 
+#if WORLD_SMOOTH_PRESENCE
+// Called once per game frame, not once per reconciliation (which can run twice).
+static void AdvanceRemoteMotion(void)
+{
+    unsigned i;
+    for (i = 0; i < WB_REMOTES; i++)
+    {
+        struct Remote *r = &sWorld.remotes[i];
+        struct Sprite *sprite;
+        struct ObjectEvent *object;
+        if (!Owned(i) || r->id[0] == '@' || !RemoteWalkAnimationSafe(gObjectEvents[r->object].graphicsId)) continue;
+        sprite = &gSprites[r->sprite];
+        object = &gObjectEvents[r->object];
+        sprite->x2 = r->motionX;
+        sprite->y2 = r->motionY;
+        if (r->motionX || r->motionY)
+        {
+            if (RemoteWalkAnimationSafe(object->graphicsId))
+            {
+                StartSpriteAnimIfDifferent(sprite, GetMoveDirectionAnimNum(r->motionDirection));
+                r->walking = TRUE;
+            }
+            if (r->motionX > 0) r->motionX -= 2;
+            else if (r->motionX < 0) r->motionX += 2;
+            if (r->motionY > 0) r->motionY -= 2;
+            else if (r->motionY < 0) r->motionY += 2;
+        }
+        else if (r->walking)
+        {
+            ObjectEventTurn(object, object->facingDirection);
+            r->walking = FALSE;
+        }
+    }
+}
+#endif
+
 void WorldBridge_BeforeFrame(u32 frame, bool8 headless)
 {
     (void)frame;
     if (!sWorld.enabled) return;
     WorldBridge_Poll(headless);
     SyncEngine();
+#if WORLD_SMOOTH_PRESENCE
+    AdvanceRemoteMotion();
+#endif
 }
 
 void WorldBridge_AfterFrame(u32 frame)

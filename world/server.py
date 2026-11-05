@@ -28,6 +28,8 @@ MAX_QUEUE = 65536
 MAX_LINE = 1024
 MAX_CONTROL_LINE = 16384
 MAX_PEERS = 8
+MAX_PEERS_EXTENDED = 32
+MAX_PEERS_INTERMEDIATE = 16
 MAX_TRAVEL_PEERS = 63  # The authority admits at most 64 authenticated trainers.
 TRAVEL_FRESH_SECONDS = 3
 MAX_TILES = 128
@@ -389,7 +391,7 @@ class WorldServer:
                 continue
             distance = abs(state[2]-origin[2]) + abs(state[3]-origin[3]) if origin else 0
             candidates.append((distance, name, state))
-        for _, name, state in sorted(candidates)[:MAX_PEERS]:
+        for _, name, state in sorted(candidates)[:conn.get('peer_limit', MAX_PEERS)]:
             lines.append('PEER ' + name + ' ' + ' '.join(map(str, state)))
         if conn.get('travel'):
             # Separate from render relevance. Include every field occupant so
@@ -457,6 +459,10 @@ class WorldServer:
                     role = role[:-5]
                 elif cave_capable:
                     role = role[:-4]
+                peer32 = role.endswith('PEER32')
+                peer16 = role.endswith('PEER16')
+                if peer32 or peer16:
+                    role = role[:-6]
                 control = role == 'CONTROL'
                 chat_capable = role in ('SOCIALCHAT', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELCHATRALLY')
                 travel = role in ('SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
@@ -465,7 +471,8 @@ class WorldServer:
                 if cave_capable and not social:
                     self._error(conn, 'AUTH')
                     return
-                if (len(fields) != 4 and not control and not social and not link) or fields[:2] != ['HELLO', '1']:
+                if ((len(fields) != 4 and not control and not social and not link)
+                        or ((peer16 or peer32) and not social) or fields[:2] != ['HELLO', '1']):
                     self._error(conn, 'AUTH')
                     return
                 name, token = fields[2:4]
@@ -517,6 +524,7 @@ class WorldServer:
                 conn['cave_large_wildlife'] = cave_large_wildlife
                 conn['cave_offer'] = conn['cave_ack'] = None
                 conn['cave_revoked'] = []
+                conn['peer_limit'] = MAX_PEERS_EXTENDED if peer32 else MAX_PEERS_INTERMEDIATE if peer16 else MAX_PEERS
                 conn['chat'] = chat_capable
                 conn['travel'] = travel
                 conn['chat_history'] = []

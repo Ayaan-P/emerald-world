@@ -2,9 +2,24 @@
 #define GUARD_SPRITE_H
 
 #define OAM_MATRIX_COUNT 32
+#ifndef WORLD_EXTENDED_SPRITES
+#define WORLD_EXTENDED_SPRITES 0
+#endif
+#if defined(PORTABLE) && WORLD_EXTENDED_SPRITES && WORLD_NATIVE_OAM
+// Keep sprite IDs below 127: some original animation code stores them in s8.
+#define MAX_SPRITES 127
+#elif defined(PORTABLE) && WORLD_EXTENDED_SPRITES
+#define MAX_SPRITES 96
+#else
 #define MAX_SPRITES 64
+#endif
 #define SPRITE_NONE 0xFF
 #define TAG_NONE 0xFFFF
+#if defined(PORTABLE) && WORLD_NATIVE_TILEBANK
+struct Sprite;
+void NativeSpriteTileScope(bool8 active);
+void NativeSpriteTileClone(const struct Sprite *source, struct Sprite *target);
+#endif
 
 // Given to SetSpriteMatrixAnchor to skip anchoring one of the coords.
 #define NO_ANCHOR 0x800
