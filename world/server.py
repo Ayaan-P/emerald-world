@@ -32,6 +32,7 @@ TRAVEL_FRESH_SECONDS = 3
 LINK_PRESENCE_FRESH_SECONDS = 3
 MAX_TILES = 128
 STATE_FLUSH_INTERVAL = .5
+PRESENCE_BROADCAST_INTERVAL = .05
 
 
 def bounded(value, low, high):
@@ -160,6 +161,7 @@ class WorldServer:
         # between packets. Changed inventory hashes still commit immediately.
         self.pending_states = {}
         self.next_state_flush = time.monotonic() + STATE_FLUSH_INTERVAL
+        self.presence_broadcast_due = None
         row = self.db.execute('SELECT error FROM status WHERE singleton=1').fetchone()
         if row:
             self.module_error = row[0]
@@ -394,9 +396,19 @@ class WorldServer:
         return '\n'.join(lines + ['END', ''])
 
     def _broadcast(self):
+        # Any immediate snapshot already includes the latest presence.
+        self.presence_broadcast_due = None
         for conn in list(self.peers.values()):
             if not conn['closing']:
                 self._queue(conn, self._snapshot(conn))
+
+    def _queue_presence_broadcast(self):
+        if self.presence_broadcast_due is None:
+            self.presence_broadcast_due = time.monotonic() + PRESENCE_BROADCAST_INTERVAL
+
+    def _flush_presence_broadcast(self):
+        if self.presence_broadcast_due is not None and time.monotonic() >= self.presence_broadcast_due:
+            self._broadcast()
 
     def _line(self, conn, raw):
         try:
@@ -522,7 +534,7 @@ class WorldServer:
             conn['seq'], conn['state'], conn['field'] = seq, state, field
             conn['state_time'] = time.monotonic()
             self._refresh_link_presence()
-            self._broadcast()
+            self._queue_presence_broadcast()
         except (UnicodeError, ValueError):
             self._error(conn, 'MALFORMED')
 
@@ -965,6 +977,7 @@ class WorldServer:
                 self._flush_states(force=False)
                 # Expire tag range even if both clients stop sending STATE.
                 self._refresh_link_presence()
+                self._flush_presence_broadcast()
                 self._deliver_links(self.link_protocol.tick())
                 self._poll_controls()
                 self._poll_mechanics()
