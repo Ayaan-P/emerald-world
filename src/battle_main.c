@@ -5,6 +5,7 @@
 #include "platform/world_activity.h"
 #endif
 #include "battle.h"
+#include "battle_move_split.h"
 #include "battle_anim.h"
 #include "battle_ai_script_commands.h"
 #include "battle_arena.h"
@@ -730,7 +731,9 @@ static void CB2_InitBattleInternal(void)
     }
 
     gMain.inBattle = TRUE;
-    gSaveBlock2Ptr->frontier.disableRecordBattle = FALSE;
+    // Recorded battles do not yet store a rules version; never create a replay
+    // that might silently be played later with a different damage model.
+    gSaveBlock2Ptr->frontier.disableRecordBattle = BattleRules_UseModernSplit();
 
     for (i = 0; i < PARTY_SIZE; i++)
         AdjustFriendship(&gPlayerParty[i], FRIENDSHIP_EVENT_LEAGUE_BATTLE);
