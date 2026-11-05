@@ -664,13 +664,18 @@ class WorldServer:
             else:
                 self.pending_states[conn['id']] = data
             self._flush_states(force=False)
-            changed = (conn.get('state') != state or bool(conn.get('field')) != field or hashes != previous)
+            now = time.monotonic()
+            last_state = conn.get('state_time')
+            # An identical report can revive a previously expired friend.
+            became_fresh = (last_state is not None and
+                            int((TRAVEL_FRESH_SECONDS - (now - last_state)) * 60) <= 0)
+            changed = (conn.get('state') != state or bool(conn.get('field')) != field or hashes != previous or became_fresh)
             conn['seq'], conn['state'], conn['field'] = seq, state, field
             if self.cave_map is not None and tuple(state[:2]) == self.cave_map:
                 conn['in_generated_cave'] = True
             elif state[6]:
                 conn['in_generated_cave'] = False
-            now = conn['state_time'] = time.monotonic()
+            conn['state_time'] = now
             self._deliver_links(self.link_protocol.update_presence(self._link_presence()))
             if changed or now - self.last_presence_broadcast >= PRESENCE_HEARTBEAT_INTERVAL:
                 self._schedule_presence(now)
