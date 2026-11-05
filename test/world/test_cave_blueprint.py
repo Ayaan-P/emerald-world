@@ -5,7 +5,8 @@ import random
 import subprocess
 import tempfile
 import unittest
-from scripts import cave_blueprint, export_generated_cave
+from world import cave_blueprint
+from scripts import export_generated_cave
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -35,9 +36,9 @@ class CaveBlueprintTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / 'blueprint.json'
             path.write_text(json.dumps({'rooms': [[5,5,5,5]], 'links': [], 'entrance_room': 0, 'exit_room': 0}))
-            result = subprocess.run(['python3', str(ROOT/'scripts/cave_blueprint.py'), str(path)], capture_output=True, text=True, check=True)
+            result = subprocess.run(['python3', '-m', 'world.cave_blueprint', str(path)], capture_output=True, text=True, check=True)
             export_generated_cave.encode(json.loads(result.stdout))
             path.write_text('x' * 16385)
-            self.assertNotEqual(subprocess.run(['python3', str(ROOT/'scripts/cave_blueprint.py'), str(path)], capture_output=True).returncode, 0)
+            self.assertNotEqual(subprocess.run(['python3', '-m', 'world.cave_blueprint', str(path)], capture_output=True).returncode, 0)
 
 if __name__ == '__main__': unittest.main()
