@@ -197,13 +197,14 @@ struct Main gMain;
 struct PaletteFadeControl gPaletteFade;
 struct PlayerAvatar gPlayerAvatar;
 u8 gWirelessCommType;
-static int nativeActive, activityOwns, scriptActive, controls, travelOwns, flying;
+static int nativeActive, activityOwns, scriptActive, controls, travelOwns, flying, worldMenuOwns;
 void CB1_Overworld(void) {}
 void CB2_Overworld(void) {}
 int NativeLink_IsActive(void) { return nativeActive; }
 int WorldActivity_OwnsFieldInput(void) { return activityOwns; }
 bool8 WorldTravel_OwnsFieldInput(void) { return travelOwns; }
 bool8 WorldTravel_NativeFlyRunning(void) { return flying; }
+bool8 WorldMenu_OwnsFieldInput(void) { return worldMenuOwns; }
 bool8 ScriptContext_IsEnabled(void) { return scriptActive; }
 bool8 ArePlayerFieldControlsLocked(void) { return controls; }
 int main(void) {
@@ -222,6 +223,7 @@ int main(void) {
     controls=1; assert(!FieldReady()); controls=0;
     travelOwns=1; assert(!FieldReady()); travelOwns=0;
     flying=1; assert(!FieldReady()); flying=0;
+    worldMenuOwns=1; assert(!FieldReady()); worldMenuOwns=0;
     assert(FieldReady());
     assert(!save.flags[0] && !save2.playerTrainerId[0]);
     return 0;
