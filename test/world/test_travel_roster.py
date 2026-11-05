@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from world.server import WorldServer, MAX_TRAVEL_PEERS
+from world.rally import RallyCoordinator
 
 
 class TravelRosterTests(unittest.TestCase):
@@ -14,6 +15,7 @@ class TravelRosterTests(unittest.TestCase):
         self.server.tiles = []
         self.server.objects = []
         self.server.peers = {}
+        self.server.rally = RallyCoordinator(self.server.peers)
         self.server._queue = Mock()
         self.server._broadcast = Mock()
         self.server._error = Mock()

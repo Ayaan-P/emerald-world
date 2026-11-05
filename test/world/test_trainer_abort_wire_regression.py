@@ -83,6 +83,7 @@ MainCallback gFieldCallback, gFieldCallback2;
 int resultCallbacks, scriptResets, unlocks, unfreezes;
 void CloseLink(void) {}
 void NativeLink_Abort(void) {}
+void DexNavNative_AbandonBattle(void) {}
 void CB1_Overworld(void) {}
 void CB2_ReturnToField(void) {}
 void FieldCB_WarpExitFadeFromBlack(void) {}

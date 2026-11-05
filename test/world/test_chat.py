@@ -182,9 +182,7 @@ int main(int argc,char **argv) {
 #include <string.h>
 #include <stdlib.h>
 #include <limits.h>
-typedef unsigned char bool8;
-typedef unsigned char u8;
-typedef unsigned short u16;
+#include "platform/world_rally.h"
 #define TRUE 1
 #define FALSE 0
 #define ARRAY_COUNT(a) (sizeof(a)/sizeof((a)[0]))
@@ -198,7 +196,7 @@ static int WorldCatalog_Metatile(unsigned g,unsigned n,unsigned t) {(void)g;(voi
         source += r'''
 static int line(const char *s) {char b[1024];strcpy(b,s);return Line(b);}
 int main(void) {
- sWorld.travelLegacy=1; /* Exercise the existing chat-only authority fallback. */
+ sWorld.rallyLegacy=sWorld.travelLegacy=1; /* Newer roles unavailable: exercise the chat-only authority fallback. */
  strcpy(sWorld.trainer,"alice");strcpy(sWorld.token,"secret");
  QueueHello(0); assert(strstr(sWorld.output," SOCIALCHAT\n") && sWorld.chatProbe);
  assert(!line("ERROR AUTH") && sWorld.chatLegacy);
@@ -246,7 +244,7 @@ int main(void) {
         with tempfile.TemporaryDirectory(prefix='emerald-chat-c-') as tmp:
             c, exe = Path(tmp)/'chat.c', Path(tmp)/'chat'
             c.write_text(source)
-            result = subprocess.run([os.environ.get('CC','cc'),'-std=gnu99','-Wall','-Wextra','-Werror',str(c),'-o',str(exe)],capture_output=True,text=True)
+            result = subprocess.run([os.environ.get('CC','cc'),'-std=gnu99','-Wall','-Wextra','-Werror','-DPORTABLE','-iquote',str(root/'include'),str(c),'-o',str(exe)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
             result = subprocess.run([str(exe)],capture_output=True,text=True,cwd=tmp)
             self.assertEqual(result.returncode,0,result.stderr)

@@ -2,6 +2,7 @@
 import unittest
 from unittest.mock import Mock, patch
 from world.server import WorldServer
+from world.rally import RallyCoordinator
 
 
 def peer(name, opted_in=True):
@@ -13,6 +14,7 @@ class ChatRoutingTests(unittest.TestCase):
         self.server = WorldServer.__new__(WorldServer)
         self.server.chat_serial = 0
         self.server.peers = {name: peer(name, name != 'legacy') for name in ('alice', 'bob', 'carol', 'legacy')}
+        self.server.rally = RallyCoordinator(self.server.peers)
         self.server._broadcast = Mock()
         self.server._queue = Mock()
         self.server.revision = 0
@@ -66,6 +68,7 @@ class ChatRoutingTests(unittest.TestCase):
         token = 'ab' * 32
         self.server.db.executemany('INSERT INTO identities VALUES (?, ?)', [('new', token), ('old', token)])
         self.server.peers = {}
+        self.server.rally = RallyCoordinator(self.server.peers)
         self.server.host_controls = SimpleNamespace(rejection=lambda name: None)
         self.server.max_players = 8
         self.server._event = Mock()

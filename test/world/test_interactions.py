@@ -20,9 +20,7 @@ class TrainerInteractions(unittest.TestCase):
 #include <string.h>
 #include <stdlib.h>
 #include <limits.h>
-typedef unsigned char bool8;
-typedef unsigned char u8;
-typedef unsigned short u16;
+#include "platform/world_rally.h"
 #define TRUE 1
 #define FALSE 0
 #define ARRAY_COUNT(a) (sizeof(a)/sizeof((a)[0]))
@@ -166,7 +164,7 @@ int main(void) {
         with tempfile.TemporaryDirectory(prefix='meet-c-') as tmp:
             c, exe = Path(tmp)/'meet.c', Path(tmp)/'meet'
             c.write_text(source)
-            result = subprocess.run(['cc','-std=gnu99','-Wall','-Wextra','-Werror',str(c),'-o',str(exe)], capture_output=True,text=True)
+            result = subprocess.run(['cc','-std=gnu99','-Wall','-Wextra','-Werror','-DPORTABLE','-iquote',str(ROOT/'include'),str(c),'-o',str(exe)], capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
             result = subprocess.run([str(exe)],capture_output=True,text=True,cwd=tmp)
             self.assertEqual(result.returncode,0,result.stderr)
