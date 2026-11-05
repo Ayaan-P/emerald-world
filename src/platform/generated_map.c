@@ -23,6 +23,8 @@
 /* The native-only script references this fixed-size literal buffer even when
  * the optional feature is disabled. It never contains control codes. */
 u8 gGeneratedWildsGuideText[58] = {0xFF};
+u8 gGeneratedWildsCastText2[58] = {0xFF};
+u8 gGeneratedWildsCastText3[58] = {0xFF};
 
 #if GENERATED_MAP_READY
 /* Both supported sizes fit the native backup-map buffer with the view border.
@@ -51,6 +53,11 @@ static u8 sGuideGfx, sGuideMetadata[GENERATED_GUIDE_BYTES];
 static struct MapEvents sGuideEvents;
 static struct ObjectEventTemplate sGuideObjects[OBJECT_EVENT_TEMPLATES_COUNT];
 extern const u8 GeneratedWorld_Wilds_EventScript_Guide[];
+#if GENERATED_WILDS_CAST
+static bool8 sCastStaged, sCastActive;
+static u8 sCastMetadata[GENERATED_CAST_BYTES];
+extern const u8 GeneratedWorld_Wilds_EventScript_Cast2[], GeneratedWorld_Wilds_EventScript_Cast3[];
+#endif
 #endif
 #endif
 #endif
@@ -212,6 +219,9 @@ bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size)
     sLargeWilds = FALSE;
 #if GENERATED_WILDS_GUIDE
     sGuideStaged = sGuideShared = FALSE;
+#if GENERATED_WILDS_CAST
+    sCastStaged = FALSE;
+#endif
 #endif
 #endif
 #endif
@@ -263,6 +273,9 @@ static bool8 StageLarge(const u8 *cells, u32 size, bool8 shared)
     sLargeWilds = FALSE;
 #if GENERATED_WILDS_GUIDE
     sGuideStaged = sGuideShared = FALSE;
+#if GENERATED_WILDS_CAST
+    sCastStaged = FALSE;
+#endif
 #endif
 #endif
 #if GENERATED_CAVE_PROFILES
@@ -329,7 +342,7 @@ static bool8 ValidateGuideGeometry(const u8 *cells, u32 size)
     for (i=0;i<LARGE_CELLS;i++) if (i!=guide && cells[i]=='.' && !seen[i]) return FALSE;
     return TRUE;
 }
-static void EncodeGuideText(const u8 *meta)
+static void EncodeGuideText(const u8 *meta, u8 *out)
 {
     unsigned i;
     for (i=0;i<meta[1];i++) {
@@ -339,9 +352,9 @@ static void EncodeGuideText(const u8 *meta)
         else if(c>='0' && c<='9') v=0xA1+c-'0';
         else switch(c) {case '\n':v=0xFE;break;case '.':v=0xAD;break;case ',':v=0xB8;break;
             case '!':v=0xAB;break;case '?':v=0xAC;break;case '\'':v=0xB4;break;case '-':v=0xAE;break;default:break;}
-        gGeneratedWildsGuideText[i]=v;
+        out[i]=v;
     }
-    gGeneratedWildsGuideText[meta[1]]=0xFF;
+    out[meta[1]]=0xFF;
 }
 #endif
 #if GENERATED_MAP_READY && GENERATED_WILDS_GUIDE
@@ -353,7 +366,7 @@ static bool8 StageGuidedWilds(const u8 *metadata, u32 metaSize, const u8 *cells,
             && !memcmp(cells,sLargeTemplate,LARGE_CELLS);
     if (!StageLarge(cells,size,shared)) return FALSE;
     sLargeWilds=TRUE; sGuideStaged=TRUE; sGuideShared=shared; sGuideGfx=metadata[0];
-    memcpy(sGuideMetadata,metadata,GENERATED_GUIDE_BYTES); EncodeGuideText(metadata);
+    memcpy(sGuideMetadata,metadata,GENERATED_GUIDE_BYTES); EncodeGuideText(metadata,gGeneratedWildsGuideText);
     return TRUE;
 }
 #endif
@@ -379,6 +392,51 @@ bool8 GeneratedMap_MatchesPreparedGuidedWilds(const u8 *metadata, u32 metaSize, 
     return metadata && metaSize==GENERATED_GUIDE_BYTES && cells && size==LARGE_CELLS && sGuideActive && sPrepared
         && (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
         && !memcmp(metadata,sGuideMetadata,GENERATED_GUIDE_BYTES) && !memcmp(cells,sLargeTemplate,LARGE_CELLS);
+#else
+    (void)metadata;(void)metaSize;(void)cells;(void)size;return FALSE;
+#endif
+}
+#if GENERATED_MAP_READY && GENERATED_WILDS_CAST
+static bool8 ValidateCast(const u8 *meta, u32 metaSize, const u8 *cells, u32 size)
+{
+    static const u8 xs[3]={2,20,40}, ys[3]={1,20,40};
+    u8 seen[LARGE_CELLS]={0}, blocked[LARGE_CELLS]={0}, guide[GENERATED_GUIDE_BYTES];
+    u16 queue[LARGE_CELLS],head=0,tail=0,i; unsigned n,j,d;
+    if (!meta || metaSize!=GENERATED_CAST_BYTES || !cells || size!=LARGE_CELLS) return FALSE;
+    n=meta[0]; if (!n || n>3) return FALSE;
+    for (j=0;j<3;j++) {
+        const u8 *record=meta+1+j*61;
+        if (j>=n) { for (d=0;d<61;d++) if(record[d]) return FALSE; continue; }
+        if(record[1]!=xs[j] || record[2]!=ys[j]) return FALSE;
+        guide[0]=record[0];guide[1]=record[3];memcpy(guide+2,record+4,57);
+        if(!ValidateGuideText(guide,sizeof(guide))) return FALSE;
+        i=ys[j]*LARGE_SIDE+xs[j]; if(cells[i]!='.') return FALSE; blocked[i]=TRUE;
+    }
+    if(cells[LARGE_SIDE+1]!='.') return FALSE;
+    queue[tail++]=LARGE_SIDE+1;seen[LARGE_SIDE+1]=TRUE;
+    while(head<tail) {
+        s16 pos=queue[head++],neighbors[4]={pos-LARGE_SIDE,pos+1,pos+LARGE_SIDE,pos-1};
+        for(d=0;d<4;d++) {s16 next=neighbors[d];
+            if(next>=0 && next<LARGE_CELLS && !blocked[next] && cells[next]=='.' && !seen[next]) {
+                seen[next]=TRUE;queue[tail++]=next;
+            }
+        }
+    }
+    for(i=0;i<LARGE_CELLS;i++) if(cells[i]=='.' && !blocked[i] && !seen[i]) return FALSE;
+    for(j=0;j<n;j++) if(!seen[ys[j]*LARGE_SIDE+xs[j]-1]) return FALSE;
+    return TRUE;
+}
+#endif
+bool8 GeneratedMap_StageCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_WILDS_CAST
+    u8 guide[GENERATED_GUIDE_BYTES];u8 *texts[3]={gGeneratedWildsGuideText,gGeneratedWildsCastText2,gGeneratedWildsCastText3};unsigned j;
+    if(!ValidateCast(metadata,metaSize,cells,size) || !StageLarge(cells,size,FALSE)) return FALSE;
+    sLargeWilds=TRUE;sCastStaged=TRUE;memcpy(sCastMetadata,metadata,GENERATED_CAST_BYTES);
+    for(j=0;j<metadata[0];j++) {const u8 *record=metadata+1+j*61;
+        guide[0]=record[0];guide[1]=record[3];memcpy(guide+2,record+4,57);EncodeGuideText(guide,texts[j]);
+    }
+    return TRUE;
 #else
     (void)metadata;(void)metaSize;(void)cells;(void)size;return FALSE;
 #endif
@@ -714,6 +772,9 @@ bool8 GeneratedMap_Enter(void)
     sLargeActive = sLargeStaged && (!WorldBridge_Enabled() || sLargeShared);
 #if GENERATED_WILDS_GUIDE
     sGuideActive = sLargeActive && sLargeWilds && sGuideStaged;
+#if GENERATED_WILDS_CAST
+    sCastActive = sLargeActive && sLargeWilds && sCastStaged;
+#endif
 #endif
     if (sLargeActive) {
         u16 i;
@@ -784,6 +845,19 @@ const struct MapLayout *GeneratedMap_ResolveLayout(const struct MapLayout *base)
         sSeenInside = TRUE;
         sLayout = *base;
 #if GENERATED_WILDS_GUIDE
+#if GENERATED_WILDS_CAST
+        if (sCastActive && sLargeWilds && gMapHeader.events) {
+            static const u8 *const scripts[3]={GeneratedWorld_Wilds_EventScript_Guide,GeneratedWorld_Wilds_EventScript_Cast2,GeneratedWorld_Wilds_EventScript_Cast3};
+            unsigned j;
+            sGuideEvents=*gMapHeader.events;memset(sGuideObjects,0,sizeof(sGuideObjects));
+            for(j=0;j<sCastMetadata[0];j++) {const u8 *record=sCastMetadata+1+j*61;
+                sGuideObjects[j].localId=j+1;sGuideObjects[j].graphicsId=record[0];
+                sGuideObjects[j].x=record[1];sGuideObjects[j].y=record[2];sGuideObjects[j].elevation=3;
+                sGuideObjects[j].movementType=MOVEMENT_TYPE_FACE_LEFT;sGuideObjects[j].script=scripts[j];
+            }
+            sGuideEvents.objectEventCount=sCastMetadata[0];sGuideEvents.objectEvents=sGuideObjects;gMapHeader.events=&sGuideEvents;
+        } else
+#endif
         if (sGuideActive && sLargeWilds && gMapHeader.events) {
             sGuideEvents = *gMapHeader.events;
             memset(sGuideObjects, 0, sizeof(sGuideObjects));
