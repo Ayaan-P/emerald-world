@@ -19,6 +19,11 @@ _LINK_TYPES = {1: frozenset((0x2211, 0x2233)),
                2: frozenset((0x2211, 0x2244)),
                3: frozenset((0x1111, 0x1122, 0x1133, 0x1144)),
                4: frozenset((0x2255, 0x2211))}
+# Versioned physical/special split is negotiated through the native OPEN
+# link type. Trades do not use battle rules. Exact pair matching remains in
+# LinkSessions.open; unmodified clients/servers stay on the vanilla values.
+for _mode in (1, 2, 4):
+    _LINK_TYPES[_mode] |= frozenset(value | 0x8000 for value in _LINK_TYPES[_mode])
 
 
 @dataclass
@@ -63,6 +68,8 @@ class LinkProtocol:
         self.id_factory = id_factory or (lambda: secrets.randbits(64))
         self._wire = {}
         self._internal = {}
+        # Bind the chosen rules for the full activity, across link reopens.
+        self._rules = {}
         self._last_wire = None
         self._tags = {}
         self._tag_actor = {}
@@ -180,6 +187,7 @@ class LinkProtocol:
         for wire in closed:
             entry = self._wire.pop(wire)
             del self._internal[entry.internal]
+            self._rules.pop(wire, None)
             for tag in self._tags.values():
                 if tag.coop_wire == wire:
                     tag.coop_wire = None
@@ -315,7 +323,12 @@ class LinkProtocol:
                 if kind == 1:
                     if step != 0 or link_type not in _LINK_TYPES[mode]:
                         raise ValueError('open')
+                    rule = bool(link_type & 0x8000)
+                    if mode != 3 and wire in self._rules and self._rules[wire] != rule:
+                        raise LinkError('link_type_mismatch')
                     result = self.sessions.open(actor, entry.internal, generation, link_type, now=now)
+                    if mode != 3:
+                        self._rules.setdefault(wire, rule)
                 elif kind == 2:
                     result = self.sessions.close_generation(actor, entry.internal, generation, now=now)
                 elif kind == 3:

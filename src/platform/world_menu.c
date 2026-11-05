@@ -32,7 +32,7 @@
 /* One field window, not another Start-menu row or another input consumer.
  * Lists are rebuilt from live state, but focus is an action identity. */
 enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, RALLY, DISPATCH };
-enum Action { FRIENDS, STORY, DEXNAV, PARTY_EXP, REUSABLE_TMS, BACK, MODE, SCOPE, REQUEST, READY,
+enum Action { FRIENDS, STORY, DEXNAV, PARTY_EXP, REUSABLE_TMS, MOVE_SPLIT, BACK, MODE, SCOPE, REQUEST, READY,
     LATER, CANCEL, GO, FINISH, RETURN, STAY, ACTION_COUNT };
 enum Page { CONTROLS, ROSTER, STATUS, PAGE_COUNT };
 enum { WORLD_MENU_WIDTH = 28, WORLD_MENU_HEIGHT = 18, LINE_HEIGHT = 12,
@@ -158,6 +158,7 @@ static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 onlin
             "DexNav needs a Pokedex and conscious party outside restricted or link areas.");
         AddRow(rows, &n, PARTY_EXP, FlagGet(FLAG_PARTY_EXP_SHARE) ? "Party EXP: ON" : "Party EXP: OFF", NULL);
         AddRow(rows, &n, REUSABLE_TMS, FlagGet(FLAG_REUSABLE_TMS) ? "Reusable TMs: ON" : "Reusable TMs: OFF", NULL);
+        AddRow(rows, &n, MOVE_SPLIT, FlagGet(FLAG_MODERN_MOVE_SPLIT) ? "Move split: ON" : "Move split: OFF", NULL);
         AddRow(rows, &n, BACK, "Back", NULL);
         return n;
     }
@@ -289,6 +290,7 @@ static void Draw(const struct Row *rows, unsigned count, unsigned selected,
             sMenu.focus == STORY ? "Roxanne visit for up to four trainers. Normal two-player battles. Boss credit stays personal." :
             sMenu.focus == PARTY_EXP ? "Participants split EXP. Healthy bench gets half each. Save to keep this setting. NPC partner battles use vanilla rules." :
             sMenu.focus == REUSABLE_TMS ? "Teach with owned TMs without consuming them. Save to keep this setting." :
+            sMenu.focus == MOVE_SPLIT ? "Modern categories. Both players must match. Battle recording unavailable. Save to keep." :
             "A choose. B back. Check status for local requirements.");
     }
     else if (sMenu.page == ROSTER)
@@ -498,6 +500,12 @@ void WorldMenu_Update(void)
                 if (FlagGet(FLAG_REUSABLE_TMS)) FlagClear(FLAG_REUSABLE_TMS);
                 else FlagSet(FLAG_REUSABLE_TMS);
                 sMenu.notice = "Reusable TMs changed. Save the game to keep this setting.";
+            }
+            else if (sMenu.focus == MOVE_SPLIT)
+            {
+                if (FlagGet(FLAG_MODERN_MOVE_SPLIT)) FlagClear(FLAG_MODERN_MOVE_SPLIT);
+                else FlagSet(FLAG_MODERN_MOVE_SPLIT);
+                sMenu.notice = "Move split changed. Save the game to keep this setting.";
             }
             else if (sMenu.focus == MODE) WorldRally_SetAutoJoin(!WorldRally_GetAutoJoin());
             else if (sMenu.focus == SCOPE) sMenu.scope ^= 1;
