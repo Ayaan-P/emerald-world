@@ -18,6 +18,12 @@ class CloseFailureTests(unittest.TestCase):
             class Endpoint:
                 closed=False
                 def close(self):self.closed=True
+            class BrokenEndpoint:
+                failed=False
+                def close(self):
+                    if not self.failed:
+                        self.failed=True
+                        raise OSError('simulated close failure')
             class Key:
                 def __init__(self,endpoint):self.fileobj=endpoint
             class Selector:
@@ -26,7 +32,7 @@ class CloseFailureTests(unittest.TestCase):
                 def get_map(self):return self.items
                 def close(self):pass
             listener,client=Endpoint(),Endpoint()
-            server.selector=Selector([listener,client])
+            server.selector=Selector([listener,BrokenEndpoint(),client])
             try:
                 with self.assertRaises(sqlite3.Error):server._loop()
                 self.assertTrue(listener.closed)
@@ -51,6 +57,7 @@ class CloseFailureTests(unittest.TestCase):
             with self.assertRaises(sqlite3.Error):server.close()
             with self.assertRaises(sqlite3.ProgrammingError):server.db.execute('SELECT 1')
             self.assertTrue(authority_handle.closed)
+            server.close()  # A repeated close is harmless after the reported failure.
             with (state/'world.lock').open('a+b') as new_lock:
                 fcntl.flock(new_lock.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
             self.assertEqual(save.read_bytes(),b'private-progress-unchanged')
