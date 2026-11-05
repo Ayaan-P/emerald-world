@@ -2372,6 +2372,10 @@ bool8 HasNoMonsToSwitch(u8 battler, u8 partyIdBattlerOn1, u8 partyIdBattlerOn2)
              && !GetMonData(&party[i], MON_DATA_IS_EGG)
              && GetMonData(&party[i], MON_DATA_HP))
                 return FALSE;
+#if COOP_FULL_SIX_READY
+        if (GetBattlerSide(battler) == B_SIDE_PLAYER && WorldCoop_HasHiddenUsable(battler))
+            return FALSE;
+#endif
         return TRUE;
     }
 #endif

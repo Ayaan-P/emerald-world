@@ -2,6 +2,7 @@
  * and Pokemon accessors are explicit fixtures, not a simulated game result. */
 #include "../../src/platform/world_coop.c"
 #include "src/platform/world_coop_potion.c"
+#include "src/platform/world_coop_roster.c"
 /* The game config defines NDEBUG. This test must execute assertions. */
 #undef NDEBUG
 #include <assert.h>
@@ -23,6 +24,7 @@ struct BattleScripting gBattleScripting;
 static struct BattleStruct testBattleStruct;
 struct BattleStruct *gBattleStruct = &testBattleStruct;
 struct BattlePokemon gBattleMons[MAX_BATTLERS_COUNT];
+struct WishFutureKnock gWishFutureKnock;
 u8 gActiveBattler, gBattlerFainted, gSentPokesToOpponent[2], gAbsentBattlerFlags, gBattlerInMenuId;
 u8 gBattleBufferB[MAX_BATTLERS_COUNT][0x200];
 s32 gBattleMoveDamage;

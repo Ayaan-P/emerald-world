@@ -413,6 +413,14 @@ static void WorldCoop_ObserveController(u8 battler, const u8 *data) {
  assert(!aborted && !observedMon && gBattleBufferB[0][0]==CONTROLLER_DATATRANSFER);
 ''')
 
+    def test_coop_switch_reply_rejects_unnegotiated_extended_slot(self):
+        self.run_c(r'''
+ coopMode=TRUE;gBattleTypeFlags |= BATTLE_TYPE_IS_MASTER;
+ u8 reply[8]={CONTROLLER_CHOSENMONRETURNVALUE,0x8d,0x10,0x32,0x54,0,0,0};
+ sNativeBattleRequestPending[0]=TRUE;sNativeBattleRequest[0][0]=CONTROLLER_CHOOSEPOKEMON;
+ assert(!NativeBattleReplyValid(0,reply));
+''')
+
     def test_coop_switch_reply_cannot_select_partners_mon(self):
         for party_slot in [0, 3]:
             with self.subTest(party_slot=party_slot):
