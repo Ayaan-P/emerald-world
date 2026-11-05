@@ -14,5 +14,6 @@ struct WorldCaveWire
 /* 0: accepted partial; 1: complete; -1: invalid. Only BEGIN/ROW/END. */
 int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned count, const char *const *tokens);
 void WorldCaveWire_Reset(struct WorldCaveWire *wire);
+bool8 WorldCaveWire_ValidId(const char *id);
 #endif
 #endif

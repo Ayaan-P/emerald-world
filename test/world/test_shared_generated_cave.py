@@ -97,6 +97,51 @@ class SharedCaveTests(unittest.TestCase):
     g,n=server.cave_map;server._line(c,(f'STATE 1 {g} {n} 1 1 1 7 1 '+('a'*16)+' '+('b'*16)).encode())
     self.assertIn(b'ERROR',c['out']);self.assertTrue(c['closing'])
    finally: server.close()
+ def test_live_replacement_revokes_acks_and_resynchronizes_without_client_upload(self):
+  alice=self.conn(self.alice);bob=self.conn(self.bob,'SOCIALTRAVELCHATRALLY');old=self.server.shared_cave.identity
+  self.send(alice,'CAVE GET');self.send(alice,'CAVE ACK '+old)
+  changed=bytearray(BLOB);changed[8+2*31+2]=ord('#');new=self.server._replace_cave(bytes(changed))
+  self.assertNotEqual(new,old);self.assertEqual(alice['out'].decode(),'CAVE RESET '+new+'\n');alice['out'].clear()
+  self.assertEqual(bob['out'],b'') # old clients never receive new protocol frames
+  self.assertEqual(self.send(alice,'CAVE ACK '+old),'CAVE RESET '+new+'\n')
+  self.assertEqual(self.state(alice,1,1,1),'CAVE RESET '+new+'\n')
+  self.assertIsNone(alice['state']);self.assertEqual(self.send(alice,'CAVE GET'),'CAVE BUSY\n')
+  alice['cave_next']=0;self.assertEqual(self.send(alice,'CAVE GET').splitlines()[0],'CAVE BEGIN '+new)
+  self.assertEqual(self.send(alice,'CAVE ACK '+new),'CAVE OK '+new+'\n');self.assertNotIn('ERROR',self.state(alice,2,1,1))
+ def test_live_replacement_is_atomic_and_refuses_occupied_or_unready_cave(self):
+  alice=self.conn(self.alice);old=self.server.shared_cave.identity
+  self.send(alice,'CAVE GET');self.send(alice,'CAVE ACK '+old);self.state(alice,1,1,1)
+  changed=bytearray(BLOB);changed[8+2*31+2]=ord('#')
+  with self.assertRaisesRegex(ValueError,'occupied'):self.server._replace_cave(bytes(changed))
+  self.assertEqual(self.server.shared_cave.identity,old)
+  self.send(alice,'STATE 2 0 0 0 0 1 7 0 '+('a'*16)+' '+('b'*16))
+  self.assertTrue(alice['in_generated_cave'])
+  with self.assertRaisesRegex(ValueError,'occupied'):self.server._replace_cave(bytes(changed))
+  self.send(alice,'STATE 3 0 0 1 1 1 7 1 '+('a'*16)+' '+('b'*16))
+  self.assertFalse(alice['in_generated_cave']);self.assertNotEqual(self.server._replace_cave(bytes(changed)),old)
+ def test_backpressure_prevents_partial_replacement(self):
+  alice=self.conn(self.alice);before=self.server.shared_cave.identity;alice['out'].extend(b'x'*65530)
+  changed=bytearray(BLOB);changed[8+2*31+2]=ord('#')
+  with self.assertRaisesRegex(ValueError,'busy'):self.server._replace_cave(bytes(changed))
+  self.assertEqual(self.server.shared_cave.identity,before);self.assertEqual(len(alice['out']),65530)
+ def test_first_live_publication_notifies_capable_peers(self):
+  with tempfile.TemporaryDirectory() as d:
+   server=MemoryAuthority(Path(d)/'s',Path(d)/'world')
+   try:
+    identity=server.create_identity('NoCave');c={'id':None,'out':bytearray(),'closing':False,'state':None,'seq':0,'sock':object()}
+    server._line(c,('HELLO 1 %s %s SOCIALCAVE' % (identity['id'],identity['token'])).encode());c['out'].clear()
+    server._line(c,b'CAVE GET');self.assertEqual(c['out'],b'CAVE NONE\n');c['out'].clear()
+    new=server._replace_cave(BLOB);self.assertEqual(c['out'].decode(),'CAVE RESET '+new+'\n')
+   finally:server.close()
+ def test_admin_replace_only_accepts_complete_canonical_template(self):
+  import base64,json
+  admin={'out':bytearray(),'closing':False}
+  changed=bytearray(BLOB);changed[8+2*31+2]=ord('#');encoded=base64.b64encode(changed).decode()
+  self.server._admin_line(admin,json.dumps({'command':'replace_cave','template':encoded}).encode())
+  result=json.loads(admin['out']);self.assertTrue(result['ok']);self.assertFalse(result['persistent'])
+  bad={'out':bytearray(),'closing':False};before=self.server.shared_cave.identity
+  self.server._admin_line(bad,b'{"command":"replace_cave","template":"not-base64!"}')
+  self.assertFalse(json.loads(bad['out'])['ok']);self.assertEqual(self.server.shared_cave.identity,before);self.assertIsNone(self.server.module_error)
  def test_invalid_geometry_rejected_before_world_starts(self):
   with tempfile.TemporaryDirectory() as d:
    root=Path(d)

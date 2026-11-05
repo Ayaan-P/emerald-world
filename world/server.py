@@ -1,5 +1,7 @@
 """Persistent local world authority. Client reports never mutate trainer saves."""
 import argparse
+import base64
+import binascii
 from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
@@ -492,6 +494,7 @@ class WorldServer:
                 conn['social'] = social
                 conn['cave_capable'] = cave_capable
                 conn['cave_offer'] = conn['cave_ack'] = None
+                conn['cave_revoked'] = []
                 conn['chat'] = chat_capable
                 conn['travel'] = travel
                 conn['chat_history'] = []
@@ -531,11 +534,16 @@ class WorldServer:
                     conn['cave_offer'] = self.shared_cave.identity
                     self._queue(conn, frames)
                     return
-                if (len(fields) == 3 and fields[1] == 'ACK' and self.shared_cave
-                        and conn.get('cave_offer') == self.shared_cave.identity
-                        and secrets.compare_digest(fields[2], self.shared_cave.identity)):
-                    conn['cave_ack'] = self.shared_cave.identity
-                    self._queue(conn, 'CAVE OK ' + self.shared_cave.identity + '\n')
+                if len(fields) == 3 and fields[1] == 'ACK' and re.fullmatch(r'[0-9a-f]{64}', fields[2]):
+                    if (self.shared_cave and conn.get('cave_offer') == self.shared_cave.identity
+                            and secrets.compare_digest(fields[2], self.shared_cave.identity)):
+                        conn['cave_ack'] = self.shared_cave.identity
+                        conn['cave_revoked'] = []
+                        self._queue(conn, 'CAVE OK ' + self.shared_cave.identity + '\n')
+                    elif self.shared_cave and fields[2] in conn.get('cave_revoked', ()):
+                        self._queue(conn, 'CAVE RESET ' + self.shared_cave.identity + '\n')
+                    else:
+                        self._error(conn, 'CAVE')
                     return
                 self._error(conn, 'CAVE')
                 return
@@ -577,6 +585,10 @@ class WorldServer:
             limits = [255, 255, 32767, 32767, 4, 65535, 1]
             state = [bounded(v, 0, limit) for v, limit in zip(fields[2:9], limits)]
             if self.cave_map is not None and tuple(state[:2]) == self.cave_map:
+                if (self.shared_cave and conn.get('cave_capable') and conn.get('cave_revoked')
+                        and conn.get('cave_ack') != self.shared_cave.identity):
+                    self._queue(conn, 'CAVE RESET ' + self.shared_cave.identity + '\n')
+                    return
                 if (self.shared_cave is None or conn.get('cave_ack') != self.shared_cave.identity
                         or self.rally.current(conn) is not None
                         or not self.shared_cave.walkable(state[2], state[3])):
@@ -601,7 +613,10 @@ class WorldServer:
                 self.pending_states[conn['id']] = data
             self._flush_states(force=False)
             conn['seq'], conn['state'], conn['field'] = seq, state, field
-            conn['in_generated_cave'] = self.cave_map is not None and tuple(state[:2]) == self.cave_map
+            if self.cave_map is not None and tuple(state[:2]) == self.cave_map:
+                conn['in_generated_cave'] = True
+            elif state[6]:
+                conn['in_generated_cave'] = False
             conn['state_time'] = time.monotonic()
             self._deliver_links(self.link_protocol.update_presence(self._link_presence()))
             self._broadcast()
@@ -815,11 +830,51 @@ class WorldServer:
                 self._queue(conn, json.dumps(future.result(), ensure_ascii=True) + '\n')
         self.control_jobs = remaining
 
+    def _replace_cave(self, blob):
+        from .shared_cave import SharedCave
+        candidate = SharedCave(blob)  # validate completely before mutating anything
+        with self.lock:
+            if self.cave_map is None:
+                raise ValueError('generated cave missing from catalog')
+            if self.shared_cave and candidate.identity == self.shared_cave.identity:
+                return candidate.identity
+            peers = [peer for peer in self.peers.values() if not peer.get('closing')]
+            if any(peer.get('in_generated_cave') or
+                   (peer.get('state') is not None and tuple(peer['state'][:2]) == self.cave_map)
+                   for peer in peers):
+                raise ValueError('generated cave is occupied')
+            message = 'CAVE RESET ' + candidate.identity + '\n'
+            recipients = [peer for peer in peers if peer.get('cave_capable')]
+            if any(len(peer['out']) + len(message) > MAX_QUEUE for peer in recipients):
+                raise ValueError('generated cave update is busy')
+            old_id = self.shared_cave.identity if self.shared_cave else None
+            self.shared_cave = candidate
+            for peer in recipients:
+                if old_id:
+                    peer['cave_revoked'] = (peer.get('cave_revoked', []) + [old_id])[-4:]
+                peer['cave_offer'] = peer['cave_ack'] = None
+                self._queue(peer, message)
+            return candidate.identity
+
     def _admin_line(self, conn, raw):
         conn['closing'] = True
         try:
             request = json.loads(raw)
-            if request.get('command') == 'invitation':
+            if request.get('command') == 'replace_cave':
+                try:
+                    if set(request) != {'command', 'template'} or type(request['template']) is not str:
+                        raise ValueError('invalid cave request')
+                    try:
+                        blob = base64.b64decode(request['template'], validate=True)
+                    except (ValueError, binascii.Error):
+                        raise ValueError('invalid cave encoding') from None
+                    if base64.b64encode(blob).decode('ascii') != request['template']:
+                        raise ValueError('noncanonical cave encoding')
+                    result = dict(ok=True, id=self._replace_cave(blob), persistent=False)
+                except ValueError as exc:
+                    # Expected validation/occupancy refusal is not a mechanic error.
+                    result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'invitation':
                 if set(request) != {'command', 'trainer'} or self.sharing is None:
                     self._queue(conn, json.dumps(dict(ok=False, error='secure sharing required')) + '\n')
                     return
@@ -1019,7 +1074,7 @@ class WorldServer:
                             while b'\n' in conn['incoming'] and not conn['closing']:
                                 raw, _, rest = conn['incoming'].partition(b'\n')
                                 conn['incoming'] = bytearray(rest)
-                                limit = MAX_CONTROL_LINE if conn.get('control') else MAX_LINE
+                                limit = MAX_CONTROL_LINE if conn.get('control') or conn.get('admin') else MAX_LINE
                                 if len(raw) > limit:
                                     self._error(conn, 'OVERSIZE')
                                 else:
@@ -1027,7 +1082,7 @@ class WorldServer:
                                         self._admin_line(conn, raw)
                                     else:
                                         self._line(conn, raw)
-                            limit = MAX_CONTROL_LINE if conn.get('control') else MAX_LINE
+                            limit = MAX_CONTROL_LINE if conn.get('control') or conn.get('admin') else MAX_LINE
                             if len(conn['incoming']) > limit:
                                 conn['incoming'].clear()
                                 self._error(conn, 'OVERSIZE')

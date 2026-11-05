@@ -23,8 +23,8 @@ class NativeSharedCaveFlow(unittest.TestCase):
 #include "platform/world_cave_wire.h"
 struct Task {int isActive;};struct Task gTasks[16];
 struct Save save,*gSaveBlock1Ptr=&save;__typeof__(gMain) gMain;__typeof__(gMapHeader) gMapHeader;
-enum CaveState {CAVE_DISABLED,CAVE_IDLE,CAVE_WAIT,CAVE_ACK,CAVE_WAIT_OK,CAVE_READY,CAVE_MISMATCH,CAVE_RETURN_NONE};
-static struct {bool8 connected,caveAvailable,staging,caveReturning;enum CaveState caveState;unsigned caveTimeout,caveRetry,snapshotAge;struct WorldCaveWire caveWire;size_t outputSize;char output[4096];} sWorld;
+enum CaveState {CAVE_DISABLED,CAVE_IDLE,CAVE_WAIT,CAVE_WAIT_RESET,CAVE_ACK,CAVE_WAIT_OK,CAVE_READY,CAVE_MISMATCH,CAVE_RETURN_NONE};
+static struct {bool8 connected,caveAvailable,staging,caveReturning;enum CaveState caveState;unsigned caveTimeout,caveRetry,snapshotAge;char caveExpected[65];struct WorldCaveWire caveWire;size_t outputSize;char output[4096];} sWorld;
 static char sent[4096];static int leaving,disconnected;
 static struct WarpData destination;
 const char *LinkTransport_TagPeer(void){return 0;}
@@ -101,7 +101,25 @@ int main(void){
  CavePump();assert(sWorld.caveReturning);save.location=destination;GeneratedMap_ResolveLayout(&base);CavePump();
  assert(sWorld.caveState==CAVE_DISABLED);
  for(int i=0;i<16;i++)gTasks[i].isActive=1;
- assert(!GeneratedMap_CanEnter());
+ assert(!GeneratedMap_CanEnter());for(int i=0;i<16;i++)gTasks[i].isActive=0;
+ /* A live authority replacement during entry invalidates the old ACK and
+  * cannot publish mismatched geometry while the old warp is still pending. */
+ sWorld.caveState=CAVE_READY;assert(GeneratedMap_Enter()&&GeneratedMap_EntryPending());
+ char *reset[]={"CAVE","RESET",(char *)b};assert(CaveLine(3,reset)&&sWorld.caveState==CAVE_IDLE);
+ assert(!WorldBridge_GeneratedCaveReady());CavePump();assert(!strcmp(sent,"CAVE GET\n"));
+ deliver(b,1);assert(sWorld.caveState==CAVE_MISMATCH);before=leaving;CavePump();assert(leaving==before);
+ save.location=destination;GeneratedMap_ResolveLayout(&base);CavePump();assert(sWorld.caveReturning);
+ save.location=destination;GeneratedMap_ResolveLayout(&base);CavePump();assert(sWorld.caveState==CAVE_WAIT_OK);
+ assert(CaveLine(3,ok2)&&WorldBridge_GeneratedCaveReady());
+ char *badreset[]={"CAVE","RESET","BAD"};assert(!CaveLine(3,badreset));
+ /* A reset can overtake an outstanding GET: accept its new-map response
+  * without sending a duplicate, or retry after a bounded wait. */
+ sWorld.caveState=CAVE_WAIT;sWorld.caveTimeout=600;assert(CaveLine(3,reset));
+ assert(sWorld.caveState==CAVE_WAIT_RESET);deliver(b,1);assert(sWorld.caveState==CAVE_ACK);
+ CavePump();assert(sWorld.caveState==CAVE_WAIT_OK);assert(CaveLine(3,ok2));
+ sWorld.caveState=CAVE_WAIT;sWorld.caveTimeout=600;assert(CaveLine(3,reset));
+ for(int i=0;i<60;i++)CavePump();
+ assert(sWorld.caveState==CAVE_WAIT&&!strcmp(sent,"CAVE GET\n"));
  return 0;
 }'''.replace('ID_A',ida).replace('ID_B',idb)
   with tempfile.TemporaryDirectory() as d:

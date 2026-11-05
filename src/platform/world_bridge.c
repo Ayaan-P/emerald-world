@@ -84,7 +84,7 @@ struct Snapshot {
     struct WorldRallySnapshot rally;
 };
 #if GENERATED_MAP_READY
-enum CaveState { CAVE_DISABLED, CAVE_IDLE, CAVE_WAIT, CAVE_ACK, CAVE_WAIT_OK,
+enum CaveState { CAVE_DISABLED, CAVE_IDLE, CAVE_WAIT, CAVE_WAIT_RESET, CAVE_ACK, CAVE_WAIT_OK,
                  CAVE_READY, CAVE_MISMATCH, CAVE_RETURN_NONE };
 #endif
 struct Remote { char id[26]; u8 object, sprite, group, num; };
@@ -97,6 +97,7 @@ static struct {
     bool8 caveProbe, caveLegacy, caveAvailable, caveReturning;
     enum CaveState caveState;
     unsigned caveTimeout, caveRetry;
+    char caveExpected[WORLD_CAVE_ID + 1];
     struct WorldCaveWire caveWire;
 #endif
 #ifdef _WIN32
@@ -382,6 +383,7 @@ static void Disconnect(void)
     sWorld.caveProbe = sWorld.caveAvailable = sWorld.caveReturning = FALSE;
     sWorld.caveState = CAVE_DISABLED;
     sWorld.caveTimeout = sWorld.caveRetry = 0;
+    sWorld.caveExpected[0] = 0;
     WorldCaveWire_Reset(&sWorld.caveWire);
 #endif
     sWorld.inputSize = sWorld.outputSize = sWorld.outputSent = 0;
@@ -607,19 +609,38 @@ static bool8 CaveLine(unsigned n, char **tokens)
 {
     int result;
     if (!sWorld.caveAvailable || sWorld.staging) return FALSE;
+    if (n == 3 && !strcmp(tokens[1], "RESET") && WorldCaveWire_ValidId(tokens[2])) {
+        bool8 requestInFlight = sWorld.caveState == CAVE_WAIT || sWorld.caveState == CAVE_WAIT_RESET;
+        WorldCaveWire_Reset(&sWorld.caveWire);
+        memcpy(sWorld.caveExpected, tokens[2], sizeof(sWorld.caveExpected));
+        /* A GET sent just before RESET may already produce the new map.
+         * Wait briefly for it instead of issuing a duplicate request. */
+        sWorld.caveState = requestInFlight ? CAVE_WAIT_RESET : CAVE_IDLE;
+        sWorld.caveTimeout = requestInFlight ? 60 : 0;
+        sWorld.caveRetry = 0;
+        return TRUE;
+    }
     if (n == 2 && !strcmp(tokens[1], "NONE") && sWorld.caveState == CAVE_WAIT) {
         sWorld.caveState = (GeneratedMap_IsInside() || GeneratedMap_EntryPending()) ? CAVE_RETURN_NONE : CAVE_DISABLED;
         return TRUE;
     }
-    if (n == 2 && !strcmp(tokens[1], "BUSY") && sWorld.caveState == CAVE_WAIT) {
+    if (n == 2 && !strcmp(tokens[1], "BUSY")
+     && (sWorld.caveState == CAVE_WAIT || sWorld.caveState == CAVE_WAIT_RESET)) {
         WorldCaveWire_Reset(&sWorld.caveWire);
         sWorld.caveState = CAVE_IDLE;sWorld.caveRetry = 60;return TRUE;
     }
     if (n == 3 && !strcmp(tokens[1], "OK") && sWorld.caveState == CAVE_WAIT_OK
      && !strcmp(tokens[2], sWorld.caveWire.id)) {
+        sWorld.caveExpected[0] = 0;
         sWorld.caveState = CAVE_READY;return TRUE;
     }
+    if (sWorld.caveState == CAVE_WAIT_RESET && n == 3 && !strcmp(tokens[1], "BEGIN")) {
+        sWorld.caveState = CAVE_WAIT;
+        sWorld.caveTimeout = 600;
+    }
     if (sWorld.caveState != CAVE_WAIT) return FALSE;
+    if (n == 3 && !strcmp(tokens[1], "BEGIN") && sWorld.caveExpected[0]
+     && strcmp(tokens[2], sWorld.caveExpected)) return FALSE;
     result = WorldCaveWire_Feed(&sWorld.caveWire, n, (const char *const *)tokens);
     if (result < 0) return FALSE;
     if (result == 1) {
@@ -1154,6 +1175,8 @@ static void CavePump(void)
             sWorld.caveState = CAVE_ACK;
         } else sWorld.caveState = CAVE_DISABLED;
     }
+    if (sWorld.caveState == CAVE_WAIT_RESET && sWorld.caveTimeout && --sWorld.caveTimeout == 0)
+        sWorld.caveState = CAVE_IDLE;
     if ((sWorld.caveState == CAVE_WAIT || sWorld.caveState == CAVE_WAIT_OK)
      && sWorld.caveTimeout && --sWorld.caveTimeout == 0) { Disconnect(); return; }
     if (sWorld.caveRetry) { sWorld.caveRetry--; return; }

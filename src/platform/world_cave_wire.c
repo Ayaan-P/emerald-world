@@ -58,7 +58,7 @@ static void Digest(const u8 *cells, char hex[65])
     }
     hex[64]=0;
 }
-static bool8 ValidId(const char *id)
+bool8 WorldCaveWire_ValidId(const char *id)
 {
     unsigned i;
     if (!id || strlen(id)!=WORLD_CAVE_ID) return FALSE;
@@ -74,7 +74,7 @@ int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned n, const char *const
     for(i=0;i<n;i++) if (!t[i]) return -1;
     if (strcmp(t[0],"CAVE")) return -1;
     if (n==3 && !strcmp(t[1],"BEGIN")) {
-        if(wire->active || !ValidId(t[2])) return -1;
+        if(wire->active || !WorldCaveWire_ValidId(t[2])) return -1;
         memcpy(wire->id,t[2],65);wire->nextRow=0;wire->active=TRUE;return 0;
     }
     if(!wire->active || n<3 || strcmp(wire->id,t[2])) return -1;
