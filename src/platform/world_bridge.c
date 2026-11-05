@@ -1172,7 +1172,11 @@ static void SyncEngine(void)
             if (gMapHeader.events) for (id = 0; id < gMapHeader.events->objectEventCount; id++)
                 if (gSaveBlock1Ptr->objectEventTemplates[id].localId == WB_LOCALID + i) collision = TRUE;
             if (collision) continue;
+#if WORLD_EXTENDED_OBJECTS
+            id = SpawnWorldObjectEventParameterized(gfx, MOVEMENT_TYPE_NONE, WB_LOCALID + i,
+#else
             id = SpawnSpecialObjectEventParameterized(gfx, MOVEMENT_TYPE_NONE, WB_LOCALID + i,
+#endif
                 p->x + MAP_OFFSET, p->y + MAP_OFFSET, MapGridGetElevationAt(p->x + MAP_OFFSET, p->y + MAP_OFFSET));
             if (id >= OBJECT_EVENTS_COUNT) continue;
             strcpy(r->id, p->id);

@@ -1219,16 +1219,21 @@ static void CreateReflectionEffectSprites(void)
     gSprites[spriteId].invisible = TRUE;
 }
 
+#if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
+// Set only around the synchronous bridge spawn on the game thread.
+static bool8 sWorldObjectAllocation;
+#endif
+
 u8 GetFirstInactiveObjectEventId(void)
 {
     u8 i;
-    for (i = 0; i < OBJECT_EVENTS_COUNT; i++)
+    for (i = 0; i < SAVED_OBJECT_EVENTS_COUNT; i++)
     {
         if (!gObjectEvents[i].active)
             break;
     }
 
-    return i;
+    return i == SAVED_OBJECT_EVENTS_COUNT ? OBJECT_EVENTS_COUNT : i;
 }
 
 u8 GetObjectEventIdByLocalIdAndMap(u8 localId, u8 mapNum, u8 mapGroupId)
@@ -1362,6 +1367,24 @@ static bool8 GetAvailableObjectEventId(u16 localId, u8 mapNum, u8 mapGroup, u8 *
 // If no slots are available, or if the object is already
 // loaded, returns TRUE.
 {
+#if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
+    u8 i, first, last;
+    // Duplicate identities are rejected even across the two pools.
+    for (i = 0; i < OBJECT_EVENTS_COUNT; i++)
+        if (gObjectEvents[i].active && gObjectEvents[i].localId == localId
+         && gObjectEvents[i].mapNum == mapNum && gObjectEvents[i].mapGroup == mapGroup)
+            return TRUE;
+    first = sWorldObjectAllocation ? SAVED_OBJECT_EVENTS_COUNT : 0;
+    last = sWorldObjectAllocation ? OBJECT_EVENTS_COUNT : SAVED_OBJECT_EVENTS_COUNT;
+    for (i = first; i < last; i++)
+        if (!gObjectEvents[i].active) { *objectEventId = i; return FALSE; }
+    // When extension slots are full the bridge may use otherwise free stock slots.
+    if (sWorldObjectAllocation)
+        for (i = 0; i < SAVED_OBJECT_EVENTS_COUNT; i++)
+            if (!gObjectEvents[i].active) { *objectEventId = i; return FALSE; }
+    return TRUE;
+#else
+
     u8 i = 0;
 
     for (i = 0; i < OBJECT_EVENTS_COUNT && gObjectEvents[i].active; i++)
@@ -1378,6 +1401,7 @@ static bool8 GetAvailableObjectEventId(u16 localId, u8 mapNum, u8 mapGroup, u8 *
             return TRUE;
     }
     return FALSE;
+#endif
 }
 
 static void RemoveObjectEvent(struct ObjectEvent *objectEvent)
@@ -1526,6 +1550,17 @@ u8 SpawnSpecialObjectEventParameterized(u8 graphicsId, u8 movementBehavior, u8 l
     objectEventTemplate.trainerRange_berryTreeId = 0;
     return SpawnSpecialObjectEvent(&objectEventTemplate);
 }
+
+#if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
+u8 SpawnWorldObjectEventParameterized(u8 graphicsId, u8 movementBehavior, u8 localId, s16 x, s16 y, u8 elevation)
+{
+    u8 result;
+    sWorldObjectAllocation = TRUE;
+    result = SpawnSpecialObjectEventParameterized(graphicsId, movementBehavior, localId, x, y, elevation);
+    sWorldObjectAllocation = FALSE;
+    return result;
+}
+#endif
 
 u8 TrySpawnObjectEvent(u8 localId, u8 mapNum, u8 mapGroup)
 {

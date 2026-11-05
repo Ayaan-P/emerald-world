@@ -205,7 +205,7 @@ void SaveObjectEvents(void)
     // Synchronous warps can copy objects before the next bridge frame cleanup.
     WorldBridge_PrepareSave();
 #endif
-    for (i = 0; i < OBJECT_EVENTS_COUNT; i++)
+    for (i = 0; i < SAVED_OBJECT_EVENTS_COUNT; i++)
         gSaveBlock1Ptr->objectEvents[i] = gObjectEvents[i];
 }
 
@@ -213,8 +213,13 @@ void LoadObjectEvents(void)
 {
     int i;
 
-    for (i = 0; i < OBJECT_EVENTS_COUNT; i++)
+    for (i = 0; i < SAVED_OBJECT_EVENTS_COUNT; i++)
         gObjectEvents[i] = gSaveBlock1Ptr->objectEvents[i];
+#if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
+    // Extra slots are transient network actors and never part of a save.
+    for (; i < OBJECT_EVENTS_COUNT; i++)
+        gObjectEvents[i] = (struct ObjectEvent){};
+#endif
 }
 
 void CopyPartyAndObjectsToSave(void)

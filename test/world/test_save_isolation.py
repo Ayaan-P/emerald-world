@@ -48,6 +48,7 @@ typedef u8 bool8;
 #define WB_LOCALID 224
 #define WB_MARKER 0x5742
 #define OBJECT_EVENTS_COUNT 16
+#define SAVED_OBJECT_EVENTS_COUNT 16
 #define MAX_SPRITES 64
 #define MAP_OFFSET 7
 #define MAP_OFFSET_W 15
