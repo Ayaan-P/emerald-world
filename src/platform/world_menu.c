@@ -179,7 +179,8 @@ static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 onlin
             "DexNav needs a Pokedex and conscious party outside restricted or link areas.");
 #if GENERATED_MAP_READY
         AddRow(rows, &n, GEN_CAVE, GeneratedMap_IsInside() ? GEN_LEAVE_LABEL : GEN_EXPLORE_LABEL,
-            GeneratedMap_IsInside() || GeneratedMap_CanEnter() ? NULL : GEN_BLOCKED_LABEL);
+            GeneratedMap_IsInside() || GeneratedMap_CanEnter() ? NULL :
+            !GeneratedMap_HasUsableParty() ? "You need a conscious Pokemon before exploring." : GEN_BLOCKED_LABEL);
 #endif
         AddRow(rows, &n, BACK, "Back", NULL);
         return n;

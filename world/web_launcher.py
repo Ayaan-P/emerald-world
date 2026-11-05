@@ -82,6 +82,20 @@ class LauncherBridge:
                     found.append({'world': world.name, 'trainer': trainer.name, 'name': label})
         return found
 
+    def _ensure_game_display(self):
+        from scripts.linux_client import discover_display
+        managed = self.session.managed_display
+        if managed is not None and (managed.process is None or managed.process.poll() is not None
+                or not Path('/tmp/.X11-unix/X' + managed.display[1:]).is_socket()):
+            if any(process.poll() is None for process, _ in self.session.games.values()):
+                raise SessionError('Close the running game before replacing its missing display.')
+            self.stop_browser_input()
+            managed.close()
+            self.session.managed_display = None
+        if self.session.managed_display is None:
+            self.session.start_display(discover_display())
+        return self.session.managed_display.display
+
     def _start_offline(self, world, trainer, copy=False, seed_save=None):
         if self.session.state is not None or any(p.poll() is None for p, _ in self.session.games.values()):
             raise SessionError('Disconnect and close any running game before playing offline.')
@@ -89,8 +103,7 @@ class LauncherBridge:
         from scripts.linux_client import binary_ready, discover_display
         if not binary_ready(self.binary):
             raise SessionError('The native game is not built. Follow INSTALL_PC.md first.')
-        if self.session.managed_display is None:
-            self.session.start_display(discover_display())
+        self._ensure_game_display()
         options = {'copy_online': copy}
         if seed_save is not None:
             options['seed_save'] = seed_save
@@ -145,7 +158,26 @@ class LauncherBridge:
                 label = _read_metadata(path)['display_name']
             except (OSError, ValueError, TypeError, KeyError):
                 label = 'Local expedition · ' + path.name[-4:]
-            found.append({'key': path.name, 'name': label})
+            profiles = []
+            trainers = path / 'trainers'
+            if trainers.is_dir() and not trainers.is_symlink():
+                for profile in trainers.iterdir():
+                    if (not profile.is_symlink() and profile.is_dir()
+                            and re.fullmatch(r'[A-Za-z0-9_-]{1,24}', profile.name)):
+                        save = profile / 'game.sav'
+                        has_save = save.is_file() and not save.is_symlink() and save.stat().st_size > 0
+                        activity = profile / 'native.log'
+                        touched = activity.stat().st_mtime if activity.is_file() and not activity.is_symlink() else 0
+                        profiles.append((has_save, max(touched, save.stat().st_mtime if has_save else 0), profile.name))
+            selection = path / '.launcher-trainer'
+            try:
+                selected = selection.read_text().strip() if not selection.is_symlink() else ''
+            except OSError:
+                selected = ''
+            names = {profile[2] for profile in profiles}
+            trainer = selected if selected in names else max(profiles, default=(False, 0, 'Player'))[2]
+            found.append({'key': path.name, 'name': label, 'trainer': trainer,
+                          'has_save': any(saved and name == trainer for saved, _, name in profiles)})
         return found
 
     def snapshot(self):
@@ -290,6 +322,11 @@ class LauncherBridge:
                     self.session.host(name)
                     self.remote_paths = self.session.local_profile(trainer)
                     self.session.remote_trainer = trainer
+                    # Atomic replacement never follows an existing selection symlink.
+                    with tempfile.NamedTemporaryFile(mode='w', dir=self.session._world(name),
+                                                     prefix='.launcher-trainer-', delete=False) as selection:
+                        selection.write(trainer + '\n')
+                    os.replace(selection.name, self.session._world(name) / '.launcher-trainer')
                 except (OSError, ValueError):
                     self.remote_paths = None
                     self.session.disconnect()
@@ -383,9 +420,7 @@ class LauncherBridge:
                 from scripts.linux_client import binary_ready, discover_display
                 if not binary_ready(self.binary):
                     raise SessionError('The native game is not built. Follow INSTALL_PC.md first.')
-                if self.session.managed_display is None:
-                    self.session.start_display(discover_display())
-                self.session.launch(self.remote_paths, self.binary, self.session.managed_display.display)
+                self.session.launch(self.remote_paths, self.binary, self._ensure_game_display())
             elif action == 'offline':
                 world = payload.get('world')
                 copy = payload.get('copy')

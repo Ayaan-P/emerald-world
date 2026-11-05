@@ -71,6 +71,7 @@ bool8 GeneratedMap_IsInside(void);
 bool8 GeneratedMap_EntryPending(void);
 bool8 GeneratedMap_MatchesPrepared(const u8 *cells, u32 size);
 bool8 GeneratedMap_SharedCoordValid(unsigned x, unsigned y);
+bool8 GeneratedMap_HasUsableParty(void);
 bool8 GeneratedMap_CanEnter(void);
 bool8 GeneratedMap_Enter(void);
 bool8 GeneratedMap_Leave(void);

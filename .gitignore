@@ -46,6 +46,7 @@ prefabs.json
 /pokeemerald_modern-*.png
 
 # PC builds
+/launcher-web/node_modules
 /pokeemerald32
 /pokeemerald64
 # Settings, when the game is run from here next to a pokeemerald.sav

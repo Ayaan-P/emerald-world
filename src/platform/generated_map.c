@@ -16,6 +16,9 @@
 #include "constants/species.h"
 #endif
 #include <string.h>
+#if GENERATED_MAP_READY
+#include "pokemon.h"
+#endif
 
 #if GENERATED_MAP_READY
 /* Both supported sizes fit the native backup-map buffer with the view border.
@@ -557,13 +560,26 @@ bool8 GeneratedMap_SharedCoordValid(unsigned x, unsigned y)
 #endif
 }
 
+bool8 GeneratedMap_HasUsableParty(void)
+{
+#if GENERATED_MAP_READY
+    u8 i;
+    for (i = 0; i < gPlayerPartyCount && i < PARTY_SIZE; i++)
+        if (GetMonData(&gPlayerParty[i], MON_DATA_SPECIES)
+         && !GetMonData(&gPlayerParty[i], MON_DATA_IS_EGG)
+         && GetMonData(&gPlayerParty[i], MON_DATA_HP))
+            return TRUE;
+#endif
+    return FALSE;
+}
+
 bool8 GeneratedMap_CanEnter(void)
 {
 #if GENERATED_MAP_READY
     s16 x, y;
     struct WorldRallySnapshot rally;
     if (WorldRally_HasReturn() || (WorldRally_GetSnapshot(&rally) && rally.id)) return FALSE;
-    return gSaveBlock1Ptr && !sPrepared && !GeneratedMap_IsInside() && HasFreeWarpTask()
+    return gSaveBlock1Ptr && GeneratedMap_HasUsableParty() && !sPrepared && !GeneratedMap_IsInside() && HasFreeWarpTask()
         && !LinkTransport_PendingTag() && !LinkTransport_PendingInvitation()
         && (!WorldBridge_Enabled() || (WorldBridge_GeneratedCaveReady() && (sHasTemplate
 #if GENERATED_MAP_LARGE

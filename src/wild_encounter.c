@@ -623,6 +623,10 @@ bool8 StandardWildEncounter(u16 curMetatileBehavior, u16 prevMetatileBehavior)
     u16 headerId;
     struct Roamer *roamer;
 
+#if defined(PORTABLE) && GENERATED_MAP_READY
+    if (GeneratedMap_IsInside() && !GeneratedMap_HasUsableParty()) return FALSE;
+#endif
+
     if (sWildEncountersDisabled == TRUE)
         return FALSE;
 
@@ -771,6 +775,10 @@ bool8 SweetScentWildEncounter(void)
 {
     s16 x, y;
     u16 headerId;
+
+#if defined(PORTABLE) && GENERATED_MAP_READY
+    if (GeneratedMap_IsInside() && !GeneratedMap_HasUsableParty()) return FALSE;
+#endif
 
     PlayerGetDestCoords(&x, &y);
     headerId = GetCurrentMapWildMonHeaderId();

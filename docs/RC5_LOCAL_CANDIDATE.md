@@ -1,6 +1,6 @@
-# RC5 local integration candidate — frozen through PR #191
+# RC5 development evidence — frozen through PR #191
 
-This is a local development candidate, not a published or fully accepted release.
+For the published candidate's scope, installation and limitations, see [RELEASE_RC5.md](RELEASE_RC5.md). The records below describe the pre-release development journeys, not additional release acceptance.
 
 ## Run
 

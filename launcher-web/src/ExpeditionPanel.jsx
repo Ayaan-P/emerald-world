@@ -12,29 +12,45 @@ export default function ExpeditionPanel({ state, ready, busy, onOpen, onAuthor, 
   const themeBytes = new TextEncoder().encode(theme).length;
   const localWorlds = state.local_worlds || [];
   const current = localWorlds.find(world => world.key === state.world_key);
-  const areas = state.generated_areas || [];
+  const areas = [...(state.generated_areas || [])].sort((a, b) => Number(b.active) - Number(a.active));
   const pending = confirmation?.world === state.world_key ? confirmation : null;
   const canAuthor = kind === 'wilds' ? state.wilds_authoring : state.cave_authoring;
 
-  return <section className="worlds-section" aria-labelledby="expedition-title">
-    <div className="section-heading"><div><span className="eyebrow gold">LOCAL HOST</span><h2 id="expedition-title">Expedition workshop</h2></div></div>
-    <p className="muted-copy">Host on this computer to generate and revisit areas. Remote hosted worlds cannot be authored here. Local hosting ends when the launcher quits; saved areas remain in this world's private library.</p>
+  return <section className="worlds-section expedition-panel" aria-labelledby="expedition-title">
+    <div className="section-heading"><div><span className="eyebrow gold">ON THIS COMPUTER</span><h2 id="expedition-title">Local expeditions</h2></div></div>
     {state.local_host ? <>
-      <h3>{current?.name || 'Local world session'}</h3>
-      <p>Use Play now to enter with your selected trainer. One generated area is active at a time. Everyone must leave it before another can be activated. Generation does not stop the native game.</p>
-      <label className="field-label" htmlFor="expedition-kind">Area type</label>
-      <select id="expedition-kind" className="text-input" value={kind} disabled={disabled || Boolean(pending)} onChange={event => setKind(event.target.value)}>
-        <option value="cave">Cave with custom wildlife</option>
-        <option value="wilds" disabled={!state.wilds_authoring}>Outdoor wilds</option>
-      </select>
-      <p className="field-hint">{kind === 'wilds' ? 'Outdoor areas use existing Hoenn art, blocked water, tall grass and Route 101 encounters—not custom outdoor wildlife.' : 'Caves use existing art with a model-selected biome and custom wildlife roster.'}</p>
-      {!canAuthor ? <p role="status">This host's catalog does not support this area type. Build the compatible game and reopen the local host.</p> : <>
-        <label className="field-label" htmlFor="expedition-theme">Area theme</label>
-        <textarea id="expedition-theme" className="text-input invite-paste" value={theme} disabled={disabled || Boolean(pending)} onChange={event => setTheme(event.target.value)} placeholder="Describe the landscape or cavern you want to explore." aria-describedby="expedition-theme-help" />
-        <p id="expedition-theme-help" className="field-hint">{themeBytes} / 2,000 UTF-8 bytes. The configured model provider receives this theme and usage may incur charges. A new area becomes active; previously saved areas stay in the library.</p>
-        <p className="field-hint">{state.cave_persistent ? 'The active area persists across host restarts. Trainer saves remain independent.' : 'This host is not configured to persist areas across restarts.'}</p>
-        {!pending && <button className="button small primary" disabled={disabled || !theme.trim() || themeBytes > 2000} onClick={() => setConfirmation({ type: 'generate', world: state.world_key, kind, theme })}>Review area generation</button>}
-      </>}
+      <div className="expedition-session"><h3>{current?.name || 'Local world session'}</h3>
+        <p>Trainer {current?.trainer || state.trainer}. Use Play now above to enter the game.</p>
+        <p>In the game, open <strong>START → WORLD → Explore generated area</strong>. You need at least one conscious Pokémon in your party.</p>
+      </div>
+      <div className="generated-area-library">
+        <h3>Active and saved areas</h3>
+        <p className="field-hint">One area is active at a time. Everyone must leave it before switching. Reopening a saved area does not call a model.</p>
+        {state.area_archive_error && <p role="alert">{state.area_archive_error}</p>}
+        {!areas.length && !state.area_archive_error && <p className="muted-copy">No saved areas are listed. Generate an area below to begin exploring.</p>}
+        {areas.map(area => <div className={`settings-card${area.active ? ' expedition-active-area' : ''}`} key={area.identity}><div>
+          <h3>{area.label}</h3><p>{area.kind === 'wilds' ? 'Outdoor wilds' : 'Cave'} · {area.active ? 'Active now' : 'Saved'}</p>
+          {area.active ? <p className="field-hint">Enter from START → WORLD → Explore generated area.</p> : <button className="button small ghost" disabled={disabled || Boolean(pending)} onClick={() => setConfirmation({ type: 'activate', world: state.world_key, identity: area.identity, label: area.label })}>Use this area</button>}
+        </div></div>)}
+      </div>
+      <details className="expedition-details">
+        <summary>Generate a new area</summary>
+        <div className="expedition-details-content">
+          <label className="field-label" htmlFor="expedition-kind">Area type</label>
+          <select id="expedition-kind" className="text-input" value={kind} disabled={disabled || Boolean(pending)} onChange={event => setKind(event.target.value)}>
+            <option value="cave">Cave with custom wildlife</option>
+            <option value="wilds" disabled={!state.wilds_authoring}>Outdoor wilds</option>
+          </select>
+          <p className="field-hint">{kind === 'wilds' ? 'Outdoor areas use existing Hoenn art, blocked water, tall grass and Route 101 encounters, not custom outdoor wildlife.' : 'Caves use existing art with a model-selected biome and custom wildlife roster.'}</p>
+          {!canAuthor ? <p role="status">This host's catalog does not support this area type. Build the compatible game and reopen the local host.</p> : <>
+            <label className="field-label" htmlFor="expedition-theme">Area theme</label>
+            <textarea id="expedition-theme" className="text-input invite-paste" value={theme} disabled={disabled || Boolean(pending)} onChange={event => setTheme(event.target.value)} placeholder="Describe the landscape or cavern you want to explore." aria-describedby="expedition-theme-help" />
+            <p id="expedition-theme-help" className="field-hint">{themeBytes} / 2,000 UTF-8 bytes. The configured model provider receives this theme and usage may incur charges. A new area becomes active; previously saved areas stay in the library.</p>
+            <p className="field-hint">{state.cave_persistent ? 'Areas persist across host restarts. Trainer saves remain independent.' : 'This host is not configured to persist areas across restarts.'} Generation does not stop your game.</p>
+            {!pending && <button className="button small ghost" disabled={disabled || !theme.trim() || themeBytes > 2000} onClick={() => setConfirmation({ type: 'generate', world: state.world_key, kind, theme })}>Review generation and cost</button>}
+          </>}
+        </div>
+      </details>
       {pending && <div className="settings-card"><div>
         <h3>{pending.type === 'activate' ? 'Make this the active area?' : `Generate a new ${pending.kind === 'wilds' ? 'outdoor area' : 'cave'}?`}</h3>
         {pending.type === 'activate' ? <><p>{pending.label}</p><p>No model call is made. The current area stays in the library, but everyone must leave it before switching.</p></> : <><p>The provider receives this theme and usage may incur charges:</p><p className="expedition-theme-preview">{pending.theme}</p></>}
@@ -44,26 +60,27 @@ export default function ExpeditionPanel({ state, ready, busy, onOpen, onAuthor, 
           setConfirmation(null);
         }}>{pending.type === 'activate' ? 'Activate saved area' : 'Confirm generation'}</button></div>
       </div></div>}
-      {busy && <p role="status">The launcher is working. Native gameplay continues in its own window.</p>}
-      {state.area_archive && <div className="generated-area-library">
-        <h3>Saved areas</h3>
-        <p className="field-hint">Reactivate an area without calling a model. This is a library, not simultaneous travel between regions.</p>
-        {state.area_archive_error && <p role="alert">{state.area_archive_error}</p>}
-        {!areas.length && !state.area_archive_error && <p className="muted-copy">Generate your first area to keep it here.</p>}
-        {areas.map(area => <div className="settings-card" key={area.identity}><div>
-          <h3>{area.label}</h3><p>{area.kind === 'wilds' ? 'Outdoor wilds' : 'Cave'} · {area.active ? 'Active' : 'Saved'}</p>
-          <button className="button small ghost" disabled={disabled || area.active || Boolean(pending)} onClick={() => setConfirmation({ type: 'activate', world: state.world_key, identity: area.identity, label: area.label })}>{area.active ? 'Currently active' : 'Choose saved area'}</button>
-        </div></div>)}
-      </div>}
+      {busy && <p role="status">The launcher is working. Gameplay continues in its own window.</p>}
     </> : <>
-      <label className="field-label" htmlFor="expedition-trainer">Local trainer profile</label>
-      <input id="expedition-trainer" className="text-input" maxLength={24} value={trainer} disabled={disabled} onChange={event => setTrainer(event.target.value)} aria-describedby="expedition-trainer-help" />
-      <p id="expedition-trainer-help" className="field-hint">Use 1–24 letters, numbers, underscores or hyphens. Resume with the same profile name to use your save.</p>
-      <label className="field-label" htmlFor="expedition-name">New expedition name</label>
-      <input id="expedition-name" className="text-input" maxLength={80} value={name} disabled={disabled} onChange={event => setName(event.target.value)} />
-      <div className="modal-actions"><button className="button small primary" disabled={disabled || !validTrainer || !name.trim() || /[\x00-\x1f]/.test(name)} onClick={() => onOpen('local_create', { name, trainer })}>Create local expedition</button></div>
-      <p className="field-hint">Creating or reopening a host does not call a model. Open it, then generate an area or press Play now.</p>
-      {localWorlds.map(world => <div className="settings-card" key={world.key}><div><h3>{world.name}</h3><button className="button small ghost" disabled={disabled || !validTrainer} onClick={() => onOpen('local_resume', { world: world.key, trainer }, world.key)}>Open local host</button></div></div>)}
+      {localWorlds.length ? <div className="expedition-world-list">{localWorlds.map(world => <div className="settings-card" key={world.key}><div>
+        <h3>{world.name}</h3><p>Trainer {world.trainer} · {world.has_save ? 'Saved game available' : 'No trainer save yet'}</p>
+        <button className="button small ghost" disabled={disabled || !world.trainer} onClick={() => onOpen('local_resume', { world: world.key, trainer: world.trainer }, world.key)}>{world.has_save ? 'Continue expedition' : 'Open expedition'}</button>
+      </div></div>)}</div> : <p className="muted-copy">No local expeditions yet. Create a new save below to get started.</p>}
+      {localWorlds.length > 0 && <p className="field-hint">Open an expedition, then choose Play now above. No model call is made when opening a world.</p>}
     </>}
+    {!state.local_host && <details className="expedition-details expedition-new-save">
+      <summary>Create a new expedition and save</summary>
+      <div className="expedition-details-content">
+        <p className="muted-copy">Start a separate local world with a new trainer save. This does not resume an existing adventure.</p>
+        <label className="field-label" htmlFor="expedition-name">New expedition name</label>
+        <input id="expedition-name" className="text-input" maxLength={80} value={name} disabled={disabled} onChange={event => setName(event.target.value)} />
+        <label className="field-label" htmlFor="expedition-trainer">New trainer profile</label>
+        <input id="expedition-trainer" className="text-input" maxLength={24} value={trainer} disabled={disabled} onChange={event => setTrainer(event.target.value)} aria-describedby="expedition-trainer-help" />
+        <p id="expedition-trainer-help" className="field-hint">Use 1–24 letters, numbers, underscores or hyphens. Existing expeditions keep their own trainer profiles.</p>
+        <div className="modal-actions"><button className="button small ghost" disabled={disabled || !validTrainer || !name.trim() || /[\x00-\x1f]/.test(name)} onClick={() => onOpen('local_create', { name, trainer })}>Create new expedition</button></div>
+        <p className="field-hint">Creation does not call a model. Open the world, then choose Play now.</p>
+      </div>
+    </details>}
+    <p className="field-hint">Local hosting ends when the launcher quits. Saved areas stay in this world's private library when persistence is enabled. Remote hosted worlds cannot be authored here.</p>
   </section>;
 }
