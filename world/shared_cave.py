@@ -13,12 +13,14 @@ MAGIC = b'EWGMAP01'
 MAGIC_PROFILE = b'EWGMAP02'
 MAGIC_WILDLIFE = b'EWGMAP03'
 MAGIC_LARGE = b'EWGMAP04'
+MAGIC_LARGE_WILDLIFE = b'EWGMAP05'
 LARGE_SIDE = 63
 SIZE = len(MAGIC) + SIDE * SIDE
 PROFILE_SIZE = SIZE + 1
 WILDLIFE_BYTES = 37
 WILDLIFE_SIZE = PROFILE_SIZE + WILDLIFE_BYTES
-MAX_SIZE = 8 + LARGE_SIDE * LARGE_SIDE
+LARGE_SIZE = 8 + LARGE_SIDE * LARGE_SIDE
+MAX_SIZE = LARGE_SIZE + 1 + WILDLIFE_BYTES
 
 
 class CaveError(ValueError):
@@ -39,8 +41,10 @@ class SharedCave:
             self.version = 2
             self.profile = blob[8]
             cells = blob[9:]
-        elif len(blob) == WILDLIFE_SIZE and blob[:8] == MAGIC_WILDLIFE and blob[8] <= 3:
-            self.version = 3
+        elif ((len(blob) == WILDLIFE_SIZE and blob[:8] == MAGIC_WILDLIFE)
+              or (len(blob) == MAX_SIZE and blob[:8] == MAGIC_LARGE_WILDLIFE)) and blob[8] <= 3:
+            self.version = 5 if blob[:8] == MAGIC_LARGE_WILDLIFE else 3
+            if self.version == 5: self.side = LARGE_SIDE
             self.profile = blob[8]
             self.wildlife = blob[9:9 + WILDLIFE_BYTES]
             if not 1 <= self.wildlife[0] <= 100:
@@ -51,7 +55,7 @@ class SharedCave:
                 if species not in SPECIES.values() or not 1 <= self.wildlife[offset + 2] <= 100:
                     raise CaveError('invalid wildlife slot')
             cells = blob[9 + WILDLIFE_BYTES:]
-        elif len(blob) == MAX_SIZE and blob[:8] == MAGIC_LARGE:
+        elif len(blob) == LARGE_SIZE and blob[:8] == MAGIC_LARGE:
             self.version = 4
             self.profile = None
             self.side = LARGE_SIDE
@@ -87,6 +91,7 @@ class SharedCave:
         suffix = '' if self.profile is None else f' {self.profile}'
         if self.version == 3: suffix += ' 3'
         if self.version == 4: suffix = ' LARGE'
+        if self.version == 5: suffix += ' 5'
         frames = [f'CAVE BEGIN {self.identity}{suffix}']
         if self.wildlife is not None:
             frames.append(f'CAVE WILD {self.identity} {self.wildlife.hex()}')

@@ -82,16 +82,20 @@ def decode_blueprint_events(wire, *, offline_ecology=False, custom_wildlife=Fals
             raise ValueError('invalid author encounter profile')
         if custom_wildlife:
             rate, wildlife = blueprint.pop('encounter_rate', None), blueprint.pop('wildlife', None)
-            proposal = proposal_from_blueprint(blueprint)
-            encode_wildlife(proposal, profile, rate, wildlife)
+            proposal = proposal_from_blueprint(blueprint, side=63 if large else 31)
+            if large:
+                from .large_cave import encode_wildlife as encode_large_wildlife
+                encode_large_wildlife(proposal, profile, rate, wildlife)
+            else:
+                encode_wildlife(proposal, profile, rate, wildlife)
             return proposal, profile, rate, wildlife
         return proposal_from_blueprint(blueprint), profile
     return proposal_from_blueprint(blueprint, side=63 if large else 31)
 
 
 def author(theme, timeout=120, *, offline_ecology=False, custom_wildlife=False, large=False):
-    if large and (offline_ecology or custom_wildlife):
-        raise ValueError('large caves currently support geometry only')
+    if large and offline_ecology and not custom_wildlife:
+        raise ValueError('large preset ecology is not yet supported')
     prompt = prompt_for(theme, offline_ecology=offline_ecology, custom_wildlife=custom_wildlife, large=large)
     runtime_gm.validate_config(runtime_gm.MODEL, timeout, 2)
     started = time.monotonic()
@@ -111,7 +115,11 @@ def author(theme, timeout=120, *, offline_ecology=False, custom_wildlife=False, 
     decoded = decode_blueprint_events(wire, offline_ecology=offline_ecology, custom_wildlife=custom_wildlife, large=large)
     if custom_wildlife:
         proposal, profile, rate, wildlife = decoded
-        blob = encode_wildlife(proposal, profile, rate, wildlife)
+        if large:
+            from .large_cave import encode_wildlife as encode_large_wildlife
+            blob = encode_large_wildlife(proposal, profile, rate, wildlife)
+        else:
+            blob = encode_wildlife(proposal, profile, rate, wildlife)
     elif offline_ecology:
         proposal, profile = decoded
         blob = encode_profile(proposal, profile)
@@ -134,11 +142,17 @@ def main(argv=None):
     target.add_argument('--admin-socket', type=Path, help='also publish to the local owner authority')
     target.add_argument('--offline-output', type=Path, help='write a new offline template with model-selected encounter profile')
     target.add_argument('--offline-wildlife-output', type=Path, help='write a new offline cave with a model-authored 12-slot wildlife table')
+    target.add_argument('--large-wildlife-output', type=Path, help='write a large offline cave with model-authored wildlife')
     target.add_argument('--large-offline-output', type=Path, help='write a new large offline 63x63 cave')
+    parser.add_argument('--shared-large-wildlife', action='store_true', help='publish a large cave with custom wildlife')
     parser.add_argument('--shared-large', action='store_true', help='publish a model-authored large cave to a compatible owner authority')
     parser.add_argument('--shared-wildlife', action='store_true', help='publish model-authored wildlife to a compatible shared cave host')
     parser.add_argument('--shared-ecology', action='store_true', help='publish a model-selected encounter profile to a compatible shared cave host')
     args = parser.parse_args(argv)
+    if args.shared_large_wildlife and (args.shared_large or args.shared_wildlife or args.shared_ecology):
+        parser.error('--shared-large-wildlife cannot be combined with other shared modes')
+    if args.shared_large_wildlife and args.admin_socket is None:
+        parser.error('--shared-large-wildlife requires --admin-socket')
     if args.shared_large and (args.shared_wildlife or args.shared_ecology):
         parser.error('--shared-large cannot be combined with shared ecology or wildlife')
     if args.shared_large and args.admin_socket is None:
@@ -151,9 +165,9 @@ def main(argv=None):
         parser.error('--shared-ecology requires --admin-socket')
     try:
         proposal, blob = author(args.theme, args.timeout, offline_ecology=args.offline_output is not None or args.shared_ecology,
-                                custom_wildlife=args.offline_wildlife_output is not None or args.shared_wildlife,
-                                large=args.large_offline_output is not None or args.shared_large)
-        output = args.offline_output or args.offline_wildlife_output or args.large_offline_output
+                                custom_wildlife=args.offline_wildlife_output is not None or args.shared_wildlife or args.large_wildlife_output is not None or args.shared_large_wildlife,
+                                large=args.large_offline_output is not None or args.shared_large or args.large_wildlife_output is not None or args.shared_large_wildlife)
+        output = args.offline_output or args.offline_wildlife_output or args.large_offline_output or args.large_wildlife_output
         if output is not None:
             with output.open('xb') as out:
                 out.write(blob)

@@ -265,6 +265,9 @@ bool8 GeneratedMap_MatchesPreparedLarge(const u8 *cells, u32 size)
 {
 #if GENERATED_MAP_READY && GENERATED_MAP_LARGE
     return cells && size == LARGE_CELLS && sLargeActive && sPrepared
+#if GENERATED_CAVE_WILDLIFE
+        && !sHasWildlife
+#endif
         && (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
         && !memcmp(cells, sLargeTemplate, LARGE_CELLS);
 #else
@@ -272,11 +275,27 @@ bool8 GeneratedMap_MatchesPreparedLarge(const u8 *cells, u32 size)
 #endif
 }
 
+bool8 GeneratedMap_MatchesPreparedLargeWildlife(const u8 *cells, u32 size, u8 profile, const u8 *data, u32 dataSize)
+{
+#if GENERATED_MAP_READY && GENERATED_MAP_LARGE && GENERATED_CAVE_WILDLIFE
+    return cells && size == LARGE_CELLS && sLargeActive && sPrepared && sHasWildlife
+        && (GeneratedMap_IsInside() || GeneratedMap_EntryPending()) && profile == sEncounterProfile
+        && data && dataSize == GENERATED_WILDLIFE_BYTES && !memcmp(data, sWildlifeRaw, GENERATED_WILDLIFE_BYTES)
+        && !memcmp(cells, sLargeTemplate, LARGE_CELLS);
+#else
+    (void)cells; (void)size; (void)profile; (void)data; (void)dataSize; return FALSE;
+#endif
+}
+
 /* Profiles are bounded native table choices, not executable data. */
 bool8 GeneratedMap_SetEncounterProfile(u8 profile)
 {
 #if GENERATED_MAP_READY && GENERATED_CAVE_PROFILES
-    if (!sHasTemplate || profile > 3) return FALSE;
+    if ((!sHasTemplate
+#if GENERATED_MAP_LARGE
+         && !sLargeStaged
+#endif
+        ) || profile > 3) return FALSE;
     sEncounterProfile = profile;
     sSharedEncounterProfile = FALSE;
     return TRUE;
@@ -289,7 +308,11 @@ bool8 GeneratedMap_SetEncounterProfile(u8 profile)
 bool8 GeneratedMap_SetSharedEncounterProfile(u8 profile)
 {
 #if GENERATED_MAP_READY && GENERATED_CAVE_PROFILES
-    if (!sHasTemplate || profile > 3) return FALSE;
+    if ((!sHasTemplate
+#if GENERATED_MAP_LARGE
+         && !sLargeStaged
+#endif
+        ) || profile > 3) return FALSE;
     sEncounterProfile = profile;
     sSharedEncounterProfile = TRUE;
     return TRUE;
@@ -302,7 +325,11 @@ bool8 GeneratedMap_SetSharedEncounterProfile(u8 profile)
 u8 GeneratedMap_EncounterProfile(void)
 {
 #if GENERATED_MAP_READY && GENERATED_CAVE_PROFILES
-    if (sPrepared && sHasTemplate && GeneratedMap_IsInside()
+    if (sPrepared && (sHasTemplate
+#if GENERATED_MAP_LARGE
+        || sLargeStaged
+#endif
+        ) && GeneratedMap_IsInside()
      && (!WorldBridge_Enabled() || sSharedEncounterProfile))
         return sEncounterProfile;
 #endif
@@ -334,7 +361,11 @@ bool8 GeneratedMap_SetWildlife(const u8 *data, u32 size)
 {
 #if GENERATED_MAP_READY && GENERATED_CAVE_WILDLIFE
     unsigned i;
-    if (!sHasTemplate || !GeneratedMap_ValidateWildlife(data, size)) return FALSE;
+    if ((!sHasTemplate
+#if GENERATED_MAP_LARGE
+         && !sLargeStaged
+#endif
+        ) || !GeneratedMap_ValidateWildlife(data, size)) return FALSE;
     for (i = 0; i < 12; i++) {
         unsigned offset = 1 + i * 3;
         sWildlifeMons[i].species = data[offset] | ((u16)data[offset + 1] << 8);
@@ -366,7 +397,11 @@ bool8 GeneratedMap_SetSharedWildlife(const u8 *data, u32 size)
 const struct WildPokemonInfo *GeneratedMap_Wildlife(void)
 {
 #if GENERATED_MAP_READY && GENERATED_CAVE_WILDLIFE
-    if (sHasWildlife && sPrepared && sHasTemplate && GeneratedMap_IsInside() && (!WorldBridge_Enabled() || sSharedWildlife))
+    if (sHasWildlife && sPrepared && (sHasTemplate
+#if GENERATED_MAP_LARGE
+        || sLargeStaged
+#endif
+        ) && GeneratedMap_IsInside() && (!WorldBridge_Enabled() || sSharedWildlife))
         return &sWildlifeInfo;
 #endif
     return NULL;
