@@ -20,7 +20,7 @@ class FreshnessTests(unittest.TestCase):
         self.peers={};self.links={}
         for i,name in enumerate(('alice','bob')):
             self.s.create_identity(name)
-            p={'id':name,'seq':-1,'state':[0,1,10+i,12,4,7,1], 'state_time':self.clock.now,'closing':False,'out':bytearray(),'sock':object()}
+            p={'id':name,'seq':-1,'social':True,'chat':False,'travel':False,'field':True,'state':[0,1,10+i,12,4,7,1], 'state_time':self.clock.now,'closing':False,'out':bytearray(),'sock':object()}
             link={'id':name,'presence':p,'closing':False,'out':bytearray(),'sock':object()}
             self.peers[name]=p;self.links[name]=link
             self.s.peers[name]=p;self.s.link_channels[name]=link;self.s.connections[link['sock']]=link
@@ -29,6 +29,18 @@ class FreshnessTests(unittest.TestCase):
     def link(self,name,line): self.s._link_line(self.links[name],line.encode())
     def clear(self):
         for c in self.links.values(): c['out'].clear()
+    def test_expired_presence_does_not_render_as_a_ghost(self):
+        self.assertIn('PEER bob ',self.s._snapshot(self.peers['alice']))
+        self.clock.now+=4;self.peers['alice']['state_time']=self.clock.now
+        self.assertNotIn('PEER bob ',self.s._snapshot(self.peers['alice']))
+        self.peers['bob']['state_time']=self.clock.now
+        self.assertIn('PEER bob ',self.s._snapshot(self.peers['alice']))
+
+    def test_expired_trainer_cannot_receive_field_meeting(self):
+        self.clock.now+=4;self.peers['alice']['state_time']=self.clock.now
+        self.s._line(self.peers['alice'],b'MEET 1 bob')
+        self.assertNotIn('meeting',self.peers['bob'])
+
     def test_stale_player_cannot_be_invited(self):
         self.clock.now+=4
         self.peers['alice']['state_time']=self.clock.now

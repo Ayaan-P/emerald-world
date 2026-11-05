@@ -348,8 +348,9 @@ class WorldServer:
         # Select deterministically by proximity; no extra wire fields are added.
         origin = conn.get('state')
         candidates = []
+        fresh = self._fresh_link_presence()
         for name, peer in self.peers.items():
-            state = peer['state']
+            state = fresh.get(name)
             if (name == conn['id'] or state is None or
                     not (state[6] or (conn.get('social') and peer.get('field')))):
                 continue
@@ -617,8 +618,9 @@ class WorldServer:
             self._error(conn, 'STALE')
             return
         target = self.peers.get(fields[2])
-        state = conn['state']
-        other = target.get('state') if target else None
+        fresh = self._fresh_link_presence()
+        state = fresh.get(conn['id'])
+        other = fresh.get(fields[2])
         if (target is conn or not target or not target.get('social') or target.get('closing')
                 or not state or not other or not state[6] or not other[6] or state[:2] != other[:2]):
             raise MeetingUnavailable('trainer unavailable')
