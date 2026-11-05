@@ -207,6 +207,28 @@ class WorldServer:
     def start(self):
         if self.thread is not None:
             raise RuntimeError('already started')
+        try:
+            return self._start()
+        except BaseException:
+            # Constructor ownership remains with the caller, but a failed
+            # listener startup must not reserve the live-world lock forever.
+            try:
+                if self.selector is not None:
+                    for key in list(self.selector.get_map().values()):
+                        try:
+                            key.fileobj.close()
+                        except OSError:
+                            pass
+                    self.selector.close()
+                    self.selector = None
+            finally:
+                if self.authority_lock is not None:
+                    self.authority_lock.close()
+                    self.authority_lock = None
+                self.thread = None
+            raise
+
+    def _start(self):
         self.authority_lock = (self.root / 'world.lock').open('a+b')
         os.chmod(self.root / 'world.lock', 0o600)
         try:
