@@ -32,6 +32,25 @@ class SplitProtocolTests(unittest.TestCase):
         self.assertIn(('alice','L ERROR LINK_TYPE_MISMATCH\n'),result)
         self.assertTrue(any(actor=='bob' and 'L ABORT' in line for actor,line in result))
 
+    def test_mega_rule_must_match_and_cannot_change_on_reopen(self):
+        self.admit();self.open('alice',0,0x6233)
+        result=self.open('bob',1,0x2233)
+        self.assertIn(('bob','L ERROR LINK_TYPE_MISMATCH\n'),result)
+        self.assertFalse(any('L COMMIT 1 ' in line for _,line in result))
+
+    def test_mega_and_split_combination_pairs_when_both_match(self):
+        self.admit();self.open('alice',0,0xE233)
+        result=self.open('bob',1,0xE233)
+        self.assertEqual(len(result),2)
+        self.assertTrue(all('L COMMIT 1 ' in line for _,line in result))
+
+    def test_mega_rule_is_bound_across_generations(self):
+        self.admit();self.open('alice',0,0x6233);self.open('bob',1,0x6233)
+        self.message('alice','L EVENT 2 123 1 0 1 0 0 '+('0'*32))
+        self.message('bob','L EVENT 2 123 1 1 1 0 0 '+('0'*32))
+        result=self.message('alice','L EVENT 1 123 1 0 2 0 8755 '+('0'*32))
+        self.assertIn(('alice','L ERROR LINK_TYPE_MISMATCH\n'),result)
+
     def test_trade_does_not_accept_battle_rule_tag(self):
         self.admit(3);result=self.open('alice',0,0x9111,mode=3)
         self.assertIn(('alice','L ERROR MALFORMED\n'),result)

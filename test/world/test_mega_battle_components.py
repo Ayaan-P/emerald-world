@@ -16,6 +16,7 @@ class MegaBattleTests(unittest.TestCase):
 #include "constants/species.h"
 #include "constants/pokemon.h"
 #include "constants/abilities.h"
+#include "constants/items.h"
 #include "platform/mega_battle.h"
 #include <assert.h>
 #include <string.h>
@@ -26,13 +27,17 @@ int main(void) {
  struct MegaBattleStats out={0},sentinel;
  const struct MegaFormData *form;
  MegaBattle_Reset(&state);
+ input.level=50;for(int i=0;i<5;i++){input.iv[i]=31;input.ev[i]=252;}
  assert(MegaForm_Find(SPECIES_VENUSAUR,MEGA_STONE_VENUSAURITE)==MEGA_FORM_VENUSAUR_MEGA);
+ assert(MegaStone_FromItem(ITEM_VENUSAURITE)==MEGA_STONE_VENUSAURITE);
+ assert(MegaStone_Item(MEGA_STONE_VENUSAURITE)==ITEM_VENUSAURITE);
+ assert(MegaStone_FromItem(ITEM_NONE)==MEGA_STONE_NONE);
  assert(MegaForm_Find(SPECIES_VENUSAUR,MEGA_STONE_GENGARITE)==MEGA_FORM_NONE);
- assert(!MegaBattle_Activate(&state,0,0,SPECIES_VENUSAUR,MEGA_STONE_VENUSAURITE,0,1));
- assert(!MegaBattle_Activate(&state,0,0,SPECIES_VENUSAUR,MEGA_STONE_VENUSAURITE,1,0));
- assert(MegaBattle_Activate(&state,0,0,SPECIES_VENUSAUR,MEGA_STONE_VENUSAURITE,1,1)==MEGA_FORM_VENUSAUR_MEGA);
- assert(!MegaBattle_Activate(&state,0,1,SPECIES_GENGAR,MEGA_STONE_GENGARITE,1,1));
- assert(MegaBattle_Activate(&state,1,0,SPECIES_GENGAR,MEGA_STONE_GENGARITE,1,1)==MEGA_FORM_GENGAR_MEGA);
+ assert(!MegaBattle_Transform(&state,0,0,SPECIES_VENUSAUR,MEGA_STONE_VENUSAURITE,0,1,&input,neutral,&out));
+ assert(!MegaBattle_Transform(&state,0,0,SPECIES_VENUSAUR,MEGA_STONE_VENUSAURITE,1,0,&input,neutral,&out));
+ assert(MegaBattle_Transform(&state,0,0,SPECIES_VENUSAUR,MEGA_STONE_VENUSAURITE,1,1,&input,neutral,&out)==MEGA_FORM_VENUSAUR_MEGA);
+ assert(!MegaBattle_Transform(&state,0,1,SPECIES_GENGAR,MEGA_STONE_GENGARITE,1,1,&input,neutral,&out));
+ assert(MegaBattle_Transform(&state,1,0,SPECIES_GENGAR,MEGA_STONE_GENGARITE,1,1,&input,neutral,&out)==MEGA_FORM_GENGAR_MEGA);
  assert(MegaBattle_GetForm(&state,0,0)==MEGA_FORM_VENUSAUR_MEGA);
  assert(MegaBattle_GetForm(&state,1,0)==MEGA_FORM_GENGAR_MEGA);
  assert(!MegaBattle_GetForm(&state,4,0));
@@ -48,18 +53,25 @@ int main(void) {
  assert(!MegaForm_Calculate(MEGA_FORM_VENUSAUR_MEGA,&input,neutral,&out));
  assert(!memcmp(&out,&sentinel,sizeof(out)));
  MegaBattle_Reset(&state);assert(!MegaBattle_GetForm(&state,0,0));
+ input.iv[0]=32;sentinel=out;
+ assert(!MegaBattle_Transform(&state,0,0,SPECIES_VENUSAUR,MEGA_STONE_VENUSAURITE,1,1,&input,neutral,&out));
+ assert(!state.used[0] && !MegaBattle_GetForm(&state,0,0));
+ assert(!memcmp(&out,&sentinel,sizeof(out)));
+ input.iv[0]=31;
+ assert(MegaBattle_Transform(&state,0,0,SPECIES_VENUSAUR,MEGA_STONE_VENUSAURITE,1,1,&input,neutral,&out)==MEGA_FORM_VENUSAUR_MEGA);
+ assert(state.used[0] && out.attack==152);
  return 0;
 }'''
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);(root/'constants').mkdir();(root/'platform').mkdir()
             (root/'global.h').write_text('#include <stdint.h>\n#include <stddef.h>\ntypedef uint8_t u8;typedef uint16_t u16;typedef uint8_t bool8;\n#define TRUE 1\n#define FALSE 0\n')
-            for name in ('species.h','pokemon.h','abilities.h'):
+            for name in ('species.h','pokemon.h','abilities.h','items.h'):
                 shutil.copy(ROOT/'include/constants'/name,root/'constants'/name)
             for name in ('mega_forms.h','mega_battle.h'):
                 shutil.copy(ROOT/'include/platform'/name,root/'platform'/name)
             (root/'main.c').write_text(main)
             exe=root/'test'
-            cmd=['cc','-std=c99','-Wall','-Wextra','-Werror','-I',str(root),str(ROOT/'src/platform/mega_forms.c'),str(ROOT/'src/platform/mega_battle.c'),str(root/'main.c'),'-o',str(exe)]
+            cmd=['cc','-std=c99','-DPORTABLE','-Wall','-Wextra','-Werror','-I',str(root),str(ROOT/'src/platform/mega_forms.c'),str(ROOT/'src/platform/mega_battle.c'),str(root/'main.c'),'-o',str(exe)]
             result=subprocess.run(cmd,capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
             result=subprocess.run([str(exe)],capture_output=True,text=True)

@@ -3,6 +3,7 @@
 #include "platform/world_coop.h"
 #include "platform/native_link.h"
 #include "platform/world_activity.h"
+#include "platform/mega_game.h"
 #endif
 #include "battle.h"
 #include "battle_move_split.h"
@@ -733,7 +734,13 @@ static void CB2_InitBattleInternal(void)
     gMain.inBattle = TRUE;
     // Recorded battles do not yet store a rules version; never create a replay
     // that might silently be played later with a different damage model.
+#ifdef PORTABLE
+    MegaGame_Reset();
+    gSaveBlock2Ptr->frontier.disableRecordBattle = BattleRules_UseModernSplit()
+        || (MEGA_FEATURE_READY && FlagGet(FLAG_MEGA_EVOLUTION));
+#else
     gSaveBlock2Ptr->frontier.disableRecordBattle = BattleRules_UseModernSplit();
+#endif
 
     for (i = 0; i < PARTY_SIZE; i++)
         AdjustFriendship(&gPlayerParty[i], FRIENDSHIP_EVENT_LEAGUE_BATTLE);
@@ -4483,6 +4490,22 @@ static void HandleTurnActionSelectionState(void)
                         UpdateBattlerPartyOrdersOnSwitch();
                         return;
                     default:
+                    {
+#ifdef PORTABLE
+                        bool8 megaRequested = FALSE;
+                        if ((gBattleBufferB[gActiveBattler][2] | (gBattleBufferB[gActiveBattler][3] << 8)) != 0xFFFF
+                         && (gBattleBufferB[gActiveBattler][2] & MEGA_MOVE_CHOICE_BIT))
+                        {
+                            megaRequested = TRUE;
+                            gBattleBufferB[gActiveBattler][2] &= ~MEGA_MOVE_CHOICE_BIT;
+                            if (!MegaGame_CanQueue(gActiveBattler))
+                            {
+                                if (NativeLink_IsActive()) NativeLink_Abort();
+                                gBattleCommunication[gActiveBattler] = STATE_BEFORE_ACTION_CHOSEN;
+                                return;
+                            }
+                        }
+#endif
                         RecordedBattle_CheckMovesetChanges(B_RECORD_MODE_PLAYBACK);
                         if ((gBattleBufferB[gActiveBattler][2] | (gBattleBufferB[gActiveBattler][3] << 8)) == 0xFFFF)
                         {
@@ -4500,6 +4523,15 @@ static void HandleTurnActionSelectionState(void)
                         }
                         else
                         {
+#ifdef PORTABLE
+                            if (megaRequested && !MegaGame_Queue(gActiveBattler))
+                            {
+                                if (NativeLink_IsActive()) NativeLink_Abort();
+                                gBattleCommunication[gActiveBattler] = STATE_BEFORE_ACTION_CHOSEN;
+                                return;
+                            }
+                            MegaGame_ClearSelection(gActiveBattler);
+#endif
                             if (!(gBattleTypeFlags & BATTLE_TYPE_PALACE))
                             {
                                 RecordedBattle_SetBattlerAction(gActiveBattler, gBattleBufferB[gActiveBattler][2]);
@@ -4511,6 +4543,7 @@ static void HandleTurnActionSelectionState(void)
                             gBattleCommunication[gActiveBattler]++;
                         }
                         break;
+                    }
                     }
                     break;
                 case B_ACTION_USE_ITEM:

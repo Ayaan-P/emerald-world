@@ -23,7 +23,8 @@ _LINK_TYPES = {1: frozenset((0x2211, 0x2233)),
 # link type. Trades do not use battle rules. Exact pair matching remains in
 # LinkSessions.open; unmodified clients/servers stay on the vanilla values.
 for _mode in (1, 2, 4):
-    _LINK_TYPES[_mode] |= frozenset(value | 0x8000 for value in _LINK_TYPES[_mode])
+    _base_types = _LINK_TYPES[_mode]
+    _LINK_TYPES[_mode] |= frozenset(value | flags for value in _base_types for flags in (0x4000, 0x8000, 0xC000))
 
 
 @dataclass
@@ -323,7 +324,7 @@ class LinkProtocol:
                 if kind == 1:
                     if step != 0 or link_type not in _LINK_TYPES[mode]:
                         raise ValueError('open')
-                    rule = bool(link_type & 0x8000)
+                    rule = link_type & 0xC000
                     if mode != 3 and wire in self._rules and self._rules[wire] != rule:
                         raise LinkError('link_type_mismatch')
                     result = self.sessions.open(actor, entry.internal, generation, link_type, now=now)

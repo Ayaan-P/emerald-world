@@ -1,3 +1,4 @@
+#ifdef PORTABLE
 #include "global.h"
 #include "constants/pokemon.h"
 #include "platform/mega_battle.h"
@@ -13,20 +14,6 @@ u8 MegaBattle_GetForm(const struct MegaBattleState *state, u8 owner, u8 slot)
     if (!state || owner >= MEGA_TRAINERS || slot >= MEGA_PARTY_SLOTS)
         return MEGA_FORM_NONE;
     return state->forms[owner][slot];
-}
-
-u8 MegaBattle_Activate(struct MegaBattleState *state, u8 owner, u8 slot,
-                       u16 species, u8 stone, bool8 hasKey, bool8 conscious)
-{
-    u8 form;
-    if (!state || owner >= MEGA_TRAINERS || slot >= MEGA_PARTY_SLOTS
-     || !hasKey || !conscious || state->used[owner] || state->forms[owner][slot])
-        return MEGA_FORM_NONE;
-    form = MegaForm_Find(species, stone);
-    if (!form) return MEGA_FORM_NONE;
-    state->forms[owner][slot] = form;
-    state->used[owner] = TRUE;
-    return form;
 }
 
 bool8 MegaForm_Calculate(u8 form, const struct MegaStatInput *input,
@@ -54,3 +41,25 @@ bool8 MegaForm_Calculate(u8 form, const struct MegaStatInput *input,
     *result = computed;
     return TRUE;
 }
+
+/* Calculate before consuming the trainer's once-per-battle choice. Call only
+ * after revalidating the live held item and the trainer-local party slot. */
+u8 MegaBattle_Transform(struct MegaBattleState *state, u8 owner, u8 slot,
+                        u16 species, u8 stone, bool8 hasKey, bool8 conscious,
+                        const struct MegaStatInput *input, MegaNatureAdjust nature,
+                        struct MegaBattleStats *result)
+{
+    struct MegaBattleStats computed;
+    u8 form;
+    if (!state || !result || owner >= MEGA_TRAINERS || slot >= MEGA_PARTY_SLOTS
+     || !hasKey || !conscious || state->used[owner] || state->forms[owner][slot])
+        return MEGA_FORM_NONE;
+    form = MegaForm_Find(species, stone);
+    if (!form || !MegaForm_Calculate(form, input, nature, &computed))
+        return MEGA_FORM_NONE;
+    state->forms[owner][slot] = form;
+    state->used[owner] = TRUE;
+    *result = computed;
+    return form;
+}
+#endif

@@ -1,6 +1,10 @@
 #include "global.h"
 #ifdef PORTABLE
 #include "platform/world_coop.h"
+#include "platform/mega_game.h"
+#define MEGA_CHOICE(battler) MegaGame_ChoiceBit(battler)
+#else
+#define MEGA_CHOICE(battler) 0
 #endif
 #include "battle.h"
 #include "battle_anim.h"
@@ -368,7 +372,7 @@ static void HandleInputChooseTarget(void)
     {
         PlaySE(SE_SELECT);
         gSprites[gBattlerSpriteIds[gMultiUsePlayerCursor]].callback = SpriteCB_HideAsMoveTarget;
-        BtlController_EmitTwoReturnValues(B_COMM_TO_ENGINE, B_ACTION_EXEC_SCRIPT, gMoveSelectionCursor[gActiveBattler] | (gMultiUsePlayerCursor << 8));
+        BtlController_EmitTwoReturnValues(B_COMM_TO_ENGINE, B_ACTION_EXEC_SCRIPT, gMoveSelectionCursor[gActiveBattler] | MEGA_CHOICE(gActiveBattler) | (gMultiUsePlayerCursor << 8));
         EndBounceEffect(gMultiUsePlayerCursor, BOUNCE_HEALTHBOX);
         PlayerBufferExecCompleted();
     }
@@ -526,7 +530,7 @@ static void HandleInputChooseMove(void)
 
         if (!canSelectTarget)
         {
-            BtlController_EmitTwoReturnValues(B_COMM_TO_ENGINE, B_ACTION_EXEC_SCRIPT, gMoveSelectionCursor[gActiveBattler] | (gMultiUsePlayerCursor << 8));
+            BtlController_EmitTwoReturnValues(B_COMM_TO_ENGINE, B_ACTION_EXEC_SCRIPT, gMoveSelectionCursor[gActiveBattler] | MEGA_CHOICE(gActiveBattler) | (gMultiUsePlayerCursor << 8));
             PlayerBufferExecCompleted();
         }
         else
@@ -546,6 +550,9 @@ static void HandleInputChooseMove(void)
     else if (JOY_NEW(B_BUTTON) || gPlayerDpadHoldFrames > 59)
     {
         PlaySE(SE_SELECT);
+#ifdef PORTABLE
+        MegaGame_ClearSelection(gActiveBattler);
+#endif
         BtlController_EmitTwoReturnValues(B_COMM_TO_ENGINE, B_ACTION_EXEC_SCRIPT, 0xFFFF);
         PlayerBufferExecCompleted();
     }
@@ -599,6 +606,18 @@ static void HandleInputChooseMove(void)
             MoveSelectionDisplayMoveType();
         }
     }
+#ifdef PORTABLE
+    else if (JOY_NEW(START_BUTTON) && MegaGame_CanSelect(gActiveBattler))
+    {
+        static const u8 sMegaOn[] = _("MEGA: ON");
+        static const u8 sMegaOff[] = _("MEGA: OFF");
+        if (MegaGame_ToggleSelection(gActiveBattler))
+        {
+            PlaySE(SE_SELECT);
+            BattlePutTextOnWindow(MegaGame_ChoiceBit(gActiveBattler) ? sMegaOn : sMegaOff, B_WIN_SWITCH_PROMPT);
+        }
+    }
+#endif
     else if (JOY_NEW(SELECT_BUTTON))
     {
         if (gNumberOfMovesToChoose > 1 && !(gBattleTypeFlags & BATTLE_TYPE_LINK))
@@ -2627,6 +2646,13 @@ static void HandleChooseMoveAfterDma3(void)
     {
         gBattle_BG0_X = 0;
         gBattle_BG0_Y = DISPLAY_HEIGHT * 2;
+#ifdef PORTABLE
+        if (MegaGame_CanSelect(gActiveBattler))
+        {
+            static const u8 sMegaHint[] = _("START: MEGA");
+            BattlePutTextOnWindow(sMegaHint, B_WIN_SWITCH_PROMPT);
+        }
+#endif
         gBattlerControllerFuncs[gActiveBattler] = HandleInputChooseMove;
     }
 }
@@ -2645,6 +2671,9 @@ static void PlayerChooseMoveInBattlePalace(void)
 
 static void PlayerHandleChooseMove(void)
 {
+#ifdef PORTABLE
+    MegaGame_ClearSelection(gActiveBattler);
+#endif
     if (gBattleTypeFlags & BATTLE_TYPE_PALACE)
     {
         *(gBattleStruct->arenaMindPoints + gActiveBattler) = 8;
