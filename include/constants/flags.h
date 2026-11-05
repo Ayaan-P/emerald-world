@@ -1514,6 +1514,7 @@
 // Private, opt-in native gameplay setting. Remains clear for vanilla saves.
 #define FLAG_PARTY_EXP_SHARE                         FLAG_UNUSED_0x8E9
 #define FLAG_UNUSED_0x8EA                           (SYSTEM_FLAGS + 0x8A) // Unused Flag
+#define FLAG_REUSABLE_TMS                           FLAG_UNUSED_0x8EA
 #define FLAG_UNUSED_0x8EB                           (SYSTEM_FLAGS + 0x8B) // Unused Flag
 #define FLAG_UNUSED_0x8EC                           (SYSTEM_FLAGS + 0x8C) // Unused Flag
 #define FLAG_UNUSED_0x8ED                           (SYSTEM_FLAGS + 0x8D) // Unused Flag
