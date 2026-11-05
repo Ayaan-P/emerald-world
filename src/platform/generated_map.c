@@ -35,7 +35,7 @@ static u8 sTemplate[GEN_CELLS];
 #define LARGE_CELLS (LARGE_SIDE * LARGE_SIDE)
 static u16 sLargeTiles[LARGE_CELLS];
 static u8 sLargeTemplate[LARGE_CELLS];
-static bool8 sLargeStaged, sLargeActive;
+static bool8 sLargeStaged, sLargeActive, sLargeShared;
 #endif
 static bool8 sHasTemplate;
 #if GENERATED_CAVE_PROFILES
@@ -190,7 +190,7 @@ bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size)
     memcpy(sTemplate, cells, sizeof(sTemplate));
     sHasTemplate = TRUE;
 #if GENERATED_MAP_LARGE
-    sLargeStaged = FALSE;
+    sLargeStaged = sLargeShared = FALSE;
 #endif
 #if GENERATED_CAVE_PROFILES
     sEncounterProfile = 0;
@@ -206,14 +206,16 @@ bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size)
 #endif
 }
 
-/* Large templates are offline-only. Validate completely before replacing the
- * staged instance; 63+view borders still fits the native backup-map buffer. */
-bool8 GeneratedMap_StageLargeTemplate(const u8 *cells, u32 size)
-{
+/* Validate all geometry before staging. Shared input is accepted only from
+ * the version-negotiated, integrity-checked authority path. */
 #if GENERATED_MAP_READY && GENERATED_MAP_LARGE
+static bool8 StageLarge(const u8 *cells, u32 size, bool8 shared)
+{
     u8 seen[LARGE_CELLS] = {0};
     u16 queue[LARGE_CELLS], head = 0, tail = 0, i;
-    if (!cells || size != LARGE_CELLS || WorldBridge_Enabled() || GeneratedMap_IsInside() || GeneratedMap_EntryPending()) return FALSE;
+    if (!cells || size != LARGE_CELLS || (shared != WorldBridge_Enabled())) return FALSE;
+    if (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
+        return shared && sLargeActive && sLargeShared && !memcmp(cells, sLargeTemplate, LARGE_CELLS);
     for (i = 0; i < LARGE_CELLS; i++) {
         unsigned x = i % LARGE_SIDE, y = i / LARGE_SIDE;
         if ((cells[i] != '.' && cells[i] != '#') ||
@@ -233,7 +235,7 @@ bool8 GeneratedMap_StageLargeTemplate(const u8 *cells, u32 size)
     }
     for (i = 0; i < LARGE_CELLS; i++) if (cells[i] == '.' && !seen[i]) return FALSE;
     memcpy(sLargeTemplate, cells, LARGE_CELLS);
-    sLargeStaged = TRUE; sHasTemplate = FALSE;
+    sLargeStaged = TRUE; sLargeShared = shared; sHasTemplate = FALSE;
 #if GENERATED_CAVE_PROFILES
     sEncounterProfile = 0; sSharedEncounterProfile = FALSE;
 #endif
@@ -241,6 +243,30 @@ bool8 GeneratedMap_StageLargeTemplate(const u8 *cells, u32 size)
     sHasWildlife = sSharedWildlife = FALSE;
 #endif
     return TRUE;
+}
+#endif
+bool8 GeneratedMap_StageLargeTemplate(const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_MAP_LARGE
+    return StageLarge(cells, size, FALSE);
+#else
+    (void)cells; (void)size; return FALSE;
+#endif
+}
+bool8 GeneratedMap_StageSharedLargeTemplate(const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_MAP_LARGE
+    return StageLarge(cells, size, TRUE);
+#else
+    (void)cells; (void)size; return FALSE;
+#endif
+}
+bool8 GeneratedMap_MatchesPreparedLarge(const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_MAP_LARGE
+    return cells && size == LARGE_CELLS && sLargeActive && sPrepared
+        && (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
+        && !memcmp(cells, sLargeTemplate, LARGE_CELLS);
 #else
     (void)cells; (void)size; return FALSE;
 #endif
@@ -388,6 +414,9 @@ bool8 GeneratedMap_MatchesPrepared(const u8 *cells, u32 size)
 {
 #if GENERATED_MAP_READY
     u16 i;
+#if GENERATED_MAP_LARGE
+    if (sLargeActive) return FALSE;
+#endif
     if (!cells || size != GEN_CELLS || !sPrepared
      || (!GeneratedMap_IsInside() && !GeneratedMap_EntryPending())) return FALSE;
     for (i = 0; i < GEN_CELLS; i++)
@@ -432,6 +461,10 @@ bool8 GeneratedMap_MatchesPreparedWildlife(const u8 *cells, u32 size, u8 profile
 bool8 GeneratedMap_SharedCoordValid(unsigned x, unsigned y)
 {
 #if GENERATED_MAP_READY
+#if GENERATED_MAP_LARGE
+    if (sLargeStaged && sLargeShared)
+        return x < LARGE_SIDE && y < LARGE_SIDE && sLargeTemplate[y * LARGE_SIDE + x] == '.';
+#endif
     return sHasTemplate && x < GEN_SIDE && y < GEN_SIDE && sTemplate[y * GEN_SIDE + x] == '.';
 #else
     (void)x; (void)y;
@@ -448,7 +481,11 @@ bool8 GeneratedMap_CanEnter(void)
     return gSaveBlock1Ptr && !sPrepared && !GeneratedMap_IsInside() && HasFreeWarpTask()
         && !LinkTransport_TagPeer()
         && !LinkTransport_PendingTag() && !LinkTransport_PendingInvitation()
-        && (!WorldBridge_Enabled() || (WorldBridge_GeneratedCaveReady() && sHasTemplate))
+        && (!WorldBridge_Enabled() || (WorldBridge_GeneratedCaveReady() && (sHasTemplate
+#if GENERATED_MAP_LARGE
+            || (sLargeStaged && sLargeShared)
+#endif
+        )))
         && IsMapTypeOutdoors(gMapHeader.mapType)
         && TestPlayerAvatarFlags(PLAYER_AVATAR_FLAG_ON_FOOT)
         && GetReturnCoords(&x, &y);
@@ -471,7 +508,7 @@ bool8 GeneratedMap_Enter(void)
     SetDynamicWarpWithCoords(0, sReturn.mapGroup, sReturn.mapNum, WARP_ID_NONE, sReturn.x, sReturn.y);
     sSeenInside = FALSE;
 #if GENERATED_MAP_LARGE
-    sLargeActive = sLargeStaged && !WorldBridge_Enabled();
+    sLargeActive = sLargeStaged && (!WorldBridge_Enabled() || sLargeShared);
     if (sLargeActive) {
         u16 i;
         for (i = 0; i < LARGE_CELLS; i++) sLargeTiles[i] = sLargeTemplate[i] == '.' ? GEN_FLOOR : GEN_WALL;

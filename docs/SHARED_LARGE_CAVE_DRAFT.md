@@ -1,0 +1,7 @@
+# Shared 63×63 caves (draft)
+
+This successor distributes `EWGMAP04` 63×63 caves through the authenticated owner authority. `CAVE4` clients receive the full 63-row geometry and independently verify its SHA-256 identity and connected, closed layout before staging or acknowledging. Older clients receive `CAVE NONE`, not a truncated 31×31 cave. New clients fall back to CAVE3, CAVE2, CAVE and legacy when connecting to older hosts. CAVE4 is advertised only when native generated-map, large-map, profile and wildlife gates are all enabled, so this capability also understands previous cave versions.
+
+The owner can explicitly author and publish a large map with `python3 -m world.author_cave 'a sprawling cave' --shared-large --admin-socket /path/to/admin.sock`. This sends the theme to the configured model provider and may incur charges. Model output is bounded data, not code. Existing owner-only publish, optional persistence, identity and occupied-cave replacement restrictions apply.
+
+Large instances currently have geometry and the standard cave encounter table; the v4 format does not include the v3 custom wildlife roster. A client already inside must return before acknowledging a changed layout; reconnecting to the same verified layout need not eject it. The current simultaneous entry/return and capacity-handshake limitations still apply. In-memory authority and real C bridge/wire/map component tests do not substitute for a real two-client session. No live model request was made.

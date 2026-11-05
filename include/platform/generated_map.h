@@ -43,6 +43,8 @@ struct WildPokemonInfo;
 #define GENERATED_LARGE_MAP_TEMPLATE_BYTES (63 * 63)
 bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size);
 bool8 GeneratedMap_StageLargeTemplate(const u8 *cells, u32 size);
+bool8 GeneratedMap_StageSharedLargeTemplate(const u8 *cells, u32 size);
+bool8 GeneratedMap_MatchesPreparedLarge(const u8 *cells, u32 size);
 bool8 GeneratedMap_SetEncounterProfile(u8 profile);
 bool8 GeneratedMap_SetSharedEncounterProfile(u8 profile);
 bool8 GeneratedMap_MatchesPreparedProfile(const u8 *cells, u32 size, u8 profile);

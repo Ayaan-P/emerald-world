@@ -8,12 +8,21 @@
 #define GENERATED_CAVE_WILDLIFE 0
 #endif
 #define WORLD_CAVE_WILDLIFE_BYTES 37
+#ifndef GENERATED_MAP_LARGE
+#define GENERATED_MAP_LARGE 0
+#endif
+#define WORLD_CAVE_LARGE_SIDE 63
+#define WORLD_CAVE_LARGE_CELLS (WORLD_CAVE_LARGE_SIDE * WORLD_CAVE_LARGE_SIDE)
 #define WORLD_CAVE_SIDE 31
 #define WORLD_CAVE_CELLS (WORLD_CAVE_SIDE * WORLD_CAVE_SIDE)
 #define WORLD_CAVE_ID 64
 struct WorldCaveWire
 {
+#if GENERATED_MAP_LARGE
+    u8 cells[WORLD_CAVE_LARGE_CELLS];
+#else
     u8 cells[WORLD_CAVE_CELLS];
+#endif
     char id[WORLD_CAVE_ID + 1];
     u8 nextRow;
     u8 version, profile;

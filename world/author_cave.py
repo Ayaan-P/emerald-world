@@ -135,9 +135,14 @@ def main(argv=None):
     target.add_argument('--offline-output', type=Path, help='write a new offline template with model-selected encounter profile')
     target.add_argument('--offline-wildlife-output', type=Path, help='write a new offline cave with a model-authored 12-slot wildlife table')
     target.add_argument('--large-offline-output', type=Path, help='write a new large offline 63x63 cave')
+    parser.add_argument('--shared-large', action='store_true', help='publish a model-authored large cave to a compatible owner authority')
     parser.add_argument('--shared-wildlife', action='store_true', help='publish model-authored wildlife to a compatible shared cave host')
     parser.add_argument('--shared-ecology', action='store_true', help='publish a model-selected encounter profile to a compatible shared cave host')
     args = parser.parse_args(argv)
+    if args.shared_large and (args.shared_wildlife or args.shared_ecology):
+        parser.error('--shared-large cannot be combined with shared ecology or wildlife')
+    if args.shared_large and args.admin_socket is None:
+        parser.error('--shared-large requires --admin-socket')
     if args.shared_wildlife and args.shared_ecology:
         parser.error('--shared-wildlife and --shared-ecology are mutually exclusive')
     if args.shared_wildlife and args.admin_socket is None:
@@ -147,7 +152,7 @@ def main(argv=None):
     try:
         proposal, blob = author(args.theme, args.timeout, offline_ecology=args.offline_output is not None or args.shared_ecology,
                                 custom_wildlife=args.offline_wildlife_output is not None or args.shared_wildlife,
-                                large=args.large_offline_output is not None)
+                                large=args.large_offline_output is not None or args.shared_large)
         output = args.offline_output or args.offline_wildlife_output or args.large_offline_output
         if output is not None:
             with output.open('xb') as out:

@@ -12,10 +12,13 @@ SIDE = 31
 MAGIC = b'EWGMAP01'
 MAGIC_PROFILE = b'EWGMAP02'
 MAGIC_WILDLIFE = b'EWGMAP03'
+MAGIC_LARGE = b'EWGMAP04'
+LARGE_SIDE = 63
 SIZE = len(MAGIC) + SIDE * SIDE
 PROFILE_SIZE = SIZE + 1
 WILDLIFE_BYTES = 37
-MAX_SIZE = PROFILE_SIZE + WILDLIFE_BYTES
+WILDLIFE_SIZE = PROFILE_SIZE + WILDLIFE_BYTES
+MAX_SIZE = 8 + LARGE_SIDE * LARGE_SIDE
 
 
 class CaveError(ValueError):
@@ -28,6 +31,7 @@ class SharedCave:
             raise CaveError('invalid cave template')
         self.wildlife = None
         self.version = 1
+        self.side = SIDE
         if len(blob) == SIZE and blob[:8] == MAGIC:
             self.profile = None
             cells = blob[8:]
@@ -35,7 +39,7 @@ class SharedCave:
             self.version = 2
             self.profile = blob[8]
             cells = blob[9:]
-        elif len(blob) == MAX_SIZE and blob[:8] == MAGIC_WILDLIFE and blob[8] <= 3:
+        elif len(blob) == WILDLIFE_SIZE and blob[:8] == MAGIC_WILDLIFE and blob[8] <= 3:
             self.version = 3
             self.profile = blob[8]
             self.wildlife = blob[9:9 + WILDLIFE_BYTES]
@@ -47,22 +51,27 @@ class SharedCave:
                 if species not in SPECIES.values() or not 1 <= self.wildlife[offset + 2] <= 100:
                     raise CaveError('invalid wildlife slot')
             cells = blob[9 + WILDLIFE_BYTES:]
+        elif len(blob) == MAX_SIZE and blob[:8] == MAGIC_LARGE:
+            self.version = 4
+            self.profile = None
+            self.side = LARGE_SIDE
+            cells = blob[8:]
         else:
             raise CaveError('invalid cave template')
         if any(c not in (ord('.'), ord('#')) for c in cells):
             raise CaveError('invalid cave cell')
-        rows = tuple(cells[y * SIDE:(y + 1) * SIDE] for y in range(SIDE))
+        rows = tuple(cells[y * self.side:(y + 1) * self.side] for y in range(self.side))
         if (any(c != ord('#') for c in rows[0] + rows[-1])
                 or any(row[0] != ord('#') or row[-1] != ord('#') for row in rows)):
             raise CaveError('open boundary')
-        if any(rows[y][x] != ord('.') for x, y in ((1, 1), (29, 28), (29, 29))):
+        if any(rows[y][x] != ord('.') for x, y in ((1, 1), (self.side - 2, self.side - 3), (self.side - 2, self.side - 2))):
             raise CaveError('invalid entrance or exit')
         queue = deque([(1, 1)])
         seen = {(1, 1)}
         while queue:
             x, y = queue.popleft()
             for nx, ny in ((x, y - 1), (x + 1, y), (x, y + 1), (x - 1, y)):
-                if (0 <= nx < SIDE and 0 <= ny < SIDE and rows[ny][nx] == ord('.')
+                if (0 <= nx < self.side and 0 <= ny < self.side and rows[ny][nx] == ord('.')
                         and (nx, ny) not in seen):
                     seen.add((nx, ny))
                     queue.append((nx, ny))
@@ -72,11 +81,12 @@ class SharedCave:
         self.identity = sha256(blob).hexdigest()
 
     def walkable(self, x, y):
-        return type(x) is int and type(y) is int and 0 <= x < SIDE and 0 <= y < SIDE and self._rows[y][x] == ord('.')
+        return type(x) is int and type(y) is int and 0 <= x < self.side and 0 <= y < self.side and self._rows[y][x] == ord('.')
 
     def frames(self):
         suffix = '' if self.profile is None else f' {self.profile}'
         if self.version == 3: suffix += ' 3'
+        if self.version == 4: suffix = ' LARGE'
         frames = [f'CAVE BEGIN {self.identity}{suffix}']
         if self.wildlife is not None:
             frames.append(f'CAVE WILD {self.identity} {self.wildlife.hex()}')

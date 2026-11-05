@@ -448,7 +448,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
-                cave_wildlife = role.endswith('CAVE3')
+                cave_large = role.endswith('CAVE4')
+                cave_wildlife = cave_large or role.endswith('CAVE3')
                 cave_profile = cave_wildlife or role.endswith('CAVE2')
                 cave_capable = cave_profile or role.endswith('CAVE')
                 if cave_profile:
@@ -511,6 +512,7 @@ class WorldServer:
                 conn['cave_capable'] = cave_capable
                 conn['cave_profile'] = cave_profile
                 conn['cave_wildlife'] = cave_wildlife
+                conn['cave_large'] = cave_large
                 conn['cave_offer'] = conn['cave_ack'] = None
                 conn['cave_revoked'] = []
                 conn['chat'] = chat_capable
@@ -538,6 +540,7 @@ class WorldServer:
                     return
                 if fields == ['CAVE', 'GET']:
                     if (self.shared_cave is None
+                            or (self.shared_cave.version == 4 and not conn.get('cave_large'))
                             or (self.shared_cave.version == 3 and not conn.get('cave_wildlife'))
                             or (self.shared_cave.profile is not None and not conn.get('cave_profile'))):
                         conn['cave_offer'] = None
