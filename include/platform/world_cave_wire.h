@@ -4,6 +4,10 @@
 #ifndef GENERATED_CAVE_PROFILES
 #define GENERATED_CAVE_PROFILES 0
 #endif
+#ifndef GENERATED_CAVE_WILDLIFE
+#define GENERATED_CAVE_WILDLIFE 0
+#endif
+#define WORLD_CAVE_WILDLIFE_BYTES 37
 #define WORLD_CAVE_SIDE 31
 #define WORLD_CAVE_CELLS (WORLD_CAVE_SIDE * WORLD_CAVE_SIDE)
 #define WORLD_CAVE_ID 64
@@ -13,6 +17,8 @@ struct WorldCaveWire
     char id[WORLD_CAVE_ID + 1];
     u8 nextRow;
     u8 version, profile;
+    u8 wildlife[WORLD_CAVE_WILDLIFE_BYTES];
+    bool8 wildlifeSeen;
     bool8 active;
 };
 /* 0: accepted partial; 1: complete; -1: invalid. Only BEGIN/ROW/END. */

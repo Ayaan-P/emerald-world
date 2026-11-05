@@ -38,7 +38,8 @@ static bool8 sSharedEncounterProfile;
 #if GENERATED_CAVE_WILDLIFE
 static struct WildPokemon sWildlifeMons[12];
 static struct WildPokemonInfo sWildlifeInfo;
-static bool8 sHasWildlife;
+static bool8 sHasWildlife, sSharedWildlife;
+static u8 sWildlifeRaw[GENERATED_WILDLIFE_BYTES];
 #endif
 static struct MapLayout sLayout;
 static struct WarpData sReturn, sPreviousDynamicWarp;
@@ -178,7 +179,7 @@ bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size)
     sSharedEncounterProfile = FALSE;
 #endif
 #if GENERATED_CAVE_WILDLIFE
-    sHasWildlife = FALSE;
+    sHasWildlife = sSharedWildlife = FALSE;
 #endif
     return TRUE;
 #else
@@ -187,7 +188,7 @@ bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size)
 #endif
 }
 
-/* Profiles are offline-only, bounded native table choices, not executable data. */
+/* Profiles are bounded native table choices, not executable data. */
 bool8 GeneratedMap_SetEncounterProfile(u8 profile)
 {
 #if GENERATED_MAP_READY && GENERATED_CAVE_PROFILES
@@ -257,6 +258,8 @@ bool8 GeneratedMap_SetWildlife(const u8 *data, u32 size)
     }
     sWildlifeInfo.encounterRate = data[0];
     sWildlifeInfo.wildPokemon = sWildlifeMons;
+    memcpy(sWildlifeRaw, data, GENERATED_WILDLIFE_BYTES);
+    sSharedWildlife = FALSE;
     sHasWildlife = TRUE;
     return TRUE;
 #else
@@ -265,10 +268,21 @@ bool8 GeneratedMap_SetWildlife(const u8 *data, u32 size)
 #endif
 }
 
+bool8 GeneratedMap_SetSharedWildlife(const u8 *data, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_CAVE_WILDLIFE
+    if (!GeneratedMap_SetWildlife(data, size)) return FALSE;
+    sSharedWildlife = TRUE;
+    return TRUE;
+#else
+    (void)data; (void)size; return FALSE;
+#endif
+}
+
 const struct WildPokemonInfo *GeneratedMap_Wildlife(void)
 {
 #if GENERATED_MAP_READY && GENERATED_CAVE_WILDLIFE
-    if (sHasWildlife && sPrepared && sHasTemplate && GeneratedMap_IsInside() && !WorldBridge_Enabled())
+    if (sHasWildlife && sPrepared && sHasTemplate && GeneratedMap_IsInside() && (!WorldBridge_Enabled() || sSharedWildlife))
         return &sWildlifeInfo;
 #endif
     return NULL;
@@ -338,9 +352,22 @@ bool8 GeneratedMap_MatchesPrepared(const u8 *cells, u32 size)
 bool8 GeneratedMap_MatchesPreparedProfile(const u8 *cells, u32 size, u8 profile)
 {
 #if GENERATED_MAP_READY && GENERATED_CAVE_PROFILES
+#if GENERATED_CAVE_WILDLIFE
+    if (sHasWildlife) return FALSE;
+#endif
     return profile <= 3 && profile == sEncounterProfile && GeneratedMap_MatchesPrepared(cells, size);
 #else
     return profile == 0 && GeneratedMap_MatchesPrepared(cells, size);
+#endif
+}
+
+bool8 GeneratedMap_MatchesPreparedWildlife(const u8 *cells, u32 size, u8 profile, const u8 *data, u32 dataSize)
+{
+#if GENERATED_MAP_READY && GENERATED_CAVE_WILDLIFE
+    return sHasWildlife && profile == sEncounterProfile && data && dataSize == GENERATED_WILDLIFE_BYTES
+        && !memcmp(sWildlifeRaw, data, GENERATED_WILDLIFE_BYTES) && GeneratedMap_MatchesPrepared(cells, size);
+#else
+    (void)cells; (void)size; (void)profile; (void)data; (void)dataSize; return FALSE;
 #endif
 }
 

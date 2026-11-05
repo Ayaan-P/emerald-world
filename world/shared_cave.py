@@ -6,12 +6,16 @@ independent signature or permission grant.
 """
 from collections import deque
 from hashlib import sha256
+from .cave_species import SPECIES
 
 SIDE = 31
 MAGIC = b'EWGMAP01'
 MAGIC_PROFILE = b'EWGMAP02'
+MAGIC_WILDLIFE = b'EWGMAP03'
 SIZE = len(MAGIC) + SIDE * SIDE
-MAX_SIZE = SIZE + 1
+PROFILE_SIZE = SIZE + 1
+WILDLIFE_BYTES = 37
+MAX_SIZE = PROFILE_SIZE + WILDLIFE_BYTES
 
 
 class CaveError(ValueError):
@@ -22,12 +26,27 @@ class SharedCave:
     def __init__(self, blob):
         if type(blob) is not bytes:
             raise CaveError('invalid cave template')
+        self.wildlife = None
+        self.version = 1
         if len(blob) == SIZE and blob[:8] == MAGIC:
             self.profile = None
             cells = blob[8:]
-        elif len(blob) == MAX_SIZE and blob[:8] == MAGIC_PROFILE and blob[8] <= 3:
+        elif len(blob) == PROFILE_SIZE and blob[:8] == MAGIC_PROFILE and blob[8] <= 3:
+            self.version = 2
             self.profile = blob[8]
             cells = blob[9:]
+        elif len(blob) == MAX_SIZE and blob[:8] == MAGIC_WILDLIFE and blob[8] <= 3:
+            self.version = 3
+            self.profile = blob[8]
+            self.wildlife = blob[9:9 + WILDLIFE_BYTES]
+            if not 1 <= self.wildlife[0] <= 100:
+                raise CaveError('invalid wildlife rate')
+            for i in range(12):
+                offset = 1 + i * 3
+                species = int.from_bytes(self.wildlife[offset:offset + 2], 'little')
+                if species not in SPECIES.values() or not 1 <= self.wildlife[offset + 2] <= 100:
+                    raise CaveError('invalid wildlife slot')
+            cells = blob[9 + WILDLIFE_BYTES:]
         else:
             raise CaveError('invalid cave template')
         if any(c not in (ord('.'), ord('#')) for c in cells):
@@ -57,7 +76,10 @@ class SharedCave:
 
     def frames(self):
         suffix = '' if self.profile is None else f' {self.profile}'
+        if self.version == 3: suffix += ' 3'
         frames = [f'CAVE BEGIN {self.identity}{suffix}']
+        if self.wildlife is not None:
+            frames.append(f'CAVE WILD {self.identity} {self.wildlife.hex()}')
         frames.extend(f'CAVE ROW {self.identity} {i} {row.decode("ascii")}' for i, row in enumerate(self._rows))
         frames.append(f'CAVE END {self.identity}')
         return '\n'.join(frames) + '\n'

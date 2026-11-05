@@ -40,6 +40,8 @@ bool8 GeneratedMap_MatchesPreparedProfile(const u8 *cells, u32 size, u8 profile)
 u8 GeneratedMap_EncounterProfile(void);
 bool8 GeneratedMap_ValidateWildlife(const u8 *data, u32 size);
 bool8 GeneratedMap_SetWildlife(const u8 *data, u32 size);
+bool8 GeneratedMap_SetSharedWildlife(const u8 *data, u32 size);
+bool8 GeneratedMap_MatchesPreparedWildlife(const u8 *cells, u32 size, u8 profile, const u8 *data, u32 dataSize);
 const struct WildPokemonInfo *GeneratedMap_Wildlife(void);
 /* Reload an optional offline template immediately before entry. */
 bool8 Platform_ReloadGeneratedMap(void);

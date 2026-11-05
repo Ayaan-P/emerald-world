@@ -25,7 +25,7 @@ def encode_profile(proposal, profile):
 
 
 def encode_wildlife(proposal, profile, rate, wildlife):
-    """Build an offline-only V3 cave with 12 weighted native encounter slots."""
+    """Build a V3 cave with 12 weighted native encounter slots."""
     from .cave_species import SPECIES
     if type(rate) is not int or not 1 <= rate <= 100:
         raise ValueError('encounter rate must be 1..100')

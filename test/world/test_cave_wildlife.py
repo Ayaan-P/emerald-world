@@ -24,12 +24,12 @@ class CaveWildlife(unittest.TestCase):
         self.assertEqual(SPECIES,expected);self.assertEqual(len(SPECIES),386)
         self.assertNotIn('EGG',SPECIES);self.assertNotIn('OLD_UNOWN_B',SPECIES)
 
-    def test_encoding_is_bounded_and_not_a_shared_template(self):
+    def test_encoding_is_bounded_and_valid_shared_template(self):
         blob=offline_cave.encode_wildlife(PROPOSAL,'ice',25,WILDLIFE)
         self.assertEqual(len(blob),1007);self.assertEqual(blob[:10],b'EWGMAP03\x02\x19')
         self.assertEqual(blob[10:13],bytes([129,0,5]))
         self.assertEqual(blob[46:],offline_cave.encode_profile(PROPOSAL,'ice')[9:])
-        with self.assertRaises(ValueError):SharedCave(blob)
+        self.assertEqual(SharedCave(blob).version, 3)
         for rate in (0,101,True,None):
             with self.subTest(rate=rate),self.assertRaises(ValueError):offline_cave.encode_wildlife(PROPOSAL,'ice',rate,WILDLIFE)
         for bad in ([], WILDLIFE[:11], WILDLIFE+[WILDLIFE[0]], [{'species':'EGG','level':5}]*12,
@@ -88,7 +88,8 @@ typedef uint8_t u8;typedef uint16_t u16;typedef uint32_t u32;typedef int16_t s16
 struct WildPokemon {u8 minLevel,maxLevel;u16 species;};
 struct WildPokemonInfo {u8 encounterRate;const struct WildPokemon *wildPokemon;};
 static u8 sTemplate[GEN_CELLS];static bool8 sHasTemplate,sPrepared,inside=1,online;
-static u8 sEncounterProfile;static bool8 sSharedEncounterProfile,sHasWildlife;
+static u8 sEncounterProfile;static bool8 sSharedEncounterProfile,sHasWildlife,sSharedWildlife;
+static u8 sWildlifeRaw[GENERATED_WILDLIFE_BYTES];
 static struct WildPokemon sWildlifeMons[12];static struct WildPokemonInfo sWildlifeInfo;
 static bool8 GeneratedMap_IsInside(void){return inside;}
 static bool8 WorldBridge_Enabled(void){return online;}
