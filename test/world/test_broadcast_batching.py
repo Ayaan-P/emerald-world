@@ -16,7 +16,7 @@ class Server(WorldServer):
 class BatchingTests(unittest.TestCase):
     def setUp(self):
         self.clock=Clock(); self.patch=patch('world.server.time.monotonic',self.clock);self.patch.start()
-        self.tmp=tempfile.TemporaryDirectory();p=Path(self.tmp.name);self.s=Server(p/'s',p/'state');self.s.broadcasts=0
+        self.tmp=tempfile.TemporaryDirectory();p=Path(self.tmp.name);self.s=Server(p/'s',p/'state',max_players=64);self.s.broadcasts=0
         self.peers=[]
         for name in ('alice','bob'):
             self.s.create_identity(name)
@@ -37,6 +37,20 @@ class BatchingTests(unittest.TestCase):
         for seq in range(2,7):
             self.clock.now+=.01;self.state(0,seq,10+seq)
         self.s._flush_presence_broadcast();self.assertEqual(self.s.broadcasts,1)
+    def test_sixty_four_peer_updates_coalesce_across_each_tick(self):
+        for i in range(2,64):
+            name=f'p{i:02}';self.s.create_identity(name)
+            peer=dict(id=name,seq=-1,state=None,closing=False,out=bytearray(),sock=None,
+                      social=True,field=False,chat=False,travel=False)
+            self.s.peers[name]=peer;self.peers.append(peer)
+        for tick in range(10):
+            if tick:
+                self.clock.now+=.1;self.s._flush_presence_broadcast()
+            for i in range(64):self.state(i,tick+1,10+i%10)
+        self.clock.now+=.1;self.s._flush_presence_broadcast()
+        self.assertEqual(self.s.broadcasts,10)
+        for i in range(64):self.assertEqual(self.peers[i]['state'][2],10+i%10)
+
     def test_immediate_broadcast_absorbs_pending_update(self):
         self.state(0,1,10);self.assertEqual(self.s.broadcasts,0)
         self.s._broadcast();self.assertEqual(self.s.broadcasts,1)
