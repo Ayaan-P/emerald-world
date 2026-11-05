@@ -22,6 +22,14 @@ class CaveAuthor(unittest.TestCase):
   bad=[b'',b'{"type":"turn.failed"}', b'{"type":"item.completed","item":{"type":"tool_call"}}',wire({**DOC,'links':[]}),wire({**DOC,'exec':'evil'})]
   for item in bad:
    with self.subTest(item=item),self.assertRaises(ValueError):author_cave.decode_blueprint_events(item)
+ def test_model_authored_style_is_inert_validated_geometry(self):
+  styled={**DOC,'style':'organic','seed':42,'corridor_width':3}
+  proposal=author_cave.decode_blueprint_events(wire(styled))
+  self.assertEqual(len(encode(proposal)),969)
+  for bad in ({**styled,'style':'shell'}, {**styled,'corridor_width':True}, {**styled,'seed':-1}):
+   with self.assertRaises(ValueError): author_cave.decode_blueprint_events(wire(bad))
+  prompt=author_cave.prompt_for('test')
+  self.assertIn('organic or maze',prompt)
  def test_no_provider_call_for_invalid_theme_or_unsafe_version(self):
   with patch('world.author_cave.gm._run_author') as run:
    with self.assertRaises(ValueError):author_cave.author('x'*2001)

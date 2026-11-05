@@ -24,7 +24,9 @@ def prompt_for(theme):
         raise ValueError('theme must be nonempty and at most 2000 UTF-8 bytes')
     return ('''Design cave geometry. Return one JSON object only, with exactly:
 {"rooms":[[x,y,width,height],...],"links":[[room_index,room_index],...],
-"entrance_room":0,"exit_room":0}. Use 1-24 rooms, each rectangle fully
+"entrance_room":0,"exit_room":0,"style":"organic","seed":0,"corridor_width":1}.
+Choose style from rooms, rounded, organic or maze. Seed is an integer 0..4294967295;
+corridor_width is 1, 2, or 3. Use 1-24 rooms, each rectangle fully
 inside coordinates 1..29 and width/height at least 2. At most 64 links,
 using zero-based indices, connect every room into one graph. Choose the entrance
 and exit rooms by index. Corridors are automatic and may intersect. No text,
