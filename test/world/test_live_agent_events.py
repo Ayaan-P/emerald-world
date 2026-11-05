@@ -41,6 +41,13 @@ class LiveAgentEvents(unittest.TestCase):
                     self.assertEqual(agent_event_control.status(p/'owner.sock','Alice',identity,session,2)['status'],'rejected')
                     self.assertEqual(agent_event_control.status(p/'owner.sock','Alice',identity,'0'*16,2)['status'],'unknown')
                     self.assertEqual(agent_event_control.status(p/'owner.sock','Alice','f'*64,session,2)['status'],'unknown')
+                    alice['out'].clear();tile=agent_event_control.set_tile(p/'owner.sock','Alice',identity,1,2,'grass')
+                    self.assertTrue(tile['ok']);self.assertEqual(tile['sequence'],3)
+                    self.assertEqual(alice['out'],f'CAVE EVENTTILE {identity} 3 1 2 0\n'.encode());self.assertEqual(bob['out'],b'')
+                    server._line(alice,f'CAVE EVENTACK {identity} 3 APPLIED'.encode());self.assertEqual(agent_event_control.status(p/'owner.sock','Alice',identity,session,3)['status'],'applied')
+                    for x,y,terrain in ((1,1,'grass'),(2,1,'grass'),(61,61,'grass'),(0,0,'grass'),(1,2,'lava'),(True,2,'grass')):
+                        self.assertFalse(agent_event_control.set_tile(p/'owner.sock','Alice',identity,x,y,terrain)['ok'])
+
                     for npc,text in ((2,'Hello!'),(1,'bad\x01'),(1,'x'*29)):
                         self.assertFalse(agent_event_control.set_rule(p/'owner.sock','Alice',identity,5,npc,6,text)['ok'])
 
@@ -52,3 +59,13 @@ class LiveAgentEvents(unittest.TestCase):
                 # Ordinary authenticated trainers do not get the owner command path.
                 server._line(bob,f'CAVE EVENTSET {identity} 1 3'.encode());self.assertTrue(bob['closing'])
             finally:server.close()
+    def test_cli_routes_tile_state_and_status(self):
+        with patch('world.agent_event_control.admin_request',return_value={'ok':True}) as send,patch('builtins.print'):
+            common=['--admin-socket','/tmp/owner','--trainer','Alice','--area','a'*64]
+            self.assertEqual(agent_event_control.main(common+['--x','3','--y','4','--terrain','grass']),0)
+            self.assertEqual(send.call_args.args[1]['command'],'set_event_tile')
+            self.assertEqual(agent_event_control.main(common+['--state','2']),0)
+            self.assertEqual(send.call_args.args[1]['command'],'set_event_state')
+            self.assertEqual(agent_event_control.main(common+['--status','1','--session','b'*16]),0)
+            self.assertEqual(send.call_args.args[1]['command'],'event_command_status')
+            with patch('sys.stderr'),self.assertRaises(SystemExit):agent_event_control.main(common+['--x','3','--terrain','grass'])

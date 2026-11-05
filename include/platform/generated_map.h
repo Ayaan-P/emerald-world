@@ -82,6 +82,7 @@ void GeneratedMap_RunEvent(void);
 u8 GeneratedMap_EventState(void);
 bool8 GeneratedMap_SetSharedEventState(u8 state);
 bool8 GeneratedMap_SetSharedEventRule(const u8 *rule, u32 size);
+bool8 GeneratedMap_SetSharedEventTile(unsigned x, unsigned y, unsigned terrain);
 bool8 GeneratedMap_StageCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size);
 bool8 GeneratedMap_StageSharedCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size);
 bool8 GeneratedMap_MatchesPreparedCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size);

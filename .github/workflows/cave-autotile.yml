@@ -2,7 +2,7 @@ name: Experimental generated cave autotiling
 
 on:
   pull_request:
-    branches: [dot/live-agent-rule-control]
+    branches: [dot/agent-event-receipts]
   workflow_dispatch:
 
 permissions:

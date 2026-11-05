@@ -958,7 +958,7 @@ class WorldServer:
                 raise ValueError('generated area unavailable')
             return self._replace_cave(row[0])
 
-    def _queue_event_command(self, trainer, identity, verb, args, npc=None):
+    def _queue_event_command(self, trainer, identity, verb, args, npc=None, tile=None):
         if type(trainer) is not str or not ID.fullmatch(trainer) or type(identity) is not str or not re.fullmatch(r'[0-9a-f]{64}',identity):
             raise ValueError('invalid event command')
         with self.lock:
@@ -969,6 +969,9 @@ class WorldServer:
                 or tuple(peer['state'][:2])!=self.wilds_map):
                 raise ValueError('trainer is not in the requested event area')
             if npc is not None and npc>cave.cast[0]:raise ValueError('character not in area')
+            if tile is not None:
+                x,y=tile
+                if not cave.walkable(x,y) or (x,y) in ((1,1),(61,60),(61,61)):raise ValueError('tile cannot be painted')
             seq=peer.get('event_command_seq',0)+1
             if seq>2147483647:raise ValueError('event command sequence exhausted')
             message=f'CAVE {verb} {identity} {seq} {args}\n'
@@ -990,6 +993,13 @@ class WorldServer:
             raise ValueError('invalid event rule command')
         value=_text(text)
         return self._queue_event_command(trainer,identity,'EVENTRULE',f'{state} {npc} {next_state} {value.hex()}',npc=npc)
+
+    def set_event_tile(self, trainer, identity, x, y, terrain):
+        """Queue one walkable terrain paint for a named trainer only."""
+        if type(x) is not int or type(y) is not int or not 0<=x<63 or not 0<=y<63 or type(terrain) is not str or terrain not in ('grass','tall_grass'):
+            raise ValueError('invalid event tile command')
+        kind=0 if terrain=='grass' else 1
+        return self._queue_event_command(trainer,identity,'EVENTTILE',f'{x} {y} {kind}',tile=(x,y))
 
     def event_command_status(self, trainer, identity, session, sequence):
         """Report a client-reported result or unknown; never infer delivery."""
@@ -1022,6 +1032,12 @@ class WorldServer:
                 try:
                     if set(request)!={'command','trainer','identity','state'}:raise ValueError('invalid event state command')
                     result=self.set_event_state(request['trainer'],request['identity'],request['state'])
+                except ValueError as exc:
+                    result=dict(ok=False,error=str(exc))
+            elif request.get('command') == 'set_event_tile':
+                try:
+                    if set(request)!={'command','trainer','identity','x','y','terrain'}:raise ValueError('invalid event tile command')
+                    result=self.set_event_tile(request['trainer'],request['identity'],request['x'],request['y'],request['terrain'])
                 except ValueError as exc:
                     result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'event_command_status':

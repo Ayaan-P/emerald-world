@@ -19,3 +19,14 @@ The owner authority validates target, state, character and bounded literal text.
 
 
 The native client sends `APPLIED` only after its state or rule operation returns success, and `REJECTED` if native validation or capacity rejects it. The authority keeps at most 64 recent outcomes per connected trainer. A disconnected, replaced or evicted session reports unknown; a pending status is not proof of eventual delivery. Outcomes are client-reported, not tamper-proof receipts. No socket or live multiplayer end-to-end test has been run.
+
+
+## Paint a walkable tile while playing
+
+An owner agent can change one named trainer's walkable generated-outdoor tile between normal grass and tall grass:
+
+`python -m world.agent_event_control --admin-socket /path/to/owner.sock --trainer TRAINER --area AREA_SHA256 --x 5 --y 5 --terrain grass`
+
+The other terrain value is `tall_grass`. The authority and recipient independently require a walkable tile in the exact active event area. Entrance, exit approach, exit, NPC and blocked tiles cannot be painted. Both supported tiles remain walkable, so this operation cannot create walls or change map connectivity. The engine updates that trainer's current in-memory map and redraws the visible tile; it does not alter the published map identity, another trainer's view or the save, and a new visit resets the change. Tall grass uses normal wild-encounter behavior. It relies on the existing battle engine, including the separate fix for entering a wild encounter without a usable Pokémon; do not treat this as fixing that crash.
+
+This is a single-tile, per-trainer control primitive, not a globally synchronized tilemap editor, full terrain generation, collision editing or durable world change. It uses the same ordered bounded command queue and client-reported outcome status as event state/rule commands. No real two-client session, external agent call or actual local socket was exercised; inspect exact-head CI before integration.
