@@ -63,11 +63,21 @@ struct WildPokemonInfo;
 #define GENERATED_MAP_TEMPLATE_BYTES (31 * 31)
 #define GENERATED_LARGE_MAP_TEMPLATE_BYTES (63 * 63)
 #define GENERATED_GUIDE_BYTES 59
+#ifndef GENERATED_WILDS_EVENTS
+#define GENERATED_WILDS_EVENTS 0
+#endif
+#if GENERATED_WILDS_EVENTS && !GENERATED_WILDS_CAST
+#error GENERATED_WILDS_EVENTS requires generated wilds casts
+#endif
+#define GENERATED_EVENT_BYTES 1466
 #define GENERATED_CAST_BYTES 184
 bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size);
 bool8 GeneratedMap_StageLargeTemplate(const u8 *cells, u32 size);
 bool8 GeneratedMap_StageWildsTemplate(const u8 *cells, u32 size);
 bool8 GeneratedMap_StageGuidedWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size);
+bool8 GeneratedMap_StageEventWilds(const u8 *events, u32 eventSize, const u8 *cast, u32 castSize, const u8 *cells, u32 size);
+void GeneratedMap_RunEvent(void);
+u8 GeneratedMap_EventState(void);
 bool8 GeneratedMap_StageCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size);
 bool8 GeneratedMap_StageSharedCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size);
 bool8 GeneratedMap_MatchesPreparedCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size);

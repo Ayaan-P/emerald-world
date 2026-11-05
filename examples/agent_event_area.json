@@ -1,0 +1,23 @@
+{
+  "blueprint": {
+    "rooms": [[1, 1, 10, 10], [15, 15, 15, 15], [45, 45, 17, 17]],
+    "links": [[0, 1], [1, 2]],
+    "entrance_room": 0,
+    "exit_room": 2,
+    "style": "organic",
+    "seed": 123,
+    "corridor_width": 2
+  },
+  "cast": [
+    {"gfx": 7, "text": "Hello, traveler!"},
+    {"gfx": 8, "text": "Good to see you!"}
+  ],
+  "events": {
+    "initial": 0,
+    "rules": [
+      {"state": 0, "npc": 1, "next": 1, "text": "Please find my friend."},
+      {"state": 1, "npc": 2, "next": 2, "text": "Tell them I am well."},
+      {"state": 2, "npc": 1, "next": 3, "text": "Thank you for asking!"}
+    ]
+  }
+}

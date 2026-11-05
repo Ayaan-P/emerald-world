@@ -11,4 +11,8 @@ GeneratedWorld_Wilds_EventScript_Cast2::
 GeneratedWorld_Wilds_EventScript_Cast3::
 	msgbox gGeneratedWildsCastText3, MSGBOX_NPC
 	end
+GeneratedWorld_Wilds_EventScript_Graph::
+	special GeneratedMap_RunEvent
+	msgbox gGeneratedEventText, MSGBOX_NPC
+	end
 	.endif

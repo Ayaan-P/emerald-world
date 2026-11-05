@@ -10,6 +10,9 @@
 #include "platform/link_transport.h"
 #include "platform/world_rally.h"
 #include "platform/generated_map.h"
+#if GENERATED_WILDS_EVENTS
+#include "event_data.h"
+#endif
 #include "constants/maps.h"
 #if GENERATED_WILDS_GUIDE
 #include "constants/event_object_movement.h"
@@ -25,6 +28,7 @@
 u8 gGeneratedWildsGuideText[58] = {0xFF};
 u8 gGeneratedWildsCastText2[58] = {0xFF};
 u8 gGeneratedWildsCastText3[58] = {0xFF};
+u8 gGeneratedEventText[58] = {0xFF};
 
 #if GENERATED_MAP_READY
 /* Both supported sizes fit the native backup-map buffer with the view border.
@@ -55,6 +59,11 @@ static struct ObjectEventTemplate sGuideObjects[OBJECT_EVENT_TEMPLATES_COUNT];
 extern const u8 GeneratedWorld_Wilds_EventScript_Guide[];
 #if GENERATED_WILDS_CAST
 static bool8 sCastStaged, sCastActive;
+#if GENERATED_WILDS_EVENTS
+static bool8 sEventStaged, sEventActive;
+static u8 sEventState, sEventData[GENERATED_EVENT_BYTES];
+extern const u8 GeneratedWorld_Wilds_EventScript_Graph[];
+#endif
 static u8 sCastMetadata[GENERATED_CAST_BYTES];
 extern const u8 GeneratedWorld_Wilds_EventScript_Cast2[], GeneratedWorld_Wilds_EventScript_Cast3[];
 #endif
@@ -221,6 +230,9 @@ bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size)
     sGuideStaged = sGuideShared = FALSE;
 #if GENERATED_WILDS_CAST
     sCastStaged = FALSE;
+#if GENERATED_WILDS_EVENTS
+    sEventStaged = FALSE;
+#endif
 #endif
 #endif
 #endif
@@ -275,6 +287,9 @@ static bool8 StageLarge(const u8 *cells, u32 size, bool8 shared)
     sGuideStaged = sGuideShared = FALSE;
 #if GENERATED_WILDS_CAST
     sCastStaged = FALSE;
+#if GENERATED_WILDS_EVENTS
+    sEventStaged = FALSE;
+#endif
 #endif
 #endif
 #endif
@@ -448,6 +463,46 @@ bool8 GeneratedMap_StageCastWilds(const u8 *metadata, u32 metaSize, const u8 *ce
     return StageCastWilds(metadata,metaSize,cells,size,FALSE);
 #else
     (void)metadata;(void)metaSize;(void)cells;(void)size;return FALSE;
+#endif
+}
+bool8 GeneratedMap_StageEventWilds(const u8 *events, u32 eventSize, const u8 *cast, u32 castSize, const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
+    u8 guide[GENERATED_GUIDE_BYTES], used[16][3]={{0}};unsigned j,k,n;
+    if(!events || eventSize!=GENERATED_EVENT_BYTES || !cast || castSize!=GENERATED_CAST_BYTES || events[0]>15) return FALSE;
+    n=events[1];if(!n || n>24 || !cast[0] || cast[0]>3)return FALSE;
+    guide[0]=7;
+    for(j=0;j<24;j++) {const u8 *r=events+2+j*61;
+        if(j>=n) {for(k=0;k<61;k++)if(r[k])return FALSE;continue;}
+        if(r[0]>15 || !r[1] || r[1]>cast[0] || r[2]>15 || used[r[0]][r[1]-1])return FALSE;
+        used[r[0]][r[1]-1]=TRUE;guide[1]=r[3];memcpy(guide+2,r+4,57);
+        if(!ValidateGuideText(guide,sizeof(guide)))return FALSE;
+    }
+    if(!StageCastWilds(cast,castSize,cells,size,FALSE))return FALSE;
+    memcpy(sEventData,events,GENERATED_EVENT_BYTES);sEventStaged=TRUE;return TRUE;
+#else
+    (void)events;(void)eventSize;(void)cast;(void)castSize;(void)cells;(void)size;return FALSE;
+#endif
+}
+void GeneratedMap_RunEvent(void)
+{
+#if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
+    const u8 *fallback[3]={gGeneratedWildsGuideText,gGeneratedWildsCastText2,gGeneratedWildsCastText3};
+    unsigned j,npc=gSpecialVar_LastTalked;u8 guide[GENERATED_GUIDE_BYTES];
+    if(!sEventActive || !npc || npc>sCastMetadata[0]) {gGeneratedEventText[0]=0xFF;return;}
+    memcpy(gGeneratedEventText,fallback[npc-1],58);
+    for(j=0;j<sEventData[1];j++) {const u8 *r=sEventData+2+j*61;
+        if(r[0]==sEventState && r[1]==npc) {guide[0]=7;guide[1]=r[3];memcpy(guide+2,r+4,57);
+            EncodeGuideText(guide,gGeneratedEventText);sEventState=r[2];break;}
+    }
+#endif
+}
+u8 GeneratedMap_EventState(void)
+{
+#if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
+    return sEventActive ? sEventState : 0;
+#else
+    return 0;
 #endif
 }
 bool8 GeneratedMap_StageSharedCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size)
@@ -807,6 +862,10 @@ bool8 GeneratedMap_Enter(void)
     sGuideActive = sLargeActive && sLargeWilds && sGuideStaged;
 #if GENERATED_WILDS_CAST
     sCastActive = sLargeActive && sLargeWilds && sCastStaged;
+#if GENERATED_WILDS_EVENTS
+    sEventActive = sCastActive && sEventStaged;
+    if(sEventActive)sEventState=sEventData[0];
+#endif
 #endif
 #endif
     if (sLargeActive) {
@@ -887,6 +946,9 @@ const struct MapLayout *GeneratedMap_ResolveLayout(const struct MapLayout *base)
                 sGuideObjects[j].localId=j+1;sGuideObjects[j].graphicsId=record[0];
                 sGuideObjects[j].x=record[1];sGuideObjects[j].y=record[2];sGuideObjects[j].elevation=3;
                 sGuideObjects[j].movementType=MOVEMENT_TYPE_FACE_LEFT;sGuideObjects[j].script=scripts[j];
+#if GENERATED_WILDS_EVENTS
+                if(sEventActive)sGuideObjects[j].script=GeneratedWorld_Wilds_EventScript_Graph;
+#endif
             }
             sGuideEvents.objectEventCount=sCastMetadata[0];sGuideEvents.objectEvents=sGuideObjects;gMapHeader.events=&sGuideEvents;
         } else
