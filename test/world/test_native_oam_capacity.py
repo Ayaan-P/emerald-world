@@ -54,6 +54,8 @@ int main(void){
  assert(output[126].shape==1 && output[127].shape==2 && output[128].shape==3);
  for(int i=0;i<4;i++)assert(OAM[OAM_ENTRY_COUNT*sizeof(struct OamData)+i]==0x5a);
  gMain.oamLoadDisabled=1;sNativeExtraOam[0].shape=9;LoadOam();assert(output[128].shape==3);
+ gMain.oamLoadDisabled=0;gOamLimit=128;AddSpritesToOamBuffer();LoadOam();
+ assert(sNativeExtraOam[0].shape==-1 && output[128].shape==-1);
  return 0;
 }
 '''

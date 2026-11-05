@@ -498,6 +498,13 @@ void AddSpritesToOamBuffer(void)
     u8 i = 0;
     u8 oamIndex = 0;
 
+#if defined(PORTABLE) && WORLD_NATIVE_OAM
+    // A scene may reduce gOamLimit after a previous frame used extra slots.
+    // The PC renderer still scans the full native OAM backing every frame.
+    for (i = gOamLimit; i < OAM_ENTRY_COUNT; i++)
+        *OAM_SLOT(i) = gDummyOamData;
+    i = 0;
+#endif
     while (i < MAX_SPRITES)
     {
         struct Sprite *sprite = &gSprites[sSpriteOrder[i]];
