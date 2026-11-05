@@ -67,6 +67,9 @@
 #define WB_LOCALID 224
 #endif
 #define WB_MARKER 0x5742
+#ifndef WORLD_SMOOTH_PRESENCE
+#define WORLD_SMOOTH_PRESENCE 0
+#endif
 
 struct Peer { char id[26], text[58]; unsigned group, num, x, y, facing, gfx, ready; };
 struct Tile { unsigned group, num, x, y, metatile, collision; };
@@ -88,7 +91,13 @@ struct Snapshot {
     unsigned rallyExpected;
     struct WorldRallySnapshot rally;
 };
-struct Remote { char id[26]; u8 object, sprite, group, num; };
+struct Remote { char id[26]; u8 object, sprite, group, num;
+#if WORLD_SMOOTH_PRESENCE
+    s16 motionX, motionY;
+    u8 motionDirection;
+    bool8 walking;
+#endif
+};
 struct Applied { struct Tile tile; u16 original, raw; };
 static struct {
     bool8 enabled, connected, connecting, staging, chatProbe, chatLegacy, chatAvailable;
@@ -1110,6 +1119,26 @@ static unsigned SelectPeers(unsigned order[WB_REMOTES])
     return selected;
 }
 
+#if WORLD_SMOOTH_PRESENCE
+// Limit walking animation to graphics with known standard animation tables.
+static bool8 RemoteWalkAnimationSafe(u8 gfx)
+{
+    switch (gfx)
+    {
+    case OBJ_EVENT_GFX_BOY_1:
+    case OBJ_EVENT_GFX_BRENDAN_NORMAL:
+    case OBJ_EVENT_GFX_BRENDAN_MACH_BIKE:
+    case OBJ_EVENT_GFX_BRENDAN_ACRO_BIKE:
+    case OBJ_EVENT_GFX_MAY_NORMAL:
+    case OBJ_EVENT_GFX_MAY_MACH_BIKE:
+    case OBJ_EVENT_GFX_MAY_ACRO_BIKE:
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+#endif
+
 static void SyncEngine(void)
 {
     unsigned i, j, k, order[WB_REMOTES], selected;
@@ -1220,7 +1249,29 @@ static void SyncEngine(void)
         if (!Owned(i)) continue;
         o = &gObjectEvents[r->object];
         if (o->currentCoords.x != (int)p->x + MAP_OFFSET || o->currentCoords.y != (int)p->y + MAP_OFFSET)
+        {
+#if WORLD_SMOOTH_PRESENCE
+            int dx = (int)p->x + MAP_OFFSET - o->currentCoords.x;
+            int dy = (int)p->y + MAP_OFFSET - o->currentCoords.y;
+            // Interpolate only adjacent human steps. Authority, collision and
+            // interaction positions remain at the committed destination.
+            if (r->id[0] != '@' && RemoteWalkAnimationSafe(o->graphicsId) && ((dx == 0 && (dy == -1 || dy == 1))
+                                  || (dy == 0 && (dx == -1 || dx == 1))))
+            {
+                int nextX = r->motionX - 16 * dx;
+                int nextY = r->motionY - 16 * dy;
+                if (nextX >= -32 && nextX <= 32 && nextY >= -32 && nextY <= 32)
+                {
+                    r->motionX = nextX; r->motionY = nextY;
+                    r->motionDirection = dx < 0 ? DIR_WEST : dx > 0 ? DIR_EAST
+                                             : dy < 0 ? DIR_NORTH : DIR_SOUTH;
+                }
+                else r->motionX = r->motionY = 0;
+            }
+            else r->motionX = r->motionY = 0;
+#endif
             MoveObjectEventToMapCoords(o, p->x + MAP_OFFSET, p->y + MAP_OFFSET);
+        }
         o->initialCoords = o->currentCoords;
         o->currentElevation = o->previousElevation = MapGridGetElevationAt(p->x + MAP_OFFSET, p->y + MAP_OFFSET);
         if (o->facingDirection != p->facing) ObjectEventTurn(o, p->facing);
@@ -1510,12 +1561,51 @@ void WorldBridge_Poll(bool8 headless)
     if (SocketOpen()) Receive(headless);
 }
 
+#if WORLD_SMOOTH_PRESENCE
+// Called once per game frame, not once per reconciliation (which can run twice).
+static void AdvanceRemoteMotion(void)
+{
+    unsigned i;
+    for (i = 0; i < WB_REMOTES; i++)
+    {
+        struct Remote *r = &sWorld.remotes[i];
+        struct Sprite *sprite;
+        struct ObjectEvent *object;
+        if (!Owned(i) || r->id[0] == '@' || !RemoteWalkAnimationSafe(gObjectEvents[r->object].graphicsId)) continue;
+        sprite = &gSprites[r->sprite];
+        object = &gObjectEvents[r->object];
+        sprite->x2 = r->motionX;
+        sprite->y2 = r->motionY;
+        if (r->motionX || r->motionY)
+        {
+            if (RemoteWalkAnimationSafe(object->graphicsId))
+            {
+                StartSpriteAnimIfDifferent(sprite, GetMoveDirectionAnimNum(r->motionDirection));
+                r->walking = TRUE;
+            }
+            if (r->motionX > 0) r->motionX -= 2;
+            else if (r->motionX < 0) r->motionX += 2;
+            if (r->motionY > 0) r->motionY -= 2;
+            else if (r->motionY < 0) r->motionY += 2;
+        }
+        else if (r->walking)
+        {
+            ObjectEventTurn(object, object->facingDirection);
+            r->walking = FALSE;
+        }
+    }
+}
+#endif
+
 void WorldBridge_BeforeFrame(u32 frame, bool8 headless)
 {
     (void)frame;
     if (!sWorld.enabled) return;
     WorldBridge_Poll(headless);
     SyncEngine();
+#if WORLD_SMOOTH_PRESENCE
+    AdvanceRemoteMotion();
+#endif
 }
 
 void WorldBridge_AfterFrame(u32 frame)
