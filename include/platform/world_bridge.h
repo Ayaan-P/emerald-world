@@ -14,6 +14,9 @@ bool8 WorldBridge_Init(const char *configPath);
 bool8 WorldBridge_Enabled(void);
 /* True only after an authenticated authority template has been validated and acknowledged. */
 bool8 WorldBridge_GeneratedCaveReady(void);
+struct ObjectEvent;
+/* True only for a currently owned remote trainer object. */
+bool8 WorldBridge_IsRemoteObject(const struct ObjectEvent *object);
 /* Committed presence only; stale/disconnected snapshots are unavailable. */
 struct WorldBridgePeer { char name[25]; unsigned group, num, x, y; bool8 ready; };
 bool8 WorldBridge_GetPeer(unsigned index, struct WorldBridgePeer *peer);

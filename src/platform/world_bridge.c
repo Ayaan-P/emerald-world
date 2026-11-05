@@ -295,6 +295,16 @@ static bool8 Owned(unsigned slot)
         && gSprites[r->sprite].data[7] == WB_MARKER;
 }
 
+bool8 WorldBridge_IsRemoteObject(const struct ObjectEvent *object)
+{
+    unsigned i;
+    if (object == NULL) return FALSE;
+    for (i = 0; i < WB_REMOTES; i++)
+        if (Owned(i) && &gObjectEvents[sWorld.remotes[i].object] == object)
+            return TRUE;
+    return FALSE;
+}
+
 static void RemoveRemote(unsigned slot)
 {
     struct Remote *r = &sWorld.remotes[slot];

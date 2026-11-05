@@ -22,6 +22,12 @@
 #include "trainer_see.h"
 #include "trainer_hill.h"
 #include "util.h"
+#ifdef PORTABLE
+#include "platform/generated_map.h"
+#if GENERATED_MAP_READY
+#include "platform/world_bridge.h"
+#endif
+#endif
 #include "constants/event_object_movement.h"
 #include "constants/event_objects.h"
 #include "constants/field_effects.h"
@@ -4731,6 +4737,13 @@ static bool8 DoesObjectCollideWithObjectAt(struct ObjectEvent *objectEvent, s16 
         curObject = &gObjectEvents[i];
         if (curObject->active && curObject != objectEvent)
         {
+#if defined(PORTABLE) && GENERATED_MAP_READY
+            // Shared cave corridors and entry tiles must remain passable by players.
+            // NPCs and remote objects outside this map keep normal collision.
+            if (objectEvent->isPlayer && GeneratedMap_IsInside()
+             && WorldBridge_IsRemoteObject(curObject))
+                continue;
+#endif
             if ((curObject->currentCoords.x == x && curObject->currentCoords.y == y) || (curObject->previousCoords.x == x && curObject->previousCoords.y == y))
             {
                 if (AreElevationsCompatible(objectEvent->currentElevation, curObject->currentElevation))
