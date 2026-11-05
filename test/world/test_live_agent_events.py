@@ -28,6 +28,12 @@ class LiveAgentEvents(unittest.TestCase):
                     result=agent_event_control.set_state(p/'owner.sock','Alice',identity,5)
                     self.assertTrue(result['ok']);self.assertTrue(result['queued']);self.assertEqual(result['sequence'],1)
                     self.assertEqual(alice['out'],f'CAVE EVENTSET {identity} 1 5\n'.encode());self.assertEqual(bob['out'],b'')
+                    alice['out'].clear();patched=agent_event_control.set_rule(p/'owner.sock','Alice',identity,5,1,6,'Hello!')
+                    self.assertTrue(patched['ok']);self.assertEqual(patched['sequence'],2)
+                    self.assertEqual(alice['out'],f'CAVE EVENTRULE {identity} 2 5 1 6 48656c6c6f21\n'.encode());self.assertEqual(bob['out'],b'')
+                    for npc,text in ((2,'Hello!'),(1,'bad\x01'),(1,'x'*29)):
+                        self.assertFalse(agent_event_control.set_rule(p/'owner.sock','Alice',identity,5,npc,6,text)['ok'])
+
                     for name,ident,state in [('Bob','f'*64,1),('Nobody',identity,1),('Alice',identity,16),('Alice',identity,True)]:
                         self.assertFalse(agent_event_control.set_state(p/'owner.sock',name,ident,state)['ok'])
                     alice['out'].clear();alice['in_generated_cave']=False

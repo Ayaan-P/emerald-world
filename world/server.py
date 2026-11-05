@@ -950,10 +950,9 @@ class WorldServer:
                 raise ValueError('generated area unavailable')
             return self._replace_cave(row[0])
 
-    def set_event_state(self, trainer, identity, state):
-        """Queue an owner-only, per-trainer state assignment; not delivery confirmation."""
-        if type(trainer) is not str or not ID.fullmatch(trainer) or type(identity) is not str or not re.fullmatch(r'[0-9a-f]{64}',identity) or type(state) is not int or not 0<=state<=15:
-            raise ValueError('invalid event state command')
+    def _queue_event_command(self, trainer, identity, verb, args, npc=None):
+        if type(trainer) is not str or not ID.fullmatch(trainer) or type(identity) is not str or not re.fullmatch(r'[0-9a-f]{64}',identity):
+            raise ValueError('invalid event command')
         with self.lock:
             cave=self.shared_cave;peer=self.peers.get(trainer)
             if (not cave or cave.version!=9 or cave.identity!=identity or not peer or peer.get('closing')
@@ -961,12 +960,26 @@ class WorldServer:
                 or not peer.get('in_generated_cave') or peer.get('state') is None
                 or tuple(peer['state'][:2])!=self.wilds_map):
                 raise ValueError('trainer is not in the requested event area')
+            if npc is not None and npc>cave.cast[0]:raise ValueError('character not in area')
             seq=peer.get('event_command_seq',0)+1
             if seq>2147483647:raise ValueError('event command sequence exhausted')
-            message=f'CAVE EVENTSET {identity} {seq} {state}\n'
+            message=f'CAVE {verb} {identity} {seq} {args}\n'
             if len(peer['out'])+len(message)>MAX_QUEUE:raise ValueError('trainer connection is busy')
             self._queue(peer,message);peer['event_command_seq']=seq
-            return {'ok':True,'queued':True,'trainer':trainer,'identity':identity,'sequence':seq,'state':state}
+            return {'ok':True,'queued':True,'trainer':trainer,'identity':identity,'sequence':seq}
+
+    def set_event_state(self, trainer, identity, state):
+        """Queue an owner-only, per-trainer state assignment; not delivery confirmation."""
+        if type(state) is not int or not 0<=state<=15:raise ValueError('invalid event state command')
+        result=self._queue_event_command(trainer,identity,'EVENTSET',str(state));result['state']=state;return result
+
+    def set_event_rule(self, trainer, identity, state, npc, next_state, text):
+        """Queue a literal per-trainer rule patch; native application is independent."""
+        from .wilds_cast import _text
+        if any(type(v) is not int for v in (state,npc,next_state)) or not 0<=state<=15 or not 1<=npc<=3 or not 0<=next_state<=15:
+            raise ValueError('invalid event rule command')
+        value=_text(text)
+        return self._queue_event_command(trainer,identity,'EVENTRULE',f'{state} {npc} {next_state} {value.hex()}',npc=npc)
 
     def _admin_line(self, conn, raw):
         conn['closing'] = True
@@ -990,6 +1003,12 @@ class WorldServer:
                 try:
                     if set(request)!={'command','trainer','identity','state'}:raise ValueError('invalid event state command')
                     result=self.set_event_state(request['trainer'],request['identity'],request['state'])
+                except ValueError as exc:
+                    result=dict(ok=False,error=str(exc))
+            elif request.get('command') == 'set_event_rule':
+                try:
+                    if set(request)!={'command','trainer','identity','state','npc','next_state','text'}:raise ValueError('invalid event rule command')
+                    result=self.set_event_rule(request['trainer'],request['identity'],request['state'],request['npc'],request['next_state'],request['text'])
                 except ValueError as exc:
                     result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'invitation':

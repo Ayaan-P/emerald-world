@@ -61,7 +61,7 @@ extern const u8 GeneratedWorld_Wilds_EventScript_Guide[];
 static bool8 sCastStaged, sCastActive;
 #if GENERATED_WILDS_EVENTS
 static bool8 sEventStaged, sEventActive;
-static u8 sEventState, sEventData[GENERATED_EVENT_BYTES];
+static u8 sEventState, sEventData[GENERATED_EVENT_BYTES], sEventRuntime[GENERATED_EVENT_BYTES];
 extern const u8 GeneratedWorld_Wilds_EventScript_Graph[];
 #endif
 static u8 sCastMetadata[GENERATED_CAST_BYTES];
@@ -518,7 +518,7 @@ void GeneratedMap_RunEvent(void)
     unsigned j,npc=gSpecialVar_LastTalked;u8 guide[GENERATED_GUIDE_BYTES];
     if(!sEventActive || !npc || npc>sCastMetadata[0]) {gGeneratedEventText[0]=0xFF;return;}
     memcpy(gGeneratedEventText,fallback[npc-1],58);
-    for(j=0;j<sEventData[1];j++) {const u8 *r=sEventData+2+j*61;
+    for(j=0;j<sEventRuntime[1];j++) {const u8 *r=sEventRuntime+2+j*61;
         if(r[0]==sEventState && r[1]==npc) {guide[0]=7;guide[1]=r[3];memcpy(guide+2,r+4,57);
             EncodeGuideText(guide,gGeneratedEventText);sEventState=r[2];break;}
     }
@@ -539,6 +539,23 @@ bool8 GeneratedMap_SetSharedEventState(u8 state)
     sEventState=state;return TRUE;
 #else
     (void)state;return FALSE;
+#endif
+}
+bool8 GeneratedMap_SetSharedEventRule(const u8 *rule, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
+    u8 guide[GENERATED_GUIDE_BYTES];unsigned j,n;
+    if(!rule || size!=61 || !sEventActive || !sLargeShared || !GeneratedMap_IsInside()
+       || rule[0]>15 || !rule[1] || rule[1]>sCastMetadata[0] || rule[2]>15) return FALSE;
+    guide[0]=7;guide[1]=rule[3];memcpy(guide+2,rule+4,57);
+    if(!ValidateGuideText(guide,sizeof(guide)))return FALSE;
+    n=sEventRuntime[1];
+    for(j=0;j<n;j++) {u8 *r=sEventRuntime+2+j*61;if(r[0]==rule[0] && r[1]==rule[1])break;}
+    if(j==n && n>=24)return FALSE;
+    memcpy(sEventRuntime+2+j*61,rule,61);if(j==n)sEventRuntime[1]=n+1;
+    return TRUE;
+#else
+    (void)rule;(void)size;return FALSE;
 #endif
 }
 bool8 GeneratedMap_StageSharedCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size)
@@ -903,7 +920,7 @@ bool8 GeneratedMap_Enter(void)
     sCastActive = sLargeActive && sLargeWilds && sCastStaged;
 #if GENERATED_WILDS_EVENTS
     sEventActive = sCastActive && sEventStaged;
-    if(sEventActive)sEventState=sEventData[0];
+    if(sEventActive) {sEventState=sEventData[0];memcpy(sEventRuntime,sEventData,GENERATED_EVENT_BYTES);}
 #endif
 #endif
 #endif

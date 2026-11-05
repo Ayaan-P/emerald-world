@@ -102,9 +102,9 @@ return r==1 && w.version==9 && w.nextRow==63 && w.nextEventChunk==6 && w.cast[0]
 struct Task {int isActive;};struct Task gTasks[16];
 struct Save save,*gSaveBlock1Ptr=&save;__typeof__(gMain) gMain;__typeof__(gMapHeader) gMapHeader;
 enum CaveState {CAVE_DISABLED,CAVE_IDLE,CAVE_WAIT,CAVE_WAIT_RESET,CAVE_ACK,CAVE_WAIT_OK,CAVE_READY,CAVE_MISMATCH,CAVE_RETURN_NONE};
-static struct {bool8 connected,caveAvailable,staging,caveReturning,caveV2Probe,caveV3Probe,caveV4Probe,caveV5Probe,caveV6Probe,caveV7Probe,caveV8Probe,caveV9Probe,eventSetPending;u8 eventSetState;unsigned eventSetSeq;enum CaveState caveState;unsigned caveTimeout,caveRetry,snapshotAge;char caveExpected[65];struct WorldCaveWire caveWire;size_t outputSize;char output[4096];} sWorld;
+static struct {bool8 connected,caveAvailable,staging,caveReturning,caveV2Probe,caveV3Probe,caveV4Probe,caveV5Probe,caveV6Probe,caveV7Probe,caveV8Probe,caveV9Probe;u8 eventHead,eventCount;unsigned eventSetSeq;struct {u8 kind,state,rule[61];} eventQueue[8];enum CaveState caveState;unsigned caveTimeout,caveRetry,snapshotAge;char caveExpected[65];struct WorldCaveWire caveWire;size_t outputSize;char output[4096];} sWorld;
 static int leaving,disconnected;static struct WarpData destination;static struct MapEvents events;
-const u8 GeneratedWorld_Wilds_EventScript_Guide[]={0};const u8 GeneratedWorld_Wilds_EventScript_Cast2[]={0},GeneratedWorld_Wilds_EventScript_Cast3[]={0},GeneratedWorld_Wilds_EventScript_Graph[]={0};u16 gSpecialVar_LastTalked;extern u8 gGeneratedWildsGuideText[58];
+const u8 GeneratedWorld_Wilds_EventScript_Guide[]={0};const u8 GeneratedWorld_Wilds_EventScript_Cast2[]={0},GeneratedWorld_Wilds_EventScript_Cast3[]={0},GeneratedWorld_Wilds_EventScript_Graph[]={0};u16 gSpecialVar_LastTalked;extern u8 gGeneratedWildsGuideText[58],gGeneratedEventText[58];
 const char *LinkTransport_TagPeer(void){return 0;}
 const void *LinkTransport_PendingTag(void){return 0;}
 const void *LinkTransport_PendingInvitation(void){return 0;}
@@ -144,8 +144,17 @@ int main(void){const char *a="ID_A",*b="ID_B";struct MapLayout base={19,26,0,0,0
  /* Reconnect to the same identity without evicting a player already inside. */
  sWorld.caveState=CAVE_WAIT;WorldCaveWire_Reset(&sWorld.caveWire);deliver(a,"META_A_SENTINEL","GRAPH_A_SENTINEL");
  assert(sWorld.caveState==CAVE_ACK);assert(GeneratedMap_EventState()==1);CavePump();assert(sWorld.caveState==CAVE_WAIT_OK);assert(CaveLine(3,ok));
- char *set[]={"CAVE","EVENTSET",(char*)a,"1","5"};assert(CaveLine(5,set));assert(sWorld.eventSetPending);ready=0;CavePump();assert(GeneratedMap_EventState()==1 && sWorld.eventSetPending);ready=1;CavePump();assert(GeneratedMap_EventState()==5);assert(CaveLine(5,set));assert(!sWorld.eventSetPending);
- char *other[]={"CAVE","EVENTSET","ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff","2","6"};assert(CaveLine(5,other));assert(!sWorld.eventSetPending);
+ char *set[]={"CAVE","EVENTSET",(char*)a,"1","5"};assert(CaveLine(5,set));assert(sWorld.eventCount==1);ready=0;CavePump();assert(GeneratedMap_EventState()==1 && sWorld.eventCount==1);ready=1;CavePump();assert(GeneratedMap_EventState()==5);assert(CaveLine(5,set));assert(!sWorld.eventCount);
+ char *other[]={"CAVE","EVENTSET","ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff","2","6"};assert(CaveLine(5,other));assert(!sWorld.eventCount);
+ u8 badRule[61]={5,1,6,1,1};assert(!GeneratedMap_SetSharedEventRule(badRule,sizeof(badRule)));
+ char *patch[]={"CAVE","EVENTRULE",(char*)a,"3","5","1","6","4869"};assert(CaveLine(8,patch));assert(sWorld.eventCount==1);CavePump();assert(!sWorld.eventCount);
+ assert(GeneratedMap_MatchesPreparedEventWilds(sWorld.caveWire.events,WORLD_CAVE_EVENT_BYTES,sWorld.caveWire.cast,WORLD_CAVE_CAST_BYTES,sWorld.caveWire.cells,WORLD_CAVE_LARGE_CELLS));
+ gSpecialVar_LastTalked=1;GeneratedMap_RunEvent();assert(GeneratedMap_EventState()==6 && gGeneratedEventText[0]==0xc2 && gGeneratedEventText[1]==0xdd);
+ sWorld.caveState=CAVE_WAIT;WorldCaveWire_Reset(&sWorld.caveWire);deliver(a,"META_A_SENTINEL","GRAPH_A_SENTINEL");assert(sWorld.caveState==CAVE_ACK);CavePump();assert(CaveLine(3,ok));
+ assert(GeneratedMap_SetSharedEventState(5));GeneratedMap_RunEvent();assert(GeneratedMap_EventState()==6);
+ char *set2[]={"CAVE","EVENTSET",(char*)a,"4","7"};char *patch2[]={"CAVE","EVENTRULE",(char*)a,"5","7","1","8","4869"};
+ ready=0;assert(CaveLine(5,set2));assert(CaveLine(8,patch2));CavePump();assert(sWorld.eventCount==2 && GeneratedMap_EventState()==6);
+ ready=1;CavePump();assert(sWorld.eventCount==1 && GeneratedMap_EventState()==7);CavePump();assert(sWorld.eventCount==0);GeneratedMap_RunEvent();assert(GeneratedMap_EventState()==8);
  /* The same terrain and characters with a different event graph is a different identity. It must
     leave the old cave before staging or acknowledging the replacement. */
  sWorld.caveState=CAVE_WAIT;WorldCaveWire_Reset(&sWorld.caveWire);deliver(b,"META_B_SENTINEL","GRAPH_B_SENTINEL");
