@@ -79,11 +79,16 @@ int main(void){
   * CHOOSEMOVE permission plus its own Ring still enables the input. */
  memset(&gBattleMons[0],0,sizeof(gBattleMons[0]));
  assert(MegaGame_CanSelect(0));assert(!MegaGame_CanQueue(0));
+ gBattleTypeFlags=BATTLE_TYPE_LINK;
+ assert(MegaGame_ReplyAllowed(0,MEGA_MOVE_CAN_SELECT_BIT));
+ assert(!MegaGame_ReplyAllowed(0,0));
+ gBattleTypeFlags=BATTLE_TYPE_LINK | BATTLE_TYPE_IS_MASTER;
+ assert(!MegaGame_ReplyAllowed(0,MEGA_MOVE_CAN_SELECT_BIT));
  gBattleBufferA[0][3]=0;assert(!MegaGame_CanSelect(0));
  return 0;
 }'''
   globalh='''#include <stdint.h>\n#include <stddef.h>\ntypedef uint8_t u8;typedef uint16_t u16;typedef uint32_t u32;typedef uint8_t bool8;\n#define TRUE 1\n#define FALSE 0\n#define PARTY_SIZE 6\n#define MULTI_PARTY_SIZE 3\n#define MAX_BATTLERS_COUNT 4\n'''
-  battleh='''#include "global.h"\n#define BATTLE_TYPE_MULTI 1\n#define BATTLE_TYPE_LINK 2\n#define BATTLE_TYPE_RECORDED 4\n#define BATTLE_TYPE_RECORDED_LINK 8\n#define B_SIDE_PLAYER 0\n#define STATUS2_TRANSFORMED 1\nstruct BattlePokemon {u16 species,item,hp,level,attack,defense,speed,spAttack,spDefense;u8 types[2],ability;u32 status2;};\nextern struct BattlePokemon gBattleMons[4];extern u8 gBattlersCount,gBattlerPartyIndexes[4];extern u32 gBattleTypeFlags;u8 GetBattlerPosition(u8);u8 GetBattlerSide(u8);\n'''
+  battleh='''#include "global.h"\n#define BATTLE_TYPE_MULTI 1\n#define BATTLE_TYPE_LINK 2\n#define BATTLE_TYPE_RECORDED 4\n#define BATTLE_TYPE_RECORDED_LINK 8\n#define BATTLE_TYPE_IS_MASTER 16\n#define B_SIDE_PLAYER 0\n#define STATUS2_TRANSFORMED 1\nstruct BattlePokemon {u16 species,item,hp,level,attack,defense,speed,spAttack,spDefense;u8 types[2],ability;u32 status2;};\nextern struct BattlePokemon gBattleMons[4];extern u8 gBattlersCount,gBattlerPartyIndexes[4];extern u32 gBattleTypeFlags;u8 GetBattlerPosition(u8);u8 GetBattlerSide(u8);\n'''
   pokemonh='''#include "global.h"\nstruct Pokemon {u16 species;};extern struct Pokemon gPlayerParty[6],gEnemyParty[6];\nenum {MON_DATA_SPECIES,MON_DATA_ATK_IV,MON_DATA_DEF_IV,MON_DATA_SPEED_IV,MON_DATA_SPATK_IV,MON_DATA_SPDEF_IV,MON_DATA_ATK_EV,MON_DATA_DEF_EV,MON_DATA_SPEED_EV,MON_DATA_SPATK_EV,MON_DATA_SPDEF_EV};\nu32 GetMonData(struct Pokemon *,int);u8 GetNature(struct Pokemon *);u16 ModifyStatByNature(u8,u16,u8);\n'''
   with tempfile.TemporaryDirectory() as d:
    root=Path(d);(root/'constants').mkdir();(root/'platform').mkdir()

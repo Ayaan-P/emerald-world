@@ -1048,7 +1048,7 @@ static bool8 NativeBattleReplyValid(u8 battler, const u8 *data)
             return data[1] == B_ACTION_EXEC_SCRIPT
                 && ((data[2] == 0xFF && data[3] == 0xFF)
                     || ((data[2] & ~MEGA_MOVE_CHOICE_BIT) < MAX_MON_MOVES
-                        && (!(data[2] & MEGA_MOVE_CHOICE_BIT) || MegaGame_CanQueue(battler))
+                        && (!(data[2] & MEGA_MOVE_CHOICE_BIT) || MegaGame_ReplyAllowed(battler, request[3]))
                         && data[3] < MAX_BATTLERS_COUNT));
         return request[0] == CONTROLLER_CHOOSEACTION
             || request[0] == CONTROLLER_EXPUPDATE || request[0] == CONTROLLER_DRAWPARTYSTATUSSUMMARY;

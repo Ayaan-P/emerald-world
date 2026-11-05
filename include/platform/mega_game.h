@@ -10,6 +10,7 @@
 #define MEGA_MOVE_CAN_SELECT_BIT 0x01
 void MegaGame_Reset(void);
 bool8 MegaGame_CanSelect(u8 battler);
+bool8 MegaGame_ReplyAllowed(u8 battler, u8 announced);
 bool8 MegaGame_CanQueue(u8 battler);
 bool8 MegaGame_ToggleSelection(u8 battler);
 u8 MegaGame_ChoiceBit(u8 battler);

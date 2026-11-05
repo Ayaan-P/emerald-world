@@ -78,6 +78,18 @@ bool8 MegaGame_CanSelect(u8 battler)
         && CheckBagHasItem(ITEM_MEGA_RING, 1);
 }
 
+bool8 MegaGame_ReplyAllowed(u8 battler, u8 announced)
+{
+    /* Both link processes receive controller replies, but only the master has
+     * authoritative battle state. The follower validates against the exact
+     * eligibility advertised in that outstanding controller request. */
+    if (!MEGA_FEATURE_READY || !(announced & MEGA_MOVE_CAN_SELECT_BIT)
+     || !FlagGet(FLAG_MEGA_EVOLUTION)) return FALSE;
+    if ((gBattleTypeFlags & BATTLE_TYPE_LINK) && !(gBattleTypeFlags & BATTLE_TYPE_IS_MASTER))
+        return TRUE;
+    return MegaGame_CanQueue(battler);
+}
+
 bool8 MegaGame_ToggleSelection(u8 battler)
 {
     u8 owner, slot, i; struct Pokemon *mon;
