@@ -12,22 +12,22 @@ class MemoryServer(WorldServer):
 class ExtendedPeerWindow(unittest.TestCase):
  def test_legacy_and_opt_in_view_and_auth_boundary(self):
   with tempfile.TemporaryDirectory() as d:
-   root=Path(d);server=MemoryServer(root/'s',root/'w');self.addCleanup(server.close)
+   root=Path(d);server=MemoryServer(root/'s',root/'w',max_players=64);self.addCleanup(server.close)
    def connect(name,role):
     identity=server.create_identity(name)
     conn={'id':None,'out':bytearray(),'closing':False,'state':None,'seq':0,'sock':object()}
     server._line(conn,('HELLO 1 '+name+' '+identity['token']+(' '+role if role else '')).encode())
     return conn
-   legacy=connect('legacy','SOCIALTRAVELCHAT');extended=connect('extended','SOCIALTRAVELCHATPEER16')
-   self.assertIn(b'WELCOME',legacy['out']);self.assertIn(b'WELCOME',extended['out'])
-   for i in range(20):
+   legacy=connect('legacy','SOCIALTRAVELCHAT');intermediate=connect('intermediate','SOCIALTRAVELCHATPEER16');extended=connect('extended','SOCIALTRAVELCHATPEER32')
+   self.assertIn(b'WELCOME',legacy['out']);self.assertIn(b'WELCOME',intermediate['out']);self.assertIn(b'WELCOME',extended['out'])
+   for i in range(40):
     server.peers[f'P{i:02}']={'id':f'P{i:02}','closing':False,'state':[1,1,i+1,3,1,7,1],'field':True}
-   for conn,want in ((legacy,8),(extended,16)):
+   for conn,want in ((legacy,8),(intermediate,16),(extended,32)):
     conn['state']=[1,1,0,3,1,7,1]
     peers=[line for line in server._snapshot(conn).splitlines() if line.startswith('PEER ')]
     self.assertEqual(len(peers),want)
     self.assertTrue(any(line.startswith('PEER P00 ') for line in peers))
-   for index,role in enumerate(('CONTROLPEER16','LINKPEER16','PEER16','BADPEER16')):
+   for index,role in enumerate(('CONTROLPEER16','LINKPEER16','PEER16','BADPEER16','CONTROLPEER32','LINKPEER32','PEER32','BADPEER32')):
     rejected=connect('bad'+str(index),role)
     self.assertIn(b'ERROR AUTH',rejected['out']);self.assertIsNone(rejected['id'])
  def test_native_hello_capability_and_fallback(self):
@@ -44,13 +44,15 @@ typedef int bool8;
 #define TRUE 1
 #define FALSE 0
 #define WORLD_EXTENDED_OBJECTS 1
-struct {int connected,rallyProbe,rallyLegacy,travelProbe,travelLegacy,chatProbe,chatLegacy,peer16Probe,peer16Legacy;char output[256],trainer[25],token[65];int outputSize;} sWorld;
+struct {int connected,rallyProbe,rallyLegacy,travelProbe,travelLegacy,chatProbe,chatLegacy,peer32Probe,peer32Legacy,peer16Probe,peer16Legacy;char output[256],trainer[25],token[65];int outputSize;} sWorld;
 '''+queue+'\nstatic bool8 TestFallback(char **tokens, unsigned n)\n{\n'+fallback+r'''
 int main(void){
  strcpy(sWorld.trainer,"alice");strcpy(sWorld.token,"token");QueueHello(0);
- assert(strstr(sWorld.output,"SOCIALTRAVELCHATRALLYPEER16"));
+ assert(strstr(sWorld.output,"SOCIALTRAVELCHATRALLYPEER32"));
  char *e[]={"ERROR","AUTH"};assert(!TestFallback(e,2));
- assert(sWorld.peer16Legacy && !sWorld.rallyLegacy && !sWorld.travelLegacy && !sWorld.chatLegacy);
+ assert(sWorld.peer32Legacy && !sWorld.peer16Legacy && !sWorld.rallyLegacy);
+ QueueHello(0);assert(strstr(sWorld.output,"SOCIALTRAVELCHATRALLYPEER16"));
+ assert(!TestFallback(e,2));assert(sWorld.peer16Legacy && !sWorld.rallyLegacy && !sWorld.travelLegacy && !sWorld.chatLegacy);
  QueueHello(0);assert(strstr(sWorld.output,"SOCIALTRAVELCHATRALLY\n"));assert(!strstr(sWorld.output,"PEER16"));
  return 0;
 }
@@ -60,7 +62,7 @@ int main(void){
    subprocess.run(['cc','-std=gnu99','-Wall','-Werror',str(p/'t.c'),'-o',str(p/'t')],check=True)
    subprocess.run([str(p/'t')],check=True)
 
- def test_native_parser_commits_sixteen_and_rejects_seventeenth(self):
+ def test_native_parser_commits_thirtytwo_and_rejects_next(self):
   bridge=(ROOT/'src/platform/world_bridge.c').read_text()
   decl=bridge[bridge.index('#define WB_PEERS'):bridge.index('static bool8 Identifier')]
   code=r"""
@@ -81,11 +83,12 @@ static int feed(const char *line){char b[200];strcpy(b,line);return Line(b);}
 int main(void){
  strcpy(sWorld.trainer,"alice");sWorld.connected=1;
  assert(feed("BEGIN 1"));
- for(int i=0;i<16;i++){char b[100];snprintf(b,sizeof(b),"PEER P%02d 1 1 %d 2 1 7 1",i,i);assert(feed(b));}
- assert(feed("END"));assert(sWorld.live.peerCount==16);
+ for(int i=0;i<32;i++){char b[100];snprintf(b,sizeof(b),"PEER P%02d 1 1 %d 2 1 7 1",i,i);assert(feed(b));}
+ for(int i=0;i<8;i++){char b[100];snprintf(b,sizeof(b),"OBJECT O%02d 1 1 %d 30 7 48",i,i);assert(feed(b));}
+ assert(feed("END"));assert(sWorld.live.peerCount==40 && sWorld.live.objectCount==8);
  assert(feed("BEGIN 2"));
- for(int i=0;i<16;i++){char b[100];snprintf(b,sizeof(b),"PEER P%02d 1 1 %d 2 1 7 1",i,i);assert(feed(b));}
- assert(!feed("PEER P16 1 1 16 2 1 7 1"));assert(sWorld.live.peerCount==16);
+ for(int i=0;i<32;i++){char b[100];snprintf(b,sizeof(b),"PEER P%02d 1 1 %d 2 1 7 1",i,i);assert(feed(b));}
+ assert(!feed("PEER P32 1 1 32 2 1 7 1"));assert(sWorld.live.peerCount==40);
  return 0;
 }
 """
@@ -158,6 +161,37 @@ int main(void){
  SyncEngine();assert(spawned==16);
  for(int i=0;i<16;i++){assert(gObjectEvents[i].active);assert(Owned(i));assert(sWorld.remotes[i].object>=16);}
  sWorld.live.peerCount=0;SyncEngine();assert(removed==16);
+ for(int i=0;i<16;i++)assert(gObjectEvents[i].active);
+ return 0;
+}
+"""
+  with tempfile.TemporaryDirectory() as d:
+   p=Path(d);(p/'t.c').write_text(fixture)
+   subprocess.run(['cc','-std=gnu99','-Wall','-Werror',str(p/'t.c'),'-o',str(p/'t')],check=True)
+   subprocess.run([str(p/'t')],check=True)
+
+ def test_reconciler_spawns_thirtytwo_with_full_native_pool(self):
+  source=(ROOT/'src/platform/world_bridge.c').read_text()
+  tree=ast.parse((ROOT/'test/world/test_presence_reconcile.py').read_text())
+  literals=[node.value.value for node in ast.walk(tree) if isinstance(node,ast.Assign)
+            and any(isinstance(t,ast.Name) and t.id=='fixture' for t in node.targets)
+            and isinstance(node.value,ast.Constant) and isinstance(node.value.value,str)]
+  self.assertEqual(len(literals),1)
+  fixture=literals[0].replace('#define WB_PEERS 8','#define WB_PEERS 32').replace('#define OBJECT_EVENTS_COUNT 16','#define OBJECT_EVENTS_COUNT 48').replace('#define MAX_SPRITES 64','#define MAX_SPRITES 96').replace('#define WB_LOCALID 224','#define WB_LOCALID 160').replace('SpawnSpecialObjectEventParameterized','SpawnWorldObjectEventParameterized')
+  fixture='#define WORLD_EXTENDED_OBJECTS 1\n'+fixture
+  fixture+=''.join(function(source,n) for n in ('Owned','RemoveRemote','NativeNpcAt','SelectPeers','SyncEngine'))
+  fixture+=r"""
+#include <assert.h>
+int main(void){
+ sWorld.tilesLive=TRUE;sWorld.visiblePeers=32;
+ for(int i=0;i<NUM_OBJ_EVENT_GFX;i++)graphics[i].paletteSlot=PALSLOT_NPC_1;
+ for(int i=0;i<16;i++){gObjectEvents[i].active=TRUE;gObjectEvents[i].localId=i+1;gObjectEvents[i].currentCoords=(struct Coords){100+i,100};}
+ sWorld.live.peerCount=32;
+ for(int i=0;i<32;i++){struct Peer *p=&sWorld.live.peers[i];snprintf(p->id,sizeof(p->id),"P%d",i);p->x=i%16+1;p->y=2+i/16;p->facing=1;p->gfx=7;p->ready=1;}
+ SyncEngine();assert(spawned==32);
+ for(int i=0;i<16;i++)assert(gObjectEvents[i].active);
+ for(int i=0;i<32;i++){assert(Owned(i));assert(sWorld.remotes[i].object>=16);}
+ sWorld.live.peerCount=0;SyncEngine();assert(removed==32);
  for(int i=0;i<16;i++)assert(gObjectEvents[i].active);
  return 0;
 }

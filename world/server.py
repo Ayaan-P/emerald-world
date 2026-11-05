@@ -26,7 +26,8 @@ MAX_QUEUE = 65536
 MAX_LINE = 1024
 MAX_CONTROL_LINE = 16384
 MAX_PEERS = 8
-MAX_PEERS_EXTENDED = 16
+MAX_PEERS_EXTENDED = 32
+MAX_PEERS_INTERMEDIATE = 16
 MAX_TRAVEL_PEERS = 63  # The authority admits at most 64 authenticated trainers.
 TRAVEL_FRESH_SECONDS = 3
 MAX_TILES = 128
@@ -404,8 +405,9 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                peer32 = role.endswith('PEER32')
                 peer16 = role.endswith('PEER16')
-                if peer16:
+                if peer32 or peer16:
                     role = role[:-6]
                 control = role == 'CONTROL'
                 chat_capable = role in ('SOCIALCHAT', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELCHATRALLY')
@@ -413,7 +415,7 @@ class WorldServer:
                 social = role in ('SOCIAL', 'SOCIALCHAT', 'SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
                 link = role == 'LINK'
                 if ((len(fields) != 4 and not control and not social and not link)
-                        or (peer16 and not social) or fields[:2] != ['HELLO', '1']):
+                        or ((peer16 or peer32) and not social) or fields[:2] != ['HELLO', '1']):
                     self._error(conn, 'AUTH')
                     return
                 name, token = fields[2:4]
@@ -458,7 +460,7 @@ class WorldServer:
                     return
                 conn['id'] = name
                 conn['social'] = social
-                conn['peer_limit'] = MAX_PEERS_EXTENDED if peer16 else MAX_PEERS
+                conn['peer_limit'] = MAX_PEERS_EXTENDED if peer32 else MAX_PEERS_INTERMEDIATE if peer16 else MAX_PEERS
                 conn['chat'] = chat_capable
                 conn['travel'] = travel
                 conn['chat_history'] = []

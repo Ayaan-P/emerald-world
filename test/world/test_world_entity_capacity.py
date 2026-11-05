@@ -16,7 +16,7 @@ typedef uint8_t u8; typedef uint16_t u16; typedef int bool8;
 #define FALSE 0
 #define SAVED_OBJECT_EVENTS_COUNT 16
 #if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
-#define OBJECT_EVENTS_COUNT 32
+#define OBJECT_EVENTS_COUNT 48
 #else
 #define OBJECT_EVENTS_COUNT 16
 #endif
@@ -47,7 +47,7 @@ int main(void) {
  assert(GetAvailableObjectEventId(200,1,1,&id));
  sWorldObjectAllocation=FALSE;assert(GetAvailableObjectEventId(201,1,1,&id));
  sWorldObjectAllocation=TRUE;
- for(int i=17;i<32;i++){gObjectEvents[i].active=1;gObjectEvents[i].localId=i+200;}
+ for(int i=17;i<48;i++){gObjectEvents[i].active=1;gObjectEvents[i].localId=i+200;}
  assert(GetAvailableObjectEventId(210,9,9,&id));
  gObjectEvents[5].active=0;
  assert(!GetAvailableObjectEventId(210,9,9,&id) && id==5);
@@ -61,11 +61,11 @@ int main(void) {
  for(int i=0;i<16;i++) assert(save.objectEvents[i].marker==100+i);
  memset(gObjectEvents,0,sizeof(gObjectEvents));
 #if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
- gObjectEvents[16].active=1;gObjectEvents[31].active=1;
+ gObjectEvents[16].active=1;gObjectEvents[47].active=1;
 #endif
  LoadObjectEvents();for(int i=0;i<16;i++)assert(gObjectEvents[i].marker==100+i);
 #if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
- assert(!gObjectEvents[16].active && !gObjectEvents[31].active);
+ assert(!gObjectEvents[16].active && !gObjectEvents[47].active);
  assert(cleanupCalls==2 && cleanupSawExtended);
 #endif
  return 0;
@@ -84,7 +84,7 @@ class EntityCapacity(unittest.TestCase):
     subprocess.run([str(p/'t')],check=True)
  def test_load_tears_down_owned_extended_sprite_before_clearing_slot(self):
   bridge=(ROOT/'src/platform/world_bridge.c').read_text();load=(ROOT/'src/load_save.c').read_text()
-  fixture=SAVE_PREAMBLE.replace('#define WB_PEERS 8','#define WB_PEERS 16').replace('#define WB_LOCALID 224','#define WB_LOCALID 200').replace('#define OBJECT_EVENTS_COUNT 16','#define OBJECT_EVENTS_COUNT 32').replace('#define MAX_SPRITES 64','#define MAX_SPRITES 96').replace('struct ObjectEvent objectEvents[OBJECT_EVENTS_COUNT]','struct ObjectEvent objectEvents[SAVED_OBJECT_EVENTS_COUNT]')
+  fixture=SAVE_PREAMBLE.replace('#define WB_PEERS 8','#define WB_PEERS 16').replace('#define WB_LOCALID 224','#define WB_LOCALID 160').replace('#define OBJECT_EVENTS_COUNT 16','#define OBJECT_EVENTS_COUNT 48').replace('#define MAX_SPRITES 64','#define MAX_SPRITES 96').replace('struct ObjectEvent objectEvents[OBJECT_EVENTS_COUNT]','struct ObjectEvent objectEvents[SAVED_OBJECT_EVENTS_COUNT]')
   state=bridge[bridge.index('struct Peer {'):bridge.index('static bool8 Identifier(')]
   helpers=''.join(function(bridge,n) for n in ('Owned','RemoveRemote','SameGrid','GridCoords','Raw','RestoreTiles','WorldBridge_PrepareSave'))
   rally=(ROOT/'include/platform/world_rally.h').read_text();rally=rally[rally.index('#define WORLD_RALLY_ROSTER'):rally.index('/* Main/game thread only.')]
@@ -116,7 +116,7 @@ int main(void) {
    for gate in ('0','1'):
     subprocess.run(['cc','-std=gnu11','-iquote',str(ROOT/'include'),'-iquote',str(ROOT),'-DPORTABLE','-DNONMATCHING','-DUBFIX','-DWORLD_EXTENDED_OBJECTS='+gate,str(p/'layout.c'),'-o',str(p/'layout')],check=True)
     outputs.append(subprocess.check_output([str(p/'layout')],text=True).split())
-   self.assertEqual(outputs[0][:3],outputs[1][:3]);self.assertEqual(outputs[0][3],'16');self.assertEqual(outputs[1][3],'32')
+   self.assertEqual(outputs[0][:3],outputs[1][:3]);self.assertEqual(outputs[0][3],'16');self.assertEqual(outputs[1][3],'48')
  def test_build_exposes_gate_to_both_preprocessor_and_compiler(self):
   makefile=(ROOT/'Makefile').read_text()
   self.assertIn('WORLD_EXTENDED_OBJECTS ?= 0',makefile)

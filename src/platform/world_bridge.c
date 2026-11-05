@@ -48,11 +48,11 @@
 #endif
 
 /* A negotiated relevance window, not the server's total population.
- * The experimental native pool can request sixteen; older servers get eight. */
+ * The experimental native pool can request 32; older servers get 16 or eight. */
 #define WB_PEERS 8
 #if WORLD_EXTENDED_OBJECTS
 #undef WB_PEERS
-#define WB_PEERS 16
+#define WB_PEERS 32
 #endif
 #define WB_TRAVEL_PEERS 63
 #define WB_OBJECTS 8
@@ -61,8 +61,8 @@
 #define WB_BUFFER 65536
 #define WB_HANDSHAKE_POLLS 300
 #if WORLD_EXTENDED_OBJECTS
-// 200..223 avoids the Berry Blender reserved local IDs 236..240.
-#define WB_LOCALID 200
+// 160..199 avoids the Berry Blender reserved local IDs 236..240.
+#define WB_LOCALID 160
 #else
 #define WB_LOCALID 224
 #endif
@@ -95,7 +95,7 @@ static struct {
     bool8 travelProbe, travelLegacy, travelAvailable;
     bool8 rallyProbe, rallyLegacy, rallyAvailable;
 #if WORLD_EXTENDED_OBJECTS
-    bool8 peer16Probe, peer16Legacy;
+    bool8 peer32Probe, peer32Legacy, peer16Probe, peer16Legacy;
 #endif
 #ifdef _WIN32
     SOCKET fd;
@@ -570,6 +570,10 @@ static bool8 Line(char *line)
     if (!n) return FALSE;
     if (!sWorld.connected) {
 #if WORLD_EXTENDED_OBJECTS
+        if (sWorld.peer32Probe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
+            sWorld.peer32Legacy = TRUE;
+            return FALSE;
+        }
         if (sWorld.peer16Probe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
             sWorld.peer16Legacy = TRUE;
             return FALSE;
@@ -794,8 +798,9 @@ static void QueueHello(bool8 headless)
 {
     sWorld.rallyProbe = !sWorld.rallyLegacy;
 #if WORLD_EXTENDED_OBJECTS
-    sWorld.peer16Probe = !sWorld.peer16Legacy;
-#define WB_PEER_SUFFIX (sWorld.peer16Probe ? "PEER16" : "")
+    sWorld.peer32Probe = !sWorld.peer32Legacy;
+    sWorld.peer16Probe = !sWorld.peer32Probe && !sWorld.peer16Legacy;
+#define WB_PEER_SUFFIX (sWorld.peer32Probe ? "PEER32" : sWorld.peer16Probe ? "PEER16" : "")
 #else
 #define WB_PEER_SUFFIX ""
 #endif
