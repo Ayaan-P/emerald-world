@@ -29,6 +29,8 @@
 #include "m4a.h"
 #include "mail.h"
 #include "event_data.h"
+#include "party_exp.h"
+#include "constants/flags.h"
 #include "pokemon_storage_system.h"
 #include "task.h"
 #include "naming_screen.h"
@@ -3267,6 +3269,10 @@ static void Cmd_getexp(void)
     u8 holdEffect;
     s32 sentIn;
     s32 viaExpShare = 0;
+    // NPC-partner battles use a mixed party, so leave their original EXP rules
+    // intact. Co-op rewards run here only after restoring the private party.
+    bool8 partyExpShare = FlagGet(FLAG_PARTY_EXP_SHARE)
+        && !(gBattleTypeFlags & BATTLE_TYPE_INGAME_PARTNER);
     u16 *exp = &gBattleStruct->expValue;
 
     gBattlerFainted = GetBattlerForBattleScript(gBattlescriptCurrInstr[1]);
@@ -3314,6 +3320,8 @@ static void Cmd_getexp(void)
             {
                 if (GetMonData(&gPlayerParty[i], MON_DATA_SPECIES) == SPECIES_NONE || GetMonData(&gPlayerParty[i], MON_DATA_HP) == 0)
                     continue;
+                if (partyExpShare && GetMonData(&gPlayerParty[i], MON_DATA_IS_EGG))
+                    continue;
                 if (gBitTable[i] & sentIn)
                     viaSentIn++;
 
@@ -3330,7 +3338,14 @@ static void Cmd_getexp(void)
 
             calculatedExp = gSpeciesInfo[gBattleMons[gBattlerFainted].species].expYield * gBattleMons[gBattlerFainted].level / 7;
 
-            if (viaExpShare) // at least one mon is getting exp via exp share
+            if (partyExpShare)
+            {
+                // Participants split the full base EXP. Each eligible bench
+                // member receives half of that base, not a divided pool.
+                *exp = PartyExp_BaseAward(calculatedExp, viaSentIn, TRUE);
+                gExpShareExp = PartyExp_BaseAward(calculatedExp, viaSentIn, FALSE);
+            }
+            else if (viaExpShare) // at least one mon is getting exp via exp share
             {
                 *exp = SAFE_DIV(calculatedExp / 2, viaSentIn);
                 if (*exp == 0)
@@ -3363,7 +3378,11 @@ static void Cmd_getexp(void)
             else
                 holdEffect = GetItemHoldEffect(item);
 
-            if (holdEffect != HOLD_EFFECT_EXP_SHARE && !(gBattleStruct->sentInPokes & 1))
+            if ((partyExpShare && !PartyExp_Eligible(
+                    GetMonData(&gPlayerParty[gBattleStruct->expGetterMonId], MON_DATA_SPECIES),
+                    GetMonData(&gPlayerParty[gBattleStruct->expGetterMonId], MON_DATA_HP),
+                    GetMonData(&gPlayerParty[gBattleStruct->expGetterMonId], MON_DATA_IS_EGG)))
+             || (!partyExpShare && holdEffect != HOLD_EFFECT_EXP_SHARE && !(gBattleStruct->sentInPokes & 1)))
             {
                 *(&gBattleStruct->sentInPokes) >>= 1;
                 gBattleScripting.getexpState = 5;
@@ -3387,13 +3406,9 @@ static void Cmd_getexp(void)
 
                 if (GetMonData(&gPlayerParty[gBattleStruct->expGetterMonId], MON_DATA_HP))
                 {
-                    if (gBattleStruct->sentInPokes & 1)
-                        gBattleMoveDamage = *exp;
-                    else
-                        gBattleMoveDamage = 0;
-
-                    if (holdEffect == HOLD_EFFECT_EXP_SHARE)
-                        gBattleMoveDamage += gExpShareExp;
+                    gBattleMoveDamage = PartyExp_RecipientBase(*exp, gExpShareExp,
+                        partyExpShare, holdEffect == HOLD_EFFECT_EXP_SHARE,
+                        (gBattleStruct->sentInPokes & 1) != 0);
                     if (holdEffect == HOLD_EFFECT_LUCKY_EGG)
                         gBattleMoveDamage = (gBattleMoveDamage * 150) / 100;
                     if (gBattleTypeFlags & BATTLE_TYPE_TRAINER)
