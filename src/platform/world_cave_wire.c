@@ -80,6 +80,12 @@ int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned n, const char *const
         if(wire->active || !WorldCaveWire_ValidId(t[2])) return -1;
         memcpy(wire->id,t[2],65);wire->nextRow=0;wire->version=1;wire->profile=0;wire->active=TRUE;return 0;
     }
+#if GENERATED_MAP_WILDS
+    if (n==4 && !strcmp(t[1],"BEGIN") && !strcmp(t[3],"WILDS")) {
+        if(wire->active || !WorldCaveWire_ValidId(t[2])) return -1;
+        memcpy(wire->id,t[2],65);wire->nextRow=0;wire->version=6;wire->profile=0;wire->active=TRUE;return 0;
+    }
+#endif
 #if GENERATED_MAP_LARGE
     if (n==4 && !strcmp(t[1],"BEGIN") && !strcmp(t[3],"LARGE")) {
         if(wire->active || !WorldCaveWire_ValidId(t[2])) return -1;

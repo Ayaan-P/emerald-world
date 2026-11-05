@@ -690,6 +690,7 @@
     "BattleFrontier_OutsideEast"
   ],
   "gMapGroup_GeneratedWorld": [
-    "GeneratedWorld_Cave"
+    "GeneratedWorld_Cave",
+    "GeneratedWorld_Wilds"
   ]
 }

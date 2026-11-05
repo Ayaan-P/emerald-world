@@ -35,6 +35,13 @@
 #error GENERATED_MAP_LARGE requires generated maps
 #endif
 
+#ifndef GENERATED_MAP_WILDS
+#define GENERATED_MAP_WILDS 0
+#endif
+#if GENERATED_MAP_WILDS && !GENERATED_MAP_LARGE
+#error GENERATED_MAP_WILDS requires large generated maps
+#endif
+
 #ifdef PORTABLE
 struct MapLayout;
 struct WildPokemonInfo;
@@ -43,6 +50,9 @@ struct WildPokemonInfo;
 #define GENERATED_LARGE_MAP_TEMPLATE_BYTES (63 * 63)
 bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size);
 bool8 GeneratedMap_StageLargeTemplate(const u8 *cells, u32 size);
+bool8 GeneratedMap_StageWildsTemplate(const u8 *cells, u32 size);
+bool8 GeneratedMap_StageSharedWildsTemplate(const u8 *cells, u32 size);
+bool8 GeneratedMap_MatchesPreparedWilds(const u8 *cells, u32 size);
 bool8 GeneratedMap_StageSharedLargeTemplate(const u8 *cells, u32 size);
 bool8 GeneratedMap_MatchesPreparedLarge(const u8 *cells, u32 size);
 bool8 GeneratedMap_MatchesPreparedLargeWildlife(const u8 *cells, u32 size, u8 profile, const u8 *data, u32 dataSize);

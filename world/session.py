@@ -142,7 +142,7 @@ class DesktopSession:
         with WorldActivityLock(path):
             if not any(item['path'] == str(path) for item in self.worlds()):
                 raise ValueError('select an existing world')
-            server = WorldServer(path/'transport/world.sock', path)
+            server = WorldServer(path/'transport/world.sock', path, persist_generated_cave=True, archive_generated_areas=True)
             try:
                 server.start()
             except BaseException:
@@ -452,33 +452,59 @@ class DesktopSession:
                        else f'{trainer} starting. Use the native game window to play.')
         return process
 
-    def author_shared_cave(self, theme):
+    def author_shared_cave(self, theme, *, wilds=False):
         """Explicit local-host action; never display provider or credential text."""
         from .author_cave import MAX_THEME, author
+        if type(wilds) is not bool:
+            raise SessionError('Choose a cave or outdoor area.')
         if type(theme) is not str or not theme.strip() or len(theme.encode('utf-8')) > MAX_THEME:
             raise SessionError('Enter a cave description of at most 2,000 UTF-8 bytes.')
         server, state = self.server, self.state
-        if server is None or state is None or getattr(server, '_closed', True) or server.cave_map is None:
-            raise SessionError('Host a compatible local world before generating a cave.')
+        if server is None or state is None or getattr(server, '_closed', True) or (server.wilds_map if wilds else server.cave_map) is None:
+            raise SessionError('Host a compatible local world before generating an area.')
         with server.lock:
             if any(peer.get('in_generated_cave') or
-                   (peer.get('state') is not None and tuple(peer['state'][:2]) == server.cave_map)
+                   (peer.get('state') is not None and tuple(peer['state'][:2]) in (server.cave_map, server.wilds_map))
                    for peer in server.peers.values() if not peer.get('closing')):
                 raise SessionError('Ask everyone to leave the generated cave before replacing it.')
         try:
-            _, blob = author(theme, large=True, custom_wildlife=True)
+            if wilds:
+                _, blob = author(theme, large=True, wilds=True)
+            else:
+                _, blob = author(theme, large=True, custom_wildlife=True)
         except (OSError, ValueError, TypeError, TimeoutError, UnicodeError):
             raise SessionError('Cave generation failed. Check model login and configuration, then retry.') from None
         if self.server is not server or self.state != state or getattr(server, '_closed', True):
             raise SessionError('The hosted world changed while the cave was being generated; nothing was published.')
         try:
-            identity = server._replace_cave(blob)
+            label = ' '.join(''.join(' ' if ord(c) < 32 or ord(c) == 127 else c for c in theme).split())[:80]
+            identity = server._replace_cave(blob, label=label or ('Outdoor area' if wilds else 'Cave'))
         except (OSError, ValueError):
             raise SessionError('The cave could not be installed. Check that everyone has left and try again.') from None
-        self.status = ('Generated cave installed for compatible players. ' +
+        self.status = (('Generated outdoor area' if wilds else 'Generated cave') + ' installed for compatible players. ' +
                        ('It will persist when this world restarts.' if server.persist_generated_cave else
                         'It lasts for this host session unless persistence is enabled.'))
         return identity
+
+    def list_generated_areas(self):
+        if self.server is None or self.state is None:
+            raise SessionError('Host a local world to view its saved generated areas.')
+        try:
+            return self.server.list_generated_areas()
+        except (OSError, ValueError):
+            raise SessionError('Saved generated areas are unavailable for this host.') from None
+
+    def activate_generated_area(self, identity, *, expected_server=None, expected_state=None):
+        if self.server is None or self.state is None:
+            raise SessionError('Host a local world to select a generated area.')
+        if expected_server is not None and (self.server is not expected_server or self.state != expected_state):
+            raise SessionError('The hosted world changed. Refresh saved areas and choose again.')
+        try:
+            result = self.server.activate_generated_area(identity)
+        except (OSError, ValueError):
+            raise SessionError('Could not activate the area. Check that everyone has left and try again.') from None
+        self.status = 'Saved generated area activated for compatible players.'
+        return result
 
     def _gm_queue(self):
         from .runtime_gm import IntentQueue
@@ -846,6 +872,8 @@ class DesktopApp:
         self.buttons = []
         self.inputs = []
         self.fields = {}
+        self.generated_area_ids = {}
+        self.generated_area_owner = None
         window.title('Emerald World')
         window.protocol('WM_DELETE_WINDOW', self.close)
         window.geometry('900x760')
@@ -915,9 +943,9 @@ class DesktopApp:
             ttk.Label(page, text=label).grid(row=row, column=0, sticky='w', padx=(0, 12))
             variable = tk.StringVar(value=value)
             self.fields[key] = variable
-            state = 'readonly' if key in ('deleted_world', 'friend_world') else 'normal'
+            state = 'readonly' if key in ('deleted_world', 'friend_world', 'generated_area') else 'normal'
             entry = (ttk.Combobox(page, textvariable=variable, width=30, state=state)
-                     if key in ('world', 'trainer', 'deleted_world', 'friend_world') else
+                     if key in ('world', 'trainer', 'deleted_world', 'friend_world', 'generated_area') else
                      ttk.Entry(page, textvariable=variable, width=30))
             entry.grid(row=row, column=1, sticky='ew', pady=5)
             self.inputs.append((entry, state))
@@ -997,10 +1025,13 @@ class DesktopApp:
         actions([('Start Luna GM (host)', self.start_gm), ('Stop GM (host)', self.stop_gm)])
         field('intent', 'Player intention (optional)')
         actions([('Submit intention', self.submit_intent), ('Refresh intent status', self.refresh_intents)])
-        heading('Generate a shared cave')
-        note('Host a local world, then describe a 63×63 cave. Generating sends your description to the configured model provider and may incur charges. It replaces the current generated cave only when everyone has left. Compatible experimental clients are required.')
-        field('cave_theme', 'Cave description')
-        actions([('Generate shared cave', self.generate_cave)])
+        heading('Generate a shared area')
+        note('Host a local world, then describe a 63×63 cave or outdoor area. Generating sends your description to the configured model provider and may incur charges. It replaces the current generated area only when everyone has left and persists across local host restarts. Compatible experimental clients are required.')
+        field('cave_theme', 'Area description')
+        actions([('Generate shared cave', self.generate_cave), ('Generate shared wilds', self.generate_wilds)])
+        note('Generated areas and the first 80 characters of their description are saved in this local world. Refresh the list to revisit one; everyone must leave the current generated area before switching.')
+        self.generated_area_entry = field('generated_area', 'Saved generated area')
+        actions([('Refresh saved areas', self.refresh_generated_areas), ('Activate saved area', self.activate_generated_area)])
         page, row = pages['Settings'], 0
         heading('Game display')
         note('A dedicated nested Xephyr display keeps the native game away from your desktop X socket. Start a new display here, or explicitly select an existing dedicated display. Existing displays are never stopped by this launcher.')
@@ -1124,6 +1155,18 @@ class DesktopApp:
 
     def generate_cave(self):
         # submit() collects values and performs the confirmation on the UI thread.
+        pass
+
+    def generate_wilds(self):
+        # submit() owns the confirmation and background operation.
+        pass
+
+    def refresh_generated_areas(self):
+        # submit() runs the database read on the session executor.
+        pass
+
+    def activate_generated_area(self):
+        # submit() asks for confirmation and runs the authority operation.
         pass
 
     def start_gm(self):
@@ -1431,23 +1474,52 @@ class DesktopApp:
             self.message.set('Starting session operation. The window remains available...')
             self._set_busy(True)
             return
-        if operation == self.generate_cave:
+        if operation in (self.generate_cave, self.generate_wilds):
             from tkinter import messagebox
             value = self.values()
             theme = value['cave_theme']
+            wilds = operation == self.generate_wilds
             if not theme or len(theme.encode('utf-8')) > 2000:
                 self.message.set('Enter a cave description of at most 2,000 UTF-8 bytes.')
                 return
             if self.session.server is None or self.session.state is None:
                 self.message.set('Host a compatible local world before generating a cave.')
                 return
-            if not messagebox.askyesno('Generate a shared cave?',
-                    'This sends your cave description to the configured model provider and may incur charges. The current generated cave will be replaced if it is unoccupied. Continue?',
+            if not messagebox.askyesno('Generate shared wilds?' if wilds else 'Generate a shared cave?',
+                    'This sends your area description to the configured model provider and may incur charges. The current generated area will be replaced if it is unoccupied. Continue?',
                     parent=self.window, default='no'):
                 return
             self.pending_kind = 'author_cave'
-            self.pending = self.executor.submit(self.session.author_shared_cave, theme)
-            self.message.set('Generating a shared cave. The window remains available...')
+            if wilds:
+                self.pending = self.executor.submit(self.session.author_shared_cave, theme, wilds=True)
+            else:
+                self.pending = self.executor.submit(self.session.author_shared_cave, theme)
+            self.message.set('Generating a shared area. The window remains available...')
+            self._set_busy(True)
+            return
+        if operation == self.refresh_generated_areas:
+            self.generated_area_owner = (self.session.server, self.session.state)
+            self.pending_kind = 'list_generated_areas'
+            self.pending = self.executor.submit(self.session.list_generated_areas)
+            self.message.set('Loading saved generated areas...')
+            self._set_busy(True)
+            return
+        if operation == self.activate_generated_area:
+            from tkinter import messagebox
+            selection = self.values()['generated_area']
+            identity = self.generated_area_ids.get(selection)
+            if (not identity or self.generated_area_owner != (self.session.server, self.session.state)
+             or self.session.server is None):
+                self.message.set('Refresh saved areas for the current host, then choose one.')
+                return
+            if not messagebox.askyesno('Activate this generated area?',
+                    'This replaces the current generated area. Everyone must leave it first. Continue?',
+                    parent=self.window, default='no'):
+                return
+            self.pending_kind = 'activate_generated_area'
+            self.pending = self.executor.submit(self.session.activate_generated_area, identity,
+                                                expected_server=self.generated_area_owner[0], expected_state=self.generated_area_owner[1])
+            self.message.set('Activating saved area...')
             self._set_busy(True)
             return
         if operation == self.submit_intent:
@@ -1530,6 +1602,15 @@ class DesktopApp:
                     self.fields['intent'].set('')
                 elif kind == 'author_cave':
                     self.fields['cave_theme'].set('')
+                elif kind == 'list_generated_areas':
+                    if self.generated_area_owner != (self.session.server, self.session.state):
+                        result = []
+                    self.generated_area_ids = {item['label'] + ' [' + item['identity'] + ']': item['identity'] for item in result}
+                    choices = list(self.generated_area_ids)
+                    self.generated_area_entry['values'] = choices
+                    active = next((item['label'] + ' [' + item['identity'] + ']' for item in result if item['active']), '')
+                    self.fields['generated_area'].set(active if active in self.generated_area_ids else choices[0] if choices else '')
+                    self.session.status = 'Saved generated areas loaded.' if choices else 'No saved generated areas yet.'
                 elif kind == 'share':
                     self.fields['pin'].set(result)
                 elif kind in ('launch', 'launch_ai'):

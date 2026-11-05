@@ -143,6 +143,9 @@ static bool LoadGeneratedMapTemplate(const char *path)
 #endif
 #if GENERATED_MAP_LARGE
     static const u8 magic4[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '4' };
+#if GENERATED_MAP_WILDS
+    static const u8 magic6[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '6' };
+#endif
 #if GENERATED_CAVE_WILDLIFE
     static const u8 magic5[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '5' };
 #endif
@@ -177,6 +180,10 @@ static bool LoadGeneratedMapTemplate(const char *path)
 #if GENERATED_MAP_LARGE
         else if (count == 8 + GENERATED_LARGE_MAP_TEMPLATE_BYTES && !memcmp(bytes, magic4, 8))
             valid = GeneratedMap_StageLargeTemplate(bytes + 8, GENERATED_LARGE_MAP_TEMPLATE_BYTES);
+#if GENERATED_MAP_WILDS
+        else if (count == 8 + GENERATED_LARGE_MAP_TEMPLATE_BYTES && !memcmp(bytes, magic6, 8))
+            valid = GeneratedMap_StageWildsTemplate(bytes + 8, GENERATED_LARGE_MAP_TEMPLATE_BYTES);
+#endif
 #if GENERATED_CAVE_WILDLIFE
         else if (count == 9 + GENERATED_WILDLIFE_BYTES + GENERATED_LARGE_MAP_TEMPLATE_BYTES
               && !memcmp(bytes, magic5, 8) && bytes[8] <= 3

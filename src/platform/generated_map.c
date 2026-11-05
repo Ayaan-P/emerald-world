@@ -36,6 +36,9 @@ static u8 sTemplate[GEN_CELLS];
 static u16 sLargeTiles[LARGE_CELLS];
 static u8 sLargeTemplate[LARGE_CELLS];
 static bool8 sLargeStaged, sLargeActive, sLargeShared;
+#if GENERATED_MAP_WILDS
+static bool8 sLargeWilds;
+#endif
 #endif
 static bool8 sHasTemplate;
 #if GENERATED_CAVE_PROFILES
@@ -191,6 +194,9 @@ bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size)
     sHasTemplate = TRUE;
 #if GENERATED_MAP_LARGE
     sLargeStaged = sLargeShared = FALSE;
+#if GENERATED_MAP_WILDS
+    sLargeWilds = FALSE;
+#endif
 #endif
 #if GENERATED_CAVE_PROFILES
     sEncounterProfile = 0;
@@ -236,6 +242,9 @@ static bool8 StageLarge(const u8 *cells, u32 size, bool8 shared)
     for (i = 0; i < LARGE_CELLS; i++) if (cells[i] == '.' && !seen[i]) return FALSE;
     memcpy(sLargeTemplate, cells, LARGE_CELLS);
     sLargeStaged = TRUE; sLargeShared = shared; sHasTemplate = FALSE;
+#if GENERATED_MAP_WILDS
+    sLargeWilds = FALSE;
+#endif
 #if GENERATED_CAVE_PROFILES
     sEncounterProfile = 0; sSharedEncounterProfile = FALSE;
 #endif
@@ -253,6 +262,36 @@ bool8 GeneratedMap_StageLargeTemplate(const u8 *cells, u32 size)
     (void)cells; (void)size; return FALSE;
 #endif
 }
+bool8 GeneratedMap_StageWildsTemplate(const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_MAP_WILDS
+    if (!StageLarge(cells, size, FALSE)) return FALSE;
+    sLargeWilds = TRUE;
+    return TRUE;
+#else
+    (void)cells; (void)size; return FALSE;
+#endif
+}
+bool8 GeneratedMap_StageSharedWildsTemplate(const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_MAP_WILDS
+    if (!StageLarge(cells, size, TRUE)) return FALSE;
+    sLargeWilds = TRUE;
+    return TRUE;
+#else
+    (void)cells; (void)size; return FALSE;
+#endif
+}
+bool8 GeneratedMap_MatchesPreparedWilds(const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_MAP_WILDS
+    return cells && size == LARGE_CELLS && sLargeWilds && sLargeActive && sPrepared
+        && (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
+        && !memcmp(cells, sLargeTemplate, LARGE_CELLS);
+#else
+    (void)cells; (void)size; return FALSE;
+#endif
+}
 bool8 GeneratedMap_StageSharedLargeTemplate(const u8 *cells, u32 size)
 {
 #if GENERATED_MAP_READY && GENERATED_MAP_LARGE
@@ -265,6 +304,9 @@ bool8 GeneratedMap_MatchesPreparedLarge(const u8 *cells, u32 size)
 {
 #if GENERATED_MAP_READY && GENERATED_MAP_LARGE
     return cells && size == LARGE_CELLS && sLargeActive && sPrepared
+#if GENERATED_MAP_WILDS
+        && !sLargeWilds
+#endif
 #if GENERATED_CAVE_WILDLIFE
         && !sHasWildlife
 #endif
@@ -279,6 +321,9 @@ bool8 GeneratedMap_MatchesPreparedLargeWildlife(const u8 *cells, u32 size, u8 pr
 {
 #if GENERATED_MAP_READY && GENERATED_MAP_LARGE && GENERATED_CAVE_WILDLIFE
     return cells && size == LARGE_CELLS && sLargeActive && sPrepared && sHasWildlife
+#if GENERATED_MAP_WILDS
+        && !sLargeWilds
+#endif
         && (GeneratedMap_IsInside() || GeneratedMap_EntryPending()) && profile == sEncounterProfile
         && data && dataSize == GENERATED_WILDLIFE_BYTES && !memcmp(data, sWildlifeRaw, GENERATED_WILDLIFE_BYTES)
         && !memcmp(cells, sLargeTemplate, LARGE_CELLS);
@@ -410,8 +455,13 @@ const struct WildPokemonInfo *GeneratedMap_Wildlife(void)
 bool8 GeneratedMap_IsInside(void)
 {
 #if GENERATED_MAP_READY
-    return gSaveBlock1Ptr && gSaveBlock1Ptr->location.mapGroup == MAP_GROUP(MAP_GENERATED_WORLD_CAVE)
-        && gSaveBlock1Ptr->location.mapNum == MAP_NUM(MAP_GENERATED_WORLD_CAVE);
+    return gSaveBlock1Ptr && ((gSaveBlock1Ptr->location.mapGroup == MAP_GROUP(MAP_GENERATED_WORLD_CAVE)
+        && gSaveBlock1Ptr->location.mapNum == MAP_NUM(MAP_GENERATED_WORLD_CAVE))
+#if GENERATED_MAP_WILDS
+        || (gSaveBlock1Ptr->location.mapGroup == MAP_GROUP(MAP_GENERATED_WORLD_WILDS)
+        && gSaveBlock1Ptr->location.mapNum == MAP_NUM(MAP_GENERATED_WORLD_WILDS))
+#endif
+        );
 #else
     return FALSE;
 #endif
@@ -545,8 +595,21 @@ bool8 GeneratedMap_Enter(void)
     sLargeActive = sLargeStaged && (!WorldBridge_Enabled() || sLargeShared);
     if (sLargeActive) {
         u16 i;
-        for (i = 0; i < LARGE_CELLS; i++) sLargeTiles[i] = sLargeTemplate[i] == '.' ? GEN_FLOOR : GEN_WALL;
-        sLargeTiles[61 * LARGE_SIDE + 61] = GEN_EXIT;
+#if GENERATED_MAP_WILDS
+        if (sLargeWilds) {
+            for (i = 0; i < LARGE_CELLS; i++) {
+                unsigned x = i % LARGE_SIDE, y = i / LARGE_SIDE;
+                /* Deterministic walkable path and grass. Blocked cells are water. */
+                sLargeTiles[i] = sLargeTemplate[i] == '.' ? (((x * 13 + y * 7) % 5) ? 0x300d : 0x3001) : 0x0487;
+            }
+            sLargeTiles[LARGE_SIDE + 1] = 0x3001;
+            sLargeTiles[61 * LARGE_SIDE + 61] = 0x3024;
+        } else
+#endif
+        {
+            for (i = 0; i < LARGE_CELLS; i++) sLargeTiles[i] = sLargeTemplate[i] == '.' ? GEN_FLOOR : GEN_WALL;
+            sLargeTiles[61 * LARGE_SIDE + 61] = GEN_EXIT;
+        }
     } else
 #endif
     if (sHasTemplate)
@@ -558,10 +621,18 @@ bool8 GeneratedMap_Enter(void)
     else
         BuildMaze(gMain.vblankCounter1 ^ ((u32)sReturn.mapGroup << 24) ^ ((u32)sReturn.mapNum << 16));
 #if GENERATED_MAP_AUTOTILE
-    GeneratedMap_Autotile();
+#if GENERATED_MAP_WILDS
+    if (!sLargeActive || !sLargeWilds)
+#endif
+        GeneratedMap_Autotile();
 #endif
     sPrepared = TRUE;
-    SetWarpDestination(MAP_GROUP(MAP_GENERATED_WORLD_CAVE), MAP_NUM(MAP_GENERATED_WORLD_CAVE), WARP_ID_NONE, 1, 1);
+#if GENERATED_MAP_WILDS
+    if (sLargeActive && sLargeWilds)
+        SetWarpDestination(MAP_GROUP(MAP_GENERATED_WORLD_WILDS), MAP_NUM(MAP_GENERATED_WORLD_WILDS), WARP_ID_NONE, 1, 1);
+    else
+#endif
+        SetWarpDestination(MAP_GROUP(MAP_GENERATED_WORLD_CAVE), MAP_NUM(MAP_GENERATED_WORLD_CAVE), WARP_ID_NONE, 1, 1);
     StoreInitialPlayerAvatarState();
     DoWarp();
     return TRUE;
