@@ -536,6 +536,8 @@ class WorldServer:
                 conn['cave_cast'] = cave_cast
                 conn['cave_events'] = cave_events
                 conn['event_command_seq'] = 0
+                conn['event_commands'] = {}
+                conn['event_command_session'] = secrets.token_hex(8)
                 conn['cave_offer'] = conn['cave_ack'] = None
                 conn['cave_revoked'] = []
                 conn['chat'] = chat_capable
@@ -560,6 +562,12 @@ class WorldServer:
                     return
                 if not conn.get('cave_capable') or self.peers.get(conn['id']) is not conn:
                     self._error(conn, 'CAVE')
+                    return
+                if len(fields)==5 and fields[1]=='EVENTACK':
+                    if not conn.get('cave_events') or not re.fullmatch(r'[0-9a-f]{64}',fields[2]) or fields[4] not in ('APPLIED','REJECTED'):
+                        self._error(conn,'CAVE');return
+                    seq=bounded(fields[3],1,2147483647);entry=conn.get('event_commands',{}).get(seq)
+                    if entry and entry['identity']==fields[2] and entry['status']=='queued':entry['status']=fields[4].lower()
                     return
                 if fields == ['CAVE', 'GET']:
                     if (self.shared_cave is None
@@ -966,7 +974,9 @@ class WorldServer:
             message=f'CAVE {verb} {identity} {seq} {args}\n'
             if len(peer['out'])+len(message)>MAX_QUEUE:raise ValueError('trainer connection is busy')
             self._queue(peer,message);peer['event_command_seq']=seq
-            return {'ok':True,'queued':True,'trainer':trainer,'identity':identity,'sequence':seq}
+            commands=peer.setdefault('event_commands',{});commands[seq]={'identity':identity,'status':'queued'}
+            while len(commands)>64:del commands[next(iter(commands))]
+            return {'ok':True,'queued':True,'trainer':trainer,'identity':identity,'sequence':seq,'session':peer['event_command_session']}
 
     def set_event_state(self, trainer, identity, state):
         """Queue an owner-only, per-trainer state assignment; not delivery confirmation."""
@@ -980,6 +990,15 @@ class WorldServer:
             raise ValueError('invalid event rule command')
         value=_text(text)
         return self._queue_event_command(trainer,identity,'EVENTRULE',f'{state} {npc} {next_state} {value.hex()}',npc=npc)
+
+    def event_command_status(self, trainer, identity, session, sequence):
+        """Report a client-reported result or unknown; never infer delivery."""
+        if type(trainer) is not str or not ID.fullmatch(trainer) or type(identity) is not str or not re.fullmatch(r'[0-9a-f]{64}',identity) or type(session) is not str or not re.fullmatch(r'[0-9a-f]{16}',session) or type(sequence) is not int or not 1<=sequence<=2147483647:
+            raise ValueError('invalid event command status request')
+        with self.lock:
+            peer=self.peers.get(trainer);entry=peer.get('event_commands',{}).get(sequence) if peer and not peer.get('closing') and peer.get('event_command_session')==session else None
+            status=entry['status'] if entry and entry['identity']==identity else 'unknown'
+            return {'ok':True,'trainer':trainer,'identity':identity,'session':session,'sequence':sequence,'status':status}
 
     def _admin_line(self, conn, raw):
         conn['closing'] = True
@@ -1003,6 +1022,12 @@ class WorldServer:
                 try:
                     if set(request)!={'command','trainer','identity','state'}:raise ValueError('invalid event state command')
                     result=self.set_event_state(request['trainer'],request['identity'],request['state'])
+                except ValueError as exc:
+                    result=dict(ok=False,error=str(exc))
+            elif request.get('command') == 'event_command_status':
+                try:
+                    if set(request)!={'command','trainer','identity','session','sequence'}:raise ValueError('invalid event command status request')
+                    result=self.event_command_status(request['trainer'],request['identity'],request['session'],request['sequence'])
                 except ValueError as exc:
                     result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'set_event_rule':

@@ -111,7 +111,7 @@ static struct {
 #if GENERATED_WILDS_EVENTS
     bool8 caveV9Probe, caveV9Legacy;
     u8 eventHead, eventCount; unsigned eventSetSeq;
-    struct {u8 kind, state, rule[61];} eventQueue[8];
+    struct {u8 kind, state, rule[61];unsigned sequence;} eventQueue[8];
 #endif
 #endif
 #endif
@@ -722,7 +722,7 @@ static bool8 CaveLine(unsigned n, char **tokens)
         sWorld.eventSetSeq=sequence;
         if(sWorld.caveState==CAVE_READY && sWorld.caveWire.version==9 && !strcmp(tokens[2],sWorld.caveWire.id) && GeneratedMap_IsInside()) {
             if(sWorld.eventCount<8) {unsigned i=(sWorld.eventHead+sWorld.eventCount)%8;
-                sWorld.eventQueue[i].kind=1;sWorld.eventQueue[i].state=state;sWorld.eventCount++;}
+                sWorld.eventQueue[i].kind=1;sWorld.eventQueue[i].state=state;sWorld.eventQueue[i].sequence=sequence;sWorld.eventCount++;}
         }
         return TRUE;
     }
@@ -741,7 +741,7 @@ static bool8 CaveLine(unsigned n, char **tokens)
         sWorld.eventSetSeq=sequence;
         if(sWorld.caveState==CAVE_READY && sWorld.caveWire.version==9 && !strcmp(tokens[2],sWorld.caveWire.id) && GeneratedMap_IsInside()) {
             if(sWorld.eventCount<8) {unsigned q=(sWorld.eventHead+sWorld.eventCount)%8;
-                memcpy(sWorld.eventQueue[q].rule,rule,61);sWorld.eventQueue[q].kind=2;sWorld.eventCount++;}
+                memcpy(sWorld.eventQueue[q].rule,rule,61);sWorld.eventQueue[q].kind=2;sWorld.eventQueue[q].sequence=sequence;sWorld.eventCount++;}
         }
         return TRUE;
     }
@@ -1469,10 +1469,11 @@ static void CavePump(void)
 #if GENERATED_WILDS_EVENTS
     if(sWorld.eventCount) {
         if(sWorld.caveState!=CAVE_READY || sWorld.caveWire.version!=9 || !GeneratedMap_IsInside())sWorld.eventHead=sWorld.eventCount=0;
-        else if(Ready()) {unsigned i=sWorld.eventHead;
-            if(sWorld.eventQueue[i].kind==1)GeneratedMap_SetSharedEventState(sWorld.eventQueue[i].state);
-            else if(sWorld.eventQueue[i].kind==2)GeneratedMap_SetSharedEventRule(sWorld.eventQueue[i].rule,61);
-            sWorld.eventHead=(i+1)%8;sWorld.eventCount--;
+        else if(Ready() && !sWorld.outputSize) {unsigned i=sWorld.eventHead;bool8 applied=FALSE;
+            if(sWorld.eventQueue[i].kind==1)applied=GeneratedMap_SetSharedEventState(sWorld.eventQueue[i].state);
+            else if(sWorld.eventQueue[i].kind==2)applied=GeneratedMap_SetSharedEventRule(sWorld.eventQueue[i].rule,61);
+            sWorld.outputSize=snprintf(sWorld.output,sizeof(sWorld.output),"CAVE EVENTACK %s %u %s\n",sWorld.caveWire.id,sWorld.eventQueue[i].sequence,applied ? "APPLIED" : "REJECTED");
+            sWorld.eventHead=(i+1)%8;sWorld.eventCount--;Flush();
         }
     }
 #endif

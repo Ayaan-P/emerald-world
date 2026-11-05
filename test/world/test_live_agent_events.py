@@ -26,11 +26,21 @@ class LiveAgentEvents(unittest.TestCase):
                     server._admin_line(c,json.dumps(request).encode());return json.loads(c['out'])
                 with patch('world.agent_event_control.admin_request',side_effect=admin_request):
                     result=agent_event_control.set_state(p/'owner.sock','Alice',identity,5)
-                    self.assertTrue(result['ok']);self.assertTrue(result['queued']);self.assertEqual(result['sequence'],1)
+                    self.assertTrue(result['ok']);self.assertTrue(result['queued']);self.assertEqual(result['sequence'],1);session=result['session']
                     self.assertEqual(alice['out'],f'CAVE EVENTSET {identity} 1 5\n'.encode());self.assertEqual(bob['out'],b'')
+                    self.assertEqual(agent_event_control.status(p/'owner.sock','Alice',identity,session,1)['status'],'queued')
+                    server._line(bob,f'CAVE EVENTACK {identity} 1 APPLIED'.encode());self.assertEqual(agent_event_control.status(p/'owner.sock','Alice',identity,session,1)['status'],'queued')
+                    server._line(alice,f'CAVE EVENTACK {identity} 1 APPLIED'.encode())
+                    self.assertEqual(agent_event_control.status(p/'owner.sock','Alice',identity,session,1)['status'],'applied')
+                    server._line(alice,f'CAVE EVENTACK {identity} 1 REJECTED'.encode());self.assertEqual(agent_event_control.status(p/'owner.sock','Alice',identity,session,1)['status'],'applied')
+                    self.assertEqual(agent_event_control.status(p/'owner.sock','Bob',identity,session,1)['status'],'unknown')
                     alice['out'].clear();patched=agent_event_control.set_rule(p/'owner.sock','Alice',identity,5,1,6,'Hello!')
                     self.assertTrue(patched['ok']);self.assertEqual(patched['sequence'],2)
                     self.assertEqual(alice['out'],f'CAVE EVENTRULE {identity} 2 5 1 6 48656c6c6f21\n'.encode());self.assertEqual(bob['out'],b'')
+                    server._line(alice,f'CAVE EVENTACK {identity} 2 REJECTED'.encode())
+                    self.assertEqual(agent_event_control.status(p/'owner.sock','Alice',identity,session,2)['status'],'rejected')
+                    self.assertEqual(agent_event_control.status(p/'owner.sock','Alice',identity,'0'*16,2)['status'],'unknown')
+                    self.assertEqual(agent_event_control.status(p/'owner.sock','Alice','f'*64,session,2)['status'],'unknown')
                     for npc,text in ((2,'Hello!'),(1,'bad\x01'),(1,'x'*29)):
                         self.assertFalse(agent_event_control.set_rule(p/'owner.sock','Alice',identity,5,npc,6,text)['ok'])
 
@@ -38,6 +48,7 @@ class LiveAgentEvents(unittest.TestCase):
                         self.assertFalse(agent_event_control.set_state(p/'owner.sock',name,ident,state)['ok'])
                     alice['out'].clear();alice['in_generated_cave']=False
                     self.assertFalse(agent_event_control.set_state(p/'owner.sock','Alice',identity,2)['ok']);self.assertEqual(alice['out'],b'')
+                    server.peers.pop('Alice');self.assertEqual(agent_event_control.status(p/'owner.sock','Alice',identity,session,2)['status'],'unknown')
                 # Ordinary authenticated trainers do not get the owner command path.
                 server._line(bob,f'CAVE EVENTSET {identity} 1 3'.encode());self.assertTrue(bob['closing'])
             finally:server.close()
