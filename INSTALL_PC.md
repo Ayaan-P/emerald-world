@@ -17,6 +17,80 @@ installing their platform tools and Python 3, run the same
 before building. They restore only the manifest's ignored local build inputs.
 Do not commit or redistribute them. No dependency installation is automatic.
 
+## Opt-in native Expansion engine (Linux)
+
+Vanilla remains the default. Expansion is a separate native executable, not a
+mechanics patch for the vanilla engine. Initialize the pinned source and build:
+
+```sh
+git submodule update --init engines/expansion-native
+python3 scripts/build_expansion.py --jobs 4
+```
+
+The source is `https://github.com/uehlbran/pokeemerald-expansion-native` at
+`bb3fd057061cdd7e6a9e79b76abb41924ee44ecc`. Its scoped MIT license stays in
+`engines/expansion-native/LICENSE`. It is not a blanket license for the game,
+graphics, audio or other upstream assets. Do not redistribute built game assets,
+saves or executables with this source integration.
+
+The build uses the donor's `PLATFORM_NATIVE`, fixed-address GBA mappings, SDL
+layer and native save implementation. It does not compile vanilla's `PORTABLE`
+bridge against Expansion structs. Linux needs GCC/G++, Make, SDL2 and libpng
+development files, Python 3 and Bubblewrap. The donor's 64-bit ABI checks also
+compile and execute a 32-bit layout probe, so an i386 libc/GCC development
+runtime is required even though the game is 64-bit. No dependency installation
+or download is performed by the entry point. `--sysroot PATH` supplies an
+existing extracted SDL2/libpng tree. `--multilib-sysroot PATH` supplies an
+existing extracted multilib development tree when it is not installed on the
+host. Missing prerequisites fail the build rather than disabling ABI checks.
+The executable and callback symbol map are copied into `build/expansion-native/`.
+
+Use an explicit disposable state directory for the first run:
+
+```sh
+python3 -m world.launcher --state-dir /absolute/path/expansion-test offline Ash --engine expansion-native --frames 120
+# A full opening, save, cold restart and Continue using the donor's own replay:
+python3 -m world.launcher --state-dir /absolute/path/expansion-test offline Ash --engine expansion-native --replay engines/expansion-native/tests/smoke/opening.replay
+```
+
+Omit `--frames` and use `--display :95` to play in an existing dedicated nested
+X display. The Expansion selector is currently a CLI/session API feature, not
+an option in the React or Tk launcher. It selects the Expansion executable unless
+`--binary` is explicitly supplied. Vanilla flags, seed saves, online-save copying,
+player-control endpoints and vanilla invitations are rejected for Expansion.
+Donor `--replay` scripts are supported instead of vanilla input scripts.
+
+An Expansion presence authority and a trainer can be started in separate terminals:
+
+```sh
+python3 -m world.launcher --state-dir /absolute/path/expansion-test host --engine expansion-native
+python3 -m world.launcher --state-dir /absolute/path/expansion-test join Ash --engine expansion-native --display :95
+```
+
+Online profiles, identity database and sockets are under
+`STATE/engines/expansion-native/`. Offline profiles are under
+`STATE/.offline/engines/expansion-native/`. Vanilla `STATE/trainers/` is never
+mounted into Expansion. The donor alone reads and writes its `PENSAVE` format.
+No vanilla Pokemon structures, save blobs or party/bag ownership payloads are
+copied into the donor.
+
+The first bridge seam is read-only presence. A linked adapter samples the donor's
+own inspection interface on its game thread and atomically publishes versioned
+scalar map/position facts. The session's authenticated sidecar sends these to the
+separate world authority and writes its snapshot to the profile's telemetry.
+Expansion presence is always busy, with party/bag hashes marked unavailable.
+It cannot participate in vanilla co-op and does not modify engine state.
+
+**Multiplayer is not ported.** Missing functions include remote player sprites
+and facing/graphics projection, shared tile/NPC edits and interactions, chat and
+travel UI, invitations/remote hosting integration, native link transport and
+synchronized battles, cooperative wild/trainer battles and catching, trades,
+party/storage/ownership transfer, world menu and player-control endpoints,
+shared story credit and Crossroads regions. The authority's catalog is still
+vanilla Hoenn. Extra Expansion maps need their own catalog before presence can
+be accepted there. A successful single-player replay or presence connection is
+not multiplayer acceptance.
+
 ## Windows 10/11 (WSL1)
 Follow pret instructions on how to install WSL1 [here](INSTALL.md)
 
