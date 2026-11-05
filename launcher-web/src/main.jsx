@@ -7,7 +7,7 @@ import SaveBackups from './SaveBackups';
 import PlayerHome from './PlayerHome';
 import GameMirror from './GameMirror';
 
-const empty = { worlds: [], offline_saves: [], presence: null, hosting: { available: false, backup_available: false, enrolled: false, loaded: false, worlds: [], pending: null }, setup: [], connected: false, world_key: null, offline_world_key: null, trainer: null, games: [], status: 'Choose a world to begin.' };
+const empty = { local_worlds: [], local_host: false, cave_authoring: false, cave_persistent: false, worlds: [], offline_saves: [], presence: null, hosting: { available: false, backup_available: false, enrolled: false, loaded: false, worlds: [], pending: null }, setup: [], connected: false, world_key: null, offline_world_key: null, trainer: null, games: [], status: 'Choose a world to begin.' };
 
 export function App() {
   const [state, setState] = useState(empty);
@@ -129,7 +129,7 @@ export function App() {
   async function run(action, payload = {}, options = {}) {
     if (busyRef.current) return;
     busyRef.current = true; setBusy(true); setError('');
-    setWorkLabel(options.disconnectFirst ? 'Closing current session' : options.playAfter ? 'Connecting' : 'Working');
+    setWorkLabel(action === 'author_cave' ? 'Generating and installing cave' : options.disconnectFirst ? 'Closing current session' : options.playAfter ? 'Connecting' : 'Working');
     try {
       if (options.disconnectFirst) {
         const detached = await perform('disconnect', {});
@@ -251,6 +251,8 @@ export function App() {
     <main className="main">
       <header className="topbar"><button className="menu-button icon-button" aria-label="Open navigation" onClick={() => setMenu(true)}><Menu size={21} /></button><div className="top-path"><span>EMERALD WORLD</span><span className="slash">/</span><b>{page === 'play' ? 'PLAY' : page === 'worlds' ? 'YOUR WORLDS' : page === 'backups' ? 'SAVE BACKUPS' : page === 'screen' ? 'GAME SCREEN' : 'SETTINGS'}</b></div><div className="top-right">{busyText}<span className={`dot ${state.connected ? 'online' : ''}`} /><span>{state.connected ? 'Session open' : 'No session'}</span></div></header>
       {page === 'play' && <PlayerHome state={state} ready={ready} busy={busy}
+        onLocalOpen={(action, payload, key) => requestPlay(action, payload, key, { playAfter: false })}
+        onAuthorCave={payload => run('author_cave', payload)}
         onJoin={() => { setError(''); setDialog('join'); }} onCreate={openCreate}
         onSolo={() => { setError(''); setDialog('solo'); }} onWorlds={() => go('worlds')}
         onLaunch={() => run('launch')} onScreen={() => go('screen')} onClose={game => setDialog({ type: 'leave', game })}

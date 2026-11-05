@@ -514,7 +514,6 @@ bool8 GeneratedMap_CanEnter(void)
     struct WorldRallySnapshot rally;
     if (WorldRally_HasReturn() || (WorldRally_GetSnapshot(&rally) && rally.id)) return FALSE;
     return gSaveBlock1Ptr && !sPrepared && !GeneratedMap_IsInside() && HasFreeWarpTask()
-        && !LinkTransport_TagPeer()
         && !LinkTransport_PendingTag() && !LinkTransport_PendingInvitation()
         && (!WorldBridge_Enabled() || (WorldBridge_GeneratedCaveReady() && (sHasTemplate
 #if GENERATED_MAP_LARGE

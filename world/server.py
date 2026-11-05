@@ -447,11 +447,13 @@ class WorldServer:
                 self._queue(conn, self._snapshot(conn))
 
     def _link_presence(self):
-        # Interactions, trades and tagged activities are not yet supported in
-        # ephemeral caves. Rendering presence is independent of link admission.
+        # Cave battle admission requires the exact current instance identity.
+        # Non-cave activity retains its ordinary presence and ownership checks.
         return {name: peer['state'] for name, peer in self.peers.items()
                 if peer['state'] is not None and not peer.get('closing')
-                and (self.cave_map is None or tuple(peer['state'][:2]) != self.cave_map)}
+                and (self.cave_map is None or tuple(peer['state'][:2]) != self.cave_map
+                     or (self.shared_cave is not None and
+                         peer.get('cave_ack') == self.shared_cave.identity))}
 
     def _schedule_presence(self, now):
         if not self.presence_dirty:
@@ -750,6 +752,16 @@ class WorldServer:
                 channel = 'T' if fields[0] == b'T' else 'L'
                 self._queue(conn, f'{channel} ERROR UNAVAILABLE\n')
                 return
+            origin, destination = conn['presence'], other['presence']
+            if origin.get('in_generated_cave') or destination.get('in_generated_cave'):
+                same_instance = (self.shared_cave is not None
+                    and origin.get('in_generated_cave') and destination.get('in_generated_cave')
+                    and origin.get('cave_ack') == self.shared_cave.identity
+                    and destination.get('cave_ack') == self.shared_cave.identity)
+                if not same_instance or (fields[0] == b'L' and fields[2] != b'4'):
+                    channel = 'T' if fields[0] == b'T' else 'L'
+                    self._queue(conn, f'{channel} ERROR UNAVAILABLE\n')
+                    return
         self._deliver_links(self.link_protocol.process(conn['id'], bytes(raw), self._link_presence()))
 
     def _meet(self, conn, fields):

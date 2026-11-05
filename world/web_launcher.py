@@ -119,7 +119,7 @@ class LauncherBridge:
                 raise ValueError('invalid telemetry')
             nearby = None
             roster = value.get('roster')
-            if value['connected'] and isinstance(roster, list) and len(roster) <= 8:
+            if value['connected'] and isinstance(roster, list) and len(roster) <= 32:
                 nearby = []
                 for peer in roster:
                     if (not isinstance(peer, dict) or not isinstance(peer.get('trainer'), str)
@@ -132,6 +132,21 @@ class LauncherBridge:
             return {'state': 'connected' if value['connected'] else 'disconnected', 'nearby': nearby}
         except (OSError, ValueError, TypeError, KeyError, UnicodeError):
             return {'state': 'waiting', 'nearby': []}
+
+    def local_expeditions(self):
+        """Only list worlds created by this launcher's scoped local-host flow."""
+        from .world_library import _read_metadata
+        found = []
+        for item in self.session.worlds():
+            path = Path(item['path'])
+            if not re.fullmatch(r'expedition-[0-9a-f]{24}', path.name):
+                continue
+            try:
+                label = _read_metadata(path)['display_name']
+            except (OSError, ValueError, TypeError, KeyError):
+                label = 'Local expedition · ' + path.name[-4:]
+            found.append({'key': path.name, 'name': label})
+        return found
 
     def snapshot(self):
         with self.lock:
@@ -164,7 +179,13 @@ class LauncherBridge:
             from scripts.linux_client import prerequisites
             setup = [{'name': name, 'ready': ready, 'help': help_text}
                      for name, ready, help_text in prerequisites(self.binary) if name != 'tkinter']
-            return {'worlds': worlds, 'offline_saves': self.offline_saves(), 'presence': self.game_presence(), 'hosting': self.hosted.state(), 'setup': setup, 'connected': self.session.state is not None,
+            server = self.session.server
+            local_host = server is not None and not getattr(server, '_closed', True)
+            return {'local_worlds': self.local_expeditions(),
+                    'local_host': local_host,
+                    'cave_authoring': server is not None and local_host and server.cave_map is not None,
+                    'cave_persistent': bool(server is not None and local_host and server.persist_generated_cave),
+                    'worlds': worlds, 'offline_saves': self.offline_saves(), 'presence': self.game_presence(), 'hosting': self.hosted.state(), 'setup': setup, 'connected': self.session.state is not None,
                     'trainer': self.session.remote_trainer,
                     'world_key': self.session.state.name if self.session.state is not None else None,
                     'offline_world_key': offline_world_key,
@@ -182,7 +203,7 @@ class LauncherBridge:
 
     def action(self, action, payload):
         with self.lock:
-            if action in ('join', 'rejoin', 'host_create', 'host_resume', 'host_join'):
+            if action in ('join', 'rejoin', 'host_create', 'host_resume', 'host_join', 'local_create', 'local_resume'):
                 if any(p.poll() is None for p, _ in self.session.games.values()):
                     raise SessionError('Close your running game before switching worlds.')
                 if self.session.state is not None:
@@ -239,6 +260,44 @@ class LauncherBridge:
                     raise SessionError(message) from None
                 except (OSError, ValueError):
                     raise SessionError('Could not complete the hosted-world request. Check your access file and connection, then retry.') from None
+            elif action in ('local_create', 'local_resume'):
+                trainer = payload.get('trainer')
+                if not isinstance(trainer, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,24}', trainer):
+                    raise SessionError('Use 1 to 24 letters, numbers, underscores or hyphens for your trainer.')
+                if action == 'local_create':
+                    label = payload.get('name')
+                    if (not isinstance(label, str) or not 1 <= len(label.strip()) <= 80
+                            or any(ord(c) < 32 for c in label)):
+                        raise SessionError('Use 1 to 80 printable characters for the expedition name.')
+                    name = 'expedition-' + secrets.token_hex(12)
+                    self.session.create_world(name)
+                    self.session.rename_world(name, label.strip(), [])
+                else:
+                    name = payload.get('world')
+                    if not any(item['key'] == name for item in self.local_expeditions()):
+                        raise SessionError('Choose an existing local expedition.')
+                try:
+                    self.session.host(name)
+                    self.remote_paths = self.session.local_profile(trainer)
+                    self.session.remote_trainer = trainer
+                except (OSError, ValueError):
+                    self.remote_paths = None
+                    self.session.disconnect()
+                    raise SessionError('Could not open the local expedition. Check the local world and trainer setup, then retry.') from None
+            elif action == 'author_cave':
+                # Keep bridge mutations serialized throughout authoring, but never
+                # hold the world server lock while waiting for the provider.
+                if payload.get('confirmed') is not True:
+                    raise SessionError('Confirm provider usage and cave replacement before generating.')
+                if (self.session.state is None or payload.get('world') != self.session.state.name
+                        or self.session.server is None):
+                    raise SessionError('Host the selected local expedition before generating a cave.')
+                try:
+                    self.session.author_shared_cave(payload.get('theme'))
+                except SessionError:
+                    raise
+                except Exception:
+                    raise SessionError('Cave generation could not complete. Check model login and local host setup before retrying.') from None
             elif action == 'join':
                 raw = payload.get('invitation')
                 if not isinstance(raw, str) or len(raw.encode('utf-8')) > 4096:

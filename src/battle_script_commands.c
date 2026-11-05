@@ -5209,7 +5209,7 @@ static void Cmd_switchhandleorder(void)
      * replacement before the stock script treats the reply as a party index. */
     if (WorldCoop_IsBattle())
     {
-        for (i = 0; i < gBattlersCount; i += 2)
+        for (i = 0; i < gBattlersCount && i < MAX_BATTLERS_COUNT; i += 2)
         {
             if (WorldCoop_RosterActionActive(i)
              || (gBattleBufferB[i][0] == CONTROLLER_CHOSENMONRETURNVALUE && (gBattleBufferB[i][1] & 0x80)))
