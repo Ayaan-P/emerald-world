@@ -48,6 +48,25 @@ class CaveHarnessContract(unittest.TestCase):
             self.assertEqual(FakeGame.last.a,4)
             self.assertEqual((out/'game.sav').read_bytes(),b'disposable')
 
+    def test_encounter_mode_requires_a_visible_expected_opponent(self):
+        class EncounterGame(FakeGame):
+            def press(self,button,frames):
+                super().press(button,frames)
+                if len([a for a in self.actions if a[0] in ('LEFT','RIGHT')]) >= 2:
+                    self.state.battle=True
+                    self.state.battle_state={'battlers':[{'side':1,'species':41,'level':7}]}
+        def leave(game,direction): game.state=State('LittlerootTown',(0,9),(7,16))
+        def wait(game,condition,*args,**kwargs):
+            if not condition(game.state):raise AssertionError('unexpected test state')
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);seed=root/'seed';seed.write_bytes(b'disposable');out=root/'out'
+            with patch.object(module.driver,'Game',EncounterGame),patch.object(module.driver,'continue_game'), \
+                 patch.object(module.driver,'walk_to'),patch.object(module.driver,'leave_map',leave), \
+                 patch.object(module.driver,'wait_until',wait),patch('builtins.print'):
+                module.run('/bin/true',seed,out,encounter=True)
+            self.assertEqual(FakeGame.last.a,2)
+            self.assertEqual((out/'game.sav').read_bytes(),b'disposable')
+
     def test_native_startup_failure_exposes_stderr(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);seed=root/'seed';seed.write_bytes(b'disposable');out=root/'out'
