@@ -102,9 +102,9 @@ jobs:
           PYTHONPATH=.:test/headless timeout 180s python3 test/headless/wilds_guide_playthrough.py \
             --binary ./pokeemerald64 --seed-save build/cave-autotile-smoke/first_battle/game.sav \
             --out build/wilds-guide-playthrough
-      - name: Talk to the first character in a generated cast
+      - name: Talk to all characters in a generated cast
         run: |
-          PYTHONPATH=.:test/headless timeout 180s python3 test/headless/wilds_cast_playthrough.py \
+          PYTHONPATH=.:test/headless timeout 240s python3 test/headless/wilds_cast_playthrough.py \
             --binary ./pokeemerald64 --seed-save build/cave-autotile-smoke/first_battle/game.sav \
             --out build/wilds-cast-playthrough
       # No binary, ROM, save or runtime-data artifacts are uploaded.

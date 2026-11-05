@@ -16,7 +16,7 @@ def run(binary,seed,out):
     with tempfile.TemporaryDirectory(prefix='wilds-guide-') as t:
         root=Path(t);area=root/'area.bin';area.write_bytes(blob)
         wrapper=root/'run';wrapper.write_text('#!/bin/sh\nexec '+shlex.quote(str(binary))+' --generated-map '+shlex.quote(str(area))+' "$@"\n');wrapper.chmod(0o700)
-        game=driver.Game(str(wrapper),str(out),save=str(seed),max_frames=30000)
+        game=driver.Game(str(wrapper),str(out),save=str(seed),max_frames=80000)
         before=hashlib.sha256(Path(game.save_path).read_bytes()).digest()
         try:
             driver.continue_game(game);driver.walk_to(game,6,11);driver.leave_map(game,'DOWN');driver.wait_until(game,lambda s:s.free)
@@ -32,6 +32,23 @@ def run(binary,seed,out):
                 if game.state.pos==(1,2):break
                 game.press('DOWN',16);game.wait(20)
             if game.state.pos!=(1,2):raise RuntimeError(f'guide blocked route: {game.state}')
+            def step_to(x,y):
+                for _ in range(240):
+                    if game.state.battle:flee(game)
+                    driver.wait_until(game,lambda s:s.free or s.battle)
+                    if game.state.battle:continue
+                    cx,cy=game.state.pos
+                    if (cx,cy)==(x,y):return
+                    direction='RIGHT' if cx<x else 'LEFT' if cx>x else 'DOWN' if cy<y else 'UP'
+                    game.press(direction,16);game.wait(15)
+                raise RuntimeError(f'could not reach {(x,y)}: {game.state}')
+            def talk_to_npc(x,y):
+                if (x,y) not in game.state.objects:raise RuntimeError(f'character missing at {(x,y)}: {game.state.objects}')
+                game.press('RIGHT',1);game.wait(12);game.press('A',2);game.wait(20)
+                if not game.state.script and not game.state.locked:raise RuntimeError(f'character at {(x,y)} did not open dialogue')
+                driver.finish_dialog(game)
+            step_to(19,2);step_to(19,20);talk_to_npc(20,20)
+            step_to(19,21);step_to(39,21);step_to(39,40);talk_to_npc(40,40)
             if game.state.battle:flee(game)
             driver.wait_until(game,lambda s:s.free)
             game.tap('START',gap=30);game.tap('UP');game.tap('A',gap=60);game.tap('UP');game.tap('A',gap=90)
@@ -40,7 +57,7 @@ def run(binary,seed,out):
         finally:code=game.finish()
         if code:raise RuntimeError(f'native client exited {code}')
         if hashlib.sha256(Path(game.save_path).read_bytes()).digest()!=before:raise RuntimeError('disposable save changed')
-    print('PASS: generated native cast appeared, opened dialogue, left a route and returned without writing the save')
+    print('PASS: all three generated native characters appeared and opened dialogue, left a route and returned without writing the save')
 
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--binary',required=True);p.add_argument('--seed-save',required=True);p.add_argument('--out',required=True)
