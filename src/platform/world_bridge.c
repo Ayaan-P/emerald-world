@@ -47,16 +47,25 @@
 #include <poll.h>
 #endif
 
-/* Per-recipient relevance window, NOT the server's configurable population.
- * The server selects at most eight peers; the stock field pool may draw fewer. */
+/* A negotiated relevance window, not the server's total population.
+ * The experimental native pool can request sixteen; older servers get eight. */
 #define WB_PEERS 8
+#if WORLD_EXTENDED_OBJECTS
+#undef WB_PEERS
+#define WB_PEERS 16
+#endif
 #define WB_TRAVEL_PEERS 63
 #define WB_OBJECTS 8
 #define WB_REMOTES (WB_PEERS + WB_OBJECTS)
 #define WB_TILES 128
 #define WB_BUFFER 65536
 #define WB_HANDSHAKE_POLLS 300
+#if WORLD_EXTENDED_OBJECTS
+// 200..223 avoids the Berry Blender reserved local IDs 236..240.
+#define WB_LOCALID 200
+#else
 #define WB_LOCALID 224
+#endif
 #define WB_MARKER 0x5742
 
 struct Peer { char id[26], text[58]; unsigned group, num, x, y, facing, gfx, ready; };
@@ -85,6 +94,9 @@ static struct {
     bool8 enabled, connected, connecting, staging, chatProbe, chatLegacy, chatAvailable;
     bool8 travelProbe, travelLegacy, travelAvailable;
     bool8 rallyProbe, rallyLegacy, rallyAvailable;
+#if WORLD_EXTENDED_OBJECTS
+    bool8 peer16Probe, peer16Legacy;
+#endif
 #ifdef _WIN32
     SOCKET fd;
     bool8 winsockStarted;
@@ -557,6 +569,12 @@ static bool8 Line(char *line)
     }
     if (!n) return FALSE;
     if (!sWorld.connected) {
+#if WORLD_EXTENDED_OBJECTS
+        if (sWorld.peer16Probe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
+            sWorld.peer16Legacy = TRUE;
+            return FALSE;
+        }
+#endif
         if (sWorld.rallyProbe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
             sWorld.rallyLegacy = TRUE;
             return FALSE;
@@ -775,22 +793,29 @@ static bool8 SocketOpen(void)
 static void QueueHello(bool8 headless)
 {
     sWorld.rallyProbe = !sWorld.rallyLegacy;
+#if WORLD_EXTENDED_OBJECTS
+    sWorld.peer16Probe = !sWorld.peer16Legacy;
+#define WB_PEER_SUFFIX (sWorld.peer16Probe ? "PEER16" : "")
+#else
+#define WB_PEER_SUFFIX ""
+#endif
 #ifdef _WIN32
     (void)headless;
     sWorld.chatProbe = FALSE;
     sWorld.travelProbe = !sWorld.travelLegacy;
     sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
-        "EWLOCAL1 %s\nHELLO 1 %s %s %s\n", sWorld.loopbackToken, sWorld.trainer, sWorld.token,
-        sWorld.rallyProbe ? "SOCIALTRAVELRALLY" : sWorld.travelProbe ? "SOCIALTRAVEL" : "SOCIAL");
+        "EWLOCAL1 %s\nHELLO 1 %s %s %s%s\n", sWorld.loopbackToken, sWorld.trainer, sWorld.token,
+        sWorld.rallyProbe ? "SOCIALTRAVELRALLY" : sWorld.travelProbe ? "SOCIALTRAVEL" : "SOCIAL", WB_PEER_SUFFIX);
 #else
     sWorld.chatProbe = !headless && !sWorld.chatLegacy;
     sWorld.travelProbe = !sWorld.travelLegacy;
     sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
-        "HELLO 1 %s %s %s\n", sWorld.trainer, sWorld.token,
+        "HELLO 1 %s %s %s%s\n", sWorld.trainer, sWorld.token,
         sWorld.rallyProbe ? (sWorld.chatProbe ? "SOCIALTRAVELCHATRALLY" : "SOCIALTRAVELRALLY")
             : sWorld.travelProbe ? (sWorld.chatProbe ? "SOCIALTRAVELCHAT" : "SOCIALTRAVEL")
-            : (sWorld.chatProbe ? "SOCIALCHAT" : "SOCIAL"));
+            : (sWorld.chatProbe ? "SOCIALCHAT" : "SOCIAL"), WB_PEER_SUFFIX);
 #endif
+#undef WB_PEER_SUFFIX
 }
 
 static void Flush(void)

@@ -26,6 +26,7 @@ MAX_QUEUE = 65536
 MAX_LINE = 1024
 MAX_CONTROL_LINE = 16384
 MAX_PEERS = 8
+MAX_PEERS_EXTENDED = 16
 MAX_TRAVEL_PEERS = 63  # The authority admits at most 64 authenticated trainers.
 TRAVEL_FRESH_SECONDS = 3
 MAX_TILES = 128
@@ -357,7 +358,7 @@ class WorldServer:
                 continue
             distance = abs(state[2]-origin[2]) + abs(state[3]-origin[3]) if origin else 0
             candidates.append((distance, name, state))
-        for _, name, state in sorted(candidates)[:MAX_PEERS]:
+        for _, name, state in sorted(candidates)[:conn.get('peer_limit', MAX_PEERS)]:
             lines.append('PEER ' + name + ' ' + ' '.join(map(str, state)))
         if conn.get('travel'):
             # Separate from render relevance. Include every field occupant so
@@ -402,12 +403,17 @@ class WorldServer:
         try:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
-                control = len(fields) == 5 and fields[4] == 'CONTROL'
-                chat_capable = len(fields) == 5 and fields[4] in ('SOCIALCHAT', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELCHATRALLY')
-                travel = len(fields) == 5 and fields[4] in ('SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
-                social = len(fields) == 5 and fields[4] in ('SOCIAL', 'SOCIALCHAT', 'SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
-                link = len(fields) == 5 and fields[4] == 'LINK'
-                if (len(fields) != 4 and not control and not social and not link) or fields[:2] != ['HELLO', '1']:
+                role = fields[4] if len(fields) == 5 else ''
+                peer16 = role.endswith('PEER16')
+                if peer16:
+                    role = role[:-6]
+                control = role == 'CONTROL'
+                chat_capable = role in ('SOCIALCHAT', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELCHATRALLY')
+                travel = role in ('SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
+                social = role in ('SOCIAL', 'SOCIALCHAT', 'SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
+                link = role == 'LINK'
+                if ((len(fields) != 4 and not control and not social and not link)
+                        or (peer16 and not social) or fields[:2] != ['HELLO', '1']):
                     self._error(conn, 'AUTH')
                     return
                 name, token = fields[2:4]
@@ -452,6 +458,7 @@ class WorldServer:
                     return
                 conn['id'] = name
                 conn['social'] = social
+                conn['peer_limit'] = MAX_PEERS_EXTENDED if peer16 else MAX_PEERS
                 conn['chat'] = chat_capable
                 conn['travel'] = travel
                 conn['chat_history'] = []
