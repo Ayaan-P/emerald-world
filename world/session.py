@@ -142,7 +142,7 @@ class DesktopSession:
         with WorldActivityLock(path):
             if not any(item['path'] == str(path) for item in self.worlds()):
                 raise ValueError('select an existing world')
-            server = WorldServer(path/'transport/world.sock', path)
+            server = WorldServer(path/'transport/world.sock', path, persist_generated_cave=True)
             try:
                 server.start()
             except BaseException:
@@ -998,7 +998,7 @@ class DesktopApp:
         field('intent', 'Player intention (optional)')
         actions([('Submit intention', self.submit_intent), ('Refresh intent status', self.refresh_intents)])
         heading('Generate a shared cave')
-        note('Host a local world, then describe a 63×63 cave. Generating sends your description to the configured model provider and may incur charges. It replaces the current generated cave only when everyone has left. Compatible experimental clients are required.')
+        note('Host a local world, then describe a 63×63 cave. Generating sends your description to the configured model provider and may incur charges. It replaces the current generated cave only when everyone has left and persists across local host restarts. Compatible experimental clients are required.')
         field('cave_theme', 'Cave description')
         actions([('Generate shared cave', self.generate_cave)])
         page, row = pages['Settings'], 0
