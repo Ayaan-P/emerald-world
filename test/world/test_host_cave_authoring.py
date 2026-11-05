@@ -6,7 +6,7 @@ import types
 import unittest
 from unittest.mock import Mock,patch
 from world.session import DesktopSession,DesktopApp,SessionError
-from world import cave_blueprint,large_cave,wilds
+from world import cave_blueprint,large_cave,wilds,wilds_guide
 from test_large_generated_cave import DOC
 from test_shared_generated_cave import MemoryAuthority
 from world.shared_cave import SharedCave
@@ -47,6 +47,16 @@ class HostCaveAuthoring(unittest.TestCase):
                 self.assertEqual(self.session.author_shared_cave('islands',wilds=True),SharedCave(blob).identity)
                 author.assert_called_once_with('islands',large=True,wilds=True)
             self.assertEqual(server.shared_cave.version,6);self.assertIn('outdoor area',self.session.status)
+        finally:server.close()
+
+    def test_host_authors_guided_area_into_real_authority(self):
+        root=Path(self.temp.name);server=MemoryAuthority(root/'socket',root/'world',persist_generated_cave=True,archive_generated_areas=True)
+        self.session.server=server;self.session.state=root/'world';blob=wilds_guide.encode(self.proposal,7,'Welcome!')
+        try:
+            with patch('world.author_cave.author',return_value=(self.proposal,blob)) as author:
+                self.assertEqual(self.session.author_shared_cave('friendly islands',wilds=True,guide=True),SharedCave(blob).identity)
+                author.assert_called_once_with('friendly islands',large=True,wilds=True,guide=True)
+            self.assertEqual(server.shared_cave.version,7);self.assertEqual(server.list_generated_areas()[0]['kind'],'wilds')
         finally:server.close()
 
     def test_missing_host_and_occupied_cave_do_not_call_model(self):
@@ -106,3 +116,6 @@ class HostCaveAuthoring(unittest.TestCase):
             app.pending=None;app.executor.submit.reset_mock();app._set_busy.reset_mock()
             app.submit(app.generate_wilds)
             app.executor.submit.assert_called_once_with(self.session.author_shared_cave,'icy cave',wilds=True)
+            app.pending=None;app.executor.submit.reset_mock()
+            app.submit(app.generate_guided_wilds)
+            app.executor.submit.assert_called_once_with(self.session.author_shared_cave,'icy cave',wilds=True,guide=True)

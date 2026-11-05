@@ -43,3 +43,22 @@ def encode(proposal,gfx,text):
     if len(literal)>TEXT_MAX:raise ValueError('guide dialogue too long')
     prepared=prepare(proposal)
     return MAGIC+bytes((gfx,len(literal)))+literal.ljust(TEXT_MAX,b'\0')+encode_wilds(prepared)[8:]
+
+
+def validate_wire(metadata,cells):
+    """Reject noncanonical bytes and routes blocked by the fixed guide."""
+    if type(metadata) is not bytes or len(metadata)!=META_BYTES or metadata[0] not in (7,8):
+        raise ValueError('invalid guide metadata')
+    n=metadata[1]
+    if not 1<=n<=TEXT_MAX or any(metadata[2+n:]):raise ValueError('invalid guide padding')
+    try:text=metadata[2:2+n].decode('ascii')
+    except UnicodeDecodeError:raise ValueError('invalid guide text') from None
+    if (not re.fullmatch(r"[A-Za-z0-9 .,!?'-]+(?:\n[A-Za-z0-9 .,!?'-]+)?",text)
+            or any(len(line)>28 or not line.strip() for line in text.split('\n'))):
+        raise ValueError('invalid guide dialogue')
+    if type(cells) is not bytes or len(cells)!=SIDE*SIDE:raise ValueError('invalid terrain')
+    try:rows=[cells[y*SIDE:(y+1)*SIDE].decode('ascii') for y in range(SIDE)]
+    except UnicodeDecodeError:raise ValueError('invalid terrain') from None
+    proposal={'rows':rows,'spawn':[1,1],'exit':[61,61]}
+    if prepare(proposal)['rows']!=rows:raise ValueError('guide blocks access')
+    return metadata[0],text

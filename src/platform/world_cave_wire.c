@@ -31,12 +31,12 @@ static void Block(u32 state[8], const u8 block[64])
     state[0]+=a;state[1]+=b;state[2]+=c;state[3]+=d;
     state[4]+=e;state[5]+=f;state[6]+=g;state[7]+=h;
 }
-static void Digest(const u8 *cells, u8 version, u8 profile, const u8 *wildlife, char hex[65])
+static void Digest(const u8 *cells, u8 version, u8 profile, const u8 *wildlife, const u8 *guide, char hex[65])
 {
     static const u8 magic[8]={'E','W','G','M','A','P','0','1'};
     static const char alphabet[]="0123456789abcdef";
     u32 state[8]={0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
-    u8 block[64]; unsigned i,j,offset; const unsigned extra = (version == 3 || version == 5) ? 38 : version == 2 ? 1 : 0;
+    u8 block[64]; unsigned i,j,offset; const unsigned extra = version == 7 ? WORLD_CAVE_GUIDE_BYTES : (version == 3 || version == 5) ? 38 : version == 2 ? 1 : 0;
     const unsigned count = version >= 4 ? WORLD_CAVE_LARGE_CELLS : WORLD_CAVE_CELLS;
     const unsigned length=8+extra+count, padded=((length+9+63)/64)*64;
     for(offset=0;offset<padded;offset+=64) {
@@ -44,6 +44,7 @@ static void Digest(const u8 *cells, u8 version, u8 profile, const u8 *wildlife, 
         for(i=0;i<64;i++) {
             unsigned p=offset+i;
             if(p<8) block[i]=(p==7 && version>=2) ? ('0' + version) : magic[p];
+            else if(version==7 && p<8+WORLD_CAVE_GUIDE_BYTES) block[i]=guide[p-8];
             else if(extra && p==8) block[i]=profile;
             else if((version==3 || version==5) && p<46) block[i]=wildlife[p-9];
             else if(p<length) block[i]=cells[p-8-extra];
@@ -80,6 +81,12 @@ int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned n, const char *const
         if(wire->active || !WorldCaveWire_ValidId(t[2])) return -1;
         memcpy(wire->id,t[2],65);wire->nextRow=0;wire->version=1;wire->profile=0;wire->active=TRUE;return 0;
     }
+#if GENERATED_WILDS_GUIDE
+    if (n==4 && !strcmp(t[1],"BEGIN") && !strcmp(t[3],"GUIDE")) {
+        if(wire->active || !WorldCaveWire_ValidId(t[2])) return -1;
+        memcpy(wire->id,t[2],65);wire->nextRow=0;wire->version=7;wire->profile=0;wire->guideSeen=FALSE;wire->active=TRUE;return 0;
+    }
+#endif
 #if GENERATED_MAP_WILDS
     if (n==4 && !strcmp(t[1],"BEGIN") && !strcmp(t[3],"WILDS")) {
         if(wire->active || !WorldCaveWire_ValidId(t[2])) return -1;
@@ -121,10 +128,22 @@ int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned n, const char *const
         wire->wildlifeSeen=TRUE;return 0;
     }
 #endif
+#if GENERATED_WILDS_GUIDE
+    if(n==4 && !strcmp(t[1],"GUIDE")) {
+        if(wire->version!=7 || wire->guideSeen || wire->nextRow || strlen(t[3])!=WORLD_CAVE_GUIDE_BYTES*2) return -1;
+        for(i=0;i<WORLD_CAVE_GUIDE_BYTES*2;i++) {
+            char c=t[3][i];unsigned v;
+            if(c>='0' && c<='9') v=c-'0'; else if(c>='a' && c<='f') v=c-'a'+10; else return -1;
+            if(!(i&1)) wire->guide[i/2]=v<<4; else wire->guide[i/2]|=v;
+        }
+        wire->guideSeen=TRUE;return 0;
+    }
+#endif
     if(n==5 && !strcmp(t[1],"ROW")) {
         const char *p=t[3];
         const unsigned side = wire->version>=4 ? WORLD_CAVE_LARGE_SIDE : WORLD_CAVE_SIDE;
         if((wire->version==3 || wire->version==5) && !wire->wildlifeSeen) return -1;
+        if(wire->version==7 && !wire->guideSeen) return -1;
         if(!*p || (p[0]=='0' && p[1])) return -1;
         while(*p) { if(*p<'0'||*p>'9'||index>63) return -1; index=index*10+(*p++-'0'); }
         if(index!=wire->nextRow || index>=side || strlen(t[4])!=side) return -1;
@@ -132,8 +151,8 @@ int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned n, const char *const
         memcpy(wire->cells+index*side,t[4],side);wire->nextRow++;return 0;
     }
     if(n==3 && !strcmp(t[1],"END")) {
-        if(wire->nextRow!=(wire->version>=4 ? WORLD_CAVE_LARGE_SIDE : WORLD_CAVE_SIDE) || ((wire->version==3 || wire->version==5) && !wire->wildlifeSeen)) return -1;
-        Digest(wire->cells,wire->version,wire->profile,wire->wildlife,digest);
+        if(wire->nextRow!=(wire->version>=4 ? WORLD_CAVE_LARGE_SIDE : WORLD_CAVE_SIDE) || ((wire->version==3 || wire->version==5) && !wire->wildlifeSeen) || (wire->version==7 && !wire->guideSeen)) return -1;
+        Digest(wire->cells,wire->version,wire->profile,wire->wildlife,wire->guide,digest);
         if(strcmp(digest,wire->id)) return -1;
         wire->active=FALSE;return 1;
     }

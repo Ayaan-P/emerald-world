@@ -46,8 +46,8 @@ static bool8 sLargeStaged, sLargeActive, sLargeShared;
 #if GENERATED_MAP_WILDS
 static bool8 sLargeWilds;
 #if GENERATED_WILDS_GUIDE
-static bool8 sGuideStaged, sGuideActive;
-static u8 sGuideGfx;
+static bool8 sGuideStaged, sGuideActive, sGuideShared;
+static u8 sGuideGfx, sGuideMetadata[GENERATED_GUIDE_BYTES];
 static struct MapEvents sGuideEvents;
 static struct ObjectEventTemplate sGuideObjects[OBJECT_EVENT_TEMPLATES_COUNT];
 extern const u8 GeneratedWorld_Wilds_EventScript_Guide[];
@@ -211,7 +211,7 @@ bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size)
 #if GENERATED_MAP_WILDS
     sLargeWilds = FALSE;
 #if GENERATED_WILDS_GUIDE
-    sGuideStaged = FALSE;
+    sGuideStaged = sGuideShared = FALSE;
 #endif
 #endif
 #endif
@@ -262,7 +262,7 @@ static bool8 StageLarge(const u8 *cells, u32 size, bool8 shared)
 #if GENERATED_MAP_WILDS
     sLargeWilds = FALSE;
 #if GENERATED_WILDS_GUIDE
-    sGuideStaged = FALSE;
+    sGuideStaged = sGuideShared = FALSE;
 #endif
 #endif
 #if GENERATED_CAVE_PROFILES
@@ -344,13 +344,41 @@ static void EncodeGuideText(const u8 *meta)
     gGeneratedWildsGuideText[meta[1]]=0xFF;
 }
 #endif
+#if GENERATED_MAP_READY && GENERATED_WILDS_GUIDE
+static bool8 StageGuidedWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size, bool8 shared)
+{
+    if (!ValidateGuideText(metadata,metaSize) || !ValidateGuideGeometry(cells,size)) return FALSE;
+    if (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
+        return shared && sGuideActive && sGuideShared && !memcmp(metadata,sGuideMetadata,GENERATED_GUIDE_BYTES)
+            && !memcmp(cells,sLargeTemplate,LARGE_CELLS);
+    if (!StageLarge(cells,size,shared)) return FALSE;
+    sLargeWilds=TRUE; sGuideStaged=TRUE; sGuideShared=shared; sGuideGfx=metadata[0];
+    memcpy(sGuideMetadata,metadata,GENERATED_GUIDE_BYTES); EncodeGuideText(metadata);
+    return TRUE;
+}
+#endif
 bool8 GeneratedMap_StageGuidedWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size)
 {
 #if GENERATED_MAP_READY && GENERATED_WILDS_GUIDE
-    if (!ValidateGuideText(metadata,metaSize) || !ValidateGuideGeometry(cells,size)) return FALSE;
-    if (!StageLarge(cells,size,FALSE)) return FALSE;
-    sLargeWilds=TRUE; sGuideStaged=TRUE; sGuideGfx=metadata[0]; EncodeGuideText(metadata);
-    return TRUE;
+    return StageGuidedWilds(metadata,metaSize,cells,size,FALSE);
+#else
+    (void)metadata;(void)metaSize;(void)cells;(void)size;return FALSE;
+#endif
+}
+bool8 GeneratedMap_StageSharedGuidedWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_WILDS_GUIDE
+    return StageGuidedWilds(metadata,metaSize,cells,size,TRUE);
+#else
+    (void)metadata;(void)metaSize;(void)cells;(void)size;return FALSE;
+#endif
+}
+bool8 GeneratedMap_MatchesPreparedGuidedWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_WILDS_GUIDE
+    return metadata && metaSize==GENERATED_GUIDE_BYTES && cells && size==LARGE_CELLS && sGuideActive && sPrepared
+        && (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
+        && !memcmp(metadata,sGuideMetadata,GENERATED_GUIDE_BYTES) && !memcmp(cells,sLargeTemplate,LARGE_CELLS);
 #else
     (void)metadata;(void)metaSize;(void)cells;(void)size;return FALSE;
 #endif
@@ -369,6 +397,9 @@ bool8 GeneratedMap_MatchesPreparedWilds(const u8 *cells, u32 size)
 {
 #if GENERATED_MAP_READY && GENERATED_MAP_WILDS
     return cells && size == LARGE_CELLS && sLargeWilds && sLargeActive && sPrepared
+#if GENERATED_WILDS_GUIDE
+        && !sGuideActive
+#endif
         && (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
         && !memcmp(cells, sLargeTemplate, LARGE_CELLS);
 #else
@@ -631,7 +662,11 @@ bool8 GeneratedMap_SharedCoordValid(unsigned x, unsigned y)
 #if GENERATED_MAP_READY
 #if GENERATED_MAP_LARGE
     if (sLargeStaged && sLargeShared)
-        return x < LARGE_SIDE && y < LARGE_SIDE && sLargeTemplate[y * LARGE_SIDE + x] == '.';
+        return x < LARGE_SIDE && y < LARGE_SIDE
+#if GENERATED_WILDS_GUIDE
+            && !(sGuideStaged && sGuideShared && x == 2 && y == 1)
+#endif
+            && sLargeTemplate[y * LARGE_SIDE + x] == '.';
 #endif
     return sHasTemplate && x < GEN_SIDE && y < GEN_SIDE && sTemplate[y * GEN_SIDE + x] == '.';
 #else

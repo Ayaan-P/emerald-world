@@ -17,7 +17,7 @@ class WildsGuide(unittest.TestCase):
     def test_inert_model_guide_and_safe_reachable_geometry(self):
         proposal=wilds_guide.prepare(self.proposal());blob=wilds_guide.encode(proposal,7,'Welcome, traveler!')
         self.assertEqual(len(blob),4036);self.assertEqual(blob[:10],b'EWGMAP07\x07\x12')
-        with self.assertRaises(CaveError):SharedCave(blob)
+        self.assertEqual(SharedCave(blob).version,7)
         for bad in ('','   ','A'*29,'ok\n','ok\n   ','ok\nthere\nfriend','unsafe\x01','café'):
             with self.subTest(text=bad),self.assertRaises(ValueError):wilds_guide.encode(proposal,7,bad)
         for gfx in (0,6,9,True):
