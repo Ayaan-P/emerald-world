@@ -75,6 +75,7 @@ static FILE *sTestAudio;
 static FILE *sTestState;
 static const char *sWorldConfigPath;
 static const char *sWorldInputPath;
+static const char *sGeneratedMapPath;
 static const char *sWorldShotPath;
 static bool sWorldBootstrap;
 static u32 sWorldFrame;
@@ -131,10 +132,33 @@ static bool BeginNativeFrame(bool8 headless)
 /* SDL2 main/windows/SDL_windows_main.c converts CommandLineToArgvW output
  * with WIN_StringToUTF8W before calling SDL_main (the SDL.h main macro).
  * Keep argv and SDL_GetPrefPath UTF-8; NativeFile_Open performs the OS conversion. */
+static bool LoadGeneratedMapTemplate(const char *path)
+{
+    static const u8 magic[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '1' };
+    u8 bytes[8 + GENERATED_MAP_TEMPLATE_BYTES];
+    FILE *file = NativeFile_Open(path, "rb");
+    size_t count;
+    int extra;
+    bool8 valid;
+    if (!file) return false;
+    count = fread(bytes, 1, sizeof(bytes), file);
+    extra = fgetc(file);
+    valid = count == sizeof(bytes) && extra == EOF && !ferror(file)
+        && !memcmp(bytes, magic, sizeof(magic))
+        && GeneratedMap_StageTemplate(bytes + sizeof(magic), GENERATED_MAP_TEMPLATE_BYTES);
+    if (fclose(file) != 0) valid = FALSE;
+    return valid;
+}
+
 int main(int argc, char **argv)
 {
     if (!ParseArgs(argc, argv))
         return 1;
+    if (sGeneratedMapPath && (sWorldConfigPath || !LoadGeneratedMapTemplate(sGeneratedMapPath)))
+    {
+        fprintf(stderr, "Generated map unavailable: use a valid offline template and enable the experimental feature.\n");
+        return 1;
+    }
 
     if (sPlayerControlPath != NULL && sTestMode)
     {
@@ -731,7 +755,7 @@ static bool ParseArgs(int argc, char **argv)
             fprintf(stderr, "Missing player control option value.\n");
             return false;
         }
-        if (value == NULL && (!strcmp(arg, "--world-config") || !strcmp(arg, "--world-input") || !strcmp(arg, "--world-shot")))
+        if (value == NULL && (!strcmp(arg, "--world-config") || !strcmp(arg, "--world-input") || !strcmp(arg, "--world-shot") || !strcmp(arg, "--generated-map")))
         {
             fprintf(stderr, "Missing world option value.\n");
             return false;
@@ -752,6 +776,11 @@ static bool ParseArgs(int argc, char **argv)
             if (sPlayerControlPath != NULL)
                 return false;
             sPlayerControlPath = value;
+        }
+        else if (strcmp(arg, "--generated-map") == 0)
+        {
+            if (sGeneratedMapPath != NULL || !strncmp(value, "--", 2)) return false;
+            sGeneratedMapPath = value;
         }
         else if (strcmp(arg, "--world-config") == 0)
         {

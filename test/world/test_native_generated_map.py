@@ -71,7 +71,26 @@ int main(void){
   assert(destination.mapGroup==3 && destination.mapNum==4 && destination.warpId==-1 && destination.x==8 && destination.y==9);
   save.location=destination;assert(!GeneratedMap_IsInside() && GeneratedMap_ResolveLayout(&base)==&base);assert(save.dynamicWarp.mapGroup==7 && save.dynamicWarp.mapNum==8 && save.dynamicWarp.x==10);
  }
- playerX=135;assert(!GeneratedMap_CanEnter());
+ playerX=135;assert(!GeneratedMap_CanEnter());playerX=15;
+ /* A model-proposed row grid becomes an inert native template only after
+  * full validation. A failed replacement must preserve the prior template. */
+ u8 proposal[961], bad[961];
+ for(int i=0;i<961;i++) proposal[i] = (first[i] == 0x3333 || first[i] == 0x3323) ? '.' : '#';
+ assert(GeneratedMap_StageTemplate(proposal,961));
+ memcpy(bad,proposal,961);bad[0]='.';assert(!GeneratedMap_StageTemplate(bad,961));
+ memcpy(bad,proposal,961);bad[28*31+29]='#';assert(!GeneratedMap_StageTemplate(bad,961));
+ memcpy(bad,proposal,961);bad[1]='X';assert(!GeneratedMap_StageTemplate(bad,961));
+ memset(bad,'#',961);
+ for(int y=1;y<=29;y++)bad[y*31+1]='.';
+ for(int x=1;x<=29;x++)bad[29*31+x]='.';
+ bad[28*31+29]='.';bad[10*31+10]='.'; /* isolated floor */
+ assert(!GeneratedMap_StageTemplate(bad,961));
+ assert(!GeneratedMap_StageTemplate(proposal,960));
+ save.location=(struct WarpData){3,4,0,8,9};save.dynamicWarp=(struct WarpData){7,8,9,10,11};
+ assert(GeneratedMap_Enter());save.location=destination;
+ const struct MapLayout *templated=GeneratedMap_ResolveLayout(&base);
+ for(int i=0;i<961;i++)assert((templated->map[i]==0x3333 || templated->map[i]==0x3323)==(proposal[i]=='.'));
+ assert(GeneratedMap_Leave());save.location=destination;GeneratedMap_ResolveLayout(&base);
  return 0;
 }'''
   with tempfile.TemporaryDirectory() as d:

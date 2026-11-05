@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+"""Turn an inert cave proposal into a validated offline native template.
+
+Input is a JSON object containing exactly ``rows``, ``spawn`` and ``exit``.
+Rows are 31 strings of 31 '.' (floor) or '#' (wall) characters. This tool does
+not call a model or run content as code. It never overwrites an existing file.
+"""
+import argparse
+from collections import deque
+import json
+from pathlib import Path
+
+SIDE = 31
+MAGIC = b'EWGMAP01'
+MAX_INPUT = 16384
+
+
+def encode(proposal):
+    if type(proposal) is not dict or set(proposal) != {'rows', 'spawn', 'exit'}:
+        raise ValueError('expected only rows, spawn and exit')
+    if proposal['spawn'] != [1, 1] or proposal['exit'] != [29, 29]:
+        raise ValueError('spawn must be [1,1] and exit must be [29,29]')
+    # bool is a subclass of int, so require exact integer types.
+    if any(type(n) is not int for key in ('spawn', 'exit') for n in proposal[key]):
+        raise ValueError('coordinates must be integers')
+    rows = proposal['rows']
+    if type(rows) is not list or len(rows) != SIDE or any(
+        type(row) is not str or len(row) != SIDE or set(row) - {'.', '#'} for row in rows
+    ):
+        raise ValueError('rows must be 31 strings of 31 floor or wall characters')
+    if any(c != '#' for c in rows[0] + rows[-1]) or any(row[0] != '#' or row[-1] != '#' for row in rows):
+        raise ValueError('perimeter must be closed')
+    if any(rows[y][x] != '.' for x, y in ((1, 1), (29, 28), (29, 29))):
+        raise ValueError('spawn, exit and exit approach must be floor')
+    queue = deque([(1, 1)])
+    visited = {(1, 1)}
+    while queue:
+        x, y = queue.popleft()
+        for nx, ny in ((x, y - 1), (x + 1, y), (x, y + 1), (x - 1, y)):
+            if 0 <= nx < SIDE and 0 <= ny < SIDE and rows[ny][nx] == '.' and (nx, ny) not in visited:
+                visited.add((nx, ny))
+                queue.append((nx, ny))
+    if len(visited) != sum(row.count('.') for row in rows):
+        raise ValueError('all floor tiles must be connected to spawn')
+    return MAGIC + ''.join(rows).encode('ascii')
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('proposal', type=Path)
+    parser.add_argument('output', type=Path)
+    args = parser.parse_args()
+    try:
+        with args.proposal.open('rb') as stream:
+            raw = stream.read(MAX_INPUT + 1)
+        if len(raw) > MAX_INPUT:
+            raise ValueError('proposal exceeds size limit')
+        data = encode(json.loads(raw))
+        with args.output.open('xb') as stream:
+            stream.write(data)
+    except (ValueError, OSError, UnicodeError) as error:
+        parser.exit(1, f'Cannot export cave: {error}\n')
+
+
+if __name__ == '__main__':
+    main()

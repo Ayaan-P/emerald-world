@@ -8,6 +8,7 @@
 #include "platform/world_bridge.h"
 #include "platform/generated_map.h"
 #include "constants/maps.h"
+#include <string.h>
 
 #if GENERATED_MAP_READY
 /* 31x31 fits the stock backup-map buffer even with its view border. The
@@ -20,6 +21,8 @@
 #define GEN_MAX_NODES 225
 
 static u16 sTiles[GEN_CELLS];
+static u8 sTemplate[GEN_CELLS];
+static bool8 sHasTemplate;
 static struct MapLayout sLayout;
 static struct WarpData sReturn, sPreviousDynamicWarp;
 static bool8 sPrepared, sSeenInside;
@@ -65,6 +68,50 @@ static void BuildMaze(u32 seed)
     sTiles[29 * GEN_SIDE + 29] = GEN_EXIT;
 }
 #endif
+
+/* Accept only inert, bounded geometry. Stage atomically after validating the
+ * closed perimeter and reachability of every floor and the south-facing exit. */
+bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY
+    u8 seen[GEN_CELLS] = {0};
+    u16 queue[GEN_CELLS], head = 0, tail = 0, i;
+    if (!cells || size != GEN_CELLS) return FALSE;
+    for (i = 0; i < GEN_CELLS; i++)
+    {
+        u8 x = i % GEN_SIDE, y = i / GEN_SIDE;
+        if (cells[i] != '.' && cells[i] != '#') return FALSE;
+        if ((x == 0 || y == 0 || x == GEN_SIDE - 1 || y == GEN_SIDE - 1) && cells[i] != '#') return FALSE;
+    }
+    if (cells[GEN_SIDE + 1] != '.' || cells[28 * GEN_SIDE + 29] != '.'
+     || cells[29 * GEN_SIDE + 29] != '.') return FALSE;
+    queue[tail++] = GEN_SIDE + 1;
+    seen[GEN_SIDE + 1] = TRUE;
+    while (head < tail)
+    {
+        u16 pos = queue[head++];
+        s16 neighbor[4] = { pos - GEN_SIDE, pos + 1, pos + GEN_SIDE, pos - 1 };
+        u8 d;
+        for (d = 0; d < 4; d++)
+        {
+            s16 next = neighbor[d];
+            if (next >= 0 && next < GEN_CELLS && cells[next] == '.' && !seen[next])
+            {
+                seen[next] = TRUE;
+                queue[tail++] = next;
+            }
+        }
+    }
+    for (i = 0; i < GEN_CELLS; i++)
+        if (cells[i] == '.' && !seen[i]) return FALSE;
+    memcpy(sTemplate, cells, sizeof(sTemplate));
+    sHasTemplate = TRUE;
+    return TRUE;
+#else
+    (void)cells; (void)size;
+    return FALSE;
+#endif
+}
 
 bool8 GeneratedMap_IsInside(void)
 {
@@ -113,7 +160,14 @@ bool8 GeneratedMap_Enter(void)
     sPreviousDynamicWarp = gSaveBlock1Ptr->dynamicWarp;
     SetDynamicWarpWithCoords(0, sReturn.mapGroup, sReturn.mapNum, WARP_ID_NONE, sReturn.x, sReturn.y);
     sSeenInside = FALSE;
-    BuildMaze(gMain.vblankCounter1 ^ ((u32)sReturn.mapGroup << 24) ^ ((u32)sReturn.mapNum << 16));
+    if (sHasTemplate)
+    {
+        u16 i;
+        for (i = 0; i < GEN_CELLS; i++) sTiles[i] = sTemplate[i] == '.' ? GEN_FLOOR : GEN_WALL;
+        sTiles[29 * GEN_SIDE + 29] = GEN_EXIT;
+    }
+    else
+        BuildMaze(gMain.vblankCounter1 ^ ((u32)sReturn.mapGroup << 24) ^ ((u32)sReturn.mapNum << 16));
     sPrepared = TRUE;
     SetWarpDestination(MAP_GROUP(MAP_GENERATED_WORLD_CAVE), MAP_NUM(MAP_GENERATED_WORLD_CAVE), WARP_ID_NONE, 1, 1);
     StoreInitialPlayerAvatarState();
