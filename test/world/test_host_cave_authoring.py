@@ -2,6 +2,7 @@
 from pathlib import Path
 import tempfile
 import threading
+import types
 import unittest
 from unittest.mock import Mock,patch
 from world.session import DesktopSession,DesktopApp,SessionError
@@ -61,10 +62,11 @@ class HostCaveAuthoring(unittest.TestCase):
         app=object.__new__(DesktopApp);app.pending=None;app.closing=False;app.session=self.session;app.window=object()
         app.message=Mock();app.executor=Mock();app._set_busy=Mock();app.values=Mock(return_value={'cave_theme':'icy cave'})
         # The UI-only operation is a marker; submit owns the actual work.
-        with patch('tkinter.messagebox.askyesno',return_value=False) as confirm:
+        fake_tk=types.ModuleType('tkinter');fake_tk.messagebox=types.SimpleNamespace(askyesno=Mock(return_value=False))
+        with patch.dict('sys.modules',{'tkinter':fake_tk}):
             app.submit(app.generate_cave)
-            confirm.assert_called_once();app.executor.submit.assert_not_called()
-        with patch('tkinter.messagebox.askyesno',return_value=True):
+            fake_tk.messagebox.askyesno.assert_called_once();app.executor.submit.assert_not_called()
+            fake_tk.messagebox.askyesno.return_value=True
             app.submit(app.generate_cave)
             app.executor.submit.assert_called_once_with(self.session.author_shared_cave,'icy cave')
             self.assertEqual(app.pending_kind,'author_cave');app._set_busy.assert_called_once_with(True)
