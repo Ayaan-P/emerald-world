@@ -1,4 +1,8 @@
 #include "global.h"
+#ifdef PORTABLE
+#include "platform/dexnav_native.h"
+#include "dexnav.h"
+#endif
 #include "battle_setup.h"
 #include "battle_pike.h"
 #include "battle_pyramid.h"
@@ -351,6 +355,13 @@ static u16 GetCurrentMapWildMonHeaderId(void)
     return HEADER_NONE;
 }
 
+#ifdef PORTABLE
+u16 WildEncounter_GetDexNavHeader(void)
+{
+    return GetCurrentMapWildMonHeaderId();
+}
+#endif
+
 static u8 PickWildMonNature(void)
 {
     u8 i;
@@ -432,6 +443,22 @@ static void CreateWildMon(u16 species, u8 level)
 
     CreateMonWithNature(&gEnemyParty[0], species, level, USE_RANDOM_IVS, PickWildMonNature());
 }
+
+#ifdef PORTABLE
+void WildEncounter_CreateDexNavMon(u16 species, u8 level)
+{
+    u32 roll;
+    u32 extraRolls = CalculateDexNavShinyRolls();
+    /* Donor chain/random bonus only for the final intentional hunt. Native
+     * creation and shiny predicates retain the stock Pokemon representation. */
+    for (roll = 0; roll <= extraRolls; ++roll)
+    {
+        CreateWildMon(species, level);
+        if (IsMonShiny(&gEnemyParty[0]))
+            break;
+    }
+}
+#endif
 #ifdef BUGFIX
 #define TRY_GET_ABILITY_INFLUENCED_WILD_MON_INDEX(wildPokemon, type, ability, ptr, count) TryGetAbilityInfluencedWildMonIndex(wildPokemon, type, ability, ptr, count)
 #else

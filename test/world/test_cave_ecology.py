@@ -143,6 +143,27 @@ int main(void){save.location.mapGroup=1;save.location.mapNum=1;
             result=subprocess.run([str(exe)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
 
+    def test_dexnav_encounter_entrypoints_remain_linkable(self):
+        source=(ROOT/'src/wild_encounter.c').read_text()
+        code=r"""
+#include <stdint.h>
+typedef uint8_t u8;typedef uint16_t u16;typedef uint32_t u32;
+static int calls;static int gEnemyParty[1];
+static u16 GetCurrentMapWildMonHeaderId(void){return 23;}
+static u32 CalculateDexNavShinyRolls(void){return 2;}
+static void CreateWildMon(u16 species,u8 level){(void)species;(void)level;calls++;}
+static int IsMonShiny(const int *p){(void)p;return calls==3;}
+""" + function(source,'WildEncounter_GetDexNavHeader') + function(source,'WildEncounter_CreateDexNavMon') + r"""
+int main(void){if(WildEncounter_GetDexNavHeader()!=23)return 1;
+ WildEncounter_CreateDexNavMon(41,7);return calls==3?0:2;}
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            c,exe=Path(tmp)/'dex.c',Path(tmp)/'dex';c.write_text(code)
+            build=subprocess.run(['cc','-std=gnu99','-Wall','-Wextra','-Werror',str(c),'-o',str(exe)],capture_output=True,text=True)
+            self.assertEqual(build.returncode,0,build.stderr)
+            result=subprocess.run([str(exe)],capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+
     def test_old_loader_rejects_profile_format(self):
         source=(ROOT/'src/platform/sdl2.c').read_text()
         code=r"""
