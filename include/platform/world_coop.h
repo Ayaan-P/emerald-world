@@ -4,7 +4,7 @@
 #include "global.h"
 
 /* The first three healthy, non-egg private party members fight. All six
- * private slots survive. Only balls may be used in the shared wild bag.
+ * private slots survive. Medicine targets only each trainer's staged party.
  * Encounters retain the generated wild mon or the complete NPC trainer team. */
 void WorldCoop_CaptureWild(void);
 bool8 WorldCoop_CaptureTrainer(void);
@@ -39,6 +39,7 @@ bool8 WorldCoop_GetPublicMon(u8 battler, struct WorldCoopPublicMon *mon);
 #define WORLD_COOP_MEDICINE_REPLY 0x8000
 bool8 WorldCoop_CanSelectBattleItem(u16 item);
 void WorldCoop_SetMenuConfusion(bool8 confused);
+bool8 WorldCoop_SelectMedicineTarget(u16 item, u8 slot, struct Pokemon *mon);
 bool8 WorldCoop_CanUseMedicine(u16 item);
 bool8 WorldCoop_ItemReplyValid(u16 reply);
 u16 WorldCoop_SelectBattleItem(u16 item);
@@ -47,6 +48,7 @@ bool8 WorldCoop_ConsumeMedicine(const u8 *data);
 bool8 WorldCoop_MedicineActionActive(u8 battler);
 int WorldCoop_BeginMedicineAction(u8 battler, u16 reply);
 int WorldCoop_AdvanceMedicineAction(u8 battler);
+u8 WorldCoop_MedicineTarget(void);
 bool8 WorldCoop_CanSelectBall(u16 item);
 bool8 WorldCoop_BallReplyValid(u16 reply);
 u16 WorldCoop_SelectBall(u16 item);

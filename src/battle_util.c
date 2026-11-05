@@ -326,7 +326,13 @@ void HandleAction_UseItem(void)
         if (result == 0) return;
         if (result < 0) { NativeLink_Abort(); return; }
         gBattleScripting.battler = gBattlerAttacker;
-        gBattlescriptCurrInstr = result == 1 ? BattleScript_WorldCoopMedicineHeal : BattleScript_WorldCoopMedicineStatus;
+        if (result == 3)
+        {
+            PREPARE_MON_NICK_BUFFER(gBattleTextBuff1, gBattlerAttacker, WorldCoop_MedicineTarget());
+            gBattlescriptCurrInstr = BattleScript_WorldCoopMedicineReserve;
+        }
+        else
+            gBattlescriptCurrInstr = result == 1 ? BattleScript_WorldCoopMedicineHeal : BattleScript_WorldCoopMedicineStatus;
         gCurrentActionFuncId = B_ACTION_EXEC_SCRIPT;
         return;
     }
@@ -336,7 +342,7 @@ void HandleAction_UseItem(void)
 #ifdef PORTABLE
     if (WorldCoop_IsBattle())
     {
-        if ((gLastUsedItem & 0xFF00) == WORLD_COOP_MEDICINE_REPLY)
+        if ((gLastUsedItem & 0xF800) == WORLD_COOP_MEDICINE_REPLY)
         {
             if (WorldCoop_BeginMedicineAction(gBattlerAttacker, gLastUsedItem) < 0)
                 NativeLink_Abort();

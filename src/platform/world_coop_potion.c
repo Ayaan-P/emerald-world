@@ -35,7 +35,8 @@ bool8 WorldCoop_IsMedicine(u16 item)
 {
     return WorldCoop_IsHpMedicine(item) || item == ITEM_ANTIDOTE || item == ITEM_BURN_HEAL
         || item == ITEM_ICE_HEAL || item == ITEM_AWAKENING || item == ITEM_PARALYZE_HEAL
-        || item == ITEM_FULL_HEAL || item == ITEM_FULL_RESTORE;
+        || item == ITEM_FULL_HEAL || item == ITEM_FULL_RESTORE
+        || item == ITEM_REVIVE || item == ITEM_MAX_REVIVE;
 }
 
 bool8 WorldCoop_MedicineEffect(u16 item, u16 hp, u16 maxHP, u32 status, bool8 confused, u16 *heal, u32 *newStatus, bool8 *clearConfusion)
@@ -43,7 +44,16 @@ bool8 WorldCoop_MedicineEffect(u16 item, u16 hp, u16 maxHP, u32 status, bool8 co
     u16 amount = 0;
     u32 mask = 0;
     bool8 cureConfusion = FALSE;
-    if (!heal || !newStatus || !clearConfusion || !hp || !maxHP || maxHP > 999 || hp > maxHP) return FALSE;
+    if (!heal || !newStatus || !clearConfusion || !maxHP || maxHP > 999 || hp > maxHP) return FALSE;
+    if (!hp)
+    {
+        if (item != ITEM_REVIVE && item != ITEM_MAX_REVIVE) return FALSE;
+        *heal = item == ITEM_MAX_REVIVE ? maxHP : (maxHP / 2 ? maxHP / 2 : 1);
+        *newStatus = status;
+        *clearConfusion = FALSE;
+        return TRUE;
+    }
+    if (item == ITEM_REVIVE || item == ITEM_MAX_REVIVE) return FALSE;
     if (WorldCoop_IsHpMedicine(item)) amount = WorldCoop_HpMedicineHeal(item, hp, maxHP);
     switch (item)
     {

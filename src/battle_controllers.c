@@ -1469,8 +1469,9 @@ static void Task_HandleCopyReceivedLinkBuffersData(u8 taskId)
                  && sNativeBattleRequest[battler][1] == REQUEST_ALL_BATTLE)
                 {
                     u8 mask = sNativeBattleRequest[battler][2];
-                    /* Reserve batches are not public selected-battler data. */
-                    if (mask == 0 || (mask & (mask - 1)) == 0)
+                    /* Only the active slot belongs in the public view. A
+                     * single reserve query may be a private medicine target. */
+                    if (mask == 0 || mask == (1u << gBattlerPartyIndexes[battler]))
                     {
                         struct BattlePokemon mon;
                         u8 slot = gBattlerPartyIndexes[battler];

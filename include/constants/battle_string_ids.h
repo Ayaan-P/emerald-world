@@ -379,7 +379,13 @@
 #define STRINGID_TRAINER1WINTEXT            379
 #define STRINGID_TRAINER2WINTEXT            380
 
+/* 381 is reserved by the separate Mega Evolution draft. */
+#define STRINGID_COOP_MEDICINE_RESERVE      382
+#ifdef PORTABLE
+#define BATTLESTRINGS_COUNT                 383
+#else
 #define BATTLESTRINGS_COUNT                 381
+#endif
 
 // This is the string id that gBattleStringsTable starts with.
 // String ids before this (e.g. STRINGID_INTROMSG) are not in the table,

@@ -33,7 +33,7 @@
  * exactly the 100-byte GBA layout on every supported native architecture. */
 STATIC_ASSERT(sizeof(struct Pokemon) == 100, CoopPokemonWireSize);
 enum { COOP_IDLE, COOP_EXCHANGE, COOP_BATTLE, COOP_REWARDS };
-enum { COOP_MAGIC = 0x4357, COOP_VERSION = 6, COOP_TIMEOUT = 1800,
+enum { COOP_MAGIC = 0x4357, COOP_VERSION = 7, COOP_TIMEOUT = 1800,
        COOP_CONFIRM = 4 + PARTY_SIZE, COOP_READY = COOP_CONFIRM + 1, COOP_COMMIT = COOP_CONFIRM + 2 };
 struct CoopHeader
 {
@@ -74,10 +74,11 @@ static struct
     u8 catchOwner;
     bool8 catchDelivered;
     u16 pendingBall, pendingMedicine;
-    u16 medicineSpent[15];
+    u16 medicineSpent[17];
     u16 medicineHeal, medicineItem;
     u32 medicineStatusBefore, medicineStatusAfter;
-    u8 medicineAction, medicineBattler;
+    u16 medicineHPAfter;
+    u8 medicineAction, medicineBattler, medicineTarget;
     bool8 menuConfused, medicineClearConfusion;
     struct Pokemon caughtMon;
     u8 readySent, commitSent, commitEchoed, peerReady, peerCommit, peerOutcome, peerReward;
@@ -257,7 +258,7 @@ void WorldCoop_SetPartyMenuOrder(bool8 inMenuOrder)
 static const u16 sCoopMedicines[] = { ITEM_POTION, ITEM_SUPER_POTION, ITEM_HYPER_POTION, ITEM_MAX_POTION,
     ITEM_ANTIDOTE, ITEM_BURN_HEAL, ITEM_ICE_HEAL, ITEM_AWAKENING, ITEM_PARALYZE_HEAL,
     ITEM_FRESH_WATER, ITEM_SODA_POP, ITEM_LEMONADE, ITEM_MOOMOO_MILK,
-    ITEM_FULL_HEAL, ITEM_FULL_RESTORE };
+    ITEM_FULL_HEAL, ITEM_FULL_RESTORE, ITEM_REVIVE, ITEM_MAX_REVIVE };
 
 static bool8 WorldCoop_RefundMedicine(void)
 {
@@ -608,41 +609,51 @@ bool8 WorldCoop_CanSelectBattleItem(u16 item)
 void WorldCoop_SetMenuConfusion(bool8 confused)
 {
     sCoop.menuConfused = !!confused;
+    sCoop.pendingMedicine = 0;
+    sCoop.medicineTarget = PARTY_SIZE;
+}
+
+bool8 WorldCoop_SelectMedicineTarget(u16 item, u8 slot, struct Pokemon *mon)
+{
+    u8 battler = gBattlerInMenuId;
+    u16 heal; u32 status; bool8 cureConfusion, confused;
+    if (sCoop.state != COOP_BATTLE || !WorldCoop_IsMedicine(item)
+     || battler != sCoop.local * 2 || slot >= PARTY_SIZE
+     || slot / MULTI_PARTY_SIZE != sCoop.local || !mon || !CheckBagHasItem(item, 1)) return FALSE;
+    confused = slot == gBattlerPartyIndexes[battler] && sCoop.menuConfused;
+    if (!WorldCoop_MedicineEffect(item, GetMonData(mon, MON_DATA_HP),
+         GetMonData(mon, MON_DATA_MAX_HP), GetMonData(mon, MON_DATA_STATUS), confused,
+         &heal, &status, &cureConfusion)) return FALSE;
+    sCoop.pendingMedicine = item;
+    sCoop.medicineTarget = slot;
+    return TRUE;
 }
 
 bool8 WorldCoop_CanUseMedicine(u16 item)
 {
-    struct Pokemon *mon;
-    u8 battler = gBattlerInMenuId, slot;
-    u16 heal; u32 status; bool8 cureConfusion;
-    if (sCoop.state != COOP_BATTLE || !WorldCoop_IsMedicine(item)
-     || battler != sCoop.local * 2 || !CheckBagHasItem(item, 1)) return FALSE;
-    slot = gBattlerPartyIndexes[battler];
-    if (slot >= PARTY_SIZE || slot / MULTI_PARTY_SIZE != sCoop.local) return FALSE;
-    mon = &gPlayerParty[slot];
-    return WorldCoop_MedicineEffect(item, GetMonData(mon, MON_DATA_HP),
-        GetMonData(mon, MON_DATA_MAX_HP), GetMonData(mon, MON_DATA_STATUS), sCoop.menuConfused,
-        &heal, &status, &cureConfusion);
+    u8 slot = sCoop.medicineTarget;
+    if (slot >= PARTY_SIZE || sCoop.pendingMedicine != item) return FALSE;
+    return WorldCoop_SelectMedicineTarget(item, slot, &gPlayerParty[slot]);
 }
 
 bool8 WorldCoop_ItemReplyValid(u16 reply)
 {
     if (sCoop.state != COOP_BATTLE) return FALSE;
     if (!reply) return TRUE;
-    if ((reply & 0xFF00) == WORLD_COOP_MEDICINE_REPLY)
-        return WorldCoop_IsMedicine(reply & 0xFF);
+    if ((reply & 0xF800) == WORLD_COOP_MEDICINE_REPLY)
+        return ((reply >> 8) & 7) < PARTY_SIZE && WorldCoop_IsMedicine(reply & 0xFF);
     return WorldCoop_BallReplyValid(reply);
 }
 
 u16 WorldCoop_SelectBattleItem(u16 item)
 {
-    sCoop.pendingMedicine = 0;
     if (WorldCoop_IsMedicine(item))
     {
         if (!WorldCoop_CanUseMedicine(item)) return 0;
-        sCoop.pendingMedicine = item;
-        return WORLD_COOP_MEDICINE_REPLY | item;
+        return WORLD_COOP_MEDICINE_REPLY | (sCoop.medicineTarget << 8) | item;
     }
+    sCoop.pendingMedicine = 0;
+    sCoop.medicineTarget = PARTY_SIZE;
     return WorldCoop_SelectBall(item);
 }
 
@@ -652,12 +663,13 @@ bool8 WorldCoop_MedicinePacketValid(const u8 *data, u16 size)
     u16 hp, maxHP, heal; bool8 cureConfusion;
     if (sCoop.state != COOP_BATTLE || sCoop.generation != NativeLink_Generation()
      || size != 20 || data[0] != CONTROLLER_EXPUPDATE || data[1] != WORLD_COOP_MEDICINE_TAG
-     || data[2] < 1 || data[2] > 2 || !WorldCoop_IsMedicine(data[3])) return FALSE;
+     || data[2] < 1 || data[2] > 2 || !WorldCoop_IsMedicine(data[3])
+     || data[17] >= PARTY_SIZE || data[17] / MULTI_PARTY_SIZE != data[2] - 1) return FALSE;
     memcpy(&generation, data + 4, sizeof(generation));
     hp = data[8] | (data[9] << 8); maxHP = data[10] | (data[11] << 8);
     status = (u32)data[12] | ((u32)data[13] << 8) | ((u32)data[14] << 16) | ((u32)data[15] << 24);
     return generation == sCoop.generation && !(status & ~0xFFFu)
-        && data[16] <= 1 && !data[17] && !data[18] && !data[19]
+        && data[16] <= 1 && !data[18] && !data[19]
         && WorldCoop_MedicineEffect(data[3], hp, maxHP, status, data[16], &heal, &newStatus, &cureConfusion);
 }
 
@@ -666,18 +678,20 @@ bool8 WorldCoop_ConsumeMedicine(const u8 *data)
     u16 hp, maxHP, item;
     u32 status;
     u8 i, slot;
+    bool8 confused;
     struct Pokemon *mon;
     if (!WorldCoop_MedicinePacketValid(data, 20) || data[2] != sCoop.local + 1
      || gActiveBattler != sCoop.local * 2) return FALSE;
-    item = data[3]; slot = gBattlerPartyIndexes[gActiveBattler];
+    item = data[3]; slot = data[17];
     if (slot >= PARTY_SIZE || slot / MULTI_PARTY_SIZE != sCoop.local
-     || sCoop.pendingMedicine != item) return FALSE;
+     || sCoop.pendingMedicine != item || sCoop.medicineTarget != slot) return FALSE;
     mon = &gPlayerParty[slot];
     hp = data[8] | (data[9] << 8); maxHP = data[10] | (data[11] << 8);
     status = (u32)data[12] | ((u32)data[13] << 8) | ((u32)data[14] << 16) | ((u32)data[15] << 24);
+    confused = slot == gBattlerPartyIndexes[gActiveBattler] && sCoop.menuConfused;
     if (GetMonData(mon, MON_DATA_HP) != hp || GetMonData(mon, MON_DATA_MAX_HP) != maxHP
      || (GetMonData(mon, MON_DATA_STATUS) & STATUS1_ANY) != (status & STATUS1_ANY)
-     || sCoop.menuConfused != data[16]) return FALSE;
+     || confused != data[16]) return FALSE;
     for (i = 0; i < ARRAY_COUNT(sCoopMedicines) && sCoopMedicines[i] != item; i++);
     if (i == ARRAY_COUNT(sCoopMedicines) || sCoop.medicineSpent[i] == 0xFFFF
      || !RemoveBagItem(item, 1)) return FALSE;
@@ -686,33 +700,51 @@ bool8 WorldCoop_ConsumeMedicine(const u8 *data)
     return TRUE;
 }
 
+enum { MEDICINE_WAIT_MON = 1, MEDICINE_WAIT_OWNER, MEDICINE_WAIT_HP, MEDICINE_WAIT_STATUS };
+
+static bool8 WorldCoop_SendMedicineEvent(u8 battler, u16 hp, u16 maxHP, u32 status, bool8 confused)
+{
+    u8 packet[18] = { CONTROLLER_EXPUPDATE, WORLD_COOP_MEDICINE_TAG, 0, 0 };
+    u32 generation = sCoop.generation;
+    if ((status & ~0xFFFu) || !WorldCoop_MedicineEffect(sCoop.medicineItem, hp, maxHP, status,
+         confused, &sCoop.medicineHeal, &sCoop.medicineStatusAfter, &sCoop.medicineClearConfusion)) return FALSE;
+    sCoop.medicineStatusBefore = status;
+    sCoop.medicineHPAfter = hp + sCoop.medicineHeal;
+    packet[2] = battler / 2 + 1; packet[3] = sCoop.medicineItem;
+    memcpy(packet + 4, &generation, sizeof(generation));
+    packet[8] = hp; packet[9] = hp >> 8; packet[10] = maxHP; packet[11] = maxHP >> 8;
+    packet[12] = status; packet[13] = status >> 8; packet[14] = status >> 16; packet[15] = status >> 24;
+    packet[16] = confused; packet[17] = sCoop.medicineTarget;
+    sCoop.medicineAction = MEDICINE_WAIT_OWNER;
+    gActiveBattler = battler;
+    PrepareBufferDataTransferLink(B_COMM_TO_CONTROLLER, sizeof(packet), packet);
+    MarkBattlerForControllerExec(battler);
+    return TRUE;
+}
+
 bool8 WorldCoop_MedicineActionActive(u8 battler)
 {
     return sCoop.state == COOP_BATTLE && sCoop.medicineAction && sCoop.medicineBattler == battler;
 }
 
+u8 WorldCoop_MedicineTarget(void) { return sCoop.medicineTarget; }
+
 int WorldCoop_BeginMedicineAction(u8 battler, u16 reply)
 {
-    u8 packet[17] = { CONTROLLER_EXPUPDATE, WORLD_COOP_MEDICINE_TAG, 0, 0 };
-    u16 item = reply & 0xFF, hp, maxHP;
-    u32 generation = sCoop.generation, status;
+    u8 target = (reply >> 8) & 7;
     if (sCoop.state != COOP_BATTLE || sCoop.medicineAction || (battler & BIT_SIDE)
      || battler >= MAX_BATTLERS_COUNT || !WorldCoop_ItemReplyValid(reply)
-     || (reply & 0xFF00) != WORLD_COOP_MEDICINE_REPLY) return -1;
-    hp = gBattleMons[battler].hp; maxHP = gBattleMons[battler].maxHP;
-    status = gBattleMons[battler].status1;
-    if ((status & ~0xFFFu) || !WorldCoop_MedicineEffect(item, hp, maxHP, status,
-         !!(gBattleMons[battler].status2 & STATUS2_CONFUSION), &sCoop.medicineHeal,
-         &sCoop.medicineStatusAfter, &sCoop.medicineClearConfusion)) return -1;
-    sCoop.medicineStatusBefore = status;
-    packet[2] = battler / 2 + 1; packet[3] = item;
-    memcpy(packet + 4, &generation, sizeof(generation));
-    packet[8] = hp; packet[9] = hp >> 8; packet[10] = maxHP; packet[11] = maxHP >> 8;
-    packet[12] = status; packet[13] = status >> 8; packet[14] = status >> 16; packet[15] = status >> 24;
-    packet[16] = !!(gBattleMons[battler].status2 & STATUS2_CONFUSION);
-    sCoop.medicineAction = TRUE; sCoop.medicineBattler = battler; sCoop.medicineItem = item;
+     || (reply & 0xF800) != WORLD_COOP_MEDICINE_REPLY
+     || target / MULTI_PARTY_SIZE != battler / 2) return -1;
+    sCoop.medicineBattler = battler; sCoop.medicineTarget = target; sCoop.medicineItem = reply & 0xFF;
+    if (target == gBattlerPartyIndexes[battler])
+        return WorldCoop_SendMedicineEvent(battler, gBattleMons[battler].hp, gBattleMons[battler].maxHP,
+            gBattleMons[battler].status1, !!(gBattleMons[battler].status2 & STATUS2_CONFUSION)) ? 0 : -1;
+    /* Query only the selected staged slot from its owner. The reply is
+     * authenticated and validated by the existing GETMONDATA boundary. */
+    sCoop.medicineAction = MEDICINE_WAIT_MON;
     gActiveBattler = battler;
-    PrepareBufferDataTransferLink(B_COMM_TO_CONTROLLER, sizeof(packet), packet);
+    BtlController_EmitGetMonData(B_COMM_TO_CONTROLLER, REQUEST_ALL_BATTLE, 1u << target);
     MarkBattlerForControllerExec(battler);
     return 0;
 }
@@ -721,24 +753,64 @@ int WorldCoop_AdvanceMedicineAction(u8 battler)
 {
     if (!WorldCoop_MedicineActionActive(battler)) return -1;
     if (gBattleControllerExecFlags) return 0;
-    sCoop.medicineAction = FALSE;
-    if (gBattleBufferB[battler][0] != CONTROLLER_TWORETURNVALUES
-     || gBattleBufferB[battler][1] != 1 || gBattleBufferB[battler][2] || gBattleBufferB[battler][3]) return -1;
-    gLastUsedItem = sCoop.medicineItem;
-    gBattleMoveDamage = -(s32)sCoop.medicineHeal;
-    if (sCoop.medicineClearConfusion)
-        gBattleMons[battler].status2 &= ~STATUS2_CONFUSION;
-    if (sCoop.medicineStatusAfter != sCoop.medicineStatusBefore)
+    if (sCoop.medicineAction == MEDICINE_WAIT_MON)
     {
-        gBattleMons[battler].status1 = sCoop.medicineStatusAfter;
-        if ((sCoop.medicineStatusBefore & STATUS1_SLEEP) && !(sCoop.medicineStatusAfter & STATUS1_SLEEP))
-            gBattleMons[battler].status2 &= ~STATUS2_NIGHTMARE;
-        gActiveBattler = battler;
-        BtlController_EmitSetMonData(B_COMM_TO_CONTROLLER, REQUEST_STATUS_BATTLE, 0,
-                                     sizeof(gBattleMons[battler].status1), &gBattleMons[battler].status1);
-        MarkBattlerForControllerExec(battler);
+        struct BattlePokemon mon;
+        if (gBattleBufferB[battler][0] != CONTROLLER_DATATRANSFER
+         || (gBattleBufferB[battler][2] | (gBattleBufferB[battler][3] << 8)) != sizeof(mon)) return -1;
+        memcpy(&mon, &gBattleBufferB[battler][4], sizeof(mon));
+        return WorldCoop_SendMedicineEvent(battler, mon.hp, mon.maxHP, mon.status1, FALSE) ? 0 : -1;
     }
-    return sCoop.medicineHeal ? 1 : 2;
+    if (sCoop.medicineAction == MEDICINE_WAIT_OWNER)
+    {
+        if (gBattleBufferB[battler][0] != CONTROLLER_TWORETURNVALUES
+         || gBattleBufferB[battler][1] != 1 || gBattleBufferB[battler][2] || gBattleBufferB[battler][3]) return -1;
+        gLastUsedItem = sCoop.medicineItem;
+        gBattleMoveDamage = -(s32)sCoop.medicineHeal;
+        if (sCoop.medicineTarget == gBattlerPartyIndexes[battler])
+        {
+            sCoop.medicineAction = 0;
+            if (sCoop.medicineClearConfusion) gBattleMons[battler].status2 &= ~STATUS2_CONFUSION;
+            if (sCoop.medicineStatusAfter != sCoop.medicineStatusBefore)
+            {
+                gBattleMons[battler].status1 = sCoop.medicineStatusAfter;
+                if ((sCoop.medicineStatusBefore & STATUS1_SLEEP) && !(sCoop.medicineStatusAfter & STATUS1_SLEEP))
+                    gBattleMons[battler].status2 &= ~STATUS2_NIGHTMARE;
+                gActiveBattler = battler;
+                BtlController_EmitSetMonData(B_COMM_TO_CONTROLLER, REQUEST_STATUS_BATTLE, 0,
+                                             sizeof(gBattleMons[battler].status1), &gBattleMons[battler].status1);
+                MarkBattlerForControllerExec(battler);
+            }
+            return sCoop.medicineHeal ? 1 : 2;
+        }
+        sCoop.medicineAction = MEDICINE_WAIT_HP;
+        if (sCoop.medicineHeal)
+        {
+            gActiveBattler = battler;
+            BtlController_EmitSetMonData(B_COMM_TO_CONTROLLER, REQUEST_HP_BATTLE, 1u << sCoop.medicineTarget,
+                                         sizeof(sCoop.medicineHPAfter), &sCoop.medicineHPAfter);
+            MarkBattlerForControllerExec(battler);
+            return 0;
+        }
+    }
+    if (sCoop.medicineAction == MEDICINE_WAIT_HP)
+    {
+        sCoop.medicineAction = MEDICINE_WAIT_STATUS;
+        if (sCoop.medicineStatusAfter != sCoop.medicineStatusBefore)
+        {
+            gActiveBattler = battler;
+            BtlController_EmitSetMonData(B_COMM_TO_CONTROLLER, REQUEST_STATUS_BATTLE, 1u << sCoop.medicineTarget,
+                                         sizeof(sCoop.medicineStatusAfter), &sCoop.medicineStatusAfter);
+            MarkBattlerForControllerExec(battler);
+            return 0;
+        }
+    }
+    if (sCoop.medicineAction == MEDICINE_WAIT_STATUS)
+    {
+        sCoop.medicineAction = 0;
+        return 3;
+    }
+    return -1;
 }
 
 /* The owner supplies only private, ball-specific context. No partner bag or

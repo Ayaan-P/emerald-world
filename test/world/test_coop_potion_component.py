@@ -38,6 +38,11 @@ int main(void){
  assert(WorldCoop_MedicineEffect(ITEM_AWAKENING,100,100,STATUS1_SLEEP,0,&heal,&status,&clear));
  assert(heal==0 && status==0);
  assert(!WorldCoop_MedicineEffect(ITEM_BURN_HEAL,0,100,STATUS1_BURN,0,&heal,&status,&clear));
+ assert(WorldCoop_IsMedicine(ITEM_REVIVE));
+ assert(WorldCoop_MedicineEffect(ITEM_REVIVE,0,101,0,0,&heal,&status,&clear) && heal==50);
+ assert(WorldCoop_MedicineEffect(ITEM_REVIVE,0,1,0,0,&heal,&status,&clear) && heal==1);
+ assert(WorldCoop_MedicineEffect(ITEM_MAX_REVIVE,0,101,0,0,&heal,&status,&clear) && heal==101);
+ assert(!WorldCoop_MedicineEffect(ITEM_REVIVE,1,100,0,0,&heal,&status,&clear));
  assert(WorldCoop_MedicineEffect(ITEM_FULL_HEAL,100,100,0,1,&heal,&status,&clear));
  assert(!heal && !status && clear);
  assert(WorldCoop_MedicineEffect(ITEM_FULL_RESTORE,40,100,STATUS1_BURN,1,&heal,&status,&clear));
