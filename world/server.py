@@ -69,8 +69,8 @@ class WorldServer:
             raise ValueError('persist_generated_cave must be a bool')
         self.persist_generated_cave = persist_generated_cave
         self.shared_cave = SharedCave(cave_template) if cave_template is not None else None
-        if self.shared_cave and self.cave_map is None:
-            raise ValueError('generated cave missing from catalog')
+        if self.shared_cave and (self.wilds_map if self.shared_cave.version == 6 else self.cave_map) is None:
+            raise ValueError('generated map missing from catalog')
         if type(max_players) is not int or not 1 <= max_players <= 64:
             raise ValueError('max_players must be between 1 and 64')
         if max_controls is None:
@@ -140,9 +140,9 @@ class WorldServer:
             self.db.execute('CREATE TABLE IF NOT EXISTS generated_cave (singleton INTEGER PRIMARY KEY CHECK(singleton=1), template BLOB NOT NULL)')
             row = self.db.execute('SELECT template FROM generated_cave WHERE singleton=1').fetchone()
             if row is not None:
-                if self.cave_map is None:
-                    raise ValueError('generated cave missing from catalog')
                 self.shared_cave = SharedCave(row[0])
+                if (self.wilds_map if self.shared_cave.version == 6 else self.cave_map) is None:
+                    raise ValueError('generated map missing from catalog')
         self.db.commit()
         os.chmod(self.root / 'world.sqlite3', 0o600)
         from .host_controls import HostControls
@@ -384,8 +384,8 @@ class WorldServer:
                 continue
             # A new or legacy connection with no field state must never see
             # generated-cave peers in its first generic snapshot.
-            if self.cave_map is not None and tuple(state[:2]) == self.cave_map:
-                if (origin is None or tuple(origin[:2]) != self.cave_map or self.shared_cave is None
+            if tuple(state[:2]) in (self.cave_map, self.wilds_map):
+                if (origin is None or tuple(origin[:2]) != tuple(state[:2]) or self.shared_cave is None
                         or conn.get('cave_ack') != self.shared_cave.identity):
                     continue
             if origin is not None and state[:2] != origin[:2]:
@@ -407,7 +407,7 @@ class WorldServer:
                         or not (state[6] or peer.get('field'))):
                     continue
                 # Fly-to-friend is not yet supported for ephemeral caves.
-                if self.cave_map is not None and tuple(state[:2]) == self.cave_map:
+                if tuple(state[:2]) in (self.cave_map, self.wilds_map):
                     continue
                 ttl = max(0, min(180, int((TRAVEL_FRESH_SECONDS
                     - (now - peer.get('state_time', now - TRAVEL_FRESH_SECONDS))) * 60)))
@@ -418,9 +418,9 @@ class WorldServer:
             lines.append('TRAVEL ' + str(len(friends)))
             lines += friends
         lines += ['TILE ' + ' '.join(map(str, tile)) for tile in self.tiles
-                  if self.cave_map is None or tuple(tile[:2]) != self.cave_map]
+                  if tuple(tile[:2]) not in (self.cave_map, self.wilds_map)]
         for obj in self.objects:
-            if self.cave_map is not None and (obj['group'], obj['num']) == self.cave_map:
+            if (obj['group'], obj['num']) in (self.cave_map, self.wilds_map):
                 continue
             lines.append('OBJECT ' + obj['id'] + ' ' + ' '.join(str(obj[k]) for k in ('group','num','x','y','gfx'))
                          + ' ' + obj['text'].encode('ascii').hex())
@@ -444,14 +444,15 @@ class WorldServer:
         # ephemeral caves. Rendering presence is independent of link admission.
         return {name: peer['state'] for name, peer in self.peers.items()
                 if peer['state'] is not None and not peer.get('closing')
-                and (self.cave_map is None or tuple(peer['state'][:2]) != self.cave_map)}
+                and tuple(peer['state'][:2]) not in (self.cave_map, self.wilds_map)}
 
     def _line(self, conn, raw):
         try:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
-                cave_large_wildlife = role.endswith('CAVE5')
+                cave_wilds = role.endswith('CAVE6')
+                cave_large_wildlife = cave_wilds or role.endswith('CAVE5')
                 cave_large = cave_large_wildlife or role.endswith('CAVE4')
                 cave_wildlife = cave_large or role.endswith('CAVE3')
                 cave_profile = cave_wildlife or role.endswith('CAVE2')
@@ -518,6 +519,7 @@ class WorldServer:
                 conn['cave_wildlife'] = cave_wildlife
                 conn['cave_large'] = cave_large
                 conn['cave_large_wildlife'] = cave_large_wildlife
+                conn['cave_wilds'] = cave_wilds
                 conn['cave_offer'] = conn['cave_ack'] = None
                 conn['cave_revoked'] = []
                 conn['chat'] = chat_capable
@@ -545,6 +547,7 @@ class WorldServer:
                     return
                 if fields == ['CAVE', 'GET']:
                     if (self.shared_cave is None
+                            or (self.shared_cave.version == 6 and not conn.get('cave_wilds'))
                             or (self.shared_cave.version == 5 and not conn.get('cave_large_wildlife'))
                             or (self.shared_cave.version == 4 and not conn.get('cave_large'))
                             or (self.shared_cave.version == 3 and not conn.get('cave_wildlife'))
@@ -614,9 +617,10 @@ class WorldServer:
                 return
             limits = [255, 255, 32767, 32767, 4, 65535, 1]
             state = [bounded(v, 0, limit) for v, limit in zip(fields[2:9], limits)]
-            if self.wilds_map is not None and tuple(state[:2]) == self.wilds_map:
-                raise ValueError('generated wilds are offline only')
-            if self.cave_map is not None and tuple(state[:2]) == self.cave_map:
+            if tuple(state[:2]) in (self.cave_map, self.wilds_map):
+                active_map = self.wilds_map if self.shared_cave and self.shared_cave.version == 6 else self.cave_map
+                if tuple(state[:2]) != active_map:
+                    raise ValueError('wrong generated map')
                 if (self.shared_cave and conn.get('cave_capable') and conn.get('cave_revoked')
                         and conn.get('cave_ack') != self.shared_cave.identity):
                     self._queue(conn, 'CAVE RESET ' + self.shared_cave.identity + '\n')
@@ -645,7 +649,7 @@ class WorldServer:
                 self.pending_states[conn['id']] = data
             self._flush_states(force=False)
             conn['seq'], conn['state'], conn['field'] = seq, state, field
-            if self.cave_map is not None and tuple(state[:2]) == self.cave_map:
+            if tuple(state[:2]) in (self.cave_map, self.wilds_map):
                 conn['in_generated_cave'] = True
             elif state[6]:
                 conn['in_generated_cave'] = False
@@ -740,7 +744,7 @@ class WorldServer:
         target = self.peers.get(fields[2])
         state = conn['state']
         other = target.get('state') if target else None
-        if self.cave_map is not None and state and tuple(state[:2]) == self.cave_map:
+        if state and tuple(state[:2]) in (self.cave_map, self.wilds_map):
             raise MeetingUnavailable('generated cave interactions unavailable')
         if (target is conn or not target or not target.get('social') or target.get('closing')
                 or not state or not other or not state[6] or not other[6] or state[:2] != other[:2]):
@@ -769,7 +773,7 @@ class WorldServer:
             self._error(conn, 'STALE')
             return
         state = conn['state']
-        if self.cave_map is not None and state and tuple(state[:2]) == self.cave_map:
+        if state and tuple(state[:2]) in (self.cave_map, self.wilds_map):
             raise ValueError('generated cave interactions unavailable')
         obj = next((o for o in self.objects if o['id'] == fields[2]), None)
         if not state or not state[6] or not obj or state[:2] != [obj['group'], obj['num']]:
@@ -875,14 +879,14 @@ class WorldServer:
         from .shared_cave import SharedCave
         candidate = SharedCave(blob)  # validate completely before mutating anything
         with self.lock:
-            if self.cave_map is None:
-                raise ValueError('generated cave missing from catalog')
+            if (self.wilds_map if candidate.version == 6 else self.cave_map) is None:
+                raise ValueError('generated map missing from catalog')
             if self.shared_cave and candidate.identity == self.shared_cave.identity:
                 self._persist_cave(blob)
                 return candidate.identity
             peers = [peer for peer in self.peers.values() if not peer.get('closing')]
             if any(peer.get('in_generated_cave') or
-                   (peer.get('state') is not None and tuple(peer['state'][:2]) == self.cave_map)
+                   (peer.get('state') is not None and tuple(peer['state'][:2]) in (self.cave_map, self.wilds_map))
                    for peer in peers):
                 raise ValueError('generated cave is occupied')
             message = 'CAVE RESET ' + candidate.identity + '\n'

@@ -16,7 +16,7 @@ class GeneratedWilds(unittest.TestCase):
     def proposal(self):return cave_blueprint.proposal_from_blueprint(DOC,side=63)
     def test_authored_format_and_real_route_encounters(self):
         blob=wilds.encode(self.proposal());self.assertEqual(len(blob),3977);self.assertEqual(blob[:8],b'EWGMAP06')
-        with self.assertRaises(CaveError):SharedCave(blob)
+        self.assertEqual(SharedCave(blob).version,6)
         self.assertIn('data/maps/GeneratedWorld_Wilds/scripts.inc', (ROOT/'data/event_scripts.s').read_text())
         group=json.loads((ROOT/'src/data/wild_encounters.json').read_text())['wild_encounter_groups'][0]['encounters']
         route=next(x for x in group if x['map']=='MAP_ROUTE101');generated=next(x for x in group if x['map']=='MAP_GENERATED_WORLD_WILDS')
@@ -62,7 +62,7 @@ if(LoadGeneratedMapTemplate(argv[3])||calls!=1)return 4;return 0;}
             self.assertEqual(build.returncode,0,build.stderr)
             result=subprocess.run([str(p/'test'),str(p/'good'),str(p/'short'),str(p/'long')],capture_output=True,text=True);self.assertEqual(result.returncode,0,result.stderr)
 
-    def test_offline_area_cannot_be_claimed_or_modified_by_shared_world(self):
+    def test_unadmitted_area_cannot_be_claimed_or_modified_by_shared_world(self):
         with tempfile.TemporaryDirectory() as t:
             p=Path(t);server=MemoryAuthority(p/'socket',p/'world')
             try:

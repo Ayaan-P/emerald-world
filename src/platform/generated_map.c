@@ -272,6 +272,26 @@ bool8 GeneratedMap_StageWildsTemplate(const u8 *cells, u32 size)
     (void)cells; (void)size; return FALSE;
 #endif
 }
+bool8 GeneratedMap_StageSharedWildsTemplate(const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_MAP_WILDS
+    if (!StageLarge(cells, size, TRUE)) return FALSE;
+    sLargeWilds = TRUE;
+    return TRUE;
+#else
+    (void)cells; (void)size; return FALSE;
+#endif
+}
+bool8 GeneratedMap_MatchesPreparedWilds(const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_MAP_WILDS
+    return cells && size == LARGE_CELLS && sLargeWilds && sLargeActive && sPrepared
+        && (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
+        && !memcmp(cells, sLargeTemplate, LARGE_CELLS);
+#else
+    (void)cells; (void)size; return FALSE;
+#endif
+}
 bool8 GeneratedMap_StageSharedLargeTemplate(const u8 *cells, u32 size)
 {
 #if GENERATED_MAP_READY && GENERATED_MAP_LARGE
@@ -284,6 +304,9 @@ bool8 GeneratedMap_MatchesPreparedLarge(const u8 *cells, u32 size)
 {
 #if GENERATED_MAP_READY && GENERATED_MAP_LARGE
     return cells && size == LARGE_CELLS && sLargeActive && sPrepared
+#if GENERATED_MAP_WILDS
+        && !sLargeWilds
+#endif
 #if GENERATED_CAVE_WILDLIFE
         && !sHasWildlife
 #endif
@@ -298,6 +321,9 @@ bool8 GeneratedMap_MatchesPreparedLargeWildlife(const u8 *cells, u32 size, u8 pr
 {
 #if GENERATED_MAP_READY && GENERATED_MAP_LARGE && GENERATED_CAVE_WILDLIFE
     return cells && size == LARGE_CELLS && sLargeActive && sPrepared && sHasWildlife
+#if GENERATED_MAP_WILDS
+        && !sLargeWilds
+#endif
         && (GeneratedMap_IsInside() || GeneratedMap_EntryPending()) && profile == sEncounterProfile
         && data && dataSize == GENERATED_WILDLIFE_BYTES && !memcmp(data, sWildlifeRaw, GENERATED_WILDLIFE_BYTES)
         && !memcmp(cells, sLargeTemplate, LARGE_CELLS);

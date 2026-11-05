@@ -452,21 +452,26 @@ class DesktopSession:
                        else f'{trainer} starting. Use the native game window to play.')
         return process
 
-    def author_shared_cave(self, theme):
+    def author_shared_cave(self, theme, *, wilds=False):
         """Explicit local-host action; never display provider or credential text."""
         from .author_cave import MAX_THEME, author
+        if type(wilds) is not bool:
+            raise SessionError('Choose a cave or outdoor area.')
         if type(theme) is not str or not theme.strip() or len(theme.encode('utf-8')) > MAX_THEME:
             raise SessionError('Enter a cave description of at most 2,000 UTF-8 bytes.')
         server, state = self.server, self.state
-        if server is None or state is None or getattr(server, '_closed', True) or server.cave_map is None:
-            raise SessionError('Host a compatible local world before generating a cave.')
+        if server is None or state is None or getattr(server, '_closed', True) or (server.wilds_map if wilds else server.cave_map) is None:
+            raise SessionError('Host a compatible local world before generating an area.')
         with server.lock:
             if any(peer.get('in_generated_cave') or
-                   (peer.get('state') is not None and tuple(peer['state'][:2]) == server.cave_map)
+                   (peer.get('state') is not None and tuple(peer['state'][:2]) in (server.cave_map, server.wilds_map))
                    for peer in server.peers.values() if not peer.get('closing')):
                 raise SessionError('Ask everyone to leave the generated cave before replacing it.')
         try:
-            _, blob = author(theme, large=True, custom_wildlife=True)
+            if wilds:
+                _, blob = author(theme, large=True, wilds=True)
+            else:
+                _, blob = author(theme, large=True, custom_wildlife=True)
         except (OSError, ValueError, TypeError, TimeoutError, UnicodeError):
             raise SessionError('Cave generation failed. Check model login and configuration, then retry.') from None
         if self.server is not server or self.state != state or getattr(server, '_closed', True):
@@ -475,7 +480,7 @@ class DesktopSession:
             identity = server._replace_cave(blob)
         except (OSError, ValueError):
             raise SessionError('The cave could not be installed. Check that everyone has left and try again.') from None
-        self.status = ('Generated cave installed for compatible players. ' +
+        self.status = (('Generated outdoor area' if wilds else 'Generated cave') + ' installed for compatible players. ' +
                        ('It will persist when this world restarts.' if server.persist_generated_cave else
                         'It lasts for this host session unless persistence is enabled.'))
         return identity
@@ -997,10 +1002,10 @@ class DesktopApp:
         actions([('Start Luna GM (host)', self.start_gm), ('Stop GM (host)', self.stop_gm)])
         field('intent', 'Player intention (optional)')
         actions([('Submit intention', self.submit_intent), ('Refresh intent status', self.refresh_intents)])
-        heading('Generate a shared cave')
-        note('Host a local world, then describe a 63×63 cave. Generating sends your description to the configured model provider and may incur charges. It replaces the current generated cave only when everyone has left and persists across local host restarts. Compatible experimental clients are required.')
-        field('cave_theme', 'Cave description')
-        actions([('Generate shared cave', self.generate_cave)])
+        heading('Generate a shared area')
+        note('Host a local world, then describe a 63×63 cave or outdoor area. Generating sends your description to the configured model provider and may incur charges. It replaces the current generated area only when everyone has left and persists across local host restarts. Compatible experimental clients are required.')
+        field('cave_theme', 'Area description')
+        actions([('Generate shared cave', self.generate_cave), ('Generate shared wilds', self.generate_wilds)])
         page, row = pages['Settings'], 0
         heading('Game display')
         note('A dedicated nested Xephyr display keeps the native game away from your desktop X socket. Start a new display here, or explicitly select an existing dedicated display. Existing displays are never stopped by this launcher.')
@@ -1124,6 +1129,10 @@ class DesktopApp:
 
     def generate_cave(self):
         # submit() collects values and performs the confirmation on the UI thread.
+        pass
+
+    def generate_wilds(self):
+        # submit() owns the confirmation and background operation.
         pass
 
     def start_gm(self):
@@ -1431,23 +1440,27 @@ class DesktopApp:
             self.message.set('Starting session operation. The window remains available...')
             self._set_busy(True)
             return
-        if operation == self.generate_cave:
+        if operation in (self.generate_cave, self.generate_wilds):
             from tkinter import messagebox
             value = self.values()
             theme = value['cave_theme']
+            wilds = operation == self.generate_wilds
             if not theme or len(theme.encode('utf-8')) > 2000:
                 self.message.set('Enter a cave description of at most 2,000 UTF-8 bytes.')
                 return
             if self.session.server is None or self.session.state is None:
                 self.message.set('Host a compatible local world before generating a cave.')
                 return
-            if not messagebox.askyesno('Generate a shared cave?',
-                    'This sends your cave description to the configured model provider and may incur charges. The current generated cave will be replaced if it is unoccupied. Continue?',
+            if not messagebox.askyesno('Generate shared wilds?' if wilds else 'Generate a shared cave?',
+                    'This sends your area description to the configured model provider and may incur charges. The current generated area will be replaced if it is unoccupied. Continue?',
                     parent=self.window, default='no'):
                 return
             self.pending_kind = 'author_cave'
-            self.pending = self.executor.submit(self.session.author_shared_cave, theme)
-            self.message.set('Generating a shared cave. The window remains available...')
+            if wilds:
+                self.pending = self.executor.submit(self.session.author_shared_cave, theme, wilds=True)
+            else:
+                self.pending = self.executor.submit(self.session.author_shared_cave, theme)
+            self.message.set('Generating a shared area. The window remains available...')
             self._set_busy(True)
             return
         if operation == self.submit_intent:

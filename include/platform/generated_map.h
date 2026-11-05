@@ -51,6 +51,8 @@ struct WildPokemonInfo;
 bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size);
 bool8 GeneratedMap_StageLargeTemplate(const u8 *cells, u32 size);
 bool8 GeneratedMap_StageWildsTemplate(const u8 *cells, u32 size);
+bool8 GeneratedMap_StageSharedWildsTemplate(const u8 *cells, u32 size);
+bool8 GeneratedMap_MatchesPreparedWilds(const u8 *cells, u32 size);
 bool8 GeneratedMap_StageSharedLargeTemplate(const u8 *cells, u32 size);
 bool8 GeneratedMap_MatchesPreparedLarge(const u8 *cells, u32 size);
 bool8 GeneratedMap_MatchesPreparedLargeWildlife(const u8 *cells, u32 size, u8 profile, const u8 *data, u32 dataSize);

@@ -152,11 +152,16 @@ def main(argv=None):
     target.add_argument('--wilds-output', type=Path, help='write an offline generated outdoor wilderness')
     target.add_argument('--large-wildlife-output', type=Path, help='write a large offline cave with model-authored wildlife')
     target.add_argument('--large-offline-output', type=Path, help='write a new large offline 63x63 cave')
+    parser.add_argument('--shared-wilds', action='store_true', help='publish generated outdoor terrain to a compatible authority')
     parser.add_argument('--shared-large-wildlife', action='store_true', help='publish a large cave with custom wildlife')
     parser.add_argument('--shared-large', action='store_true', help='publish a model-authored large cave to a compatible owner authority')
     parser.add_argument('--shared-wildlife', action='store_true', help='publish model-authored wildlife to a compatible shared cave host')
     parser.add_argument('--shared-ecology', action='store_true', help='publish a model-selected encounter profile to a compatible shared cave host')
     args = parser.parse_args(argv)
+    if args.shared_wilds and (args.shared_large_wildlife or args.shared_large or args.shared_wildlife or args.shared_ecology):
+        parser.error('--shared-wilds cannot be combined with other shared modes')
+    if args.shared_wilds and args.admin_socket is None:
+        parser.error('--shared-wilds requires --admin-socket')
     if args.shared_large_wildlife and (args.shared_large or args.shared_wildlife or args.shared_ecology):
         parser.error('--shared-large-wildlife cannot be combined with other shared modes')
     if args.shared_large_wildlife and args.admin_socket is None:
@@ -174,8 +179,8 @@ def main(argv=None):
     try:
         proposal, blob = author(args.theme, args.timeout, offline_ecology=args.offline_output is not None or args.shared_ecology,
                                 custom_wildlife=args.offline_wildlife_output is not None or args.shared_wildlife or args.large_wildlife_output is not None or args.shared_large_wildlife,
-                                large=args.large_offline_output is not None or args.shared_large or args.large_wildlife_output is not None or args.shared_large_wildlife or args.wilds_output is not None,
-                                wilds=args.wilds_output is not None)
+                                large=args.large_offline_output is not None or args.shared_large or args.large_wildlife_output is not None or args.shared_large_wildlife or args.wilds_output is not None or args.shared_wilds,
+                                wilds=args.wilds_output is not None or args.shared_wilds)
         output = args.offline_output or args.offline_wildlife_output or args.large_offline_output or args.large_wildlife_output or args.wilds_output
         if output is not None:
             with output.open('xb') as out:

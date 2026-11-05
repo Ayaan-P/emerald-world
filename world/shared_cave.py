@@ -14,6 +14,7 @@ MAGIC_PROFILE = b'EWGMAP02'
 MAGIC_WILDLIFE = b'EWGMAP03'
 MAGIC_LARGE = b'EWGMAP04'
 MAGIC_LARGE_WILDLIFE = b'EWGMAP05'
+MAGIC_WILDS = b'EWGMAP06'
 LARGE_SIDE = 63
 SIZE = len(MAGIC) + SIDE * SIDE
 PROFILE_SIZE = SIZE + 1
@@ -55,8 +56,8 @@ class SharedCave:
                 if species not in SPECIES.values() or not 1 <= self.wildlife[offset + 2] <= 100:
                     raise CaveError('invalid wildlife slot')
             cells = blob[9 + WILDLIFE_BYTES:]
-        elif len(blob) == LARGE_SIZE and blob[:8] == MAGIC_LARGE:
-            self.version = 4
+        elif len(blob) == LARGE_SIZE and blob[:8] in (MAGIC_LARGE, MAGIC_WILDS):
+            self.version = 6 if blob[:8] == MAGIC_WILDS else 4
             self.profile = None
             self.side = LARGE_SIDE
             cells = blob[8:]
@@ -92,6 +93,7 @@ class SharedCave:
         if self.version == 3: suffix += ' 3'
         if self.version == 4: suffix = ' LARGE'
         if self.version == 5: suffix += ' 5'
+        if self.version == 6: suffix = ' WILDS'
         frames = [f'CAVE BEGIN {self.identity}{suffix}']
         if self.wildlife is not None:
             frames.append(f'CAVE WILD {self.identity} {self.wildlife.hex()}')
