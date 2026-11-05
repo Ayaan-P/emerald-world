@@ -14,6 +14,8 @@ class State:
     free=True
     battle=False
     party=[{'species': 252}]
+    cave_tile=0x201
+    cave_exit_tile=0x207
     def __init__(self,name,map_id,pos): self.map_name=name;self.map=map_id;self.pos=pos
 
 class FakeGame:
@@ -77,6 +79,10 @@ class CaveHarnessContract(unittest.TestCase):
 
     def test_offline_profile_observes_matching_meteor_encounter(self):
         class MeteorGame(FakeGame):
+            def tap(self,button,times=1,**kwargs):
+                super().tap(button,times,**kwargs)
+                if self.state.map_name=='GeneratedWorld_Cave':
+                    self.state.cave_tile=0x31b;self.state.cave_exit_tile=0x323
             def press(self,button,frames):
                 super().press(button,frames)
                 if len([a for a in self.actions if a[0] in ('LEFT','RIGHT')]) >= 2:
@@ -93,6 +99,29 @@ class CaveHarnessContract(unittest.TestCase):
                  patch.object(module,'encode',wraps=module.encode) as encode:
                 module.run('/bin/true',seed,out,encounter=True,profile='meteor',observe_only=True)
             self.assertEqual(encode.call_args.kwargs['encounter_profile'],'meteor')
+            self.assertEqual(FakeGame.last.a,2)
+            self.assertEqual((out/'game.sav').read_bytes(),b'disposable')
+
+    def test_ice_profile_checks_native_ice_tiles_and_opponent(self):
+        class IceGame(FakeGame):
+            def tap(self,button,times=1,**kwargs):
+                super().tap(button,times,**kwargs)
+                if self.state.map_name=='GeneratedWorld_Cave':
+                    self.state.cave_tile=0x385;self.state.cave_exit_tile=0x386
+            def press(self,button,frames):
+                super().press(button,frames)
+                if len([a for a in self.actions if a[0] in ('LEFT','RIGHT')]) >= 2:
+                    self.state.battle=True
+                    self.state.battle_state={'battlers':[{'side':1,'species':341,'level':26}]}
+        def leave(game,direction): game.state=State('LittlerootTown',(0,9),(7,16))
+        def wait(game,condition,*args,**kwargs):
+            if not condition(game.state):raise AssertionError('unexpected test state')
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);seed=root/'seed';seed.write_bytes(b'disposable');out=root/'out'
+            with patch.object(module.driver,'Game',IceGame),patch.object(module.driver,'continue_game'), \
+                 patch.object(module.driver,'walk_to'),patch.object(module.driver,'leave_map',leave), \
+                 patch.object(module.driver,'wait_until',wait),patch('builtins.print'):
+                module.run('/bin/true',seed,out,encounter=True,profile='ice',observe_only=True)
             self.assertEqual(FakeGame.last.a,2)
             self.assertEqual((out/'game.sav').read_bytes(),b'disposable')
 

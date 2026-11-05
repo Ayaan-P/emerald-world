@@ -81,10 +81,29 @@ static void BuildMaze(u32 seed)
  * A separate pass prevents the chosen art from affecting neighbor masks. */
 static void GeneratedMap_Autotile(void)
 {
-    static const u16 walls[16] = {
+    static const u16 originWalls[16] = {
         0x322, 0x332, 0x322, 0x31a, 0x329, 0x329, 0x32a, 0x330,
         0x320, 0x318, 0x322, 0x330, 0x328, 0x330, 0x330, 0x330
     };
+    const u16 *walls = originWalls;
+    u16 floor = GEN_AUTOFLOOR, exit = GEN_EXIT;
+#if GENERATED_CAVE_BIOMES
+    /* All three visual sets use the existing general/cave tilesets. Meteor
+     * uses the Origin-inspired set; granite and victory share stone art. */
+    static const u16 stoneWalls[16] = {
+        0x211, 0x209, 0x212, 0x20a, 0x219, 0x219, 0x21a, 0x20a,
+        0x210, 0x208, 0x212, 0x202, 0x218, 0x208, 0x203, 0x202
+    };
+    static const u16 iceWalls[16] = {
+        0x381, 0x379, 0x382, 0x37a, 0x389, 0x389, 0x38a, 0x37d,
+        0x380, 0x37d, 0x382, 0x37a, 0x388, 0x37d, 0x37e, 0x37d
+    };
+    if (sEncounterProfile == 2) {
+        walls = iceWalls; floor = 0x3385; exit = 0x3386;
+    } else if (sEncounterProfile == 0 || sEncounterProfile == 3) {
+        walls = stoneWalls; floor = 0x3201; exit = 0x3207;
+    }
+#endif
     u8 walkable[GEN_CELLS];
     u16 i;
     for (i = 0; i < GEN_CELLS; i++)
@@ -94,7 +113,7 @@ static void GeneratedMap_Autotile(void)
         unsigned x = i % GEN_SIDE, y = i / GEN_SIDE, mask = 0;
         if (walkable[i])
         {
-            if (sTiles[i] != GEN_EXIT) sTiles[i] = GEN_AUTOFLOOR;
+            sTiles[i] = sTiles[i] == GEN_EXIT ? exit : floor;
             continue;
         }
         if (y > 0 && walkable[i - GEN_SIDE]) mask |= 1;
@@ -241,6 +260,10 @@ bool8 GeneratedMap_MatchesPrepared(const u8 *cells, u32 size)
         if ((cells[i] == '.') != (sTiles[i] == GEN_FLOOR || sTiles[i] == GEN_EXIT
 #if GENERATED_MAP_AUTOTILE
                                || sTiles[i] == GEN_AUTOFLOOR
+#endif
+#if GENERATED_CAVE_BIOMES
+                               || sTiles[i] == 0x3201 || sTiles[i] == 0x3207
+                               || sTiles[i] == 0x3385 || sTiles[i] == 0x3386
 #endif
                                )) return FALSE;
     return TRUE;

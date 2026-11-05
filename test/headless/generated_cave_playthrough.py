@@ -56,6 +56,10 @@ def run(binary, seed, out, encounter=False, profile=None, observe_only=False):
             driver.wait_until(game, lambda state: state.map_name == 'GeneratedWorld_Cave' and state.free)
             if game.state.pos != (1, 1):
                 raise RuntimeError(f'unexpected cave spawn: {game.state}')
+            expected = {'meteor': (0x31b, 0x323), 'ice': (0x385, 0x386)}.get(profile, (0x201, 0x207))
+            actual = (getattr(game.state, 'cave_tile', None), getattr(game.state, 'cave_exit_tile', None))
+            if actual != expected:
+                raise RuntimeError(f'incorrect native cave biome tiles: {actual}, expected {expected}')
             game.press('RIGHT', 16)
             game.wait(20)
             if encounter:
@@ -78,6 +82,9 @@ def run(binary, seed, out, encounter=False, profile=None, observe_only=False):
                 # Confirm the visible opponent belongs to the selected native table.
                 if profile == 'meteor':
                     allowed = {(41,level) for level in range(14,21)} | {(349,14),(349,16),(349,18)}
+                elif profile == 'ice':
+                    allowed = {(41,26),(41,28),(41,30),(42,30),(42,32),
+                               (341,26),(341,28),(341,30),(341,32),(346,26),(346,28),(346,30)}
                 else:
                     allowed = {(41,7),(41,8),(335,7),(335,8),(335,9),(335,10),(335,6),
                                (63,8),(74,7),(74,8),(74,6),(74,9)}
@@ -135,7 +142,7 @@ def main():
     parser.add_argument('--seed-save', required=True)
     parser.add_argument('--out', required=True)
     parser.add_argument('--encounter', action='store_true', help='walk until a visible wild encounter starts')
-    parser.add_argument('--profile', choices=('meteor',), help='use a versioned offline encounter profile')
+    parser.add_argument('--profile', choices=('meteor','ice'), help='use a versioned offline encounter profile')
     parser.add_argument('--observe-only', action='store_true', help='stop at the visible encounter')
     args = parser.parse_args()
     if (args.profile or args.observe_only) and not args.encounter:

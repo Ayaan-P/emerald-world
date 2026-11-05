@@ -14,6 +14,13 @@
 #define GENERATED_CAVE_PROFILES 0
 #endif
 
+#ifndef GENERATED_CAVE_BIOMES
+#define GENERATED_CAVE_BIOMES 0
+#endif
+#if GENERATED_CAVE_BIOMES && (!GENERATED_MAP_READY || !GENERATED_MAP_AUTOTILE || !GENERATED_CAVE_PROFILES)
+#error GENERATED_CAVE_BIOMES requires generated maps, autotiling and cave profiles
+#endif
+
 #ifdef PORTABLE
 struct MapLayout;
 #define GENERATED_MAP_TEMPLATE_BYTES (31 * 31)
