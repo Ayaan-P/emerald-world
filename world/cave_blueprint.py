@@ -13,7 +13,9 @@ import sys
 MAX_INPUT = 16384
 
 
-def proposal_from_blueprint(doc):
+def proposal_from_blueprint(doc, *, side=31):
+    if type(side) is not int or side not in (31, 63):
+        raise ValueError('unsupported cave size')
     keys = {'rooms', 'links', 'entrance_room', 'exit_room'}
     if type(doc) is not dict or not keys <= set(doc) or set(doc) - keys - {'style', 'seed', 'corridor_width'}:
         raise ValueError('invalid blueprint keys')
@@ -30,13 +32,13 @@ def proposal_from_blueprint(doc):
     if type(links) is not list or len(links) > 64:
         raise ValueError('links must be a list of at most 64 pairs')
     centers = []
-    grid = [['#'] * 31 for _ in range(31)]
+    grid = [['#'] * side for _ in range(side)]
     for room_id, room in enumerate(rooms):
         if (type(room) is not list or len(room) != 4
                 or any(type(v) is not int for v in room)):
             raise ValueError('each room must be [x,y,width,height] integers')
         x, y, w, h = room
-        if w < 2 or h < 2 or x < 1 or y < 1 or x + w > 30 or y + h > 30:
+        if w < 2 or h < 2 or x < 1 or y < 1 or x + w > side - 1 or y + h > side - 1:
             raise ValueError('room rectangle must fit inside the perimeter')
         cx, cy = x + (w - 1) // 2, y + (h - 1) // 2
         centers.append((cx, cy))
@@ -92,7 +94,7 @@ def proposal_from_blueprint(doc):
         def brush(px, py):
             for oy in range(-(width // 2), (width + 1) // 2):
                 for ox in range(-(width // 2), (width + 1) // 2):
-                    if 1 <= px + ox <= 29 and 1 <= py + oy <= 29:
+                    if 1 <= px + ox <= side - 2 and 1 <= py + oy <= side - 2:
                         grid[py + oy][px + ox] = '.'
         while x != tx:
             brush(x, y)
@@ -120,21 +122,21 @@ def proposal_from_blueprint(doc):
     if len(reachable) != len(rooms):
         raise ValueError('all rooms must be connected by links')
     corridor((1, 1), centers[entrance])
-    corridor(centers[exit_room], (29, 28))
-    grid[29][29] = '.'
+    corridor(centers[exit_room], (side - 2, side - 3))
+    grid[side - 2][side - 2] = '.'
     # Remove isolated pixels caused by the organic edge, without changing the
     # connected room graph or the required entrance and exit.
     seen, stack = {(1, 1)}, [(1, 1)]
     while stack:
         px, py = stack.pop()
         for nx, ny in ((px,py-1),(px+1,py),(px,py+1),(px-1,py)):
-            if 0 <= nx < 31 and 0 <= ny < 31 and grid[ny][nx] == '.' and (nx,ny) not in seen:
+            if 0 <= nx < side and 0 <= ny < side and grid[ny][nx] == '.' and (nx,ny) not in seen:
                 seen.add((nx,ny)); stack.append((nx,ny))
-    for yy in range(31):
-        for xx in range(31):
+    for yy in range(side):
+        for xx in range(side):
             if grid[yy][xx] == '.' and (xx,yy) not in seen:
                 grid[yy][xx] = '#'
-    return {'rows': [''.join(row) for row in grid], 'spawn': [1, 1], 'exit': [29, 29]}
+    return {'rows': [''.join(row) for row in grid], 'spawn': [1, 1], 'exit': [side - 2, side - 2]}
 
 
 def main():

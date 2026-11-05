@@ -141,7 +141,12 @@ static bool LoadGeneratedMapTemplate(const char *path)
 #if GENERATED_CAVE_WILDLIFE
     static const u8 magic3[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '3' };
 #endif
+#if GENERATED_MAP_LARGE
+    static const u8 magic4[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '4' };
+    u8 bytes[8 + GENERATED_LARGE_MAP_TEMPLATE_BYTES];
+#else
     u8 bytes[9 + GENERATED_WILDLIFE_BYTES + GENERATED_MAP_TEMPLATE_BYTES];
+#endif
     FILE *file = NativeFile_Open(path, "rb");
     size_t count;
     int extra;
@@ -165,6 +170,10 @@ static bool LoadGeneratedMapTemplate(const char *path)
               && GeneratedMap_StageTemplate(bytes + 9 + GENERATED_WILDLIFE_BYTES, GENERATED_MAP_TEMPLATE_BYTES))
             valid = GeneratedMap_SetEncounterProfile(bytes[8])
                  && GeneratedMap_SetWildlife(bytes + 9, GENERATED_WILDLIFE_BYTES);
+#endif
+#if GENERATED_MAP_LARGE
+        else if (count == 8 + GENERATED_LARGE_MAP_TEMPLATE_BYTES && !memcmp(bytes, magic4, 8))
+            valid = GeneratedMap_StageLargeTemplate(bytes + 8, GENERATED_LARGE_MAP_TEMPLATE_BYTES);
 #endif
     }
     if (fclose(file) != 0) valid = FALSE;

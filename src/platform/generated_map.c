@@ -18,8 +18,8 @@
 #include <string.h>
 
 #if GENERATED_MAP_READY
-/* 31x31 fits the stock backup-map buffer even with its view border. The
- * cave palette and metatiles come from the existing Cave of Origin layout. */
+/* Both supported sizes fit the native backup-map buffer with the view border.
+ * Cave palette and metatiles come from the existing Cave of Origin layout. */
 #define GEN_SIDE 31
 #define GEN_CELLS (GEN_SIDE * GEN_SIDE)
 #define GEN_FLOOR 0x3333
@@ -30,6 +30,13 @@
 
 static u16 sTiles[GEN_CELLS];
 static u8 sTemplate[GEN_CELLS];
+#if GENERATED_MAP_LARGE
+#define LARGE_SIDE 63
+#define LARGE_CELLS (LARGE_SIDE * LARGE_SIDE)
+static u16 sLargeTiles[LARGE_CELLS];
+static u8 sLargeTemplate[LARGE_CELLS];
+static bool8 sLargeStaged, sLargeActive;
+#endif
 static bool8 sHasTemplate;
 #if GENERATED_CAVE_PROFILES
 static u8 sEncounterProfile;
@@ -114,23 +121,31 @@ static void GeneratedMap_Autotile(void)
         walls = stoneWalls; floor = 0x3201; exit = 0x3207;
     }
 #endif
+#if GENERATED_MAP_LARGE
+    u8 walkable[LARGE_CELLS];
+    u16 *tiles = sLargeActive ? sLargeTiles : sTiles;
+    const unsigned side = sLargeActive ? LARGE_SIDE : GEN_SIDE;
+#else
     u8 walkable[GEN_CELLS];
+    u16 *tiles = sTiles;
+    const unsigned side = GEN_SIDE;
+#endif
     u16 i;
-    for (i = 0; i < GEN_CELLS; i++)
-        walkable[i] = sTiles[i] == GEN_FLOOR || sTiles[i] == GEN_EXIT;
-    for (i = 0; i < GEN_CELLS; i++)
+    for (i = 0; i < (side * side); i++)
+        walkable[i] = tiles[i] == GEN_FLOOR || tiles[i] == GEN_EXIT;
+    for (i = 0; i < (side * side); i++)
     {
-        unsigned x = i % GEN_SIDE, y = i / GEN_SIDE, mask = 0;
+        unsigned x = i % side, y = i / side, mask = 0;
         if (walkable[i])
         {
-            sTiles[i] = sTiles[i] == GEN_EXIT ? exit : floor;
+            tiles[i] = tiles[i] == GEN_EXIT ? exit : floor;
             continue;
         }
-        if (y > 0 && walkable[i - GEN_SIDE]) mask |= 1;
-        if (x + 1 < GEN_SIDE && walkable[i + 1]) mask |= 2;
-        if (y + 1 < GEN_SIDE && walkable[i + GEN_SIDE]) mask |= 4;
+        if (y > 0 && walkable[i - side]) mask |= 1;
+        if (x + 1 < side && walkable[i + 1]) mask |= 2;
+        if (y + 1 < side && walkable[i + side]) mask |= 4;
         if (x > 0 && walkable[i - 1]) mask |= 8;
-        sTiles[i] = 0x400 | walls[mask];
+        tiles[i] = 0x400 | walls[mask];
     }
 }
 #endif
@@ -174,6 +189,9 @@ bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size)
         if (cells[i] == '.' && !seen[i]) return FALSE;
     memcpy(sTemplate, cells, sizeof(sTemplate));
     sHasTemplate = TRUE;
+#if GENERATED_MAP_LARGE
+    sLargeStaged = FALSE;
+#endif
 #if GENERATED_CAVE_PROFILES
     sEncounterProfile = 0;
     sSharedEncounterProfile = FALSE;
@@ -185,6 +203,46 @@ bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size)
 #else
     (void)cells; (void)size;
     return FALSE;
+#endif
+}
+
+/* Large templates are offline-only. Validate completely before replacing the
+ * staged instance; 63+view borders still fits the native backup-map buffer. */
+bool8 GeneratedMap_StageLargeTemplate(const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_MAP_LARGE
+    u8 seen[LARGE_CELLS] = {0};
+    u16 queue[LARGE_CELLS], head = 0, tail = 0, i;
+    if (!cells || size != LARGE_CELLS || WorldBridge_Enabled() || GeneratedMap_IsInside() || GeneratedMap_EntryPending()) return FALSE;
+    for (i = 0; i < LARGE_CELLS; i++) {
+        unsigned x = i % LARGE_SIDE, y = i / LARGE_SIDE;
+        if ((cells[i] != '.' && cells[i] != '#') ||
+            ((x == 0 || y == 0 || x == LARGE_SIDE - 1 || y == LARGE_SIDE - 1) && cells[i] != '#')) return FALSE;
+    }
+    if (cells[LARGE_SIDE + 1] != '.' || cells[60 * LARGE_SIDE + 61] != '.' || cells[61 * LARGE_SIDE + 61] != '.') return FALSE;
+    queue[tail++] = LARGE_SIDE + 1; seen[LARGE_SIDE + 1] = TRUE;
+    while (head < tail) {
+        s16 pos = queue[head++], neighbor[4] = {pos - LARGE_SIDE, pos + 1, pos + LARGE_SIDE, pos - 1};
+        unsigned d;
+        for (d = 0; d < 4; d++) {
+            s16 next = neighbor[d];
+            if (next >= 0 && next < LARGE_CELLS && cells[next] == '.' && !seen[next]) {
+                seen[next] = TRUE; queue[tail++] = next;
+            }
+        }
+    }
+    for (i = 0; i < LARGE_CELLS; i++) if (cells[i] == '.' && !seen[i]) return FALSE;
+    memcpy(sLargeTemplate, cells, LARGE_CELLS);
+    sLargeStaged = TRUE; sHasTemplate = FALSE;
+#if GENERATED_CAVE_PROFILES
+    sEncounterProfile = 0; sSharedEncounterProfile = FALSE;
+#endif
+#if GENERATED_CAVE_WILDLIFE
+    sHasWildlife = sSharedWildlife = FALSE;
+#endif
+    return TRUE;
+#else
+    (void)cells; (void)size; return FALSE;
 #endif
 }
 
@@ -412,6 +470,14 @@ bool8 GeneratedMap_Enter(void)
     sPreviousDynamicWarp = gSaveBlock1Ptr->dynamicWarp;
     SetDynamicWarpWithCoords(0, sReturn.mapGroup, sReturn.mapNum, WARP_ID_NONE, sReturn.x, sReturn.y);
     sSeenInside = FALSE;
+#if GENERATED_MAP_LARGE
+    sLargeActive = sLargeStaged && !WorldBridge_Enabled();
+    if (sLargeActive) {
+        u16 i;
+        for (i = 0; i < LARGE_CELLS; i++) sLargeTiles[i] = sLargeTemplate[i] == '.' ? GEN_FLOOR : GEN_WALL;
+        sLargeTiles[61 * LARGE_SIDE + 61] = GEN_EXIT;
+    } else
+#endif
     if (sHasTemplate)
     {
         u16 i;
@@ -453,8 +519,13 @@ const struct MapLayout *GeneratedMap_ResolveLayout(const struct MapLayout *base)
     {
         sSeenInside = TRUE;
         sLayout = *base;
+#if GENERATED_MAP_LARGE
+        sLayout.width = sLayout.height = sLargeActive ? LARGE_SIDE : GEN_SIDE;
+        sLayout.map = sLargeActive ? sLargeTiles : sTiles;
+#else
         sLayout.width = sLayout.height = GEN_SIDE;
         sLayout.map = sTiles;
+#endif
         return &sLayout;
     }
     if (sPrepared && sSeenInside && !GeneratedMap_IsInside())

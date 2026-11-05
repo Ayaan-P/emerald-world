@@ -28,12 +28,21 @@
 #error GENERATED_CAVE_WILDLIFE requires generated maps and cave profiles
 #endif
 
+#ifndef GENERATED_MAP_LARGE
+#define GENERATED_MAP_LARGE 0
+#endif
+#if GENERATED_MAP_LARGE && !GENERATED_MAP_READY
+#error GENERATED_MAP_LARGE requires generated maps
+#endif
+
 #ifdef PORTABLE
 struct MapLayout;
 struct WildPokemonInfo;
 #define GENERATED_WILDLIFE_BYTES 37
 #define GENERATED_MAP_TEMPLATE_BYTES (31 * 31)
+#define GENERATED_LARGE_MAP_TEMPLATE_BYTES (63 * 63)
 bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size);
+bool8 GeneratedMap_StageLargeTemplate(const u8 *cells, u32 size);
 bool8 GeneratedMap_SetEncounterProfile(u8 profile);
 bool8 GeneratedMap_SetSharedEncounterProfile(u8 profile);
 bool8 GeneratedMap_MatchesPreparedProfile(const u8 *cells, u32 size, u8 profile);

@@ -21,6 +21,13 @@
       "elevation": 3,
       "dest_map": "MAP_DYNAMIC",
       "dest_warp_id": "WARP_ID_DYNAMIC"
+    },
+    {
+      "x": 61,
+      "y": 61,
+      "elevation": 3,
+      "dest_map": "MAP_DYNAMIC",
+      "dest_warp_id": "WARP_ID_DYNAMIC"
     }
   ],
   "coord_events": [],

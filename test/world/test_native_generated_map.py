@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[2]
 class NativeGeneratedMap(unittest.TestCase):
  def test_exit_tile_uses_real_cave_south_warp_behavior(self):
   entry=json.loads((ROOT/'data/maps/GeneratedWorld_Cave/map.json').read_text())
-  self.assertEqual(entry['warp_events'],[{'x':29,'y':29,'elevation':3,'dest_map':'MAP_DYNAMIC','dest_warp_id':'WARP_ID_DYNAMIC'}])
+  self.assertEqual(entry['warp_events'],[{'x':x,'y':x,'elevation':3,'dest_map':'MAP_DYNAMIC','dest_warp_id':'WARP_ID_DYNAMIC'} for x in (29,61)])
   # 0x3323 packs cave metatile 0x323, collision 0 and elevation 3.
   attr=(ROOT/'data/tilesets/secondary/cave/metatile_attributes.bin').read_bytes()
   offset=(0x323-512)*2
