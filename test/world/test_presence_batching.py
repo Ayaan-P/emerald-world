@@ -68,6 +68,28 @@ class PresenceBatching(unittest.TestCase):
    self.assertTrue(self.server.presence_dirty)
    clock.return_value=100.16;self.server._poll_presence(clock())
    self.assertIn(b'PEER P01 0 0 2 4 1 7 0',self.clients[0]['out'])
+ def test_identical_returning_state_revives_expired_friend(self):
+  with patch('world.server.time.monotonic') as clock:
+   clock.return_value=100.0;self.server.last_presence_broadcast=100.0
+   self.clients[0]['travel']=True
+   self.send(self.clients[0],1,1);self.send(self.clients[1],1,2)
+   clock.return_value=100.06;self.server._poll_presence(clock())
+   clock.return_value=103.2;self.send(self.clients[0],2,1)
+   clock.return_value=103.26;self.server._poll_presence(clock())
+   self.clients[0]['out'].clear()
+   clock.return_value=103.3;self.send(self.clients[1],2,2)
+   self.assertTrue(self.server.presence_dirty)
+   clock.return_value=103.36;self.server._poll_presence(clock())
+   self.assertIn(b'FRIEND P01 ',self.clients[0]['out'])
+ def test_return_after_ttl_rounds_to_zero_is_not_suppressed(self):
+  with patch('world.server.time.monotonic') as clock:
+   clock.return_value=100.0;self.server.last_presence_broadcast=100.0
+   self.send(self.clients[1],1,2)
+   clock.return_value=100.06;self.server._poll_presence(clock())
+   # At 2.99 seconds the wire TTL has already rounded down to zero.
+   clock.return_value=102.98;self.server._broadcast()
+   clock.return_value=102.99;self.send(self.clients[1],2,2)
+   self.assertTrue(self.server.presence_dirty)
  def test_immediate_event_broadcast_flushes_pending_batch(self):
   with patch('world.server.time.monotonic',return_value=100.0):
    self.server.last_presence_broadcast=100.0;self.send(self.clients[0],1,1)

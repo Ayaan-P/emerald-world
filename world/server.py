@@ -540,9 +540,14 @@ class WorldServer:
             else:
                 self.pending_states[conn['id']] = data
             self._flush_states(force=False)
-            changed = (conn.get('state') != state or bool(conn.get('field')) != field or hashes != previous)
+            now = time.monotonic()
+            last_state = conn.get('state_time')
+            # An identical report can revive a previously expired friend.
+            became_fresh = (last_state is not None and
+                            int((TRAVEL_FRESH_SECONDS - (now - last_state)) * 60) <= 0)
+            changed = (conn.get('state') != state or bool(conn.get('field')) != field or hashes != previous or became_fresh)
             conn['seq'], conn['state'], conn['field'] = seq, state, field
-            now = conn['state_time'] = time.monotonic()
+            conn['state_time'] = now
             self._deliver_links(self.link_protocol.update_presence({
                 name: peer['state'] for name, peer in self.peers.items()
                 if peer['state'] is not None and not peer.get('closing')}))
