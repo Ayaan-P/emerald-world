@@ -43,12 +43,14 @@ class BatchingTests(unittest.TestCase):
             peer=dict(id=name,seq=-1,state=None,closing=False,out=bytearray(),sock=None,
                       social=True,field=False,chat=False,travel=False)
             self.s.peers[name]=peer;self.peers.append(peer)
+        for peer in self.peers:peer['travel']=True
         for tick in range(10):
             if tick:
                 self.clock.now+=.1;self.s._flush_presence_broadcast()
             for i in range(64):self.state(i,tick+1,10+i%10)
         self.clock.now+=.1;self.s._flush_presence_broadcast()
         self.assertEqual(self.s.broadcasts,10)
+        self.assertIn(b'TRAVEL 63',self.peers[0]['out'])
         for i in range(64):self.assertEqual(self.peers[i]['state'][2],10+i%10)
 
     def test_immediate_broadcast_absorbs_pending_update(self):
