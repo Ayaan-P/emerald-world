@@ -973,13 +973,21 @@ class WorldServer:
             Path(self.admin_path).unlink(missing_ok=True)
         self.executor.shutdown(wait=True, cancel_futures=True)
         self.control_executor.shutdown(wait=True, cancel_futures=True)
-        with self.lock:
-            self._flush_states()
-        if self.authority_lock is not None:
-            self.authority_lock.close()
-            self.authority_lock = None
-        self.db.close()
-        self.activity.close()
+        try:
+            with self.lock:
+                self._flush_states()
+        finally:
+            # A failed final commit must remain visible to the caller, but it
+            # must not strand a dead authority's locks or database handle.
+            try:
+                if self.authority_lock is not None:
+                    self.authority_lock.close()
+                    self.authority_lock = None
+            finally:
+                try:
+                    self.db.close()
+                finally:
+                    self.activity.close()
 
 
 def create_identity(state_dir, trainer_id, token=None):
