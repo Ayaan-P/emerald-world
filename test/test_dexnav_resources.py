@@ -9,7 +9,7 @@ class DexNavResources(unittest.TestCase):
     def test_one_free_slot_and_foreign_collision_rollback(self):
         source = (ROOT / 'src/platform/dexnav_native.c').read_text()
         state = source[source.index('static u16 sBgPalette'):source.index('static u8 sIconCount')]
-        names = ['PaletteInUse', 'UsedColors', 'PackFieldHud', 'AcquireFieldPalette', 'DexNavNative_AcquireFieldResources', 'DexNavNative_ReleaseFieldResources', 'UseEffectPalette']
+        names = ['PaletteInUse', 'UsedColors', 'PackFieldHud', 'AcquireFieldPalette', 'DexNavNative_AcquireFieldResources', 'DexNavNative_ReleaseFieldResources', 'UseEffectPalette', 'DexNavNative_CanUseHudWindow']
         bodies = '\n'.join(function(source, n) for n in names)
         def asset(name, path, kind='u8'):
             raw = (ROOT/'build/assets/graphics'/path).read_bytes()
@@ -17,6 +17,8 @@ class DexNavResources(unittest.TestCase):
             return 'static const '+kind+' '+name+'[]={'+','.join(map(str,values))+'};\n'
         assets = asset('icon', 'pokemon/icon_palettes/icon_palette_2.pal.gbapal', 'u16')
         assets += asset('iconTiles', 'pokemon/poochyena/icon.png.4bpp')
+        assets += asset('wurmpleTiles', 'pokemon/wurmple/icon.png.4bpp')
+        assets += asset('wurmplePalette', 'pokemon/icon_palettes/icon_palette_0.pal.gbapal', 'u16')
         assets += asset('gDexNavNative_HeldItemPalette', 'party_menu/hold_icons.png.gbapal', 'u16')
         assets += asset('sHeldItemGfx', 'party_menu/hold_icons.png.4bpp')
         assets += asset('sHudStar', 'dexnav/star.png.4bpp')
@@ -35,6 +37,9 @@ typedef uint8_t u8; typedef uint16_t u16; typedef uint32_t u32; typedef u8 bool8
 #define HIDDEN_MON_ICON_TAG 0xD753
 #define LIT_STAR_TILE_TAG 0xD754
 #define MAX_SPRITES 64
+#define WINDOWS_MAX 32
+struct WindowTemplate {u8 bg,tilemapLeft,tilemapTop,width,height,paletteNum;u16 baseBlock;};
+static struct {struct WindowTemplate window;}gWindows[WINDOWS_MAX];
 #define TAG_NONE 0xFFFF
 #define SPECIES_NONE 0
 #define NUM_SPECIES 412
@@ -48,8 +53,8 @@ static struct {bool8 inUse;struct {u8 paletteNum;}oam;} gSprites[MAX_SPRITES];
 static bool8 sFailed;
 ''' + assets + r'''
 static struct {u16 paletteTag;}sEffectTemplate;
-static const u8 *GetMonIconPtr(u16 species,u32 personality,bool8 normal){(void)species;(void)personality;(void)normal;return iconTiles;}
-static const u16 *GetValidMonIconPalettePtr(u16 species){(void)species;return icon;}
+static const u8 *GetMonIconPtr(u16 species,u32 personality,bool8 normal){(void)personality;(void)normal;return species==2?wurmpleTiles:iconTiles;}
+static const u16 *GetValidMonIconPalettePtr(u16 species){return species==2?wurmplePalette:icon;}
 static u16 GetSpriteTileStartByTag(u16 tag){(void)tag;return 0xFFFF;}
 static u8 IndexOfSpritePaletteTag(u16 tag){for(u8 i=0;i<16;i++)if(tags[i]==tag)return i;return 0xFF;}
 static u8 AllocSpritePalette(u16 tag){u8 i=IndexOfSpritePaletteTag(tag);if(i!=0xFF)return i;for(i=12;i<16;i++)if(tags[i]==0xFFFF){tags[i]=tag;return i;}return 0xFF;}
@@ -59,9 +64,17 @@ static void DexNavNative_FreeIcons(void){}
 static void FreeSpriteTilesByTag(u16 tag){(void)tag;}
 void DexNavNative_ReleaseFieldResources(void);
 ''' + state + bodies + r'''
-static void field(void){for(int i=0;i<16;i++)tags[i]=0xFFFF;tags[12]=0x1200;tags[13]=0x1201;tags[14]=0x1005;for(int i=0;i<512;i++){gPlttBufferUnfaded[i]=i;gPlttBufferFaded[i]=i+500;}}
+static void field(void){for(int i=0;i<WINDOWS_MAX;i++)gWindows[i].window.bg=0xFF;for(int i=0;i<16;i++)tags[i]=0xFFFF;tags[12]=0x1200;tags[13]=0x1201;tags[14]=0x1005;for(int i=0;i<512;i++){gPlttBufferUnfaded[i]=i;gPlttBufferFaded[i]=i+500;}}
 int main(void){
- u16 before[512],faded[512];field();LoadPalette(nativeEffect,OBJ_PLTT_ID(14),32);memcpy(before,gPlttBufferUnfaded,sizeof before);memcpy(faded,gPlttBufferFaded,sizeof faded);
+ u16 before[512],faded[512];field();
+ assert(DexNavNative_CanUseHudWindow(28,5));
+ gWindows[0].window=(struct WindowTemplate){.bg=0,.width=27,.height=4,.paletteNum=15,.baseBlock=0x194};
+ assert(DexNavNative_CanUseHudWindow(28,5));
+ gWindows[1].window=(struct WindowTemplate){.bg=0,.width=1,.height=1,.paletteNum=15,.baseBlock=147};
+ assert(!DexNavNative_CanUseHudWindow(28,5));
+ gWindows[1].window.baseBlock=148;assert(DexNavNative_CanUseHudWindow(28,5));
+ gWindows[1].window.paletteNum=14;assert(!DexNavNative_CanUseHudWindow(28,5));
+ gWindows[1].window.bg=0xFF;LoadPalette(nativeEffect,OBJ_PLTT_ID(14),32);memcpy(before,gPlttBufferUnfaded,sizeof before);memcpy(faded,gPlttBufferFaded,sizeof faded);
  assert(DexNavNative_AcquireFieldResources(1, TRUE, FALSE));
  assert(sSharedHud && sFieldPaletteSlots[0]==15 && sFieldPaletteSlots[1]==0xFF);
  for(unsigned i=0;i<sizeof(sFieldIcon);i++){
@@ -79,6 +92,15 @@ int main(void){
  DexNavNative_ReleaseFieldResources();DexNavNative_ReleaseFieldResources();
  assert(tags[15]==0xFFFF);assert(!memcmp(before,gPlttBufferUnfaded,sizeof before));assert(!memcmp(faded,gPlttBufferFaded,sizeof faded));
  assert(DexNavNative_AcquireFieldResources(1, TRUE, FALSE));DexNavNative_ReleaseFieldResources();
+ // Caught Wurmple needs 16 opaque colors with badges: preserve its native
+ // icon in the sole OBJ bank and put badge information in the BG window.
+ u16 overflow[16];assert(!PackFieldHud(2,TRUE,overflow));
+ assert(DexNavNative_AcquireFieldResources(2, TRUE, FALSE));
+ assert(sTextBadges && !sSharedHud && sFieldPaletteSlots[0]==15 && sFieldPaletteSlots[1]==0xFF);
+ assert(!memcmp(gPlttBufferUnfaded+OBJ_PLTT_ID(15),wurmplePalette,32));
+ assert(UseEffectPalette(0x1005,nativeEffect));
+ DexNavNative_ReleaseFieldResources();
+ assert(!memcmp(before,gPlttBufferUnfaded,sizeof before));assert(!memcmp(faded,gPlttBufferFaded,sizeof faded));
  // A native-tag collision with wrong colors must fail, not recolor foreign art.
  assert(DexNavNative_AcquireFieldResources(1, TRUE, FALSE));
  assert(!UseEffectPalette(0x1200,nativeEffect));DexNavNative_ReleaseFieldResources();

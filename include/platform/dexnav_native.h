@@ -51,6 +51,8 @@ u16 WildEncounter_GetDexNavHeader(void);
 bool8 DexNavNative_AcquireFieldResources(u16 species, bool8 owned, bool8 hidden);
 void DexNavNative_ReleaseFieldResources(void);
 u8 DexNavNative_ItemPalette(void);
+bool8 DexNavNative_TextBadges(void);
+bool8 DexNavNative_CanUseHudWindow(u8 width, u8 height);
 u8 DexNavNative_CreateMonIcon(u16 species, s16 x, s16 y, u8 priority);
 void DexNavNative_FreeIcons(void);
 u8 DexNavNative_StartEffect(u8 effectId);

@@ -25,6 +25,7 @@
 #include "random.h"
 #include "safari_zone.h"
 #include "text_window.h"
+#include "window.h"
 #include "constants/abilities.h"
 #include "constants/battle.h"
 #include "constants/event_object_movement.h"
@@ -63,7 +64,7 @@ static FILE *sProgressFile;
 static u16 sBgPalette[16], sObjPalettes[3][16];
 static u16 sBgPaletteFaded[16], sObjPalettesFaded[3][16];
 static u8 sFieldPaletteSlots[3] = {0xFF, 0xFF, 0xFF};
-static bool8 sFieldResources, sSharedHud, sBgPaletteWritten;
+static bool8 sFieldResources, sSharedHud, sBgPaletteWritten, sTextBadges;
 static u8 sFieldIcon[0x200];
 static u16 sFieldSpecies;
 static u16 sEffectTileStart = 0xFFFF;
@@ -527,7 +528,11 @@ bool8 DexNavNative_AcquireFieldResources(u16 species, bool8 owned, bool8 hidden)
     sFieldSpecies = species;
     sSharedHud = !hidden && PackFieldHud(species, owned, hudPalette);
     if (!AcquireFieldPalette(0, sSharedHud ? hudPalette : GetValidMonIconPalettePtr(species))) goto fail;
-    if (!sSharedHud && !AcquireFieldPalette(1, gDexNavNative_HeldItemPalette)) goto fail;
+    /* An exact 15-color pack is not always possible (e.g. caught Wurmple).
+     * Keep the original icon palette and render badge information using the
+     * already-owned HUD window palette, rather than demand another OBJ bank. */
+    sTextBadges = !hidden && !sSharedHud;
+    if (!sSharedHud && !sTextBadges && !AcquireFieldPalette(1, gDexNavNative_HeldItemPalette)) goto fail;
     return TRUE;
 fail:
     DexNavNative_ReleaseFieldResources();
@@ -562,9 +567,32 @@ void DexNavNative_ReleaseFieldResources(void)
     sEffectTileStart = 0xFFFF;
     sBgPaletteWritten = FALSE;
     sSharedHud = FALSE;
+    sTextBadges = FALSE;
     sFieldResources = FALSE;
 }
 u8 DexNavNative_ItemPalette(void) { return sFieldPaletteSlots[sSharedHud ? 0 : 1]; }
+bool8 DexNavNative_TextBadges(void) { return sTextBadges; }
+
+/* Field tilesets use BG palettes 0..12 (NUM_PALS_TOTAL). BG14 and the
+ * frame tiles at 0x214 are the standard window resources from menu.c,
+ * already used by the DexNav window. No BG13 or new palette is borrowed.
+ * AddWindow does not detect manually assigned tile collisions, so reject
+ * any live window using our tiles or palette before loading the HUD.
+ * The native dialogue window at 0x194 is disjoint even at 28x5 tiles. */
+bool8 DexNavNative_CanUseHudWindow(u8 width, u8 height)
+{
+    u32 i;
+    u32 end = 8 + width * height;
+    for (i = 0; i < WINDOWS_MAX; ++i)
+    {
+        const struct WindowTemplate *w = &gWindows[i].window;
+        if (w->bg == 0xFF) continue;
+        if (w->paletteNum == 14) return FALSE;
+        if (w->bg == 0 && w->baseBlock < end
+            && w->baseBlock + w->width * w->height > 8) return FALSE;
+    }
+    return end <= 0x194;
+}
 
 u8 DexNavNative_CreateMonIcon(u16 species, s16 x, s16 y, u8 priority)
 {

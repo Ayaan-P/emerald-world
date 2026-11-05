@@ -437,20 +437,24 @@ static void DrawDexNavSearchMonIcon(u16 species, u8 *dst, bool8 owned)
         gSprites[spriteId].oam.priority = 0;
     *dst = spriteId;
 
-    if (owned)
+    if (owned && !DexNavNative_TextBadges())
         sDexNavSearchDataPtr->ownedIconSpriteId = DexNavNative_CreateSprite(&sOwnedIconTemplate, SPECIES_ICON_X + 6, GetSearchWindowY() + 4, 0);
 }
 
 static void AddSearchWindow(u8 width)
 {
     struct WindowTemplate template;
-    u16 y = 16;
+    u8 height = DexNavNative_TextBadges() ? 5 : 3;
+    u16 y = 19 - height;
 
     if (sDexNavSearchDataPtr->tileY > (gSaveBlock1Ptr->pos.y + 7))
         y = 1;  //draw at top if chosen tile is below
 
 
-    SetWindowTemplateFields(&template, 0, 1, y, width, 3, 14, 8);
+    sDexNavSearchDataPtr->windowId = WINDOW_NONE;
+    if (!DexNavNative_CanUseHudWindow(width, height))
+        return;
+    SetWindowTemplateFields(&template, 0, 1, y, width, height, 14, 8);
 
     sDexNavSearchDataPtr->windowId = AddWindow(&template);
     if (sDexNavSearchDataPtr->windowId == WINDOW_NONE)
@@ -514,6 +518,29 @@ static void AddSearchWindowText(u16 species, u8 proximity, u8 searchLevel, bool8
                 StringExpandPlaceholders(gStringVar4, sText_HeldItem);
                 AddTextPrinterParameterized3(windowId, FONT_SMALL, WINDOW_COL_0, 12, sSearchFontColor, TEXT_SKIP_DRAW, gStringVar4);
             }
+        }
+    }
+
+    if (DexNavNative_TextBadges())
+    {
+        /* Use the existing window text colors, not another OBJ/BG palette.
+         * Keep the same proximity/search-level disclosure as the sprite HUD. */
+        static const u8 caught[] = _("Caught");
+        static const u8 uncaught[] = _("Uncaught");
+        static const u8 potential[] = _("Potential {STR_VAR_1}/3");
+        static const u8 item[] = _("Holding item");
+        AddTextPrinterParameterized3(windowId, FONT_SMALL, 0, 26, sSearchFontColor, TEXT_SKIP_DRAW,
+            DexNavGetPokedexFlag(SpeciesToNationalPokedexNum(species), FLAG_GET_CAUGHT) ? caught : uncaught);
+        if (proximity <= SNEAKING_PROXIMITY)
+        {
+            if (searchLevel > 4)
+            {
+                ConvertIntToDecimalStringN(gStringVar1, sDexNavSearchDataPtr->potential, STR_CONV_MODE_LEFT_ALIGN, 1);
+                StringExpandPlaceholders(gStringVar4, potential);
+                AddTextPrinterParameterized3(windowId, FONT_SMALL, 56, 26, sSearchFontColor, TEXT_SKIP_DRAW, gStringVar4);
+            }
+            if (searchLevel > 2 && sDexNavSearchDataPtr->heldItem)
+                AddTextPrinterParameterized3(windowId, FONT_SMALL, 136, 26, sSearchFontColor, TEXT_SKIP_DRAW, item);
         }
     }
 
@@ -790,6 +817,8 @@ static bool8 TryStartHiddenMonFieldEffect(enum EncounterType environment, u8 xSi
 
 static void DrawDexNavSearchHeldItem(u8 *dst)
 {
+    if (DexNavNative_TextBadges())
+        return;
     *dst = DexNavNative_CreateSprite(&sHeldItemTemplate, SPECIES_ICON_X + 6, GetSearchWindowY() + 18, 0);
     if (*dst != MAX_SPRITES)
         gSprites[*dst].invisible = TRUE;
@@ -797,6 +826,8 @@ static void DrawDexNavSearchHeldItem(u8 *dst)
 
 static void LoadSearchIconData(void)
 {
+    if (DexNavNative_TextBadges())
+        return;
     // palettes clash with mon icon, so must load manually
     LoadSpriteSheet(&gDexNavNative_HeldItemSheet);
     /* Held item palette was safely acquired before any field allocations. */
@@ -929,6 +960,8 @@ static void DexNavDrawPotentialStars(u8 potential, u8 *dst)
     u8 spriteId;
     u32 i;
 
+    if (DexNavNative_TextBadges())
+        return;
     for (i = 0; i < NELEMS(sDexNavSearchDataPtr->starSpriteIds); i++)
     {
         spriteId = MAX_SPRITES;
