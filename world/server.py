@@ -34,6 +34,8 @@ MAX_TRAVEL_PEERS = 63  # The authority admits at most 64 authenticated trainers.
 TRAVEL_FRESH_SECONDS = 3
 MAX_TILES = 128
 STATE_FLUSH_INTERVAL = .5
+PRESENCE_BATCH_INTERVAL = .05
+PRESENCE_HEARTBEAT_INTERVAL = 1.0
 
 
 def bounded(value, low, high):
@@ -162,6 +164,9 @@ class WorldServer:
         self.job = None
         self.deployment = None
         self.next_tick = time.monotonic() + 0.1
+        self.presence_dirty = False
+        self.presence_due = 0.0
+        self.last_presence_broadcast = time.monotonic()
         self.tick = 0
         self.lock = threading.RLock()
         self.selector = None
@@ -434,6 +439,9 @@ class WorldServer:
         return '\n'.join(lines + ['END', ''])
 
     def _broadcast(self):
+        # Immediate event broadcasts also include the latest presence.
+        self.presence_dirty = False
+        self.last_presence_broadcast = time.monotonic()
         for conn in list(self.peers.values()):
             if not conn['closing']:
                 self._queue(conn, self._snapshot(conn))
@@ -444,6 +452,15 @@ class WorldServer:
         return {name: peer['state'] for name, peer in self.peers.items()
                 if peer['state'] is not None and not peer.get('closing')
                 and (self.cave_map is None or tuple(peer['state'][:2]) != self.cave_map)}
+
+    def _schedule_presence(self, now):
+        if not self.presence_dirty:
+            self.presence_dirty = True
+            self.presence_due = now + PRESENCE_BATCH_INTERVAL
+
+    def _poll_presence(self, now):
+        if self.presence_dirty and now >= self.presence_due:
+            self._broadcast()
 
     def _line(self, conn, raw):
         try:
@@ -647,14 +664,16 @@ class WorldServer:
             else:
                 self.pending_states[conn['id']] = data
             self._flush_states(force=False)
+            changed = (conn.get('state') != state or bool(conn.get('field')) != field or hashes != previous)
             conn['seq'], conn['state'], conn['field'] = seq, state, field
             if self.cave_map is not None and tuple(state[:2]) == self.cave_map:
                 conn['in_generated_cave'] = True
             elif state[6]:
                 conn['in_generated_cave'] = False
-            conn['state_time'] = time.monotonic()
+            now = conn['state_time'] = time.monotonic()
             self._deliver_links(self.link_protocol.update_presence(self._link_presence()))
-            self._broadcast()
+            if changed or now - self.last_presence_broadcast >= PRESENCE_HEARTBEAT_INTERVAL:
+                self._schedule_presence(now)
         except (UnicodeError, ValueError):
             self._error(conn, 'MALFORMED')
 
@@ -1147,6 +1166,7 @@ class WorldServer:
                     self._drop(conn)
             with self.lock:
                 self._flush_states(force=False)
+                self._poll_presence(time.monotonic())
                 self._deliver_links(self.link_protocol.tick())
                 self.rally.tick()
                 self._poll_controls()
