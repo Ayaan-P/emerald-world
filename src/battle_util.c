@@ -1,6 +1,7 @@
 #include "global.h"
 #ifdef PORTABLE
 #include "platform/world_coop.h"
+#include "platform/native_link.h"
 #endif
 #include "battle.h"
 #include "battle_anim.h"
@@ -318,11 +319,29 @@ void HandleAction_UseItem(void)
     gBattle_BG0_X = 0;
     gBattle_BG0_Y = 0;
     ClearFuryCutterDestinyBondGrudge(gBattlerAttacker);
+#ifdef PORTABLE
+    if (WorldCoop_PotionActionActive(gBattlerAttacker))
+    {
+        int result = WorldCoop_AdvancePotionAction(gBattlerAttacker);
+        if (result == 0) return;
+        if (result < 0) { NativeLink_Abort(); return; }
+        gBattleScripting.battler = gBattlerAttacker;
+        gBattlescriptCurrInstr = BattleScript_WorldCoopPotion;
+        gCurrentActionFuncId = B_ACTION_EXEC_SCRIPT;
+        return;
+    }
+#endif
     gLastUsedItem = gBattleBufferB[gBattlerAttacker][1] | (gBattleBufferB[gBattlerAttacker][2] << 8);
 
 #ifdef PORTABLE
     if (WorldCoop_IsBattle())
     {
+        if ((gLastUsedItem & 0xFF00) == WORLD_COOP_POTION_REPLY)
+        {
+            if (WorldCoop_BeginPotionAction(gBattlerAttacker, gLastUsedItem) < 0)
+                NativeLink_Abort();
+            return;
+        }
         if (!WorldCoop_BallReplyValid(gLastUsedItem) || !gLastUsedItem
          || (gBattlerAttacker & BIT_SIDE))
         {

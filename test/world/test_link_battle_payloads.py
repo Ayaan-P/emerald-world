@@ -40,6 +40,7 @@ typedef int16_t s16; typedef int32_t s32; typedef u8 bool8;
 #define UNUSED
 #define FALSE 0
 #define MAX_BATTLERS_COUNT 4
+#define WORLD_COOP_POTION_TAG 253
 #define MAX_LINK_PLAYERS 4
 #define PARTY_SIZE 6
 #define MAX_MON_MOVES 4
@@ -82,6 +83,9 @@ static bool8 WorldCoop_CatchPacketValid(const u8 *p, u16 n) { return FALSE; }
 static bool8 WorldCoop_BallReplyValid(u16 reply) {
     return reply == 0 || (reply >= ITEM_MASTER_BALL && reply <= LAST_BALL && reply != ITEM_SAFARI_BALL);
 }
+static bool8 WorldCoop_PotionPacketValid(const u8 *p, u16 n) { return n == 16 && p[1] == WORLD_COOP_POTION_TAG; }
+static bool8 WorldCoop_ItemReplyValid(u16 reply) { return WorldCoop_BallReplyValid(reply); }
+
 static u8 GetMultiplayerId(void) { return localPlayer; }
 static u8 GetLinkPlayerCount(void) { return 2; }
 static u8 GetBlockReceivedStatus(void) { return 1 << source; }
@@ -92,6 +96,19 @@ static void MarkBattlerReceivedLinkData(u8 i) { (void)i; dispatched++; }
 
 
 class LinkBattlePayloadTests(unittest.TestCase):
+    def test_potion_response_is_bound_to_pending_request(self):
+        self.run_c(r'''
+ coopMode=TRUE;
+ u8 reply[8]={CONTROLLER_TWORETURNVALUES,1,0,0};
+ sNativeBattleRequestPending[2]=TRUE;
+ sNativeBattleRequest[2][0]=CONTROLLER_EXPUPDATE;
+ sNativeBattleRequest[2][1]=WORLD_COOP_POTION_TAG;
+ assert(NativeBattleReplyValid(2,reply));
+ reply[1]=2;assert(!NativeBattleReplyValid(2,reply));
+ reply[1]=1;reply[2]=1;assert(!NativeBattleReplyValid(2,reply));
+ reply[2]=0;sNativeBattleReplyUsed[2]=TRUE;assert(!NativeBattleReplyValid(2,reply));
+''')
+
     def run_c(self, body, emitters=()):
         source = (ROOT / 'src/battle_controllers.c').read_text()
         header = (ROOT / 'include/battle_controllers.h').read_text()

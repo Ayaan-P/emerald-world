@@ -1401,7 +1401,7 @@ static void CompleteWhenChoseItem(void)
     {
 #ifdef PORTABLE
         if (WorldCoop_IsBattle())
-            BtlController_EmitOneReturnValue(B_COMM_TO_ENGINE, WorldCoop_SelectBall(gSpecialVar_ItemId));
+            BtlController_EmitOneReturnValue(B_COMM_TO_ENGINE, WorldCoop_SelectBattleItem(gSpecialVar_ItemId));
         else
 #endif
         BtlController_EmitOneReturnValue(B_COMM_TO_ENGINE, gSpecialVar_ItemId);
@@ -2747,6 +2747,13 @@ static void PlayerHandleExpUpdate(void)
 #ifdef PORTABLE
     if (WorldCoop_IsBattle())
     {
+        if (gBattleBufferA[gActiveBattler][1] == WORLD_COOP_POTION_TAG)
+        {
+            bool8 consumed = WorldCoop_ConsumePotion(gBattleBufferA[gActiveBattler]);
+            BtlController_EmitTwoReturnValues(B_COMM_TO_ENGINE, consumed ? 1 : 0, 0);
+            PlayerBufferExecCompleted();
+            return;
+        }
         if (gBattleBufferA[gActiveBattler][1] >= 254)
             WorldCoop_RecordCatchEvent(gBattleBufferA[gActiveBattler]);
         else

@@ -4320,7 +4320,7 @@ static void HandleTurnActionSelectionState(void)
                 case B_ACTION_USE_ITEM:
                     if (
 #ifdef PORTABLE
-                        (!WorldCoop_IsBattle() || WorldCoop_IsTrainer()) &&
+                        !WorldCoop_IsBattle() &&
 #endif
                         gBattleTypeFlags & (BATTLE_TYPE_LINK
                                             | BATTLE_TYPE_FRONTIER_NO_PYRAMID

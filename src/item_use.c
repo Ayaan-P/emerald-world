@@ -1,6 +1,7 @@
 #include "global.h"
 #ifdef PORTABLE
 #include "platform/world_coop.h"
+#include "platform/world_coop_potion.h"
 #endif
 #include "item_use.h"
 #include "battle.h"
@@ -1027,8 +1028,34 @@ static void ItemUseInBattle_ShowPartyMenu(u8 taskId)
     }
 }
 
+#ifdef PORTABLE
+static void Task_ConfirmCoopPotion(u8 taskId)
+{
+    if (JOY_NEW(A_BUTTON))
+    {
+        if (WorldCoop_CanUsePotion(gSpecialVar_ItemId))
+            Task_FadeAndCloseBagMenu(taskId);
+        else
+            CloseItemMessage(taskId);
+    }
+    else if (JOY_NEW(B_BUTTON))
+        CloseItemMessage(taskId);
+}
+#endif
+
 void ItemUseInBattle_Medicine(u8 taskId)
 {
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle() && WorldCoop_IsPotion(gSpecialVar_ItemId))
+    {
+        static const u8 sText_ActivePotion[] = _("Heal your active POKéMON?\nA: Yes   B: No");
+        if (!WorldCoop_CanUsePotion(gSpecialVar_ItemId))
+            DisplayItemMessage(taskId, FONT_NORMAL, gText_WontHaveEffect, CloseItemMessage);
+        else
+            DisplayItemMessage(taskId, FONT_NORMAL, sText_ActivePotion, Task_ConfirmCoopPotion);
+        return;
+    }
+#endif
     gItemUseCB = ItemUseCB_Medicine;
     ItemUseInBattle_ShowPartyMenu(taskId);
 }

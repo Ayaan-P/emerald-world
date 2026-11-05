@@ -1,6 +1,7 @@
 /* Isolated behavioral tests of the production co-op state machine. Link IO
  * and Pokemon accessors are explicit fixtures, not a simulated game result. */
 #include "../../src/platform/world_coop.c"
+#include "src/platform/world_coop_potion.c"
 /* The game config defines NDEBUG. This test must execute assertions. */
 #undef NDEBUG
 #include <assert.h>
@@ -22,7 +23,9 @@ struct BattleScripting gBattleScripting;
 static struct BattleStruct testBattleStruct;
 struct BattleStruct *gBattleStruct = &testBattleStruct;
 struct BattlePokemon gBattleMons[MAX_BATTLERS_COUNT];
-u8 gActiveBattler, gBattlerFainted, gSentPokesToOpponent[2], gAbsentBattlerFlags;
+u8 gActiveBattler, gBattlerFainted, gSentPokesToOpponent[2], gAbsentBattlerFlags, gBattlerInMenuId;
+u8 gBattleBufferB[MAX_BATTLERS_COUNT][0x200];
+s32 gBattleMoveDamage;
 static u8 emittedRewards[2][12];
 static u8 local, received, corruptPhase, remoteOwner;
 static bool8 active;
@@ -122,6 +125,7 @@ struct SaveBlock2 *gSaveBlock2Ptr;
 bool8 IsPokemonStorageFull(void) { assert(!"unexpected catch storage query"); return TRUE; }
 bool8 CheckBagHasItem(u16 item, u16 count) { assert(!"unexpected catch bag query"); return FALSE; }
 bool8 RemoveBagItem(u16 item, u16 count) { assert(!"unexpected catch bag removal"); return FALSE; }
+bool8 AddBagItem(u16 item, u16 count) { assert(!"unexpected potion refund"); return FALSE; }
 u16 SpeciesToNationalPokedexNum(u16 species) { assert(!"unexpected catch dex query"); return 0; }
 s8 GetSetPokedexFlag(u16 species, u8 operation) { assert(!"unexpected catch dex mutation"); return 0; }
 void SetMonData(struct Pokemon *mon, s32 field, const void *data) { assert(!"unexpected catch setter"); }

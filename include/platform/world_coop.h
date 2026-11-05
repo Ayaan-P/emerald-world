@@ -35,6 +35,17 @@ struct WorldCoopPublicMon
 void WorldCoop_ObserveMonData(u8 battler, u8 partySlot, const struct BattlePokemon *mon);
 void WorldCoop_ObserveController(u8 battler, const u8 *data);
 bool8 WorldCoop_GetPublicMon(u8 battler, struct WorldCoopPublicMon *mon);
+#define WORLD_COOP_POTION_TAG 253
+#define WORLD_COOP_POTION_REPLY 0x8000
+bool8 WorldCoop_CanSelectBattleItem(u16 item);
+bool8 WorldCoop_CanUsePotion(u16 item);
+bool8 WorldCoop_ItemReplyValid(u16 reply);
+u16 WorldCoop_SelectBattleItem(u16 item);
+bool8 WorldCoop_PotionPacketValid(const u8 *data, u16 size);
+bool8 WorldCoop_ConsumePotion(const u8 *data);
+bool8 WorldCoop_PotionActionActive(u8 battler);
+int WorldCoop_BeginPotionAction(u8 battler, u16 reply);
+int WorldCoop_AdvancePotionAction(u8 battler);
 bool8 WorldCoop_CanSelectBall(u16 item);
 bool8 WorldCoop_BallReplyValid(u16 reply);
 u16 WorldCoop_SelectBall(u16 item);
