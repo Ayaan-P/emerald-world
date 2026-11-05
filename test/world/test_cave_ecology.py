@@ -79,6 +79,7 @@ typedef uint8_t u8;typedef uint16_t u16;typedef uint32_t u32;typedef int16_t s16
 #define GEN_SIDE 31
 #define GEN_CELLS 961
 #define GENERATED_MAP_TEMPLATE_BYTES 961
+#define GENERATED_WILDLIFE_BYTES 37
 static u8 sTemplate[GEN_CELLS];static bool8 sHasTemplate,sPrepared,inside=1,online;
 static u8 sEncounterProfile;static bool8 sSharedEncounterProfile;
 static bool8 GeneratedMap_IsInside(void){return inside;}
@@ -176,6 +177,7 @@ typedef uint8_t u8;typedef int bool8;
 #define FALSE 0
 #define GENERATED_CAVE_PROFILES 0
 #define GENERATED_MAP_TEMPLATE_BYTES 961
+#define GENERATED_WILDLIFE_BYTES 37
 static FILE *NativeFile_Open(const char *p,const char *m){return fopen(p,m);}
 static bool8 GeneratedMap_StageTemplate(const u8 *p,unsigned n){return n==961 && p[0]=='#';}
 """ + function(source,'LoadGeneratedMapTemplate') + r"""

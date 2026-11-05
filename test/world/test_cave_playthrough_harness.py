@@ -128,6 +128,30 @@ class CaveHarnessContract(unittest.TestCase):
             self.assertEqual(FakeGame.last.a,2)
             self.assertEqual((out/'game.sav').read_bytes(),b'disposable')
 
+    def test_custom_wildlife_checks_actual_selected_species(self):
+        class WildGame(FakeGame):
+            def tap(self,button,times=1,**kwargs):
+                super().tap(button,times,**kwargs)
+                if self.state.map_name=='GeneratedWorld_Cave':
+                    self.state.cave_tile=0x385;self.state.cave_exit_tile=0x386
+            def press(self,button,frames):
+                super().press(button,frames)
+                if len([a for a in self.actions if a[0] in ('LEFT','RIGHT')]) >= 2:
+                    self.state.battle=True
+                    self.state.battle_state={'battlers':[{'side':1,'species':129,'level':5}]}
+        def leave(game,direction): game.state=State('LittlerootTown',(0,9),(7,16))
+        def wait(game,condition,*args,**kwargs):
+            if not condition(game.state):raise AssertionError('unexpected test state')
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);seed=root/'seed';seed.write_bytes(b'disposable');out=root/'out'
+            with patch.object(module.driver,'Game',WildGame),patch.object(module.driver,'continue_game'), \
+                 patch.object(module.driver,'walk_to'),patch.object(module.driver,'leave_map',leave), \
+                 patch.object(module.driver,'wait_until',wait),patch('builtins.print'), \
+                 patch.object(module,'check_ice_frame'):
+                module.run('/bin/true',seed,out,encounter=True,profile='ice',observe_only=True,wildlife=True)
+            self.assertEqual(FakeGame.last.a,2)
+            self.assertEqual((out/'game.sav').read_bytes(),b'disposable')
+
     def test_ice_frame_validator_rejects_missing_and_nonblue(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)

@@ -11,6 +11,10 @@
 #include "platform/world_rally.h"
 #include "platform/generated_map.h"
 #include "constants/maps.h"
+#if GENERATED_CAVE_WILDLIFE
+#include "wild_encounter.h"
+#include "constants/species.h"
+#endif
 #include <string.h>
 
 #if GENERATED_MAP_READY
@@ -30,6 +34,11 @@ static bool8 sHasTemplate;
 #if GENERATED_CAVE_PROFILES
 static u8 sEncounterProfile;
 static bool8 sSharedEncounterProfile;
+#endif
+#if GENERATED_CAVE_WILDLIFE
+static struct WildPokemon sWildlifeMons[12];
+static struct WildPokemonInfo sWildlifeInfo;
+static bool8 sHasWildlife;
 #endif
 static struct MapLayout sLayout;
 static struct WarpData sReturn, sPreviousDynamicWarp;
@@ -168,6 +177,9 @@ bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size)
     sEncounterProfile = 0;
     sSharedEncounterProfile = FALSE;
 #endif
+#if GENERATED_CAVE_WILDLIFE
+    sHasWildlife = FALSE;
+#endif
     return TRUE;
 #else
     (void)cells; (void)size;
@@ -210,6 +222,56 @@ u8 GeneratedMap_EncounterProfile(void)
         return sEncounterProfile;
 #endif
     return 0;
+}
+
+/* Versioned wildlife is bounded data, never scripts or pointers from a file. */
+bool8 GeneratedMap_ValidateWildlife(const u8 *data, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_CAVE_WILDLIFE
+    unsigned i;
+    if (!data || size != GENERATED_WILDLIFE_BYTES || data[0] < 1 || data[0] > 100) return FALSE;
+    for (i = 0; i < 12; i++) {
+        unsigned offset = 1 + i * 3;
+        u16 species = data[offset] | ((u16)data[offset + 1] << 8);
+        u8 level = data[offset + 2];
+        if (!species || species >= SPECIES_EGG
+         || (species >= SPECIES_OLD_UNOWN_B && species <= SPECIES_OLD_UNOWN_Z)
+         || level < 1 || level > 100) return FALSE;
+    }
+    return TRUE;
+#else
+    (void)data; (void)size;
+    return FALSE;
+#endif
+}
+
+bool8 GeneratedMap_SetWildlife(const u8 *data, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_CAVE_WILDLIFE
+    unsigned i;
+    if (!sHasTemplate || !GeneratedMap_ValidateWildlife(data, size)) return FALSE;
+    for (i = 0; i < 12; i++) {
+        unsigned offset = 1 + i * 3;
+        sWildlifeMons[i].species = data[offset] | ((u16)data[offset + 1] << 8);
+        sWildlifeMons[i].minLevel = sWildlifeMons[i].maxLevel = data[offset + 2];
+    }
+    sWildlifeInfo.encounterRate = data[0];
+    sWildlifeInfo.wildPokemon = sWildlifeMons;
+    sHasWildlife = TRUE;
+    return TRUE;
+#else
+    (void)data; (void)size;
+    return FALSE;
+#endif
+}
+
+const struct WildPokemonInfo *GeneratedMap_Wildlife(void)
+{
+#if GENERATED_MAP_READY && GENERATED_CAVE_WILDLIFE
+    if (sHasWildlife && sPrepared && sHasTemplate && GeneratedMap_IsInside() && !WorldBridge_Enabled())
+        return &sWildlifeInfo;
+#endif
+    return NULL;
 }
 
 bool8 GeneratedMap_IsInside(void)

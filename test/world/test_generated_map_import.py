@@ -41,6 +41,7 @@ class GeneratedMapImport(unittest.TestCase):
 typedef uint8_t u8;typedef int bool8;
 #define FALSE 0
 #define GENERATED_MAP_TEMPLATE_BYTES 961
+#define GENERATED_WILDLIFE_BYTES 37
 static int stageCalls;
 static const char *sGeneratedMapPath;
 FILE *NativeFile_Open(const char *p,const char *m){return fopen(p,m);}

@@ -595,6 +595,29 @@ static bool8 AreLegendariesInSootopolisPreventingEncounters(void)
     return FlagGet(FLAG_LEGENDARIES_IN_SOOTOPOLIS);
 }
 
+#if defined(PORTABLE) && GENERATED_CAVE_WILDLIFE
+/* -1 means no custom cave table, so the stock path must run unchanged. */
+static s8 TryGeneratedCaveWildEncounter(u16 cur, u16 prev)
+{
+    const struct WildPokemonInfo *custom = GeneratedMap_Wildlife();
+    if (custom == NULL) return -1;
+    if (prev != cur && !AllowWildCheckOnNewMetatile()) return 0;
+    if (WildEncounterCheck(custom->encounterRate, FALSE) != TRUE) return 0;
+    if (TryGenerateWildMon(custom, WILD_AREA_LAND, WILD_CHECK_REPEL | WILD_CHECK_KEEN_EYE) != TRUE) return 0;
+    BattleSetup_StartWildBattle();
+    return 1;
+}
+
+static s8 TryGeneratedCaveSweetScent(void)
+{
+    const struct WildPokemonInfo *custom = GeneratedMap_Wildlife();
+    if (custom == NULL) return -1;
+    if (TryGenerateWildMon(custom, WILD_AREA_LAND, 0) != TRUE) return 0;
+    BattleSetup_StartWildBattle();
+    return 1;
+}
+#endif
+
 bool8 StandardWildEncounter(u16 curMetatileBehavior, u16 prevMetatileBehavior)
 {
     u16 headerId;
@@ -640,6 +663,10 @@ bool8 StandardWildEncounter(u16 curMetatileBehavior, u16 prevMetatileBehavior)
     {
         if (MetatileBehavior_IsLandWildEncounter(curMetatileBehavior) == TRUE)
         {
+#if defined(PORTABLE) && GENERATED_CAVE_WILDLIFE
+            s8 generated = TryGeneratedCaveWildEncounter(curMetatileBehavior, prevMetatileBehavior);
+            if (generated >= 0) return generated;
+#endif
             if (gWildMonHeaders[headerId].landMonsInfo == NULL)
                 return FALSE;
             else if (prevMetatileBehavior != curMetatileBehavior && !AllowWildCheckOnNewMetatile())
@@ -774,6 +801,10 @@ bool8 SweetScentWildEncounter(void)
     {
         if (MetatileBehavior_IsLandWildEncounter(MapGridGetMetatileBehaviorAt(x, y)) == TRUE)
         {
+#if defined(PORTABLE) && GENERATED_CAVE_WILDLIFE
+            s8 generated = TryGeneratedCaveSweetScent();
+            if (generated >= 0) return generated;
+#endif
             if (gWildMonHeaders[headerId].landMonsInfo == NULL)
                 return FALSE;
 

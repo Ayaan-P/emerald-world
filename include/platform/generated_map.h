@@ -21,14 +21,26 @@
 #error GENERATED_CAVE_BIOMES requires generated maps, autotiling and cave profiles
 #endif
 
+#ifndef GENERATED_CAVE_WILDLIFE
+#define GENERATED_CAVE_WILDLIFE 0
+#endif
+#if GENERATED_CAVE_WILDLIFE && (!GENERATED_MAP_READY || !GENERATED_CAVE_PROFILES)
+#error GENERATED_CAVE_WILDLIFE requires generated maps and cave profiles
+#endif
+
 #ifdef PORTABLE
 struct MapLayout;
+struct WildPokemonInfo;
+#define GENERATED_WILDLIFE_BYTES 37
 #define GENERATED_MAP_TEMPLATE_BYTES (31 * 31)
 bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size);
 bool8 GeneratedMap_SetEncounterProfile(u8 profile);
 bool8 GeneratedMap_SetSharedEncounterProfile(u8 profile);
 bool8 GeneratedMap_MatchesPreparedProfile(const u8 *cells, u32 size, u8 profile);
 u8 GeneratedMap_EncounterProfile(void);
+bool8 GeneratedMap_ValidateWildlife(const u8 *data, u32 size);
+bool8 GeneratedMap_SetWildlife(const u8 *data, u32 size);
+const struct WildPokemonInfo *GeneratedMap_Wildlife(void);
 /* Reload an optional offline template immediately before entry. */
 bool8 Platform_ReloadGeneratedMap(void);
 bool8 GeneratedMap_IsInside(void);

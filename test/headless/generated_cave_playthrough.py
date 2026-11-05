@@ -10,6 +10,7 @@ import tempfile
 import driver
 from world.cave_blueprint import proposal_from_blueprint
 from scripts.export_generated_cave import encode
+from world.offline_cave import encode_wildlife
 
 
 def check_ice_frame(directory, after_frame):
@@ -35,7 +36,7 @@ def check_ice_frame(directory, after_frame):
         raise RuntimeError(f'native ice cave did not render enough blue pixels: {blue}')
 
 
-def run(binary, seed, out, encounter=False, profile=None, observe_only=False):
+def run(binary, seed, out, encounter=False, profile=None, observe_only=False, wildlife=False):
     binary, seed, out = Path(binary).resolve(), Path(seed).resolve(), Path(out).resolve()
     out.mkdir(parents=True, exist_ok=True)
     blueprint = {'rooms': [[2,2,12,12],[16,16,12,12]], 'links': [[0,1]],
@@ -47,7 +48,11 @@ def run(binary, seed, out, encounter=False, profile=None, observe_only=False):
     with tempfile.TemporaryDirectory(prefix='cave-playthrough-') as temp:
         root = Path(temp)
         cave = root/'cave.bin'
-        cave.write_bytes(encode(proposal, encounter_profile=profile))
+        if wildlife:
+            roster = [{'species': 'MAGIKARP', 'level': 5} for _ in range(12)]
+            cave.write_bytes(encode_wildlife(proposal, profile or 'ice', 100, roster))
+        else:
+            cave.write_bytes(encode(proposal, encounter_profile=profile))
         # driver.Game accepts an executable path; the wrapper supplies only the
         # local validated test template and forwards all of its existing args.
         wrapper = root/'run-native'
@@ -108,7 +113,9 @@ def run(binary, seed, out, encounter=False, profile=None, observe_only=False):
                                   step=10, limit=3000)
                 enemies = [mon for mon in game.state.battle_state['battlers'] if mon['side'] == 1]
                 # Confirm the visible opponent belongs to the selected native table.
-                if profile == 'meteor':
+                if wildlife:
+                    allowed = {(129,5)}
+                elif profile == 'meteor':
                     allowed = {(41,level) for level in range(14,21)} | {(349,14),(349,16),(349,18)}
                 elif profile == 'ice':
                     allowed = {(41,26),(41,28),(41,30),(42,30),(42,32),
@@ -172,11 +179,14 @@ def main():
     parser.add_argument('--encounter', action='store_true', help='walk until a visible wild encounter starts')
     parser.add_argument('--profile', choices=('meteor','ice'), help='use a versioned offline encounter profile')
     parser.add_argument('--observe-only', action='store_true', help='stop at the visible encounter')
+    parser.add_argument('--wildlife', action='store_true', help='use a deterministic custom Magikarp test table')
     args = parser.parse_args()
-    if (args.profile or args.observe_only) and not args.encounter:
-        parser.error('--profile and --observe-only require --encounter')
+    if (args.profile or args.observe_only or args.wildlife) and not args.encounter:
+        parser.error('--profile, --observe-only and --wildlife require --encounter')
+    if args.wildlife and (args.profile != 'ice' or not args.observe_only):
+        parser.error('--wildlife requires --profile ice and --observe-only')
     run(args.binary, args.seed_save, args.out, encounter=args.encounter,
-        profile=args.profile, observe_only=args.observe_only)
+        profile=args.profile, observe_only=args.observe_only, wildlife=args.wildlife)
 
 if __name__ == '__main__':
     main()
