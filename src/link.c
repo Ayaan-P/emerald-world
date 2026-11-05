@@ -27,8 +27,10 @@
 #include "link_rfu.h"
 #include "constants/rgb.h"
 #include "constants/trade.h"
+#include "constants/flags.h"
 #ifdef PORTABLE
 #include "platform/native_link.h"
+#include "platform/battle_rules_wire.h"
 #endif
 
 // Window IDs for the link error screens
@@ -385,8 +387,11 @@ void OpenLink(void)
 #ifdef PORTABLE
         if (NativeLink_IsActive())
         {
+            u16 wireLinkType = BattleRules_LinkType(gLinkType, FlagGet(FLAG_MODERN_MOVE_SPLIT));
             NativeLink_SetCommandSource(gSendCmd);
-            NativeLink_Open(gLinkType);
+            // Only the wire value carries the rules revision; gLinkType and
+            // ordinary GBA link data are unchanged.
+            NativeLink_Open(wireLinkType);
             sNativeCableOpen = NativeLink_IsOpen();
             memset(sBlockRecv, 0, sizeof(sBlockRecv));
             sNativePlayerExchangeRequested = FALSE;
