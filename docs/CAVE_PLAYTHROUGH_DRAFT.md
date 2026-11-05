@@ -1,0 +1,5 @@
+# Disposable native generated-cave playthrough
+
+This draft adds an offline, scripted native acceptance check on top of the generated-cave/autotile work. After the gate-on native build and existing first-battle smoke produce a disposable seed save, it compiles an organic cave proposal, starts the actual native test-mode game with that template, exits Birch's lab, opens World, enters the cave, walks one tile, leaves via World and verifies the return map and coordinates. It compares the disposable save bytes before and after. The test is bounded by a CI timeout and does not use an account, model, world server or multiplayer connection.
+
+The Python harness has a fake-driver contract test; that does not establish the native run has succeeded. Consult the exact-head CI result for the real run. Even a pass does not prove multiplayer synchronization, cave combat, blackout, crowded admission, keyboard/controller ergonomics, a human graphical playthrough, persistence inside the cave, or a full save/reload after returning. The feature remains opt-in and the parent drafts' integration limits apply.

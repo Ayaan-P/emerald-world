@@ -1,0 +1,51 @@
+"""Contract checks only; these do not run or verify a native game."""
+import importlib.util
+from pathlib import Path
+import shutil
+import tempfile
+import unittest
+from unittest.mock import patch
+
+ROOT=Path(__file__).resolve().parents[2]
+spec=importlib.util.spec_from_file_location('generated_cave_playthrough',ROOT/'test/headless/generated_cave_playthrough.py')
+module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+
+class State:
+    free=True
+    battle=False
+    def __init__(self,name,map_id,pos): self.map_name=name;self.map=map_id;self.pos=pos
+
+class FakeGame:
+    last=None
+    def __init__(self,binary,out_dir,save,max_frames):
+        self.save_path=str(Path(out_dir)/'game.sav');shutil.copyfile(save,self.save_path)
+        self.state=State('LittlerootTown_ProfessorBirchsLab',(1,4),(6,5));self.actions=[];self.a=0
+        FakeGame.last=self
+    def tap(self,button,times=1,**kwargs):
+        self.actions.append((button,times))
+        if button=='A':
+            self.a+=1
+            if self.a==2:self.state=State('GeneratedWorld_Cave',(32,0),(1,1))
+            if self.a==4:self.state=State('LittlerootTown',(0,9),(7,16))
+    def press(self,button,frames):
+        self.actions.append((button,frames))
+        if button=='RIGHT': self.state.pos=(2,1)
+    def wait(self,frames):pass
+    def finish(self):return 0
+
+class CaveHarnessContract(unittest.TestCase):
+    def test_script_attempts_entry_walk_and_return_without_mutating_save(self):
+        def leave(game,direction): game.state=State('LittlerootTown',(0,9),(7,16))
+        def wait(game,condition,*args,**kwargs):
+            if not condition(game.state):raise AssertionError('unexpected test state')
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);seed=root/'seed';seed.write_bytes(b'disposable');out=root/'out'
+            with patch.object(module.driver,'Game',FakeGame),patch.object(module.driver,'continue_game'), \
+                 patch.object(module.driver,'walk_to'),patch.object(module.driver,'leave_map',leave), \
+                 patch.object(module.driver,'wait_until',wait),patch('builtins.print'):
+                module.run('/bin/true',seed,out)
+            self.assertIn(('RIGHT',16),FakeGame.last.actions)
+            self.assertEqual(FakeGame.last.a,4)
+            self.assertEqual((out/'game.sav').read_bytes(),b'disposable')
+
+if __name__=='__main__':unittest.main()

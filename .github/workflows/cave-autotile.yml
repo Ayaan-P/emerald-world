@@ -2,7 +2,7 @@ name: Experimental generated cave autotiling
 
 on:
   pull_request:
-    branches: [dot/model-directed-cave-styles]
+    branches: [dot/generated-cave-autotiling]
   workflow_dispatch:
 
 permissions:
@@ -27,7 +27,7 @@ jobs:
           tools/mapjson/mapjson groups emerald data/maps/map_groups.json data/maps include/constants
           tools/mapjson/mapjson layouts emerald data/layouts/layouts.json data/layouts include/constants
       - name: Exercise native tile selection and authored geometry
-        run: PYTHONPATH=.:test/world python3 -m unittest test_cave_autotile test_cave_blueprint test_author_cave test_generated_map_import test_native_generated_map test_shared_generated_cave test_world_cave_wire -v
+        run: PYTHONPATH=.:test/world:test/headless python3 -m unittest test_cave_playthrough_harness test_cave_autotile test_cave_blueprint test_author_cave test_generated_map_import test_native_generated_map test_shared_generated_cave test_world_cave_wire -v
   linux-native:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -50,4 +50,9 @@ jobs:
           grep -R -- '-DGENERATED_MAP_AUTOTILE=1' build/*/build_flags.txt
       - name: Standalone frame and save smoke without golden changes
         run: python3 test/headless/smoke.py ./pokeemerald64 --out build/cave-autotile-smoke
+      - name: Play the generated cave offline with a disposable save
+        run: |
+          PYTHONPATH=.:test/headless timeout 180s python3 test/headless/generated_cave_playthrough.py \
+            --binary ./pokeemerald64 --seed-save build/cave-autotile-smoke/first_battle/game.sav \
+            --out build/cave-playthrough
       # No binary, ROM, save or runtime-data artifacts are uploaded.
