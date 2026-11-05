@@ -91,6 +91,11 @@ int main(void) {
     subprocess.run(['cc','-std=gnu11','-iquote',str(ROOT/'include'),'-iquote',str(ROOT),'-DPORTABLE','-DNONMATCHING','-DUBFIX','-DWORLD_EXTENDED_OBJECTS='+gate,str(p/'layout.c'),'-o',str(p/'layout')],check=True)
     outputs.append(subprocess.check_output([str(p/'layout')],text=True).split())
    self.assertEqual(outputs[0][:3],outputs[1][:3]);self.assertEqual(outputs[0][3],'16');self.assertEqual(outputs[1][3],'32')
+ def test_build_exposes_gate_to_both_preprocessor_and_compiler(self):
+  makefile=(ROOT/'Makefile').read_text()
+  self.assertIn('WORLD_EXTENDED_OBJECTS ?= 0',makefile)
+  self.assertRegex(makefile,r'CPPFLAGS \+= [^\n]*-DWORLD_EXTENDED_OBJECTS=\$\(WORLD_EXTENDED_OBJECTS\)')
+  self.assertRegex(makefile,r'override CFLAGS \+= -DWORLD_EXTENDED_OBJECTS=\$\(WORLD_EXTENDED_OBJECTS\)')
  def test_save_layout_remains_at_original_count(self):
   header=(ROOT/'include/global.h').read_text();self.assertIn('struct ObjectEvent objectEvents[SAVED_OBJECT_EVENTS_COUNT]',header)
   constants=(ROOT/'include/constants/global.h').read_text();self.assertIn('#define SAVED_OBJECT_EVENTS_COUNT 16',constants)
