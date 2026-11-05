@@ -16,6 +16,14 @@ class TradeStorageAccessTests(unittest.TestCase):
         subprocess.run(['tools/mapjson/mapjson', 'groups', 'emerald',
                         'data/maps/map_groups.json', 'data/maps', 'include/constants'],
                        cwd=ROOT, check=True, capture_output=True)
+        # world_activity now includes the native DexNav boundary, whose wild
+        # encounter header needs this generated constant on a clean checkout.
+        subprocess.run(['make', '-C', 'tools/jsonproc'], cwd=ROOT,
+                       check=True, capture_output=True)
+        subprocess.run(['tools/jsonproc/jsonproc', 'src/data/wild_encounters.json',
+                        'src/data/wild_encounters.constants.json.txt',
+                        'include/constants/wild_encounter.h'],
+                       cwd=ROOT, check=True, capture_output=True)
 
     def test_storage_script_assembles_with_the_stock_waitstate(self):
         # Assemble the actual new script with production command/special macros.
