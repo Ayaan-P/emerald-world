@@ -608,7 +608,7 @@ static bool8 CaveLine(unsigned n, char **tokens)
     int result;
     if (!sWorld.caveAvailable || sWorld.staging) return FALSE;
     if (n == 2 && !strcmp(tokens[1], "NONE") && sWorld.caveState == CAVE_WAIT) {
-        sWorld.caveState = GeneratedMap_IsInside() ? CAVE_RETURN_NONE : CAVE_DISABLED;
+        sWorld.caveState = (GeneratedMap_IsInside() || GeneratedMap_EntryPending()) ? CAVE_RETURN_NONE : CAVE_DISABLED;
         return TRUE;
     }
     if (n == 2 && !strcmp(tokens[1], "BUSY") && sWorld.caveState == CAVE_WAIT) {
@@ -623,7 +623,8 @@ static bool8 CaveLine(unsigned n, char **tokens)
     result = WorldCaveWire_Feed(&sWorld.caveWire, n, (const char *const *)tokens);
     if (result < 0) return FALSE;
     if (result == 1) {
-        if (GeneratedMap_IsInside() && !GeneratedMap_MatchesActive(sWorld.caveWire.cells, WORLD_CAVE_CELLS))
+        if ((GeneratedMap_IsInside() || GeneratedMap_EntryPending())
+         && !GeneratedMap_MatchesPrepared(sWorld.caveWire.cells, WORLD_CAVE_CELLS))
             sWorld.caveState = CAVE_MISMATCH;
         else if (GeneratedMap_StageTemplate(sWorld.caveWire.cells, WORLD_CAVE_CELLS))
             sWorld.caveState = CAVE_ACK;
@@ -669,7 +670,7 @@ static bool8 Line(char *line)
 #if GENERATED_MAP_READY
         sWorld.caveAvailable = sWorld.caveProbe;
         sWorld.caveState = sWorld.caveAvailable ? CAVE_IDLE :
-            (GeneratedMap_IsInside() ? CAVE_RETURN_NONE : CAVE_DISABLED);
+            ((GeneratedMap_IsInside() || GeneratedMap_EntryPending()) ? CAVE_RETURN_NONE : CAVE_DISABLED);
         sWorld.caveRetry = 0;
 #endif
         sWorld.live.revision = v[0];
@@ -1140,6 +1141,9 @@ static void CavePump(void)
 {
     if (!sWorld.connected) return;
     if (sWorld.caveState == CAVE_MISMATCH || sWorld.caveState == CAVE_RETURN_NONE) {
+        /* A warp can still be entering the old cave even before its map ID
+         * changes. Never acknowledge a replacement during that window. */
+        if (GeneratedMap_EntryPending()) return;
         if (GeneratedMap_IsInside()) {
             if (!sWorld.caveReturning && Ready() && GeneratedMap_Leave()) sWorld.caveReturning = TRUE;
             return;

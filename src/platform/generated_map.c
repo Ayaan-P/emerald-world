@@ -5,6 +5,7 @@
 #include "field_screen_effect.h"
 #include "field_player_avatar.h"
 #include "fieldmap.h"
+#include "task.h"
 #include "platform/world_bridge.h"
 #include "platform/link_transport.h"
 #include "platform/world_rally.h"
@@ -126,6 +127,13 @@ bool8 GeneratedMap_IsInside(void)
 }
 
 #if GENERATED_MAP_READY
+static bool8 HasFreeWarpTask(void)
+{
+    u8 i;
+    for (i = 0; i < NUM_TASKS; i++) if (!gTasks[i].isActive) return TRUE;
+    return FALSE;
+}
+
 static bool8 GetReturnCoords(s16 *x, s16 *y)
 {
     if (!gSaveBlock1Ptr || !gMapHeader.mapLayout || !x || !y) return FALSE;
@@ -137,11 +145,21 @@ static bool8 GetReturnCoords(s16 *x, s16 *y)
 }
 #endif
 
-bool8 GeneratedMap_MatchesActive(const u8 *cells, u32 size)
+bool8 GeneratedMap_EntryPending(void)
+{
+#if GENERATED_MAP_READY
+    return sPrepared && !sSeenInside && !GeneratedMap_IsInside();
+#else
+    return FALSE;
+#endif
+}
+
+bool8 GeneratedMap_MatchesPrepared(const u8 *cells, u32 size)
 {
 #if GENERATED_MAP_READY
     u16 i;
-    if (!cells || size != GEN_CELLS || !sPrepared || !GeneratedMap_IsInside()) return FALSE;
+    if (!cells || size != GEN_CELLS || !sPrepared
+     || (!GeneratedMap_IsInside() && !GeneratedMap_EntryPending())) return FALSE;
     for (i = 0; i < GEN_CELLS; i++)
         if ((cells[i] == '.') != (sTiles[i] == GEN_FLOOR || sTiles[i] == GEN_EXIT)) return FALSE;
     return TRUE;
@@ -167,7 +185,8 @@ bool8 GeneratedMap_CanEnter(void)
     s16 x, y;
     struct WorldRallySnapshot rally;
     if (WorldRally_HasReturn() || (WorldRally_GetSnapshot(&rally) && rally.id)) return FALSE;
-    return gSaveBlock1Ptr && !GeneratedMap_IsInside() && !LinkTransport_TagPeer()
+    return gSaveBlock1Ptr && !sPrepared && !GeneratedMap_IsInside() && HasFreeWarpTask()
+        && !LinkTransport_TagPeer()
         && !LinkTransport_PendingTag() && !LinkTransport_PendingInvitation()
         && (!WorldBridge_Enabled() || (WorldBridge_GeneratedCaveReady() && sHasTemplate))
         && IsMapTypeOutdoors(gMapHeader.mapType)
@@ -212,7 +231,7 @@ bool8 GeneratedMap_Enter(void)
 bool8 GeneratedMap_Leave(void)
 {
 #if GENERATED_MAP_READY
-    if (!GeneratedMap_IsInside() || !sPrepared) return FALSE;
+    if (!GeneratedMap_IsInside() || !sPrepared || !HasFreeWarpTask()) return FALSE;
     SetWarpDestination(sReturn.mapGroup, sReturn.mapNum, WARP_ID_NONE, sReturn.x, sReturn.y);
     StoreInitialPlayerAvatarState();
     DoWarp();

@@ -21,6 +21,7 @@ class NativeSharedCaveFlow(unittest.TestCase):
 #include "global.h"
 #include "platform/generated_map.h"
 #include "platform/world_cave_wire.h"
+struct Task {int isActive;};struct Task gTasks[16];
 struct Save save,*gSaveBlock1Ptr=&save;__typeof__(gMain) gMain;__typeof__(gMapHeader) gMapHeader;
 enum CaveState {CAVE_DISABLED,CAVE_IDLE,CAVE_WAIT,CAVE_ACK,CAVE_WAIT_OK,CAVE_READY,CAVE_MISMATCH,CAVE_RETURN_NONE};
 static struct {bool8 connected,caveAvailable,staging,caveReturning;enum CaveState caveState;unsigned caveTimeout,caveRetry,snapshotAge;struct WorldCaveWire caveWire;size_t outputSize;char output[4096];} sWorld;
@@ -73,18 +74,41 @@ int main(void){
  char *ok2[]={"CAVE","OK",(char *)b};assert(CaveLine(3,ok2)&&WorldBridge_GeneratedCaveReady());
  assert(GeneratedMap_Enter());save.location=destination;map=GeneratedMap_ResolveLayout(&base);
  assert(map->map[2*31+2]==0x0722 && !disconnected);
+ /* Exhausted warp tasks must not mark a failed return as in progress. */
+ for(int i=0;i<16;i++)gTasks[i].isActive=1;
+ int before=leaving;assert(!GeneratedMap_Leave()&&leaving==before);
+ for(int i=0;i<16;i++)gTasks[i].isActive=0;
  /* If a reconnecting authority has no generated cave, leave rather than
   * publish the old instance or silently install a different world. */
  sWorld.caveState=CAVE_WAIT;char *none[]={"CAVE","NONE"};
  assert(CaveLine(2,none)&&sWorld.caveState==CAVE_RETURN_NONE&&!WorldBridge_GeneratedCaveReady());
  CavePump();assert(sWorld.caveReturning);save.location=destination;GeneratedMap_ResolveLayout(&base);CavePump();
  assert(sWorld.caveState==CAVE_DISABLED&&!WorldBridge_GeneratedCaveReady());
+ /* A reconnect during the entry fade must not acknowledge a different map
+  * just because the engine has not switched its current map ID yet. */
+ sWorld.caveState=CAVE_READY;assert(GeneratedMap_Enter());assert(GeneratedMap_EntryPending());
+ sWorld.caveState=CAVE_WAIT;WorldCaveWire_Reset(&sWorld.caveWire);deliver(a,0);
+ assert(sWorld.caveState==CAVE_MISMATCH&&!WorldBridge_GeneratedCaveReady());
+ before=leaving;CavePump();assert(leaving==before&&GeneratedMap_EntryPending());
+ save.location=destination;GeneratedMap_ResolveLayout(&base);assert(!GeneratedMap_EntryPending());
+ CavePump();assert(sWorld.caveReturning&&leaving==before+1);
+ save.location=destination;GeneratedMap_ResolveLayout(&base);CavePump();
+ assert(sWorld.caveState==CAVE_WAIT_OK&&!WorldBridge_GeneratedCaveReady());
+ char *ok3[]={"CAVE","OK",(char *)a};assert(CaveLine(3,ok3)&&WorldBridge_GeneratedCaveReady());
+ assert(GeneratedMap_Enter()&&GeneratedMap_EntryPending());sWorld.caveState=CAVE_WAIT;
+ assert(CaveLine(2,none)&&sWorld.caveState==CAVE_RETURN_NONE);before=leaving;CavePump();
+ assert(leaving==before&&GeneratedMap_EntryPending());save.location=destination;GeneratedMap_ResolveLayout(&base);
+ CavePump();assert(sWorld.caveReturning);save.location=destination;GeneratedMap_ResolveLayout(&base);CavePump();
+ assert(sWorld.caveState==CAVE_DISABLED);
+ for(int i=0;i<16;i++)gTasks[i].isActive=1;
+ assert(!GeneratedMap_CanEnter());
  return 0;
 }'''.replace('ID_A',ida).replace('ID_B',idb)
   with tempfile.TemporaryDirectory() as d:
    p=Path(d);(p/'platform').mkdir();(p/'constants').mkdir();(p/'global.h').write_text('#ifndef G\n#define G\n'+global_h+'\n#endif\n')
    for name in ('main.h','overworld.h','field_screen_effect.h','field_player_avatar.h','fieldmap.h'):
     (p/name).write_text('#include "global.h"\nint IsMapTypeOutdoors(int);int TestPlayerAvatarFlags(int);void SetWarpDestination(s8,s8,s8,s8,s8);void SetDynamicWarpWithCoords(int,s8,s8,s8,s8,s8);void PlayerGetDestCoords(s16*,s16*);void StoreInitialPlayerAvatarState(void);void DoWarp(void);\n#define MAP_OFFSET 7\n')
+   (p/'task.h').write_text('struct Task {int isActive;}; extern struct Task gTasks[16];\n#define NUM_TASKS 16\n')
    (p/'platform/world_rally.h').write_text('struct WorldRallySnapshot{unsigned id;}; int WorldRally_HasReturn(void); int WorldRally_GetSnapshot(struct WorldRallySnapshot *);\n')
    (p/'platform/link_transport.h').write_text('const char *LinkTransport_TagPeer(void); const void *LinkTransport_PendingTag(void); const void *LinkTransport_PendingInvitation(void);\n')
    (p/'platform/world_bridge.h').write_text('int WorldBridge_Enabled(void);int WorldBridge_GeneratedCaveReady(void);\n')
