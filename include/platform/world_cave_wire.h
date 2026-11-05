@@ -20,6 +20,10 @@
 #ifndef GENERATED_WILDS_CAST
 #define GENERATED_WILDS_CAST 0
 #endif
+#ifndef GENERATED_WILDS_EVENTS
+#define GENERATED_WILDS_EVENTS 0
+#endif
+#define WORLD_CAVE_EVENT_BYTES 1466
 #define WORLD_CAVE_GUIDE_BYTES 59
 #define WORLD_CAVE_CAST_BYTES 184
 #define WORLD_CAVE_LARGE_SIDE 63
@@ -44,6 +48,10 @@ struct WorldCaveWire
 #if GENERATED_WILDS_CAST
     u8 cast[WORLD_CAVE_CAST_BYTES];
     bool8 castSeen;
+#endif
+#if GENERATED_WILDS_EVENTS
+    u8 events[WORLD_CAVE_EVENT_BYTES];
+    u8 nextEventChunk;
 #endif
     bool8 active;
 };

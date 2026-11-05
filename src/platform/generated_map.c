@@ -465,11 +465,11 @@ bool8 GeneratedMap_StageCastWilds(const u8 *metadata, u32 metaSize, const u8 *ce
     (void)metadata;(void)metaSize;(void)cells;(void)size;return FALSE;
 #endif
 }
-bool8 GeneratedMap_StageEventWilds(const u8 *events, u32 eventSize, const u8 *cast, u32 castSize, const u8 *cells, u32 size)
-{
 #if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
+static bool8 StageEventWilds(const u8 *events, u32 eventSize, const u8 *cast, u32 castSize, const u8 *cells, u32 size, bool8 shared)
+{
     u8 guide[GENERATED_GUIDE_BYTES], used[16][3]={{0}};unsigned j,k,n;
-    if(!events || eventSize!=GENERATED_EVENT_BYTES || !cast || castSize!=GENERATED_CAST_BYTES || events[0]>15) return FALSE;
+    if(!events || eventSize!=GENERATED_EVENT_BYTES || !cast || castSize!=GENERATED_CAST_BYTES || !cells || size!=LARGE_CELLS || events[0]>15) return FALSE;
     n=events[1];if(!n || n>24 || !cast[0] || cast[0]>3)return FALSE;
     guide[0]=7;
     for(j=0;j<24;j++) {const u8 *r=events+2+j*61;
@@ -478,8 +478,35 @@ bool8 GeneratedMap_StageEventWilds(const u8 *events, u32 eventSize, const u8 *ca
         used[r[0]][r[1]-1]=TRUE;guide[1]=r[3];memcpy(guide+2,r+4,57);
         if(!ValidateGuideText(guide,sizeof(guide)))return FALSE;
     }
-    if(!StageCastWilds(cast,castSize,cells,size,FALSE))return FALSE;
+    if (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
+        return shared && sEventActive && sLargeShared && !memcmp(events,sEventData,GENERATED_EVENT_BYTES)
+            && !memcmp(cast,sCastMetadata,GENERATED_CAST_BYTES) && !memcmp(cells,sLargeTemplate,LARGE_CELLS);
+    if(!StageCastWilds(cast,castSize,cells,size,shared))return FALSE;
     memcpy(sEventData,events,GENERATED_EVENT_BYTES);sEventStaged=TRUE;return TRUE;
+}
+#endif
+bool8 GeneratedMap_StageEventWilds(const u8 *events, u32 eventSize, const u8 *cast, u32 castSize, const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
+    return StageEventWilds(events,eventSize,cast,castSize,cells,size,FALSE);
+#else
+    (void)events;(void)eventSize;(void)cast;(void)castSize;(void)cells;(void)size;return FALSE;
+#endif
+}
+bool8 GeneratedMap_StageSharedEventWilds(const u8 *events, u32 eventSize, const u8 *cast, u32 castSize, const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
+    return StageEventWilds(events,eventSize,cast,castSize,cells,size,TRUE);
+#else
+    (void)events;(void)eventSize;(void)cast;(void)castSize;(void)cells;(void)size;return FALSE;
+#endif
+}
+bool8 GeneratedMap_MatchesPreparedEventWilds(const u8 *events, u32 eventSize, const u8 *cast, u32 castSize, const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
+    return events && eventSize==GENERATED_EVENT_BYTES && cast && castSize==GENERATED_CAST_BYTES && cells && size==LARGE_CELLS
+        && sEventActive && sPrepared && (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
+        && !memcmp(events,sEventData,GENERATED_EVENT_BYTES) && !memcmp(cast,sCastMetadata,GENERATED_CAST_BYTES) && !memcmp(cells,sLargeTemplate,LARGE_CELLS);
 #else
     (void)events;(void)eventSize;(void)cast;(void)castSize;(void)cells;(void)size;return FALSE;
 #endif
@@ -517,6 +544,9 @@ bool8 GeneratedMap_MatchesPreparedCastWilds(const u8 *metadata, u32 metaSize, co
 {
 #if GENERATED_MAP_READY && GENERATED_WILDS_CAST
     return metadata && metaSize==GENERATED_CAST_BYTES && cells && size==LARGE_CELLS && sCastActive && sPrepared
+#if GENERATED_WILDS_EVENTS
+        && !sEventActive
+#endif
         && (GeneratedMap_IsInside() || GeneratedMap_EntryPending()) && !memcmp(metadata,sCastMetadata,GENERATED_CAST_BYTES)
         && !memcmp(cells,sLargeTemplate,LARGE_CELLS);
 #else

@@ -108,6 +108,9 @@ static struct {
     bool8 caveV7Probe, caveV7Legacy;
 #if GENERATED_WILDS_CAST
     bool8 caveV8Probe, caveV8Legacy;
+#if GENERATED_WILDS_EVENTS
+    bool8 caveV9Probe, caveV9Legacy;
+#endif
 #endif
 #endif
 #endif
@@ -239,7 +242,7 @@ static bool8 MapCoords(unsigned group, unsigned num, unsigned x, unsigned y)
     if (IsGeneratedCaveMap(group, num))
         return sWorld.connected && sWorld.caveAvailable && sWorld.caveState == CAVE_READY
 #if GENERATED_MAP_WILDS
-            && ((sWorld.caveWire.version == 6 || sWorld.caveWire.version == 7 || sWorld.caveWire.version == 8) == (group == MAP_GROUP(MAP_GENERATED_WORLD_WILDS)
+            && ((sWorld.caveWire.version == 6 || sWorld.caveWire.version == 7 || sWorld.caveWire.version == 8 || sWorld.caveWire.version == 9) == (group == MAP_GROUP(MAP_GENERATED_WORLD_WILDS)
                                                 && num == MAP_NUM(MAP_GENERATED_WORLD_WILDS)))
 #endif
             && GeneratedMap_SharedCoordValid(x, y);
@@ -431,6 +434,9 @@ static void Disconnect(void)
     sWorld.caveV7Probe = FALSE;
 #if GENERATED_WILDS_CAST
     sWorld.caveV8Probe = FALSE;
+#if GENERATED_WILDS_EVENTS
+    sWorld.caveV9Probe = FALSE;
+#endif
 #endif
 #endif
 #endif
@@ -655,6 +661,9 @@ invalid:
 static bool8 CaveProbeRejected(unsigned n, char **tokens)
 {
     if (sWorld.caveProbe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
+#if GENERATED_WILDS_EVENTS && GENERATED_CAVE_WILDLIFE
+        if (sWorld.caveV9Probe) {sWorld.caveV9Legacy=TRUE;return TRUE;}
+#endif
 #if GENERATED_WILDS_CAST && GENERATED_CAVE_WILDLIFE
         if (sWorld.caveV8Probe) {sWorld.caveV8Legacy=TRUE;return TRUE;}
 #endif
@@ -780,9 +789,29 @@ static bool8 CaveLine(unsigned n, char **tokens)
 #endif
     }
 #endif
+#if GENERATED_WILDS_EVENTS
+    if (n == 4 && !strcmp(tokens[1], "BEGIN") && !strcmp(tokens[3], "EVENTS")) {
+#if GENERATED_CAVE_WILDLIFE
+        if (!sWorld.caveV9Probe) return FALSE;
+#else
+        return FALSE;
+#endif
+    }
+#endif
     result = WorldCaveWire_Feed(&sWorld.caveWire, n, (const char *const *)tokens);
     if (result < 0) return FALSE;
     if (result == 1) {
+#if GENERATED_WILDS_EVENTS && GENERATED_CAVE_WILDLIFE
+        if (sWorld.caveWire.version == 9) {
+            if ((GeneratedMap_IsInside() || GeneratedMap_EntryPending())
+             && !GeneratedMap_MatchesPreparedEventWilds(sWorld.caveWire.events, WORLD_CAVE_EVENT_BYTES, sWorld.caveWire.cast, WORLD_CAVE_CAST_BYTES, sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS))
+                sWorld.caveState = CAVE_MISMATCH;
+            else if (GeneratedMap_StageSharedEventWilds(sWorld.caveWire.events, WORLD_CAVE_EVENT_BYTES, sWorld.caveWire.cast, WORLD_CAVE_CAST_BYTES, sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS))
+                sWorld.caveState = CAVE_ACK;
+            else return FALSE;
+            return TRUE;
+        }
+#endif
 #if GENERATED_WILDS_CAST && GENERATED_CAVE_WILDLIFE
         if (sWorld.caveWire.version == 8) {
             if ((GeneratedMap_IsInside() || GeneratedMap_EntryPending())
@@ -1137,6 +1166,10 @@ static void QueueHello(bool8 headless)
 #if GENERATED_WILDS_CAST
         sWorld.caveV8Probe = sWorld.caveV7Probe && !sWorld.caveV8Legacy;
         if (sWorld.caveV8Probe) suffix = "CAVE8";
+#if GENERATED_WILDS_EVENTS
+        sWorld.caveV9Probe = sWorld.caveV8Probe && !sWorld.caveV9Legacy;
+        if (sWorld.caveV9Probe) suffix = "CAVE9";
+#endif
 #endif
 #endif
 #endif
@@ -1405,6 +1438,11 @@ static void CavePump(void)
         }
         sWorld.caveReturning = FALSE;
         if (sWorld.caveState == CAVE_MISMATCH) {
+#if GENERATED_WILDS_EVENTS && GENERATED_CAVE_WILDLIFE
+            if (sWorld.caveWire.version == 9) {
+                if (!GeneratedMap_StageSharedEventWilds(sWorld.caveWire.events, WORLD_CAVE_EVENT_BYTES, sWorld.caveWire.cast, WORLD_CAVE_CAST_BYTES, sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS)) { Disconnect(); return; }
+            } else
+#endif
 #if GENERATED_WILDS_CAST && GENERATED_CAVE_WILDLIFE
             if (sWorld.caveWire.version == 8) {
                 if (!GeneratedMap_StageSharedCastWilds(sWorld.caveWire.cast, WORLD_CAVE_CAST_BYTES, sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS)) { Disconnect(); return; }

@@ -37,11 +37,37 @@ def compile_document(doc):
     return encode(proposal_from_blueprint(doc['blueprint'],side=63),doc['cast'],doc['events'])
 
 def main(argv=None):
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('input',type=Path);p.add_argument('output',type=Path);a=p.parse_args(argv)
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('input',type=Path);p.add_argument('output',type=Path,nargs='?');p.add_argument('--admin-socket',type=Path);a=p.parse_args(argv)
+    if (a.output is None)==(a.admin_socket is None):p.error('choose exactly one output file or owner admin socket')
     data=a.input.read_bytes()
     if len(data)>MAX_JSON:raise ValueError('input too large')
     doc=json.loads(data.decode('utf-8'));blob=compile_document(doc)
-    with a.output.open('xb') as f:f.write(blob)
-    print('Wrote validated offline event area:',a.output)
+    if a.admin_socket is not None:
+        from .publish_cave import publish_bytes
+        print('Published validated event area:',publish_bytes(blob,a.admin_socket))
+    else:
+        with a.output.open('xb') as f:f.write(blob)
+        print('Wrote validated event area:',a.output)
+
+
+def validate_wire(events, cast, cells):
+    """Reject malformed or noncanonical event graphs before distribution."""
+    from .wilds_cast import validate_wire as validate_cast
+    if type(events) is not bytes or len(events)!=EVENT_BYTES:raise ValueError('invalid event payload')
+    validate_cast(cast,cells)
+    initial,count=events[:2]
+    if initial>15 or not 1<=count<=MAX_RULES:raise ValueError('invalid event header')
+    seen=set()
+    for i in range(MAX_RULES):
+        r=events[2+i*RECORD_BYTES:2+(i+1)*RECORD_BYTES]
+        if i>=count:
+            if any(r):raise ValueError('invalid event padding')
+            continue
+        state,npc,nxt,length=r[:4]
+        if state>15 or not 1<=npc<=cast[0] or nxt>15 or (state,npc) in seen or not 1<=length<=57 or any(r[4+length:]):raise ValueError('invalid event rule')
+        seen.add((state,npc))
+        try:text=r[4:4+length].decode('ascii')
+        except UnicodeDecodeError:raise ValueError('invalid event text') from None
+        _text(text)
 
 if __name__=='__main__':main()

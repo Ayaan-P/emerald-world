@@ -11,7 +11,7 @@ class WildsEvents(unittest.TestCase):
         return {'blueprint':DOC,'cast':[{'gfx':7,'text':'Hello!'},{'gfx':8,'text':'Hi!'}], 'events':{'initial':0,'rules':[{'state':0,'npc':1,'next':1,'text':'Ask my friend.'},{'state':1,'npc':2,'next':2,'text':'Please go back.'},{'state':2,'npc':1,'next':3,'text':'Thanks!'}]}}
     def test_agent_authored_rules_and_validation(self):
         doc=self.document();blob=wilds_events.compile_document(doc);self.assertEqual(blob[:8],b'EWGMAP09');self.assertEqual(len(blob),5627)
-        with self.assertRaises(CaveError):SharedCave(blob)
+        self.assertEqual(SharedCave(blob).version,9)
         for bad in ('', 'A'*29, 'bad\x01', 'café'):
             d=self.document();d['events']['rules'][0]['text']=bad
             with self.assertRaises(ValueError):wilds_events.compile_document(d)
