@@ -320,13 +320,13 @@ void HandleAction_UseItem(void)
     gBattle_BG0_Y = 0;
     ClearFuryCutterDestinyBondGrudge(gBattlerAttacker);
 #ifdef PORTABLE
-    if (WorldCoop_PotionActionActive(gBattlerAttacker))
+    if (WorldCoop_MedicineActionActive(gBattlerAttacker))
     {
-        int result = WorldCoop_AdvancePotionAction(gBattlerAttacker);
+        int result = WorldCoop_AdvanceMedicineAction(gBattlerAttacker);
         if (result == 0) return;
         if (result < 0) { NativeLink_Abort(); return; }
         gBattleScripting.battler = gBattlerAttacker;
-        gBattlescriptCurrInstr = BattleScript_WorldCoopPotion;
+        gBattlescriptCurrInstr = result == 1 ? BattleScript_WorldCoopMedicineHeal : BattleScript_WorldCoopMedicineStatus;
         gCurrentActionFuncId = B_ACTION_EXEC_SCRIPT;
         return;
     }
@@ -336,9 +336,9 @@ void HandleAction_UseItem(void)
 #ifdef PORTABLE
     if (WorldCoop_IsBattle())
     {
-        if ((gLastUsedItem & 0xFF00) == WORLD_COOP_POTION_REPLY)
+        if ((gLastUsedItem & 0xFF00) == WORLD_COOP_MEDICINE_REPLY)
         {
-            if (WorldCoop_BeginPotionAction(gBattlerAttacker, gLastUsedItem) < 0)
+            if (WorldCoop_BeginMedicineAction(gBattlerAttacker, gLastUsedItem) < 0)
                 NativeLink_Abort();
             return;
         }

@@ -2747,9 +2747,9 @@ static void PlayerHandleExpUpdate(void)
 #ifdef PORTABLE
     if (WorldCoop_IsBattle())
     {
-        if (gBattleBufferA[gActiveBattler][1] == WORLD_COOP_POTION_TAG)
+        if (gBattleBufferA[gActiveBattler][1] == WORLD_COOP_MEDICINE_TAG)
         {
-            bool8 consumed = WorldCoop_ConsumePotion(gBattleBufferA[gActiveBattler]);
+            bool8 consumed = WorldCoop_ConsumeMedicine(gBattleBufferA[gActiveBattler]);
             BtlController_EmitTwoReturnValues(B_COMM_TO_ENGINE, consumed ? 1 : 0, 0);
             PlayerBufferExecCompleted();
             return;

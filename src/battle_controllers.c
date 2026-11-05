@@ -860,7 +860,7 @@ static bool8 NativeBattleCommandValid(const u8 *data, u16 size, u8 bufferId)
         if (data[0] == CONTROLLER_EXPUPDATE && WorldCoop_IsBattle())
             return WorldCoop_RewardPacketValid(data, size)
                 || WorldCoop_CatchPacketValid(data, size)
-                || WorldCoop_PotionPacketValid(data, size);
+                || WorldCoop_MedicinePacketValid(data, size);
 #endif
         if (data[1] >= PARTY_SIZE)
             return FALSE;
@@ -1031,7 +1031,7 @@ static bool8 NativeBattleReplyValid(u8 battler, const u8 *data)
         return TRUE;
     case CONTROLLER_TWORETURNVALUES:
         if (WorldCoop_IsBattle() && request[0] == CONTROLLER_EXPUPDATE
-         && request[1] == WORLD_COOP_POTION_TAG)
+         && request[1] == WORLD_COOP_MEDICINE_TAG)
             return data[1] <= 1 && data[2] == 0 && data[3] == 0;
         /* The engine indexes its move table from bytes 2/3 after CHOOSEMOVE,
          * regardless of the action byte. Do not let another action disguise

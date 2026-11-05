@@ -141,13 +141,21 @@ BattleScript_TrainerBallBlock::
 	finishaction
 
 .ifdef PORTABLE
-BattleScript_WorldCoopPotion::
+BattleScript_WorldCoopMedicineHeal::
 	playse SE_USE_ITEM
 	orword gHitMarker, HITMARKER_IGNORE_SUBSTITUTE
 	healthbarupdate BS_ATTACKER
 	datahpupdate BS_ATTACKER
 	printstring STRINGID_PKMNSITEMRESTOREDHEALTH
 	waitmessage B_WAIT_TIME_LONG
+	updatestatusicon BS_ATTACKER
+	moveendcase MOVEEND_MIRROR_MOVE
+	finishaction
+BattleScript_WorldCoopMedicineStatus::
+	playse SE_USE_ITEM
+	printstring STRINGID_PKMNSITEMRESTOREDHEALTH
+	waitmessage B_WAIT_TIME_LONG
+	updatestatusicon BS_ATTACKER
 	moveendcase MOVEEND_MIRROR_MOVE
 	finishaction
 .endif
