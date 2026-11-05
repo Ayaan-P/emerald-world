@@ -1,7 +1,7 @@
 """Publish an inert cave template to a running local authority's admin socket.
 
 The authority accepts a replacement only when no connected trainer is in its
-cave. This is ephemeral world content and is not retained across restart.
+cave. Content is ephemeral unless the host opts into cave persistence.
 """
 import argparse
 import base64
@@ -35,7 +35,7 @@ def publish_bytes(blob, admin_socket):
     response = admin_request('', {'command':'replace_cave', 'template':base64.b64encode(blob).decode('ascii')},
                              admin_path=admin_socket)
     if (type(response) is not dict or response.get('ok') is not True
-            or response.get('id') != cave.identity or response.get('persistent') is not False):
+            or response.get('id') != cave.identity or type(response.get('persistent')) is not bool):
         raise ValueError('authority did not accept the cave')
     return cave.identity
 

@@ -16,6 +16,11 @@ class PublishCave(unittest.TestCase):
     self.assertEqual(publish(path,Path(d)/'admin.sock'),identity)
     args,kwargs=request.call_args;self.assertEqual(args[0],'');self.assertEqual(args[1]['command'],'replace_cave')
     self.assertEqual(base64.b64decode(args[1]['template']),BLOB);self.assertEqual(kwargs['admin_path'],Path(d)/'admin.sock')
+ def test_persistent_acceptance_is_valid(self):
+  with tempfile.TemporaryDirectory() as d:
+   path=Path(d)/'cave.bin';path.write_bytes(BLOB);identity=SharedCave(BLOB).identity
+   with patch('world.publish_cave.admin_request',return_value={'ok':True,'id':identity,'persistent':True}):
+    self.assertEqual(publish(path,Path(d)/'admin.sock'),identity)
  def test_bad_input_and_false_acceptance_are_rejected(self):
   with tempfile.TemporaryDirectory() as d:
    path=Path(d)/'cave.bin';path.write_bytes(b'bad')

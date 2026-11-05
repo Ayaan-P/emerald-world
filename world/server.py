@@ -53,7 +53,8 @@ class MeetingUnavailable(ValueError):
 
 class WorldServer:
     def __init__(self, socket_path, state_dir, mechanics=None, admin_path=None, *,
-                 max_players=32, max_controls=None, connection_headroom=8, cave_template=None):
+                 max_players=32, max_controls=None, connection_headroom=8, cave_template=None,
+                 persist_generated_cave=False):
         from .build_catalog import catalog_maps
         from .shared_cave import SharedCave
         entries = [(group, num) for (group, num), item in catalog_maps().items()
@@ -61,6 +62,9 @@ class WorldServer:
         if len(entries) > 1:
             raise ValueError('ambiguous generated cave map')
         self.cave_map = entries[0] if entries else None
+        if type(persist_generated_cave) is not bool:
+            raise ValueError('persist_generated_cave must be a bool')
+        self.persist_generated_cave = persist_generated_cave
         self.shared_cave = SharedCave(cave_template) if cave_template is not None else None
         if self.shared_cave and self.cave_map is None:
             raise ValueError('generated cave missing from catalog')
@@ -128,6 +132,14 @@ class WorldServer:
             self.db.execute("ALTER TABLE module ADD COLUMN objects TEXT NOT NULL DEFAULT '[]'")
         if 'interaction_cursor' not in columns:
             self.db.execute('ALTER TABLE module ADD COLUMN interaction_cursor INTEGER NOT NULL DEFAULT 0')
+        if self.persist_generated_cave:
+            from .shared_cave import SharedCave
+            self.db.execute('CREATE TABLE IF NOT EXISTS generated_cave (singleton INTEGER PRIMARY KEY CHECK(singleton=1), template BLOB NOT NULL)')
+            row = self.db.execute('SELECT template FROM generated_cave WHERE singleton=1').fetchone()
+            if row is not None:
+                if self.cave_map is None:
+                    raise ValueError('generated cave missing from catalog')
+                self.shared_cave = SharedCave(row[0])
         self.db.commit()
         os.chmod(self.root / 'world.sqlite3', 0o600)
         from .host_controls import HostControls
@@ -830,6 +842,15 @@ class WorldServer:
                 self._queue(conn, json.dumps(future.result(), ensure_ascii=True) + '\n')
         self.control_jobs = remaining
 
+    def _persist_cave(self, blob):
+        if not self.persist_generated_cave:
+            return
+        try:
+            with self.db:
+                self.db.execute('INSERT OR REPLACE INTO generated_cave (singleton, template) VALUES (1, ?)', (blob,))
+        except sqlite3.Error:
+            raise ValueError('generated cave could not be persisted') from None
+
     def _replace_cave(self, blob):
         from .shared_cave import SharedCave
         candidate = SharedCave(blob)  # validate completely before mutating anything
@@ -837,6 +858,7 @@ class WorldServer:
             if self.cave_map is None:
                 raise ValueError('generated cave missing from catalog')
             if self.shared_cave and candidate.identity == self.shared_cave.identity:
+                self._persist_cave(blob)
                 return candidate.identity
             peers = [peer for peer in self.peers.values() if not peer.get('closing')]
             if any(peer.get('in_generated_cave') or
@@ -848,6 +870,7 @@ class WorldServer:
             if any(len(peer['out']) + len(message) > MAX_QUEUE for peer in recipients):
                 raise ValueError('generated cave update is busy')
             old_id = self.shared_cave.identity if self.shared_cave else None
+            self._persist_cave(blob)
             self.shared_cave = candidate
             for peer in recipients:
                 if old_id:
@@ -870,7 +893,7 @@ class WorldServer:
                         raise ValueError('invalid cave encoding') from None
                     if base64.b64encode(blob).decode('ascii') != request['template']:
                         raise ValueError('noncanonical cave encoding')
-                    result = dict(ok=True, id=self._replace_cave(blob), persistent=False)
+                    result = dict(ok=True, id=self._replace_cave(blob), persistent=self.persist_generated_cave)
                 except ValueError as exc:
                     # Expected validation/occupancy refusal is not a mechanic error.
                     result = dict(ok=False, error=str(exc))
@@ -1186,7 +1209,8 @@ def main(argv=None):
     parser.add_argument('--max-players', type=int, default=32)
     parser.add_argument('--max-controls', type=int, help='default: twice max-players; at most two per identity')
     parser.add_argument('--connection-headroom', type=int, default=8, help='includes two private admin slots')
-    parser.add_argument('--generated-cave-template', type=Path, help='experimental immutable shared cave template; read once at startup')
+    parser.add_argument('--generated-cave-template', type=Path, help='experimental startup shared cave template')
+    parser.add_argument('--persist-generated-cave', action='store_true', help='opt in to retain published cave geometry in the world database')
     parser.add_argument('--timeout', type=float, default=120)
     args = parser.parse_args(argv)
     state = Path(args.state_dir).absolute()
@@ -1229,7 +1253,8 @@ def main(argv=None):
                 cave_template = stream.read(SIZE + 1)
         server = WorldServer(game_socket, state, admin_path=args.admin_socket,
                              max_players=args.max_players, max_controls=args.max_controls,
-                             connection_headroom=args.connection_headroom, cave_template=cave_template)
+                             connection_headroom=args.connection_headroom, cave_template=cave_template,
+                             persist_generated_cave=args.persist_generated_cave)
         server.start()
         if args.listen is not None:
             import ssl
