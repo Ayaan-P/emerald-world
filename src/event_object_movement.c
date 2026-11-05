@@ -1439,6 +1439,43 @@ void RemoveAllObjectEventsExceptPlayer(void)
     }
 }
 
+#if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
+// Only share the player's palette when both graphics request the same asset.
+// Never load a remote palette over the local player's reserved palette.
+bool8 WorldPlayerPaletteCompatible(u8 graphicsId)
+{
+#if WORLD_MATCHED_TRAINERS
+    const struct ObjectEvent *player;
+    const struct ObjectEventGraphicsInfo *remote, *local;
+    // Surfing and field-move avatars need additional effects/animation state.
+    switch (graphicsId)
+    {
+    case OBJ_EVENT_GFX_BRENDAN_NORMAL:
+    case OBJ_EVENT_GFX_BRENDAN_MACH_BIKE:
+    case OBJ_EVENT_GFX_BRENDAN_ACRO_BIKE:
+    case OBJ_EVENT_GFX_MAY_NORMAL:
+    case OBJ_EVENT_GFX_MAY_MACH_BIKE:
+    case OBJ_EVENT_GFX_MAY_ACRO_BIKE:
+        break;
+    default:
+        return FALSE;
+    }
+    if (graphicsId >= NUM_OBJ_EVENT_GFX || gPlayerAvatar.objectEventId >= OBJECT_EVENTS_COUNT)
+        return FALSE;
+    player = &gObjectEvents[gPlayerAvatar.objectEventId];
+    if (!player->active || !player->isPlayer || player->graphicsId >= NUM_OBJ_EVENT_GFX)
+        return FALSE;
+    remote = GetObjectEventGraphicsInfo(graphicsId);
+    local = GetObjectEventGraphicsInfo(player->graphicsId);
+    return !remote->inanimate && remote->paletteSlot == PALSLOT_PLAYER
+        && local->paletteSlot == PALSLOT_PLAYER && remote->paletteTag == local->paletteTag;
+#else
+    (void)graphicsId;
+    return FALSE;
+#endif
+}
+#endif
+
 static u8 TrySetupObjectEventSprite(const struct ObjectEventTemplate *objectEventTemplate, struct SpriteTemplate *spriteTemplate, u8 mapNum, u8 mapGroup, s16 cameraX, s16 cameraY)
 {
     u8 spriteId;
@@ -1455,9 +1492,20 @@ static u8 TrySetupObjectEventSprite(const struct ObjectEventTemplate *objectEven
     objectEvent = &gObjectEvents[objectEventId];
     graphicsInfo = GetObjectEventGraphicsInfo(objectEvent->graphicsId);
     paletteSlot = graphicsInfo->paletteSlot;
+#if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS && WORLD_MATCHED_TRAINERS
+    if (sWorldObjectAllocation && paletteSlot == PALSLOT_PLAYER
+        && !WorldPlayerPaletteCompatible(objectEvent->graphicsId))
+    {
+        objectEvent->active = FALSE;
+        return OBJECT_EVENTS_COUNT;
+    }
+#endif
     if (paletteSlot == PALSLOT_PLAYER)
     {
-        LoadPlayerObjectReflectionPalette(graphicsInfo->paletteTag, paletteSlot);
+#if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS && WORLD_MATCHED_TRAINERS
+        if (!sWorldObjectAllocation)
+#endif
+            LoadPlayerObjectReflectionPalette(graphicsInfo->paletteTag, paletteSlot);
     }
     else if (paletteSlot == PALSLOT_NPC_SPECIAL)
     {

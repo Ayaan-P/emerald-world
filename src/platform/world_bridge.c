@@ -1190,6 +1190,9 @@ static void SyncEngine(void)
         if (p->gfx < NUM_OBJ_EVENT_GFX && GetObjectEventGraphicsInfo(p->gfx)->paletteSlot >= PALSLOT_NPC_1
          && GetObjectEventGraphicsInfo(p->gfx)->paletteSlot <= PALSLOT_NPC_4
          && !GetObjectEventGraphicsInfo(p->gfx)->inanimate) gfx = p->gfx;
+#if WORLD_EXTENDED_OBJECTS && WORLD_MATCHED_TRAINERS
+        else if (p->gfx < NUM_OBJ_EVENT_GFX && WorldPlayerPaletteCompatible(p->gfx)) gfx = p->gfx;
+#endif
         /* A different size needs a fresh OBJ allocation. Replace it during
          * this reconciliation, rather than hiding the peer for a frame. */
         if (r->id[0] && Owned(i) && gObjectEvents[r->object].graphicsId != gfx)
