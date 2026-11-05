@@ -16,6 +16,7 @@
 #include "platform/native_save.h"
 #endif
 #include "global.h"
+#include "platform/generated_map.h"
 #include "platform.h"
 #include "rtc.h"
 #include "gba/defines.h"
@@ -418,6 +419,7 @@ static bool StoreSaveFile(void)
 
 bool8 Platform_StoreSaveFile(void)
 {
+    if (GeneratedMap_IsInside()) return FALSE;
     return StoreSaveFile();
 }
 

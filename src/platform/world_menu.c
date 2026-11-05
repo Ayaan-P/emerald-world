@@ -20,6 +20,7 @@
 #include "platform/world_activity.h"
 #include "platform/world_bridge.h"
 #include "platform/world_menu.h"
+#include "platform/generated_map.h"
 #include "platform/world_rally.h"
 #include "platform/world_travel.h"
 #include "constants/characters.h"
@@ -33,7 +34,11 @@
  * Lists are rebuilt from live state, but focus is an action identity. */
 enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, RALLY, DISPATCH };
 enum Action { FRIENDS, STORY, DEXNAV, BACK, MODE, SCOPE, REQUEST, READY,
-    LATER, CANCEL, GO, FINISH, RETURN, STAY, ACTION_COUNT };
+    LATER, CANCEL, GO, FINISH, RETURN, STAY,
+#if GENERATED_MAP_READY
+    GEN_CAVE,
+#endif
+    ACTION_COUNT };
 enum Page { CONTROLS, ROSTER, STATUS, PAGE_COUNT };
 enum { WORLD_MENU_WIDTH = 28, WORLD_MENU_HEIGHT = 18, LINE_HEIGHT = 12,
     SCREEN_LINES = WORLD_MENU_HEIGHT * 8 / LINE_HEIGHT, TEXT_BYTES = 96 };
@@ -156,6 +161,10 @@ static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 onlin
         AddRow(rows, &n, STORY, "Story rally", NULL);
         AddRow(rows, &n, DEXNAV, "DexNav", DexNavNative_Available() ? NULL :
             "DexNav needs a Pokedex and conscious party outside restricted or link areas.");
+#if GENERATED_MAP_READY
+        AddRow(rows, &n, GEN_CAVE, GeneratedMap_IsInside() ? "Leave generated cave" : "Explore generated cave",
+            GeneratedMap_IsInside() || GeneratedMap_CanEnter() ? NULL : "Offline only. Stand outside on foot.");
+#endif
         AddRow(rows, &n, BACK, "Back", NULL);
         return n;
     }
@@ -354,6 +363,14 @@ static void Dispatch(void)
      * backend's fresh report queue and normal STATE publication intervals. */
     if (++sMenu.freeFrames < 2) return;
     sMenu.state = CLOSED;
+#if GENERATED_MAP_READY
+    if (sMenu.pending == GEN_CAVE)
+    {
+        accepted = GeneratedMap_IsInside() ? GeneratedMap_Leave() : GeneratedMap_Enter();
+        sMenu.notice = accepted ? NULL : "Generated cave unavailable in this field state.";
+        return;
+    }
+#endif
     if (sMenu.pending == FRIENDS) { WorldTravel_RequestMenu(); return; }
     if (sMenu.pending == DEXNAV)
     {

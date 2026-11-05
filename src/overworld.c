@@ -1,5 +1,8 @@
 #include "global.h"
 #ifdef PORTABLE
+#include "platform/generated_map.h"
+#endif
+#ifdef PORTABLE
 #include "dexnav.h"
 #endif
 #include "overworld.h"
@@ -542,7 +545,13 @@ const struct MapLayout *GetMapLayout(void)
 {
     u16 mapLayoutId = gSaveBlock1Ptr->mapLayoutId;
     if (mapLayoutId)
+    {
+#ifdef PORTABLE
+        return GeneratedMap_ResolveLayout(gMapLayouts[mapLayoutId - 1]);
+#else
         return gMapLayouts[mapLayoutId - 1];
+#endif
+    }
     return NULL;
 }
 
