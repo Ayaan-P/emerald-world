@@ -534,6 +534,9 @@ class WorldServer:
             conn['seq'], conn['state'], conn['field'] = seq, state, field
             conn['state_time'] = time.monotonic()
             self._refresh_link_presence()
+            # Preserve the existing response for each sender; coalesce only
+            # broadcasts to the rest of the world.
+            self._queue(conn, self._snapshot(conn))
             self._queue_presence_broadcast()
         except (UnicodeError, ValueError):
             self._error(conn, 'MALFORMED')

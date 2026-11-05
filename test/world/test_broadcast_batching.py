@@ -32,6 +32,11 @@ class BatchingTests(unittest.TestCase):
         self.clock.now+=.02;self.s._flush_presence_broadcast();self.assertEqual(self.s.broadcasts,1)
         self.assertIn(b'PEER alice 0 1 12 12',self.peers[1]['out'])
         self.s._flush_presence_broadcast();self.assertEqual(self.s.broadcasts,1)
+    def test_each_state_still_gets_sender_snapshot(self):
+        self.state(0,1,10);self.state(0,2,11)
+        self.assertEqual(self.peers[0]['out'].count(b'BEGIN '),2)
+        self.assertEqual(self.s.broadcasts,0)
+
     def test_continuous_traffic_cannot_postpone_first_deadline(self):
         self.state(0,1,10)
         for seq in range(2,7):
