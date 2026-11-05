@@ -879,6 +879,9 @@ static bool8 NativeBattleCommandValid(const u8 *data, u16 size, u8 bufferId)
         needed = 4 + sizeof(struct BattleMsgData);
         break;
     case CONTROLLER_CHOOSEMOVE:
+        if ((data[3] & ~MEGA_MOVE_CAN_SELECT_BIT)
+         || (data[3] && (!MEGA_FEATURE_READY || !FlagGet(FLAG_MEGA_EVOLUTION))))
+            return FALSE;
         needed = 4 + sizeof(struct ChooseMoveStruct);
         break;
     case CONTROLLER_CHOOSEPOKEMON:
@@ -1791,7 +1794,11 @@ void BtlController_EmitChooseMove(u8 bufferId, bool8 isDoubleBattle, bool8 noPPN
     sBattleBuffersTransferData[0] = CONTROLLER_CHOOSEMOVE;
     sBattleBuffersTransferData[1] = isDoubleBattle;
     sBattleBuffersTransferData[2] = noPPNumber;
+#ifdef PORTABLE
+    sBattleBuffersTransferData[3] = MegaGame_CanQueue(gActiveBattler) ? MEGA_MOVE_CAN_SELECT_BIT : 0;
+#else
     sBattleBuffersTransferData[3] = 0;
+#endif
     for (i = 0; i < sizeof(*movePPData); i++)
         sBattleBuffersTransferData[4 + i] = *((u8 *)(movePPData) + i);
     PrepareBufferDataTransfer(bufferId, sBattleBuffersTransferData, sizeof(*movePPData) + 4);

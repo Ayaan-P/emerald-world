@@ -7,6 +7,7 @@
 #define MEGA_FEATURE_READY 0
 #endif
 #define MEGA_MOVE_CHOICE_BIT 0x80
+#define MEGA_MOVE_CAN_SELECT_BIT 0x01
 void MegaGame_Reset(void);
 bool8 MegaGame_CanSelect(u8 battler);
 bool8 MegaGame_CanQueue(u8 battler);

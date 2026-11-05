@@ -2,6 +2,7 @@
 #include "global.h"
 #include "battle.h"
 #include "battle_anim.h"
+#include "battle_controllers.h"
 #include "pokemon.h"
 #include "item.h"
 #include "event_data.h"
@@ -66,7 +67,14 @@ bool8 MegaGame_CanQueue(u8 battler)
 
 bool8 MegaGame_CanSelect(u8 battler)
 {
-    return MegaGame_CanQueue(battler) && GetBattlerSide(battler) == B_SIDE_PLAYER
+    /* Only the master owns authoritative gBattleMons in link battles. The
+     * CHOOSEMOVE controller request carries its eligibility decision to the
+     * owning client; that client checks its private Ring locally. The master
+     * validates the chosen Mega bit again when the reply arrives. */
+    return MEGA_FEATURE_READY && battler < gBattlersCount && battler < MAX_BATTLERS_COUNT
+        && FlagGet(FLAG_MEGA_EVOLUTION) && GetBattlerSide(battler) == B_SIDE_PLAYER
+        && gBattleBufferA[battler][0] == CONTROLLER_CHOOSEMOVE
+        && (gBattleBufferA[battler][3] & MEGA_MOVE_CAN_SELECT_BIT)
         && CheckBagHasItem(ITEM_MEGA_RING, 1);
 }
 

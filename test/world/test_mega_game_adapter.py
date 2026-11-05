@@ -7,6 +7,7 @@ class GameAdapterTests(unittest.TestCase):
   main=r'''
 #include "global.h"
 #include "battle.h"
+#include "battle_controllers.h"
 #include "pokemon.h"
 #include "constants/species.h"
 #include "constants/items.h"
@@ -17,7 +18,7 @@ class GameAdapterTests(unittest.TestCase):
 #include <assert.h>
 #include <string.h>
 struct Pokemon gPlayerParty[6],gEnemyParty[6];struct BattlePokemon gBattleMons[4];
-u8 gBattlersCount=4,gBattlerPartyIndexes[4];u32 gBattleTypeFlags;int hasKey=1;
+u8 gBattlersCount=4,gBattlerPartyIndexes[4],gBattleBufferA[4][32];u32 gBattleTypeFlags;int hasKey=1;
 int FlagGet(int x){(void)x;return 1;}int NativeLink_IsActive(void){return 1;}
 int CheckBagHasItem(u16 x,u16 y){(void)x;(void)y;return hasKey;}
 u8 GetBattlerPosition(u8 x){return x;}u8 GetBattlerSide(u8 x){return x&1;}
@@ -36,6 +37,8 @@ int main(void){
  gBattlerPartyIndexes[0]=0;gBattlerPartyIndexes[2]=3;
  gBattleMons[0].species=SPECIES_VENUSAUR;gBattleMons[0].item=ITEM_VENUSAURITE;gBattleMons[0].hp=30;gBattleMons[0].level=50;
  gBattleMons[2].species=SPECIES_GENGAR;gBattleMons[2].item=ITEM_GENGARITE;gBattleMons[2].hp=30;gBattleMons[2].level=50;
+ gBattleBufferA[0][0]=gBattleBufferA[2][0]=CONTROLLER_CHOOSEMOVE;
+ gBattleBufferA[0][3]=gBattleBufferA[2][3]=MEGA_MOVE_CAN_SELECT_BIT;
  MegaGame_Reset();hasKey=0;assert(!MegaGame_CanSelect(0));hasKey=1;
  assert(MegaGame_CanSelect(0));assert(MegaGame_ToggleSelection(0));
  assert(MegaGame_ChoiceBit(0)==MEGA_MOVE_CHOICE_BIT);
@@ -72,6 +75,11 @@ int main(void){
  gBattlerPartyIndexes[0]=0;assert(MegaGame_ActiveForm(0)==MEGA_FORM_VENUSAUR_MEGA);
  assert(!memcmp(before,gPlayerParty,sizeof(before)));
  MegaGame_Reset();gBattleMons[0].status2=STATUS2_TRANSFORMED;assert(!MegaGame_CanQueue(0));
+ /* The owning remote client may have no populated gBattleMons; the master's
+  * CHOOSEMOVE permission plus its own Ring still enables the input. */
+ memset(&gBattleMons[0],0,sizeof(gBattleMons[0]));
+ assert(MegaGame_CanSelect(0));assert(!MegaGame_CanQueue(0));
+ gBattleBufferA[0][3]=0;assert(!MegaGame_CanSelect(0));
  return 0;
 }'''
   globalh='''#include <stdint.h>\n#include <stddef.h>\ntypedef uint8_t u8;typedef uint16_t u16;typedef uint32_t u32;typedef uint8_t bool8;\n#define TRUE 1\n#define FALSE 0\n#define PARTY_SIZE 6\n#define MULTI_PARTY_SIZE 3\n#define MAX_BATTLERS_COUNT 4\n'''
@@ -80,6 +88,7 @@ int main(void){
   with tempfile.TemporaryDirectory() as d:
    root=Path(d);(root/'constants').mkdir();(root/'platform').mkdir()
    (root/'global.h').write_text('#ifndef GLOB\n#define GLOB\n'+globalh+'#endif\n')
+   (root/'battle_controllers.h').write_text('#include \"global.h\"\n#define CONTROLLER_CHOOSEMOVE 10\nextern u8 gBattleBufferA[4][32];\n');
    (root/'battle.h').write_text(battleh);(root/'battle_anim.h').write_text('');(root/'pokemon.h').write_text(pokemonh)
    (root/'item.h').write_text('int CheckBagHasItem(u16,u16);\n');(root/'event_data.h').write_text('int FlagGet(int);\n')
    (root/'constants/flags.h').write_text('#define FLAG_MEGA_EVOLUTION 1\n')
