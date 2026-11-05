@@ -51,7 +51,14 @@ extern unsigned char PLTT[PLTT_SIZE] __attribute__ ((aligned (4)));
 
 #define BG_PLTT       PLTT
 
+#if defined(PORTABLE) && WORLD_NATIVE_TILEBANK
+#if !WORLD_NATIVE_OAM || !WORLD_EXTENDED_OBJECTS
+#error "Native tilebank requires native OAM and extended world objects"
+#endif
+#define VRAM_SIZE 0x20000
+#else
 #define VRAM_SIZE 0x18000
+#endif
 #ifndef PORTABLE
 #define VRAM      0x6000000
 #else
@@ -73,7 +80,11 @@ extern unsigned char VRAM_[VRAM_SIZE] __attribute__ ((aligned (4)));
 
 // text-mode BG
 #define OBJ_VRAM0      (VRAM + 0x10000)
+#if defined(PORTABLE) && WORLD_NATIVE_TILEBANK
+#define OBJ_VRAM0_SIZE 0x10000
+#else
 #define OBJ_VRAM0_SIZE 0x8000
+#endif
 
 // bitmap-mode BG
 #define OBJ_VRAM1      (VRAM + 0x14000)

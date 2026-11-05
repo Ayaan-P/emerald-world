@@ -15,6 +15,11 @@
 #endif
 #define SPRITE_NONE 0xFF
 #define TAG_NONE 0xFFFF
+#if defined(PORTABLE) && WORLD_NATIVE_TILEBANK
+struct Sprite;
+void NativeSpriteTileScope(bool8 active);
+void NativeSpriteTileClone(const struct Sprite *source, struct Sprite *target);
+#endif
 
 // Given to SetSpriteMatrixAnchor to skip anchoring one of the coords.
 #define NO_ANCHOR 0x800

@@ -1556,7 +1556,13 @@ u8 SpawnWorldObjectEventParameterized(u8 graphicsId, u8 movementBehavior, u8 loc
 {
     u8 result;
     sWorldObjectAllocation = TRUE;
+#if WORLD_NATIVE_TILEBANK
+    NativeSpriteTileScope(TRUE);
+#endif
     result = SpawnSpecialObjectEventParameterized(graphicsId, movementBehavior, localId, x, y, elevation);
+#if WORLD_NATIVE_TILEBANK
+    NativeSpriteTileScope(FALSE);
+#endif
     sWorldObjectAllocation = FALSE;
     return result;
 }
@@ -2366,6 +2372,9 @@ u8 CopySprite(struct Sprite *sprite, s16 x, s16 y, u8 subpriority)
         if (!gSprites[i].inUse)
         {
             gSprites[i] = *sprite;
+#if defined(PORTABLE) && WORLD_NATIVE_TILEBANK
+            NativeSpriteTileClone(sprite, &gSprites[i]);
+#endif
             gSprites[i].x = x;
             gSprites[i].y = y;
             gSprites[i].subpriority = subpriority;
@@ -2384,6 +2393,9 @@ u8 CreateCopySpriteAt(struct Sprite *sprite, s16 x, s16 y, u8 subpriority)
         if (!gSprites[i].inUse)
         {
             gSprites[i] = *sprite;
+#if defined(PORTABLE) && WORLD_NATIVE_TILEBANK
+            NativeSpriteTileClone(sprite, &gSprites[i]);
+#endif
             gSprites[i].x = x;
             gSprites[i].y = y;
             gSprites[i].subpriority = subpriority;

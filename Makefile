@@ -9,6 +9,7 @@ PORTABLE    ?= 0
 WORLD_EXTENDED_OBJECTS ?= 0
 WORLD_EXTENDED_SPRITES ?= 0
 WORLD_NATIVE_OAM ?= 0
+WORLD_NATIVE_TILEBANK ?= 0
 IS64BIT     ?= 1
 TARGET_OS       ?= NONE
 
@@ -283,7 +284,7 @@ ifeq ($(MODERN),0)
   LIBPATH := -L ../../tools/agbcc/lib
   LIB := $(LIBPATH) -lgcc -lc -L../../libagbsyscall -lagbsyscall
 else ifeq ($(PORTABLE),1)
-  CPPFLAGS += -std=gnu99 -D NONMATCHING -D PORTABLE -D UBFIX -DWORLD_EXTENDED_OBJECTS=$(WORLD_EXTENDED_OBJECTS) -DWORLD_EXTENDED_SPRITES=$(WORLD_EXTENDED_SPRITES) -DWORLD_NATIVE_OAM=$(WORLD_NATIVE_OAM) $(CPPFLAGS64) $(PLATFORM_INCLUDES)
+  CPPFLAGS += -std=gnu99 -D NONMATCHING -D PORTABLE -D UBFIX -DWORLD_EXTENDED_OBJECTS=$(WORLD_EXTENDED_OBJECTS) -DWORLD_EXTENDED_SPRITES=$(WORLD_EXTENDED_SPRITES) -DWORLD_NATIVE_OAM=$(WORLD_NATIVE_OAM) -DWORLD_NATIVE_TILEBANK=$(WORLD_NATIVE_TILEBANK) $(CPPFLAGS64) $(PLATFORM_INCLUDES)
   ifneq ($(SDL_DIR),)
     CPPFLAGS += -I$(SDL_DIR)/include
   endif
@@ -299,7 +300,7 @@ else ifeq ($(PORTABLE),1)
   endif
   PATH_MODERNCC := PATH="$(PATH)" $(MODERNCC)
   override CFLAGS += $(OS_CFLAGS) $(PLATFORM_CFLAGS) -Werror=implicit-function-declaration -Werror=incompatible-pointer-types -Werror=int-conversion -Werror=pointer-to-int-cast -Werror=int-to-pointer-cast -Wno-trigraphs -Wimplicit -Wparentheses -Wunused -m$(BIT_WIDTH) -std=gnu99 $(LEADING_UNDERSCORE_FLAG) -fno-common -fno-builtin -Wno-unused-function -DPORTABLE -DNONMATCHING -D UBFIX -DMODERN=$(MODERN)
-  override CFLAGS += -DWORLD_EXTENDED_OBJECTS=$(WORLD_EXTENDED_OBJECTS) -DWORLD_EXTENDED_SPRITES=$(WORLD_EXTENDED_SPRITES) -DWORLD_NATIVE_OAM=$(WORLD_NATIVE_OAM)
+  override CFLAGS += -DWORLD_EXTENDED_OBJECTS=$(WORLD_EXTENDED_OBJECTS) -DWORLD_EXTENDED_SPRITES=$(WORLD_EXTENDED_SPRITES) -DWORLD_NATIVE_OAM=$(WORLD_NATIVE_OAM) -DWORLD_NATIVE_TILEBANK=$(WORLD_NATIVE_TILEBANK)
   # The same floating point results everywhere, which the tests' frame hashes
   # need: on ARM, compilers would otherwise fuse multiplies and adds
   override CFLAGS += -ffp-contract=off
