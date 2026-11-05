@@ -13,6 +13,8 @@ typedef int bool8;
 #define TRUE 1
 #define MAX_SPRITES TEST_MAX_SPRITES
 #define MAX_SPRITE_COPY_REQUESTS MAX_SPRITES
+#define OAM_ENTRY_COUNT 128
+#define OAM_SLOT(i) (&gMain.oamBuffer[i])
 struct Sprite {int inUse,invisible,oam,subspriteMode;void *subspriteTables;}; struct SpriteTemplate {int value;};
 extern int gOamLimit;
 struct {int oamBuffer[128]; int sentinel;} gMain;

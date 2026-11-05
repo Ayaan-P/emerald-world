@@ -79,7 +79,14 @@ extern unsigned char VRAM_[VRAM_SIZE] __attribute__ ((aligned (4)));
 #define OBJ_VRAM1      (VRAM + 0x14000)
 #define OBJ_VRAM1_SIZE 0x4000
 
+// The portable renderer may opt into a separate native-only OAM extension.
+#if defined(PORTABLE) && WORLD_NATIVE_OAM
+#define OAM_ENTRY_COUNT 192
+#define OAM_SIZE 0x600
+#else
+#define OAM_ENTRY_COUNT 128
 #define OAM_SIZE 0x400
+#endif
 #ifndef PORTABLE
 #define OAM      0x7000000
 #else

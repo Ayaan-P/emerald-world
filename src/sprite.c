@@ -277,6 +277,14 @@ static u16 sSpritePaletteTags[16];
 COMMON_DATA u32 gOamMatrixAllocBitmap = 0;
 COMMON_DATA u8 gReservedSpritePaletteCount = 0;
 
+#if defined(PORTABLE) && WORLD_NATIVE_OAM
+// Keep gMain and its original 128-entry buffer layout unchanged.
+static ALIGNED(4) struct OamData sNativeExtraOam[OAM_ENTRY_COUNT - 128];
+#define OAM_SLOT(i) ((i) < 128 ? &gMain.oamBuffer[(i)] : &sNativeExtraOam[(i) - 128])
+#else
+#define OAM_SLOT(i) (&gMain.oamBuffer[(i)])
+#endif
+
 EWRAM_DATA struct Sprite gSprites[MAX_SPRITES + 1] = {0};
 EWRAM_DATA static u16 sSpritePriorities[MAX_SPRITES] = {0};
 EWRAM_DATA static u8 sSpriteOrder[MAX_SPRITES] = {0};
@@ -293,12 +301,14 @@ EWRAM_DATA bool8 gAffineAnimsDisabled = FALSE;
 
 void ResetSpriteData(void)
 {
-    ResetOamRange(0, 128);
+    ResetOamRange(0, OAM_ENTRY_COUNT);
     ResetAllSprites();
     ClearSpriteCopyRequests();
     ResetAffineAnimData();
     FreeSpriteTileRanges();
-#if defined(PORTABLE) && WORLD_EXTENDED_SPRITES
+#if defined(PORTABLE) && WORLD_NATIVE_OAM
+    gOamLimit = OAM_ENTRY_COUNT;
+#elif defined(PORTABLE) && WORLD_EXTENDED_SPRITES
     gOamLimit = 128;
 #else
     gOamLimit = 64;
@@ -498,7 +508,7 @@ void AddSpritesToOamBuffer(void)
 
     while (oamIndex < gOamLimit)
     {
-        gMain.oamBuffer[oamIndex] = gDummyOamData;
+        *OAM_SLOT(oamIndex) = gDummyOamData;
         oamIndex++;
     }
 }
@@ -637,14 +647,24 @@ void DestroySprite(struct Sprite *sprite)
 void ResetOamRange(u8 start, u8 end)
 {
     u8 i;
+#if defined(PORTABLE) && WORLD_NATIVE_OAM
+    // Stock scene transitions use [0,128) to mean "all OAM".
+    if (start == 0 && end == 128)
+        end = OAM_ENTRY_COUNT;
+#endif
     for (i = start; i < end; i++)
-        gMain.oamBuffer[i] = *(struct OamData *)&gDummyOamData;
+        *OAM_SLOT(i) = *(struct OamData *)&gDummyOamData;
 }
 
 void LoadOam(void)
 {
     if (!gMain.oamLoadDisabled)
+    {
         CpuCopy32(gMain.oamBuffer, (void *)OAM, sizeof(gMain.oamBuffer));
+#if defined(PORTABLE) && WORLD_NATIVE_OAM
+        CpuCopy32(sNativeExtraOam, (u8 *)OAM + sizeof(gMain.oamBuffer), sizeof(sNativeExtraOam));
+#endif
+    }
 }
 
 void ClearSpriteCopyRequests(void)
@@ -1670,13 +1690,13 @@ bool8 AddSpriteToOamBuffer(struct Sprite *sprite, u8 *oamIndex)
 
     if (!sprite->subspriteTables || sprite->subspriteMode == SUBSPRITES_OFF)
     {
-        gMain.oamBuffer[*oamIndex] = sprite->oam;
+        *OAM_SLOT(*oamIndex) = sprite->oam;
         (*oamIndex)++;
         return FALSE;
     }
     else
     {
-        return AddSubspritesToOamBuffer(sprite, &gMain.oamBuffer[*oamIndex], oamIndex);
+        return AddSubspritesToOamBuffer(sprite, OAM_SLOT(*oamIndex), oamIndex);
     }
 }
 
@@ -1743,6 +1763,20 @@ bool8 AddSubspritesToOamBuffer(struct Sprite *sprite, struct OamData *destOam, u
                 y = ~y + 1;
             }
 
+#if defined(PORTABLE) && WORLD_NATIVE_OAM
+            // A subsprite group may cross the original 128-entry boundary.
+            {
+                struct OamData *out = OAM_SLOT(*oamIndex);
+                *out = *oam;
+                out->shape = subspriteTable->subsprites[i].shape;
+                out->size = subspriteTable->subsprites[i].size;
+                out->x = (s16)baseX + (s16)x;
+                out->y = baseY + y;
+                out->tileNum = tileNum + subspriteTable->subsprites[i].tileOffset;
+                if (sprite->subspriteMode != SUBSPRITES_IGNORE_PRIORITY)
+                    out->priority = subspriteTable->subsprites[i].priority;
+            }
+#else
             destOam[i] = *oam;
             destOam[i].shape = subspriteTable->subsprites[i].shape;
             destOam[i].size = subspriteTable->subsprites[i].size;
@@ -1752,6 +1786,7 @@ bool8 AddSubspritesToOamBuffer(struct Sprite *sprite, struct OamData *destOam, u
 
             if (sprite->subspriteMode != SUBSPRITES_IGNORE_PRIORITY)
                 destOam[i].priority = subspriteTable->subsprites[i].priority;
+#endif
         }
     }
 
