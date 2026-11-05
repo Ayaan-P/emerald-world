@@ -45,6 +45,12 @@ class LiveAgentEvents(unittest.TestCase):
                     self.assertTrue(tile['ok']);self.assertEqual(tile['sequence'],3)
                     self.assertEqual(alice['out'],f'CAVE EVENTTILE {identity} 3 1 2 0\n'.encode());self.assertEqual(bob['out'],b'')
                     server._line(alice,f'CAVE EVENTACK {identity} 3 APPLIED'.encode());self.assertEqual(agent_event_control.status(p/'owner.sock','Alice',identity,session,3)['status'],'applied')
+                    alice['out'].clear();terrainPatch=[{'x':1,'y':2,'terrain':'grass'},{'x':2,'y':2,'terrain':'tall_grass'}]
+                    result=agent_event_control.set_tiles(p/'owner.sock','Alice',identity,terrainPatch);self.assertTrue(result['ok']);self.assertEqual(result['sequence'],4)
+                    self.assertEqual(alice['out'],f'CAVE EVENTTILES {identity} 4 02010200020201\n'.encode());self.assertEqual(bob['out'],b'')
+                    for bad in ([],terrainPatch+[terrainPatch[0]],[terrainPatch[0],{'x':1,'y':1,'terrain':'grass'}],[terrainPatch[0]]*65):
+                        alice['out'].clear();self.assertFalse(agent_event_control.set_tiles(p/'owner.sock','Alice',identity,bad)['ok']);self.assertEqual(alice['out'],b'')
+
                     for x,y,terrain in ((1,1,'grass'),(2,1,'grass'),(61,61,'grass'),(0,0,'grass'),(1,2,'lava'),(True,2,'grass')):
                         self.assertFalse(agent_event_control.set_tile(p/'owner.sock','Alice',identity,x,y,terrain)['ok'])
 
@@ -64,6 +70,10 @@ class LiveAgentEvents(unittest.TestCase):
             common=['--admin-socket','/tmp/owner','--trainer','Alice','--area','a'*64]
             self.assertEqual(agent_event_control.main(common+['--x','3','--y','4','--terrain','grass']),0)
             self.assertEqual(send.call_args.args[1]['command'],'set_event_tile')
+            with tempfile.TemporaryDirectory() as t:
+                f=Path(t)/'tiles.json';f.write_text('[{"x":3,"y":4,"terrain":"grass"}]')
+                self.assertEqual(agent_event_control.main(common+['--tiles-file',str(f)]),0)
+                self.assertEqual(send.call_args.args[1]['command'],'set_event_tiles')
             self.assertEqual(agent_event_control.main(common+['--state','2']),0)
             self.assertEqual(send.call_args.args[1]['command'],'set_event_state')
             self.assertEqual(agent_event_control.main(common+['--status','1','--session','b'*16]),0)

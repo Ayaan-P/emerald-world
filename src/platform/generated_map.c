@@ -574,6 +574,21 @@ bool8 GeneratedMap_SetSharedEventTile(unsigned x, unsigned y, unsigned terrain)
     (void)x;(void)y;(void)terrain;return FALSE;
 #endif
 }
+bool8 GeneratedMap_SetSharedEventTiles(const u8 *patch, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
+    unsigned i,j,n,x,y,t;
+    if(!patch || !size || !(n=patch[0]) || n>64 || size!=1+3*n || !sEventActive || !sLargeShared || !GeneratedMap_IsInside())return FALSE;
+    for(i=0;i<n;i++) {x=patch[1+i*3];y=patch[2+i*3];t=patch[3+i*3];
+        if(t>1 || !GeneratedMap_SharedCoordValid(x,y) || (x==1 && y==1) || (x==61 && (y==60 || y==61)))return FALSE;
+        for(j=0;j<i;j++)if(patch[1+j*3]==x && patch[2+j*3]==y)return FALSE;
+    }
+    for(i=0;i<n;i++)GeneratedMap_SetSharedEventTile(patch[1+i*3],patch[2+i*3],patch[3+i*3]);
+    return TRUE;
+#else
+    (void)patch;(void)size;return FALSE;
+#endif
+}
 bool8 GeneratedMap_StageSharedCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size)
 {
 #if GENERATED_MAP_READY && GENERATED_WILDS_CAST
