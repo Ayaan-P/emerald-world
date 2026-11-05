@@ -63,7 +63,10 @@ static FILE *sProgressFile;
 static u16 sBgPalette[16], sObjPalettes[3][16];
 static u16 sBgPaletteFaded[16], sObjPalettesFaded[3][16];
 static u8 sFieldPaletteSlots[3] = {0xFF, 0xFF, 0xFF};
-static bool8 sFieldResources;
+static bool8 sFieldResources, sSharedHud, sBgPaletteWritten;
+static u8 sFieldIcon[0x200];
+static u16 sFieldSpecies;
+static u16 sEffectTileStart = 0xFFFF;
 #define ICON_TAG_BASE 0xD800
 #define ICON_PALETTE_TAG 0xD740
 #define EFFECT_PALETTE_TAG 0xD741
@@ -438,12 +441,78 @@ static bool8 PaletteInUse(u8 slot)
     return FALSE;
 }
 
-bool8 DexNavNative_AcquireFieldResources(u16 species)
+/* Only pixels actually used by the field HUD reserve colors. The held-item
+ * sprite uses the first tile (the second is mail), stars use the imported art,
+ * and the caught marker is needed only for caught species. No quantization. */
+static const u32 sHudStar[] = INCGFX_U32("graphics/dexnav/star.png", ".4bpp");
+static const u32 sHudOwned[] = INCGFX_U32("graphics/dexnav/owned_icon.png", ".4bpp");
+
+static u16 UsedColors(const u8 *tiles, u32 size)
 {
+    u16 mask = 0;
+    u32 i;
+    for (i = 0; i < size; ++i)
+        mask |= (1 << (tiles[i] & 15)) | (1 << (tiles[i] >> 4));
+    return mask | 1;  /* Transparent index may never become opaque. */
+}
+
+static bool8 PackFieldHud(u16 species, bool8 owned, u16 *palette)
+{
+    const u16 *iconPalette = GetValidMonIconPalettePtr(species);
+    const u8 *icon = (const u8 *)GetMonIconPtr(species, 0, TRUE);
+    u16 used = UsedColors((const u8 *)sHeldItemGfx, 32)
+        | UsedColors((const u8 *)sHudStar, sizeof(sHudStar));
+    u16 iconUsed = UsedColors(icon, sizeof(sFieldIcon));
+    u8 map[16] = {0};
+    u32 i, j;
+    if (owned) used |= UsedColors((const u8 *)sHudOwned, sizeof(sHudOwned));
+    CpuCopy16(gDexNavNative_HeldItemPalette, palette, PLTT_SIZE_4BPP);
+    for (i = 1; i < 16; ++i)
+    {
+        if (!(iconUsed & (1 << i))) continue;
+        for (j = 1; j < 16; ++j)
+            if ((used & (1 << j)) && palette[j] == iconPalette[i]) break;
+        if (j == 16)
+        {
+            for (j = 1; j < 16 && (used & (1 << j)); ++j) {}
+            if (j == 16) return FALSE;
+            palette[j] = iconPalette[i];
+            used |= 1 << j;
+        }
+        map[i] = j;
+    }
+    for (i = 0; i < sizeof(sFieldIcon); ++i)
+        sFieldIcon[i] = map[icon[i] & 15] | (map[icon[i] >> 4] << 4);
+    return TRUE;
+}
+
+/* Record only allocations whose tags were absent, and never write a reserved
+ * or active untagged bank. Borrowed native effect banks bypass this function. */
+static bool8 AcquireFieldPalette(u8 index, const u16 *palette)
+{
+    u8 slot;
+    if (IndexOfSpritePaletteTag(sFieldTags[index]) != 0xFF) return FALSE;
+    slot = AllocSpritePalette(sFieldTags[index]);
+    if (slot == 0xFF) return FALSE;
+    if (slot < 12 || PaletteInUse(slot))
+    {
+        FreeSpritePaletteByTag(sFieldTags[index]);
+        return FALSE;
+    }
+    sFieldPaletteSlots[index] = slot;
+    CpuCopy16(&gPlttBufferUnfaded[OBJ_PLTT_ID(slot)], sObjPalettes[index], PLTT_SIZE_4BPP);
+    CpuCopy16(&gPlttBufferFaded[OBJ_PLTT_ID(slot)], sObjPalettesFaded[index], PLTT_SIZE_4BPP);
+    LoadPalette(palette, OBJ_PLTT_ID(slot), PLTT_SIZE_4BPP);
+    return TRUE;
+}
+
+bool8 DexNavNative_AcquireFieldResources(u16 species, bool8 owned, bool8 hidden)
+{
+    u16 hudPalette[16];
     u32 i, freeSprites = 0;
     const u16 tags[] = {HELD_ITEM_TAG, OWNED_ICON_TAG, HIDDEN_SEARCH_TAG,
         HIDDEN_MON_ICON_TAG, LIT_STAR_TILE_TAG, EFFECT_TILE_TAG};
-    if (sFieldResources) return FALSE;
+    if (sFieldResources || species == SPECIES_NONE || species >= NUM_SPECIES) return FALSE;
     sFailed = FALSE;
     for (i = 0; i < MAX_SPRITES; ++i)
         if (!gSprites[i].inUse) ++freeSprites;
@@ -455,19 +524,10 @@ bool8 DexNavNative_AcquireFieldResources(u16 species)
     sFieldResources = TRUE;
     CpuCopy16(&gPlttBufferUnfaded[BG_PLTT_ID(14)], sBgPalette, sizeof(sBgPalette));
     CpuCopy16(&gPlttBufferFaded[BG_PLTT_ID(14)], sBgPaletteFaded, sizeof(sBgPaletteFaded));
-    for (i = 0; i < ARRAY_COUNT(sFieldTags); ++i)
-    {
-        u8 slot = AllocSpritePalette(sFieldTags[i]);
-        if (slot == 0xFF) goto fail;
-        sFieldPaletteSlots[i] = slot;
-        CpuCopy16(&gPlttBufferUnfaded[OBJ_PLTT_ID(slot)], sObjPalettes[i], sizeof(sObjPalettes[i]));
-        CpuCopy16(&gPlttBufferFaded[OBJ_PLTT_ID(slot)], sObjPalettesFaded[i], sizeof(sObjPalettesFaded[i]));
-        /* Static/native palettes below 12 and untagged active sprites are not ours. */
-        if (slot < 12 || PaletteInUse(slot)) goto fail;
-    }
-    LoadPalette(GetValidMonIconPalettePtr(species), OBJ_PLTT_ID(sFieldPaletteSlots[0]), PLTT_SIZE_4BPP);
-    LoadPalette(gDexNavNative_HeldItemPalette, OBJ_PLTT_ID(sFieldPaletteSlots[1]), PLTT_SIZE_4BPP);
-    LoadPalette(sCaveDustPal, OBJ_PLTT_ID(sFieldPaletteSlots[2]), PLTT_SIZE_4BPP);
+    sFieldSpecies = species;
+    sSharedHud = !hidden && PackFieldHud(species, owned, hudPalette);
+    if (!AcquireFieldPalette(0, sSharedHud ? hudPalette : GetValidMonIconPalettePtr(species))) goto fail;
+    if (!sSharedHud && !AcquireFieldPalette(1, gDexNavNative_HeldItemPalette)) goto fail;
     return TRUE;
 fail:
     DexNavNative_ReleaseFieldResources();
@@ -477,7 +537,8 @@ fail:
 void DexNavNative_ReleaseFieldResources(void)
 {
     u32 i;
-    bool8 ownedPalette = FALSE;
+    bool8 ownsHud = IndexOfSpritePaletteTag(ICON_PALETTE_TAG) == sFieldPaletteSlots[0]
+        && sFieldPaletteSlots[0] != 0xFF;
     if (!sFieldResources) return;
     DexNavNative_FreeIcons();
     for (i = 0; i < ARRAY_COUNT(sFieldTags); ++i)
@@ -485,22 +546,25 @@ void DexNavNative_ReleaseFieldResources(void)
         if (sFieldPaletteSlots[i] != 0xFF
             && IndexOfSpritePaletteTag(sFieldTags[i]) == sFieldPaletteSlots[i])
         {
-            ownedPalette = TRUE;
             LoadPalette(sObjPalettes[i], OBJ_PLTT_ID(sFieldPaletteSlots[i]), PLTT_SIZE_4BPP);
             CpuCopy16(sObjPalettesFaded[i], &gPlttBufferFaded[OBJ_PLTT_ID(sFieldPaletteSlots[i])], PLTT_SIZE_4BPP);
             FreeSpritePaletteByTag(sFieldTags[i]);
         }
         sFieldPaletteSlots[i] = 0xFF;
     }
-    if (ownedPalette)
+    if (sBgPaletteWritten && ownsHud)
     {
         LoadPalette(sBgPalette, BG_PLTT_ID(14), sizeof(sBgPalette));
         CpuCopy16(sBgPaletteFaded, &gPlttBufferFaded[BG_PLTT_ID(14)], sizeof(sBgPaletteFaded));
     }
-    FreeSpriteTilesByTag(EFFECT_TILE_TAG);
+    if (sEffectTileStart != 0xFFFF && GetSpriteTileStartByTag(EFFECT_TILE_TAG) == sEffectTileStart)
+        FreeSpriteTilesByTag(EFFECT_TILE_TAG);
+    sEffectTileStart = 0xFFFF;
+    sBgPaletteWritten = FALSE;
+    sSharedHud = FALSE;
     sFieldResources = FALSE;
 }
-u8 DexNavNative_ItemPalette(void) { return sFieldPaletteSlots[1]; }
+u8 DexNavNative_ItemPalette(void) { return sFieldPaletteSlots[sSharedHud ? 0 : 1]; }
 
 u8 DexNavNative_CreateMonIcon(u16 species, s16 x, s16 y, u8 priority)
 {
@@ -517,7 +581,9 @@ u8 DexNavNative_CreateMonIcon(u16 species, s16 x, s16 y, u8 priority)
     { sFailed = TRUE; return MAX_SPRITES; }
     if (sGui)
         template.paletteTag = gMonIconPaletteTable[GetValidMonIconPalIndex(species)].tag;
-    sheet.data = GetMonIconPtr(species, 0, TRUE);
+    if (!sGui && (!sFieldResources || species != sFieldSpecies))
+    { sFailed = TRUE; return MAX_SPRITES; }
+    sheet.data = !sGui && sSharedHud ? sFieldIcon : GetMonIconPtr(species, 0, TRUE);
     sheet.size = 0x200;  /* One native 32x32 frame, no unsafe mon-icon allocator. */
     sheet.tag = template.tileTag;
     LoadSpriteSheet(&sheet);
@@ -536,6 +602,8 @@ u8 DexNavNative_CreateSprite(const struct SpriteTemplate *template, s16 x, s16 y
 {
     struct SpriteTemplate checked = *template;
     u8 id;
+    if (!sGui && sSharedHud && checked.paletteTag == HELD_ITEM_TAG)
+        checked.paletteTag = ICON_PALETTE_TAG;
     if (checked.anims == NULL) checked.anims = gDummySpriteAnimTable;
     if (checked.affineAnims == NULL) checked.affineAnims = gDummySpriteAffineAnimTable;
     if (checked.callback == NULL) checked.callback = SpriteCallbackDummy;
@@ -579,6 +647,30 @@ void DexNavNative_LoadSheet(const struct CompressedSpriteSheet *sheet)
     Free(buffer);
 }
 
+/* A native tag alone is not proof: seasonal/map effects may reuse it with
+ * different colors. Borrow only an exact unfaded native palette, read-only. */
+static bool8 UseEffectPalette(u16 nativeTag, const u16 *palette)
+{
+    u8 slot = IndexOfSpritePaletteTag(nativeTag);
+    if (nativeTag != TAG_NONE && slot != 0xFF
+        && memcmp(&gPlttBufferUnfaded[OBJ_PLTT_ID(slot)], palette, PLTT_SIZE_4BPP) == 0)
+    {
+        sEffectTemplate.paletteTag = nativeTag;
+        return TRUE;
+    }
+    if (sFieldPaletteSlots[2] == 0xFF)
+    {
+        if (!AcquireFieldPalette(2, palette)) return FALSE;
+    }
+    else
+    {
+        if (IndexOfSpritePaletteTag(EFFECT_PALETTE_TAG) != sFieldPaletteSlots[2]) return FALSE;
+        LoadPalette(palette, OBJ_PLTT_ID(sFieldPaletteSlots[2]), PLTT_SIZE_4BPP);
+    }
+    sEffectTemplate.paletteTag = EFFECT_PALETTE_TAG;
+    return TRUE;
+}
+
 u8 DexNavNative_StartEffect(u8 effectId)
 {
     s16 x = gFieldEffectArguments[0], y = gFieldEffectArguments[1];
@@ -600,26 +692,25 @@ u8 DexNavNative_StartEffect(u8 effectId)
     case FLDEFF_WATER_SURFACING: templateId = FLDEFFOBJ_WATER_SURFACING; break;
     default: break;
     }
+    if (!sFieldResources) return MAX_SPRITES;
     SetSpritePosToOffsetMapCoords(&x, &y, 8, 8);
     if (templateId != 0xFF)
     {
-        /* Reuse native art/anims, but never native effect ownership or palette
-         * tags. The search owns this one sprite and its brokered palette. */
+        /* Own the sprite, not the native field-effect lifecycle or palette. */
         sEffectTemplate = *gFieldEffectObjectTemplatePointers[templateId];
-        sEffectTemplate.paletteTag = EFFECT_PALETTE_TAG;
         sEffectTemplate.callback = SpriteCB_SearchSignal;
-        LoadPalette(palette, OBJ_PLTT_ID(sFieldPaletteSlots[2]), PLTT_SIZE_4BPP);
+        if (!UseEffectPalette(sEffectTemplate.paletteTag, palette)) return MAX_SPRITES;
         id = DexNavNative_CreateSprite(&sEffectTemplate, x, y, 0xFF);
         if (id != MAX_SPRITES) gSprites[id].coordOffsetEnabled = TRUE;
         return id;
     }
+    if (!UseEffectPalette(TAG_NONE, sCaveDustPal)) return MAX_SPRITES;
     if (GetSpriteTileStartByTag(EFFECT_TILE_TAG) == 0xFFFF)
     {
         LoadSpriteSheet(&sheet);
-        if (GetSpriteTileStartByTag(EFFECT_TILE_TAG) == 0xFFFF)
-            return MAX_SPRITES;
+        sEffectTileStart = GetSpriteTileStartByTag(EFFECT_TILE_TAG);
+        if (sEffectTileStart == 0xFFFF) return MAX_SPRITES;
     }
-    LoadPalette(sCaveDustPal, OBJ_PLTT_ID(sFieldPaletteSlots[2]), PLTT_SIZE_4BPP);
     id = DexNavNative_CreateSprite(&sDustTemplate, x, y, 0xFF);
     if (id != MAX_SPRITES) gSprites[id].coordOffsetEnabled = TRUE;
     return id;
@@ -633,6 +724,7 @@ void DexNavNative_StopEffect(u8 spriteId)
 }
 void DexNavNative_LoadWindowGfx(u8 windowId, u16 baseBlock, u16 paletteOffset)
 {
+    if (!sGui && sFieldResources) sBgPaletteWritten = TRUE;
     LoadUserWindowBorderGfx(windowId, baseBlock, paletteOffset);
     LoadPalette(sWindowPal, paletteOffset, sizeof(sWindowPal));
 }

@@ -906,7 +906,7 @@ static bool8 InitDexNavSearch(u16 species, u32 environment)
     }
 
     if (sDexNavSearchDataPtr->monLevel == MON_LEVEL_NONEXISTENT
-        || !DexNavNative_AcquireFieldResources(species)
+        || !DexNavNative_AcquireFieldResources(species, DexNavGetPokedexFlag(SpeciesToNationalPokedexNum(species), FLAG_GET_CAUGHT), FALSE)
         || !TryStartHiddenMonFieldEffect(sDexNavSearchDataPtr->environment, 12, 12, FALSE))
     {
         DexNavSearchBail(EventScript_NotFoundNearby);
@@ -2651,7 +2651,7 @@ bool32 TryFindHiddenPokemon(void)
         }
 
         // find tile for hidden mon and start effect if possible
-        if (!DexNavNative_AcquireFieldResources(species)
+        if (!DexNavNative_AcquireFieldResources(species, FALSE, TRUE)
             || !TryStartHiddenMonFieldEffect(sDexNavSearchDataPtr->environment, 8, 8, TRUE))
         {
             FREE_AND_SET_NULL(sDexNavSearchDataPtr);

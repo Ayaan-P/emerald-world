@@ -48,7 +48,7 @@ void DexNavNative_PerfectIVs(struct BoxPokemon *mon, u8 count);
 void WildEncounter_CreateDexNavMon(u16 species, u8 level);
 u16 WildEncounter_GetDexNavHeader(void);
 
-bool8 DexNavNative_AcquireFieldResources(u16 species);
+bool8 DexNavNative_AcquireFieldResources(u16 species, bool8 owned, bool8 hidden);
 void DexNavNative_ReleaseFieldResources(void);
 u8 DexNavNative_ItemPalette(void);
 u8 DexNavNative_CreateMonIcon(u16 species, s16 x, s16 y, u8 priority);
