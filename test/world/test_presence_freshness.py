@@ -1,0 +1,85 @@
+"""Actual authority/link protocol with deterministic clock and mocked transport."""
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+from world.server import WorldServer
+
+class Clock:
+    now=100.0
+    def __call__(self): return self.now
+
+class Server(WorldServer):
+    def _queue(self,conn,text): conn['out'].extend(text.encode())
+
+class FreshnessTests(unittest.TestCase):
+    def setUp(self):
+        self.clock=Clock(); self.patcher=patch('world.server.time.monotonic',self.clock);self.patcher.start()
+        self.tmp=tempfile.TemporaryDirectory();root=Path(self.tmp.name)
+        self.s=Server(root/'socket',root/'state')
+        self.peers={};self.links={}
+        for i,name in enumerate(('alice','bob')):
+            self.s.create_identity(name)
+            p={'id':name,'seq':-1,'state':[0,1,10+i,12,4,7,1], 'state_time':self.clock.now,'closing':False,'out':bytearray(),'sock':object()}
+            link={'id':name,'presence':p,'closing':False,'out':bytearray(),'sock':object()}
+            self.peers[name]=p;self.links[name]=link
+            self.s.peers[name]=p;self.s.link_channels[name]=link;self.s.connections[link['sock']]=link
+    def tearDown(self):
+        self.s.connections.clear();self.s.close();self.tmp.cleanup();self.patcher.stop()
+    def link(self,name,line): self.s._link_line(self.links[name],line.encode())
+    def clear(self):
+        for c in self.links.values(): c['out'].clear()
+    def test_stale_player_cannot_be_invited(self):
+        self.clock.now+=4
+        self.peers['alice']['state_time']=self.clock.now
+        self.link('alice','L OFFER 1 bob')
+        self.assertNotIn(b'L OFFER ',self.links['bob']['out'])
+        self.assertIn(b'L ERROR',self.links['alice']['out'])
+    def test_expired_position_cannot_accept_offer(self):
+        self.link('alice','L OFFER 1 bob')
+        offer=self.links['bob']['out'].decode().split();self.assertEqual(offer[:2],['L','OFFER']);sid=offer[2]
+        self.clear();self.clock.now+=4;self.peers['bob']['state_time']=self.clock.now
+        self.link('bob','L ACCEPT '+sid)
+        self.assertNotIn(b'L ADMIT',self.links['bob']['out'])
+        self.assertIn(b'L ERROR',self.links['bob']['out'])
+    def test_tag_consent_fails_if_other_position_expired(self):
+        self.link('alice','T OFFER bob');sid=self.links['bob']['out'].decode().split()[2]
+        self.clear();self.clock.now+=4;self.peers['bob']['state_time']=self.clock.now
+        self.link('bob','T ACCEPT '+sid)
+        self.assertNotIn(b'T ACTIVE',self.links['bob']['out'])
+        self.assertIn(b'T ERROR',self.links['bob']['out'])
+
+    def test_missing_timestamp_fails_closed(self):
+        del self.peers['bob']['state_time']
+        self.link('alice','T OFFER bob')
+        self.assertNotIn(b'T OFFER',self.links['bob']['out'])
+        self.assertIn(b'T ERROR',self.links['alice']['out'])
+
+    def test_fresh_players_can_offer_and_accept(self):
+        self.link('alice','L OFFER 1 bob');sid=self.links['bob']['out'].decode().split()[2]
+        self.clear();self.link('bob','L ACCEPT '+sid)
+        self.assertIn(b'L ADMIT',self.links['alice']['out']);self.assertIn(b'L ADMIT',self.links['bob']['out'])
+    def test_expired_active_tag_loses_range_without_new_state(self):
+        self.link('alice','T OFFER bob');sid=self.links['bob']['out'].decode().split()[2]
+        self.clear();self.link('bob','T ACCEPT '+sid);self.clear()
+        self.clock.now+=4
+        self.s._refresh_link_presence()
+        self.assertIn(f'T RANGE {sid} 0'.encode(),self.links['alice']['out'])
+        self.assertIn(f'T RANGE {sid} 0'.encode(),self.links['bob']['out'])
+        self.clear()
+        for peer in self.peers.values(): peer['state_time']=self.clock.now
+        self.s._refresh_link_presence()
+        self.assertIn(f'T RANGE {sid} 1'.encode(),self.links['alice']['out'])
+
+    def test_active_link_is_not_aborted_when_field_state_expires(self):
+        self.link('alice','L OFFER 1 bob');sid=self.links['bob']['out'].decode().split()[2]
+        self.clear();self.link('bob','L ACCEPT '+sid);self.clear()
+        self.clock.now += 4
+        self.s._refresh_link_presence()
+        zero='0'*32
+        self.link('alice',f'L EVENT 1 {sid} 1 0 1 0 8755 {zero}')
+        self.link('bob',f'L EVENT 1 {sid} 1 1 1 0 8755 {zero}')
+        self.assertIn(b'L COMMIT',self.links['alice']['out'])
+        self.assertIn(b'L COMMIT',self.links['bob']['out'])
+
+if __name__=='__main__': unittest.main()

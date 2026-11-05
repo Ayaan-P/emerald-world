@@ -27,6 +27,9 @@ MAX_CONTROL_LINE = 16384
 MAX_PEERS = 8
 MAX_TRAVEL_PEERS = 63  # The authority admits at most 64 authenticated trainers.
 TRAVEL_FRESH_SECONDS = 3
+# Native field presence is sent every six frames. Stale last-known positions
+# must not authorize new proximity interactions after a client stalls.
+LINK_PRESENCE_FRESH_SECONDS = 3
 MAX_TILES = 128
 STATE_FLUSH_INTERVAL = .5
 
@@ -517,9 +520,7 @@ class WorldServer:
             self._flush_states(force=False)
             conn['seq'], conn['state'], conn['field'] = seq, state, field
             conn['state_time'] = time.monotonic()
-            self._deliver_links(self.link_protocol.update_presence({
-                name: peer['state'] for name, peer in self.peers.items()
-                if peer['state'] is not None and not peer.get('closing')}))
+            self._refresh_link_presence()
             self._broadcast()
         except (UnicodeError, ValueError):
             self._error(conn, 'MALFORMED')
@@ -569,6 +570,15 @@ class WorldServer:
                     and self.link_protocol.delivery_current(trainer, line)):
                 self._queue(channel, line)
 
+    def _fresh_link_presence(self):
+        now = time.monotonic()
+        return {name: peer['state'] for name, peer in self.peers.items()
+                if peer['state'] is not None and not peer.get('closing')
+                and 0 <= now - peer.get('state_time', float('-inf')) < LINK_PRESENCE_FRESH_SECONDS}
+
+    def _refresh_link_presence(self):
+        self._deliver_links(self.link_protocol.update_presence(self._fresh_link_presence()))
+
     def _link_line(self, conn, raw):
         if (conn.get('closing') or self.link_channels.get(conn['id']) is not conn
                 or conn['sock'] not in self.connections):
@@ -592,9 +602,7 @@ class WorldServer:
                 channel = 'T' if fields[0] == b'T' else 'L'
                 self._queue(conn, f'{channel} ERROR UNAVAILABLE\n')
                 return
-        presence = {name: peer['state'] for name, peer in self.peers.items()
-                    if peer['state'] is not None and not peer.get('closing')}
-        self._deliver_links(self.link_protocol.process(conn['id'], bytes(raw), presence))
+        self._deliver_links(self.link_protocol.process(conn['id'], bytes(raw), self._fresh_link_presence()))
 
     def _meet(self, conn, fields):
         """One fixed cooperative signal, authenticated and ordered like STATE.
@@ -953,6 +961,8 @@ class WorldServer:
                     self._drop(conn)
             with self.lock:
                 self._flush_states(force=False)
+                # Expire tag range even if both clients stop sending STATE.
+                self._refresh_link_presence()
                 self._deliver_links(self.link_protocol.tick())
                 self._poll_controls()
                 self._poll_mechanics()
