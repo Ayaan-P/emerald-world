@@ -293,6 +293,7 @@ static u8 sNativeTileUsed[NATIVE_TILE_COUNT], sNativeTileRefs[NATIVE_TILE_COUNT]
 static u8 sNativeOamRank[MAX_SPRITES];
 static u16 sNativeSpriteBase[MAX_SPRITES], sNativeSpriteCount[MAX_SPRITES];
 static bool8 sNativeTileScope;
+static void NativeSpriteCancelCopies(unsigned first, unsigned count);
 
 static unsigned NativeSpriteSlot(const struct Sprite *sprite)
 {
@@ -307,8 +308,10 @@ static void NativeSpriteTileRelease(struct Sprite *sprite)
     unsigned slot = NativeSpriteSlot(sprite), i, first;
     if (slot >= MAX_SPRITES || !sNativeSpriteBase[slot]) return;
     first = sNativeSpriteBase[slot] - NATIVE_TILE_BASE;
-    if (sNativeTileRefs[first] && --sNativeTileRefs[first] == 0)
+    if (sNativeTileRefs[first] && --sNativeTileRefs[first] == 0) {
+        NativeSpriteCancelCopies(first, sNativeSpriteCount[slot]);
         for (i = 0; i < sNativeSpriteCount[slot]; i++) sNativeTileUsed[first + i] = FALSE;
+    }
     sNativeSpriteBase[slot] = sNativeSpriteCount[slot] = 0;
 }
 void NativeSpriteTileClone(const struct Sprite *source, struct Sprite *target)
@@ -365,6 +368,24 @@ EWRAM_DATA static u8 sSpriteOrder[MAX_SPRITES] = {0};
 EWRAM_DATA static bool8 sShouldProcessSpriteCopyRequests = 0;
 EWRAM_DATA static u8 sSpriteCopyRequestCount = 0;
 EWRAM_DATA static struct SpriteCopyRequest sSpriteCopyRequests[MAX_SPRITES] = {0};
+#if defined(PORTABLE) && WORLD_NATIVE_TILEBANK
+/* Discard queued frame copies before freed extra tiles can be reused. */
+static void NativeSpriteCancelCopies(unsigned first, unsigned count)
+{
+    uintptr_t start = (uintptr_t)OBJ_VRAM0 + (NATIVE_TILE_BASE + first) * TILE_SIZE_4BPP;
+    uintptr_t end = start + count * TILE_SIZE_4BPP;
+    u8 read, write = 0;
+    for (read = 0; read < sSpriteCopyRequestCount; read++)
+    {
+        uintptr_t dest = (uintptr_t)sSpriteCopyRequests[read].dest;
+        unsigned size = sSpriteCopyRequests[read].size;
+        bool8 overlap = dest < end && (dest >= start || size > start - dest);
+        if (!overlap) sSpriteCopyRequests[write++] = sSpriteCopyRequests[read];
+    }
+    sSpriteCopyRequestCount = write;
+}
+#endif
+
 EWRAM_DATA u8 gOamLimit = 0;
 EWRAM_DATA u16 gReservedSpriteTileCount = 0;
 EWRAM_DATA static u8 sSpriteTileAllocBitmap[128] = {0};
@@ -627,6 +648,8 @@ void AddSpritesToOamBuffer(void)
             return;
         }
     }
+    // The extra-sprite detection pass exhausted i when no extra sprites exist.
+    i = 0;
 #endif
     while (i < MAX_SPRITES)
     {

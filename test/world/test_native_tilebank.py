@@ -13,6 +13,7 @@ typedef uint8_t u8;typedef uint16_t u16;typedef int16_t s16;typedef int bool8;
 #define FALSE 0
 #define PORTABLE 1
 #define WORLD_NATIVE_TILEBANK 1
+#define WORLD_NATIVE_OAM 1
 #define MAX_SPRITES 127
 #define OAM_ENTRY_COUNT 192
 #define SUBSPRITES_OFF 0
@@ -22,6 +23,11 @@ struct {struct OamData oamBuffer[128];int guard;} gMain;
 struct OamData sNativeExtraOam[64],gDummyOamData;
 #define OAM_SLOT(i) ((i)<128?&gMain.oamBuffer[(i)]:&sNativeExtraOam[(i)-128])
 struct Sprite gSprites[MAX_SPRITES+1];u8 sSpriteOrder[MAX_SPRITES],gOamLimit=192;
+#define TILE_SIZE_4BPP 32
+unsigned char VRAM_[0x20000];
+#define OBJ_VRAM0 (VRAM_+0x10000)
+struct SpriteCopyRequest {const u8 *src;u8 *dest;u16 size;};
+struct SpriteCopyRequest sSpriteCopyRequests[MAX_SPRITES];u8 sSpriteCopyRequestCount;
 int AddSubspritesToOamBuffer(struct Sprite *s,struct OamData *o,u8 *i){(void)s;(void)o;(void)i;return 0;}
 '''
 ALLOC_MAIN=r'''
@@ -62,6 +68,9 @@ int main(void){
  assert(sNativeExtraOam[1].affineParam==0);
  assert(sNativeExtraOam[63].affineParam==0x4101);
  assert(gOamLimit==192);
+ gOamLimit=128;AddSpritesToOamBuffer();
+ assert(gMain.oamBuffer[0].tileNum==4 && sNativeExtraOam[0].affineParam==0);
+ assert(sNativeExtraOam[63].affineParam==0 && gOamLimit==128);
  return 0;
 }
 '''
@@ -120,7 +129,7 @@ class NativeTileBank(unittest.TestCase):
    subprocess.run([str(p/'t')],check=True)
  def helpers(self):
   src=(ROOT/'src/sprite.c').read_text();start=src.index('#if defined(PORTABLE) && WORLD_NATIVE_TILEBANK\n#define NATIVE_TILE_BASE');end=src.index('\nEWRAM_DATA static u16 sSpritePriorities',start)
-  return src,src[start:end]+'\n'
+  return src,src[start:end]+'\n'+function(src,'NativeSpriteCancelCopies')
  def test_real_extra_allocator_scope_clone_and_release(self):
   src,helpers=self.helpers();self.compile_run(PRE+helpers+ALLOC_MAIN)
  def test_real_oam_emitter_places_marked_extra_sprite_after_stock_slots(self):
@@ -180,8 +189,11 @@ int main(void){
  assert(sSpriteCopyRequests[0].dest==VRAM_+0x18000);
  memcpy(sSpriteCopyRequests[0].dest,sSpriteCopyRequests[0].src,sSpriteCopyRequests[0].size);
  assert(VRAM_[0x18000]==0x5a && VRAM_[0x10000]==0);
+ sSpriteCopyRequests[1]=sSpriteCopyRequests[0];sSpriteCopyRequests[1].dest=VRAM_+0x10000;sSpriteCopyRequestCount=2;
  u8 copy=CreateCopySpriteAt(&gSprites[0],0,0,0);assert(copy==MAX_SPRITES-1);gSprites[copy].usingSheet=TRUE;
- DestroySprite(&gSprites[0]);assert(sNativeTileUsed[0]);DestroySprite(&gSprites[copy]);assert(!sNativeTileUsed[0]);
+ DestroySprite(&gSprites[0]);assert(sNativeTileUsed[0] && sSpriteCopyRequestCount==2);
+ DestroySprite(&gSprites[copy]);assert(!sNativeTileUsed[0] && sSpriteCopyRequestCount==1);
+ assert(sSpriteCopyRequests[0].dest==VRAM_+0x10000);
  assert(CreateSpriteAt(1,&t,0,0,0)==1);assert(NativeSpriteTileNumber(&gSprites[1])==5);
  DestroySprite(&gSprites[1]);assert(stock_frees==2);return 0;
 }
@@ -237,6 +249,7 @@ int main(void){
 #define FALSE 0
 #define PORTABLE 1
 #define WORLD_NATIVE_TILEBANK 1
+#define WORLD_NATIVE_OAM 1
 #define MAX_SPRITES 127
 #define OAM_ENTRY_COUNT 192
 #define SUBSPRITES_OFF 0
@@ -257,6 +270,10 @@ struct OamData sNativeExtraOam[64],gDummyOamData={.affineMode=2};
 struct Sprite gSprites[MAX_SPRITES+1];u8 sSpriteOrder[MAX_SPRITES],gOamLimit=192;
 int AddSubspritesToOamBuffer(struct Sprite *s,struct OamData *o,u8 *i){(void)s;(void)o;(void)i;return 0;}
 unsigned char VRAM_[0x20000], test_palette[0x400];
+#define TILE_SIZE_4BPP 32
+#define OBJ_VRAM0 (VRAM_+0x10000)
+struct SpriteCopyRequest {const u8 *src;u8 *dest;u16 size;};
+struct SpriteCopyRequest sSpriteCopyRequests[MAX_SPRITES];u8 sSpriteCopyRequestCount;
 #define PLTT test_palette
 unsigned char OAM[192*sizeof(struct OamData)] __attribute__((aligned(4)));
 struct scanlineData {uint16_t layers[4][DISPLAY_WIDTH],spriteLayers[4][DISPLAY_WIDTH],bgcnts[4],winMask[DISPLAY_WIDTH];char bgtoprio[4],prioritySortedBgs[4][4],prioritySortedBgsCount[4];};
@@ -272,11 +289,13 @@ int main(void){
  struct scanlineData row={0};
  for(int i=0;i<MAX_SPRITES;i++)sSpriteOrder[i]=i;
  gSprites[0].inUse=1;gSprites[0].oam.x=10;
- NativeSpriteTileScope(TRUE);assert(NativeSpriteTileAllocate(&gSprites[1],1)==1024);NativeSpriteTileScope(FALSE);
- gSprites[1].inUse=1;gSprites[1].oam.x=10;
  memset(VRAM_+0x10000,0x11,32);memset(VRAM_+0x18000,0x22,32);
  ((uint16_t*)(test_palette+0x200))[1]=0x001f;((uint16_t*)(test_palette+0x200))[2]=0x03e0;
+ // A gate-enabled offline scene with no extra-bank actors must still draw stock sprites.
  AddSpritesToOamBuffer();upload();DrawSprites(&row,0,false);assert(row.spriteLayers[0][10]==0x801f);
+ NativeSpriteTileScope(TRUE);assert(NativeSpriteTileAllocate(&gSprites[1],1)==1024);NativeSpriteTileScope(FALSE);
+ gSprites[1].inUse=1;gSprites[1].oam.x=10;
+ memset(&row,0,sizeof(row));AddSpritesToOamBuffer();upload();DrawSprites(&row,0,false);assert(row.spriteLayers[0][10]==0x801f);
  sSpriteOrder[0]=1;sSpriteOrder[1]=0;memset(&row,0,sizeof(row));
  AddSpritesToOamBuffer();upload();DrawSprites(&row,0,false);assert(row.spriteLayers[0][10]==0x83e0);
  return 0;
@@ -312,5 +331,23 @@ int main(void){
 }
 """
   self.compile_run(RENDER_PRE+function(src,'NativeTileBankOamOrder')+body,['-DWORLD_NATIVE_TILEBANK=1'])
+
+ def test_final_release_cancels_only_overlapping_pending_copies(self):
+  src,helpers=self.helpers()
+  body=r"""
+int main(void){
+ NativeSpriteTileScope(TRUE);assert(NativeSpriteTileAllocate(&gSprites[0],2)==1024);
+ u8 *start=VRAM_+0x18000;
+ sSpriteCopyRequests[0].dest=start-16;sSpriteCopyRequests[0].size=32;
+ sSpriteCopyRequests[1].dest=start+60;sSpriteCopyRequests[1].size=8;
+ sSpriteCopyRequests[2].dest=start+64;sSpriteCopyRequests[2].size=1;
+ sSpriteCopyRequests[3].dest=VRAM_+0x10000;sSpriteCopyRequests[3].size=1;
+ sSpriteCopyRequestCount=4;NativeSpriteTileRelease(&gSprites[0]);
+ assert(sSpriteCopyRequestCount==2);
+ assert(sSpriteCopyRequests[0].dest==start+64 && sSpriteCopyRequests[1].dest==VRAM_+0x10000);
+ return 0;
+}
+"""
+  self.compile_run(PRE+helpers+body)
 
 if __name__=='__main__':unittest.main()
