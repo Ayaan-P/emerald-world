@@ -34,11 +34,12 @@ class ExpansionSession:
 
     def _presence(self):
         from .client import WorldClient
-        config = dict(line.split(' ', 1) for line in self.paths['config'].read_text().splitlines())
         try:
+            config = dict(line.split(' ', 1) for line in self.paths['config'].read_text().splitlines())
             with WorldClient(config['socket'], self.trainer, config['token'], timeout=1, social=True) as client:
                 client.snapshot()
                 seq = 0
+                started = time.monotonic()
                 while not self.stop.wait(0.1):
                     path = self.paths['profile'] / 'presence.json'
                     try:
@@ -46,6 +47,8 @@ class ExpansionSession:
                             raise ValueError('Expansion presence stopped advancing')
                         state = json.loads(path.read_text())
                     except FileNotFoundError:
+                        if time.monotonic() - started > 5:
+                            raise ValueError('Expansion binary did not publish presence')
                         continue
                     if state.get('schema') != 1 or state.get('engine') != ENGINE:
                         raise ValueError('unsupported Expansion presence schema')
