@@ -17,6 +17,7 @@ class GeneratedWilds(unittest.TestCase):
     def test_authored_format_and_real_route_encounters(self):
         blob=wilds.encode(self.proposal());self.assertEqual(len(blob),3977);self.assertEqual(blob[:8],b'EWGMAP06')
         with self.assertRaises(CaveError):SharedCave(blob)
+        self.assertIn('data/maps/GeneratedWorld_Wilds/scripts.inc', (ROOT/'data/event_scripts.s').read_text())
         group=json.loads((ROOT/'src/data/wild_encounters.json').read_text())['wild_encounter_groups'][0]['encounters']
         route=next(x for x in group if x['map']=='MAP_ROUTE101');generated=next(x for x in group if x['map']=='MAP_GENERATED_WORLD_WILDS')
         self.assertEqual(generated['land_mons'],route['land_mons'])

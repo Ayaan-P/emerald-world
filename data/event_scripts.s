@@ -384,6 +384,7 @@ gStdScripts_End::
 	.include "data/maps/SeafloorCavern_Room9/scripts.inc"
 	.include "data/maps/CaveOfOrigin_Entrance/scripts.inc"
 	.include "data/maps/GeneratedWorld_Cave/scripts.inc"
+	.include "data/maps/GeneratedWorld_Wilds/scripts.inc"
 	.include "data/maps/CaveOfOrigin_1F/scripts.inc"
 	.include "data/maps/CaveOfOrigin_UnusedRubySapphireMap1/scripts.inc"
 	.include "data/maps/CaveOfOrigin_UnusedRubySapphireMap2/scripts.inc"
