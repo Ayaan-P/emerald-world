@@ -1,0 +1,37 @@
+"""Owner-only, per-trainer event-state control without any sockets."""
+import json
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+from test_large_generated_cave import DOC
+from test_shared_generated_cave import MemoryAuthority
+from world import wilds_events,agent_event_control
+from world.shared_cave import SharedCave
+
+class LiveAgentEvents(unittest.TestCase):
+    def test_admin_targeting_admission_and_queued_semantics(self):
+        blob=wilds_events.compile_document({'blueprint':DOC,'cast':[{'gfx':7,'text':'Hello!'}], 'events':{'initial':0,'rules':[{'state':0,'npc':1,'next':1,'text':'Hello!'}]}});identity=SharedCave(blob).identity
+        with tempfile.TemporaryDirectory() as t:
+            p=Path(t);server=MemoryAuthority(p/'socket',p/'world',cave_template=blob)
+            try:
+                def connect(name):
+                    ident=server.create_identity(name);c={'id':None,'out':bytearray(),'closing':False,'state':None,'seq':0,'sock':object()}
+                    server._line(c,('HELLO 1 %s %s SOCIALTRAVELCHATRALLYCAVE9'%(name,ident['token'])).encode());c['out'].clear()
+                    server._line(c,b'CAVE GET');c['out'].clear();server._line(c,('CAVE ACK '+identity).encode());c['out'].clear()
+                    g,n=server.wilds_map;server._line(c,(f'STATE 1 {g} {n} 1 1 1 7 1 '+('a'*16)+' '+('b'*16)).encode());c['out'].clear();return c
+                alice=connect('Alice');bob=connect('Bob')
+                def admin_request(_socket,request,**kwargs):
+                    self.assertEqual(kwargs['admin_path'],p/'owner.sock');c={'id':None,'out':bytearray(),'closing':False,'sock':object()}
+                    server._admin_line(c,json.dumps(request).encode());return json.loads(c['out'])
+                with patch('world.agent_event_control.admin_request',side_effect=admin_request):
+                    result=agent_event_control.set_state(p/'owner.sock','Alice',identity,5)
+                    self.assertTrue(result['ok']);self.assertTrue(result['queued']);self.assertEqual(result['sequence'],1)
+                    self.assertEqual(alice['out'],f'CAVE EVENTSET {identity} 1 5\n'.encode());self.assertEqual(bob['out'],b'')
+                    for name,ident,state in [('Bob','f'*64,1),('Nobody',identity,1),('Alice',identity,16),('Alice',identity,True)]:
+                        self.assertFalse(agent_event_control.set_state(p/'owner.sock',name,ident,state)['ok'])
+                    alice['out'].clear();alice['in_generated_cave']=False
+                    self.assertFalse(agent_event_control.set_state(p/'owner.sock','Alice',identity,2)['ok']);self.assertEqual(alice['out'],b'')
+                # Ordinary authenticated trainers do not get the owner command path.
+                server._line(bob,f'CAVE EVENTSET {identity} 1 3'.encode());self.assertTrue(bob['closing'])
+            finally:server.close()

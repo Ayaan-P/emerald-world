@@ -535,6 +535,7 @@ class WorldServer:
                 conn['cave_guide'] = cave_guide
                 conn['cave_cast'] = cave_cast
                 conn['cave_events'] = cave_events
+                conn['event_command_seq'] = 0
                 conn['cave_offer'] = conn['cave_ack'] = None
                 conn['cave_revoked'] = []
                 conn['chat'] = chat_capable
@@ -949,6 +950,24 @@ class WorldServer:
                 raise ValueError('generated area unavailable')
             return self._replace_cave(row[0])
 
+    def set_event_state(self, trainer, identity, state):
+        """Queue an owner-only, per-trainer state assignment; not delivery confirmation."""
+        if type(trainer) is not str or not ID.fullmatch(trainer) or type(identity) is not str or not re.fullmatch(r'[0-9a-f]{64}',identity) or type(state) is not int or not 0<=state<=15:
+            raise ValueError('invalid event state command')
+        with self.lock:
+            cave=self.shared_cave;peer=self.peers.get(trainer)
+            if (not cave or cave.version!=9 or cave.identity!=identity or not peer or peer.get('closing')
+                or not peer.get('cave_events') or peer.get('cave_ack')!=identity
+                or not peer.get('in_generated_cave') or peer.get('state') is None
+                or tuple(peer['state'][:2])!=self.wilds_map):
+                raise ValueError('trainer is not in the requested event area')
+            seq=peer.get('event_command_seq',0)+1
+            if seq>2147483647:raise ValueError('event command sequence exhausted')
+            message=f'CAVE EVENTSET {identity} {seq} {state}\n'
+            if len(peer['out'])+len(message)>MAX_QUEUE:raise ValueError('trainer connection is busy')
+            self._queue(peer,message);peer['event_command_seq']=seq
+            return {'ok':True,'queued':True,'trainer':trainer,'identity':identity,'sequence':seq,'state':state}
+
     def _admin_line(self, conn, raw):
         conn['closing'] = True
         try:
@@ -967,6 +986,12 @@ class WorldServer:
                 except ValueError as exc:
                     # Expected validation/occupancy refusal is not a mechanic error.
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'set_event_state':
+                try:
+                    if set(request)!={'command','trainer','identity','state'}:raise ValueError('invalid event state command')
+                    result=self.set_event_state(request['trainer'],request['identity'],request['state'])
+                except ValueError as exc:
+                    result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'invitation':
                 if set(request) != {'command', 'trainer'} or self.sharing is None:
                     self._queue(conn, json.dumps(dict(ok=False, error='secure sharing required')) + '\n')

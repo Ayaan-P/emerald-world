@@ -110,6 +110,7 @@ static struct {
     bool8 caveV8Probe, caveV8Legacy;
 #if GENERATED_WILDS_EVENTS
     bool8 caveV9Probe, caveV9Legacy;
+    bool8 eventSetPending; u8 eventSetState; unsigned eventSetSeq;
 #endif
 #endif
 #endif
@@ -436,6 +437,7 @@ static void Disconnect(void)
     sWorld.caveV8Probe = FALSE;
 #if GENERATED_WILDS_EVENTS
     sWorld.caveV9Probe = FALSE;
+    sWorld.eventSetPending = FALSE; sWorld.eventSetSeq = 0;
 #endif
 #endif
 #endif
@@ -711,8 +713,23 @@ static bool8 CaveLine(unsigned n, char **tokens)
 {
     int result;
     if (!sWorld.caveAvailable || sWorld.staging) return FALSE;
+#if GENERATED_WILDS_EVENTS
+    if (n == 5 && !strcmp(tokens[1], "EVENTSET")) {
+        unsigned sequence,state;
+        if (!WorldCaveWire_ValidId(tokens[2]) || !Decimal(tokens[3],&sequence) || !sequence || !Decimal(tokens[4],&state) || state>15) return FALSE;
+        if (sequence<=sWorld.eventSetSeq) return TRUE;
+        sWorld.eventSetSeq=sequence;
+        if(sWorld.caveState==CAVE_READY && sWorld.caveWire.version==9 && !strcmp(tokens[2],sWorld.caveWire.id) && GeneratedMap_IsInside()) {
+            sWorld.eventSetState=state;sWorld.eventSetPending=TRUE;
+        }
+        return TRUE;
+    }
+#endif
     if (n == 3 && !strcmp(tokens[1], "RESET") && WorldCaveWire_ValidId(tokens[2])) {
         bool8 requestInFlight = sWorld.caveState == CAVE_WAIT || sWorld.caveState == CAVE_WAIT_RESET;
+#if GENERATED_WILDS_EVENTS
+        sWorld.eventSetPending=FALSE;
+#endif
         WorldCaveWire_Reset(&sWorld.caveWire);
         memcpy(sWorld.caveExpected, tokens[2], sizeof(sWorld.caveExpected));
         /* A GET sent just before RESET may already produce the new map.
@@ -1428,6 +1445,12 @@ void WorldBridge_ChatLine(unsigned index, char *out, unsigned size)
 static void CavePump(void)
 {
     if (!sWorld.connected) return;
+#if GENERATED_WILDS_EVENTS
+    if(sWorld.eventSetPending) {
+        if(sWorld.caveState!=CAVE_READY || sWorld.caveWire.version!=9 || !GeneratedMap_IsInside())sWorld.eventSetPending=FALSE;
+        else if(Ready()) {GeneratedMap_SetSharedEventState(sWorld.eventSetState);sWorld.eventSetPending=FALSE;}
+    }
+#endif
     if (sWorld.caveState == CAVE_MISMATCH || sWorld.caveState == CAVE_RETURN_NONE) {
         /* A warp can still be entering the old cave even before its map ID
          * changes. Never acknowledge a replacement during that window. */

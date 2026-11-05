@@ -532,6 +532,15 @@ u8 GeneratedMap_EventState(void)
     return 0;
 #endif
 }
+bool8 GeneratedMap_SetSharedEventState(u8 state)
+{
+#if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
+    if(state>15 || !sEventActive || !sLargeShared || !GeneratedMap_IsInside())return FALSE;
+    sEventState=state;return TRUE;
+#else
+    (void)state;return FALSE;
+#endif
+}
 bool8 GeneratedMap_StageSharedCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size)
 {
 #if GENERATED_MAP_READY && GENERATED_WILDS_CAST
