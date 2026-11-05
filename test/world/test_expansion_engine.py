@@ -48,6 +48,17 @@ class ExpansionEngineTest(unittest.TestCase):
                                                 '--engine', 'expansion-native', '--print-command']), 0)
                 self.assertEqual(run.call_args.args[0].engine, 'expansion-native')
 
+    def test_expansion_rejects_vanilla_save_and_control_inputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for option, value in (('--seed-save', '/unused.sav'), ('--test-input', '/unused.txt'),
+                                  ('--bootstrap', '/unused.txt'), ('--agent-control', None)):
+                args = ['--state-dir', directory, 'join', 'Ash', '--engine', 'expansion-native', option]
+                if value:
+                    args.append(value)
+                with self.assertRaises(ValueError):
+                    launcher.main(args)
+            self.assertFalse((Path(directory)/'engines').exists())
+
     def test_expanded_launch_uses_donor_abi_not_vanilla_flags(self):
         with tempfile.TemporaryDirectory() as directory:
             paths = launcher.profile_paths(directory, 'Ash', engine='expansion-native')
