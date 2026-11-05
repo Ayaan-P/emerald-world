@@ -22,6 +22,7 @@
 #include "platform/native_link.h"
 #include "platform/link_transport.h"
 #include "platform/world_activity.h"
+#include "platform/generated_map.h"
 #include "platform/world_coop.h"
 #include "platform/dexnav_native.h"
 #include <string.h>
@@ -302,6 +303,9 @@ static bool8 ShowMenu(bool8 incoming)
 
 int WorldActivity_Interact(const char *peerName)
 {
+#if GENERATED_MAP_READY
+    if (GeneratedMap_IsInside()) return 0;
+#endif
     if (sActivity.state != IDLE || !FieldReady() || !LinkTransport_Ready()
         || NativeLink_IsActive() || !CopyPeer(sActivity.peer, peerName)) return 0;
     sActivity.mode = 0;
@@ -452,9 +456,25 @@ void WorldActivity_ReturnFromCoopWildBattle(void)
     }
 }
 
+#if GENERATED_MAP_READY
+static bool8 RejectGeneratedCaveInvitations(void)
+{
+    const struct LinkTransportInvitation *pending;
+    if (!GeneratedMap_IsInside()) return FALSE;
+    pending = LinkTransport_PendingTag();
+    if (pending) LinkTransport_TagReject(pending->id);
+    pending = LinkTransport_PendingInvitation();
+    if (pending) LinkTransport_Reject(pending->id);
+    return TRUE;
+}
+#endif
+
 void WorldActivity_Update(void)
 {
     const struct LinkTransportInvitation *pending;
+#if GENERATED_MAP_READY
+    if (RejectGeneratedCaveInvitations()) return;
+#endif
     if (sActivity.state == IDLE && NativeLink_IsActive() && LinkTransport_Mode() == NATIVE_LINK_COOP)
     {
         const char *peer = LinkTransport_TagPeer();

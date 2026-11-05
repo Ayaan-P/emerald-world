@@ -41,11 +41,17 @@ extern struct { int mapType; struct MapLayout *mapLayout; } gMapHeader;
 struct Save save,*gSaveBlock1Ptr=&save;
 struct { u32 vblankCounter1; } gMain;
 struct { int mapType; struct MapLayout *mapLayout; } gMapHeader;
-static int online,foot=1,warps; static struct WarpData destination;
+static int online,foot=1,warps,linkPending,rallyReturn; static struct WarpData destination;
 static const char *sGeneratedMapPath;
 static s16 playerX=15,playerY=16;
 void PlayerGetDestCoords(s16 *x,s16 *y){*x=playerX;*y=playerY;}
+const char *LinkTransport_TagPeer(void){return 0;}
+const void *LinkTransport_PendingTag(void){return linkPending ? &linkPending : 0;}
+const void *LinkTransport_PendingInvitation(void){return 0;}
+struct WorldRallySnapshot{unsigned id;};
+int WorldRally_HasReturn(void){return rallyReturn;}int WorldRally_GetSnapshot(struct WorldRallySnapshot *r){(void)r;return 0;}
 int WorldBridge_Enabled(void){return online;}
+int WorldBridge_GeneratedCaveReady(void){return 0;}
 int IsMapTypeOutdoors(int x){return x==1;}
 int TestPlayerAvatarFlags(int f){return f==1 && foot;}
 void SetWarpDestination(s8 g,s8 n,s8 w,s8 x,s8 y){destination=(struct WarpData){g,n,w,x,y};}
@@ -61,6 +67,8 @@ int main(int argc, char **argv){
   save.location=(struct WarpData){3,4,0,8,9};save.dynamicWarp=(struct WarpData){7,8,9,10,11};save.pos.x=2;save.pos.y=3;gMain.vblankCounter1=seed;gMapHeader.mapType=1;gMapHeader.mapLayout=&base;playerX=15;playerY=16;
   online=1;assert(!GeneratedMap_CanEnter()&&!GeneratedMap_Enter());online=0;
   foot=0;assert(!GeneratedMap_CanEnter());foot=1;
+  linkPending=1;assert(!GeneratedMap_CanEnter());linkPending=0;
+  rallyReturn=1;assert(!GeneratedMap_CanEnter());rallyReturn=0;
   sGeneratedMapPath="/nonexistent-generated-map-fixture";int oldWarps=warps;assert(!GeneratedMap_Enter() && warps==oldWarps && save.dynamicWarp.mapGroup==7);
   sGeneratedMapPath=NULL;assert(GeneratedMap_Enter());
   assert(destination.mapGroup==EXPECTED_GROUP && destination.mapNum==0 && destination.x==1 && destination.y==1);
@@ -123,7 +131,9 @@ int main(int argc, char **argv){
    p=Path(d);(p/'platform').mkdir();(p/'constants').mkdir();(p/'global.h').write_text('#ifndef G\n#define G\n'+global_h+'\n#endif\n')
    for name in ('main.h','overworld.h','field_screen_effect.h','field_player_avatar.h','fieldmap.h'):
     (p/name).write_text('#include "global.h"\nint IsMapTypeOutdoors(int); int TestPlayerAvatarFlags(int); void SetWarpDestination(s8,s8,s8,s8,s8); void SetDynamicWarpWithCoords(int,s8,s8,s8,s8,s8); void PlayerGetDestCoords(s16*,s16*); void StoreInitialPlayerAvatarState(void); void DoWarp(void);\n#define MAP_OFFSET 7\n')
-   (p/'platform/world_bridge.h').write_text('int WorldBridge_Enabled(void);\n')
+   (p/'platform/world_rally.h').write_text('struct WorldRallySnapshot{unsigned id;}; int WorldRally_HasReturn(void); int WorldRally_GetSnapshot(struct WorldRallySnapshot *);\n')
+   (p/'platform/link_transport.h').write_text('const char *LinkTransport_TagPeer(void); const void *LinkTransport_PendingTag(void); const void *LinkTransport_PendingInvitation(void);\n')
+   (p/'platform/world_bridge.h').write_text('int WorldBridge_Enabled(void); int WorldBridge_GeneratedCaveReady(void);\n')
    (p/'platform/generated_map.h').write_text((ROOT/'include/platform/generated_map.h').read_text())
    (p/'constants/maps.h').write_text(f'#define MAP_GENERATED_WORLD_CAVE ({group}<<8)\n#define MAP_GROUP(x) ((x)>>8)\n#define MAP_NUM(x) ((x)&255)\n#define WARP_ID_NONE (-1)\n')
    # Anonymous extern structs must be defined in the same translation unit.

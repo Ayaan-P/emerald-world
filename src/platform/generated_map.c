@@ -6,6 +6,8 @@
 #include "field_player_avatar.h"
 #include "fieldmap.h"
 #include "platform/world_bridge.h"
+#include "platform/link_transport.h"
+#include "platform/world_rally.h"
 #include "platform/generated_map.h"
 #include "constants/maps.h"
 #include <string.h>
@@ -135,11 +137,39 @@ static bool8 GetReturnCoords(s16 *x, s16 *y)
 }
 #endif
 
+bool8 GeneratedMap_MatchesActive(const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY
+    u16 i;
+    if (!cells || size != GEN_CELLS || !sPrepared || !GeneratedMap_IsInside()) return FALSE;
+    for (i = 0; i < GEN_CELLS; i++)
+        if ((cells[i] == '.') != (sTiles[i] == GEN_FLOOR || sTiles[i] == GEN_EXIT)) return FALSE;
+    return TRUE;
+#else
+    (void)cells; (void)size;
+    return FALSE;
+#endif
+}
+
+bool8 GeneratedMap_SharedCoordValid(unsigned x, unsigned y)
+{
+#if GENERATED_MAP_READY
+    return sHasTemplate && x < GEN_SIDE && y < GEN_SIDE && sTemplate[y * GEN_SIDE + x] == '.';
+#else
+    (void)x; (void)y;
+    return FALSE;
+#endif
+}
+
 bool8 GeneratedMap_CanEnter(void)
 {
 #if GENERATED_MAP_READY
     s16 x, y;
-    return gSaveBlock1Ptr && !GeneratedMap_IsInside() && !WorldBridge_Enabled()
+    struct WorldRallySnapshot rally;
+    if (WorldRally_HasReturn() || (WorldRally_GetSnapshot(&rally) && rally.id)) return FALSE;
+    return gSaveBlock1Ptr && !GeneratedMap_IsInside() && !LinkTransport_TagPeer()
+        && !LinkTransport_PendingTag() && !LinkTransport_PendingInvitation()
+        && (!WorldBridge_Enabled() || (WorldBridge_GeneratedCaveReady() && sHasTemplate))
         && IsMapTypeOutdoors(gMapHeader.mapType)
         && TestPlayerAvatarFlags(PLAYER_AVATAR_FLAG_ON_FOOT)
         && GetReturnCoords(&x, &y);
@@ -153,7 +183,7 @@ bool8 GeneratedMap_Enter(void)
 #if GENERATED_MAP_READY
     s16 x, y;
     if (!GeneratedMap_CanEnter() || !GetReturnCoords(&x, &y)
-     || !Platform_ReloadGeneratedMap()) return FALSE;
+     || (!WorldBridge_Enabled() && !Platform_ReloadGeneratedMap())) return FALSE;
     sReturn = gSaveBlock1Ptr->location;
     sReturn.warpId = WARP_ID_NONE;
     sReturn.x = x;

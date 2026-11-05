@@ -51,7 +51,17 @@ class MeetingUnavailable(ValueError):
 
 class WorldServer:
     def __init__(self, socket_path, state_dir, mechanics=None, admin_path=None, *,
-                 max_players=32, max_controls=None, connection_headroom=8):
+                 max_players=32, max_controls=None, connection_headroom=8, cave_template=None):
+        from .build_catalog import catalog_maps
+        from .shared_cave import SharedCave
+        entries = [(group, num) for (group, num), item in catalog_maps().items()
+                   if item.get('name') == 'GeneratedWorld_Cave']
+        if len(entries) > 1:
+            raise ValueError('ambiguous generated cave map')
+        self.cave_map = entries[0] if entries else None
+        self.shared_cave = SharedCave(cave_template) if cave_template is not None else None
+        if self.shared_cave and self.cave_map is None:
+            raise ValueError('generated cave missing from catalog')
         if type(max_players) is not int or not 1 <= max_players <= 64:
             raise ValueError('max_players must be between 1 and 64')
         if max_controls is None:
@@ -173,6 +183,8 @@ class WorldServer:
                 state_json, tiles = self._validated(dict(state=json.loads(row[2]),
                     tiles=[dict(zip(keys, tile)) for tile in stored]))
                 objects = validate_objects(json.loads(row[4]))
+                if self.cave_map is not None and any((obj['group'], obj['num']) == self.cave_map for obj in objects):
+                    raise ValueError('persisted object targets generated cave')
                 if type(row[5]) is not int or row[5] < 0:
                     raise ValueError('invalid interaction cursor')
                 self.module_state, self.tiles, self.objects = json.loads(state_json), tiles, objects
@@ -353,6 +365,12 @@ class WorldServer:
             if (name == conn['id'] or state is None or
                     not (state[6] or (conn.get('social') and peer.get('field')))):
                 continue
+            # A new or legacy connection with no field state must never see
+            # generated-cave peers in its first generic snapshot.
+            if self.cave_map is not None and tuple(state[:2]) == self.cave_map:
+                if (origin is None or tuple(origin[:2]) != self.cave_map or self.shared_cave is None
+                        or conn.get('cave_ack') != self.shared_cave.identity):
+                    continue
             if origin is not None and state[:2] != origin[:2]:
                 continue
             distance = abs(state[2]-origin[2]) + abs(state[3]-origin[3]) if origin else 0
@@ -371,6 +389,9 @@ class WorldServer:
                 if (name == conn['id'] or peer.get('closing') or state is None
                         or not (state[6] or peer.get('field'))):
                     continue
+                # Fly-to-friend is not yet supported for ephemeral caves.
+                if self.cave_map is not None and tuple(state[:2]) == self.cave_map:
+                    continue
                 ttl = max(0, min(180, int((TRAVEL_FRESH_SECONDS
                     - (now - peer.get('state_time', now - TRAVEL_FRESH_SECONDS))) * 60)))
                 friends.append('FRIEND ' + name + ' ' + ' '.join(map(str, state)) + ' ' + str(ttl))
@@ -379,8 +400,11 @@ class WorldServer:
                 raise ValueError('travel roster exceeds authority capacity')
             lines.append('TRAVEL ' + str(len(friends)))
             lines += friends
-        lines += ['TILE ' + ' '.join(map(str, tile)) for tile in self.tiles]
+        lines += ['TILE ' + ' '.join(map(str, tile)) for tile in self.tiles
+                  if self.cave_map is None or tuple(tile[:2]) != self.cave_map]
         for obj in self.objects:
+            if self.cave_map is not None and (obj['group'], obj['num']) == self.cave_map:
+                continue
             lines.append('OBJECT ' + obj['id'] + ' ' + ' '.join(str(obj[k]) for k in ('group','num','x','y','gfx'))
                          + ' ' + obj['text'].encode('ascii').hex())
         meeting = conn.get('meeting')
@@ -398,15 +422,29 @@ class WorldServer:
             if not conn['closing']:
                 self._queue(conn, self._snapshot(conn))
 
+    def _link_presence(self):
+        # Interactions, trades and tagged activities are not yet supported in
+        # ephemeral caves. Rendering presence is independent of link admission.
+        return {name: peer['state'] for name, peer in self.peers.items()
+                if peer['state'] is not None and not peer.get('closing')
+                and (self.cave_map is None or tuple(peer['state'][:2]) != self.cave_map)}
+
     def _line(self, conn, raw):
         try:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
-                control = len(fields) == 5 and fields[4] == 'CONTROL'
-                chat_capable = len(fields) == 5 and fields[4] in ('SOCIALCHAT', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELCHATRALLY')
-                travel = len(fields) == 5 and fields[4] in ('SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
-                social = len(fields) == 5 and fields[4] in ('SOCIAL', 'SOCIALCHAT', 'SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
-                link = len(fields) == 5 and fields[4] == 'LINK'
+                role = fields[4] if len(fields) == 5 else ''
+                cave_capable = role.endswith('CAVE')
+                if cave_capable:
+                    role = role[:-4]
+                control = role == 'CONTROL'
+                chat_capable = role in ('SOCIALCHAT', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELCHATRALLY')
+                travel = role in ('SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
+                social = role in ('SOCIAL', 'SOCIALCHAT', 'SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
+                link = role == 'LINK'
+                if cave_capable and not social:
+                    self._error(conn, 'AUTH')
+                    return
                 if (len(fields) != 4 and not control and not social and not link) or fields[:2] != ['HELLO', '1']:
                     self._error(conn, 'AUTH')
                     return
@@ -452,6 +490,8 @@ class WorldServer:
                     return
                 conn['id'] = name
                 conn['social'] = social
+                conn['cave_capable'] = cave_capable
+                conn['cave_offer'] = conn['cave_ack'] = None
                 conn['chat'] = chat_capable
                 conn['travel'] = travel
                 conn['chat_history'] = []
@@ -467,6 +507,37 @@ class WorldServer:
                 return
             if conn.get('control'):
                 self._control_line(conn, raw)
+                return
+            if fields and fields[0] == 'CAVE':
+                if raw.decode('ascii') != ' '.join(fields):
+                    self._error(conn, 'CAVE')
+                    return
+                if not conn.get('cave_capable') or self.peers.get(conn['id']) is not conn:
+                    self._error(conn, 'CAVE')
+                    return
+                if fields == ['CAVE', 'GET']:
+                    if self.shared_cave is None:
+                        self._queue(conn, 'CAVE NONE\n')
+                        return
+                    now = time.monotonic()
+                    if now < conn.get('cave_next', 0):
+                        self._queue(conn, 'CAVE BUSY\n')
+                        return
+                    conn['cave_next'] = now + .5
+                    frames = self.shared_cave.frames()
+                    if len(conn['out']) + len(frames) > MAX_QUEUE:
+                        self._queue(conn, 'CAVE BUSY\n')
+                        return
+                    conn['cave_offer'] = self.shared_cave.identity
+                    self._queue(conn, frames)
+                    return
+                if (len(fields) == 3 and fields[1] == 'ACK' and self.shared_cave
+                        and conn.get('cave_offer') == self.shared_cave.identity
+                        and secrets.compare_digest(fields[2], self.shared_cave.identity)):
+                    conn['cave_ack'] = self.shared_cave.identity
+                    self._queue(conn, 'CAVE OK ' + self.shared_cave.identity + '\n')
+                    return
+                self._error(conn, 'CAVE')
                 return
             if bytes(raw) == b'CHAT_ENABLE' and conn.get('social'):
                 conn['chat'] = True
@@ -505,7 +576,13 @@ class WorldServer:
                 return
             limits = [255, 255, 32767, 32767, 4, 65535, 1]
             state = [bounded(v, 0, limit) for v, limit in zip(fields[2:9], limits)]
-            validate_coords(*state[:4])
+            if self.cave_map is not None and tuple(state[:2]) == self.cave_map:
+                if (self.shared_cave is None or conn.get('cave_ack') != self.shared_cave.identity
+                        or self.rally.current(conn) is not None
+                        or not self.shared_cave.walkable(state[2], state[3])):
+                    raise ValueError('unadmitted cave state')
+            else:
+                validate_coords(*state[:4])
             if not 1 <= state[4] <= 4 or state[5] > 255:
                 raise ValueError('invalid peer facing or graphics')
             if not field and state[6] == 0 and state != [0, 0, 0, 0, 1, 7, 0]:
@@ -524,10 +601,9 @@ class WorldServer:
                 self.pending_states[conn['id']] = data
             self._flush_states(force=False)
             conn['seq'], conn['state'], conn['field'] = seq, state, field
+            conn['in_generated_cave'] = self.cave_map is not None and tuple(state[:2]) == self.cave_map
             conn['state_time'] = time.monotonic()
-            self._deliver_links(self.link_protocol.update_presence({
-                name: peer['state'] for name, peer in self.peers.items()
-                if peer['state'] is not None and not peer.get('closing')}))
+            self._deliver_links(self.link_protocol.update_presence(self._link_presence()))
             self._broadcast()
         except (UnicodeError, ValueError):
             self._error(conn, 'MALFORMED')
@@ -600,9 +676,7 @@ class WorldServer:
                 channel = 'T' if fields[0] == b'T' else 'L'
                 self._queue(conn, f'{channel} ERROR UNAVAILABLE\n')
                 return
-        presence = {name: peer['state'] for name, peer in self.peers.items()
-                    if peer['state'] is not None and not peer.get('closing')}
-        self._deliver_links(self.link_protocol.process(conn['id'], bytes(raw), presence))
+        self._deliver_links(self.link_protocol.process(conn['id'], bytes(raw), self._link_presence()))
 
     def _meet(self, conn, fields):
         """One fixed cooperative signal, authenticated and ordered like STATE.
@@ -619,6 +693,8 @@ class WorldServer:
         target = self.peers.get(fields[2])
         state = conn['state']
         other = target.get('state') if target else None
+        if self.cave_map is not None and state and tuple(state[:2]) == self.cave_map:
+            raise MeetingUnavailable('generated cave interactions unavailable')
         if (target is conn or not target or not target.get('social') or target.get('closing')
                 or not state or not other or not state[6] or not other[6] or state[:2] != other[:2]):
             raise MeetingUnavailable('trainer unavailable')
@@ -646,6 +722,8 @@ class WorldServer:
             self._error(conn, 'STALE')
             return
         state = conn['state']
+        if self.cave_map is not None and state and tuple(state[:2]) == self.cave_map:
+            raise ValueError('generated cave interactions unavailable')
         obj = next((o for o in self.objects if o['id'] == fields[2]), None)
         if not state or not state[6] or not obj or state[:2] != [obj['group'], obj['num']]:
             raise ValueError('interaction unavailable')
@@ -837,7 +915,12 @@ class WorldServer:
         if len(state.encode()) > 32768:
             raise ValueError('state too large')
         tiles = result['tiles']
-        validate_objects(result.get('objects', []))
+        objects = validate_objects(result.get('objects', []))
+        from .build_catalog import catalog_maps
+        reserved = {(g, n) for (g, n), item in catalog_maps().items()
+                    if item.get('name') == 'GeneratedWorld_Cave'}
+        if any((obj['group'], obj['num']) in reserved for obj in objects):
+            raise ValueError('generated cave cannot have mutable objects')
         if type(tiles) is not list or len(tiles) > MAX_TILES:
             raise ValueError('invalid tiles')
         keys = ('group', 'num', 'x', 'y', 'metatile', 'collision')
@@ -849,6 +932,8 @@ class WorldServer:
             values = [tile[k] for k in keys]
             if any(type(v) is not int or not 0 <= v <= limit for v, limit in zip(values, limits)):
                 raise ValueError('tile out of bounds')
+            if tuple(values[:2]) in reserved:
+                raise ValueError('generated cave cannot have mutable tiles')
             validate_tile(values)
             location = tuple(values[:4])
             if location in seen:
@@ -1046,6 +1131,7 @@ def main(argv=None):
     parser.add_argument('--max-players', type=int, default=32)
     parser.add_argument('--max-controls', type=int, help='default: twice max-players; at most two per identity')
     parser.add_argument('--connection-headroom', type=int, default=8, help='includes two private admin slots')
+    parser.add_argument('--generated-cave-template', type=Path, help='experimental immutable shared cave template; read once at startup')
     parser.add_argument('--timeout', type=float, default=120)
     args = parser.parse_args(argv)
     state = Path(args.state_dir).absolute()
@@ -1081,9 +1167,14 @@ def main(argv=None):
     server = broker = None
     result = 0
     try:
+        cave_template = None
+        if args.generated_cave_template is not None:
+            from .shared_cave import SIZE
+            with args.generated_cave_template.open('rb') as stream:
+                cave_template = stream.read(SIZE + 1)
         server = WorldServer(game_socket, state, admin_path=args.admin_socket,
                              max_players=args.max_players, max_controls=args.max_controls,
-                             connection_headroom=args.connection_headroom)
+                             connection_headroom=args.connection_headroom, cave_template=cave_template)
         server.start()
         if args.listen is not None:
             import ssl

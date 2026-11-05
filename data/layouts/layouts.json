@@ -4414,12 +4414,12 @@
     {
       "id": "LAYOUT_GENERATED_WORLD_CAVE",
       "name": "GeneratedWorld_Cave_Layout",
-      "width": 19,
-      "height": 26,
+      "width": 31,
+      "height": 31,
       "primary_tileset": "gTileset_General",
       "secondary_tileset": "gTileset_Cave",
       "border_filepath": "data/layouts/CaveOfOrigin_Entrance/border.bin",
-      "blockdata_filepath": "data/layouts/CaveOfOrigin_Entrance/map.bin"
+      "blockdata_filepath": "data/layouts/ShoalCave_LowTideEntranceRoom/map.bin"
     }
   ]
 }

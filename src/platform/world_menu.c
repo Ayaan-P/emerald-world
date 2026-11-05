@@ -157,13 +157,20 @@ static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 onlin
     const char *approach = eligible ? eligible : ApproachReason();
     if (sMenu.state == FEATURES)
     {
+#if GENERATED_MAP_READY
+        if (GeneratedMap_IsInside()) {
+            AddRow(rows, &n, GEN_CAVE, "Leave generated cave", NULL);
+            AddRow(rows, &n, BACK, "Back", NULL);
+            return n;
+        }
+#endif
         AddRow(rows, &n, FRIENDS, "Friends", WorldBridge_Enabled() ? NULL : "Connect to a world to visit friends.");
         AddRow(rows, &n, STORY, "Story rally", NULL);
         AddRow(rows, &n, DEXNAV, "DexNav", DexNavNative_Available() ? NULL :
             "DexNav needs a Pokedex and conscious party outside restricted or link areas.");
 #if GENERATED_MAP_READY
         AddRow(rows, &n, GEN_CAVE, GeneratedMap_IsInside() ? "Leave generated cave" : "Explore generated cave",
-            GeneratedMap_IsInside() || GeneratedMap_CanEnter() ? NULL : "Offline only. Stand outside on foot.");
+            GeneratedMap_IsInside() || GeneratedMap_CanEnter() ? NULL : "Stand outside on foot; online needs a ready shared cave.");
 #endif
         AddRow(rows, &n, BACK, "Back", NULL);
         return n;
