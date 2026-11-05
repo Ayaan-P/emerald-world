@@ -16,6 +16,55 @@ ENGINE = 'expansion-native'
 BINARY = REPO / 'build/expansion-native/pokeemerald-native'
 
 
+def stage_replay(source, profile):
+    """Flatten bounded textual includes, never mount an input directory.
+
+    Donor includes are textual before parsing, so cold-restart line numbers
+    retain the same meaning. Includes must remain inside the selected directory.
+    """
+    import os
+    import tempfile
+    source = Path(source).resolve(strict=True)
+    root = source.parent
+    files = 0
+    total = 0
+
+    def expand(path, depth=0):
+        nonlocal files, total
+        path = path.resolve()
+        if not path.is_relative_to(root) or depth > 4 or files >= 64:
+            raise ValueError('replay include escapes its directory or exceeds donor limits')
+        files += 1
+        with path.open('rb') as stream:
+            data = stream.read(1024*1024+1)
+        total += len(data)
+        if total > 1024*1024 or b'\0' in data:
+            raise ValueError('replay exceeds donor size limits or contains NUL bytes')
+        lines = []
+        for line in data.splitlines():
+            fields = line.partition(b'#')[0].split()
+            if fields and fields[0] == b'include':
+                if len(fields) != 2:
+                    raise ValueError('replay include requires one relative filename')
+                lines.append(expand(path.parent / fields[1].decode('utf-8'), depth+1))
+            else:
+                lines.append(line+b'\n')
+        return b''.join(lines)
+
+    data = expand(source)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=profile, prefix='.replay-', delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(data)
+        target = profile / 'replay-input.replay'
+        os.replace(temporary, target)
+        return target
+    finally:
+        if temporary:
+            temporary.unlink(missing_ok=True)
+
+
 class ExpansionSession:
     def __init__(self, state_dir, trainer, *, online=True):
         from .launcher import require_online_state
@@ -90,8 +139,7 @@ class ExpansionSession:
             if symbols.is_file():
                 extra += ['--ro-bind', str(symbols), str(symbols)]
             if replay:
-                replay = Path(replay).resolve(strict=True)
-                extra += ['--ro-bind', str(replay.parent), str(replay.parent)]
+                replay = stage_replay(replay, self.paths['profile'])
                 command += ['--replay', str(replay), '--out', str(self.paths['profile'] / 'replay-out'),
                             '--unthrottled', '--rtc-fixed', '1700000000']
             if frames is not None:

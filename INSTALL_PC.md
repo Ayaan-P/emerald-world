@@ -58,7 +58,10 @@ X display. The Expansion selector is currently a CLI/session API feature, not
 an option in the React or Tk launcher. It selects the Expansion executable unless
 `--binary` is explicitly supplied. Vanilla flags, seed saves, online-save copying,
 player-control endpoints and vanilla invitations are rejected for Expansion.
-Donor `--replay` scripts are supported instead of vanilla input scripts.
+Donor `--replay` scripts are supported instead of vanilla input scripts. The
+session stages only the selected script and its bounded textual includes into
+the profile. Includes must remain under the selected script's directory. Its
+parent directory is not mounted into the game sandbox.
 
 An Expansion presence authority and a trainer can be started in separate terminals:
 

@@ -48,6 +48,30 @@ class ExpansionEngineTest(unittest.TestCase):
                                                 '--engine', 'expansion-native', '--print-command']), 0)
                 self.assertEqual(run.call_args.args[0].engine, 'expansion-native')
 
+    def test_replay_staging_does_not_mount_its_parent_directory(self):
+        import contextlib
+        import io
+        import json
+        from world.expansion import ExpansionSession
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory)/'inputs'
+            source.mkdir()
+            (source/'start.replay').write_text('wait 10\n')
+            replay = source/'main.replay'
+            replay.write_text('include start.replay\nquit\n')
+            session = ExpansionSession(Path(directory)/'world', 'Ash', online=False)
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                session.run('/bin/true', replay=replay, print_command=True)
+            command = json.loads(output.getvalue())
+            self.assertNotIn(str(source), command)
+            staged = Path(command[command.index('--replay')+1])
+            self.assertEqual(staged.parent, session.paths['profile'])
+            self.assertEqual(staged.read_text(), 'wait 10\nquit\n')
+            replay.write_text('include ../secret\n')
+            with self.assertRaises(ValueError):
+                session.run('/bin/true', replay=replay, print_command=True)
+
     def test_expansion_rejects_vanilla_save_and_control_inputs(self):
         with tempfile.TemporaryDirectory() as directory:
             for option, value in (('--seed-save', '/unused.sav'), ('--test-input', '/unused.txt'),
