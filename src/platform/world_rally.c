@@ -289,7 +289,7 @@ void WorldRally_Disconnected(void)
     sRally.offering = sRally.cancelOffer = FALSE;
 }
 
-static bool8 At(unsigned group, unsigned num, s16 x, s16 y, unsigned elevation)
+static bool8 At(int group, int num, s16 x, s16 y, unsigned elevation)
 {
     const struct ObjectEvent *player;
     if (!FieldReady() || gPlayerAvatar.objectEventId >= OBJECT_EVENTS_COUNT) return FALSE;
