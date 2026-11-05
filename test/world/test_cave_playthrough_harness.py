@@ -16,11 +16,12 @@ class State:
     party=[{'species': 252}]
     cave_tile=0x201
     cave_exit_tile=0x207
+    frame=0
     def __init__(self,name,map_id,pos): self.map_name=name;self.map=map_id;self.pos=pos
 
 class FakeGame:
     last=None
-    def __init__(self,binary,out_dir,save,max_frames):
+    def __init__(self,binary,out_dir,save,max_frames,shot_every=0):
         self.save_path=str(Path(out_dir)/'game.sav');shutil.copyfile(save,self.save_path)
         self.state=State('LittlerootTown_ProfessorBirchsLab',(1,4),(6,5));self.actions=[];self.a=0
         FakeGame.last=self
@@ -120,15 +121,27 @@ class CaveHarnessContract(unittest.TestCase):
             root=Path(tmp);seed=root/'seed';seed.write_bytes(b'disposable');out=root/'out'
             with patch.object(module.driver,'Game',IceGame),patch.object(module.driver,'continue_game'), \
                  patch.object(module.driver,'walk_to'),patch.object(module.driver,'leave_map',leave), \
-                 patch.object(module.driver,'wait_until',wait),patch('builtins.print'):
+                 patch.object(module.driver,'wait_until',wait),patch('builtins.print'), \
+                 patch.object(module,'check_ice_frame') as check:
                 module.run('/bin/true',seed,out,encounter=True,profile='ice',observe_only=True)
+            check.assert_called_once()
             self.assertEqual(FakeGame.last.a,2)
             self.assertEqual((out/'game.sav').read_bytes(),b'disposable')
+
+    def test_ice_frame_validator_rejects_missing_and_nonblue(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            with self.assertRaises(RuntimeError):module.check_ice_frame(root,0)
+            frame=root/'frame_000030.ppm';header=b'P6\n240 160\n255\n'
+            frame.write_bytes(header+bytes([20,90,200])*(240*160))
+            module.check_ice_frame(root,0)
+            frame.write_bytes(header+bytes([180,80,20])*(240*160))
+            with self.assertRaises(RuntimeError):module.check_ice_frame(root,0)
 
     def test_native_startup_failure_exposes_stderr(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);seed=root/'seed';seed.write_bytes(b'disposable');out=root/'out'
-            def fail(binary,out_dir,save,max_frames):
+            def fail(binary,out_dir,save,max_frames,shot_every=0):
                 (Path(out_dir)/'stderr.txt').write_text('native diagnostic')
                 raise RuntimeError('exited')
             with patch.object(module.driver,'Game',side_effect=fail):

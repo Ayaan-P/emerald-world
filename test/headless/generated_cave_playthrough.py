@@ -12,6 +12,29 @@ from world.cave_blueprint import proposal_from_blueprint
 from scripts.export_generated_cave import encode
 
 
+def check_ice_frame(directory, after_frame):
+    """Check the actual test-mode PPM is visibly blue, without uploading it."""
+    shots=[]
+    for path in Path(directory).glob('frame_*.ppm'):
+        try:
+            frame=int(path.stem.split('_',1)[1])
+        except (ValueError, IndexError):
+            continue
+        if frame >= after_frame:
+            shots.append((frame,path))
+    if not shots:
+        raise RuntimeError('no native ice-cave screenshot was captured')
+    data=max(shots)[1].read_bytes()
+    header=b'P6\n240 160\n255\n'
+    if not data.startswith(header) or len(data)!=len(header)+240*160*3:
+        raise RuntimeError('invalid native screenshot')
+    pixels=data[len(header):]
+    blue=sum(1 for i in range(0,len(pixels),3)
+             if pixels[i+2] > pixels[i]+25 and pixels[i+2] > pixels[i+1]+5 and pixels[i+2] > 80)
+    if blue < 240*160//5:
+        raise RuntimeError(f'native ice cave did not render enough blue pixels: {blue}')
+
+
 def run(binary, seed, out, encounter=False, profile=None, observe_only=False):
     binary, seed, out = Path(binary).resolve(), Path(seed).resolve(), Path(out).resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -31,7 +54,8 @@ def run(binary, seed, out, encounter=False, profile=None, observe_only=False):
         wrapper.write_text('#!/bin/sh\nexec ' + shlex.quote(str(binary)) + ' --generated-map ' + shlex.quote(str(cave)) + ' "$@"\n')
         wrapper.chmod(0o700)
         try:
-            game = driver.Game(str(wrapper), str(out), save=str(seed), max_frames=40000 if encounter else 20000)
+            game = driver.Game(str(wrapper), str(out), save=str(seed), max_frames=40000 if encounter else 20000,
+                               shot_every=30 if profile == 'ice' else 0)
         except Exception as error:
             stderr_path = out/'stderr.txt'
             details = stderr_path.read_text(errors='replace')[-4000:] if stderr_path.exists() else 'no native stderr'
@@ -60,6 +84,10 @@ def run(binary, seed, out, encounter=False, profile=None, observe_only=False):
             actual = (getattr(game.state, 'cave_tile', None), getattr(game.state, 'cave_exit_tile', None))
             if actual != expected:
                 raise RuntimeError(f'incorrect native cave biome tiles: {actual}, expected {expected}')
+            if profile == 'ice':
+                entered_frame = game.state.frame
+                game.wait(90)
+                check_ice_frame(out, entered_frame)
             game.press('RIGHT', 16)
             game.wait(20)
             if encounter:
