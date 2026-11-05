@@ -4,7 +4,7 @@ Not a native build or multiplayer gameplay acceptance test.
 """
 from pathlib import Path
 import subprocess,tempfile,unittest
-from test_save_isolation import function
+from test_save_isolation import function, PREAMBLE as SAVE_PREAMBLE
 ROOT=Path(__file__).resolve().parents[2]
 
 PREAMBLE=r"""
@@ -26,7 +26,13 @@ struct ObjectEvent gObjectEvents[OBJECT_EVENTS_COUNT];
 #if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
 static bool8 sWorldObjectAllocation;
 #endif
-void WorldBridge_PrepareSave(void) {}
+int cleanupCalls, cleanupSawExtended;
+void WorldBridge_PrepareSave(void) {
+    cleanupCalls++;
+#if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
+    if (gObjectEvents[16].active) cleanupSawExtended=1;
+#endif
+}
 """
 MAIN=r"""
 int main(void) {
@@ -60,6 +66,7 @@ int main(void) {
  LoadObjectEvents();for(int i=0;i<16;i++)assert(gObjectEvents[i].marker==100+i);
 #if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
  assert(!gObjectEvents[16].active && !gObjectEvents[31].active);
+ assert(cleanupCalls==2 && cleanupSawExtended);
 #endif
  return 0;
 }
@@ -72,9 +79,28 @@ class EntityCapacity(unittest.TestCase):
   source=PREAMBLE+function(move,'GetFirstInactiveObjectEventId')+move[a:b]+function(save,'SaveObjectEvents')+function(save,'LoadObjectEvents')+MAIN
   with tempfile.TemporaryDirectory() as d:
    p=Path(d);(p/'t.c').write_text(source)
-   for flags in (['-DPORTABLE','-DWORLD_EXTENDED_OBJECTS=1'],['-DPORTABLE','-DWORLD_EXTENDED_OBJECTS=0'],[]):
+   for flags in (['-DPORTABLE','-DWORLD_EXTENDED_OBJECTS=1'],['-DPORTABLE','-DWORLD_EXTENDED_OBJECTS=0'],['-DWORLD_EXTENDED_OBJECTS=1'],[]):
     subprocess.run(['cc','-std=c99','-Wall','-Werror',*flags,str(p/'t.c'),'-o',str(p/'t')],check=True)
     subprocess.run([str(p/'t')],check=True)
+ def test_load_tears_down_owned_extended_sprite_before_clearing_slot(self):
+  bridge=(ROOT/'src/platform/world_bridge.c').read_text();load=(ROOT/'src/load_save.c').read_text()
+  fixture=SAVE_PREAMBLE.replace('#define WB_PEERS 8','#define WB_PEERS 16').replace('#define WB_LOCALID 224','#define WB_LOCALID 200').replace('#define OBJECT_EVENTS_COUNT 16','#define OBJECT_EVENTS_COUNT 32').replace('#define MAX_SPRITES 64','#define MAX_SPRITES 96').replace('struct ObjectEvent objectEvents[OBJECT_EVENTS_COUNT]','struct ObjectEvent objectEvents[SAVED_OBJECT_EVENTS_COUNT]')
+  state=bridge[bridge.index('struct Peer {'):bridge.index('static bool8 Identifier(')]
+  helpers=''.join(function(bridge,n) for n in ('Owned','RemoveRemote','SameGrid','GridCoords','Raw','RestoreTiles','WorldBridge_PrepareSave'))
+  rally=(ROOT/'include/platform/world_rally.h').read_text();rally=rally[rally.index('#define WORLD_RALLY_ROSTER'):rally.index('/* Main/game thread only.')]
+  code=fixture+rally+state+helpers+function(load,'LoadObjectEvents')+r"""
+int main(void){
+ sWorld.enabled=TRUE;gMapHeader.mapLayout=&layout;gBackupMapLayout.map=sBackupMapData;
+ strcpy(sWorld.remotes[0].id,"bob");sWorld.remotes[0].object=16;sWorld.remotes[0].sprite=16;
+ gObjectEvents[16].active=1;gObjectEvents[16].localId=WB_LOCALID;gObjectEvents[16].spriteId=16;
+ gSprites[16].inUse=1;gSprites[16].data[0]=16;gSprites[16].data[7]=WB_MARKER;
+ assert(Owned(0));LoadObjectEvents();assert(!gSprites[16].inUse);assert(!gObjectEvents[16].active);assert(!sWorld.remotes[0].id[0]);return 0;
+}
+"""
+  with tempfile.TemporaryDirectory() as d:
+   p=Path(d);(p/'t.c').write_text(code)
+   subprocess.run(['cc','-std=gnu99','-Wall','-Werror','-Wno-unused-function','-DPORTABLE','-DUBFIX','-DWORLD_EXTENDED_OBJECTS=1',str(p/'t.c'),'-o',str(p/'t')],check=True)
+   subprocess.run([str(p/'t')],check=True)
  def test_real_saveblock_layout_matches_gate_off(self):
   code = r"""
 #include <stddef.h>

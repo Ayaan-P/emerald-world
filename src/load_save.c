@@ -213,6 +213,10 @@ void LoadObjectEvents(void)
 {
     int i;
 
+#if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
+    // Tear down owned remote sprites before transient object slots are cleared.
+    WorldBridge_PrepareSave();
+#endif
     for (i = 0; i < SAVED_OBJECT_EVENTS_COUNT; i++)
         gObjectEvents[i] = gSaveBlock1Ptr->objectEvents[i];
 #if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS

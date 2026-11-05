@@ -62,7 +62,7 @@ class SpriteCapacity(unittest.TestCase):
   code=PREAMBLE+''.join(function(src,n) for n in ('ClearSpriteCopyRequests','ResetSpriteData','CreateSprite','CreateSpriteAtEnd','AddSpriteToOamBuffer','AddSpritesToOamBuffer','RequestSpriteCopy'))+MAIN
   with tempfile.TemporaryDirectory() as d:
    p=Path(d);(p/'t.c').write_text(code)
-   for flags in (['-DPORTABLE','-DWORLD_EXTENDED_SPRITES=1','-DTEST_MAX_SPRITES=96'],['-DPORTABLE','-DWORLD_EXTENDED_SPRITES=0','-DTEST_MAX_SPRITES=64'],['-DTEST_MAX_SPRITES=64']):
+   for flags in (['-DPORTABLE','-DWORLD_EXTENDED_SPRITES=1','-DTEST_MAX_SPRITES=96'],['-DPORTABLE','-DWORLD_EXTENDED_SPRITES=0','-DTEST_MAX_SPRITES=64'],['-DWORLD_EXTENDED_SPRITES=1','-DTEST_MAX_SPRITES=64'],['-DTEST_MAX_SPRITES=64']):
     subprocess.run(['cc','-std=c99','-Wall','-Werror',*flags,str(p/'t.c'),'-o',str(p/'t')],check=True)
     subprocess.run([str(p/'t')],check=True)
  def test_real_header_and_oam_bounds(self):
