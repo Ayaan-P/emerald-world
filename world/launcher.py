@@ -245,6 +245,9 @@ def game_command(binary, state_dir, paths, display=None, agent_control=False, *,
         env['SDL_VIDEODRIVER'] = 'dummy'
     if expanded:
         env['EW_EXPANSION_PRESENCE'] = str(paths['profile'] / 'presence.json')
+        env['EW_EXPANSION_PEERS'] = str(paths['profile'] / 'peers.txt')
+        if os.environ.get('EW_EXPERIMENTAL_EXPANSION_PEERS') == '1':
+            env['EW_EXPERIMENTAL_EXPANSION_PEERS'] = '1'
     for key, value in env.items():
         args += ['--setenv', key, value]
     if expanded:
@@ -511,3 +514,4 @@ if __name__ == '__main__':
     except (OSError, ValueError) as error:
         print(f'Emerald World: {error}', file=sys.stderr)
         raise SystemExit(1)
+

@@ -7,6 +7,7 @@
 #include "platform/frame.h"
 #include "platform/inspect.h"
 
+void ExpansionPeers_Update(int overworld);
 enum frame_result __real_frame_run(void);
 enum frame_result __wrap_frame_run(void)
 {
@@ -24,6 +25,8 @@ enum frame_result __wrap_frame_run(void)
              && sscanf(pos, "%u,%u", &x, &y) == 2
              && strcmp(callback, "CB2_Overworld") == 0
              && strcmp(battle, "0") == 0;
+    if (getenv("EW_EXPERIMENTAL_EXPANSION_PEERS") != NULL)
+        ExpansionPeers_Update(field);
     char temporary[4096];
     if (snprintf(temporary, sizeof temporary, "%s.tmp", path) >= (int)sizeof temporary)
         return result;
@@ -38,3 +41,4 @@ enum frame_result __wrap_frame_run(void)
     }
     return result;
 }
+

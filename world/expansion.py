@@ -5,9 +5,12 @@ Presence is always busy: no native link, ownership payload or world mutation ABI
 is claimed. The donor's scalar inspect facts are the only engine state we read.
 """
 import json
+import re
 from pathlib import Path
 import subprocess
 import threading
+import tempfile
+import os
 import time
 
 from .launcher import REPO, ProfileLock, engine_state, game_command, profile_paths, _prepare_profile
@@ -65,6 +68,25 @@ def stage_replay(source, profile):
             temporary.unlink(missing_ok=True)
 
 
+def serialize_peers(snapshot):
+    """Translate an authenticated server snapshot into a bounded engine input."""
+    peers = snapshot.get('peers')
+    if type(peers) is not dict or len(peers) > 8:
+        raise ValueError('invalid Expansion peer snapshot')
+    lines = ['EWPEERS 1']
+    for name, peer in sorted(peers.items()):
+        if (type(name) is not str or not re.fullmatch(r'[A-Za-z0-9_-]{1,24}', name)
+                or type(peer) is not dict):
+            raise ValueError('invalid Expansion peer')
+        keys = ('group', 'num', 'x', 'y', 'facing')
+        values = [peer.get(k) for k in keys]
+        if any(type(v) is not int or v < lo or v > hi for v, lo, hi in
+               zip(values, (0, 0, 0, 0, 1), (255, 255, 32767, 32767, 4))):
+            raise ValueError('invalid Expansion peer position')
+        lines.append(' '.join([name, *(str(v) for v in values)]))
+    return '\n'.join(lines) + '\n'
+
+
 class ExpansionSession:
     def __init__(self, state_dir, trainer, *, online=True):
         from .launcher import require_online_state
@@ -85,6 +107,18 @@ class ExpansionSession:
         try:
             while not finished.is_set():
                 snapshot = dict(client.snapshot(), engine=ENGINE, mode='presence-only', multiplayer=False)
+                peer_path = self.paths['profile'] / 'peers.txt'
+                temporary_peer = None
+                try:
+                    with tempfile.NamedTemporaryFile(mode='w', encoding='ascii',
+                                                     dir=self.paths['profile'],
+                                                     prefix='.peers-', delete=False) as stream:
+                        temporary_peer = Path(stream.name)
+                        stream.write(serialize_peers(snapshot))
+                    os.replace(temporary_peer, peer_path)
+                finally:
+                    if temporary_peer is not None:
+                        temporary_peer.unlink(missing_ok=True)
                 temporary = self.paths['telemetry'].with_suffix('.tmp')
                 temporary.write_text(json.dumps(snapshot))
                 temporary.replace(self.paths['telemetry'])
@@ -174,7 +208,7 @@ class ExpansionSession:
                 print(json.dumps(command, indent=2))
                 return 0
             # Discard only our disposable telemetry, never any save or settings.
-            for filename in ('presence.json', 'telemetry.json'):
+            for filename in ('presence.json', 'telemetry.json', 'peers.txt'):
                 path = self.paths['profile'] / filename
                 if path.is_symlink():
                     raise ValueError('Expansion telemetry cannot be a symlink')
@@ -213,3 +247,4 @@ def run(args):
     session = ExpansionSession(args.state_dir, args.trainer, online=args.command == 'join')
     return session.run(args.binary or BINARY, args.display, replay=args.replay, frames=args.frames,
                        print_command=args.print_command)
+
