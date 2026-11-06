@@ -56,6 +56,7 @@ static void BattleMainCB1(void);
 static void PlayerBufferRunCommand(void);
 static void BattleControllerDummy(void) {}
 static int WorldCoop_IsTrainer(void) { return 0; }
+static int WorldCoop_FullPartyMenuActive(void) { return 0; }
 static int WorldCoop_PreparePrivateRewards(void) {
     prepared++; gBattleTypeFlags = 0; gBattleControllerExecFlags = 0; return 1;
 }

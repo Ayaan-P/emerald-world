@@ -80,9 +80,9 @@ int main(void) {return 0;}
    path=Path(d)/'test.c';path.write_text(code)
    for enabled,expected in ((0,64),(1,96)):
     subprocess.run(['cc','-std=gnu11','-fsyntax-only','-iquote',str(ROOT/'include'),'-iquote',str(ROOT),'-DPORTABLE','-DNONMATCHING','-DUBFIX','-DWORLD_EXTENDED_SPRITES='+str(enabled),'-DEXPECT_SPRITES='+str(expected),str(path)],check=True)
- def test_header_and_build_expose_separate_opt_in(self):
+ def test_header_and_build_expose_rc5_default_and_independent_gate(self):
   header=(ROOT/'include/sprite.h').read_text();make=(ROOT/'Makefile').read_text()
-  self.assertIn('#define MAX_SPRITES 96',header);self.assertIn('WORLD_EXTENDED_SPRITES ?= 0',make)
+  self.assertIn('#define MAX_SPRITES 96',header);self.assertIn('RC5_FEATURES ?= 1',make);self.assertIn('WORLD_EXTENDED_SPRITES ?= $(RC5_FEATURES)',make)
   self.assertGreaterEqual(make.count('-DWORLD_EXTENDED_SPRITES=$(WORLD_EXTENDED_SPRITES)'),2)
 
 if __name__=='__main__':unittest.main()

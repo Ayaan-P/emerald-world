@@ -44,7 +44,13 @@ class SharedCaveTests(unittest.TestCase):
   self.state(alice,1,1,1);self.state(bob,1,2,1)
   snapshot=self.server._snapshot(alice)
   self.assertIn('PEER Bob ',snapshot);self.assertNotIn('FRIEND Bob ',snapshot)
-  self.assertNotIn('Alice',self.server._link_presence());self.assertNotIn('Bob',self.server._link_presence())
+  # RC5 admits co-op battles in the acknowledged cave, but not travel.
+  self.assertEqual(self.server._link_presence(), {'Alice':alice['state'],'Bob':bob['state']})
+  alice['cave_ack']='0'*64
+  self.assertNotIn('Alice',self.server._link_presence())
+  self.assertIn('Bob',self.server._link_presence())
+  bob['closing']=True
+  self.assertNotIn('Bob',self.server._link_presence())
  def test_cave_players_are_not_rally_eligible_and_active_rally_blocks_entry(self):
   import time
   alice=self.conn(self.alice);digest=self.server.shared_cave.identity

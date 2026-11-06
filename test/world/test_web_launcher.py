@@ -21,11 +21,20 @@ class WebLauncherTests(unittest.TestCase):
         self.session.root = Path(self.tmp.name)
         self.session.friend_worlds.return_value = []
         self.session.world_library.return_value = []
+        self.session.worlds.return_value = []
+        self.session.server = None
+        self.session.managed_display = None
         self.session.state = None
         self.session.remote_trainer = None
         self.session.games = {}
         self.session.status = 'Ready'
         self.bridge = LauncherBridge(self.session, '/nonexistent/game')
+
+    def live_display(self):
+        # A reusable display now requires both a live process and its socket.
+        self.session.managed_display = Mock(display=':90')
+        self.session.managed_display.process.poll.return_value = None
+        return patch('world.web_launcher.Path.is_socket', return_value=True)
 
     def invitation(self):
         return {'version': 1, 'trainer': 'Trainer', 'token': 'a' * 64,
@@ -79,8 +88,7 @@ class WebLauncherTests(unittest.TestCase):
 
     def test_offline_uses_saved_trainer_and_explicit_copy_choice(self):
         self.session.friend_worlds.return_value = [{'name': 'world1', 'trainer': 'May'}]
-        self.session.managed_display = Mock(display=':90')
-        with patch('scripts.linux_client.binary_ready', return_value=True):
+        with self.live_display(), patch('scripts.linux_client.binary_ready', return_value=True):
             self.bridge.action('offline', {'world': 'world1', 'copy': True, 'trainer': 'someone-else'})
         self.session.launch_offline.assert_called_once_with('world1', 'May', Path('/nonexistent/game'), ':90', copy_online=True)
 
@@ -148,21 +156,19 @@ class WebLauncherTests(unittest.TestCase):
             session.close()
 
     def test_new_solo_starts_a_new_isolated_world(self):
-        self.session.managed_display = Mock(display=':90')
-        with patch('scripts.linux_client.binary_ready', return_value=True), patch('world.web_launcher.secrets.token_hex', return_value='abc123'):
+        with self.live_display(), patch('scripts.linux_client.binary_ready', return_value=True), patch('world.web_launcher.secrets.token_hex', return_value='abc123'):
             self.bridge.action('solo_new', {'trainer': 'May'})
         self.session.launch_offline.assert_called_once_with('solo-abc123', 'May', Path('/nonexistent/game'), ':90', copy_online=False)
         self.session.connect_remote.assert_not_called()
 
     def test_solo_import_stages_private_copy_and_removes_temporary_file(self):
-        self.session.managed_display = Mock(display=':90')
         seen = {}
         def start(*args, **kwargs):
             path = kwargs['seed_save']
             seen['path'], seen['data'], seen['mode'] = path, path.read_bytes(), path.stat().st_mode & 0o777
         self.session.launch_offline.side_effect = start
         fixture = b'private save fixture'
-        with patch('scripts.linux_client.binary_ready', return_value=True), patch('world.web_launcher.secrets.token_hex', return_value='abc123'):
+        with self.live_display(), patch('scripts.linux_client.binary_ready', return_value=True), patch('world.web_launcher.secrets.token_hex', return_value='abc123'):
             self.bridge.action('solo_new', {'trainer': 'May', 'seed': base64.b64encode(fixture).decode()})
         self.assertEqual(seen['data'], fixture)
         self.assertEqual(seen['mode'], 0o600)
@@ -291,9 +297,8 @@ class WebLauncherTests(unittest.TestCase):
     def test_browser_control_stops_before_new_solo_game(self):
         control = Mock()
         self.bridge.browser_input = control
-        self.session.managed_display = Mock(display=':90')
         self.session.launch_offline.side_effect = lambda *args, **kwargs: self.assertIsNone(self.bridge.browser_input)
-        with patch('scripts.linux_client.binary_ready', return_value=True):
+        with self.live_display(), patch('scripts.linux_client.binary_ready', return_value=True):
             self.bridge.action('solo_new', {'trainer': 'May'})
         control.close.assert_called_once_with()
 
