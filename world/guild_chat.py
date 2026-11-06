@@ -69,6 +69,17 @@ class GuildChat:
                     if invitee and invitee.get('chat') and not invitee.get('closing') and guild:
                         self.message(invitee,conn['id'],f'Guild: {conn["id"]} invited you to {guild[1]}. Use /guild accept {guild[1]}')
                         s._queue(invitee,s._snapshot(invitee))
+                if len(parts)==3 and parts[1].lower()=='apply' and lines[0].startswith('Applied to '):
+                    row=s.guilds.db.execute('SELECT name,leader FROM guilds WHERE name=? COLLATE NOCASE',(parts[2],)).fetchone()
+                    leader=s.peers.get(row[1]) if row else None
+                    if leader and leader.get('chat') and not leader.get('closing'):
+                        self.message(leader,conn['id'],f'Guild: {conn["id"]} applied to {row[0]}. Use /guild applications')
+                        s._queue(leader,s._snapshot(leader))
+                if len(parts)==3 and parts[1].lower()=='approve' and lines[0].startswith('Approved '):
+                    applicant=s.peers.get(parts[2]);guild=s.guilds._member(conn['id'])
+                    if applicant and applicant.get('chat') and not applicant.get('closing') and guild:
+                        self.message(applicant,conn['id'],f'Guild: Your application was accepted. You joined {guild[1]}.')
+                        s._queue(applicant,s._snapshot(applicant))
                 if len(parts)>=3 and parts[1].lower()=='post' and lines[0]=='Posted to the guild board.':
                     _,members=s.guilds.members(conn['id'])
                     for name in members:

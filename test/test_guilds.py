@@ -77,6 +77,23 @@ class GuildTests(unittest.TestCase):
         self.assertIn('0/1',self.g.command('Alice','expedition')[0])
         self.g.command('Alice','expedition cancel')
         self.assertIn('No expedition',self.g.command('Alice','expedition')[0])
+    def test_discovery_and_consent_based_applications(self):
+        self.g.command('Alice','create Rockets');self.g.command('Eve','create Trainers')
+        self.assertTrue(any('Rockets' in x for x in self.g.command('Bob','list')))
+        self.g.command('Bob','apply Rockets');self.g.command('Bob','apply Trainers')
+        self.assertIn('Bob',self.g.command('Alice','applications')[0])
+        with self.assertRaises(guilds.GuildError):self.g.command('Cara','approve Bob')
+        self.g.command('Alice','approve Bob')
+        self.assertEqual(self.g.members('Bob'),('Rockets',['Alice','Bob']))
+        self.assertEqual(self.g.command('Eve','applications'),['No pending guild applications.'])
+        with self.assertRaises(guilds.GuildError):self.g.command('Bob','apply Trainers')
+    def test_application_persists_and_leader_can_reject(self):
+        with tempfile.TemporaryDirectory() as d:
+            path=str(Path(d)/'world.db');db=database(path);g=guilds.Guilds(db)
+            g.command('Alice','create Rockets');g.command('Bob','apply Rockets');db.close()
+            db=sqlite3.connect(path);g=guilds.Guilds(db)
+            self.assertIn('Bob',g.command('Alice','applications')[0]);g.command('Alice','reject Bob')
+            self.assertEqual(g.command('Alice','applications'),['No pending guild applications.']);db.close()
     def test_persistent_board_access_limits_and_leader_clear(self):
         with tempfile.TemporaryDirectory() as d:
             path=str(Path(d)/'world.db');db=database(path);g=guilds.Guilds(db)
@@ -156,6 +173,14 @@ class ChatIntegrationTests(unittest.TestCase):
         self.assertIn('[Guild] meet at the gym'.encode().hex(),bob_wire)
         self.assertNotIn('[Guild] meet at the gym'.encode().hex(),eve_wire)
         self.assertFalse(any('/guild' in x for x in self.lines('Eve')))
+    def test_application_and_approval_notify_only_relevant_players(self):
+        self.send('Alice','/guild create Rockets');self.send('Bob','/guild list');self.send('Bob','/guild apply Rockets')
+        self.assertTrue(any('Bob applied to Rockets' in x for x in self.lines('Alice')))
+        self.assertEqual(self.lines('Eve'),[])
+        self.send('Alice','/guild approve Bob')
+        self.assertTrue(any('application was accepted' in x for x in self.lines('Bob')))
+        self.assertEqual(self.s.guilds.members('Bob'),('Rockets',['Alice','Bob']))
+        self.assertEqual(self.lines('Eve'),[])
     def test_guild_online_shows_only_members_and_no_coordinates(self):
         self.send('Alice','/guild create Rockets');self.send('Alice','/guild invite Bob');self.send('Bob','/guild accept Rockets')
         self.s.peers['Bob']['state']=[0,9,5,6,1,7,1];self.s.peers['Bob']['state_time']=time.monotonic()

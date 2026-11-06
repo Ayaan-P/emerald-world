@@ -25,6 +25,9 @@ class Guilds:
             CREATE TABLE IF NOT EXISTS guild_invites (
                 guild_id INTEGER NOT NULL, trainer TEXT NOT NULL,
                 PRIMARY KEY(guild_id, trainer));
+            CREATE TABLE IF NOT EXISTS guild_applications (
+                guild_id INTEGER NOT NULL, trainer TEXT NOT NULL,
+                PRIMARY KEY(guild_id, trainer));
             CREATE TABLE IF NOT EXISTS guild_posts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id INTEGER NOT NULL,
                 trainer TEXT NOT NULL, body TEXT NOT NULL);
@@ -62,8 +65,10 @@ class Guilds:
             raise GuildError('Invalid guild command.')
         words = command.split()
         if not words or words == ['help']:
-            return ['protocol 1', '/guild create NAME | /guild invite TRAINER', '/guild invites | /guild accept NAME | /guild decline NAME', '/guild info | /guild roster | /guild online | /guild leave', '/guild expedition shows your current expedition.', '/guild post MESSAGE | /guild board | /guild clear', '/guild kick TRAINER | /guild transfer TRAINER | /guild disband', '/g MESSAGE sends guild-only chat.']
+            return ['protocol 1', '/guild create NAME | /guild invite TRAINER', '/guild list | /guild apply NAME | /guild invites | /guild accept NAME', '/guild applications | /guild approve TRAINER | /guild reject TRAINER', '/guild info | /guild roster | /guild online | /guild leave', '/guild expedition shows your current expedition.', '/guild post MESSAGE | /guild board | /guild clear', '/guild kick TRAINER | /guild transfer TRAINER | /guild disband', '/g MESSAGE sends guild-only chat.']
         op, args = words[0].lower(), words[1:]
+        if op in ('list','apply','applications','approve','reject'):
+            return self.recruit(trainer, op, args)
         if op == 'expedition':
             return self.expedition(trainer, args)
         if op in ('post','board','clear'):
@@ -79,6 +84,7 @@ class Guilds:
                 cur=self.db.execute('INSERT INTO guilds(name,leader) VALUES(?,?)',(arg,trainer))
                 self.db.execute('INSERT INTO guild_members VALUES(?,?)',(trainer,cur.lastrowid))
                 self.db.execute('DELETE FROM guild_invites WHERE trainer=?',(trainer,))
+                self.db.execute('DELETE FROM guild_applications WHERE trainer=?',(trainer,))
                 return [f'Created {arg}. You are the leader.']
             if op in ('invite','kick','transfer'):
                 guild=self._require(trainer,leader=True)
@@ -110,6 +116,7 @@ class Guilds:
                 if count>=MAX_MEMBERS: raise GuildError('Guild is full.')
                 self.db.execute('INSERT INTO guild_members VALUES(?,?)',(trainer,invite[0]))
                 self.db.execute('DELETE FROM guild_invites WHERE trainer=?',(trainer,))
+                self.db.execute('DELETE FROM guild_applications WHERE trainer=?',(trainer,))
                 return [f'Joined {invite[1]}.']
             if op=='invites':
                 names=[x[0] for x in self.db.execute('SELECT g.name FROM guild_invites i JOIN guilds g ON g.id=i.guild_id WHERE i.trainer=? ORDER BY g.name COLLATE NOCASE LIMIT 50',(trainer,))]
@@ -125,12 +132,55 @@ class Guilds:
                 return [f'Left {guild[1]}.']
             self._require(trainer,leader=True)
             self.db.execute('DELETE FROM guild_invites WHERE guild_id=?',(guild[0],))
+            self.db.execute('DELETE FROM guild_applications WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_expedition_visits WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_expeditions WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_posts WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_members WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guilds WHERE id=?',(guild[0],))
             return [f'Disbanded {guild[1]}.']
+
+    def recruit(self, trainer, op, args):
+        """Public discovery and consent-based membership applications."""
+        with self.db:
+            if op=='list':
+                if len(args)>1 or (args and (not args[0].isascii() or not args[0].isdecimal() or len(args[0])>3)):
+                    raise GuildError('Use /guild list or /guild list PAGE.')
+                page=int(args[0]) if args else 1
+                total=self.db.execute('SELECT COUNT(*) FROM guilds').fetchone()[0]
+                pages=max(1,(total+7)//8)
+                if not 1<=page<=pages: raise GuildError(f'Page must be 1-{pages}.')
+                rows=self.db.execute('SELECT g.name,g.leader,COUNT(m.trainer) FROM guilds g LEFT JOIN guild_members m ON m.guild_id=g.id GROUP BY g.id ORDER BY g.name COLLATE NOCASE,g.id LIMIT 8 OFFSET ?',((page-1)*8,)).fetchall()
+                return [f'Guilds {page}/{pages}:']+([f'{name}: {count}/{MAX_MEMBERS}, leader {leader}' for name,leader,count in rows] or ['No guilds yet.'])
+            if op=='apply':
+                if len(args)!=1: raise GuildError('Use /guild apply NAME.')
+                self._identifier(args[0])
+                if self._member(trainer): raise GuildError('Leave your current guild first.')
+                guild=self.db.execute('SELECT id,name FROM guilds WHERE name=? COLLATE NOCASE',(args[0],)).fetchone()
+                if not guild: raise GuildError('Guild does not exist.')
+                if self.db.execute('SELECT COUNT(*) FROM guild_members WHERE guild_id=?',(guild[0],)).fetchone()[0]>=MAX_MEMBERS: raise GuildError('Guild is full.')
+                if not self.db.execute('SELECT 1 FROM guild_applications WHERE guild_id=? AND trainer=?',(guild[0],trainer)).fetchone():
+                    if self.db.execute('SELECT COUNT(*) FROM guild_applications WHERE guild_id=?',(guild[0],)).fetchone()[0]>=MAX_MEMBERS: raise GuildError('Guild has too many pending applications.')
+                    if self.db.execute('SELECT COUNT(*) FROM guild_applications WHERE trainer=?',(trainer,)).fetchone()[0]>=MAX_MEMBERS: raise GuildError('You have too many pending applications.')
+                self.db.execute('INSERT OR IGNORE INTO guild_applications VALUES(?,?)',(guild[0],trainer))
+                return [f'Applied to {guild[1]}.']
+            guild=self._require(trainer,leader=True)
+            if op=='applications':
+                if args: raise GuildError('Use /guild applications.')
+                names=[r[0] for r in self.db.execute('SELECT trainer FROM guild_applications WHERE guild_id=? ORDER BY trainer COLLATE NOCASE,trainer',(guild[0],))]
+                return ['Apply: '+', '.join(names[i:i+4]) for i in range(0,len(names),4)] or ['No pending guild applications.']
+            if op not in ('approve','reject') or len(args)!=1: raise GuildError('Use /guild approve TRAINER or reject TRAINER.')
+            self._identifier(args[0]);applicant=args[0]
+            if not self.db.execute('SELECT 1 FROM guild_applications WHERE guild_id=? AND trainer=?',(guild[0],applicant)).fetchone(): raise GuildError('No application from that trainer.')
+            if op=='reject':
+                self.db.execute('DELETE FROM guild_applications WHERE guild_id=? AND trainer=?',(guild[0],applicant))
+                return [f'Rejected {applicant}.']
+            if self._member(applicant): raise GuildError('Trainer is already in a guild.')
+            if self.db.execute('SELECT COUNT(*) FROM guild_members WHERE guild_id=?',(guild[0],)).fetchone()[0]>=MAX_MEMBERS: raise GuildError('Guild is full.')
+            self.db.execute('INSERT INTO guild_members VALUES(?,?)',(applicant,guild[0]))
+            self.db.execute('DELETE FROM guild_invites WHERE trainer=?',(applicant,))
+            self.db.execute('DELETE FROM guild_applications WHERE trainer=?',(applicant,))
+            return [f'Approved {applicant} for {guild[1]}.']
 
     def board(self, trainer, op, body):
         """Small persistent guild bulletin board; posts are untrusted player text."""
