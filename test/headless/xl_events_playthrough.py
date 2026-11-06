@@ -63,10 +63,16 @@ def run(binary,seed,out):
             game.tap('START',gap=30);game.tap('UP');game.tap('A',gap=60);game.tap('UP');game.tap('A',gap=90)
             driver.wait_until(game,lambda s:tuple(s.map)==origin[0] and s.free)
             if game.state.pos!=origin[1]:raise RuntimeError('guided wilds returned to wrong position')
+            game.tap('START',gap=30);game.tap('DOWN',times=5);game.tap('A',gap=60);game.tap('DOWN',times=2);game.tap('A',gap=90)
+            driver.wait_until(game,lambda s:s.map_name=='GeneratedWorld_Wilds' and s.free)
+            if game.state.event_state!=3:raise RuntimeError(f'event progress did not survive re-entry: {game.state.event_state}')
+            game.tap('START',gap=30);game.tap('UP');game.tap('A',gap=60);game.tap('UP');game.tap('A',gap=90)
+            driver.wait_until(game,lambda s:tuple(s.map)==origin[0] and s.free)
+            if game.state.pos!=origin[1]:raise RuntimeError('second exit returned to wrong position')
         finally:code=game.finish()
         if code:raise RuntimeError(f'native client exited {code}')
         if hashlib.sha256(Path(game.save_path).read_bytes()).digest()!=before:raise RuntimeError('disposable save changed')
-    print('PASS: XL agent-authored event graph advanced through three states, left a route and returned without writing the save')
+    print('PASS: XL agent-authored event graph advanced through three states, survived re-entry and returned without writing the save')
 
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--binary',required=True);p.add_argument('--seed-save',required=True);p.add_argument('--out',required=True)

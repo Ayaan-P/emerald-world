@@ -86,6 +86,30 @@ static bool8 sXLStaged,sXLActive;
 static bool8 sXLCastStaged;
 #endif
 static struct WarpEvent sXLWarp;static struct MapEvents sXLEvents;
+#if GENERATED_WILDS_EVENTS
+#define XL_PROGRESS_SLOTS 4
+static struct {bool8 valid;u8 trainer[4],state,events[GENERATED_EVENT_BYTES],cast[GENERATED_CAST_BYTES],cells[XL_CELLS];} sXLProgress[XL_PROGRESS_SLOTS];
+static u8 sXLProgressCurrent=0xFF,sXLProgressNext;
+static void XLRestoreEventProgress(void)
+{
+    unsigned i;const u8 *trainer;
+    sXLProgressCurrent=0xFF;
+    if(!sXLActive || !sEventActive || WorldBridge_Enabled() || !gSaveBlock2Ptr)return;
+    trainer=gSaveBlock2Ptr->playerTrainerId;
+    for(i=0;i<XL_PROGRESS_SLOTS;i++)if(sXLProgress[i].valid && !memcmp(sXLProgress[i].trainer,trainer,4)
+       && !memcmp(sXLProgress[i].events,sEventData,GENERATED_EVENT_BYTES) && !memcmp(sXLProgress[i].cast,sCastMetadata,GENERATED_CAST_BYTES)
+       && !memcmp(sXLProgress[i].cells,sXLTemplate,XL_CELLS)) {sXLProgressCurrent=i;sEventState=sXLProgress[i].state;return;}
+    i=sXLProgressNext;sXLProgressNext=(sXLProgressNext+1)%XL_PROGRESS_SLOTS;
+    memcpy(sXLProgress[i].trainer,trainer,4);memcpy(sXLProgress[i].events,sEventData,GENERATED_EVENT_BYTES);
+    memcpy(sXLProgress[i].cast,sCastMetadata,GENERATED_CAST_BYTES);memcpy(sXLProgress[i].cells,sXLTemplate,XL_CELLS);
+    sXLProgress[i].state=sEventState;sXLProgress[i].valid=TRUE;sXLProgressCurrent=i;
+}
+static void XLRememberEventProgress(void)
+{
+    if(sXLProgressCurrent<XL_PROGRESS_SLOTS && gSaveBlock2Ptr && !memcmp(sXLProgress[sXLProgressCurrent].trainer,gSaveBlock2Ptr->playerTrainerId,4))
+        sXLProgress[sXLProgressCurrent].state=sEventState;
+}
+#endif
 #endif
 static bool8 sHasTemplate;
 #if GENERATED_CAVE_PROFILES
@@ -624,7 +648,11 @@ void GeneratedMap_RunEvent(void)
     memcpy(gGeneratedEventText,fallback[npc-1],58);
     for(j=0;j<sEventRuntime[1];j++) {const u8 *r=sEventRuntime+2+j*61;
         if(r[0]==sEventState && r[1]==npc) {guide[0]=7;guide[1]=r[3];memcpy(guide+2,r+4,57);
-            EncodeGuideText(guide,gGeneratedEventText);sEventState=r[2];break;}
+            EncodeGuideText(guide,gGeneratedEventText);sEventState=r[2];
+#if GENERATED_WORLD_XL
+            if(sXLActive && !WorldBridge_Enabled())XLRememberEventProgress();
+#endif
+            break;}
     }
 #endif
 }
@@ -1157,7 +1185,11 @@ bool8 GeneratedMap_Enter(void)
         ;
 #if GENERATED_WILDS_EVENTS
     sEventActive = sCastActive && sEventStaged;
-    if(sEventActive) {sEventState=sEventData[0];memcpy(sEventRuntime,sEventData,GENERATED_EVENT_BYTES);}
+    if(sEventActive) {sEventState=sEventData[0];memcpy(sEventRuntime,sEventData,GENERATED_EVENT_BYTES);
+#if GENERATED_WORLD_XL
+        XLRestoreEventProgress();
+#endif
+    }
 #endif
 #endif
 #endif
