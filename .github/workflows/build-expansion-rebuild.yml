@@ -48,11 +48,39 @@ jobs:
           SDL_VIDEODRIVER: dummy
           SDL_AUDIODRIVER: dummy
         run: tests/smoke/run.sh build/native64/pokeemerald-native "$RUNNER_TEMP/rebuild-smoke"
+      - name: Exercise remote sprite in a real game replay without sockets
+        working-directory: engines/expansion-native
+        timeout-minutes: 15
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+          EW_TEST_PRESENCE: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 "$GITHUB_WORKSPACE/rebuild/test/inject_presence.py" .
+          make -f "$GITHUB_WORKSPACE/rebuild/expansion.mk" -j2 native BITS=64 > "$RUNNER_TEMP/rebuild-test-build.log" 2>&1
+          out="$RUNNER_TEMP/presence-replay"
+          mkdir -p "$out"
+          build/native64/pokeemerald-native --headless --silent --unthrottled \
+            --replay tests/smoke/opening.replay --out "$out" \
+            --save "$out/test.sav" --rtc-offset "$out/test.rtc" --rtc-fixed 1700000000 \
+            > "$out/stdout.log" 2> "$out/stderr.log"
+          grep -q EW_TEST_PRESENCE_SPAWNED "$out/stderr.log"
+          grep -q EW_TEST_PRESENCE_CLEARED "$out/stderr.log"
+          test -s "$out/09_outside.ppm"
+          if cmp -s "$out/09_outside.ppm" "$RUNNER_TEMP/rebuild-smoke/work/09_outside.ppm"; then
+            echo "Synthetic peer did not change the overworld screenshot" >&2
+            exit 1
+          fi
       - name: Preserve build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: expansion-rebuild-build-log
-          path: ${{ runner.temp }}/rebuild-build.log
+          path: |
+            ${{ runner.temp }}/rebuild-build.log
+            ${{ runner.temp }}/rebuild-test-build.log
+            ${{ runner.temp }}/presence-replay/stderr.log
           if-no-files-found: ignore
           retention-days: 7
