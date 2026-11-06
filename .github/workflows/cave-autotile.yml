@@ -27,7 +27,7 @@ jobs:
           tools/mapjson/mapjson groups emerald data/maps/map_groups.json data/maps include/constants
           tools/mapjson/mapjson layouts emerald data/layouts/layouts.json data/layouts include/constants
       - name: Exercise native tile selection and authored geometry
-        run: PYTHONPATH=.:test/world:test/headless python3 -m unittest test_xl_wilds_palette test_agent_map_refresh test_xl_model_events test_xl_wilds_events test_xl_model_cast test_xl_wilds_cast test_xl_model_author test_xl_wilds test_large_agent_terrain test_shared_agent_geometry test_shared_terrain_world test_live_agent_events test_shared_agent_events test_wilds_events test_shared_wilds_cast test_wilds_cast test_shared_wilds_guide test_wilds_guide test_generated_cave_persistence test_generated_area_archive test_shared_generated_wilds test_generated_wilds test_desktop_cave_persistence test_host_cave_authoring test_large_cave_wildlife test_shared_large_cave test_large_generated_cave test_shared_cave_wildlife test_cave_wildlife test_cave_biomes test_shared_cave_ecology test_cave_hello test_native_cave_flow test_cave_ecology test_cave_build_flags test_cave_playthrough_harness test_cave_autotile test_cave_blueprint test_author_cave test_generated_map_import test_native_generated_map test_shared_generated_cave test_world_cave_wire -v
+        run: PYTHONPATH=.:test/world:test/headless python3 -m unittest test_xl_painted_events test_xl_wilds_palette test_agent_map_refresh test_xl_model_events test_xl_wilds_events test_xl_model_cast test_xl_wilds_cast test_xl_model_author test_xl_wilds test_large_agent_terrain test_shared_agent_geometry test_shared_terrain_world test_live_agent_events test_shared_agent_events test_wilds_events test_shared_wilds_cast test_wilds_cast test_shared_wilds_guide test_wilds_guide test_generated_cave_persistence test_generated_area_archive test_shared_generated_wilds test_generated_wilds test_desktop_cave_persistence test_host_cave_authoring test_large_cave_wildlife test_shared_large_cave test_large_generated_cave test_shared_cave_wildlife test_cave_wildlife test_cave_biomes test_shared_cave_ecology test_cave_hello test_native_cave_flow test_cave_ecology test_cave_build_flags test_cave_playthrough_harness test_cave_autotile test_cave_blueprint test_author_cave test_generated_map_import test_native_generated_map test_shared_generated_cave test_world_cave_wire -v
   linux-native:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -142,4 +142,14 @@ jobs:
           PYTHONPATH=.:test/headless timeout 360s python3 test/headless/xl_palette_playthrough.py \
             --binary ./pokeemerald64 --seed-save build/cave-autotile-smoke/first_battle/game.sav \
             --out build/xl-palette-playthrough
+      - name: Play an interaction graph in painted XL terrain
+        run: |
+          PYTHONPATH=.:test/headless timeout 360s python3 test/headless/xl_painted_events_playthrough.py \
+            --binary ./pokeemerald64 --seed-save build/cave-autotile-smoke/first_battle/game.sav \
+            --out build/xl-painted-events-playthrough
+      - name: Reload a painted XL world and story
+        run: |
+          PYTHONPATH=.:test/headless timeout 360s python3 test/headless/xl_painted_reload_playthrough.py \
+            --binary ./pokeemerald64 --seed-save build/cave-autotile-smoke/first_battle/game.sav \
+            --out build/xl-painted-reload-playthrough
       # No binary, ROM, save or runtime-data artifacts are uploaded.

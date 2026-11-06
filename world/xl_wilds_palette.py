@@ -24,11 +24,12 @@ def compile_document(doc):
 def main(argv=None):
     import argparse,json
     from pathlib import Path
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('input',type=Path);p.add_argument('output',type=Path);a=p.parse_args(argv)
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('input',type=Path);p.add_argument('output',type=Path);p.add_argument('--replace-output',action='store_true');a=p.parse_args(argv)
     with a.input.open('rb') as f:data=f.read(32769)
     if len(data)>32768:p.error('input too large')
     try:blob=compile_document(json.loads(data.decode('utf-8')))
     except (ValueError,UnicodeError):p.error('invalid XL terrain blueprint')
-    with a.output.open('xb') as f:f.write(blob)
+    from .map_store import write_map
+    write_map(a.output,blob,replace=a.replace_output)
     print('Wrote validated offline XL terrain:',a.output)
 if __name__=='__main__':main()

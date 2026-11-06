@@ -101,6 +101,7 @@ bool8 GeneratedMap_StageXLWilds(const u8 *cells, u32 size);
 bool8 GeneratedMap_StageXLPalette(const u8 *cells, u32 size);
 bool8 GeneratedMap_StageXLCast(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size);
 bool8 GeneratedMap_StageXLEvents(const u8 *events,u32 eventSize,const u8 *cast,u32 castSize,const u8 *cells,u32 size);
+bool8 GeneratedMap_StageXLPaintedEvents(const u8 *events,u32 eventSize,const u8 *cast,u32 castSize,const u8 *cells,u32 size);
 bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size);
 bool8 GeneratedMap_StageLargeTemplate(const u8 *cells, u32 size);
 bool8 GeneratedMap_StageWildsTemplate(const u8 *cells, u32 size);

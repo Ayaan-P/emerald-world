@@ -606,6 +606,20 @@ bool8 GeneratedMap_StageXLEvents(const u8 *events,u32 eventSize,const u8 *cast,u
     (void)events;(void)eventSize;(void)cast;(void)castSize;(void)cells;(void)size;return FALSE;
 #endif
 }
+bool8 GeneratedMap_StageXLPaintedEvents(const u8 *events,u32 eventSize,const u8 *cast,u32 castSize,const u8 *cells,u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_WORLD_XL && GENERATED_WILDS_EVENTS
+    u8 geometry[XL_CELLS];u16 i;
+    if(!cells || size!=XL_CELLS)return FALSE;
+    for(i=0;i<XL_CELLS;i++){if(cells[i]!='#' && cells[i]!='.' && cells[i]!='t')return FALSE;geometry[i]=cells[i]=='#' ? '#' : '.';}
+    if(cells[XL_SIDE+1]!='.' || cells[124*XL_SIDE+125]!='.' || cells[125*XL_SIDE+125]!='.')return FALSE;
+    if(!GeneratedMap_StageXLEvents(events,eventSize,cast,castSize,geometry,XL_CELLS))return FALSE;
+    memcpy(sXLPalette,cells,XL_CELLS);sXLHasPalette=TRUE;return TRUE;
+#else
+    (void)events;(void)eventSize;(void)cast;(void)castSize;(void)cells;(void)size;return FALSE;
+#endif
+}
+
 bool8 GeneratedMap_StageEventWilds(const u8 *events, u32 eventSize, const u8 *cast, u32 castSize, const u8 *cells, u32 size)
 {
 #if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
