@@ -22,6 +22,7 @@ import sys
 from .build_catalog import validate_coords, validate_tile
 from .mechanics import validate_objects
 from .link_protocol import LinkProtocol
+from .guilds import Guilds, GuildError
 from .rally import RallyCoordinator
 
 MAX_QUEUE = 65536
@@ -132,6 +133,7 @@ class WorldServer:
                 seq INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, data TEXT);
             CREATE INDEX IF NOT EXISTS events_kind_seq ON events(kind,seq);
         ''')
+        self.guilds = Guilds(self.db)
         self.db.executescript('''
             CREATE TABLE IF NOT EXISTS module (
                 singleton INTEGER PRIMARY KEY CHECK(singleton=1), source TEXT,
@@ -789,6 +791,44 @@ class WorldServer:
             self._queue(conn, self._snapshot(conn))
             return
         conn['chat_credit'] = credit - 1
+        # Guild commands use the existing authenticated chat channel. Replies
+        # are private, and ordinary broadcast/whisper behavior is unchanged.
+        decoded = text.decode('ascii')
+        if fields[2] == '*' and (decoded == '/guild' or decoded.startswith('/guild ')):
+            with self.lock:
+                try:
+                    lines = self.guilds.command(conn['id'], decoded[6:].strip())
+                except GuildError as exc:
+                    lines = [str(exc)]
+                for line in lines:
+                    self._guild_message(conn, conn['id'], 'Guild: ' + line)
+                parts = decoded.split()
+                if len(parts) == 3 and parts[1].lower() == 'invite' and lines[0].startswith('Invited '):
+                    invitee = self.peers.get(parts[2])
+                    guild = self.guilds._member(conn['id'])
+                    if invitee and invitee.get('chat') and not invitee.get('closing') and guild:
+                        self._guild_message(invitee, conn['id'], f'Guild: {conn["id"]} invited you to {guild[1]}. Use /guild accept {guild[1]}')
+                        self._queue(invitee, self._snapshot(invitee))
+            conn['chat_status'] = 'sent'
+            self._queue(conn, self._snapshot(conn))
+            return
+        if fields[2] == '*' and (decoded == '/g' or decoded.startswith('/g ')):
+            with self.lock:
+                try:
+                    guild, members = self.guilds.members(conn['id'])
+                    body = decoded[3:].strip()
+                    if not body or len(body) > 112: raise GuildError('Use /g followed by 1-112 characters.')
+                    for name in members:
+                        recipient = self.peers.get(name)
+                        if recipient and recipient.get('chat') and not recipient.get('closing'):
+                            self._guild_message(recipient, conn['id'], '[Guild] ' + body)
+                            self._queue(recipient, self._snapshot(recipient))
+                except GuildError as exc:
+                    self._guild_message(conn, conn['id'], 'Guild: ' + str(exc))
+                    self._queue(conn, self._snapshot(conn))
+            conn['chat_status'] = 'sent'
+            self._queue(conn, self._snapshot(conn))
+            return
         self.chat_serial += 1
         message = (self.chat_serial, conn['id'], fields[2], fields[3])
         recipients = self.peers.values() if fields[2] == '*' else (conn, target)
@@ -797,6 +837,15 @@ class WorldServer:
                 recipient['chat_history'] = (recipient['chat_history'] + [message])[-16:]
         conn['chat_status'] = 'sent'
         self._broadcast()
+
+    def _guild_message(self, recipient, sender, text):
+        # CHATMSG is already supported by both World engines. A direct target
+        # prevents guild information from entering unrelated player snapshots.
+        if not 1 <= len(text) <= 120 or not text.isascii():
+            raise ValueError('invalid guild response')
+        self.chat_serial += 1
+        message = (self.chat_serial, sender, recipient['id'], text.encode('ascii').hex())
+        recipient['chat_history'] = (recipient['chat_history'] + [message])[-16:]
 
     def _deliver_links(self, messages):
         for trainer, line in messages:

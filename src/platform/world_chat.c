@@ -261,3 +261,4 @@ void WorldChat_Draw(SDL_Renderer *renderer)
     }
 }
 #endif /* PORTABLE */
+
