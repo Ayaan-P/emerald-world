@@ -23,6 +23,9 @@
 #ifndef GENERATED_WILDS_EVENTS
 #define GENERATED_WILDS_EVENTS 0
 #endif
+#ifndef GENERATED_WILDS_SHARED_TERRAIN
+#define GENERATED_WILDS_SHARED_TERRAIN 0
+#endif
 #define WORLD_CAVE_EVENT_BYTES 1466
 #define WORLD_CAVE_GUIDE_BYTES 59
 #define WORLD_CAVE_CAST_BYTES 184
@@ -52,6 +55,9 @@ struct WorldCaveWire
 #if GENERATED_WILDS_EVENTS
     u8 events[WORLD_CAVE_EVENT_BYTES];
     u8 nextEventChunk;
+#endif
+#if GENERATED_WILDS_SHARED_TERRAIN
+    u8 terrain[193], terrainSize;u32 terrainRevision;bool8 terrainSeen;
 #endif
     bool8 active;
 };

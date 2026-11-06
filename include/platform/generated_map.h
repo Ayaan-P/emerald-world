@@ -69,6 +69,12 @@ struct WildPokemonInfo;
 #if GENERATED_WILDS_EVENTS && !GENERATED_WILDS_CAST
 #error GENERATED_WILDS_EVENTS requires generated wilds casts
 #endif
+#ifndef GENERATED_WILDS_SHARED_TERRAIN
+#define GENERATED_WILDS_SHARED_TERRAIN 0
+#endif
+#if GENERATED_WILDS_SHARED_TERRAIN && !GENERATED_WILDS_EVENTS
+#error GENERATED_WILDS_SHARED_TERRAIN requires generated wilds events
+#endif
 #define GENERATED_EVENT_BYTES 1466
 #define GENERATED_CAST_BYTES 184
 bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size);
@@ -84,6 +90,9 @@ bool8 GeneratedMap_SetSharedEventState(u8 state);
 bool8 GeneratedMap_SetSharedEventRule(const u8 *rule, u32 size);
 bool8 GeneratedMap_SetSharedEventTile(unsigned x, unsigned y, unsigned terrain);
 bool8 GeneratedMap_SetSharedEventTiles(const u8 *patch, u32 size);
+bool8 GeneratedMap_ValidateSharedTerrain(const u8 *patch, u32 size);
+bool8 GeneratedMap_StageSharedTerrain(const u8 *patch, u32 size);
+bool8 GeneratedMap_ApplySharedTerrain(const u8 *patch, u32 size);
 bool8 GeneratedMap_StageCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size);
 bool8 GeneratedMap_StageSharedCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size);
 bool8 GeneratedMap_MatchesPreparedCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size);

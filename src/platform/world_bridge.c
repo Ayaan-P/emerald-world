@@ -110,6 +110,10 @@ static struct {
     bool8 caveV8Probe, caveV8Legacy;
 #if GENERATED_WILDS_EVENTS
     bool8 caveV9Probe, caveV9Legacy;
+#if GENERATED_WILDS_SHARED_TERRAIN
+    bool8 caveV9TProbe, caveV9TLegacy, terrainPending;
+    u32 terrainRevision;u8 terrainSize, terrainData[193];
+#endif
     u8 eventHead, eventCount; unsigned eventSetSeq;
     struct {u8 kind, state, rule[61], x, y, terrain, tiles[193], tilesSize;unsigned sequence;} eventQueue[8];
 #endif
@@ -438,6 +442,9 @@ static void Disconnect(void)
     sWorld.caveV8Probe = FALSE;
 #if GENERATED_WILDS_EVENTS
     sWorld.caveV9Probe = FALSE;
+#if GENERATED_WILDS_SHARED_TERRAIN
+    sWorld.caveV9TProbe=FALSE;sWorld.terrainPending=FALSE;sWorld.terrainRevision=0;
+#endif
     sWorld.eventHead = sWorld.eventCount = 0; sWorld.eventSetSeq = 0;
 #endif
 #endif
@@ -664,6 +671,9 @@ invalid:
 static bool8 CaveProbeRejected(unsigned n, char **tokens)
 {
     if (sWorld.caveProbe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
+#if GENERATED_WILDS_SHARED_TERRAIN && GENERATED_CAVE_WILDLIFE
+        if(sWorld.caveV9TProbe){sWorld.caveV9TLegacy=TRUE;return TRUE;}
+#endif
 #if GENERATED_WILDS_EVENTS && GENERATED_CAVE_WILDLIFE
         if (sWorld.caveV9Probe) {sWorld.caveV9Legacy=TRUE;return TRUE;}
 #endif
@@ -714,6 +724,18 @@ static bool8 CaveLine(unsigned n, char **tokens)
 {
     int result;
     if (!sWorld.caveAvailable || sWorld.staging) return FALSE;
+#if GENERATED_WILDS_SHARED_TERRAIN
+    if(n==5 && !strcmp(tokens[1],"TERRAIN") && sWorld.caveState==CAVE_READY) {
+        unsigned revision,i,length=strlen(tokens[4]);u8 patch[193]={0};
+        if(!sWorld.caveV9TProbe || sWorld.caveWire.version!=9 || strcmp(tokens[2],sWorld.caveWire.id)
+           || !Decimal(tokens[3],&revision) || revision>2147483647U || length<2 || length>386 || (length&1))return FALSE;
+        for(i=0;i<length;i++){char c=tokens[4][i];unsigned v;if(c>='0'&&c<='9')v=c-'0';else if(c>='a'&&c<='f')v=c-'a'+10;else return FALSE;
+            if(!(i&1))patch[i/2]=v<<4;else patch[i/2]|=v;}
+        if(patch[0]>64 || length!=2*(1+3*(unsigned)patch[0]) || ((revision==0)!=(patch[0]==0)) || !GeneratedMap_ValidateSharedTerrain(patch,length/2))return FALSE;
+        if(revision<=sWorld.terrainRevision)return TRUE;
+        memcpy(sWorld.terrainData,patch,length/2);sWorld.terrainSize=length/2;sWorld.terrainRevision=revision;sWorld.terrainPending=TRUE;return TRUE;
+    }
+#endif
 #if GENERATED_WILDS_EVENTS
     if (n == 5 && !strcmp(tokens[1], "EVENTSET")) {
         unsigned sequence,state;
@@ -781,6 +803,9 @@ static bool8 CaveLine(unsigned n, char **tokens)
         bool8 requestInFlight = sWorld.caveState == CAVE_WAIT || sWorld.caveState == CAVE_WAIT_RESET;
 #if GENERATED_WILDS_EVENTS
         sWorld.eventHead=sWorld.eventCount=0;
+#if GENERATED_WILDS_SHARED_TERRAIN
+        sWorld.terrainPending=FALSE;sWorld.terrainRevision=0;
+#endif
 #endif
         WorldCaveWire_Reset(&sWorld.caveWire);
         memcpy(sWorld.caveExpected, tokens[2], sizeof(sWorld.caveExpected));
@@ -872,12 +897,24 @@ static bool8 CaveLine(unsigned n, char **tokens)
     if (result == 1) {
 #if GENERATED_WILDS_EVENTS && GENERATED_CAVE_WILDLIFE
         if (sWorld.caveWire.version == 9) {
+#if GENERATED_WILDS_SHARED_TERRAIN
+            if(sWorld.caveV9TProbe && !sWorld.caveWire.terrainSeen)return FALSE;
+#endif
             if ((GeneratedMap_IsInside() || GeneratedMap_EntryPending())
              && !GeneratedMap_MatchesPreparedEventWilds(sWorld.caveWire.events, WORLD_CAVE_EVENT_BYTES, sWorld.caveWire.cast, WORLD_CAVE_CAST_BYTES, sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS))
                 sWorld.caveState = CAVE_MISMATCH;
-            else if (GeneratedMap_StageSharedEventWilds(sWorld.caveWire.events, WORLD_CAVE_EVENT_BYTES, sWorld.caveWire.cast, WORLD_CAVE_CAST_BYTES, sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS))
+            else if (GeneratedMap_StageSharedEventWilds(sWorld.caveWire.events, WORLD_CAVE_EVENT_BYTES, sWorld.caveWire.cast, WORLD_CAVE_CAST_BYTES, sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS)) {
+#if GENERATED_WILDS_SHARED_TERRAIN
+                if(sWorld.caveV9TProbe) {
+                    if(!GeneratedMap_ValidateSharedTerrain(sWorld.caveWire.terrain,sWorld.caveWire.terrainSize))return FALSE;
+                    sWorld.terrainRevision=sWorld.caveWire.terrainRevision;
+                    if(GeneratedMap_IsInside() || GeneratedMap_EntryPending()) {
+                        memcpy(sWorld.terrainData,sWorld.caveWire.terrain,sWorld.caveWire.terrainSize);sWorld.terrainSize=sWorld.caveWire.terrainSize;sWorld.terrainPending=TRUE;
+                    } else if(!GeneratedMap_StageSharedTerrain(sWorld.caveWire.terrain,sWorld.caveWire.terrainSize))return FALSE;
+                }
+#endif
                 sWorld.caveState = CAVE_ACK;
-            else return FALSE;
+            } else return FALSE;
             return TRUE;
         }
 #endif
@@ -1238,6 +1275,10 @@ static void QueueHello(bool8 headless)
 #if GENERATED_WILDS_EVENTS
         sWorld.caveV9Probe = sWorld.caveV8Probe && !sWorld.caveV9Legacy;
         if (sWorld.caveV9Probe) suffix = "CAVE9";
+#if GENERATED_WILDS_SHARED_TERRAIN
+        sWorld.caveV9TProbe=sWorld.caveV9Probe && !sWorld.caveV9TLegacy;
+        if(sWorld.caveV9TProbe)suffix="CAVE9T";
+#endif
 #endif
 #endif
 #endif
@@ -1498,6 +1539,15 @@ static void CavePump(void)
 {
     if (!sWorld.connected) return;
 #if GENERATED_WILDS_EVENTS
+#if GENERATED_WILDS_SHARED_TERRAIN
+    if(sWorld.terrainPending && sWorld.caveState==CAVE_READY) {
+        if(!GeneratedMap_IsInside() && !GeneratedMap_EntryPending()) {
+            if(!GeneratedMap_StageSharedTerrain(sWorld.terrainData,sWorld.terrainSize)){Disconnect();return;}sWorld.terrainPending=FALSE;
+        } else if(GeneratedMap_IsInside() && Ready()) {
+            if(!GeneratedMap_ApplySharedTerrain(sWorld.terrainData,sWorld.terrainSize)){Disconnect();return;}sWorld.terrainPending=FALSE;
+        }
+    }
+#endif
     if(sWorld.eventCount) {
         if(sWorld.caveState!=CAVE_READY || sWorld.caveWire.version!=9 || !GeneratedMap_IsInside())sWorld.eventHead=sWorld.eventCount=0;
         else if(Ready() && !sWorld.outputSize) {unsigned i=sWorld.eventHead;bool8 applied=FALSE;
@@ -1523,6 +1573,12 @@ static void CavePump(void)
 #if GENERATED_WILDS_EVENTS && GENERATED_CAVE_WILDLIFE
             if (sWorld.caveWire.version == 9) {
                 if (!GeneratedMap_StageSharedEventWilds(sWorld.caveWire.events, WORLD_CAVE_EVENT_BYTES, sWorld.caveWire.cast, WORLD_CAVE_CAST_BYTES, sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS)) { Disconnect(); return; }
+#if GENERATED_WILDS_SHARED_TERRAIN
+                if(sWorld.caveV9TProbe) {
+                    if(!sWorld.caveWire.terrainSeen || !GeneratedMap_StageSharedTerrain(sWorld.caveWire.terrain,sWorld.caveWire.terrainSize)) { Disconnect();return; }
+                    sWorld.terrainRevision=sWorld.caveWire.terrainRevision;sWorld.terrainPending=FALSE;
+                }
+#endif
             } else
 #endif
 #if GENERATED_WILDS_CAST && GENERATED_CAVE_WILDLIFE
