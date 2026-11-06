@@ -82,6 +82,9 @@ extern const u8 GeneratedWorld_Wilds_EventScript_Cast2[], GeneratedWorld_Wilds_E
 #define XL_CELLS (XL_SIDE*XL_SIDE)
 static u16 sXLTiles[XL_CELLS];static u8 sXLTemplate[XL_CELLS];
 static bool8 sXLStaged,sXLActive;
+#if GENERATED_WILDS_CAST
+static bool8 sXLCastStaged;
+#endif
 static struct WarpEvent sXLWarp;static struct MapEvents sXLEvents;
 #endif
 static bool8 sHasTemplate;
@@ -285,7 +288,11 @@ bool8 GeneratedMap_StageXLWilds(const u8 *cells, u32 size)
         for(d=0;d<4;d++)if(next[d]>=0 && next[d]<XL_CELLS && cells[next[d]]=='.' && !seen[next[d]]){seen[next[d]]=TRUE;queue[tail++]=next[d];}
     }
     for(i=0;i<XL_CELLS;i++)if(cells[i]=='.' && !seen[i])return FALSE;
-    memcpy(sXLTemplate,cells,XL_CELLS);sXLStaged=TRUE;sLargeStaged=FALSE;sLargeShared=FALSE;sHasTemplate=FALSE;sLargeWilds=FALSE;
+    memcpy(sXLTemplate,cells,XL_CELLS);sXLStaged=TRUE;
+#if GENERATED_WILDS_CAST
+    sXLCastStaged=FALSE;
+#endif
+    sLargeStaged=FALSE;sLargeShared=FALSE;sHasTemplate=FALSE;sLargeWilds=FALSE;
 #if GENERATED_CAVE_PROFILES
     sEncounterProfile=0;sSharedEncounterProfile=FALSE;
 #endif
@@ -425,6 +432,33 @@ static void EncodeGuideText(const u8 *meta, u8 *out)
     out[meta[1]]=0xFF;
 }
 #endif
+bool8 GeneratedMap_StageXLCast(const u8 *meta,u32 metaSize,const u8 *cells,u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_WORLD_XL && GENERATED_WILDS_CAST
+    u8 seen[XL_CELLS]={0},blocked[XL_CELLS]={0},guide[GENERATED_GUIDE_BYTES];u16 queue[XL_CELLS],head=0,tail=0,i;unsigned n,j,d;
+    u8 *texts[3]={gGeneratedWildsGuideText,gGeneratedWildsCastText2,gGeneratedWildsCastText3};
+    if(!meta || metaSize!=GENERATED_CAST_BYTES || !cells || size!=XL_CELLS || WorldBridge_Enabled() || GeneratedMap_IsInside() || GeneratedMap_EntryPending())return FALSE;
+    n=meta[0];if(!n || n>3)return FALSE;
+    for(j=0;j<3;j++){const u8 *r=meta+1+j*61;unsigned x=r[1],y=r[2];
+        if(j>=n){for(d=0;d<61;d++)if(r[d])return FALSE;continue;}
+        if(!x || x>=126 || !y || y>=126 || (x==1 && y==1) || (x==125 && (y==124 || y==125)))return FALSE;
+        i=y*XL_SIDE+x;if(cells[i]!='.' || blocked[i])return FALSE;blocked[i]=TRUE;
+        guide[0]=r[0];guide[1]=r[3];memcpy(guide+2,r+4,57);if(!ValidateGuideText(guide,sizeof(guide)))return FALSE;
+    }
+    queue[tail++]=XL_SIDE+1;seen[XL_SIDE+1]=TRUE;
+    while(head<tail){s16 pos=queue[head++],next[4]={pos-XL_SIDE,pos+1,pos+XL_SIDE,pos-1};
+        for(d=0;d<4;d++)if(next[d]>=0 && next[d]<XL_CELLS && !blocked[next[d]] && cells[next[d]]=='.' && !seen[next[d]]){seen[next[d]]=TRUE;queue[tail++]=next[d];}}
+    for(i=0;i<XL_CELLS;i++)if(cells[i]=='.' && !blocked[i] && !seen[i])return FALSE;
+    for(j=0;j<n;j++){const u8 *r=meta+1+j*61;unsigned pos=r[2]*XL_SIDE+r[1];
+        if(!seen[pos-XL_SIDE] && !seen[pos+1] && !seen[pos+XL_SIDE] && !seen[pos-1])return FALSE;}
+    if(!GeneratedMap_StageXLWilds(cells,size))return FALSE;
+    memcpy(sCastMetadata,meta,GENERATED_CAST_BYTES);sXLCastStaged=TRUE;
+    for(j=0;j<n;j++){const u8 *r=meta+1+j*61;guide[0]=r[0];guide[1]=r[3];memcpy(guide+2,r+4,57);EncodeGuideText(guide,texts[j]);}
+    return TRUE;
+#else
+    (void)meta;(void)metaSize;(void)cells;(void)size;return FALSE;
+#endif
+}
 #if GENERATED_MAP_READY && GENERATED_WILDS_GUIDE
 static bool8 StageGuidedWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size, bool8 shared)
 {
@@ -1099,7 +1133,11 @@ bool8 GeneratedMap_Enter(void)
 #if GENERATED_WILDS_GUIDE
     sGuideActive = sLargeActive && sLargeWilds && sGuideStaged;
 #if GENERATED_WILDS_CAST
-    sCastActive = sLargeActive && sLargeWilds && sCastStaged;
+    sCastActive = (sLargeActive && sLargeWilds && sCastStaged)
+#if GENERATED_WORLD_XL
+        || (sXLActive && sXLCastStaged)
+#endif
+        ;
 #if GENERATED_WILDS_EVENTS
     sEventActive = sCastActive && sEventStaged;
     if(sEventActive) {sEventState=sEventData[0];memcpy(sEventRuntime,sEventData,GENERATED_EVENT_BYTES);}
@@ -1201,7 +1239,15 @@ const struct MapLayout *GeneratedMap_ResolveLayout(const struct MapLayout *base)
         sLayout = *base;
 #if GENERATED_WORLD_XL
         if(sXLActive && gMapHeader.events && gMapHeader.events->warpCount==1 && gMapHeader.events->warps) {
-            sXLEvents=*gMapHeader.events;sXLWarp=gMapHeader.events->warps[0];sXLWarp.x=125;sXLWarp.y=125;sXLEvents.warps=&sXLWarp;gMapHeader.events=&sXLEvents;
+            sXLEvents=*gMapHeader.events;sXLWarp=gMapHeader.events->warps[0];sXLWarp.x=125;sXLWarp.y=125;sXLEvents.warps=&sXLWarp;
+#if GENERATED_WILDS_CAST
+            if(sCastActive && sXLCastStaged) {unsigned j;const u8 *scripts[3]={GeneratedWorld_Wilds_EventScript_Guide,GeneratedWorld_Wilds_EventScript_Cast2,GeneratedWorld_Wilds_EventScript_Cast3};
+                memset(sGuideObjects,0,sizeof(sGuideObjects));for(j=0;j<sCastMetadata[0];j++){const u8 *r=sCastMetadata+1+j*61;
+                    sGuideObjects[j].localId=j+1;sGuideObjects[j].graphicsId=r[0];sGuideObjects[j].x=r[1];sGuideObjects[j].y=r[2];sGuideObjects[j].elevation=3;sGuideObjects[j].movementType=MOVEMENT_TYPE_FACE_LEFT;sGuideObjects[j].script=scripts[j];}
+                sXLEvents.objectEventCount=sCastMetadata[0];sXLEvents.objectEvents=sGuideObjects;
+            }
+#endif
+            gMapHeader.events=&sXLEvents;
         }
 #endif
 #if GENERATED_WILDS_GUIDE

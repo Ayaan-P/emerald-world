@@ -147,6 +147,9 @@ static bool LoadGeneratedMapTemplate(const char *path)
     static const u8 magic6[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '6' };
 #if GENERATED_WORLD_XL
     static const u8 magicXL[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', 'A' };
+#if GENERATED_WILDS_CAST
+    static const u8 magicXLCast[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', 'B' };
+#endif
 #endif
 #if GENERATED_WILDS_GUIDE
     static const u8 magic7[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '7' };
@@ -162,7 +165,11 @@ static bool LoadGeneratedMapTemplate(const char *path)
     static const u8 magic5[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '5' };
 #endif
 #if GENERATED_WORLD_XL
+#if GENERATED_WILDS_CAST
+    u8 bytes[8 + GENERATED_CAST_BYTES + GENERATED_XL_MAP_BYTES];
+#else
     u8 bytes[8 + GENERATED_XL_MAP_BYTES];
+#endif
 #elif GENERATED_WILDS_EVENTS
     u8 bytes[8 + GENERATED_EVENT_BYTES + GENERATED_CAST_BYTES + GENERATED_LARGE_MAP_TEMPLATE_BYTES];
 #elif GENERATED_WILDS_CAST
@@ -208,6 +215,10 @@ static bool LoadGeneratedMapTemplate(const char *path)
 #if GENERATED_WORLD_XL
         else if (count == 8 + GENERATED_XL_MAP_BYTES && !memcmp(bytes, magicXL, 8))
             valid = GeneratedMap_StageXLWilds(bytes + 8, GENERATED_XL_MAP_BYTES);
+#if GENERATED_WILDS_CAST
+        else if (count == 8 + GENERATED_CAST_BYTES + GENERATED_XL_MAP_BYTES && !memcmp(bytes, magicXLCast, 8))
+            valid = GeneratedMap_StageXLCast(bytes + 8, GENERATED_CAST_BYTES, bytes + 8 + GENERATED_CAST_BYTES, GENERATED_XL_MAP_BYTES);
+#endif
 #endif
 #if GENERATED_WILDS_GUIDE
         else if (count == 8 + GENERATED_GUIDE_BYTES + GENERATED_LARGE_MAP_TEMPLATE_BYTES && !memcmp(bytes, magic7, 8))
