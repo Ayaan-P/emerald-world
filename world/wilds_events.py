@@ -15,7 +15,7 @@ RECORD_BYTES=61
 EVENT_BYTES=2+MAX_RULES*RECORD_BYTES
 MAX_JSON=32768
 
-def encode(proposal,cast,events):
+def encode_rules(events,cast):
     if type(events) is not dict or set(events)!={'initial','rules'}:
         raise ValueError('events require initial and rules')
     initial,rules=events['initial'],events['rules']
@@ -30,7 +30,10 @@ def encode(proposal,cast,events):
         if (state,npc) in seen:raise ValueError('duplicate event rule')
         seen.add((state,npc));value=_text(rule['text']);out.extend((state,npc,nxt,len(value)));out.extend(value.ljust(57,b'\0'))
     out.extend(bytes((MAX_RULES-len(rules))*RECORD_BYTES))
-    return MAGIC+bytes(out)+encode_cast(proposal,cast)[8:]
+    return bytes(out)
+
+def encode(proposal,cast,events):
+    return MAGIC+encode_rules(events,cast)+encode_cast(proposal,cast)[8:]
 
 def compile_document(doc):
     if type(doc) is not dict or set(doc)!={'blueprint','cast','events'}:raise ValueError('expected blueprint, cast and events')
