@@ -56,7 +56,7 @@ jobs:
           SDL_VIDEODRIVER: dummy
           SDL_AUDIODRIVER: dummy
         run: |
-          if [ -x build/native64/pokeemerald-native ]; then
+          if [ -x build/native64/pokeemerald-native ] && [ ! -f "$RUNNER_TEMP/bulk-smoke/work/27_continued.txt" ]; then
             mkdir -p "$RUNNER_TEMP/bulk-debug"
             gdb -batch -ex run -ex 'x/12i $pc-16' -ex 'info registers' -ex 'thread apply all bt full' --args \
               build/native64/pokeemerald-native --headless --silent --unthrottled \
@@ -73,6 +73,7 @@ jobs:
           path: |
             ${{ runner.temp }}/bulk-smoke/work/*.log
             ${{ runner.temp }}/bulk-smoke/work/*.txt
+            ${{ runner.temp }}/bulk-smoke/work/24_start_menu.ppm
             ${{ runner.temp }}/bulk-gdb.log
           if-no-files-found: ignore
           retention-days: 7
