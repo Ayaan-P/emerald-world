@@ -8,6 +8,7 @@ on:
       - 'test/test_initial_resolutions.py'
       - 'test/test_movement_capacity.py'
       - 'test/test_expansion_battle_header.py'
+      - 'test/generated_area_replay.py'
       - '.github/workflows/build-bulk-expansion.yml'
   workflow_dispatch:
 permissions:
@@ -48,6 +49,10 @@ jobs:
           SDL_VIDEODRIVER: dummy
           SDL_AUDIODRIVER: dummy
         run: tests/smoke/run.sh build/native64/pokeemerald-native "$RUNNER_TEMP/bulk-smoke"
+      - name: Replay offline generated-area entry
+        working-directory: engines/expansion-native
+        timeout-minutes: 7
+        run: python3 "$GITHUB_WORKSPACE/test/generated_area_replay.py" build/native64/pokeemerald-native . "$RUNNER_TEMP/bulk-generated"
       - name: Diagnose failed offline replay
         if: failure()
         working-directory: engines/expansion-native
@@ -75,6 +80,8 @@ jobs:
             ${{ runner.temp }}/bulk-smoke/work/*.txt
             ${{ runner.temp }}/bulk-smoke/work/24_start_menu.ppm
             ${{ runner.temp }}/bulk-gdb.log
+            ${{ runner.temp }}/bulk-generated/*.log
+            ${{ runner.temp }}/bulk-generated/out/*.txt
           if-no-files-found: ignore
           retention-days: 7
       - name: Preserve candidate build log
