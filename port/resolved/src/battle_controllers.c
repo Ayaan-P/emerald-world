@@ -748,7 +748,7 @@ static bool8 NativeBattleCommandValid(const u8 *data, u16 size, u8 bufferId)
             return FALSE;
         break;
     case CONTROLLER_MOVEANIMATION:
-        needed = 16 + sizeof(struct DisableStruct);
+        needed = 16 + sizeof(struct LinkBattleAnim);
         if ((data[1] | (data[2] << 8)) >= MOVES_COUNT)
             return FALSE;
         break;
@@ -832,7 +832,6 @@ static bool8 NativeBattleCommandValid(const u8 *data, u16 size, u8 bufferId)
     case CONTROLLER_STATUSXOR:
     case CONTROLLER_RESETACTIONMOVESELECTION:
     case CONTROLLER_INTROSLIDE:
-    case CONTROLLER_SETUNKVAR:
         needed = 2;
         break;
     }
@@ -871,7 +870,7 @@ static bool8 NativeBattleMonValid(const u8 *data)
      || !mon.maxHP || mon.maxHP > 999 || mon.hp > mon.maxHP
      || !mon.attack || mon.attack > 999 || !mon.defense || mon.defense > 999
      || !mon.speed || mon.speed > 999 || !mon.spAttack || mon.spAttack > 999
-     || !mon.spDefense || mon.spDefense > 999 || (mon.status1 & ~0xFFFu) || mon.isEgg)
+     || !mon.spDefense || mon.spDefense > 999 || (mon.status1 & ~0xFFFu) )
         return FALSE;
     for (i = 0; i < MAX_MON_MOVES; i++)
         if (mon.moves[i] >= MOVES_COUNT || mon.pp[i] > 64)
@@ -1155,7 +1154,7 @@ void TryReceiveLinkBattleData(void)
         }
         for (i = 0; i < GetLinkPlayerCount(); i++)
         {
-            if (!(GetBlockReceivedStatus() & gBitTable[i]))
+            if (!(GetBlockReceivedStatus() & (1u << i)))
                 continue;
             size = GetBlockReceivedSize(i);
             if (size < LINK_BUFF_DATA || size > 252)
@@ -1671,7 +1670,7 @@ void BtlController_EmitChooseItem(enum BattlerId battler, u32 bufferId, u8 *batt
 #ifdef PORTABLE
     if (WorldCoop_IsBattle())
     {
-        gBattleResources->transferBuffer[4] = !!(gBattleMons[battler].status2 & STATUS2_CONFUSION);
+        gBattleResources->transferBuffer[4] = (gBattleMons[battler].volatiles.confusionTimer != 0);
         PrepareBufferDataTransfer(battler, bufferId, gBattleResources->transferBuffer, 5);
         return;
     }
