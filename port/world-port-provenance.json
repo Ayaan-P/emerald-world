@@ -24,7 +24,7 @@
       "prior_port_sha256": "89faa8d9bc23fdf916f3ef22bc558c5a035469e078f95264a64f483c88ff2ddb",
       "rc6_sha256": "89faa8d9bc23fdf916f3ef22bc558c5a035469e078f95264a64f483c88ff2ddb",
       "rc8_sha256": "89faa8d9bc23fdf916f3ef22bc558c5a035469e078f95264a64f483c88ff2ddb",
-      "merged_sha256": "89faa8d9bc23fdf916f3ef22bc558c5a035469e078f95264a64f483c88ff2ddb"
+      "merged_sha256": "2bb99243bd5d75ece58f033d88cd27d329ba8796908e36ce2e7c90c67710267a"
     },
     {
       "path": "src/platform/native_link.c",
