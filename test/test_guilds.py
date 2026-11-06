@@ -73,6 +73,7 @@ class GuildTests(unittest.TestCase):
         self.assertEqual(self.g.visit('Bob','Route101'),('Rockets','Route101',2,['Alice','Bob']))
         self.assertIsNone(self.g.visit('Bob','Route101'))
         self.assertIn('complete',self.g.command('Alice','expedition')[0])
+        self.assertIn('10 guild XP',self.g.command('Alice','info')[1])
         self.g.command('Alice','expedition start Route101 1')
         self.assertIn('0/1',self.g.command('Alice','expedition')[0])
         self.g.command('Alice','expedition cancel')
@@ -116,6 +117,8 @@ class GuildTests(unittest.TestCase):
         self.assertEqual(self.g.complete_meet('Bob','Route101',['Alice','Bob']),('Rockets','Route101',2,['Alice','Bob']))
         self.assertIsNone(self.g.complete_meet('Bob','Route101',['Alice','Bob']))
         self.assertIn('complete',self.g.command('Alice','meet')[0])
+        self.assertIn('15 guild XP',self.g.command('Alice','info')[1])
+        self.assertTrue(any('Rockets: level 1, 15 guild XP' in x for x in self.g.command('Eve','standings')))
     def test_expedition_survives_restart_with_member_progress(self):
         with tempfile.TemporaryDirectory() as d:
             path=str(Path(d)/'world.db');db=database(path);catalog={(0,9):{'name':'Route101'}};g=guilds.Guilds(db,catalog)
@@ -123,7 +126,7 @@ class GuildTests(unittest.TestCase):
             g.command('Alice','expedition start Route101 2');g.visit('Alice','Route101');db.close()
             db=sqlite3.connect(path);g=guilds.Guilds(db,catalog)
             self.assertIn('1/2',g.command('Bob','expedition')[0]);self.assertIsNotNone(g.visit('Bob','Route101'));db.close()
-            db=sqlite3.connect(path);g=guilds.Guilds(db,catalog);self.assertIn('complete',g.command('Alice','expedition')[0]);db.close()
+            db=sqlite3.connect(path);g=guilds.Guilds(db,catalog);self.assertIn('complete',g.command('Alice','expedition')[0]);self.assertIn('10 guild XP',g.command('Alice','info')[1]);db.close()
     def test_membership_survives_database_reopen(self):
         with tempfile.TemporaryDirectory() as d:
             p=str(Path(d)/'world.db');db=database(p);g=guilds.Guilds(db)

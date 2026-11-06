@@ -19,6 +19,9 @@ class Guilds:
             CREATE TABLE IF NOT EXISTS guilds (
                 id INTEGER PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE,
                 leader TEXT NOT NULL UNIQUE);
+            CREATE TABLE IF NOT EXISTS guild_stats (
+                guild_id INTEGER PRIMARY KEY, xp INTEGER NOT NULL DEFAULT 0,
+                expeditions INTEGER NOT NULL DEFAULT 0, meetups INTEGER NOT NULL DEFAULT 0);
             CREATE TABLE IF NOT EXISTS guild_members (
                 trainer TEXT PRIMARY KEY, guild_id INTEGER NOT NULL);
             CREATE INDEX IF NOT EXISTS guild_members_guild ON guild_members(guild_id);
@@ -42,6 +45,8 @@ class Guilds:
                 guild_id INTEGER NOT NULL, trainer TEXT NOT NULL,
                 PRIMARY KEY(guild_id, trainer));
         ''')
+        db.execute('INSERT OR IGNORE INTO guild_stats(guild_id) SELECT id FROM guilds')
+        db.commit()
 
     def _identifier(self, value):
         if not isinstance(value, str) or not NAME.fullmatch(value):
@@ -68,9 +73,9 @@ class Guilds:
             raise GuildError('Invalid guild command.')
         words = command.split()
         if not words or words == ['help']:
-            return ['protocol 1', '/guild create NAME | /guild invite TRAINER', '/guild list | /guild apply NAME | /guild invites | /guild accept NAME', '/guild applications | /guild approve TRAINER | /guild reject TRAINER', '/guild info | /guild roster | /guild online | /guild leave', '/guild expedition and /guild meet show group goals.', '/guild post MESSAGE | /guild board | /guild clear', '/guild kick TRAINER | /guild transfer TRAINER | /guild disband', '/g MESSAGE sends guild-only chat.']
+            return ['protocol 1', '/guild create NAME | /guild invite TRAINER', '/guild list | /guild standings | /guild apply NAME | /guild invites', '/guild applications | /guild approve TRAINER | /guild reject TRAINER', '/guild info | /guild roster | /guild online | /guild leave', '/guild expedition and /guild meet show group goals.', '/guild post MESSAGE | /guild board | /guild clear', '/guild kick TRAINER | /guild transfer TRAINER | /guild disband', '/g MESSAGE sends guild-only chat.']
         op, args = words[0].lower(), words[1:]
-        if op in ('list','apply','applications','approve','reject'):
+        if op in ('list','standings','apply','applications','approve','reject'):
             return self.recruit(trainer, op, args)
         if op == 'meet':
             return self.meet(trainer, args)
@@ -88,6 +93,7 @@ class Guilds:
                 if self.db.execute('SELECT 1 FROM guilds WHERE name=? COLLATE NOCASE', (arg,)).fetchone(): raise GuildError('Guild name already taken.')
                 cur=self.db.execute('INSERT INTO guilds(name,leader) VALUES(?,?)',(arg,trainer))
                 self.db.execute('INSERT INTO guild_members VALUES(?,?)',(trainer,cur.lastrowid))
+                self.db.execute('INSERT INTO guild_stats(guild_id) VALUES(?)',(cur.lastrowid,))
                 self.db.execute('DELETE FROM guild_invites WHERE trainer=?',(trainer,))
                 self.db.execute('DELETE FROM guild_applications WHERE trainer=?',(trainer,))
                 return [f'Created {arg}. You are the leader.']
@@ -128,7 +134,9 @@ class Guilds:
                 return ['Invites: '+', '.join(names[i:i+4]) for i in range(0,len(names),4)] or ['No guild invitations.']
             if op in ('info','roster'):
                 guild=self._require(trainer);name,people=self.members(trainer)
-                if op=='info': return [f'Guild {name}. Leader: {guild[2]}. Members: {len(people)}/{MAX_MEMBERS}.']
+                if op=='info':
+                    xp,expeditions,meetups=self.db.execute('SELECT xp,expeditions,meetups FROM guild_stats WHERE guild_id=?',(guild[0],)).fetchone()
+                    return [f'Guild {name}. Leader: {guild[2]}. Members: {len(people)}/{MAX_MEMBERS}.', f'Guild level {1+xp//100} ({xp} guild XP). Expeditions: {expeditions}. Meetups: {meetups}.']
                 return ['Members: '+', '.join(people[i:i+4]) for i in range(0,len(people),4)]
             guild=self._require(trainer)
             if op=='leave':
@@ -142,6 +150,7 @@ class Guilds:
             self.db.execute('DELETE FROM guild_expeditions WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_meetups WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_posts WHERE guild_id=?',(guild[0],))
+            self.db.execute('DELETE FROM guild_stats WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_members WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guilds WHERE id=?',(guild[0],))
             return [f'Disbanded {guild[1]}.']
@@ -158,6 +167,14 @@ class Guilds:
                 if not 1<=page<=pages: raise GuildError(f'Page must be 1-{pages}.')
                 rows=self.db.execute('SELECT g.name,g.leader,COUNT(m.trainer) FROM guilds g LEFT JOIN guild_members m ON m.guild_id=g.id GROUP BY g.id ORDER BY g.name COLLATE NOCASE,g.id LIMIT 8 OFFSET ?',((page-1)*8,)).fetchall()
                 return [f'Guilds {page}/{pages}:']+([f'{name}: {count}/{MAX_MEMBERS}, leader {leader}' for name,leader,count in rows] or ['No guilds yet.'])
+            if op=='standings':
+                if len(args)>1 or (args and (not args[0].isascii() or not args[0].isdecimal() or len(args[0])>3)):
+                    raise GuildError('Use /guild standings or /guild standings PAGE.')
+                page=int(args[0]) if args else 1
+                total=self.db.execute('SELECT COUNT(*) FROM guilds').fetchone()[0];pages=max(1,(total+7)//8)
+                if not 1<=page<=pages: raise GuildError(f'Page must be 1-{pages}.')
+                rows=self.db.execute('SELECT g.name,s.xp FROM guilds g JOIN guild_stats s ON s.guild_id=g.id ORDER BY s.xp DESC,g.name COLLATE NOCASE,g.id LIMIT 8 OFFSET ?',((page-1)*8,)).fetchall()
+                return [f'Guild standings {page}/{pages}:']+([f'{name}: level {1+xp//100}, {xp} guild XP' for name,xp in rows] or ['No guilds yet.'])
             if op=='apply':
                 if len(args)!=1: raise GuildError('Use /guild apply NAME.')
                 self._identifier(args[0])
@@ -244,6 +261,7 @@ class Guilds:
             _,members=self.members(trainer)
             if len(set(ready_members).intersection(members))<row[1]:return None
             self.db.execute('UPDATE guild_meetups SET complete=1 WHERE guild_id=?',(guild[0],))
+            self.db.execute('UPDATE guild_stats SET xp=MIN(xp+15,1000000000),meetups=MIN(meetups+1,1000000000) WHERE guild_id=?',(guild[0],))
             return guild[1],row[0],row[1],members
 
     def expedition(self, trainer, args):
@@ -284,4 +302,5 @@ class Guilds:
             count=self.db.execute('SELECT COUNT(*) FROM guild_expedition_visits WHERE guild_id=?',(guild[0],)).fetchone()[0]
             if count < row[1]: return None
             self.db.execute('UPDATE guild_expeditions SET complete=1 WHERE guild_id=?',(guild[0],))
+            self.db.execute('UPDATE guild_stats SET xp=MIN(xp+10,1000000000),expeditions=MIN(expeditions+1,1000000000) WHERE guild_id=?',(guild[0],))
             return guild[1],row[0],row[1],self.members(trainer)[1]

@@ -120,7 +120,7 @@ class GuildChat:
         completed=s.guilds.visit(conn['id'],map_name)
         if completed:
             _,destination,goal,members=completed
-            self._announce(conn,members,f'Guild expedition complete: {destination} ({goal} trainers).')
+            self._announce(conn,members,f'Guild expedition complete: {destination} ({goal} trainers). +10 guild XP.')
         if s.guilds.active_meet(conn['id'],map_name):
             now=time.monotonic();ready=[]
             for name,peer in s.peers.items():
@@ -131,7 +131,7 @@ class GuildChat:
             completed=s.guilds.complete_meet(conn['id'],map_name,ready)
             if completed:
                 _,destination,goal,members=completed
-                self._announce(conn,members,f'Guild meetup complete: {goal} trainers together at {destination}.')
+                self._announce(conn,members,f'Guild meetup complete: {goal} trainers together at {destination}. +15 guild XP.')
 
     def _announce(self, conn, members, text):
         s=self.server
