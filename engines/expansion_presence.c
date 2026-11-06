@@ -25,6 +25,7 @@ int ExpansionTrade_PairValid(const void *data, size_t size);
 unsigned ExpansionPeers_Count(void);
 bool ExpansionControl_BeforeFrame(void);
 void ExpansionControl_AfterFrame(void);
+void ExpansionControl_WriteObservation(FILE *, uint32_t);
 enum frame_result __real_frame_run(void);
 enum frame_result __wrap_frame_run(void)
 {
@@ -75,10 +76,16 @@ enum frame_result __wrap_frame_run(void)
     FILE *out = fopen(temporary, "w");
     if (out != NULL) {
         int written = fprintf(out, "{\"schema\":1,\"engine\":\"expansion-native\",\"frame\":%u,"
-                          "\"field\":%s,\"group\":%u,\"num\":%u,\"x\":%u,\"y\":%u,\"peers\":%u,\"facing\":%u,\"gfx\":%u,\"link_ready\":%s,\"ready\":%s,\"trade_pair_valid\":%s}\n",
+                          "\"field\":%s,\"group\":%u,\"num\":%u,\"x\":%u,\"y\":%u,\"peers\":%u,\"facing\":%u,\"gfx\":%u,\"link_ready\":%s,\"ready\":%s,\"trade_pair_valid\":%s",
                           frame_count(), field ? "true" : "false", group, num, x, y, ExpansionPeers_Count(), facing, gfx, link_state == 1 && LinkTransport_Ready() ? "true" : "false",
                           field && ExpansionActivity_PresenceReady() ? "true" : "false",
                           trade_valid < 0 ? "null" : trade_valid ? "true" : "false");
+        if (getenv("EW_EXPANSION_CONTROL_AUDIT")) {
+            fputs(",\"control_audit\":", out);
+            ExpansionControl_WriteObservation(out, frame_count());
+        }
+        fputs("}\n", out);
+        if (ferror(out)) written = -1;
         int closed = fclose(out);
         if (written > 0 && closed == 0)
             (void)rename(temporary, path);

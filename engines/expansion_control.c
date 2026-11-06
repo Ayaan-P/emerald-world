@@ -13,7 +13,7 @@
 #include "platform/player_control.h"
 
 static bool active, previous_tick;
-static void observation(FILE *out, uint32_t frame)
+void ExpansionControl_WriteObservation(FILE *out, uint32_t frame)
 {
     char map[64] = "", pos[64] = "", battle[64] = "";
     unsigned group = 0, number = 0, x = 0, y = 0;
@@ -68,7 +68,7 @@ bool ExpansionControl_BeforeFrame(void)
         const char *endpoint = getenv("EW_EXPANSION_CONTROL");
         const char *save = getenv("EW_EXPANSION_SAVE");
         if (endpoint) {
-            if (!save || !PlayerControl_Init(endpoint, save, observation, screenshot)) return false;
+            if (!save || !PlayerControl_Init(endpoint, save, ExpansionControl_WriteObservation, screenshot)) return false;
             active = true;
         }
     }
