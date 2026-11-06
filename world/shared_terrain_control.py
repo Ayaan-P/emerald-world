@@ -11,7 +11,7 @@ def publish_geometry(admin_socket,identity,tiles,replace=False):
     if len(tiles)<=64:return admin_request('',{'command':'set_shared_geometry','identity':identity,'tiles':tiles,'replace':replace},admin_path=admin_socket)
     kinds={'grass':0,'tall_grass':1,'water':2,'original':3};data=bytearray(len(tiles).to_bytes(2,'little'))
     for tile in tiles:
-        if type(tile) is not dict or set(tile)!={'x','y','terrain'} or type(tile['x']) is not int or type(tile['y']) is not int or not 0<=tile['x']<63 or not 0<=tile['y']<63 or type(tile['terrain']) is not str or tile['terrain'] not in kinds:raise ValueError('invalid geometry patch')
+        if type(tile) is not dict or set(tile)!={'x','y','terrain'} or type(tile['x']) is not int or type(tile['y']) is not int or not 0<=tile['x']<127 or not 0<=tile['y']<127 or type(tile['terrain']) is not str or tile['terrain'] not in kinds:raise ValueError('invalid geometry patch')
         data.extend((tile['x'],tile['y'],kinds[tile['terrain']]))
     return admin_request('',{'command':'set_shared_geometry_compact','identity':identity,'data':base64.b64encode(data).decode('ascii'),'replace':replace},admin_path=admin_socket)
 

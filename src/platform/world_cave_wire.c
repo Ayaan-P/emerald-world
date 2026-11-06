@@ -87,7 +87,11 @@ int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned n, const char *const
 #if GENERATED_WORLD_XL
     if (n==4 && !strcmp(t[1],"BEGIN") && !strcmp(t[3],"XLWILDS")) {
         if(wire->active || !WorldCaveWire_ValidId(t[2])) return -1;
-        memcpy(wire->id,t[2],65);wire->nextRow=0;wire->version=10;wire->profile=0;wire->active=TRUE;return 0;
+        memcpy(wire->id,t[2],65);wire->nextRow=0;wire->version=10;wire->profile=0;wire->active=TRUE;
+#if GENERATED_WILDS_LARGE_TERRAIN
+        wire->terrainSeen=FALSE;wire->terrainChunkNext=wire->terrainChunkTotal=0;wire->terrainLargeFraming=FALSE;wire->terrainSize=0;
+#endif
+        return 0;
     }
 #endif
 #if GENERATED_WILDS_EVENTS
@@ -195,7 +199,7 @@ int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned n, const char *const
 #if GENERATED_WILDS_LARGE_TERRAIN
     if(n==7 && !strcmp(t[1],"TERRAINH")) {
         const char *p=t[3];unsigned revision=0,chunk,total,length=strlen(t[6]),bytes,i,offset,count;
-        if(wire->version!=9 || !wire->castSeen || wire->nextEventChunk!=6 || wire->terrainSeen || wire->nextRow || !*p || (p[0]=='0' && p[1]))return -1;
+        if((wire->version!=9 && wire->version!=10) || (wire->version==9 && (!wire->castSeen || wire->nextEventChunk!=6)) || wire->terrainSeen || wire->nextRow || !*p || (p[0]=='0' && p[1]))return -1;
         while(*p){if(*p<'0'||*p>'9'||revision>(2147483647U-(unsigned)(*p-'0'))/10)return -1;revision=revision*10+(*p++-'0');}
         if(strlen(t[4])!=1 || t[4][0]<'0' || t[4][0]>'7' || strlen(t[5])!=1 || t[5][0]<'1' || t[5][0]>'8')return -1;
         chunk=t[4][0]-'0';total=t[5][0]-'0';

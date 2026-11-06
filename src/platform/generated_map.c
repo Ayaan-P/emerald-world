@@ -82,6 +82,9 @@ extern const u8 GeneratedWorld_Wilds_EventScript_Cast2[], GeneratedWorld_Wilds_E
 #define XL_CELLS (XL_SIDE*XL_SIDE)
 static u16 sXLTiles[XL_CELLS];static u8 sXLTemplate[XL_CELLS];
 static bool8 sXLStaged,sXLActive,sXLShared;
+#if GENERATED_WILDS_LARGE_TERRAIN
+static u8 sXLWalk[XL_CELLS],sXLTerrain[GENERATED_TERRAIN_MAX_BYTES];static u16 sXLTerrainSize;
+#endif
 static struct WarpEvent sXLWarp;static struct MapEvents sXLEvents;
 #endif
 static bool8 sHasTemplate;
@@ -285,7 +288,11 @@ static bool8 StageXLWilds(const u8 *cells, u32 size, bool8 shared)
         for(d=0;d<4;d++)if(next[d]>=0 && next[d]<XL_CELLS && cells[next[d]]=='.' && !seen[next[d]]){seen[next[d]]=TRUE;queue[tail++]=next[d];}
     }
     for(i=0;i<XL_CELLS;i++)if(cells[i]=='.' && !seen[i])return FALSE;
-    memcpy(sXLTemplate,cells,XL_CELLS);sXLStaged=TRUE;sXLShared=shared;sLargeStaged=FALSE;sLargeShared=FALSE;sHasTemplate=FALSE;sLargeWilds=FALSE;
+    memcpy(sXLTemplate,cells,XL_CELLS);sXLStaged=TRUE;sXLShared=shared;
+#if GENERATED_WILDS_LARGE_TERRAIN
+    sXLTerrainSize=0;
+#endif
+    sLargeStaged=FALSE;sLargeShared=FALSE;sHasTemplate=FALSE;sLargeWilds=FALSE;
 #if GENERATED_CAVE_PROFILES
     sEncounterProfile=0;sSharedEncounterProfile=FALSE;
 #endif
@@ -664,6 +671,29 @@ static bool8 TerrainHeader(const u8 *patch,u32 size,unsigned *count,unsigned *of
     if(size!=off+3*n)return FALSE;
     *count=n;*offset=off;return TRUE;
 }
+#endif
+#if GENERATED_MAP_READY && GENERATED_WORLD_XL && GENERATED_WILDS_LARGE_TERRAIN
+bool8 GeneratedMap_StageSharedXLTerrain(const u8 *patch, u32 size)
+{
+    u8 walk[XL_CELLS],seen[XL_CELLS]={0};u16 queue[XL_CELLS],head=0,tail=0,i;unsigned n,off,j,lastX=0,lastY=0,d;
+    if(GeneratedMap_IsInside() || GeneratedMap_EntryPending() || !sXLStaged || !sXLShared || !TerrainHeader(patch,size,&n,&off))return FALSE;
+    for(i=0;i<XL_CELLS;i++)walk[i]=sXLTemplate[i]=='.';
+    for(j=0;j<n;j++){unsigned x=patch[off+3*j],y=patch[off+3*j+1],kind=patch[off+3*j+2];
+        if(kind>2 || !x || x>=126 || !y || y>=126 || (x==1 && y==1) || (x==125 && (y==124 || y==125)) || (j && (x<lastX || (x==lastX && y<=lastY))))return FALSE;
+        walk[y*XL_SIDE+x]=kind!=2;lastX=x;lastY=y;
+    }
+    queue[tail++]=XL_SIDE+1;seen[XL_SIDE+1]=TRUE;
+    while(head<tail){s16 pos=queue[head++],next[4]={pos-XL_SIDE,pos+1,pos+XL_SIDE,pos-1};
+        for(d=0;d<4;d++)if(next[d]>=0 && next[d]<XL_CELLS && walk[next[d]] && !seen[next[d]]){seen[next[d]]=TRUE;queue[tail++]=next[d];}
+    }
+    for(i=0;i<XL_CELLS;i++)if(walk[i] && !seen[i])return FALSE;
+    memcpy(sXLWalk,walk,XL_CELLS);memcpy(sXLTerrain,patch,size);sXLTerrainSize=size;return TRUE;
+}
+bool8 GeneratedMap_MatchesSharedXLTerrain(const u8 *patch,u32 size)
+{return patch && sXLTerrainSize==size && !memcmp(sXLTerrain,patch,size);}
+#else
+bool8 GeneratedMap_StageSharedXLTerrain(const u8 *patch,u32 size) {(void)patch;(void)size;return FALSE;}
+bool8 GeneratedMap_MatchesSharedXLTerrain(const u8 *patch,u32 size) {(void)patch;(void)size;return FALSE;}
 #endif
 #if GENERATED_MAP_READY && GENERATED_WILDS_SHARED_GEOMETRY
 static bool8 BuildSharedWalk(const u8 *patch, u32 size, u8 *walk)
@@ -1046,7 +1076,12 @@ bool8 GeneratedMap_SharedCoordValid(unsigned x, unsigned y)
 {
 #if GENERATED_MAP_READY
 #if GENERATED_WORLD_XL
-    if (sXLStaged && sXLShared) return x<XL_SIDE && y<XL_SIDE && sXLTemplate[y*XL_SIDE+x]=='.';
+    if (sXLStaged && sXLShared) return x<XL_SIDE && y<XL_SIDE &&
+#if GENERATED_WILDS_LARGE_TERRAIN
+        (sXLTerrainSize ? sXLWalk[y*XL_SIDE+x] : sXLTemplate[y*XL_SIDE+x]=='.');
+#else
+        sXLTemplate[y*XL_SIDE+x]=='.';
+#endif
 #endif
 #if GENERATED_MAP_LARGE
     if (sLargeStaged && sLargeShared)
@@ -1127,6 +1162,10 @@ bool8 GeneratedMap_Enter(void)
     if(sXLActive) {u16 i;for(i=0;i<XL_CELLS;i++){unsigned x=i%XL_SIDE,y=i/XL_SIDE;
         sXLTiles[i]=sXLTemplate[i]=='.' ? (((x*13+y*7)%5) ? 0x300d : 0x3001) : 0x0487;}
         sXLTiles[XL_SIDE+1]=0x3001;sXLTiles[125*XL_SIDE+125]=0x3024;
+#if GENERATED_WILDS_LARGE_TERRAIN
+        if(sXLTerrainSize) {unsigned n,off,j;if(TerrainHeader(sXLTerrain,sXLTerrainSize,&n,&off))for(j=0;j<n;j++){
+            unsigned x=sXLTerrain[off+3*j],y=sXLTerrain[off+3*j+1],kind=sXLTerrain[off+3*j+2];sXLTiles[y*XL_SIDE+x]=kind==2 ? 0x0487 : kind ? 0x300d : 0x3001;}}
+#endif
     } else
 #endif
     if (sLargeActive) {

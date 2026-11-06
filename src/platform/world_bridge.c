@@ -97,6 +97,9 @@ static struct {
     bool8 caveProbe, caveLegacy, caveAvailable, caveReturning;
 #if GENERATED_WORLD_XL
     bool8 caveV10Probe, caveV10Legacy;
+#if GENERATED_WILDS_LARGE_TERRAIN
+    bool8 caveV10TProbe, caveV10TLegacy;
+#endif
 #endif
 #if GENERATED_CAVE_PROFILES
     bool8 caveV2Probe, caveV2Legacy;
@@ -438,6 +441,9 @@ static void Disconnect(void)
     sWorld.caveProbe = sWorld.caveAvailable = sWorld.caveReturning = FALSE;
 #if GENERATED_WORLD_XL
     sWorld.caveV10Probe=FALSE;
+#if GENERATED_WILDS_LARGE_TERRAIN
+    sWorld.caveV10TProbe=FALSE;
+#endif
 #endif
 #if GENERATED_CAVE_PROFILES
     sWorld.caveV2Probe = FALSE;
@@ -691,6 +697,9 @@ static bool8 CaveProbeRejected(unsigned n, char **tokens)
 {
     if (sWorld.caveProbe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
 #if GENERATED_WORLD_XL
+        #if GENERATED_WILDS_LARGE_TERRAIN
+        if(sWorld.caveV10TProbe){sWorld.caveV10TLegacy=TRUE;return TRUE;}
+#endif
         if(sWorld.caveV10Probe){sWorld.caveV10Legacy=TRUE;return TRUE;}
 #endif
 #if GENERATED_WILDS_LARGE_TERRAIN && GENERATED_CAVE_WILDLIFE
@@ -961,9 +970,20 @@ static bool8 CaveLine(unsigned n, char **tokens)
     if (result == 1) {
 #if GENERATED_WORLD_XL
         if(sWorld.caveWire.version==10) {
+#if GENERATED_WILDS_LARGE_TERRAIN
+            const u8 empty[1]={0};const u8 *terrain=sWorld.caveV10TProbe?sWorld.caveWire.terrain:empty;
+            u32 terrainSize=sWorld.caveV10TProbe?sWorld.caveWire.terrainSize:1;
+            if(sWorld.caveV10TProbe && (!sWorld.caveWire.terrainSeen || !sWorld.caveWire.terrainLargeFraming))return FALSE;
+            if (GeneratedMap_IsInside() || GeneratedMap_EntryPending()) {
+                if(!GeneratedMap_MatchesPreparedXLWilds(sWorld.caveWire.cells,WORLD_CAVE_XL_CELLS) || !GeneratedMap_MatchesSharedXLTerrain(terrain,terrainSize))sWorld.caveState=CAVE_MISMATCH;
+                else sWorld.caveState=CAVE_ACK;
+            } else if(GeneratedMap_StageSharedXLWilds(sWorld.caveWire.cells,WORLD_CAVE_XL_CELLS) && GeneratedMap_StageSharedXLTerrain(terrain,terrainSize))sWorld.caveState=CAVE_ACK;
+            else return FALSE;
+#else
             if ((GeneratedMap_IsInside() || GeneratedMap_EntryPending()) && !GeneratedMap_MatchesPreparedXLWilds(sWorld.caveWire.cells,WORLD_CAVE_XL_CELLS)) sWorld.caveState=CAVE_MISMATCH;
             else if(GeneratedMap_MatchesPreparedXLWilds(sWorld.caveWire.cells,WORLD_CAVE_XL_CELLS) || GeneratedMap_StageSharedXLWilds(sWorld.caveWire.cells,WORLD_CAVE_XL_CELLS)) sWorld.caveState=CAVE_ACK;
             else return FALSE;
+#endif
             return TRUE;
         }
 #endif
@@ -1381,6 +1401,8 @@ static void QueueHello(bool8 headless)
 #if GENERATED_WORLD_XL && GENERATED_WILDS_LARGE_TERRAIN && GENERATED_CAVE_WILDLIFE
         sWorld.caveV10Probe=sWorld.caveV9HProbe && !sWorld.caveV10Legacy;
         if(sWorld.caveV10Probe)suffix="CAVE10";
+        sWorld.caveV10TProbe=sWorld.caveV10Probe && !sWorld.caveV10TLegacy;
+        if(sWorld.caveV10TProbe)suffix="CAVE10T";
 #endif
     }
 #endif
@@ -1676,6 +1698,10 @@ static void CavePump(void)
 #if GENERATED_WORLD_XL
             if (sWorld.caveWire.version == 10) {
                 if (!GeneratedMap_StageSharedXLWilds(sWorld.caveWire.cells, WORLD_CAVE_XL_CELLS)) { Disconnect(); return; }
+#if GENERATED_WILDS_LARGE_TERRAIN
+                {const u8 empty[1]={0};const u8 *terrain=sWorld.caveV10TProbe?sWorld.caveWire.terrain:empty;u32 size=sWorld.caveV10TProbe?sWorld.caveWire.terrainSize:1;
+                if(!GeneratedMap_StageSharedXLTerrain(terrain,size)) { Disconnect(); return; }}
+#endif
             } else
 #endif
 #if GENERATED_WILDS_EVENTS && GENERATED_CAVE_WILDLIFE
