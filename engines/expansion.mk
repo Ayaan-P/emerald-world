@@ -6,11 +6,12 @@ EW_LINK := ../../build/expansion-link.o
 EW_CABLE := ../../build/expansion-cable.o
 EW_ACTIVITY := ../../build/expansion-activity.o
 EW_TRADE_VALIDATE := ../../build/expansion-trade-validate.o
-OBJS += $(EW_ADAPTER) $(EW_PEERS) $(EW_LINK) $(EW_CABLE) $(EW_ACTIVITY) $(EW_TRADE_VALIDATE)
+EW_TRADE_SAVE := ../../build/expansion-trade-save.o
+OBJS += $(EW_ADAPTER) $(EW_PEERS) $(EW_LINK) $(EW_CABLE) $(EW_ACTIVITY) $(EW_TRADE_VALIDATE) $(EW_TRADE_SAVE)
 # A relocated multilib sysroot does not contain the host's SDL dependencies.
 # Resolve those at link time only; do not bake a private runtime search path.
-NATIVE_LDFLAGS += -Wl,--wrap=frame_run -Wl,--wrap=SaveObjectEvents -Wl,--wrap=CopyPartyAndObjectsToSave -Wl,--wrap=GetObjectEventIdByPosition -Wl,--wrap=FieldGetPlayerInput -Wl,-rpath-link,/usr/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu/pulseaudio
-$(NATIVE_EXE): $(EW_ADAPTER) $(EW_PEERS) $(EW_LINK) $(EW_CABLE) $(EW_ACTIVITY) $(EW_TRADE_VALIDATE)
+NATIVE_LDFLAGS += -Wl,--wrap=frame_run -Wl,--wrap=SaveObjectEvents -Wl,--wrap=CopyPartyAndObjectsToSave -Wl,--wrap=GetObjectEventIdByPosition -Wl,--wrap=FieldGetPlayerInput -Wl,--wrap=LinkFullSave_SetLastSectorSignature -Wl,-rpath-link,/usr/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu/pulseaudio
+$(NATIVE_EXE): $(EW_ADAPTER) $(EW_PEERS) $(EW_LINK) $(EW_CABLE) $(EW_ACTIVITY) $(EW_TRADE_VALIDATE) $(EW_TRADE_SAVE)
 $(EW_ADAPTER): ../expansion_presence.c
 	@mkdir -p $(@D)
 	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
@@ -56,3 +57,17 @@ $(C_BUILDDIR)/cable_club.o: $(EW_PATCHED_CABLE) $(C_FILTER_SCRIPT)
 $(EW_TRADE_VALIDATE): ../expansion_trade_validate.c
 	@mkdir -p $(@D)
 	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+# Port party/consent validation, but do not expose the trade menu until the
+# complete native trade/save workflow has been verified.
+EW_PATCHED_TRADE := ../../build/expansion-trade-game.c
+$(EW_PATCHED_TRADE): src/trade.c ../../src/trade.c ../../scripts/patch_expansion_trade.py
+	@mkdir -p $(@D)
+	python3 ../../scripts/patch_expansion_trade.py src/trade.c ../../src/trade.c $@
+$(C_BUILDDIR)/trade.o: $(EW_PATCHED_TRADE) $(C_FILTER_SCRIPT) ../../include/platform/native_link.h
+	@echo "$(TARGET_CC) <Expansion trade guard overlay> -o $@"
+	@$(CPP) $(CPPFLAGS) -iquote ../../include $(EW_PATCHED_TRADE) | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $(EW_PATCHED_TRADE) charmap.txt | $(C_FILTER) > $(C_PREPROCESSED) && $(TARGET_CC) $(CFLAGS) -c -x c -o $@ $(C_PREPROCESSED); status=$$?; rm -f $(C_PREPROCESSED); exit $$status
+
+$(EW_TRADE_SAVE): ../expansion_trade_save.c
+	@mkdir -p $(@D)
+	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -iquote ../../include -c $< -o $@

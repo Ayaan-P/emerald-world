@@ -15,6 +15,8 @@ typedef uint16_t u16; typedef uint32_t u32; typedef uint8_t u8;
 #define POKEBALL_COUNT 28
 #define NUMBER_OF_MON_TYPES 21
 #define MAX_MON_MOVES 4
+#define POKEMON_NAME_LENGTH 12
+#define MON_DATA_NICKNAME 30
 #define MOVES_COUNT 100
 #define MON_DATA_SPECIES 1
 #define MON_DATA_HELD_ITEM 2
@@ -28,5 +30,5 @@ typedef uint16_t u16; typedef uint32_t u32; typedef uint8_t u8;
 #define EOS 255
 struct BoxPokemon { u32 personality,otId; u8 nickname[10],language,hasSpecies,isBadEgg,otName[7]; u16 checksum; union { u32 raw[12]; } secure; };
 struct Pokemon { struct BoxPokemon box; u32 status; u8 level,mail; u16 hp,maxHP; u8 padding[10]; };
-u32 GetMonData(struct Pokemon *,u32); int IsSpeciesEnabled(u32);
+u32 GetMonData(struct Pokemon *,u32,...); int IsSpeciesEnabled(u32);
 #endif

@@ -18,6 +18,7 @@ static int mon_valid(struct Pokemon *mon)
     u16 checksum = 0;
     u32 key = mon->box.personality ^ mon->box.otId;
     u32 species, i;
+    u8 nickname[POKEMON_NAME_LENGTH + 1];
     for (i = 0; i < ARRAY_COUNT(mon->box.secure.raw); i++) {
         u32 word = mon->box.secure.raw[i] ^ key;
         checksum += (u16)word;
@@ -41,8 +42,13 @@ static int mon_valid(struct Pokemon *mon)
         if (GetMonData(mon, MON_DATA_MOVE1 + i) >= MOVES_COUNT) return 0;
     for (i = MON_DATA_COOL_RIBBON; i <= MON_DATA_TOUGH_RIBBON; i++)
         if (GetMonData(mon, i) > 4) return 0;
-    for (i = 0; i < sizeof(mon->box.nickname); i++)
-        if (mon->box.nickname[i] >= 0xFA && mon->box.nickname[i] != EOS) return 0;
+    /* Expansion stores characters 11 and 12 inside encrypted substructures;
+     * validate the decoded whole nickname, not only box.nickname's first 10. */
+    memset(nickname, EOS, sizeof nickname);
+    GetMonData(mon, MON_DATA_NICKNAME, nickname);
+    for (i = 0; i < sizeof nickname && nickname[i] != EOS; i++)
+        if (nickname[i] >= 0xFA) return 0;
+    if (i == sizeof nickname) return 0;
     for (i = 0; i < sizeof(mon->box.otName); i++)
         if (mon->box.otName[i] >= 0xFA && mon->box.otName[i] != EOS) return 0;
     return 1;

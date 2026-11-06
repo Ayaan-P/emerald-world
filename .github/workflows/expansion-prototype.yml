@@ -33,11 +33,15 @@ jobs:
           /tmp/expansion-activity-test
           gcc -std=c11 -Wall -Wextra -Werror -Itest/expansion_projection/trade_stubs engines/expansion_trade_validate.c test/expansion_projection/test_trade_validate.c -o /tmp/expansion-trade-test
           /tmp/expansion-trade-test
+          gcc -std=c11 -Wall -Wextra -Werror -Itest/expansion_projection/save_stubs engines/expansion_trade_save.c test/expansion_projection/test_trade_save.c -o /tmp/expansion-trade-save-test
+          /tmp/expansion-trade-save-test
       - name: Build pinned Expansion donor and adapter
         working-directory: engines/expansion-native
         run: make -f ../expansion.mk -j2 native BITS=64
       - name: Check native activity hooks are linked
-        run: nm engines/expansion-native/build/native64/pokeemerald-native | grep -F 'ExpansionActivity_StartBattle'
+        run: |
+          nm engines/expansion-native/build/native64/pokeemerald-native | grep -F 'ExpansionActivity_StartBattle'
+          nm engines/expansion-native/build/native64/pokeemerald-native | grep -F 'ExpansionTrade_PairValid'
       - name: Check Expansion LINK compatibility role
         run: strings engines/expansion-native/build/native64/pokeemerald-native | grep -F 'HELLO 1 %s %s LINKEXP1'
       - name: Run donor opening and save smoke test

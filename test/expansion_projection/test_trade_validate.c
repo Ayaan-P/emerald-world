@@ -2,8 +2,10 @@
 #include <assert.h>
 #include <stddef.h>
 #include <string.h>
+#include <stdarg.h>
 static u32 tera=1, dynamax, item, ball=1, move;
-u32 GetMonData(struct Pokemon *p,u32 field) {
+u32 GetMonData(struct Pokemon *p,u32 field,...) {
+ if(field==MON_DATA_NICKNAME){va_list ap;va_start(ap,field);u8 *out=va_arg(ap,u8 *);memcpy(out,p->box.nickname,10);out[10]=EOS;va_end(ap);return 0;}
  if(field==MON_DATA_SPECIES)return p->box.nickname[0];
  if(field==MON_DATA_HELD_ITEM)return item;
  if(field==MON_DATA_POKEBALL)return ball;
