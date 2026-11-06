@@ -10,6 +10,7 @@ u8 gWirelessCommType,gFieldLinkPlayerCount,gLocalLinkPlayerId,gReceivedRemoteLin
 void (*gFieldCallback)(void); bool8 (*gFieldCallback2)(void);
 static int locked, active, offered, offered_mode, accepted, rejected, offer_pending, started, choice, exchange, link_ready=1;
 static u16 real_new,real_held; static void (*task_fn)(u8); static struct LinkTransportInvitation incoming;
+bool8 ExpansionCave_HandleInput(u16 n,u16 h){(void)n;(void)h;return 0;}
 void CB2_StartCreateTradeMenu(void){} void CleanupOverworldWindowsAndTilemaps(void){}
 void CB1_Overworld(void){} void CB2_Overworld(void){} void CB2_ReturnToField(void){} void CB2_ReturnToFieldFromMultiplayer(void){} void FieldCB_WarpExitFadeFromBlack(void){}
 int ScriptContext_IsEnabled(void){return 0;} int ArePlayerFieldControlsLocked(void){return locked;} void LockPlayerFieldControls(void){locked=1;} void UnlockPlayerFieldControls(void){locked=0;} void ScriptContext_Init(void){}

@@ -37,9 +37,15 @@ world authority and client parser in an in-memory relay. This does not exercise
 sockets or TLS. The battle/trade state tests use mocks, and real client-to-client
 battle, trade, disconnection and save behavior remain unverified. Generated
 worlds, co-op, complete launcher integration, map catalog and save migration
-are not yet ported. Expansion maps whose IDs collide with vanilla generated
+are not yet fully ported. An offline-only 31×31 EWGMAP01 cave experiment is
+under development and not ready for user testing. It does not enable generated
+shared worlds, encounters, wilds or authored events. Expansion maps whose IDs collide with vanilla generated
 worlds are intentionally not advertised as presence.
 
 Control frame scheduling, output and launcher scoping have only been tested with
 fakes. No live player-control socket has been exercised. Replay and control are
 mutually exclusive; vanilla world and battle observations still require porting.
+
+The cave adapter reserves donor-local group 75 only after verifying that the
+pinned donor has 75 groups; it uses a separate synthetic header and refuses
+saves while inside. This is experimental and not a save-safety proof.

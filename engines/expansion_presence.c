@@ -20,6 +20,7 @@ int NativeLink_BeforeFrame(const u16 send[8]);
 extern u16 gSendCmd[8];
 void ExpansionPeers_Update(int overworld);
 void ExpansionActivity_Update(void);
+void ExpansionCave_Update(void);
 int ExpansionActivity_PresenceReady(void);
 int ExpansionTrade_PairValid(const void *data, size_t size);
 unsigned ExpansionPeers_Count(void);
@@ -43,6 +44,7 @@ enum frame_result __wrap_frame_run(void)
         (void)NativeLink_BeforeFrame(gSendCmd);
         ExpansionActivity_Update();
     }
+    ExpansionCave_Update();
     enum frame_result result = __real_frame_run();
     ExpansionControl_AfterFrame();
     const char *path = getenv("EW_EXPANSION_PRESENCE");

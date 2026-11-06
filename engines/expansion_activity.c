@@ -38,6 +38,7 @@ static struct {
     char peer[25];
 } sActivity = { .window = WINDOW_NONE, .task = TASK_NONE };
 
+bool8 ExpansionCave_HandleInput(u16 newKeys, u16 heldKeys);
 const char *ExpansionPeers_Facing(void);
 int ExpansionActivity_StartBattle(unsigned mode);
 void __real_FieldGetPlayerInput(struct FieldInput *input, u16 newKeys, u16 heldKeys);
@@ -193,6 +194,9 @@ static bool8 begin_menu(const char *peer, bool8 incoming)
 }
 void __wrap_FieldGetPlayerInput(struct FieldInput *input, u16 newKeys, u16 heldKeys)
 {
+    if (sActivity.phase == ACT_IDLE && ExpansionCave_HandleInput(newKeys, heldKeys)) {
+        newKeys &= ~SELECT_BUTTON; heldKeys &= ~R_BUTTON;
+    }
     if (enabled() && (newKeys & A_BUTTON) && sActivity.phase == ACT_IDLE) {
         const char *peer = ExpansionPeers_Facing();
         if (peer && begin_menu(peer, FALSE)) newKeys &= ~A_BUTTON;

@@ -43,3 +43,6 @@ void AddTextPrinterParameterized(u8,int,const u8 *,int,int,int,void *); void Ini
 void ClearStdWindowAndFrame(u8,int); void RemoveWindow(u8); u8 CreateTask(void (*)(u8), int); void DestroyTask(u8); s8 Menu_ProcessInputNoWrap(void);
 void CloseLink(void); void OpenLink(void); void ResetLinkPlayers(void); int HasLinkErrorOccurred(void); int GetLinkPlayerCount_2(void); int IsLinkMaster(void); void CheckShouldAdvanceLinkState(void); int IsLinkPlayerDataExchangeComplete(void); u8 GetMultiplayerId(void); void SaveLinkPlayers(int); void SetDynamicWarp(int,int,int,int); void ClearLinkCallback_2(void); void SetMainCallback1(MainCallback); void SetMainCallback2(MainCallback);
 #endif
+
+#define SELECT_BUTTON 4
+#define R_BUTTON 256

@@ -38,6 +38,10 @@ jobs:
           /tmp/expansion-trade-save-test
           gcc -DPORTABLE -D_POSIX_C_SOURCE=200809L -std=c11 -Wall -Wextra -Werror -Itest/expansion_projection/control_stubs engines/expansion_control.c test/expansion_projection/test_control.c -o /tmp/expansion-control-test
           /tmp/expansion-control-test
+          gcc -std=c11 -Wall -Wextra -Werror engines/cave_geometry.c test/expansion_projection/test_cave_geometry.c -o /tmp/expansion-cave-geometry-test
+          /tmp/expansion-cave-geometry-test
+          gcc -D_POSIX_C_SOURCE=200809L -std=c11 -Wall -Wextra -Werror -Itest/expansion_projection/cave_stubs engines/expansion_cave.c engines/cave_geometry.c test/expansion_projection/test_cave.c -o /tmp/expansion-cave-test
+          /tmp/expansion-cave-test
       - name: Build pinned Expansion donor and adapter
         working-directory: engines/expansion-native
         run: make -f ../expansion.mk -j2 native BITS=64
@@ -62,3 +66,6 @@ jobs:
 
       - name: Exercise two isolated Expansion engines
         run: python3 test/expansion_projection/dual_engine_smoke.py engines/expansion-native/build/native64/pokeemerald-native engines/expansion-native
+
+      - name: Exercise offline generated cave in donor
+        run: python3 test/expansion_projection/real_cave_smoke.py engines/expansion-native/build/native64/pokeemerald-native engines/expansion-native

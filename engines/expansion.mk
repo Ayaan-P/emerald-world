@@ -1,5 +1,7 @@
 # Run in the pinned donor directory. Keep its source and ABI unchanged.
 include Makefile.native
+EW_CAVE := ../../build/expansion-cave.o
+EW_CAVE_GEOMETRY := ../../build/expansion-cave-geometry.o
 EW_CONTROL := ../../build/expansion-control.o
 EW_CONTROL_TRANSPORT := ../../build/expansion-control-transport.o
 EW_ADAPTER := ../../build/expansion-presence.o
@@ -9,11 +11,11 @@ EW_CABLE := ../../build/expansion-cable.o
 EW_ACTIVITY := ../../build/expansion-activity.o
 EW_TRADE_VALIDATE := ../../build/expansion-trade-validate.o
 EW_TRADE_SAVE := ../../build/expansion-trade-save.o
-OBJS += $(EW_CONTROL) $(EW_CONTROL_TRANSPORT) $(EW_ADAPTER) $(EW_PEERS) $(EW_LINK) $(EW_CABLE) $(EW_ACTIVITY) $(EW_TRADE_VALIDATE) $(EW_TRADE_SAVE)
+OBJS += $(EW_CAVE) $(EW_CAVE_GEOMETRY) $(EW_CONTROL) $(EW_CONTROL_TRANSPORT) $(EW_ADAPTER) $(EW_PEERS) $(EW_LINK) $(EW_CABLE) $(EW_ACTIVITY) $(EW_TRADE_VALIDATE) $(EW_TRADE_SAVE)
 # A relocated multilib sysroot does not contain the host's SDL dependencies.
 # Resolve those at link time only; do not bake a private runtime search path.
 NATIVE_LDFLAGS += -Wl,--wrap=frame_run -Wl,--wrap=SaveObjectEvents -Wl,--wrap=CopyPartyAndObjectsToSave -Wl,--wrap=GetObjectEventIdByPosition -Wl,--wrap=FieldGetPlayerInput -Wl,--wrap=LinkFullSave_SetLastSectorSignature -Wl,-rpath-link,/usr/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu/pulseaudio
-$(NATIVE_EXE): $(EW_CONTROL) $(EW_CONTROL_TRANSPORT) $(EW_ADAPTER) $(EW_PEERS) $(EW_LINK) $(EW_CABLE) $(EW_ACTIVITY) $(EW_TRADE_VALIDATE) $(EW_TRADE_SAVE)
+$(NATIVE_EXE): $(EW_CAVE) $(EW_CAVE_GEOMETRY) $(EW_CONTROL) $(EW_CONTROL_TRANSPORT) $(EW_ADAPTER) $(EW_PEERS) $(EW_LINK) $(EW_CABLE) $(EW_ACTIVITY) $(EW_TRADE_VALIDATE) $(EW_TRADE_SAVE)
 $(EW_ADAPTER): ../expansion_presence.c
 	@mkdir -p $(@D)
 	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
@@ -81,3 +83,25 @@ $(EW_CONTROL): ../expansion_control.c
 $(EW_CONTROL_TRANSPORT): ../../src/platform/player_control.c
 	@mkdir -p $(@D)
 	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -DPORTABLE -iquote ../../include -c $< -o $@
+
+# An isolated reserved map-group overlay for disposable offline cave tests.
+$(EW_CAVE): ../expansion_cave.c
+	@mkdir -p $(@D)
+	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+$(EW_CAVE_GEOMETRY): ../cave_geometry.c
+	@mkdir -p $(@D)
+	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+EW_CAVE_OVERWORLD := ../../build/expansion-cave-overworld.c
+$(EW_CAVE_OVERWORLD): src/overworld.c data/maps/map_groups.json ../../scripts/patch_expansion_cave.py
+	@mkdir -p $(@D)
+	python3 ../../scripts/patch_expansion_cave.py overworld src/overworld.c data/maps/map_groups.json $@
+$(C_BUILDDIR)/overworld.o: $(EW_CAVE_OVERWORLD) $(C_FILTER_SCRIPT)
+	@echo "$(TARGET_CC) <Expansion cave overworld overlay> -o $@"
+	@$(CPP) $(CPPFLAGS) -iquote src $(EW_CAVE_OVERWORLD) | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $(EW_CAVE_OVERWORLD) charmap.txt | $(C_FILTER) > $(C_PREPROCESSED) && $(TARGET_CC) $(CFLAGS) -c -x c -o $@ $(C_PREPROCESSED); status=$$?; rm -f $(C_PREPROCESSED); exit $$status
+EW_CAVE_SAVE := ../../build/expansion-cave-save.c
+$(EW_CAVE_SAVE): src/save.c data/maps/map_groups.json ../../scripts/patch_expansion_cave.py
+	@mkdir -p $(@D)
+	python3 ../../scripts/patch_expansion_cave.py save src/save.c data/maps/map_groups.json $@
+$(C_BUILDDIR)/save.o: $(EW_CAVE_SAVE) $(C_FILTER_SCRIPT)
+	@echo "$(TARGET_CC) <Expansion cave save overlay> -o $@"
+	@$(CPP) $(CPPFLAGS) -iquote src $(EW_CAVE_SAVE) | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $(EW_CAVE_SAVE) charmap.txt | $(C_FILTER) > $(C_PREPROCESSED) && $(TARGET_CC) $(CFLAGS) -c -x c -o $@ $(C_PREPROCESSED); status=$$?; rm -f $(C_PREPROCESSED); exit $$status
