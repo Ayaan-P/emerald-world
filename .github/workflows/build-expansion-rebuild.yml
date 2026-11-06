@@ -1,0 +1,52 @@
+name: Build clean Expansion world slice
+on:
+  pull_request:
+    paths:
+      - 'rebuild/**'
+      - '.github/workflows/build-expansion-rebuild.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Test presence protocol without sockets
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -Irebuild/overlay/include rebuild/overlay/src/world/presence_wire.c rebuild/test/test_presence_wire.c -o /tmp/ew-presence-test
+          ASAN_OPTIONS=detect_leaks=0 /tmp/ew-presence-test
+      - name: Test map compatibility and server snapshots
+        run: python3 -m unittest discover -s rebuild/test -p 'test_*.py' -v
+      - name: Apply presence slice to clean Expansion
+        run: python3 rebuild/scripts/apply.py engines/expansion-native
+      - name: Install native prerequisites
+        timeout-minutes: 30
+        run: |
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y build-essential gcc-multilib python3 pkg-config libpng-dev libsdl2-dev
+      - name: Build native Expansion with presence
+        working-directory: engines/expansion-native
+        shell: bash
+        run: |
+          set -o pipefail
+          make -f "$GITHUB_WORKSPACE/rebuild/expansion.mk" -j2 native BITS=64 2>&1 | tee "$RUNNER_TEMP/rebuild-build.log"
+      - name: Replay vanilla opening with no World config
+        working-directory: engines/expansion-native
+        timeout-minutes: 10
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: tests/smoke/run.sh build/native64/pokeemerald-native "$RUNNER_TEMP/rebuild-smoke"
+      - name: Preserve build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: expansion-rebuild-build-log
+          path: ${{ runner.temp }}/rebuild-build.log
+          if-no-files-found: ignore
+          retention-days: 7
