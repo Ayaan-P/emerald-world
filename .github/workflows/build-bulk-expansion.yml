@@ -39,6 +39,13 @@ jobs:
         run: |
           set -o pipefail
           make -f "$GITHUB_WORKSPACE/port/expansion-world.mk" -k -j2 native BITS=64 2>&1 | tee "$RUNNER_TEMP/bulk-build.log"
+      - name: Replay offline opening and save round trip
+        working-directory: engines/expansion-native
+        timeout-minutes: 10
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: tests/smoke/run.sh build/native64/pokeemerald-native "$RUNNER_TEMP/bulk-smoke"
       - name: Preserve candidate build log
         if: always()
         uses: actions/upload-artifact@v4
