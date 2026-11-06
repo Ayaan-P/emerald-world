@@ -57,6 +57,8 @@ extern int ExpansionTrade_PairValid(const void *data, size_t size);''')
 }
 ''' + helpers[b:]
     helpers = helpers.replace('GIFT_RIBBONS_COUNT', 'NUM_GIFT_RIBBONS')
+    helpers = one(helpers, 'species == SPECIES_NONE || species >= NUM_SPECIES)',
+                  'species == SPECIES_NONE || species >= NUM_SPECIES || !IsSpeciesEnabled(species))')
     helpers = '''_Static_assert(PARTY_SIZE * sizeof(struct Mail) + 4 <= 220, "Expansion trade mail ABI exceeds wire block");
 _Static_assert(sizeof(sTradeMenu->giftRibbons) <= 40, "Expansion trade ribbon ABI exceeds wire block");
 ''' + helpers

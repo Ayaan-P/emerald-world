@@ -27,6 +27,7 @@ jobs:
         run: |
           python3 -m unittest discover -s test/expansion_projection -v
           python3 -m unittest test.world.test_native_link -v
+          python3 test/expansion_projection/trade_consent_smoke.py
           gcc -D_POSIX_C_SOURCE=200809L -std=c11 -Wall -Wextra -Werror -Itest/expansion_projection/stubs engines/expansion_peers.c test/expansion_projection/test_projection.c -o /tmp/expansion-projection-test
           /tmp/expansion-projection-test
           gcc -D_POSIX_C_SOURCE=200809L -std=c11 -Wall -Wextra -Werror -Itest/expansion_projection/activity_stubs engines/expansion_activity.c test/expansion_projection/test_activity.c -o /tmp/expansion-activity-test
