@@ -4,8 +4,15 @@
 #ifdef _WIN32
 /* The first vertical slice targets the existing Linux local-world transport. */
 void EwPresenceTick(void) {}
+int EwPresenceBeforeFrame(void) { return 1; }
+void EwPresenceAfterFrame(void) {}
 void EwPresenceShutdown(void) {}
 #else
+#define PORTABLE 1
+#include "platform/native_link.h"
+#include "platform/link_transport.h"
+#undef PORTABLE
+#include "link.h"
 #include "world/presence_wire.h"
 #include "world/map_compat.h"
 #include "main.h"
@@ -35,7 +42,7 @@ struct RemoteSprite {
     void (*callback)(struct Sprite *);
 };
 static struct {
-    int initialized, enabled, fd, connecting;
+    int initialized, enabled, fd, connecting, linkInitialized;
     char socketPath[sizeof(((struct sockaddr_un *)0)->sun_path)];
     char name[25], token[65];
     char out[512]; size_t outUsed, outSent;
@@ -100,6 +107,8 @@ static void clear_remotes(void)
 }
 static void disconnect_world(void)
 {
+    if (sPresence.linkInitialized) LinkTransport_Close();
+    sPresence.linkInitialized=0;
     if (sPresence.fd>=0) close(sPresence.fd);
     sPresence.fd=-1;sPresence.connecting=0;sPresence.outUsed=sPresence.outSent=0;
     sPresence.retry=120;sPresence.seq=0;EwWireInit(&sPresence.wire,sPresence.name);clear_remotes();
@@ -240,7 +249,22 @@ void EwPresenceTick(void)
     }
     if (!sPresence.enabled) return;
     sPresence.tick++;io_world();
+    /* The LINK channel is bound to authenticated presence by the server. */
+    if (sPresence.fd>=0 && sPresence.wire.welcomed && !sPresence.linkInitialized) {
+        if (LinkTransport_Init(getenv("EW_WORLD_CONFIG"))) sPresence.linkInitialized=1;
+    }
     if (sPresence.tick%8==0) publish();
     render();
+}
+int EwPresenceBeforeFrame(void)
+{
+    EwPresenceTick();
+    if (!sPresence.linkInitialized) return 1;
+    LinkTransport_Pump();
+    return NativeLink_BeforeFrame(gSendCmd);
+}
+void EwPresenceAfterFrame(void)
+{
+    if (sPresence.linkInitialized) NativeLink_AfterFrame();
 }
 #endif

@@ -1,5 +1,3 @@
-diff --git a/src/main.c b/src/main.c
-index 09cd5f9..45a5174 100644
 --- a/src/main.c
 +++ b/src/main.c
 @@ -1,4 +1,7 @@
@@ -10,7 +8,17 @@ index 09cd5f9..45a5174 100644
  #include "crt0.h"
  #include "malloc.h"
  #include "link.h"
-@@ -157,6 +160,9 @@ void AgbMainLoop(void)
+@@ -149,6 +152,9 @@
+ {
+     for (;;)
+     {
++#ifdef EW_WORLD_PRESENCE
++        if (!EwPresenceBeforeFrame()) { WaitForVBlank(); continue; }
++#endif
+         ReadKeys();
+ 
+         if (gSoftResetDisabled == FALSE
+@@ -157,6 +163,9 @@
          {
              rfu_REQ_stopMode();
              rfu_waitREQComplete();
@@ -20,12 +28,12 @@ index 09cd5f9..45a5174 100644
              DoSoftReset();
          }
  
-@@ -183,6 +189,9 @@ void AgbMainLoop(void)
+@@ -183,6 +192,9 @@
  
          PlayTimeCounter_Update();
          MapMusicMain();
 +#ifdef EW_WORLD_PRESENCE
-+        EwPresenceTick();
++        EwPresenceAfterFrame();
 +#endif
          WaitForVBlank();
      }
