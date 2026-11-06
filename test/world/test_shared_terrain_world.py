@@ -77,6 +77,29 @@ class SharedTerrainWorld(unittest.TestCase):
     with self.assertRaises(ValueError):server.set_shared_terrain(identity,[{'x':x,'y':y,'terrain':'grass'}])
     self.assertEqual(server._active_terrain(),before)
    finally:server.close()
+ def test_agent_inspects_geometry_and_client_reported_delivery(self):
+  blob=self.blob();identity=SharedCave(blob).identity
+  with tempfile.TemporaryDirectory() as t:
+   p=Path(t);server=MemoryAuthority(p/'socket',p/'world',persist_generated_cave=True,archive_generated_areas=True,cave_template=blob)
+   try:
+    server._replace_cave(blob);ident=server.create_identity('Alice');c={'id':None,'out':bytearray(),'closing':False,'state':None,'seq':0,'sock':object()}
+    server._line(c,('HELLO 1 %s %s SOCIALTRAVELCHATRALLYCAVE9T'%(ident['id'],ident['token'])).encode());c['out'].clear()
+    server._line(c,b'CAVE GET');c['out'].clear();server._line(c,('CAVE ACK '+identity).encode());c['out'].clear()
+    def owner(_socket,request,**kwargs):
+     admin={'id':None,'out':bytearray(),'closing':False,'sock':object()};server._admin_line(admin,json.dumps(request).encode());return json.loads(admin['out'])
+    with patch('world.shared_terrain_control.admin_request',side_effect=owner):
+     first=shared_terrain_control.inspect(p/'owner',identity);self.assertEqual(first['revision'],0);self.assertEqual(len(first['rows']),63);self.assertEqual(first['characters'],[{'npc':1,'x':2,'y':1}]);self.assertEqual(first['players'][0]['reported_phase'],'pending')
+     with patch('builtins.print') as output:
+      self.assertEqual(shared_terrain_control.main(['--admin-socket',str(p/'owner'),'--area',identity,'--inspect']),0)
+      self.assertEqual(json.loads(output.call_args.args[0])['revision'],0)
+
+     server._line(c,f'CAVE TERRAINACK {identity} 0 STAGED'.encode());self.assertEqual(shared_terrain_control.inspect(p/'owner',identity)['players'][0]['reported_phase'],'staged')
+     server._line(c,f'CAVE TERRAINACK {identity} 0 APPLIED'.encode());server._line(c,f'CAVE TERRAINACK {identity} 0 STAGED'.encode());self.assertEqual(shared_terrain_control.inspect(p/'owner',identity)['players'][0]['reported_phase'],'applied')
+     server.set_shared_terrain(identity,[{'x':1,'y':2,'terrain':'grass'}]);second=shared_terrain_control.inspect(p/'owner',identity)
+     self.assertEqual(second['revision'],1);self.assertEqual(second['players'][0]['reported_phase'],'pending');self.assertEqual(second['tiles'],[{'x':1,'y':2,'terrain':'grass'}])
+     server._line(c,f'CAVE TERRAINACK {identity} 1 APPLIED'.encode());self.assertEqual(shared_terrain_control.inspect(p/'owner',identity)['players'][0]['reported_phase'],'applied')
+     c['cave_next']=0;server._line(c,b'CAVE GET');c['out'].clear();server._line(c,('CAVE ACK '+identity).encode());self.assertEqual(shared_terrain_control.inspect(p/'owner',identity)['players'][0]['reported_phase'],'pending')
+   finally:server.close()
  def test_inflight_offer_and_corrupt_storage_fail_closed(self):
   blob=self.blob();identity=SharedCave(blob).identity
   with tempfile.TemporaryDirectory() as t:
@@ -187,7 +210,7 @@ return r==1 && w.version==9 && w.terrainSeen && ((w.terrainRevision==1 && w.terr
 struct Task {int isActive;};struct Task gTasks[16];
 struct Save save,*gSaveBlock1Ptr=&save;__typeof__(gMain) gMain;__typeof__(gMapHeader) gMapHeader;
 enum CaveState {CAVE_DISABLED,CAVE_IDLE,CAVE_WAIT,CAVE_WAIT_RESET,CAVE_ACK,CAVE_WAIT_OK,CAVE_READY,CAVE_MISMATCH,CAVE_RETURN_NONE};
-static struct {bool8 connected,caveAvailable,staging,caveReturning,caveV2Probe,caveV3Probe,caveV4Probe,caveV5Probe,caveV6Probe,caveV7Probe,caveV8Probe,caveV9Probe,caveV9TProbe,terrainPending;u32 terrainRevision;u8 terrainSize,terrainData[193];u8 eventHead,eventCount;unsigned eventSetSeq;struct {u8 kind,state,rule[61],x,y,terrain,tiles[193],tilesSize;unsigned sequence;} eventQueue[8];enum CaveState caveState;unsigned caveTimeout,caveRetry,snapshotAge;char caveExpected[65];struct WorldCaveWire caveWire;size_t outputSize;char output[4096];} sWorld;
+static struct {bool8 connected,caveAvailable,staging,caveReturning,caveV2Probe,caveV3Probe,caveV4Probe,caveV5Probe,caveV6Probe,caveV7Probe,caveV8Probe,caveV9Probe,caveV9TProbe,terrainPending,terrainReportPending,terrainReportedApplied;u32 terrainRevision;u8 terrainSize,terrainData[193];u8 eventHead,eventCount;unsigned eventSetSeq;struct {u8 kind,state,rule[61],x,y,terrain,tiles[193],tilesSize;unsigned sequence;} eventQueue[8];enum CaveState caveState;unsigned caveTimeout,caveRetry,snapshotAge;char caveExpected[65];struct WorldCaveWire caveWire;size_t outputSize;char output[4096];} sWorld;
 static int leaving,disconnected;static struct WarpData destination;static struct MapEvents events;
 const u8 GeneratedWorld_Wilds_EventScript_Guide[]={0};const u8 GeneratedWorld_Wilds_EventScript_Cast2[]={0},GeneratedWorld_Wilds_EventScript_Cast3[]={0},GeneratedWorld_Wilds_EventScript_Graph[]={0};u16 gSpecialVar_LastTalked;extern u8 gGeneratedWildsGuideText[58],gGeneratedEventText[58];
 const char *LinkTransport_TagPeer(void){return 0;}
@@ -225,10 +248,10 @@ int main(void){const char *a="ID_A",*b="ID_B";struct MapLayout base={19,26,0,0,0
  gMapHeader.mapType=1;gMapHeader.mapLayout=&base;gMapHeader.events=&events;save.location=(struct WarpData){3,4,0,8,9};
  sWorld.connected=1;sWorld.caveAvailable=1;sWorld.caveV2Probe=1;sWorld.caveV3Probe=1;sWorld.caveV4Probe=1;sWorld.caveV5Probe=1;sWorld.caveV6Probe=1;sWorld.caveV7Probe=1;sWorld.caveV8Probe=1;sWorld.caveV9Probe=1;sWorld.caveV9TProbe=1;sWorld.caveState=CAVE_WAIT;
  deliver(a,"META_A_SENTINEL","GRAPH_A_SENTINEL");assert(sWorld.caveState==CAVE_ACK);CavePump();assert(sWorld.caveState==CAVE_WAIT_OK);
- char *ok[]={"CAVE","OK",(char*)a};assert(CaveLine(3,ok));
+ char *ok[]={"CAVE","OK",(char*)a};assert(CaveLine(3,ok));CavePump();assert(strstr(lastOutput," 1 STAGED"));
  assert(GeneratedMap_Enter());save.location=destination;GeneratedMap_ResolveLayout(&base);
  assert(save.location.mapNum==1);assert(GeneratedMap_ResolveLayout(&base)->map[3*63+3]==0x300d && sWorld.terrainRevision==1);assert(gMapHeader.events->objectEventCount==2 && gMapHeader.events->objectEvents[0].graphicsId==7);assert(gGeneratedWildsGuideText[0]==0xd1);assert(!GeneratedMap_SharedCoordValid(2,1));assert(!GeneratedMap_SharedCoordValid(20,20));assert(GeneratedMap_SharedCoordValid(40,40));assert(MapCoords(MAP_GROUP(MAP_GENERATED_WORLD_WILDS),MAP_NUM(MAP_GENERATED_WORLD_WILDS),61,61));assert(!MapCoords(MAP_GROUP(MAP_GENERATED_WORLD_CAVE),MAP_NUM(MAP_GENERATED_WORLD_CAVE),61,61));assert(GeneratedMap_SharedCoordValid(61,61));assert(!GeneratedMap_SharedCoordValid(63,61));assert(GeneratedMap_MatchesPreparedEventWilds(sWorld.caveWire.events,WORLD_CAVE_EVENT_BYTES,sWorld.caveWire.cast,WORLD_CAVE_CAST_BYTES,sWorld.caveWire.cells,WORLD_CAVE_LARGE_CELLS));assert(!GeneratedMap_MatchesPreparedWilds(sWorld.caveWire.cells,WORLD_CAVE_LARGE_CELLS));assert(!GeneratedMap_MatchesPreparedLarge(sWorld.caveWire.cells,WORLD_CAVE_LARGE_CELLS));
- char *terrain2[]={"CAVE","TERRAIN",(char*)a,"2","02030300040401"};assert(CaveLine(5,terrain2));assert(sWorld.terrainPending);ready=0;CavePump();assert(sWorld.terrainPending && draws==0);ready=1;CavePump();assert(!sWorld.terrainPending && sWorld.terrainRevision==2 && draws==2);assert(GeneratedMap_ResolveLayout(&base)->map[3*63+3]==0x3001);snapshotRev="2";snapshotHex="02030300040401";
+ char *terrain2[]={"CAVE","TERRAIN",(char*)a,"2","02030300040401"};assert(CaveLine(5,terrain2));assert(sWorld.terrainPending);ready=0;CavePump();assert(sWorld.terrainPending && draws==0);ready=1;CavePump();assert(!sWorld.terrainPending && sWorld.terrainRevision==2 && draws==2 && strstr(lastOutput," 2 APPLIED"));assert(GeneratedMap_ResolveLayout(&base)->map[3*63+3]==0x3001);snapshotRev="2";snapshotHex="02030300040401";
  char *stale[]={"CAVE","TERRAIN",(char*)a,"1","01030301"};assert(CaveLine(5,stale) && !sWorld.terrainPending && sWorld.terrainRevision==2);
  char *badTerrain[]={"CAVE","TERRAIN",(char*)a,"3","01010100"};assert(!CaveLine(5,badTerrain) && sWorld.terrainRevision==2);
  assert(GeneratedMap_EventState()==0);assert(!GeneratedMap_SetSharedEventState(16));gSpecialVar_LastTalked=1;GeneratedMap_RunEvent();assert(GeneratedMap_EventState()==1);

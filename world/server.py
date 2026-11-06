@@ -568,6 +568,17 @@ class WorldServer:
                 if not conn.get('cave_capable') or self.peers.get(conn['id']) is not conn:
                     self._error(conn, 'CAVE')
                     return
+                if len(fields)==5 and fields[1]=='TERRAINACK':
+                    if not conn.get('cave_terrain') or not re.fullmatch(r'[0-9a-f]{64}',fields[2]) or fields[4] not in ('STAGED','APPLIED'):
+                        self._error(conn,'CAVE');return
+                    revision=bounded(fields[3],0,2147483647)
+                    with self.lock:
+                        cave=self.shared_cave
+                        if cave and cave.version==9 and cave.identity==fields[2] and conn.get('cave_ack')==fields[2] and revision<=self._active_terrain()[0]:
+                            old=conn.get('terrain_report');phase=fields[4].lower()
+                            if not old or old['identity']!=fields[2] or revision>old['revision'] or (revision==old['revision'] and not (old['phase']=='applied' and phase=='staged')):
+                                conn['terrain_report']={'identity':fields[2],'revision':revision,'phase':phase}
+                    return
                 if len(fields)==5 and fields[1]=='EVENTACK':
                     if not conn.get('cave_events') or not re.fullmatch(r'[0-9a-f]{64}',fields[2]) or fields[4] not in ('APPLIED','REJECTED'):
                         self._error(conn,'CAVE');return
@@ -613,6 +624,7 @@ class WorldServer:
                         if (self.shared_cave and conn.get('cave_offer') == self.shared_cave.identity
                                 and secrets.compare_digest(fields[2], self.shared_cave.identity)):
                             conn['cave_ack'] = self.shared_cave.identity
+                            conn['terrain_report'] = None
                             conn['cave_transfer_pending'] = False
                             conn['cave_revoked'] = []
                             self._queue(conn, 'CAVE OK ' + self.shared_cave.identity + '\n')
@@ -1034,6 +1046,25 @@ class WorldServer:
                     except Exception:peer['closing']=True
             return {'ok':True,'identity':identity,'revision':revision,'tiles':len(merged),'changed':True,'queued':queued,'delivery_failed':delivery_failed}
 
+    def inspect_shared_terrain(self, identity):
+        """Owner-only world geometry, authoritative overlay and client reports."""
+        from .shared_terrain import validate
+        if type(identity) is not str or not re.fullmatch(r'[0-9a-f]{64}',identity):raise ValueError('invalid area identity')
+        with self.lock:
+            cave=self.shared_cave
+            if not self.archive_generated_areas or not cave or cave.version!=9 or cave.identity!=identity:raise ValueError('active durable event area required')
+            revision,payload=self._active_terrain();overlay=validate(cave,payload)
+            tiles=[{'x':x,'y':y,'terrain':'grass' if kind==0 else 'tall_grass'} for (x,y),kind in sorted(overlay.items())]
+            cast=[{'npc':i+1,'x':cave.cast[2+i*61], 'y':cave.cast[3+i*61]} for i in range(cave.cast[0])]
+            players=[]
+            for name,peer in sorted(self.peers.items()):
+                if peer.get('closing') or peer.get('cave_ack')!=identity:continue
+                report=peer.get('terrain_report');current=report if report and report['identity']==identity and report['revision']==revision else None
+                players.append({'trainer':name,'compatible':bool(peer.get('cave_terrain')),'inside':bool(peer.get('in_generated_cave')),
+                                'reported_phase':current['phase'] if current else 'pending'})
+            return {'ok':True,'identity':identity,'revision':revision,'rows':[row.decode('ascii') for row in cave._rows],
+                    'characters':cast,'tiles':tiles,'players':players}
+
     def _queue_event_command(self, trainer, identity, verb, args, npc=None, tile=None, tiles=None):
         if type(trainer) is not str or not ID.fullmatch(trainer) or type(identity) is not str or not re.fullmatch(r'[0-9a-f]{64}',identity):
             raise ValueError('invalid event command')
@@ -1124,6 +1155,12 @@ class WorldServer:
                 try:
                     if set(request)!={'command','trainer','identity','x','y','terrain'}:raise ValueError('invalid event tile command')
                     result=self.set_event_tile(request['trainer'],request['identity'],request['x'],request['y'],request['terrain'])
+                except ValueError as exc:
+                    result=dict(ok=False,error=str(exc))
+            elif request.get('command') == 'inspect_shared_terrain':
+                try:
+                    if set(request)!={'command','identity'}:raise ValueError('invalid shared terrain inspection')
+                    result=self.inspect_shared_terrain(request['identity'])
                 except ValueError as exc:
                     result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'set_shared_terrain':
