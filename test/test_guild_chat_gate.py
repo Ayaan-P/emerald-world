@@ -31,12 +31,19 @@ void SDL_StopTextInput(void){}
 int main(void){
  assert(WorldChat_OpenGuild()==1);assert(sChat.editing==1);assert(!strcmp(sChat.draft,"/guild help"));
  assert(WorldChat_OpenGuild()==0);sChat.editing=0;
+ assert(WorldChat_OpenTradeBoard()==1);assert(!strcmp(sChat.draft,"/trade help"));sChat.editing=0;
+ strcpy(sChat.draft,"/trade contact 123");Submit();assert(sent==0);
+ strcpy(sChat.draft,"/trade help");Submit();assert(sent==1);assert(!strcmp(sentText,"/trade help"));
+ history[0]="Alice > Alice: Trade: protocol 1";count=1;
+ strcpy(sChat.draft,"/g secret plans");Submit();assert(sent==1);
+ strcpy(sChat.draft,"/trade contact 123");Submit();assert(sent==2);count=0;sent=0;
  strcpy(sChat.draft,"/g secret plans");Submit();assert(sent==0);assert(strstr(sChat.hint,"/guild help"));
  strcpy(sChat.draft,"/guild post secret plans");Submit();assert(sent==0);
  history[0]="Mallory > Alice: Guild: protocol 1";count=1;
  strcpy(sChat.draft,"/g secret plans");Submit();assert(sent==0);
  strcpy(sChat.draft,"/guild help");Submit();assert(sent==1);assert(!strcmp(sentText,"/guild help"));
  history[1]="Alice > Alice: Guild: protocol 1";count=2;
+ strcpy(sChat.draft,"/trade contact 123");Submit();assert(sent==1);
  strcpy(sChat.draft,"/g secret plans");Submit();assert(sent==2);assert(!strcmp(sentText,"/g secret plans"));
  count=0;strcpy(sChat.draft,"/w Bob hello");Submit();assert(sent==3);assert(!strcmp(sentTarget,"Bob"));
  strcpy(sChat.draft,"normal chat");Submit();assert(sent==4);assert(!strcmp(sentTarget,"*"));

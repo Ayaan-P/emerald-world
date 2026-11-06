@@ -24,6 +24,8 @@ from .mechanics import validate_objects
 from .link_protocol import LinkProtocol
 from .guilds import Guilds
 from .guild_chat import GuildChat
+from .trade_board import TradeBoard
+from .trade_chat import TradeChat
 from .rally import RallyCoordinator
 
 MAX_QUEUE = 65536
@@ -136,6 +138,8 @@ class WorldServer:
         ''')
         self.guilds = Guilds(self.db, catalog_maps())
         self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
+        self.trade_board = TradeBoard(self.db)
+        self.trade_chat = TradeChat(self)
         self.db.executescript('''
             CREATE TABLE IF NOT EXISTS module (
                 singleton INTEGER PRIMARY KEY CHECK(singleton=1), source TEXT,
@@ -794,7 +798,8 @@ class WorldServer:
             self._queue(conn, self._snapshot(conn))
             return
         conn['chat_credit'] = credit - 1
-        if fields[2] == '*' and self.guild_chat.handle(conn, text.decode('ascii')):
+        if fields[2] == '*' and (self.guild_chat.handle(conn, text.decode('ascii'))
+                                 or self.trade_chat.handle(conn, text.decode('ascii'))):
             return
         self.chat_serial += 1
         message = (self.chat_serial, conn['id'], fields[2], fields[3])

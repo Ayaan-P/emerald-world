@@ -164,6 +164,9 @@ class ChatIntegrationTests(unittest.TestCase):
         class Links:
             def update_presence(self,presence):return []
         self.s.link_protocol=Links()
+        class NoTrade:
+            def handle(self,conn,text):return False
+        self.s.trade_chat=NoTrade()
         self.s.peers={n:{'id':n,'seq':0,'chat':True,'closing':False,'chat_history':[],'chat_status':'ready','state':None,'social':True,'peer_limit':8} for n in ('Alice','Bob','Eve')}
     def tearDown(self):self.db.close()
     def send(self,name,text,target='*'):
