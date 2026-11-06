@@ -101,3 +101,8 @@ class InitialResolutions(unittest.TestCase):
   self.assertIn('SetMainCallback2(CB2_HandleStartCoopBattle)',s)
   self.assertIn('gBattleEnvironment = WorldCoop_Environment()',s)
   self.assertIn('WorldCoop_Abort()',s)
+
+ def test_coop_intro_skips_absent_opponent(self):
+  s=self.read('src/battle_main.c')
+  self.assertGreaterEqual(s.count('WorldCoop_IsBattle() && (gAbsentBattlerFlags & (1u << battler))'),2)
+  self.assertIn('WorldCoop_FullPartyMenuActive()',s)

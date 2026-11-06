@@ -2822,9 +2822,17 @@ void BeginBattleIntro(void)
 
 static void BattleMainCB1(void)
 {
+#if defined(PORTABLE) && COOP_FULL_SIX_READY
+    if (WorldCoop_FullPartyMenuActive()) return;
+#endif
     gBattleMainFunc();
     for (enum BattlerId battler = 0; battler < gBattlersCount; battler++)
+    {
+#if defined(PORTABLE) && COOP_FULL_SIX_READY
+        if (WorldCoop_FullPartyMenuActive()) break;
+#endif
         gBattlerControllerFuncs[battler](battler);
+    }
 }
 
 static void ClearSetBScriptingStruct(void)
@@ -3195,6 +3203,13 @@ static void DoBattleIntro(void)
     {
     case BATTLE_INTRO_STATE_GET_MON_DATA:
         battler = gBattleCommunication[1];
+#ifdef PORTABLE
+        if (WorldCoop_IsBattle() && (gAbsentBattlerFlags & (1u << battler)))
+        {
+            gBattleStruct->eventState.battleIntro++;
+            break;
+        }
+#endif
         BtlController_EmitGetMonData(battler, B_COMM_TO_CONTROLLER, REQUEST_ALL_BATTLE, 0);
         MarkBattlerForControllerExec(battler);
         gBattleStruct->eventState.battleIntro++;
@@ -3226,6 +3241,10 @@ static void DoBattleIntro(void)
     case BATTLE_INTRO_STATE_DRAW_SPRITES:
         for (battler = 0; battler < gBattlersCount; battler++)
         {
+#ifdef PORTABLE
+            if (WorldCoop_IsBattle() && (gAbsentBattlerFlags & (1u << battler)))
+                continue;
+#endif
             if ((gBattleTypeFlags & BATTLE_TYPE_SAFARI) && IsOnPlayerSide(battler))
             {
                 memset(&gBattleMons[battler], 0, sizeof(struct BattlePokemon));
@@ -3280,6 +3299,9 @@ static void DoBattleIntro(void)
                 }
                 break;
             case B_POSITION_OPPONENT_RIGHT:
+#ifdef PORTABLE
+                if (WorldCoop_IsTrainer()) break;
+#endif
                 if (gBattleTypeFlags & BATTLE_TYPE_TRAINER)
                 {
                     if (gBattleTypeFlags & (BATTLE_TYPE_MULTI | BATTLE_TYPE_TWO_OPPONENTS) && !BATTLE_TWO_VS_ONE_OPPONENT) // opponent 2 if exists
