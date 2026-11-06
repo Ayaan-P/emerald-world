@@ -5,6 +5,9 @@ on:
       - 'port/**'
       - 'scripts/apply_bulk_expansion_port.py'
       - 'test/test_apply_bulk_expansion_port.py'
+      - 'test/test_initial_resolutions.py'
+      - 'test/test_link_engine_gate.py'
+      - 'world/server.py'
       - '.github/workflows/build-bulk-expansion.yml'
   workflow_dispatch:
 permissions:
@@ -22,6 +25,7 @@ jobs:
         run: |
           python3 -m unittest discover -s test -p test_apply_bulk_expansion_port.py -v
           python3 -m unittest discover -s test -p test_initial_resolutions.py -v
+          python3 -m unittest discover -s test -p test_link_engine_gate.py -v
       - name: Apply candidate to clean pinned donor
         run: python3 scripts/apply_bulk_expansion_port.py engines/expansion-native
       - name: Install native build prerequisites
