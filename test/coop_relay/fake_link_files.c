@@ -1,5 +1,6 @@
 /* Test-only file relay: no sockets. Never link into a user binary. */
 #define PORTABLE 1
+#include <stdlib.h>
 #include "global.h"
 #include "main.h"
 #include "overworld.h"
@@ -14,7 +15,6 @@
 #include "platform/link_transport.h"
 #include <inttypes.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 static FILE *incoming,*outgoing;
 static struct LinkTransportInvitation invite;
