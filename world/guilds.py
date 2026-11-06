@@ -25,6 +25,10 @@ class Guilds:
             CREATE TABLE IF NOT EXISTS guild_invites (
                 guild_id INTEGER NOT NULL, trainer TEXT NOT NULL,
                 PRIMARY KEY(guild_id, trainer));
+            CREATE TABLE IF NOT EXISTS guild_posts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id INTEGER NOT NULL,
+                trainer TEXT NOT NULL, body TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS guild_posts_guild ON guild_posts(guild_id,id);
             CREATE TABLE IF NOT EXISTS guild_expeditions (
                 guild_id INTEGER PRIMARY KEY, map_name TEXT NOT NULL,
                 goal INTEGER NOT NULL, complete INTEGER NOT NULL DEFAULT 0);
@@ -58,10 +62,12 @@ class Guilds:
             raise GuildError('Invalid guild command.')
         words = command.split()
         if not words or words == ['help']:
-            return ['/guild create NAME | /guild invite TRAINER', '/guild invites | /guild accept NAME | /guild decline NAME', '/guild info | /guild roster | /guild leave', '/guild expedition shows your current expedition.', '/guild kick TRAINER | /guild transfer TRAINER | /guild disband', '/g MESSAGE sends guild-only chat.']
+            return ['/guild create NAME | /guild invite TRAINER', '/guild invites | /guild accept NAME | /guild decline NAME', '/guild info | /guild roster | /guild leave', '/guild expedition shows your current expedition.', '/guild post MESSAGE | /guild board | /guild clear', '/guild kick TRAINER | /guild transfer TRAINER | /guild disband', '/g MESSAGE sends guild-only chat.']
         op, args = words[0].lower(), words[1:]
         if op == 'expedition':
             return self.expedition(trainer, args)
+        if op in ('post','board','clear'):
+            return self.board(trainer, op, command[len(words[0]):].strip())
         arity = {'create':1,'invite':1,'accept':1,'decline':1,'invites':0,'info':0,'roster':0,'leave':0,'kick':1,'transfer':1,'disband':0}
         if op not in arity or len(args) != arity[op]:
             raise GuildError('Invalid command. Use /guild help.')
@@ -121,9 +127,27 @@ class Guilds:
             self.db.execute('DELETE FROM guild_invites WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_expedition_visits WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_expeditions WHERE guild_id=?',(guild[0],))
+            self.db.execute('DELETE FROM guild_posts WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_members WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guilds WHERE id=?',(guild[0],))
             return [f'Disbanded {guild[1]}.']
+
+    def board(self, trainer, op, body):
+        """Small persistent guild bulletin board; posts are untrusted player text."""
+        with self.db:
+            guild=self._require(trainer,leader=(op=='clear'))
+            if op=='post':
+                if not 1<=len(body)<=70 or not body.isascii() or any(ord(c)<32 or ord(c)>126 for c in body):
+                    raise GuildError('Use /guild post followed by 1-70 printable characters.')
+                self.db.execute('INSERT INTO guild_posts(guild_id,trainer,body) VALUES(?,?,?)',(guild[0],trainer,body))
+                self.db.execute('DELETE FROM guild_posts WHERE guild_id=? AND id NOT IN (SELECT id FROM guild_posts WHERE guild_id=? ORDER BY id DESC LIMIT 20)',(guild[0],guild[0]))
+                return ['Posted to the guild board.']
+            if body: raise GuildError('This command takes no extra text.')
+            if op=='clear':
+                self.db.execute('DELETE FROM guild_posts WHERE guild_id=?',(guild[0],))
+                return ['Guild board cleared.']
+            rows=self.db.execute('SELECT trainer,body FROM guild_posts WHERE guild_id=? ORDER BY id DESC LIMIT 8',(guild[0],)).fetchall()
+            return [f'{name}: {text}' for name,text in reversed(rows)] or ['Guild board is empty.']
 
     def expedition(self, trainer, args):
         """A cooperative visit objective. Arrival is client-reported, not anti-cheat."""

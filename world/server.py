@@ -827,6 +827,15 @@ class WorldServer:
                     if invitee and invitee.get('chat') and not invitee.get('closing') and guild:
                         self._guild_message(invitee, conn['id'], f'Guild: {conn["id"]} invited you to {guild[1]}. Use /guild accept {guild[1]}')
                         self._queue(invitee, self._snapshot(invitee))
+                if len(parts) >= 3 and parts[1].lower() == 'post' and lines[0] == 'Posted to the guild board.':
+                    guild_name, members = self.guilds.members(conn['id'])
+                    for name in members:
+                        if name == conn['id']:
+                            continue
+                        recipient = self.peers.get(name)
+                        if recipient and recipient.get('chat') and not recipient.get('closing'):
+                            self._guild_message(recipient, conn['id'], f'Guild board: {conn["id"]} posted. Use /guild board')
+                            self._queue(recipient, self._snapshot(recipient))
             conn['chat_status'] = 'sent'
             self._queue(conn, self._snapshot(conn))
             return

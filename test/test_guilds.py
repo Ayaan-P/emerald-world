@@ -76,6 +76,20 @@ class GuildTests(unittest.TestCase):
         self.assertIn('0/1',self.g.command('Alice','expedition')[0])
         self.g.command('Alice','expedition cancel')
         self.assertIn('No expedition',self.g.command('Alice','expedition')[0])
+    def test_persistent_board_access_limits_and_leader_clear(self):
+        with tempfile.TemporaryDirectory() as d:
+            path=str(Path(d)/'world.db');db=database(path);g=guilds.Guilds(db)
+            g.command('Alice','create Rockets');g.command('Alice','invite Bob');g.command('Bob','accept Rockets')
+            g.command('Alice','post Meet at the gym tomorrow')
+            with self.assertRaises(guilds.GuildError):g.command('Eve','board')
+            with self.assertRaises(guilds.GuildError):g.command('Bob','clear')
+            with self.assertRaises(guilds.GuildError):g.command('Bob','post '+('x'*71))
+            db.close();db=sqlite3.connect(path);g=guilds.Guilds(db)
+            self.assertEqual(g.command('Bob','board'),['Alice: Meet at the gym tomorrow'])
+            for i in range(25):g.command('Bob',f'post Message {i}')
+            count=db.execute('SELECT COUNT(*) FROM guild_posts').fetchone()[0]
+            self.assertEqual(count,20);self.assertEqual(len(g.command('Bob','board')),8)
+            g.command('Alice','clear');self.assertEqual(g.command('Bob','board'),['Guild board is empty.']);db.close()
     def test_expedition_survives_restart_with_member_progress(self):
         with tempfile.TemporaryDirectory() as d:
             path=str(Path(d)/'world.db');db=database(path);catalog={(0,9):{'name':'Route101'}};g=guilds.Guilds(db,catalog)
@@ -133,6 +147,13 @@ class ChatIntegrationTests(unittest.TestCase):
         self.assertIn('[Guild] meet at the gym',self.lines('Bob'))
         self.assertEqual(self.lines('Eve'),[])
         self.assertFalse(any('/guild' in x for x in self.lines('Eve')))
+    def test_board_notifications_and_content_are_guild_private(self):
+        self.send('Alice','/guild create Rockets');self.send('Alice','/guild invite Bob');self.send('Bob','/guild accept Rockets')
+        self.send('Alice','/guild post Meet me tomorrow')
+        self.assertTrue(any('Guild board:' in x for x in self.lines('Bob')))
+        self.send('Bob','/guild board')
+        self.assertIn('Guild: Alice: Meet me tomorrow',self.lines('Bob'))
+        self.assertEqual(self.lines('Eve'),[])
     def test_field_reports_complete_a_guild_expedition_privately(self):
         self.send('Alice','/guild create Rockets');self.send('Alice','/guild invite Bob');self.send('Bob','/guild accept Rockets')
         self.send('Alice','/guild expedition start Route101 2')
