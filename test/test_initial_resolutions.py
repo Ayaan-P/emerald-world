@@ -39,6 +39,13 @@ class InitialResolutions(unittest.TestCase):
  def test_additional_carried_hooks(self):
   battle=self.read('src/battle_setup.c');objects=self.read('src/event_object_movement.c');fly=self.read('src/field_effect.c')
   self.assertEqual(battle.count('WorldActivity_TryCoopTrainerBattle()'),2)
-  self.assertIn('DexNavNative_BattleFinished(gBattleOutcome)',battle)
+  self.assertEqual(self.read('src/field_control_avatar.c').count('if (OnStep_DexNavSearch())'),1)
   self.assertIn('WorldBridge_IsRemoteObject(curObject)',objects)
   self.assertIn('WorldTravel_ArrivalFallback()',fly)
+
+ def test_use_expansion_field_mechanics(self):
+  field=self.read('src/field_control_avatar.c');dex=self.read('src/dexnav.c');make=self.read('Makefile.native')
+  self.assertNotIn('DexNavNative_HandleInput()',field)
+  self.assertIn('TryStartDexNavSearch()',field)
+  self.assertIn('DexNav_OpenFromField(void)',dex)
+  self.assertIn('$(C_SUBDIR)/platform/repeat_repel.c',make)

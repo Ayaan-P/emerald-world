@@ -28,7 +28,7 @@
       "donor_sha256": "7ccc8edb0f1b2cf7d647c89553a22322620bfefe38a58b0655217188b3b9f8bc",
       "rc6_sha256": "e073490dce2403ba5f3a6fc8fbe1649d9899e77a0c9b22e5329db846d17644e2",
       "rc8_sha256": "e073490dce2403ba5f3a6fc8fbe1649d9899e77a0c9b22e5329db846d17644e2",
-      "merged_sha256": "ca8176af1bf56ef9b347fdbbf749be2e910da40466b0128f3b6aa7ccdfb64009"
+      "merged_sha256": "fb6e7510b495870e06631f2dc953722d2274123635b91213b99cc4a053ea9ce9"
     },
     {
       "path": "src/event_object_movement.c",

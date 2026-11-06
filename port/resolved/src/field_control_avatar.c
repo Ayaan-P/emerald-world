@@ -122,8 +122,6 @@ void FieldGetPlayerInput(struct FieldInput *input, u16 newKeys, u16 heldKeys)
     newKeys &= heldKeys;
     newKeys = WorldActivity_FilterFieldKeys(newKeys);
     heldKeys = WorldActivity_FilterFieldKeys(heldKeys);
-    DexNavNative_SetInput(newKeys, heldKeys, !forcedMove
-        && (tileTransitionState == T_NOT_MOVING || tileTransitionState == T_TILE_CENTER));
 #endif
 
     if ((tileTransitionState == T_TILE_CENTER && forcedMove == FALSE) || tileTransitionState == T_NOT_MOVING)
@@ -196,11 +194,6 @@ int ProcessPlayerFieldInput(struct FieldInput *input)
     if (TryRunOnFrameMapScript() == TRUE)
         return TRUE;
 
-#ifdef PORTABLE
-    if (DexNavNative_HandleInput())
-        return TRUE;
-#endif
-
     if (input->pressedBButton && TrySetupDiveEmergeScript() == TRUE)
         return TRUE;
     if (input->tookStep)
@@ -222,9 +215,6 @@ int ProcessPlayerFieldInput(struct FieldInput *input)
         metatileBehavior = MapGridGetMetatileBehaviorAt(position.x, position.y);
     }
     if (input->checkStandardWildEncounter
-#ifdef PORTABLE
-        && !gDexNavNativeState.searching
-#endif
         && CheckStandardWildEncounter(metatileBehavior) == TRUE)
         return TRUE;
     if (input->heldDirection && input->dpadDirection == playerDirection)
@@ -724,10 +714,6 @@ bool8 TryStartStepBasedScript(struct MapPosition *position, u16 metatileBehavior
         return TRUE;
     if (OnStep_DexNavSearch())
         return TRUE;
-#ifdef PORTABLE
-    if (OnStep_DexNavSearch())
-        return TRUE;
-#endif
     return FALSE;
 }
 

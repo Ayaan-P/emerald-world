@@ -1,7 +1,6 @@
 #include "global.h"
 #ifdef PORTABLE
 #include "platform/world_activity.h"
-#include "platform/dexnav_native.h"
 #include "platform/world_coop.h"
 static bool8 sWorldWildFallback;
 #endif
@@ -281,9 +280,6 @@ static void Task_BattleStart(u8 taskId)
 static void CreateBattleStartTask(enum BattleTransition transition, u16 song)
 {
     u8 taskId = CreateTask(Task_BattleStart, 1);
-#ifdef PORTABLE
-    DexNavNative_CancelForOtherBattle();
-#endif
 
     gTasks[taskId].tTransition = transition;
     PlayMapChosenOrBattleBGM(song);
@@ -705,9 +701,6 @@ static void DowngradeBadPoison(void)
 
 static void CB2_EndWildBattle(void)
 {
-#ifdef PORTABLE
-    DexNavNative_BattleFinished(gBattleOutcome);
-#endif
     CpuFill16(0, (void *)(BG_PLTT), BG_PLTT_SIZE);
     ResetOamRange(0, 128);
 

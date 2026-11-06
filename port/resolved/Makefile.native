@@ -411,7 +411,7 @@ endif
 # the native build does not have, and platform/rtc_siirtc.c provides the
 # SiiRtc* API of include/siirtc.h from the platform's clock model instead.
 
-NATIVE_EXCLUDED_SRCS := $(C_SUBDIR)/siirtc.c
+NATIVE_EXCLUDED_SRCS := $(C_SUBDIR)/siirtc.c $(C_SUBDIR)/platform/repeat_repel.c
 C_SRCS_IN := $(filter-out $(NATIVE_EXCLUDED_SRCS),$(wildcard $(C_SUBDIR)/*.c $(C_SUBDIR)/*/*.c $(C_SUBDIR)/*/*/*.c))
 C_SRCS := $(foreach src,$(C_SRCS_IN),$(if $(findstring .inc.c,$(src)),,$(src)))
 C_OBJS := $(patsubst $(C_SUBDIR)/%.c,$(C_BUILDDIR)/%.o,$(C_SRCS))
