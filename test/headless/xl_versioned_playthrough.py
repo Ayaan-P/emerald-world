@@ -8,7 +8,9 @@ import tempfile
 import driver
 from large_cave_playthrough import flee
 from world.xl_painted_events import encode
-from world.xl_versioned_world import create,revise
+from world.xl_versioned_world import create
+from world import xl_revision_author,runtime_gm
+from unittest.mock import patch
 from world.map_store import write_map
 from world.author_cave import decode_blueprint_events
 
@@ -67,7 +69,13 @@ def run(binary,seed,out):
             driver.wait_until(game,lambda s:tuple(s.map)==origin[0] and s.free)
             if game.state.pos!=origin[1]:raise RuntimeError('guided wilds returned to wrong position')
             blueprint={'rooms':[[1,1,125,125]],'links':[],'entrance_room':0,'exit_room':0}
-            updated=revise(blob,blueprint,[{'x':30,'y':30,'width':5,'height':5,'terrain':'water'}])
+            good={**blueprint,'paint':[{'x':30,'y':30,'width':5,'height':5,'terrain':'water'}]}
+            bad={**blueprint,'paint':[{'x':75,'y':20,'width':1,'height':1,'terrain':'water'}]}
+            def revision_wire(candidate):
+                return '\n'.join(json.dumps(x) for x in ({'type':'item.completed','item':{'type':'agent_message','text':json.dumps(candidate)}},{'type':'turn.completed'})).encode()
+            catalog=json.dumps({'models':[{'slug':'gpt-6-luna'}]}).encode()
+            with patch('world.author_cave.gm._run_author',side_effect=[runtime_gm.CODEX_VERSION.encode(),catalog,revision_wire(bad),revision_wire(good)]):
+                updated=xl_revision_author.author_revision('mock revision',blob,attempts=2)
             write_map(area,updated,replace=True)
             game.tap('START',gap=30);game.tap('DOWN');game.tap('A',gap=60);game.tap('DOWN',times=2);game.tap('A',gap=90)
             driver.wait_until(game,lambda s:s.map_name=='GeneratedWorld_Wilds' and s.free)
@@ -89,7 +97,7 @@ def run(binary,seed,out):
         finally:code=again.finish()
         if code:raise RuntimeError(f'restarted client exited {code}')
         if hashlib.sha256(Path(again.save_path).read_bytes()).digest()!=before:raise RuntimeError('restarted disposable save changed')
-    print('PASS: versioned XL story survived a terrain revision and process restart without writing the save')
+    print('PASS: versioned XL story survived a mocked-model terrain revision and process restart without writing the save')
 
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--binary',required=True);p.add_argument('--seed-save',required=True);p.add_argument('--out',required=True)
