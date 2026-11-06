@@ -41,6 +41,7 @@ static int GeneratedMap_StageTemplate(const u8 *p,unsigned n){(void)p;(void)n;re
 static int GeneratedMap_StageLargeTemplate(const u8 *p,unsigned n){(void)p;(void)n;return 0;}
 static int GeneratedMap_StageWildsTemplate(const u8 *p,unsigned n){(void)p;(void)n;return 0;}
 static int GeneratedMap_StageXLWilds(const u8 *p,unsigned n){calls++;return n==16129 && p[0]=='#';}
+static int GeneratedMap_StageXLPalette(const u8 *p,unsigned n){(void)p;(void)n;return 0;}
 ''' + function(src,'LoadGeneratedMapTemplate') + r'''
 int main(int argc,char **argv){if(argc!=4)return 1;
 if(!LoadGeneratedMapTemplate(argv[1])||calls!=1)return 2;
@@ -78,13 +79,13 @@ void PlayerGetDestCoords(s16 *x,s16 *y){*x=15;*y=16;}
 void SetWarpDestination(s8 g,s8 n,s8 w,s8 x,s8 y){destination=(struct WarpData){g,n,w,x,y};}
 void SetDynamicWarpWithCoords(int z,s8 g,s8 n,s8 w,s8 x,s8 y){(void)z;save.dynamicWarp=(struct WarpData){g,n,w,x,y};}
 void StoreInitialPlayerAvatarState(void){}void DoWarp(void){}
-int main(void){u8 data[16129],bad[16129];struct MapLayout base={19,26,0,0,0,0};const struct MapLayout *layout;
+int main(void){u8 data[16129],bad[16129],paint[16129];unsigned chosen=0;struct MapLayout base={19,26,0,0,0,0};const struct MapLayout *layout;
  assert(fread(data,1,sizeof(data),stdin)==sizeof(data));memcpy(bad,data,sizeof(data));bad[0]='.';
- assert(!GeneratedMap_StageXLWilds(bad,sizeof(bad)));assert(GeneratedMap_StageXLWilds(data,sizeof(data)));
+ assert(!GeneratedMap_StageXLWilds(bad,sizeof(bad)));memcpy(paint,data,sizeof(paint));for(unsigned i=129;i<16000;i++)if(paint[i]=='.'){chosen=i;break;}assert(chosen);paint[chosen]='t';assert(GeneratedMap_StageXLPalette(paint,sizeof(paint)));
  online=1;assert(!GeneratedMap_StageXLWilds(data,sizeof(data)));online=0;
  gMapHeader.mapType=1;gMapHeader.mapLayout=&base;gMapHeader.events=&events;save.location=(struct WarpData){3,4,0,8,9};
  assert(GeneratedMap_Enter());save.location=destination;layout=GeneratedMap_ResolveLayout(&base);
- assert(layout->width==127 && layout->height==127 && layout->map[125*127+125]==0x3024 && gMapHeader.events->warps->x==125 && gMapHeader.events->warps->y==125);
+ assert(layout->width==127 && layout->height==127 && layout->map[chosen]==0x300d && layout->map[125*127+125]==0x3024 && gMapHeader.events->warps->x==125 && gMapHeader.events->warps->y==125);
  for(int i=0;i<16129;i++){u16 tile=layout->map[i];if(i==125*127+125)continue;
  if(data[i]=='.')assert(tile==0x3001||tile==0x300d);else assert(tile==0x0487);}
  assert(!GeneratedMap_StageXLWilds(data,sizeof(data)));

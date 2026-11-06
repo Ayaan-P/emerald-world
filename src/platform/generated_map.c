@@ -80,7 +80,7 @@ extern const u8 GeneratedWorld_Wilds_EventScript_Cast2[], GeneratedWorld_Wilds_E
 #if GENERATED_WORLD_XL
 #define XL_SIDE 127
 #define XL_CELLS (XL_SIDE*XL_SIDE)
-static u16 sXLTiles[XL_CELLS];static u8 sXLTemplate[XL_CELLS];
+static u16 sXLTiles[XL_CELLS];static u8 sXLTemplate[XL_CELLS],sXLPalette[XL_CELLS];static bool8 sXLHasPalette;
 static bool8 sXLStaged,sXLActive;
 #if GENERATED_WILDS_CAST
 static bool8 sXLCastStaged;
@@ -288,7 +288,7 @@ bool8 GeneratedMap_StageXLWilds(const u8 *cells, u32 size)
         for(d=0;d<4;d++)if(next[d]>=0 && next[d]<XL_CELLS && cells[next[d]]=='.' && !seen[next[d]]){seen[next[d]]=TRUE;queue[tail++]=next[d];}
     }
     for(i=0;i<XL_CELLS;i++)if(cells[i]=='.' && !seen[i])return FALSE;
-    memcpy(sXLTemplate,cells,XL_CELLS);sXLStaged=TRUE;
+    memcpy(sXLTemplate,cells,XL_CELLS);sXLStaged=TRUE;sXLHasPalette=FALSE;
 #if GENERATED_WILDS_CAST
     sXLCastStaged=FALSE;
 #if GENERATED_WILDS_EVENTS
@@ -307,6 +307,23 @@ bool8 GeneratedMap_StageXLWilds(const u8 *cells, u32 size)
     (void)cells;(void)size;return FALSE;
 #endif
 }
+bool8 GeneratedMap_StageXLPalette(const u8 *cells,u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_WORLD_XL
+    u8 geometry[XL_CELLS];u16 i;
+    if(!cells || size!=XL_CELLS)return FALSE;
+    for(i=0;i<XL_CELLS;i++){
+        if(cells[i]!='#' && cells[i]!='.' && cells[i]!='t')return FALSE;
+        geometry[i]=cells[i]=='#' ? '#' : '.';
+    }
+    if(cells[XL_SIDE+1]!='.' || cells[124*XL_SIDE+125]!='.' || cells[125*XL_SIDE+125]!='.')return FALSE;
+    if(!GeneratedMap_StageXLWilds(geometry,XL_CELLS))return FALSE;
+    memcpy(sXLPalette,cells,XL_CELLS);sXLHasPalette=TRUE;return TRUE;
+#else
+    (void)cells;(void)size;return FALSE;
+#endif
+}
+
 
 /* Validate all geometry before staging. Shared input is accepted only from
  * the version-negotiated, integrity-checked authority path. */
@@ -1163,7 +1180,7 @@ bool8 GeneratedMap_Enter(void)
 #endif
 #if GENERATED_WORLD_XL
     if(sXLActive) {u16 i;for(i=0;i<XL_CELLS;i++){unsigned x=i%XL_SIDE,y=i/XL_SIDE;
-        sXLTiles[i]=sXLTemplate[i]=='.' ? (((x*13+y*7)%5) ? 0x300d : 0x3001) : 0x0487;}
+        sXLTiles[i]=sXLHasPalette ? (sXLPalette[i]=='#' ? 0x0487 : sXLPalette[i]=='t' ? 0x300d : 0x3001) : sXLTemplate[i]=='.' ? (((x*13+y*7)%5) ? 0x300d : 0x3001) : 0x0487;}
         sXLTiles[XL_SIDE+1]=0x3001;sXLTiles[125*XL_SIDE+125]=0x3024;
     } else
 #endif

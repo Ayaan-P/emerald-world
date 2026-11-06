@@ -74,6 +74,7 @@ static int GeneratedMap_StageTemplate(const u8 *p,unsigned n){(void)p;(void)n;re
 static int GeneratedMap_StageLargeTemplate(const u8 *p,unsigned n){(void)p;(void)n;return 0;}
 static int GeneratedMap_StageWildsTemplate(const u8 *p,unsigned n){(void)p;(void)n;return 0;}
 static int GeneratedMap_StageXLWilds(const u8 *p,unsigned n){(void)p;(void)n;return 0;}
+static int GeneratedMap_StageXLPalette(const u8 *p,unsigned n){(void)p;(void)n;return 0;}
 static int GeneratedMap_StageGuidedWilds(const u8 *p,unsigned n,const u8 *c,unsigned z){(void)p;(void)n;(void)c;(void)z;return 0;}
 static int GeneratedMap_StageCastWilds(const u8 *p,unsigned n,const u8 *c,unsigned z){(void)p;(void)n;(void)c;(void)z;return 0;}
 static int GeneratedMap_StageXLCast(const u8 *p,unsigned n,const u8 *c,unsigned z){calls++;return n==184&&z==16129&&p[0]==1&&c[0]=='#';}
