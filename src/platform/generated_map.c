@@ -291,6 +291,9 @@ bool8 GeneratedMap_StageXLWilds(const u8 *cells, u32 size)
     memcpy(sXLTemplate,cells,XL_CELLS);sXLStaged=TRUE;
 #if GENERATED_WILDS_CAST
     sXLCastStaged=FALSE;
+#if GENERATED_WILDS_EVENTS
+    sEventStaged=FALSE;
+#endif
 #endif
     sLargeStaged=FALSE;sLargeShared=FALSE;sHasTemplate=FALSE;sLargeWilds=FALSE;
 #if GENERATED_CAVE_PROFILES
@@ -553,10 +556,10 @@ bool8 GeneratedMap_StageCastWilds(const u8 *metadata, u32 metaSize, const u8 *ce
 #endif
 }
 #if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
-static bool8 StageEventWilds(const u8 *events, u32 eventSize, const u8 *cast, u32 castSize, const u8 *cells, u32 size, bool8 shared)
+static bool8 ValidateEventRules(const u8 *events,u32 eventSize,const u8 *cast,u32 castSize)
 {
     u8 guide[GENERATED_GUIDE_BYTES], used[16][3]={{0}};unsigned j,k,n;
-    if(!events || eventSize!=GENERATED_EVENT_BYTES || !cast || castSize!=GENERATED_CAST_BYTES || !cells || size!=LARGE_CELLS || events[0]>15) return FALSE;
+    if(!events || eventSize!=GENERATED_EVENT_BYTES || !cast || castSize!=GENERATED_CAST_BYTES || events[0]>15) return FALSE;
     n=events[1];if(!n || n>24 || !cast[0] || cast[0]>3)return FALSE;
     guide[0]=7;
     for(j=0;j<24;j++) {const u8 *r=events+2+j*61;
@@ -565,6 +568,11 @@ static bool8 StageEventWilds(const u8 *events, u32 eventSize, const u8 *cast, u3
         used[r[0]][r[1]-1]=TRUE;guide[1]=r[3];memcpy(guide+2,r+4,57);
         if(!ValidateGuideText(guide,sizeof(guide)))return FALSE;
     }
+    return TRUE;
+}
+static bool8 StageEventWilds(const u8 *events, u32 eventSize, const u8 *cast, u32 castSize, const u8 *cells, u32 size, bool8 shared)
+{
+    if(!cells || size!=LARGE_CELLS || !ValidateEventRules(events,eventSize,cast,castSize))return FALSE;
     if (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
         return shared && sEventActive && sLargeShared && !memcmp(events,sEventData,GENERATED_EVENT_BYTES)
             && !memcmp(cast,sCastMetadata,GENERATED_CAST_BYTES) && !memcmp(cells,sLargeTemplate,LARGE_CELLS);
@@ -572,6 +580,15 @@ static bool8 StageEventWilds(const u8 *events, u32 eventSize, const u8 *cast, u3
     memcpy(sEventData,events,GENERATED_EVENT_BYTES);sEventStaged=TRUE;return TRUE;
 }
 #endif
+bool8 GeneratedMap_StageXLEvents(const u8 *events,u32 eventSize,const u8 *cast,u32 castSize,const u8 *cells,u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_WORLD_XL && GENERATED_WILDS_EVENTS
+    if(!ValidateEventRules(events,eventSize,cast,castSize) || !GeneratedMap_StageXLCast(cast,castSize,cells,size))return FALSE;
+    memcpy(sEventData,events,GENERATED_EVENT_BYTES);sEventStaged=TRUE;return TRUE;
+#else
+    (void)events;(void)eventSize;(void)cast;(void)castSize;(void)cells;(void)size;return FALSE;
+#endif
+}
 bool8 GeneratedMap_StageEventWilds(const u8 *events, u32 eventSize, const u8 *cast, u32 castSize, const u8 *cells, u32 size)
 {
 #if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
@@ -1243,7 +1260,11 @@ const struct MapLayout *GeneratedMap_ResolveLayout(const struct MapLayout *base)
 #if GENERATED_WILDS_CAST
             if(sCastActive && sXLCastStaged) {unsigned j;const u8 *scripts[3]={GeneratedWorld_Wilds_EventScript_Guide,GeneratedWorld_Wilds_EventScript_Cast2,GeneratedWorld_Wilds_EventScript_Cast3};
                 memset(sGuideObjects,0,sizeof(sGuideObjects));for(j=0;j<sCastMetadata[0];j++){const u8 *r=sCastMetadata+1+j*61;
-                    sGuideObjects[j].localId=j+1;sGuideObjects[j].graphicsId=r[0];sGuideObjects[j].x=r[1];sGuideObjects[j].y=r[2];sGuideObjects[j].elevation=3;sGuideObjects[j].movementType=MOVEMENT_TYPE_FACE_LEFT;sGuideObjects[j].script=scripts[j];}
+                    sGuideObjects[j].localId=j+1;sGuideObjects[j].graphicsId=r[0];sGuideObjects[j].x=r[1];sGuideObjects[j].y=r[2];sGuideObjects[j].elevation=3;sGuideObjects[j].movementType=MOVEMENT_TYPE_FACE_LEFT;sGuideObjects[j].script=scripts[j];
+#if GENERATED_WILDS_EVENTS
+                    if(sEventActive)sGuideObjects[j].script=GeneratedWorld_Wilds_EventScript_Graph;
+#endif
+                }
                 sXLEvents.objectEventCount=sCastMetadata[0];sXLEvents.objectEvents=sGuideObjects;
             }
 #endif
