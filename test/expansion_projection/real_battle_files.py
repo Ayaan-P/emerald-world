@@ -45,7 +45,7 @@ with tempfile.TemporaryDirectory(prefix='expansion-battle-file-test-') as tmp:
   server._line(c,f'HELLO 1 {n} {token} SOCIAL'.encode());assert c.get('id')==n;c['out'].clear();conns[n]=c
  def start(n):
   p=root/n;p.mkdir();profiles[n]=p;(p/'out').mkdir();shutil.copyfile(save,p/'game.sav');(p/'in').touch();(p/'events').touch();(p/'peers.txt').write_text('EWPEERS 1\n');(p/'game.replay').write_text(scripts[n]);logs[n]=(p/'stderr').open('w')
-  env=dict(os.environ,EW_EXPANSION_PRESENCE=str(p/'presence.json'),EW_EXPANSION_PEERS=str(p/'peers.txt'),EW_EXPERIMENTAL_EXPANSION_PEERS='1',EW_EXPERIMENTAL_EXPANSION_ACTIVITIES='1',EW_EXPANSION_LINK_CONFIG='fake-file-relay',EW_FAKE_LINK_IN=str(p/'in'),EW_FAKE_LINK_OUT=str(p/'events'))
+  env=dict(os.environ,EW_EXPANSION_PRESENCE=str(p/'presence.json'),EW_EXPANSION_PEERS=str(p/'peers.txt'),EW_EXPERIMENTAL_EXPANSION_PEERS='1',EW_EXPERIMENTAL_EXPANSION_ACTIVITIES='1',EW_EXPANSION_LINK_CONFIG='fake-file-relay',EW_FAKE_LINK_IN=str(p/'in'),EW_FAKE_LINK_OUT=str(p/'events'),EW_ACTIVITY_DIAGNOSTIC='1')
   procs[n]=subprocess.Popen([str(binary),'--headless','--silent','--replay',str(p/'game.replay'),'--out',str(p/'out'),'--save',str(p/'game.sav'),'--rtc-offset',str(p/'clock.rtc'),'--rtc-fixed','1700000000'],env=env,stdout=subprocess.DEVNULL,stderr=logs[n])
  def deliver(out):
   for target,line in out:

@@ -1,6 +1,7 @@
 /* Opt-in native battle consent flow for Expansion. No automatic acceptance.
  * Battles and party-only trade are opt-in; tagged co-op remains disabled. */
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include "global.h"
 #include "global.fieldmap.h"
@@ -126,6 +127,8 @@ static void task_menu(u8 task)
     (void)task;
     if (!sActivity.timer++) return;
     choice = Menu_ProcessInputNoWrap();
+    if (getenv("EW_ACTIVITY_DIAGNOSTIC") && choice != MENU_NOTHING_CHOSEN)
+        fprintf(stderr,"activity menu phase=%u choice=%d party=%d\n",sActivity.phase,choice,party_ready(sActivity.mode));
     if (choice == MENU_NOTHING_CHOSEN) return;
     close_menu();
     if (sActivity.phase == ACT_INVITE) {
@@ -199,6 +202,11 @@ void __wrap_FieldGetPlayerInput(struct FieldInput *input, u16 newKeys, u16 heldK
     }
     if (enabled() && (newKeys & A_BUTTON) && sActivity.phase == ACT_IDLE) {
         const char *peer = ExpansionPeers_Facing();
+        static unsigned debug_count;
+        if (getenv("EW_ACTIVITY_DIAGNOSTIC") && debug_count++ < 20) {
+            s16 x,y; GetXYCoordsOneStepInFrontOfPlayer(&x,&y);
+            fprintf(stderr,"activity A peer=%s front=%d,%d field=%d locked=%d active=%d ready=%d\n",peer?peer:"none",x,y,field_context(),ArePlayerFieldControlsLocked(),NativeLink_IsActive(),LinkTransport_Ready());
+        }
         if (peer && begin_menu(peer, FALSE)) newKeys &= ~A_BUTTON;
     }
     if (sActivity.phase != ACT_IDLE) { newKeys = 0; heldKeys = 0; }

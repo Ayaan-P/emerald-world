@@ -1,7 +1,7 @@
 #ifndef ACTIVITY_STUB_H
 #define ACTIVITY_STUB_H
 #include <stdint.h>
-typedef uint8_t u8; typedef uint16_t u16; typedef uint32_t u32; typedef uint64_t u64; typedef int8_t s8; typedef uint8_t bool8; typedef void (*MainCallback)(void);
+typedef uint8_t u8; typedef uint16_t u16; typedef uint32_t u32; typedef uint64_t u64; typedef int8_t s8; typedef int16_t s16; typedef uint8_t bool8; typedef void (*MainCallback)(void);
 #define TRUE 1
 #define FALSE 0
 #define WINDOW_NONE 255
@@ -46,3 +46,5 @@ void CloseLink(void); void OpenLink(void); void ResetLinkPlayers(void); int HasL
 
 #define SELECT_BUTTON 4
 #define R_BUTTON 256
+
+void GetXYCoordsOneStepInFrontOfPlayer(s16*,s16*);
