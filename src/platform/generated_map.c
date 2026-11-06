@@ -10,6 +10,10 @@
 #include "platform/link_transport.h"
 #include "platform/world_rally.h"
 #include "platform/generated_map.h"
+#if GENERATED_WORLD_XL && GENERATED_WILDS_EVENTS
+#include "platform/xl_progress_store.h"
+#include "platform/world_cave_wire.h"
+#endif
 #if GENERATED_WILDS_EVENTS
 #include "field_camera.h"
 #include "event_data.h"
@@ -76,6 +80,72 @@ extern const u8 GeneratedWorld_Wilds_EventScript_Cast2[], GeneratedWorld_Wilds_E
 #endif
 #endif
 #endif
+#endif
+#if GENERATED_WORLD_XL
+#define XL_SIDE 127
+#define XL_CELLS (XL_SIDE*XL_SIDE)
+static u16 sXLTiles[XL_CELLS];static u8 sXLTemplate[XL_CELLS];
+static bool8 sXLStaged,sXLActive;
+#if GENERATED_WILDS_CAST
+static bool8 sXLCastStaged;
+#endif
+static struct WarpEvent sXLWarp;static struct MapEvents sXLEvents;
+#if GENERATED_WILDS_EVENTS
+#define XL_PROGRESS_SLOTS 64
+static struct {bool8 valid;u8 trainer[4],state,identity[64];} sXLProgress[XL_PROGRESS_SLOTS];
+static u8 sXLProgressCurrent=0xFF,sXLProgressNext;
+#define XL_PROGRESS_SLOT_BYTES (6 + 64)
+#define XL_PROGRESS_PAYLOAD_BYTES (1 + XL_PROGRESS_SLOTS * XL_PROGRESS_SLOT_BYTES)
+static u8 sXLProgressPayload[XL_PROGRESS_PAYLOAD_BYTES];static bool8 sXLProgressDurable;
+static void XLProgressPack(void)
+{
+    unsigned i;u8 *p=sXLProgressPayload;*p++=sXLProgressNext;
+    for(i=0;i<XL_PROGRESS_SLOTS;i++){*p++=sXLProgress[i].valid;memcpy(p,sXLProgress[i].trainer,4);p+=4;*p++=sXLProgress[i].state;
+        memcpy(p,sXLProgress[i].identity,64);p+=64;}
+}
+static bool8 XLProgressUnpack(void)
+{
+    unsigned i;const u8 *p=sXLProgressPayload;
+    if(*p>=XL_PROGRESS_SLOTS)return FALSE;
+    for(i=0;i<XL_PROGRESS_SLOTS;i++){const u8 *r=p+1+i*XL_PROGRESS_SLOT_BYTES;unsigned j;if(r[0]>1 || r[5]>15)return FALSE;
+        if(r[0])for(j=0;j<64;j++)if(!((r[6+j]>='0' && r[6+j]<='9') || (r[6+j]>='a' && r[6+j]<='f')))return FALSE;}
+    sXLProgressNext=*p++;
+    for(i=0;i<XL_PROGRESS_SLOTS;i++){sXLProgress[i].valid=*p++;memcpy(sXLProgress[i].trainer,p,4);p+=4;sXLProgress[i].state=*p++;
+        memcpy(sXLProgress[i].identity,p,64);p+=64;}
+    return TRUE;
+}
+bool8 GeneratedMap_InitXLProgress(const char *savePath,bool8 enabled)
+{
+    if(!enabled)return TRUE;
+    if(!XLProgressStore_Init(savePath,TRUE,sXLProgressPayload,sizeof(sXLProgressPayload)))return FALSE;
+    if(!XLProgressUnpack()){XLProgressStore_Close();return FALSE;}
+    sXLProgressDurable=TRUE;return TRUE;
+}
+static void XLProgressPersist(void)
+{
+    if(sXLProgressDurable){XLProgressPack();if(!XLProgressStore_Save(sXLProgressPayload,sizeof(sXLProgressPayload)))sXLProgressDurable=FALSE;}
+}
+static void XLRestoreEventProgress(void)
+{
+    unsigned i;const u8 *trainer;char identity[65];
+    sXLProgressCurrent=0xFF;
+    if(!sXLActive || !sEventActive || WorldBridge_Enabled() || !gSaveBlock2Ptr)return;
+    trainer=gSaveBlock2Ptr->playerTrainerId;WorldCaveWire_XLEventDigest(sEventData,sCastMetadata,sXLTemplate,identity);
+    for(i=0;i<XL_PROGRESS_SLOTS;i++)if(sXLProgress[i].valid && !memcmp(sXLProgress[i].trainer,trainer,4)
+       && !memcmp(sXLProgress[i].identity,identity,64)) {sXLProgressCurrent=i;sEventState=sXLProgress[i].state;return;}
+    i=sXLProgressNext;sXLProgressNext=(sXLProgressNext+1)%XL_PROGRESS_SLOTS;
+    memcpy(sXLProgress[i].trainer,trainer,4);memcpy(sXLProgress[i].identity,identity,64);
+    sXLProgress[i].state=sEventState;sXLProgress[i].valid=TRUE;sXLProgressCurrent=i;
+}
+static void XLRememberEventProgress(void)
+{
+    if(sXLProgressCurrent<XL_PROGRESS_SLOTS && gSaveBlock2Ptr && !memcmp(sXLProgress[sXLProgressCurrent].trainer,gSaveBlock2Ptr->playerTrainerId,4))
+    {sXLProgress[sXLProgressCurrent].state=sEventState;XLProgressPersist();}
+}
+#endif
+#endif
+#if !(GENERATED_WORLD_XL && GENERATED_WILDS_EVENTS)
+bool8 GeneratedMap_InitXLProgress(const char *savePath,bool8 enabled){(void)savePath;return !enabled;}
 #endif
 static bool8 sHasTemplate;
 #if GENERATED_CAVE_PROFILES
@@ -231,6 +301,9 @@ bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size)
     sHasTemplate = TRUE;
 #if GENERATED_MAP_LARGE
     sLargeStaged = sLargeShared = FALSE;
+#if GENERATED_WORLD_XL
+    sXLStaged = FALSE;
+#endif
 #if GENERATED_MAP_WILDS
     sLargeWilds = FALSE;
 #if GENERATED_WILDS_GUIDE
@@ -258,6 +331,40 @@ bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size)
 #else
     (void)cells; (void)size;
     return FALSE;
+#endif
+}
+
+bool8 GeneratedMap_StageXLWilds(const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_WORLD_XL
+    u8 seen[XL_CELLS]={0};u16 queue[XL_CELLS],head=0,tail=0,i;
+    if(!cells || size!=XL_CELLS || WorldBridge_Enabled() || GeneratedMap_IsInside() || GeneratedMap_EntryPending())return FALSE;
+    for(i=0;i<XL_CELLS;i++){unsigned x=i%XL_SIDE,y=i/XL_SIDE;
+        if((cells[i]!='.' && cells[i]!='#') || ((x==0||y==0||x==XL_SIDE-1||y==XL_SIDE-1) && cells[i]!='#'))return FALSE;
+    }
+    if(cells[XL_SIDE+1]!='.' || cells[124*XL_SIDE+125]!='.' || cells[125*XL_SIDE+125]!='.')return FALSE;
+    queue[tail++]=XL_SIDE+1;seen[XL_SIDE+1]=TRUE;
+    while(head<tail){s16 pos=queue[head++],next[4]={pos-XL_SIDE,pos+1,pos+XL_SIDE,pos-1};unsigned d;
+        for(d=0;d<4;d++)if(next[d]>=0 && next[d]<XL_CELLS && cells[next[d]]=='.' && !seen[next[d]]){seen[next[d]]=TRUE;queue[tail++]=next[d];}
+    }
+    for(i=0;i<XL_CELLS;i++)if(cells[i]=='.' && !seen[i])return FALSE;
+    memcpy(sXLTemplate,cells,XL_CELLS);sXLStaged=TRUE;
+#if GENERATED_WILDS_CAST
+    sXLCastStaged=FALSE;
+#if GENERATED_WILDS_EVENTS
+    sEventStaged=FALSE;
+#endif
+#endif
+    sLargeStaged=FALSE;sLargeShared=FALSE;sHasTemplate=FALSE;sLargeWilds=FALSE;
+#if GENERATED_CAVE_PROFILES
+    sEncounterProfile=0;sSharedEncounterProfile=FALSE;
+#endif
+#if GENERATED_CAVE_WILDLIFE
+    sHasWildlife=sSharedWildlife=FALSE;
+#endif
+    return TRUE;
+#else
+    (void)cells;(void)size;return FALSE;
 #endif
 }
 
@@ -291,6 +398,9 @@ static bool8 StageLarge(const u8 *cells, u32 size, bool8 shared)
     for (i = 0; i < LARGE_CELLS; i++) if (cells[i] == '.' && !seen[i]) return FALSE;
     memcpy(sLargeTemplate, cells, LARGE_CELLS);
     sLargeStaged = TRUE; sLargeShared = shared; sHasTemplate = FALSE;
+#if GENERATED_WORLD_XL
+    sXLStaged = FALSE;
+#endif
 #if GENERATED_MAP_WILDS
     sLargeWilds = FALSE;
 #if GENERATED_WILDS_GUIDE
@@ -385,6 +495,33 @@ static void EncodeGuideText(const u8 *meta, u8 *out)
     out[meta[1]]=0xFF;
 }
 #endif
+bool8 GeneratedMap_StageXLCast(const u8 *meta,u32 metaSize,const u8 *cells,u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_WORLD_XL && GENERATED_WILDS_CAST
+    u8 seen[XL_CELLS]={0},blocked[XL_CELLS]={0},guide[GENERATED_GUIDE_BYTES];u16 queue[XL_CELLS],head=0,tail=0,i;unsigned n,j,d;
+    u8 *texts[3]={gGeneratedWildsGuideText,gGeneratedWildsCastText2,gGeneratedWildsCastText3};
+    if(!meta || metaSize!=GENERATED_CAST_BYTES || !cells || size!=XL_CELLS || WorldBridge_Enabled() || GeneratedMap_IsInside() || GeneratedMap_EntryPending())return FALSE;
+    n=meta[0];if(!n || n>3)return FALSE;
+    for(j=0;j<3;j++){const u8 *r=meta+1+j*61;unsigned x=r[1],y=r[2];
+        if(j>=n){for(d=0;d<61;d++)if(r[d])return FALSE;continue;}
+        if(!x || x>=126 || !y || y>=126 || (x==1 && y==1) || (x==125 && (y==124 || y==125)))return FALSE;
+        i=y*XL_SIDE+x;if(cells[i]!='.' || blocked[i])return FALSE;blocked[i]=TRUE;
+        guide[0]=r[0];guide[1]=r[3];memcpy(guide+2,r+4,57);if(!ValidateGuideText(guide,sizeof(guide)))return FALSE;
+    }
+    queue[tail++]=XL_SIDE+1;seen[XL_SIDE+1]=TRUE;
+    while(head<tail){s16 pos=queue[head++],next[4]={pos-XL_SIDE,pos+1,pos+XL_SIDE,pos-1};
+        for(d=0;d<4;d++)if(next[d]>=0 && next[d]<XL_CELLS && !blocked[next[d]] && cells[next[d]]=='.' && !seen[next[d]]){seen[next[d]]=TRUE;queue[tail++]=next[d];}}
+    for(i=0;i<XL_CELLS;i++)if(cells[i]=='.' && !blocked[i] && !seen[i])return FALSE;
+    for(j=0;j<n;j++){const u8 *r=meta+1+j*61;unsigned pos=r[2]*XL_SIDE+r[1];
+        if(!seen[pos-XL_SIDE] && !seen[pos+1] && !seen[pos+XL_SIDE] && !seen[pos-1])return FALSE;}
+    if(!GeneratedMap_StageXLWilds(cells,size))return FALSE;
+    memcpy(sCastMetadata,meta,GENERATED_CAST_BYTES);sXLCastStaged=TRUE;
+    for(j=0;j<n;j++){const u8 *r=meta+1+j*61;guide[0]=r[0];guide[1]=r[3];memcpy(guide+2,r+4,57);EncodeGuideText(guide,texts[j]);}
+    return TRUE;
+#else
+    (void)meta;(void)metaSize;(void)cells;(void)size;return FALSE;
+#endif
+}
 #if GENERATED_MAP_READY && GENERATED_WILDS_GUIDE
 static bool8 StageGuidedWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size, bool8 shared)
 {
@@ -479,10 +616,10 @@ bool8 GeneratedMap_StageCastWilds(const u8 *metadata, u32 metaSize, const u8 *ce
 #endif
 }
 #if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
-static bool8 StageEventWilds(const u8 *events, u32 eventSize, const u8 *cast, u32 castSize, const u8 *cells, u32 size, bool8 shared)
+static bool8 ValidateEventRules(const u8 *events,u32 eventSize,const u8 *cast,u32 castSize)
 {
     u8 guide[GENERATED_GUIDE_BYTES], used[16][3]={{0}};unsigned j,k,n;
-    if(!events || eventSize!=GENERATED_EVENT_BYTES || !cast || castSize!=GENERATED_CAST_BYTES || !cells || size!=LARGE_CELLS || events[0]>15) return FALSE;
+    if(!events || eventSize!=GENERATED_EVENT_BYTES || !cast || castSize!=GENERATED_CAST_BYTES || events[0]>15) return FALSE;
     n=events[1];if(!n || n>24 || !cast[0] || cast[0]>3)return FALSE;
     guide[0]=7;
     for(j=0;j<24;j++) {const u8 *r=events+2+j*61;
@@ -491,6 +628,11 @@ static bool8 StageEventWilds(const u8 *events, u32 eventSize, const u8 *cast, u3
         used[r[0]][r[1]-1]=TRUE;guide[1]=r[3];memcpy(guide+2,r+4,57);
         if(!ValidateGuideText(guide,sizeof(guide)))return FALSE;
     }
+    return TRUE;
+}
+static bool8 StageEventWilds(const u8 *events, u32 eventSize, const u8 *cast, u32 castSize, const u8 *cells, u32 size, bool8 shared)
+{
+    if(!cells || size!=LARGE_CELLS || !ValidateEventRules(events,eventSize,cast,castSize))return FALSE;
     if (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
         return shared && sEventActive && sLargeShared && !memcmp(events,sEventData,GENERATED_EVENT_BYTES)
             && !memcmp(cast,sCastMetadata,GENERATED_CAST_BYTES) && !memcmp(cells,sLargeTemplate,LARGE_CELLS);
@@ -498,6 +640,15 @@ static bool8 StageEventWilds(const u8 *events, u32 eventSize, const u8 *cast, u3
     memcpy(sEventData,events,GENERATED_EVENT_BYTES);sEventStaged=TRUE;return TRUE;
 }
 #endif
+bool8 GeneratedMap_StageXLEvents(const u8 *events,u32 eventSize,const u8 *cast,u32 castSize,const u8 *cells,u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_WORLD_XL && GENERATED_WILDS_EVENTS
+    if(!ValidateEventRules(events,eventSize,cast,castSize) || !GeneratedMap_StageXLCast(cast,castSize,cells,size))return FALSE;
+    memcpy(sEventData,events,GENERATED_EVENT_BYTES);sEventStaged=TRUE;return TRUE;
+#else
+    (void)events;(void)eventSize;(void)cast;(void)castSize;(void)cells;(void)size;return FALSE;
+#endif
+}
 bool8 GeneratedMap_StageEventWilds(const u8 *events, u32 eventSize, const u8 *cast, u32 castSize, const u8 *cells, u32 size)
 {
 #if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
@@ -533,7 +684,11 @@ void GeneratedMap_RunEvent(void)
     memcpy(gGeneratedEventText,fallback[npc-1],58);
     for(j=0;j<sEventRuntime[1];j++) {const u8 *r=sEventRuntime+2+j*61;
         if(r[0]==sEventState && r[1]==npc) {guide[0]=7;guide[1]=r[3];memcpy(guide+2,r+4,57);
-            EncodeGuideText(guide,gGeneratedEventText);sEventState=r[2];break;}
+            EncodeGuideText(guide,gGeneratedEventText);sEventState=r[2];
+#if GENERATED_WORLD_XL
+            if(sXLActive && !WorldBridge_Enabled())XLRememberEventProgress();
+#endif
+            break;}
     }
 #endif
 }
@@ -1051,17 +1206,34 @@ bool8 GeneratedMap_Enter(void)
     sPreviousDynamicWarp = gSaveBlock1Ptr->dynamicWarp;
     SetDynamicWarpWithCoords(0, sReturn.mapGroup, sReturn.mapNum, WARP_ID_NONE, sReturn.x, sReturn.y);
     sSeenInside = FALSE;
+#if GENERATED_WORLD_XL
+    sXLActive=sXLStaged && !WorldBridge_Enabled();
+#endif
 #if GENERATED_MAP_LARGE
     sLargeActive = sLargeStaged && (!WorldBridge_Enabled() || sLargeShared);
 #if GENERATED_WILDS_GUIDE
     sGuideActive = sLargeActive && sLargeWilds && sGuideStaged;
 #if GENERATED_WILDS_CAST
-    sCastActive = sLargeActive && sLargeWilds && sCastStaged;
+    sCastActive = (sLargeActive && sLargeWilds && sCastStaged)
+#if GENERATED_WORLD_XL
+        || (sXLActive && sXLCastStaged)
+#endif
+        ;
 #if GENERATED_WILDS_EVENTS
     sEventActive = sCastActive && sEventStaged;
-    if(sEventActive) {sEventState=sEventData[0];memcpy(sEventRuntime,sEventData,GENERATED_EVENT_BYTES);}
+    if(sEventActive) {sEventState=sEventData[0];memcpy(sEventRuntime,sEventData,GENERATED_EVENT_BYTES);
+#if GENERATED_WORLD_XL
+        XLRestoreEventProgress();
+#endif
+    }
 #endif
 #endif
+#endif
+#if GENERATED_WORLD_XL
+    if(sXLActive) {u16 i;for(i=0;i<XL_CELLS;i++){unsigned x=i%XL_SIDE,y=i/XL_SIDE;
+        sXLTiles[i]=sXLTemplate[i]=='.' ? (((x*13+y*7)%5) ? 0x300d : 0x3001) : 0x0487;}
+        sXLTiles[XL_SIDE+1]=0x3001;sXLTiles[125*XL_SIDE+125]=0x3024;
+    } else
 #endif
     if (sLargeActive) {
         u16 i;
@@ -1106,11 +1278,18 @@ bool8 GeneratedMap_Enter(void)
 #if GENERATED_MAP_WILDS
     if (!sLargeActive || !sLargeWilds)
 #endif
+#if GENERATED_WORLD_XL
+    if (!sXLActive)
+#endif
         GeneratedMap_Autotile();
 #endif
     sPrepared = TRUE;
 #if GENERATED_MAP_WILDS
-    if (sLargeActive && sLargeWilds)
+    if ((sLargeActive && sLargeWilds)
+#if GENERATED_WORLD_XL
+        || sXLActive
+#endif
+       )
         SetWarpDestination(MAP_GROUP(MAP_GENERATED_WORLD_WILDS), MAP_NUM(MAP_GENERATED_WORLD_WILDS), WARP_ID_NONE, 1, 1);
     else
 #endif
@@ -1143,6 +1322,23 @@ const struct MapLayout *GeneratedMap_ResolveLayout(const struct MapLayout *base)
     {
         sSeenInside = TRUE;
         sLayout = *base;
+#if GENERATED_WORLD_XL
+        if(sXLActive && gMapHeader.events && gMapHeader.events->warpCount==1 && gMapHeader.events->warps) {
+            sXLEvents=*gMapHeader.events;sXLWarp=gMapHeader.events->warps[0];sXLWarp.x=125;sXLWarp.y=125;sXLEvents.warps=&sXLWarp;
+#if GENERATED_WILDS_CAST
+            if(sCastActive && sXLCastStaged) {unsigned j;const u8 *scripts[3]={GeneratedWorld_Wilds_EventScript_Guide,GeneratedWorld_Wilds_EventScript_Cast2,GeneratedWorld_Wilds_EventScript_Cast3};
+                memset(sGuideObjects,0,sizeof(sGuideObjects));for(j=0;j<sCastMetadata[0];j++){const u8 *r=sCastMetadata+1+j*61;
+                    sGuideObjects[j].localId=j+1;sGuideObjects[j].graphicsId=r[0];sGuideObjects[j].x=r[1];sGuideObjects[j].y=r[2];sGuideObjects[j].elevation=3;sGuideObjects[j].movementType=MOVEMENT_TYPE_FACE_LEFT;sGuideObjects[j].script=scripts[j];
+#if GENERATED_WILDS_EVENTS
+                    if(sEventActive)sGuideObjects[j].script=GeneratedWorld_Wilds_EventScript_Graph;
+#endif
+                }
+                sXLEvents.objectEventCount=sCastMetadata[0];sXLEvents.objectEvents=sGuideObjects;
+            }
+#endif
+            gMapHeader.events=&sXLEvents;
+        }
+#endif
 #if GENERATED_WILDS_GUIDE
 #if GENERATED_WILDS_CAST
         if (sCastActive && sLargeWilds && gMapHeader.events) {
@@ -1173,8 +1369,13 @@ const struct MapLayout *GeneratedMap_ResolveLayout(const struct MapLayout *base)
         }
 #endif
 #if GENERATED_MAP_LARGE
+#if GENERATED_WORLD_XL
+        sLayout.width = sLayout.height = sXLActive ? XL_SIDE : sLargeActive ? LARGE_SIDE : GEN_SIDE;
+        sLayout.map = sXLActive ? sXLTiles : sLargeActive ? sLargeTiles : sTiles;
+#else
         sLayout.width = sLayout.height = sLargeActive ? LARGE_SIDE : GEN_SIDE;
         sLayout.map = sLargeActive ? sLargeTiles : sTiles;
+#endif
 #else
         sLayout.width = sLayout.height = GEN_SIDE;
         sLayout.map = sTiles;
