@@ -134,3 +134,9 @@ class InitialResolutions(unittest.TestCase):
   s=self.read('src/battle_script_commands.c')
   self.assertIn('WorldCoop_EmitDefeat()',s)
   self.assertIn('gBattlescriptCurrInstr = cmd->nextInstr',s)
+
+ def test_save_object_copy_respects_persistent_slots(self):
+  s=self.read('src/load_save.c')
+  self.assertGreaterEqual(s.count('i < SAVED_OBJECT_EVENTS_COUNT'),2)
+  self.assertIn('gObjectEvents[i] = (struct ObjectEvent){0}',s)
+  self.assertIn('WorldBridge_PrepareSave()',s)

@@ -89,3 +89,8 @@ The co-op battle entry path now bypasses Expansion's four-player pre-entry
 exchange and starts from the parties already staged by WorldCoop. The private reward and end-of-battle code has been carried over but is
 unverified, as is the entry path in a two-client battle. This is not a playable co-op
 release.
+
+A save-layout bug was found: the donor object-copy loops used 48 live objects
+against 16 persistent slots. The carried save/load routines now limit those
+copies and clear transient objects. A sanitized isolated source test covers
+the bounds; full gameplay and save verification remain required.
