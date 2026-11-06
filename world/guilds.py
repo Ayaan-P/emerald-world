@@ -155,7 +155,7 @@ class Guilds:
             guild=self._require(trainer)
             if not args:
                 row=self.db.execute('SELECT map_name,goal,complete FROM guild_expeditions WHERE guild_id=?',(guild[0],)).fetchone()
-                if not row: return ['No expedition. Leader: /guild expedition start MAP COUNT']
+                if not row: return ['No expedition. Leader: /guild expedition start here COUNT']
                 count=self.db.execute('SELECT COUNT(*) FROM guild_expedition_visits WHERE guild_id=?',(guild[0],)).fetchone()[0]
                 state='complete' if row[2] else 'active'
                 return [f'Expedition: {row[0]} {count}/{row[1]} trainers ({state}).']

@@ -819,6 +819,13 @@ class WorldServer:
                     if words and words[0].lower() == 'online':
                         lines = self._guild_online(conn['id'], words[1:])
                     else:
+                        if (len(words) == 4 and words[0].lower() == 'expedition'
+                                and words[1].lower() == 'start' and words[2].lower() == 'here'):
+                            state = conn.get('state')
+                            fresh = conn.get('state_time') is not None and time.monotonic() - conn['state_time'] <= TRAVEL_FRESH_SECONDS
+                            if not state or not fresh or not state[6] or tuple(state[:2]) in (self.cave_map, self.wilds_map):
+                                raise GuildError('Stand ready on a standard map before starting here.')
+                            command = f'expedition start {validate_coords(*state[:4])["name"]} {words[3]}'
                         lines = self.guilds.command(conn['id'], command)
                         self.guild_epoch += 1  # Recheck active field reports after membership/mission changes.
                 except GuildError as exc:

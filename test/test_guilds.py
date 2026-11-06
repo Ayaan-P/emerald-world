@@ -165,6 +165,15 @@ class ChatIntegrationTests(unittest.TestCase):
         self.send('Bob','/guild board')
         self.assertIn('Guild: Alice: Meet me tomorrow',self.lines('Bob'))
         self.assertEqual(self.lines('Eve'),[])
+    def test_expedition_can_use_leaders_fresh_current_map(self):
+        self.send('Alice','/guild create Rockets')
+        self.send('Alice','/guild expedition start here 1')
+        self.assertTrue(any('Stand ready' in x for x in self.lines('Alice')))
+        conn=self.s.peers['Alice'];conn['state']=[0,9,5,6,1,7,1];conn['state_time']=time.monotonic()
+        self.send('Alice','/guild expedition start here 1')
+        self.assertTrue(any('Expedition started: 1 trainers visit Route101' in x for x in self.lines('Alice')))
+        self.send('Alice','/guild expedition')
+        self.assertTrue(any('Route101 0/1' in x for x in self.lines('Alice')))
     def test_field_reports_complete_a_guild_expedition_privately(self):
         self.send('Alice','/guild create Rockets');self.send('Alice','/guild invite Bob');self.send('Bob','/guild accept Rockets')
         self.send('Alice','/guild expedition start Route101 2')
