@@ -20,10 +20,14 @@ with tempfile.TemporaryDirectory(prefix='expansion-cave-smoke-') as directory:
     template.write_bytes(b'EWGMAP01' + cells)
     script = root / 'cave.replay'
     script.write_text((donor / 'tests/smoke/opening_start.replay').read_text() + '''\nwait 30
+mash A until controls_locked=0 max 3000
+wait 10
 press SELECT,R
 wait-until map=75.0 max 900
 wait-until callback2=CB2_Overworld max 900
 wait 30
+mash A until controls_locked=0 max 3000
+wait 10
 press SELECT,R
 wait-until map=0.9 max 900
 wait-until callback2=CB2_Overworld max 900
