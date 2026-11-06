@@ -7,8 +7,8 @@ import shlex
 import tempfile
 import driver
 from large_cave_playthrough import flee
-from world.xl_painted_events import encode
-from world.author_cave import decode_blueprint_events
+from unittest.mock import patch
+from world import author_cave,runtime_gm
 
 
 def run(binary,seed,out):
@@ -17,9 +17,12 @@ def run(binary,seed,out):
          'cast':[{'gfx':'boy','x':2,'y':1,'text':'Welcome, traveler!'},{'gfx':'girl','x':75,'y':20,'text':'Far away!'}],
          'paint':[{'x':10,'y':1,'width':30,'height':1,'terrain':'tall_grass'},{'x':80,'y':80,'width':8,'height':8,'terrain':'water'}],
          'events':{'initial':0,'rules':[{'state':0,'npc':1,'next':1,'text':'Please ask my friend.'},{'state':1,'npc':2,'next':2,'text':'Tell them I am well.'},{'state':2,'npc':1,'next':3,'text':'Thank you!'}]}}
-    wire='\n'.join(json.dumps(x) for x in ({'type':'item.completed','item':{'type':'agent_message','text':json.dumps(doc)}},{'type':'turn.completed'})).encode()
-    proposal,cast,events,paint=decode_blueprint_events(wire,large=True,xl=True,cast=True,events=True,painted=True)
-    blob=encode(proposal,paint,cast,events)
+    def wire(candidate):
+        return '\n'.join(json.dumps(x) for x in ({'type':'item.completed','item':{'type':'agent_message','text':json.dumps(candidate)}},{'type':'turn.completed'})).encode()
+    invalid={**doc,'paint':[{'x':1,'y':1,'width':1,'height':1,'terrain':'water'}]}
+    catalog=json.dumps({'models':[{'slug':runtime_gm.MODEL}]}).encode()
+    with patch('world.author_cave.gm._run_author',side_effect=[runtime_gm.CODEX_VERSION.encode(),catalog,wire(invalid),wire(doc)]):
+        _,blob=author_cave.author('mock theme',large=True,wilds=True,xl=True,cast=True,events=True,painted=True,attempts=2)
     with tempfile.TemporaryDirectory(prefix='wilds-guide-') as t:
         root=Path(t);area=root/'area.bin';area.write_bytes(blob)
         wrapper=root/'run';wrapper.write_text('#!/bin/sh\nexec '+shlex.quote(str(binary))+' --generated-map '+shlex.quote(str(area))+' "$@"\n');wrapper.chmod(0o700)
