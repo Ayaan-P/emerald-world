@@ -1,0 +1,76 @@
+{
+  "native_binary_sha256": "ed65289105b7138bcb2c71fed6daa72ed3c757de28da3dbcb9ead7046c82369b",
+  "native_build": {
+    "passed": true,
+    "warnings_as_errors": true,
+    "log": "build/rc8-build.log",
+    "inputs": "existing hash-verified upstream build assets and local SDL/libpng sysroot; no new installs"
+  },
+  "python_suites": {
+    "focused": 106,
+    "launcher_and_native_regressions": 103
+  },
+  "test_counts_overlap": true,
+  "frontend": {
+    "ui_tests_passed": 50,
+    "api_tests_passed": 1,
+    "production_build_passed": true
+  },
+  "native_smoke": {
+    "passed": true,
+    "log": "build/rc8-final-smoke.log"
+  },
+  "offline_versioned_story": {
+    "passed": true,
+    "model_responses": "mocked; no real provider call",
+    "result": "PASS: versioned XL story survived a mocked-model terrain revision and process restart without writing the save"
+  },
+  "shared_xl": {
+    "ok": true,
+    "binary_sha256": "ed65289105b7138bcb2c71fed6daa72ed3c757de28da3dbcb9ead7046c82369b",
+    "seed_sha256": "23cae5473bde125e490742eec2f81184e71f08bfd5167b3e18d6f1f12edcb79c",
+    "area_identity": "afc455e20d7789326ac6115c098befb3ed959b2c08f1faabfc454f9048b2cb23",
+    "scope": "two native test-input processes with real authority sockets; authored geometry, no model generation or battle coverage",
+    "two_native_positions": [
+      [
+        70,
+        1
+      ],
+      [
+        71,
+        1
+      ]
+    ],
+    "mutual_peer_objects": [
+      [
+        [
+          71,
+          1
+        ]
+      ],
+      [
+        [
+          70,
+          1
+        ]
+      ]
+    ],
+    "returned_to_private_origins": true,
+    "exit_codes": [
+      0,
+      0
+    ],
+    "save_hashes": [
+      "23cae5473bde125e490742eec2f81184e71f08bfd5167b3e18d6f1f12edcb79c",
+      "23cae5473bde125e490742eec2f81184e71f08bfd5167b3e18d6f1f12edcb79c"
+    ]
+  },
+  "limits": [
+    "Linux x86_64 release only",
+    "No expanded National Dex or full Expansion integration",
+    "No new full-campaign, WAN/load, battle/trade/medicine certification",
+    "Offline XL story persistence is separate from multiplayer",
+    "Shared XL mutable overlays from PR #212 deferred",
+    "Source-checkout desktop shortcut not automatically switched"
+  ]
+}

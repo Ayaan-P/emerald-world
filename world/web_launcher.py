@@ -226,11 +226,23 @@ class LauncherBridge:
                         formats = dict(server.db.execute(
                             'SELECT identity, substr(template, 1, 8) FROM generated_area_archive'))
                     kinds = {b'EWGMAP06': 'wilds', b'EWGMAP07': 'guided_wilds',
-                             b'EWGMAP08': 'cast_wilds', b'EWGMAP09': 'event_wilds'}
+                             b'EWGMAP08': 'cast_wilds', b'EWGMAP09': 'event_wilds', b'EWGMAP0A': 'xl_wilds'}
                     areas = [dict(area, kind=kinds.get(formats.get(area['identity'], b''), area['kind']))
                              for area in areas]
                 except Exception:
                     archive_error = 'Saved areas could not be loaded. Reopen the local host and try again.'
+            active_area = None
+            if local_host and server is not None:
+                with server.lock:
+                    cave = server.shared_cave
+                    if cave is not None:
+                        kinds = {6: 'wilds', 7: 'guided_wilds', 8: 'cast_wilds', 9: 'event_wilds', 10: 'xl_wilds'}
+                        archived = next((area for area in areas if area['identity'] == cave.identity), {})
+                        occupants = sum(1 for peer in server.peers.values()
+                            if not peer.get('closing') and (peer.get('in_generated_cave') or
+                                (peer.get('state') is not None and tuple(peer['state'][:2]) in (server.cave_map, server.wilds_map))))
+                        active_area = {'kind': kinds.get(cave.version, 'cave'), 'side': cave.side,
+                            'label': archived.get('label', 'Current generated area'), 'occupants': occupants}
             live_games = [name for name, (process, _paths) in self.session.games.items()
                           if process.poll() is None]
             game_exit = None
@@ -244,11 +256,12 @@ class LauncherBridge:
                     game_exit = {'trainer': name, 'code': code, 'unexpected': code != 0}
             return {'local_worlds': self.local_expeditions(),
                     'game_exit': game_exit,
-                    'generated_areas': areas, 'area_archive': archive_enabled,
+                    'generated_areas': areas, 'active_generated_area': active_area, 'area_archive': archive_enabled,
                     'area_archive_error': archive_error,
                     'wilds_authoring': wilds_authoring,
                     'guided_wilds_authoring': wilds_authoring,
                     'cast_wilds_authoring': wilds_authoring,
+                    'xl_wilds_authoring': wilds_authoring,
                     'local_host': local_host,
                     'cave_authoring': server is not None and local_host and server.cave_map is not None,
                     'cave_persistent': bool(server is not None and local_host and server.persist_generated_cave),
@@ -364,11 +377,11 @@ class LauncherBridge:
                         or self.session.server is None):
                     raise SessionError('Host the selected local expedition before generating an area.')
                 kind = payload.get('kind', 'cave')
-                if kind not in ('cave', 'wilds', 'guided_wilds', 'cast_wilds'):
+                if kind not in ('cave', 'wilds', 'guided_wilds', 'cast_wilds', 'xl_wilds'):
                     raise SessionError('Choose a cave, outdoor wilds, wilds with a guide or wilds with a cast.')
                 try:
                     self.session.author_shared_cave(payload.get('theme'), wilds=kind != 'cave',
-                        guide=kind == 'guided_wilds', cast=kind == 'cast_wilds')
+                        guide=kind == 'guided_wilds', cast=kind == 'cast_wilds', **({'xl': True} if kind == 'xl_wilds' else {}))
                 except SessionError:
                     raise
                 except Exception:

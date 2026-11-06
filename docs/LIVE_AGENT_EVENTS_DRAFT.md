@@ -25,3 +25,20 @@ The native client sends `APPLIED` only after its state or rule operation returns
 The combined RC6 candidate retains the RC5 party, chat, display and launcher-continuation fixes and enables the guide, cast and event gates alongside the existing co-op and extended-presence gates. The React local-host area picker exposes guided and cast outdoor generation. Graph publication and live director commands use the owner CLI above, rather than a separate director dashboard.
 
 A focused disposable native journey exercised real owner and player sockets: compile/publish a graph, enter through WORLD, complete its first NPC transition, apply owner state 5, apply a replacement rule, interact again to reach state 9 instead of the original rule's state 6, and leave to the original field position. Both command queries returned applied, and native observations confirmed the changed state transitions. The seed and disposable save were unchanged. The combined WERROR Linux and React builds succeeded. This is one native client with an explicitly authored graph, not a model-generation, two-player, durable-progression or autonomous-GM acceptance claim.
+
+## Paint a walkable tile while playing
+
+An owner agent can change one named trainer's walkable generated-outdoor tile between normal grass and tall grass:
+
+`python -m world.agent_event_control --admin-socket /path/to/owner.sock --trainer TRAINER --area AREA_SHA256 --x 5 --y 5 --terrain grass`
+
+The other terrain value is `tall_grass`. The authority and recipient independently require a walkable tile in the exact active event area. Entrance, exit approach, exit, NPC and blocked tiles cannot be painted. Both supported tiles remain walkable, so this operation cannot create walls or change map connectivity. The engine updates that trainer's current in-memory map and redraws the visible tile; it does not alter the published map identity, another trainer's view or the save, and a new visit resets the change. Tall grass uses normal wild-encounter behavior. It relies on the existing battle engine, including the separate fix for entering a wild encounter without a usable Pokémon; do not treat this as fixing that crash.
+
+This is a single-tile, per-trainer control primitive, not a globally synchronized tilemap editor, full terrain generation, collision editing or durable world change. It uses the same ordered bounded command queue and client-reported outcome status as event state/rule commands. No real two-client session, external agent call or actual local socket was exercised; inspect exact-head CI before integration.
+
+
+## Paint a patch of walkable terrain
+
+An owner agent can submit a JSON array of one to 64 tile edits using `--tiles-file patch.json` in place of `--x`, `--y` and `--terrain`. Every entry has exactly `x`, `y` and `terrain` (`grass` or `tall_grass`). For example: `[{"x": 5, "y": 5, "terrain": "grass"}, {"x": 6, "y": 5, "terrain": "tall_grass"}]`. The owner authority validates the entire patch, rejects duplicate or protected/unwalkable coordinates, and queues one bounded command for one trainer. The native client validates the entire patch again before changing any tile, so an invalid patch changes none; a valid patch updates the in-memory map and redraws tiles. One client-reported outcome covers the whole patch.
+
+This is still per-trainer and ephemeral, with unchanged collision. It is not globally synchronized or persistent and does not create walls, buildings or new art. Tall grass relies on the normal encounter system, including the separate empty-party crash fix. No live two-client session, actual local socket or external agent was exercised.

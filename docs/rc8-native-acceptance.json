@@ -1,0 +1,40 @@
+{
+  "ok": true,
+  "binary_sha256": "ed65289105b7138bcb2c71fed6daa72ed3c757de28da3dbcb9ead7046c82369b",
+  "seed_sha256": "23cae5473bde125e490742eec2f81184e71f08bfd5167b3e18d6f1f12edcb79c",
+  "area_identity": "afc455e20d7789326ac6115c098befb3ed959b2c08f1faabfc454f9048b2cb23",
+  "scope": "two native test-input processes with real authority sockets; authored geometry, no model generation or battle coverage",
+  "two_native_positions": [
+    [
+      70,
+      1
+    ],
+    [
+      71,
+      1
+    ]
+  ],
+  "mutual_peer_objects": [
+    [
+      [
+        71,
+        1
+      ]
+    ],
+    [
+      [
+        70,
+        1
+      ]
+    ]
+  ],
+  "returned_to_private_origins": true,
+  "exit_codes": [
+    0,
+    0
+  ],
+  "save_hashes": [
+    "23cae5473bde125e490742eec2f81184e71f08bfd5167b3e18d6f1f12edcb79c",
+    "23cae5473bde125e490742eec2f81184e71f08bfd5167b3e18d6f1f12edcb79c"
+  ]
+}

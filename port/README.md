@@ -1,0 +1,25 @@
+# Whole-source candidate, not a release
+
+`auto-engine-*.patch` is the mechanically merged engine-related subset of
+RC8's changes against the pinned Expansion donor. The parent branch contains
+RC8's server, launcher and other project files directly. The complete merge
+reported 62 conflicts; conflicted paths were not silently declared resolved.
+
+Initial explicit resolutions combine the World menu with Expansion's existing
+DexNav/debug menu, adapt the generated-layout hook to Expansion's parameterized
+map lookup, preserve the donor's script-special order, and add World scripts.
+`src/menu.c` additionally accommodates the tenth possible start-menu entry.
+These resolutions need compilation and graphical verification.
+
+The two generated maps are inserted as group 34 to preserve the existing
+World protocol, shifting later donor map-group numbers. Existing Expansion
+saves at or beyond that group are **not compatible** without migration. Use
+fresh disposable profiles. Previous saved data is never automatically copied.
+
+`world-runtime.patch` reuses the earlier RC7 native loop integration; it is
+being reconciled with the newer mechanically merged World code. The build
+wrapper propagates the same feature flags to the donor's pointer-width
+reference builds rather than disabling its relocation checks.
+
+Battle, save, object, renderer and other conflicts remain; this candidate is
+not playable or safe to release. See `conflicts.txt` for the original list.

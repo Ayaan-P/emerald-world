@@ -1,6 +1,7 @@
 import ControlsHelp from './ControlsHelp';
 import CoopGuide from './CoopGuide';
 import ExpeditionPanel from './ExpeditionPanel';
+import ReleaseModes from './ReleaseModes';
 import React from 'react';
 import { ArrowRight, Compass, Gamepad2, Globe2, Leaf, Plus, UsersRound } from 'lucide-react';
 import './player-home.css';
@@ -49,6 +50,8 @@ export default function PlayerHome({ state, ready, busy, onJoin, onCreate, onSol
     {!state.games.length && state.game_exit?.unexpected && <section className="journey-status" role="alert"><span className="dot error-dot" /><div><strong>Your game closed unexpectedly</strong><p>Only your last in-game save can be recovered. Reopen the game with Play now or Continue above. Unsaved progress is not restored automatically.</p></div></section>}
 
     <ExpeditionPanel state={state} ready={ready} busy={busy} onOpen={onLocalOpen} onAuthor={onAuthorCave} onActivate={onActivateArea} />
+
+    <ReleaseModes />
 
     <ControlsHelp />
 

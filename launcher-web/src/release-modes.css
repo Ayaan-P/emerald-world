@@ -1,0 +1,11 @@
+.rc8-mode-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.rc8-mode-grid .settings-card { margin: 0; align-items: flex-start; }
+.rc8-mode-grid h3 { margin-top: 0; }
+.rc8-mode-grid p { line-height: 1.6; }
+.rc8-mode-grid details { margin-top: 12px; }
+.rc8-mode-grid summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+.expedition-current-area { margin: 20px 0; }
+.expedition-current-area > div { min-width: 0; width: 100%; }
+.expedition-steps { padding-left: 21px; margin: 16px 0; line-height: 1.7; }
+.expedition-steps li + li { margin-top: 7px; }
+@media (max-width: 1000px) { .rc8-mode-grid { grid-template-columns: 1fr; } }

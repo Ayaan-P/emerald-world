@@ -1,0 +1,10 @@
+{
+  "baseline": "4d246489f736ab7f19592b0b50f01dcd88c8e954",
+  "world": "fc0335fda988ced00aeb8d09af7c547816c536a7",
+  "donor": "bb3fd057061cdd7e6a9e79b76abb41924ee44ecc",
+  "world_changed_paths": 577,
+  "conflicted_paths": 62,
+  "merge_exit_code": 1,
+  "patch_bytes": 4852845,
+  "warning": "Conflicted paths retain the Expansion side and require manual resolution; this is not a verified build."
+}

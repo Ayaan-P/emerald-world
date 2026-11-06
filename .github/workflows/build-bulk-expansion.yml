@@ -1,0 +1,43 @@
+name: Build whole-source Expansion candidate
+on:
+  pull_request:
+    paths:
+      - 'port/**'
+      - 'scripts/apply_bulk_expansion_port.py'
+      - 'test/test_apply_bulk_expansion_port.py'
+      - '.github/workflows/build-bulk-expansion.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Test port preparation
+        run: python3 -m unittest discover -s test -p test_apply_bulk_expansion_port.py -v
+      - name: Apply candidate to clean pinned donor
+        run: python3 scripts/apply_bulk_expansion_port.py engines/expansion-native
+      - name: Install native build prerequisites
+        timeout-minutes: 30
+        run: |
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y build-essential gcc-multilib python3 pkg-config libpng-dev libsdl2-dev
+      - name: Compile whole-source candidate
+        working-directory: engines/expansion-native
+        shell: bash
+        run: |
+          set -o pipefail
+          make -f "$GITHUB_WORKSPACE/port/expansion-world.mk" -k -j2 native BITS=64 2>&1 | tee "$RUNNER_TEMP/bulk-build.log"
+      - name: Preserve candidate build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bulk-expansion-build-log
+          path: ${{ runner.temp }}/bulk-build.log
+          if-no-files-found: ignore
+          retention-days: 7
