@@ -231,6 +231,18 @@ class LauncherBridge:
                              for area in areas]
                 except Exception:
                     archive_error = 'Saved areas could not be loaded. Reopen the local host and try again.'
+            active_area = None
+            if local_host and server is not None:
+                with server.lock:
+                    cave = server.shared_cave
+                    if cave is not None:
+                        kinds = {6: 'wilds', 7: 'guided_wilds', 8: 'cast_wilds', 9: 'event_wilds', 10: 'xl_wilds'}
+                        archived = next((area for area in areas if area['identity'] == cave.identity), {})
+                        occupants = sum(1 for peer in server.peers.values()
+                            if not peer.get('closing') and (peer.get('in_generated_cave') or
+                                (peer.get('state') is not None and tuple(peer['state'][:2]) in (server.cave_map, server.wilds_map))))
+                        active_area = {'kind': kinds.get(cave.version, 'cave'), 'side': cave.side,
+                            'label': archived.get('label', 'Current generated area'), 'occupants': occupants}
             live_games = [name for name, (process, _paths) in self.session.games.items()
                           if process.poll() is None]
             game_exit = None
@@ -244,7 +256,7 @@ class LauncherBridge:
                     game_exit = {'trainer': name, 'code': code, 'unexpected': code != 0}
             return {'local_worlds': self.local_expeditions(),
                     'game_exit': game_exit,
-                    'generated_areas': areas, 'area_archive': archive_enabled,
+                    'generated_areas': areas, 'active_generated_area': active_area, 'area_archive': archive_enabled,
                     'area_archive_error': archive_error,
                     'wilds_authoring': wilds_authoring,
                     'guided_wilds_authoring': wilds_authoring,
