@@ -13,3 +13,10 @@ python3 -m unittest discover -s test/expansion_projection -p 'test_*.py'
 gcc -D_POSIX_C_SOURCE=200809L -std=c11 -Wall -Wextra -Werror -Itest/expansion_projection/stubs engines/expansion_peers.c test/expansion_projection/test_projection.c -o /tmp/expansion-projection-test
 /tmp/expansion-projection-test
 ```
+
+The Expansion join command can reuse the existing pinned-TLS broker with a
+trainer invitation (`--remote HOST:PORT --invitation FILE --pin SHA256`). The
+broker operates in the Expansion engine's separate world/profile namespace;
+no vanilla save is copied or reinterpreted. The routing and credential reuse
+have mock tests only. An actual remote session, hosting UI, and feature parity
+are not verified. This is not safe for real saves or ready for playtesting.

@@ -195,7 +195,7 @@ class ExpansionSession:
         except (OSError, ValueError, KeyError) as exc:
             self.error = str(exc)
 
-    def run(self, binary=BINARY, display=None, *, replay=None, frames=None, print_command=False):
+    def run(self, binary=BINARY, display=None, *, replay=None, frames=None, print_command=False, prepared_remote=False):
         if self.state.resolve() != self.state:
             raise ValueError('Expansion state cannot contain symlinks')
         self.state.mkdir(parents=True, mode=0o700, exist_ok=True)
@@ -203,7 +203,15 @@ class ExpansionSession:
             if lock.paths != self.paths:
                 raise ValueError('Expansion profile namespace mismatch')
             if self.online:
-                _prepare_profile(self.state, self.trainer, None, self.paths)
+                if prepared_remote:
+                    # DesktopSession already authenticated and wrote this profile's
+                    # invitation. Do not replace it with a local identity.
+                    if not (self.state / 'remote.json').is_file() or not self.paths['config'].is_file():
+                        raise ValueError('Expansion remote profile is not prepared')
+                else:
+                    if (self.state / 'remote.json').exists() or (self.state / 'remote.json').is_symlink():
+                        raise ValueError('Remote Expansion saves require their invitation and TLS connection')
+                    _prepare_profile(self.state, self.trainer, None, self.paths)
             else:
                 self.paths['profile'].mkdir(parents=True, mode=0o700, exist_ok=True)
             command = game_command(binary, self.base, self.paths, display, online=False, engine=ENGINE)
@@ -257,9 +265,27 @@ class ExpansionSession:
 
 def run(args):
     if any(getattr(args, name, None) for name in
-           ('seed_save', 'copy_online', 'agent_control', 'test_input', 'bootstrap', 'remote', 'invitation', 'pin')):
-        raise ValueError('Expansion does not accept vanilla saves, controls, input scripts or invitations. Use --replay for donor replays.')
+           ('seed_save', 'copy_online', 'agent_control', 'test_input', 'bootstrap')):
+        raise ValueError('Expansion does not accept vanilla saves, controls or input scripts. Use --replay for donor replays.')
     session = ExpansionSession(args.state_dir, args.trainer, online=args.command == 'join')
-    return session.run(args.binary or BINARY, args.display, replay=args.replay, frames=args.frames,
-                       print_command=args.print_command)
-
+    options = dict(replay=args.replay, frames=args.frames, print_command=args.print_command)
+    remote = tuple(getattr(args, name, None) for name in ('remote', 'invitation', 'pin'))
+    if not any(remote):
+        return session.run(args.binary or BINARY, args.display, **options)
+    if args.command != 'join' or not all(remote):
+        raise ValueError('Expansion remote join requires --remote, --invitation and --pin')
+    from .transport import _endpoint, read_invitation
+    identity = read_invitation(args.invitation)
+    if identity['trainer'] != args.trainer:
+        raise ValueError('trainer must match the assigned invitation')
+    # Reuse the existing TLS broker in the Expansion engine namespace. Its
+    # profile path is exactly the Expansion trainer path, not a vanilla save.
+    if session.state.resolve() != session.state:
+        raise ValueError('Expansion state cannot contain symlinks')
+    session.state.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+    from .session import DesktopSession
+    with DesktopSession(session.state.parent) as broker:
+        paths = broker.connect_remote(session.state.name, args.invitation, _endpoint(args.remote), args.pin)
+        if paths != session.paths:
+            raise ValueError('Expansion remote profile namespace mismatch')
+        return session.run(args.binary or BINARY, args.display, prepared_remote=True, **options)
