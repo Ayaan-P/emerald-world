@@ -97,6 +97,7 @@ struct WildPokemonInfo;
 #define GENERATED_TERRAIN_MAX_BYTES (GENERATED_WILDS_LARGE_TERRAIN ? 1539 : 193)
 #define GENERATED_EVENT_BYTES 1466
 #define GENERATED_CAST_BYTES 184
+bool8 GeneratedMap_InitXLProgress(const char *savePath,bool8 enabled);
 bool8 GeneratedMap_StageXLWilds(const u8 *cells, u32 size);
 bool8 GeneratedMap_StageXLPalette(const u8 *cells, u32 size);
 bool8 GeneratedMap_StageXLCast(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size);

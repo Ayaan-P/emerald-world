@@ -76,6 +76,7 @@ static FILE *sTestState;
 static const char *sWorldConfigPath;
 static const char *sWorldInputPath;
 static const char *sGeneratedMapPath;
+static bool sGeneratedProgress;
 static const char *sWorldShotPath;
 static bool sWorldBootstrap;
 static u32 sWorldFrame;
@@ -271,6 +272,11 @@ int main(int argc, char **argv)
 {
     if (!ParseArgs(argc, argv))
         return 1;
+    if (sGeneratedProgress && !sGeneratedMapPath)
+    {
+        fprintf(stderr, "Generated story progress requires an offline generated map.\n");
+        return 1;
+    }
     if (sGeneratedMapPath && (sWorldConfigPath || !LoadGeneratedMapTemplate(sGeneratedMapPath)))
     {
         fprintf(stderr, "Generated map unavailable: use a valid offline template and enable the experimental feature.\n");
@@ -331,6 +337,8 @@ int main(int argc, char **argv)
         return 1;
     }
     DexNavNative_Init(sSavePath, !sTestMode);
+    if (sGeneratedProgress && !GeneratedMap_InitXLProgress(sSavePath, TRUE))
+        fprintf(stderr, "Generated story progress is session-only: private sidecar unavailable.\n");
     // Before AgbMain, whose RtcInit reads it
     InitInternalClock();
 
@@ -872,7 +880,7 @@ static bool ParseArgs(int argc, char **argv)
             fprintf(stderr, "Missing player control option value.\n");
             return false;
         }
-        if (value == NULL && (!strcmp(arg, "--world-config") || !strcmp(arg, "--world-input") || !strcmp(arg, "--world-shot") || !strcmp(arg, "--generated-map")))
+        if (value == NULL && (!strcmp(arg, "--world-config") || !strcmp(arg, "--world-input") || !strcmp(arg, "--world-shot") || !strcmp(arg, "--generated-map") || !strcmp(arg, "--generated-progress")))
         {
             fprintf(stderr, "Missing world option value.\n");
             return false;
@@ -898,6 +906,11 @@ static bool ParseArgs(int argc, char **argv)
         {
             if (sGeneratedMapPath != NULL || !strncmp(value, "--", 2)) return false;
             sGeneratedMapPath = value;
+        }
+        else if (strcmp(arg, "--generated-progress") == 0)
+        {
+            if (sGeneratedProgress || strcmp(value,"on")) return false;
+            sGeneratedProgress = true;
         }
         else if (strcmp(arg, "--world-config") == 0)
         {
