@@ -1,0 +1,9 @@
+{
+  "rooms": [[2, 2, 20, 20], [50, 50, 25, 25], [95, 95, 25, 25]],
+  "links": [[0, 1], [1, 2]],
+  "entrance_room": 0,
+  "exit_room": 2,
+  "style": "organic",
+  "seed": 247,
+  "corridor_width": 2
+}

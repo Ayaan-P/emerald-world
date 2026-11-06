@@ -1,0 +1,7 @@
+# Model-authored revisions of versioned XL worlds
+
+An agent can ask the opt-in model author to revise a versioned offline XL world: `python -m world.xl_revision_author 'theme' --previous world.bin --output world.bin --replace-output`. Only terrain blueprint and bounded paint are model-authored. The existing world ID, characters and interaction graph remain unchanged, and both compiler and native validation require their positions and all walkable tiles to remain reachable. The explicit replacement is atomic; the running offline game loads the revision at re-entry. Existing story progress follows the stable world ID and unchanged cast/graph. Concurrent writers are last-writer-wins; there is no compare-and-swap.
+
+The theme and existing character coordinates are sent to the configured model provider; story dialogue is not included in the prompt. Provider calls may incur charges. `--attempts 1..3` is opt-in beyond one and shares the total deadline. Invalid candidates can be retried with generic feedback, while provider errors, timeouts and tool activity fail immediately. No file changes until validation succeeds.
+
+Tests use mocked model responses and do not make real provider calls. Native CI attempts a mocked invalid-then-valid revision while a game runs, then re-entry and process restart with story state and trainer save preserved. Until CI passes this is unverified in game. Offline only; POSIX persistence is opt-in and Windows remains session-only. This stacks #227 and predecessors; integration is separate.

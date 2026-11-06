@@ -36,16 +36,16 @@ static void Digest(const u8 *cells, u8 version, u8 profile, const u8 *wildlife, 
     static const u8 magic[8]={'E','W','G','M','A','P','0','1'};
     static const char alphabet[]="0123456789abcdef";
     u32 state[8]={0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
-    u8 block[64]; unsigned i,j,offset; const unsigned extra = version == 9 ? WORLD_CAVE_EVENT_BYTES + WORLD_CAVE_CAST_BYTES : version == 8 ? WORLD_CAVE_CAST_BYTES : version == 7 ? WORLD_CAVE_GUIDE_BYTES : (version == 3 || version == 5) ? 38 : version == 2 ? 1 : 0;
-    const unsigned count = version >= 4 ? WORLD_CAVE_LARGE_CELLS : WORLD_CAVE_CELLS;
+    u8 block[64]; unsigned i,j,offset; const unsigned extra = (version == 9 || version == 12 || version == 14 || version == 15) ? WORLD_CAVE_EVENT_BYTES + WORLD_CAVE_CAST_BYTES : version == 8 ? WORLD_CAVE_CAST_BYTES : version == 7 ? WORLD_CAVE_GUIDE_BYTES : (version == 3 || version == 5) ? 38 : version == 2 ? 1 : 0;
+    const unsigned count = version == 15 ? 16 : (version == 12 || version == 14) ? WORLD_CAVE_XL_CELLS : version >= 4 ? WORLD_CAVE_LARGE_CELLS : WORLD_CAVE_CELLS;
     const unsigned length=8+extra+count, padded=((length+9+63)/64)*64;
     for(offset=0;offset<padded;offset+=64) {
         memset(block,0,sizeof(block));
         for(i=0;i<64;i++) {
             unsigned p=offset+i;
-            if(p<8) block[i]=(p==7 && version>=2) ? ('0' + version) : magic[p];
-            else if(version==9 && p<8+WORLD_CAVE_EVENT_BYTES) block[i]=events[p-8];
-            else if(version==9 && p<8+WORLD_CAVE_EVENT_BYTES+WORLD_CAVE_CAST_BYTES) block[i]=cast[p-8-WORLD_CAVE_EVENT_BYTES];
+            if(p<8) block[i]=(p==7 && version>=2) ? (version==15 ? 'F' : version==14 ? 'E' : version==12 ? 'C' : '0' + version) : magic[p];
+            else if((version==9 || version==12 || version==14 || version==15) && p<8+WORLD_CAVE_EVENT_BYTES) block[i]=events[p-8];
+            else if((version==9 || version==12 || version==14 || version==15) && p<8+WORLD_CAVE_EVENT_BYTES+WORLD_CAVE_CAST_BYTES) block[i]=cast[p-8-WORLD_CAVE_EVENT_BYTES];
             else if(version==8 && p<8+WORLD_CAVE_CAST_BYTES) block[i]=cast[p-8];
             else if(version==7 && p<8+WORLD_CAVE_GUIDE_BYTES) block[i]=guide[p-8];
             else if(extra && p==8) block[i]=profile;
@@ -65,6 +65,18 @@ static void Digest(const u8 *cells, u8 version, u8 profile, const u8 *wildlife, 
     }
     hex[64]=0;
 }
+void WorldCaveWire_XLEventDigest(const u8 *events,const u8 *cast,const u8 *cells,char hex[65])
+{
+    Digest(cells,12,0,NULL,NULL,cast,events,hex);
+}
+void WorldCaveWire_XLPaintedEventDigest(const u8 *events,const u8 *cast,const u8 *cells,char hex[65])
+{
+    Digest(cells,14,0,NULL,NULL,cast,events,hex);
+}
+void WorldCaveWire_XLStableStoryDigest(const u8 *events,const u8 *cast,const u8 *worldId,char hex[65])
+{
+    Digest(worldId,15,0,NULL,NULL,cast,events,hex);
+}
 bool8 WorldCaveWire_ValidId(const char *id)
 {
     unsigned i;
@@ -77,7 +89,7 @@ int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned n, const char *const
 {
     unsigned i, index=0;
     char digest[65];
-    if (!wire || !t || n<2 || n>5) return -1;
+    if (!wire || !t || n<2 || n>7) return -1;
     for(i=0;i<n;i++) if (!t[i]) return -1;
     if (strcmp(t[0],"CAVE")) return -1;
     if (n==3 && !strcmp(t[1],"BEGIN")) {
@@ -87,7 +99,14 @@ int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned n, const char *const
 #if GENERATED_WILDS_EVENTS
     if (n==4 && !strcmp(t[1],"BEGIN") && !strcmp(t[3],"EVENTS")) {
         if(wire->active || !WorldCaveWire_ValidId(t[2])) return -1;
-        memcpy(wire->id,t[2],65);wire->nextRow=0;wire->version=9;wire->profile=0;wire->castSeen=FALSE;wire->nextEventChunk=0;wire->active=TRUE;return 0;
+        memcpy(wire->id,t[2],65);wire->nextRow=0;wire->version=9;wire->profile=0;wire->castSeen=FALSE;wire->nextEventChunk=0;wire->active=TRUE;
+#if GENERATED_WILDS_SHARED_TERRAIN
+        wire->terrainSeen=FALSE;
+#if GENERATED_WILDS_LARGE_TERRAIN
+        wire->terrainChunkNext=wire->terrainChunkTotal=0;wire->terrainLargeFraming=FALSE;wire->terrainSize=0;
+#endif
+#endif
+        return 0;
     }
 #endif
 #if GENERATED_WILDS_CAST
@@ -163,6 +182,43 @@ int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned n, const char *const
             if(!(i&1))wire->events[chunk*256+i/2]=v<<4;else wire->events[chunk*256+i/2]|=v;
         }
         wire->nextEventChunk++;return 0;
+    }
+#endif
+#if GENERATED_WILDS_SHARED_TERRAIN
+    if(n==5 && !strcmp(t[1],"TERRAIN")) {
+        const char *p=t[3];unsigned revision=0,length=strlen(t[4]);
+        if(wire->version!=9 || !wire->castSeen || wire->nextEventChunk!=6 || wire->terrainSeen || wire->nextRow || !*p || (p[0]=='0' && p[1]) || length<2 || length>386 || (length&1))return -1;
+        while(*p) {if(*p<'0'||*p>'9'||revision>(2147483647U-(unsigned)(*p-'0'))/10)return -1;revision=revision*10+(*p++-'0');}
+        for(i=0;i<length;i++){char c=t[4][i];unsigned v;if(c>='0'&&c<='9')v=c-'0';else if(c>='a'&&c<='f')v=c-'a'+10;else return -1;
+            if(!(i&1))wire->terrain[i/2]=v<<4;else wire->terrain[i/2]|=v;}
+        if(wire->terrain[0]>64 || length!=2*(1+3*(unsigned)wire->terrain[0]) || (revision==0 && wire->terrain[0]!=0))return -1;
+#if !GENERATED_WILDS_SHARED_GEOMETRY
+        if(revision>0 && wire->terrain[0]==0)return -1;
+#endif
+        wire->terrainSize=length/2;wire->terrainRevision=revision;wire->terrainSeen=TRUE;return 0;
+    }
+#endif
+#if GENERATED_WILDS_LARGE_TERRAIN
+    if(n==7 && !strcmp(t[1],"TERRAINH")) {
+        const char *p=t[3];unsigned revision=0,chunk,total,length=strlen(t[6]),bytes,i,offset,count;
+        if(wire->version!=9 || !wire->castSeen || wire->nextEventChunk!=6 || wire->terrainSeen || wire->nextRow || !*p || (p[0]=='0' && p[1]))return -1;
+        while(*p){if(*p<'0'||*p>'9'||revision>(2147483647U-(unsigned)(*p-'0'))/10)return -1;revision=revision*10+(*p++-'0');}
+        if(strlen(t[4])!=1 || t[4][0]<'0' || t[4][0]>'7' || strlen(t[5])!=1 || t[5][0]<'1' || t[5][0]>'8')return -1;
+        chunk=t[4][0]-'0';total=t[5][0]-'0';
+        if(chunk!=wire->terrainChunkNext || chunk>=total || !length || length>400 || (length&1) || (chunk+1<total && length!=400))return -1;
+        if(!chunk){wire->terrainRevision=revision;wire->terrainChunkTotal=total;wire->terrainSize=0;wire->terrainLargeFraming=TRUE;}
+        else if(wire->terrainRevision!=revision || wire->terrainChunkTotal!=total)return -1;
+        bytes=length/2;offset=wire->terrainSize;if(offset+bytes>WORLD_CAVE_TERRAIN_MAX_BYTES)return -1;
+        for(i=0;i<length;i++){char c=t[6][i];unsigned v;if(c>='0'&&c<='9')v=c-'0';else if(c>='a'&&c<='f')v=c-'a'+10;else return -1;
+            if(!(i&1))wire->terrain[offset+i/2]=v<<4;else wire->terrain[offset+i/2]|=v;}
+        wire->terrainSize+=bytes;wire->terrainChunkNext++;
+        if(wire->terrainChunkNext==total){
+            if(wire->terrain[0]==255){if(wire->terrainSize<3)return -1;count=wire->terrain[1]|((unsigned)wire->terrain[2]<<8);offset=3;if(count<=64||count>512)return -1;}
+            else {count=wire->terrain[0];offset=1;if(count>64)return -1;}
+            if(wire->terrainSize!=offset+3*count || (revision==0 && count!=0))return -1;
+            wire->terrainSeen=TRUE;
+        }
+        return 0;
     }
 #endif
 #if GENERATED_WILDS_GUIDE

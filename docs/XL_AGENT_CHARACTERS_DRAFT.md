@@ -1,0 +1,5 @@
+# Agent-authored XL characters draft
+
+This adds up to three agent-authored characters to offline 127×127 wilderness maps. Each has an agent-chosen interior coordinate, appearance and one or two lines of literal text. `python -m world.xl_wilds_cast input.json area.bin` compiles a blueprint and cast to a new, non-overwriting inert map file. The Python compiler and native runtime validate positions, protected entry and exit, text, reachability and the connectivity of walkable terrain with characters occupying their tiles. The native runtime reuses the existing generated dialogue scripts; it never executes model output.
+
+This draft is offline only. It has no XL event graphs or shared multiplayer cast, and no model is invoked by the compiler. The native CI attempts an actual offline interaction with two characters, including one beyond the old 63-tile boundary, then checks the save; until CI completes, that playthrough is unverified. This stacks #213, #210 and their predecessors and must be reconciled with the current integration candidate.
