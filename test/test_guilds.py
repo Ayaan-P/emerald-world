@@ -112,14 +112,13 @@ class ChatIntegrationTests(unittest.TestCase):
         # Execute the actual server methods against a fake in-memory authority.
         module=ast.parse((ROOT/'world/server.py').read_text())
         cls=next(n for n in module.body if isinstance(n,ast.ClassDef) and n.name=='WorldServer')
-        methods=[n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name in ('_line','_chat')]
-        ns={'re':re,'time':time,'bounded':bounded,'ID':re.compile(r'[A-Za-z0-9_-]{1,24}\\Z'), 'GuildError':guilds.GuildError, 'HASH':re.compile(r'[0-9a-fA-F]{16}\Z'), 'PRESENCE_HEARTBEAT_INTERVAL':1, 'TRAVEL_FRESH_SECONDS':3, 'validate_coords':lambda *args:{'name':'Route101'}}
+        methods=[n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name in ('_line','_chat','_snapshot')]
+        ns={'re':re,'time':time,'bounded':bounded,'ID':re.compile(r'[A-Za-z0-9_-]{1,24}\\Z'), 'GuildError':guilds.GuildError, 'HASH':re.compile(r'[0-9a-fA-F]{16}\Z'), 'PRESENCE_HEARTBEAT_INTERVAL':1, 'TRAVEL_FRESH_SECONDS':3, 'MAX_PEERS':8, 'validate_coords':lambda *args:{'name':'Route101'}}
         ns['ID']=re.compile(r'[A-Za-z0-9_-]{1,24}\Z')
         exec(compile(ast.fix_missing_locations(ast.Module(body=methods,type_ignores=[])),'server.py','exec'),ns)
         class Server:
-            _line=ns['_line'];_chat=ns['_chat']
+            _line=ns['_line'];_chat=ns['_chat'];_snapshot=ns['_snapshot']
             def _queue(self,conn,msg):conn.setdefault('snapshots',[]).append(msg)
-            def _snapshot(self,conn):return list(conn['chat_history'])
             def _broadcast(self):
                 for p in self.peers.values():self._queue(p,self._snapshot(p))
             def _error(self,conn,why):raise AssertionError(why)
@@ -130,10 +129,14 @@ class ChatIntegrationTests(unittest.TestCase):
             def _schedule_presence(self,now):pass
         self.db=database();self.s=Server();self.s.db=self.db;self.s.guilds=guilds.Guilds(self.db,{(0,9):{'name':'Route101'}});self.s.lock=threading.RLock();self.s.chat_serial=0;self.s.guild_chat=GuildChat(self.s,lambda *args:{'name':'Route101'},3)
         self.s.cave_map=None;self.s.wilds_map=None;self.s.shared_cave=None;self.s.pending_states={};self.s.last_presence_broadcast=0
+        self.s.revision=1;self.s.tiles=[];self.s.objects=[]
+        class Rally:
+            def snapshot(self,conn):return []
+        self.s.rally=Rally()
         class Links:
             def update_presence(self,presence):return []
         self.s.link_protocol=Links()
-        self.s.peers={n:{'id':n,'seq':0,'chat':True,'closing':False,'chat_history':[],'chat_status':'ready'} for n in ('Alice','Bob','Eve')}
+        self.s.peers={n:{'id':n,'seq':0,'chat':True,'closing':False,'chat_history':[],'chat_status':'ready','state':None,'social':True,'peer_limit':8} for n in ('Alice','Bob','Eve')}
     def tearDown(self):self.db.close()
     def send(self,name,text,target='*'):
         conn=self.s.peers[name];conn['chat_credit']=4
@@ -147,6 +150,11 @@ class ChatIntegrationTests(unittest.TestCase):
         self.assertIn('[Guild] meet at the gym',self.lines('Alice'))
         self.assertIn('[Guild] meet at the gym',self.lines('Bob'))
         self.assertEqual(self.lines('Eve'),[])
+        bob_wire=self.s._snapshot(self.s.peers['Bob'])
+        eve_wire=self.s._snapshot(self.s.peers['Eve'])
+        self.assertIn('CHATMSG ',bob_wire)
+        self.assertIn('[Guild] meet at the gym'.encode().hex(),bob_wire)
+        self.assertNotIn('[Guild] meet at the gym'.encode().hex(),eve_wire)
         self.assertFalse(any('/guild' in x for x in self.lines('Eve')))
     def test_guild_online_shows_only_members_and_no_coordinates(self):
         self.send('Alice','/guild create Rockets');self.send('Alice','/guild invite Bob');self.send('Bob','/guild accept Rockets')
@@ -183,6 +191,9 @@ class ChatIntegrationTests(unittest.TestCase):
             raw=f"STATE {conn['seq']+1} 0 9 5 6 1 7 1 {'0'*16} {'0'*16}".encode()
             self.s._line(conn,raw)
         visit('Alice');visit('Alice')
+        bob=self.s.peers['Bob']
+        busy=f"FIELD {bob['seq']+1} 0 9 5 6 1 7 0 {'0'*16} {'0'*16}".encode()
+        self.s._line(bob,busy)
         self.assertFalse(any('expedition complete' in x for x in self.lines('Alice')))
         visit('Bob')
         self.assertTrue(any('expedition complete' in x for x in self.lines('Alice')))
