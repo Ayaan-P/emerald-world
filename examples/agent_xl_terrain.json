@@ -1,0 +1,14 @@
+{
+  "blueprint": {
+    "rooms": [[1, 1, 125, 125]],
+    "links": [],
+    "entrance_room": 0,
+    "exit_room": 0,
+    "style": "rooms"
+  },
+  "paint": [
+    {"x": 8, "y": 8, "width": 28, "height": 18, "terrain": "tall_grass"},
+    {"x": 50, "y": 38, "width": 20, "height": 15, "terrain": "water"},
+    {"x": 9, "y": 16, "width": 26, "height": 2, "terrain": "grass"}
+  ]
+}
