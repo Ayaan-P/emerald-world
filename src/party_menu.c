@@ -1,6 +1,7 @@
 #include "global.h"
 #ifdef PORTABLE
 #include "platform/world_coop.h"
+#include "platform/native_link.h"
 #include "platform/party_autoheal.h"
 #endif
 #include "malloc.h"
@@ -1222,6 +1223,7 @@ static void DrawCancelConfirmButtons(void)
 bool8 IsMultiBattle(void)
 {
 #ifdef PORTABLE
+    if (WorldCoop_FullPartyMenuActive()) return FALSE;
     if (WorldCoop_IsBattle() && gMain.inBattle)
         return TRUE;
 #endif
@@ -1253,7 +1255,19 @@ static void Task_ClosePartyMenuAndSetCB2(u8 taskId)
     if (!gPaletteFade.active)
     {
         if (gPartyMenu.menuType == PARTY_MENU_TYPE_IN_BATTLE)
-            UpdatePartyToFieldOrder();
+        {
+#ifdef PORTABLE
+            if (WorldCoop_FullPartyMenuActive())
+            {
+                /* Summary is read-only in battle and must keep the same
+                 * private view until it returns to the switch menu. */
+                if (sPartyMenuInternal->exitCallback != CB2_ShowPokemonSummaryScreen)
+                    WorldCoop_EndFullPartyMenu();
+            }
+            else
+#endif
+                UpdatePartyToFieldOrder();
+        }
 
         if (sPartyMenuInternal->exitCallback != NULL)
             SetMainCallback2(sPartyMenuInternal->exitCallback);
@@ -1278,6 +1292,14 @@ u8 GetPartyMenuType(void)
 
 void Task_HandleChooseMonInput(u8 taskId)
 {
+#ifdef PORTABLE
+    if (WorldCoop_FullPartyMenuActive() && !NativeLink_IsActive())
+    {
+        gPartyMenuUseExitCallback = FALSE;
+        Task_ClosePartyMenu(taskId);
+        return;
+    }
+#endif
     if (!gPaletteFade.active && MenuHelpers_ShouldWaitForLinkRecv() != TRUE)
     {
         s8 *slotPtr = GetCurrentPartySlotPtr();
@@ -2859,7 +2881,10 @@ static void CB2_ShowPokemonSummaryScreen(void)
 {
     if (gPartyMenu.menuType == PARTY_MENU_TYPE_IN_BATTLE)
     {
-        UpdatePartyToBattleOrder();
+#ifdef PORTABLE
+        if (!WorldCoop_FullPartyMenuActive())
+#endif
+            UpdatePartyToBattleOrder();
         ShowPokemonSummaryScreen(SUMMARY_MODE_LOCK_MOVES, gPlayerParty, gPartyMenu.slotId, gPlayerPartyCount - 1, CB2_ReturnToPartyMenuFromSummaryScreen);
     }
     else
@@ -2873,6 +2898,9 @@ static void CB2_ReturnToPartyMenuFromSummaryScreen(void)
     gPaletteFade.bufferTransferDisabled = TRUE;
     gPartyMenu.slotId = gLastViewedMonIndex;
     InitPartyMenu(gPartyMenu.menuType, KEEP_PARTY_LAYOUT, gPartyMenu.action, TRUE, PARTY_MSG_DO_WHAT_WITH_MON, Task_TryCreateSelectionWindow, gPartyMenu.exitCallback);
+#ifdef PORTABLE
+    if (!sPartyMenuInternal && WorldCoop_FullPartyMenuActive()) WorldCoop_EndFullPartyMenu();
+#endif
 }
 
 static void CursorCb_Switch(u8 taskId)
@@ -4474,6 +4502,26 @@ static bool8 ExecuteTableBasedItemEffect_(u8 partyMonIndex, u16 item, u8 monMove
         return ExecuteTableBasedItemEffect(&gPlayerParty[partyMonIndex], item, partyMonIndex, monMoveIndex);
 }
 
+#ifdef PORTABLE
+void ItemUseCB_WorldCoopMedicine(u8 taskId, TaskFunc task)
+{
+    u8 slot = GetPartyIdFromBattleSlot(gPartyMenu.slotId);
+    struct Pokemon *mon = &gPlayerParty[gPartyMenu.slotId];
+    if (!WorldCoop_SelectMedicineTarget(gSpecialVar_ItemId, slot, mon))
+    {
+        gPartyMenuUseExitCallback = FALSE;
+        PlaySE(SE_SELECT);
+        DisplayPartyMenuMessage(gText_WontHaveEffect, TRUE);
+        ScheduleBgCopyTilemapToVram(2);
+        gTasks[taskId].func = task;
+        return;
+    }
+    /* Choose now; the owner consumes only when this action executes. */
+    gPartyMenuUseExitCallback = TRUE;
+    Task_ClosePartyMenu(taskId);
+}
+#endif
+
 void ItemUseCB_Medicine(u8 taskId, TaskFunc task)
 {
     u16 hp = 0;
@@ -5854,6 +5902,18 @@ static u8 GetPartyLayoutFromBattleType(void)
 
 void OpenPartyMenuInBattle(u8 partyAction)
 {
+#ifdef PORTABLE
+    if (COOP_FULL_SIX_READY && WorldCoop_IsBattle()
+     && (partyAction == PARTY_ACTION_CHOOSE_MON || partyAction == PARTY_ACTION_SEND_OUT)
+     && WorldCoop_BeginFullPartyMenu())
+    {
+        InitPartyMenu(PARTY_MENU_TYPE_IN_BATTLE, PARTY_LAYOUT_SINGLE, partyAction, FALSE,
+                      PARTY_MSG_CHOOSE_MON, Task_HandleChooseMonInput, CB2_SetUpReshowBattleScreenAfterMenu);
+        if (!sPartyMenuInternal) WorldCoop_EndFullPartyMenu();
+        else ReshowBattleScreenDummy();
+        return;
+    }
+#endif
     InitPartyMenu(PARTY_MENU_TYPE_IN_BATTLE, GetPartyLayoutFromBattleType(), partyAction, FALSE, PARTY_MSG_CHOOSE_MON, Task_HandleChooseMonInput, CB2_SetUpReshowBattleScreenAfterMenu);
     ReshowBattleScreenDummy();
     UpdatePartyToBattleOrder();
@@ -5883,6 +5943,24 @@ static bool8 TrySwitchInPokemon(void)
     u8 slot = GetCursorSelectionMonId();
     u8 newSlot;
     u8 i;
+#ifdef PORTABLE
+    if (WorldCoop_FullPartyMenuActive())
+    {
+        u8 stage;
+        if (!WorldCoop_ChooseFullPartyMenu(slot))
+        {
+            GetMonNickname(&gPlayerParty[slot], gStringVar1);
+            StringExpandPlaceholders(gStringVar4, gText_PkmnCantSwitchOut);
+            return FALSE;
+        }
+        stage = WorldCoop_FullPartyChoiceStage();
+        gSelectedMonPartyId = WorldCoop_FullPartyChoiceReply();
+        gPartyMenuUseExitCallback = TRUE;
+        newSlot = GetPartyIdFromBattlePartyId(gBattlerPartyIndexes[gBattlerInMenuId]);
+        SwitchPartyMonSlots(newSlot, GetPartyIdFromBattlePartyId(stage));
+        return TRUE;
+    }
+#endif
 
     // In a multi battle, slots 1, 4, and 5 are the partner's Pokémon
     if (IsMultiBattle() == TRUE && (slot == 1 || slot == 4 || slot == 5))

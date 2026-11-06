@@ -83,6 +83,8 @@ static void Setup(void) {
         sCoop.seed = 123; sCoop.count = 3; sCoop.originalCount = 6; sCoop.staged = TRUE;
         memcpy(sCoop.slots, slots, sizeof(slots));
         memcpy(sCoop.original, original[owner], sizeof(sCoop.original));
+        memcpy(sCoop.working, original[owner], sizeof(sCoop.working));
+        assert(CoopRoster_Init(&sCoop.roster, 0x3F, slots));
         sCoop.enemyCount = 2; sCoop.enemies[0] = FixtureMon(100, 3000); sCoop.enemies[1] = FixtureMon(101, 3001);
         sCoop.reward = 3; sCoop.rewardMask[0] = 1 << slots[0]; sCoop.rewardMask[1] = 1 << slots[1];
         sCoop.rewardPayday = 20 + owner; sCoop.rewardMultiplier = 1;

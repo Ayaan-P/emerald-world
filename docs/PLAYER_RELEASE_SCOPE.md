@@ -1,4 +1,6 @@
-# Player release scope
+# Earlier player release scope
+
+This is the pre-RC5 player contract, retained as historical context. The three-combat-Pokémon roster and earlier item limits below do not describe all current code. For the integrated source, see [RC6 scope](RELEASE_RC6.md), [RC5 notes](RELEASE_RC5.md) and the [documentation index](README.md).
 
 ## Supported starting point
 

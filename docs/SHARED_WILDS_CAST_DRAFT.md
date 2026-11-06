@@ -1,0 +1,7 @@
+# Shared generated casts (experimental)
+
+Builds on the offline cast and shared guide drafts. Compatible CAVE8 hosts and clients share one to three fixed native characters and their validated literal dialogue. The authority hashes the exact terrain and cast metadata into the area identity; compatible clients validate the digest and independently validate staging and terrain. CAVE7 and older clients receive CAVE NONE rather than a partial cast. All character tiles are blocked for player positions, and replacement waits until players have returned from the current generated area. Matching-identity reconnect can preserve it.
+
+The local host launcher offers **Wilds with cast** with an explicit model-provider and potential-charge confirmation. The owner CLI supports `--shared-cast-wilds --admin-socket ...`. A theme is sent to the configured provider; with generated-area persistence enabled, a shortened theme is also stored locally as the area's archive label.
+
+The automated tests use two authenticated in-memory trainer identities and the native C wire, staging and bridge. They are not a live two-client game session, real GUI session or model-provider call. This remains a draft and depends on the existing generated-world integration work; simultaneous entry/return and peer-capacity issues remain unresolved. Characters have bounded literal dialogue, not quests, autonomous behavior, battles or generated art.

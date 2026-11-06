@@ -48,6 +48,7 @@ typedef u8 bool8;
 #define WB_LOCALID 224
 #define WB_MARKER 0x5742
 #define OBJECT_EVENTS_COUNT 16
+#define SAVED_OBJECT_EVENTS_COUNT 16
 #define MAX_SPRITES 64
 #define MAP_OFFSET 7
 #define MAP_OFFSET_W 15
@@ -153,7 +154,9 @@ class SaveIsolation(unittest.TestCase):
                            "RestoreTiles", "WorldBridge_PrepareSave"))
         saves = function(load, "SaveObjectEvents") + function(load, "LoadObjectEvents")
         saves += function(field, "SaveMapView")
-        source = PREAMBLE + state + helpers + saves + SETUP
+        rally = (ROOT / "include/platform/world_rally.h").read_text()
+        rally_types = rally[rally.index("#define WORLD_RALLY_ROSTER"):rally.index("/* Main/game thread only.")]
+        source = PREAMBLE + rally_types + state + helpers + saves + SETUP
         source += "int main(void) { Setup();\n" + body + "\nreturn 0; }\n"
         with tempfile.TemporaryDirectory(prefix="emerald-save-isolation-") as tmp:
             cfile = Path(tmp) / "boundary.c"

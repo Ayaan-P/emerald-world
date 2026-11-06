@@ -517,6 +517,10 @@ static const u8 sText_Trainer2WinText[];
 static const u8 sText_TwoInGameTrainersDefeated[];
 static const u8 sText_Trainer2LoseText[];
 
+#ifdef PORTABLE
+static const u8 sText_CoopMedicineReserve[] = _("{B_LAST_ITEM} helped\n{B_BUFF1}!");
+#endif
+
 const u8 *const gBattleStringsTable[BATTLESTRINGS_COUNT - BATTLESTRINGS_TABLE_START] =
 {
     [STRINGID_TRAINER1LOSETEXT - BATTLESTRINGS_TABLE_START] = sText_Trainer1LoseText,
@@ -888,6 +892,11 @@ const u8 *const gBattleStringsTable[BATTLESTRINGS_COUNT - BATTLESTRINGS_TABLE_ST
     [STRINGID_PKMNBOXLANETTESPCFULL - BATTLESTRINGS_TABLE_START] = gText_PkmnTransferredLanettesPCBoxFull,
     [STRINGID_TRAINER1WINTEXT - BATTLESTRINGS_TABLE_START] = sText_Trainer1WinText,
     [STRINGID_TRAINER2WINTEXT - BATTLESTRINGS_TABLE_START] = sText_Trainer2WinText,
+#ifdef PORTABLE
+    /* Safe placeholder until the separate Mega draft supplies ID 381. */
+    [381 - BATTLESTRINGS_TABLE_START] = gText_EmptyString3,
+    [STRINGID_COOP_MEDICINE_RESERVE - BATTLESTRINGS_TABLE_START] = sText_CoopMedicineReserve,
+#endif
 };
 
 const u16 gMissStringIds[] =

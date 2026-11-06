@@ -22,7 +22,10 @@
 #include "platform/native_link.h"
 #include "platform/link_transport.h"
 #include "platform/world_activity.h"
+#include "platform/generated_map.h"
+#include "platform/world_bridge.h"
 #include "platform/world_coop.h"
+#include "platform/dexnav_native.h"
 #include <string.h>
 
 enum { IDLE, MENU, INVITATION, WAIT_ADMIT, CONNECTING, NATIVE, RETURNING, WAIT_TAG };
@@ -206,6 +209,13 @@ static void Task_Menu(u8 taskId)
     {
         CloseMenu();
         if (choice < 0 || choice == 5) { Stop("cancelled"); return; }
+#if GENERATED_MAP_READY
+        if (GeneratedMap_IsInside()) {
+            if (choice == 1) choice = 4;
+            else if (choice == 2) choice = 5;
+            if (choice == 5) { Stop("cancelled"); return; }
+        }
+#endif
         if (choice == 6)
         {
             if (!TradeStorageFieldReady()
@@ -250,13 +260,20 @@ static void Task_Menu(u8 taskId)
 static bool8 ShowMenu(bool8 incoming)
 {
     struct WindowTemplate window = { 0, 1, 0, 28, 20, 15, 0x125 };
-    const char *labels[] = { "Talk", "Battle single", "Battle double", "Trade party", "Tag up (first 3 mons)", "Cancel", "Prepare party at Center PC" };
+    const char *labels[] = { "Talk", "Battle single", "Battle double", "Trade party", "Tag up (own six mons)", "Cancel", "Prepare party at Center PC" };
     const char *modes[] = { "", "Single battle invitation", "Double battle invitation", "Trade invitation", "Tag up invitation" };
     u8 text[64];
     unsigned i, count = incoming ? 2 : 6;
     if (!incoming && TradeStorageLocation(gSaveBlock1Ptr->location.mapGroup, gSaveBlock1Ptr->location.mapNum))
         count = 7;
     if (LinkTransport_TagPeer()) labels[4] = "End tag";
+#if GENERATED_MAP_READY
+    if (!incoming && GeneratedMap_IsInside()) {
+        labels[1] = labels[4];
+        labels[2] = "Cancel";
+        count = 3;
+    }
+#endif
     sActivity.window = AddWindow(&window);
     if (sActivity.window == WINDOW_NONE) return FALSE;
     SetStandardWindowBorderStyle(sActivity.window, FALSE);
@@ -275,9 +292,9 @@ static bool8 ShowMenu(bool8 incoming)
     InitMenuNormal(sActivity.window, FONT_NORMAL, 0, 32, 16, count, incoming ? 1 : 0);
     if (incoming && sActivity.tagInvitation)
     {
-        Encode(text, "First 3 usable mons fight");
+        Encode(text, "Use your own party");
         AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 80, TEXT_SKIP_DRAW, NULL);
-        Encode(text, "Wild: Poke Balls only");
+        Encode(text, "Owned medicine supported");
         AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 96, TEXT_SKIP_DRAW, NULL);
     }
     if (!incoming)
@@ -301,6 +318,9 @@ static bool8 ShowMenu(bool8 incoming)
 
 int WorldActivity_Interact(const char *peerName)
 {
+#if GENERATED_MAP_READY
+    if (GeneratedMap_IsInside() && !WorldBridge_GeneratedCaveReady()) return 0;
+#endif
     if (sActivity.state != IDLE || !FieldReady() || !LinkTransport_Ready()
         || NativeLink_IsActive() || !CopyPeer(sActivity.peer, peerName)) return 0;
     sActivity.mode = 0;
@@ -337,6 +357,7 @@ int WorldActivity_TakeTalkRequest(char peer[25])
 
 void WorldActivity_ReturnToField(void)
 {
+    DexNavNative_AbandonBattle();
     /* An incomplete exchange is neither a victory nor a defeat. Discard the
      * suspended trainer script, rather than invoking its ordinary result
      * callback (which would white out or award local trainer progression). */
@@ -450,9 +471,24 @@ void WorldActivity_ReturnFromCoopWildBattle(void)
     }
 }
 
+#if GENERATED_MAP_READY
+static bool8 RejectGeneratedCaveInvitations(void)
+{
+    const struct LinkTransportInvitation *pending;
+    if (!GeneratedMap_IsInside()) return FALSE;
+    pending = LinkTransport_PendingInvitation();
+    if (pending && pending->mode != NATIVE_LINK_COOP)
+        LinkTransport_Reject(pending->id);
+    return FALSE;
+}
+#endif
+
 void WorldActivity_Update(void)
 {
     const struct LinkTransportInvitation *pending;
+#if GENERATED_MAP_READY
+    if (RejectGeneratedCaveInvitations()) return;
+#endif
     if (sActivity.state == IDLE && NativeLink_IsActive() && LinkTransport_Mode() == NATIVE_LINK_COOP)
     {
         const char *peer = LinkTransport_TagPeer();
@@ -576,6 +612,7 @@ void WorldActivity_Update(void)
         sActivity.status = "native activity running";
         if (sActivity.mode == NATIVE_LINK_COOP)
         {
+            DexNavNative_PrepareNativeActivity(LinkTransport_CoopOwner() && !sActivity.trainerCaptured);
             if (!WorldCoop_StartBattle(LinkTransport_CoopOwner()))
             { Stop("tagged battle unavailable"); return; }
             sActivity.wildCaptured = sActivity.encounterPending = FALSE;
@@ -584,6 +621,7 @@ void WorldActivity_Update(void)
         }
         else if (sActivity.mode == NATIVE_LINK_TRADE)
         {
+            DexNavNative_PrepareNativeActivity(FALSE);
             gBattleTypeFlags = 0;
             gSpecialVar_0x8004 = USING_TRADE_CENTER;
             gSelectedTradeMonPositions[TRADE_PLAYER] = 0;
@@ -591,8 +629,12 @@ void WorldActivity_Update(void)
             CleanupOverworldWindowsAndTilemaps();
             SetMainCallback2(CB2_StartCreateTradeMenu);
         }
-        else if (!WorldActivity_StartNativeBattle(sActivity.mode))
-            Stop("native battle task unavailable");
+        else
+        {
+            DexNavNative_PrepareNativeActivity(FALSE);
+            if (!WorldActivity_StartNativeBattle(sActivity.mode))
+                Stop("native battle task unavailable");
+        }
         return;
     }
     if (sActivity.state == NATIVE)

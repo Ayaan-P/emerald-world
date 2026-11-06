@@ -4410,6 +4410,26 @@
       "secondary_tileset": "gTileset_MysteryEventsHouse",
       "border_filepath": "data/layouts/SootopolisCity_MysteryEventsHouse_1F_StairsUnblocked/border.bin",
       "blockdata_filepath": "data/layouts/SootopolisCity_MysteryEventsHouse_1F_StairsUnblocked/map.bin"
+    },
+    {
+      "id": "LAYOUT_GENERATED_WORLD_CAVE",
+      "name": "GeneratedWorld_Cave_Layout",
+      "width": 31,
+      "height": 31,
+      "primary_tileset": "gTileset_General",
+      "secondary_tileset": "gTileset_Cave",
+      "border_filepath": "data/layouts/CaveOfOrigin_Entrance/border.bin",
+      "blockdata_filepath": "data/layouts/ShoalCave_LowTideEntranceRoom/map.bin"
+    },
+    {
+      "id": "LAYOUT_GENERATED_WORLD_WILDS",
+      "name": "GeneratedWorld_Wilds_Layout",
+      "width": 20,
+      "height": 20,
+      "primary_tileset": "gTileset_General",
+      "secondary_tileset": "gTileset_Petalburg",
+      "border_filepath": "data/layouts/Route101/border.bin",
+      "blockdata_filepath": "data/layouts/Route101/map.bin"
     }
   ]
 }

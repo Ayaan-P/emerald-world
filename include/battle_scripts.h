@@ -148,6 +148,11 @@ extern const u8 BattleScript_WeatherFormChanges[];
 extern const u8 BattleScript_WeatherFormChangesLoop[];
 extern const u8 BattleScript_CastformChange[];
 extern const u8 BattleScript_IntimidateActivatesEnd3[];
+#ifdef PORTABLE
+extern const u8 BattleScript_WorldCoopMedicineHeal[];
+extern const u8 BattleScript_WorldCoopMedicineStatus[];
+extern const u8 BattleScript_WorldCoopMedicineReserve[];
+#endif
 extern const u8 BattleScript_IntimidateActivates[];
 extern const u8 BattleScript_DroughtActivates[];
 extern const u8 BattleScript_TookAttack[];

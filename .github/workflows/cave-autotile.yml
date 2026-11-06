@@ -1,0 +1,116 @@
+name: Experimental generated cave autotiling
+
+on:
+  pull_request:
+    branches: [dot/live-agent-rule-control]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cave-autotile-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-geometry:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout source without stored credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # official v4
+        with:
+          persist-credentials: false
+      - name: Generate map constants for fixtures
+        run: |
+          make -C tools/mapjson
+          tools/mapjson/mapjson groups emerald data/maps/map_groups.json data/maps include/constants
+          tools/mapjson/mapjson layouts emerald data/layouts/layouts.json data/layouts include/constants
+      - name: Exercise native tile selection and authored geometry
+        run: PYTHONPATH=.:test/world:test/headless python3 -m unittest test_live_agent_events test_shared_agent_events test_wilds_events test_shared_wilds_cast test_wilds_cast test_shared_wilds_guide test_wilds_guide test_generated_cave_persistence test_generated_area_archive test_shared_generated_wilds test_generated_wilds test_desktop_cave_persistence test_host_cave_authoring test_large_cave_wildlife test_shared_large_cave test_large_generated_cave test_shared_cave_wildlife test_cave_wildlife test_cave_biomes test_shared_cave_ecology test_cave_hello test_native_cave_flow test_cave_ecology test_cave_build_flags test_cave_playthrough_harness test_cave_autotile test_cave_blueprint test_author_cave test_generated_map_import test_native_generated_map test_shared_generated_cave test_world_cave_wire -v
+  linux-native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout source without stored credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # official v4
+        with:
+          persist-credentials: false
+      - name: Install Linux build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential libpng-dev libsdl2-dev
+      - name: Restore hash-pinned upstream build inputs (never uploaded)
+        run: python3 scripts/restore_upstream_assets.py
+      - name: Compile native generated cave and autotiling
+        run: make -j2 linux CFLAGS=-g GENERATED_MAP_READY=1 GENERATED_MAP_AUTOTILE=1 GENERATED_MAP_LARGE=1 GENERATED_MAP_WILDS=1 GENERATED_WILDS_GUIDE=1 GENERATED_WILDS_CAST=1 GENERATED_WILDS_EVENTS=1 GENERATED_CAVE_PROFILES=1 GENERATED_CAVE_BIOMES=1 GENERATED_CAVE_WILDLIFE=1 WERROR=1
+      - name: Verify build gates
+        run: |
+          grep -R -- '-DGENERATED_MAP_READY=1' build/*/build_flags.txt
+          grep -R -- '-DGENERATED_MAP_AUTOTILE=1' build/*/build_flags.txt
+          grep -R -- '-DGENERATED_MAP_LARGE=1' build/*/build_flags.txt
+          grep -R -- '-DGENERATED_MAP_WILDS=1' build/*/build_flags.txt
+          grep -R -- '-DGENERATED_WILDS_GUIDE=1' build/*/build_flags.txt
+          grep -R -- '-DGENERATED_WILDS_CAST=1' build/*/build_flags.txt
+          grep -R -- '-DGENERATED_WILDS_EVENTS=1' build/*/build_flags.txt
+          grep -R -- '-DGENERATED_CAVE_PROFILES=1' build/*/build_flags.txt
+          grep -R -- '-DGENERATED_CAVE_BIOMES=1' build/*/build_flags.txt
+          grep -R -- '-DGENERATED_CAVE_WILDLIFE=1' build/*/build_flags.txt
+      - name: Standalone frame and save smoke without golden changes
+        run: python3 test/headless/smoke.py ./pokeemerald64 --out build/cave-autotile-smoke
+      - name: Play the generated cave offline with a disposable save
+        run: |
+          PYTHONPATH=.:test/headless timeout 180s python3 test/headless/generated_cave_playthrough.py \
+            --binary ./pokeemerald64 --seed-save build/cave-autotile-smoke/first_battle/game.sav \
+            --out build/cave-playthrough
+      - name: Encounter, flee and leave the generated cave offline
+        run: |
+          PYTHONPATH=.:test/headless timeout 180s python3 test/headless/generated_cave_playthrough.py \
+            --binary ./pokeemerald64 --seed-save build/cave-autotile-smoke/first_battle/game.sav \
+            --out build/cave-encounter --encounter
+      - name: Check native offline Meteor Falls encounter profile
+        run: |
+          PYTHONPATH=.:test/headless timeout 180s python3 test/headless/generated_cave_playthrough.py \
+            --binary ./pokeemerald64 --seed-save build/cave-autotile-smoke/first_battle/game.sav \
+            --out build/cave-ecology --encounter --profile meteor --observe-only
+      - name: Check native ice biome and encounter
+        run: |
+          PYTHONPATH=.:test/headless timeout 180s python3 test/headless/generated_cave_playthrough.py \
+            --binary ./pokeemerald64 --seed-save build/cave-autotile-smoke/first_battle/game.sav \
+            --out build/cave-ice --encounter --profile ice --observe-only
+      - name: Check native model-format custom wildlife encounter
+        run: |
+          PYTHONPATH=.:test/headless timeout 180s python3 test/headless/generated_cave_playthrough.py \
+            --binary ./pokeemerald64 --seed-save build/cave-autotile-smoke/first_battle/game.sav \
+            --out build/cave-wildlife --encounter --profile ice --observe-only --wildlife
+      - name: Walk beyond the old map boundary in a large cave
+        run: |
+          PYTHONPATH=.:test/headless timeout 180s python3 test/headless/large_cave_playthrough.py \
+            --binary ./pokeemerald64 --seed-save build/cave-autotile-smoke/first_battle/game.sav \
+            --out build/large-cave-playthrough
+      - name: Encounter custom wildlife in a large cave
+        run: |
+          PYTHONPATH=.:test/headless timeout 180s python3 test/headless/large_wildlife_playthrough.py \
+            --binary ./pokeemerald64 --seed-save build/cave-autotile-smoke/first_battle/game.sav \
+            --out build/large-wildlife-playthrough
+      - name: Walk and return from generated outdoor terrain
+        run: |
+          PYTHONPATH=.:test/headless timeout 180s python3 test/headless/generated_wilds_playthrough.py \
+            --binary ./pokeemerald64 --seed-save build/cave-autotile-smoke/first_battle/game.sav \
+            --out build/generated-wilds-playthrough
+      - name: Talk to a generated outdoor guide
+        run: |
+          PYTHONPATH=.:test/headless timeout 180s python3 test/headless/wilds_guide_playthrough.py \
+            --binary ./pokeemerald64 --seed-save build/cave-autotile-smoke/first_battle/game.sav \
+            --out build/wilds-guide-playthrough
+      - name: Talk to all characters in a generated cast
+        run: |
+          PYTHONPATH=.:test/headless timeout 240s python3 test/headless/wilds_cast_playthrough.py \
+            --binary ./pokeemerald64 --seed-save build/cave-autotile-smoke/first_battle/game.sav \
+            --out build/wilds-cast-playthrough
+      - name: Run an agent-authored event graph
+        run: |
+          PYTHONPATH=.:test/headless timeout 240s python3 test/headless/wilds_events_playthrough.py \
+            --binary ./pokeemerald64 --seed-save build/cave-autotile-smoke/first_battle/game.sav \
+            --out build/wilds-events-playthrough
+      # No binary, ROM, save or runtime-data artifacts are uploaded.

@@ -383,6 +383,8 @@ gStdScripts_End::
 	.include "data/maps/SeafloorCavern_Room8/scripts.inc"
 	.include "data/maps/SeafloorCavern_Room9/scripts.inc"
 	.include "data/maps/CaveOfOrigin_Entrance/scripts.inc"
+	.include "data/maps/GeneratedWorld_Cave/scripts.inc"
+	.include "data/maps/GeneratedWorld_Wilds/scripts.inc"
 	.include "data/maps/CaveOfOrigin_1F/scripts.inc"
 	.include "data/maps/CaveOfOrigin_UnusedRubySapphireMap1/scripts.inc"
 	.include "data/maps/CaveOfOrigin_UnusedRubySapphireMap2/scripts.inc"
@@ -1043,6 +1045,9 @@ Common_EventScript_LegendaryFlewAway::
 	.include "data/text/mauville_man.inc"
 	.include "data/text/trainers.inc"
 	.include "data/scripts/repel.inc"
+	.ifdef PORTABLE
+	.include "data/scripts/dexnav.inc"
+	.endif
 	.include "data/scripts/safari_zone.inc"
 	.include "data/scripts/roulette.inc"
 	.include "data/text/pokedex_rating.inc"

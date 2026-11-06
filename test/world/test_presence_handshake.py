@@ -36,9 +36,8 @@ class PresenceHandshake(unittest.TestCase):
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <poll.h>
-typedef uint8_t bool8;
-typedef uint8_t u8;
-typedef uint16_t u16;
+#include "platform/world_rally.h"
+void WorldRally_Disconnected(void) {}
 #define FALSE 0
 #define TRUE 1
 #define ARRAY_COUNT(a) (sizeof(a)/sizeof((a)[0]))
@@ -86,7 +85,8 @@ void send_state(void) {
 '''
         (p/'presence.c').write_text(source)
         subprocess.run(['cc', '-shared', '-fPIC', '-std=c99', '-Wall', '-Wextra',
-                        '-Werror', str(p/'presence.c'), '-o', str(p/'presence.so')], check=True)
+                        '-Werror', '-DPORTABLE', '-iquote', str(ROOT/'include'),
+                        str(p/'presence.c'), '-o', str(p/'presence.so')], check=True)
         cls.lib = C.CDLL(str(p/'presence.so'))
         cls.lib.start.argtypes = [C.c_char_p]
         cls.lib.WorldBridge_Poll.argtypes = [C.c_ubyte]
@@ -122,7 +122,7 @@ void send_state(void) {
         self.peer, _ = self.listener.accept()
         self.peer.settimeout(.1)
         self.pump()
-        self.assertEqual(self.peer.recv(4096), b'HELLO 1 alice ' + b'a'*64 + b' SOCIALTRAVELCHAT\n')
+        self.assertEqual(self.peer.recv(4096), b'HELLO 1 alice ' + b'a'*64 + b' SOCIALTRAVELCHATRALLY\n')
 
     def incoming(self, data):
         self.peer.sendall(data)

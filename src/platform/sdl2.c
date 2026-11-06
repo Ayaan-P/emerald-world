@@ -16,6 +16,7 @@
 #include "platform/native_save.h"
 #endif
 #include "global.h"
+#include "platform/generated_map.h"
 #include "platform.h"
 #include "rtc.h"
 #include "gba/defines.h"
@@ -33,6 +34,7 @@
 #include "platform/player_control.h"
 #include "platform/native_link.h"
 #include "platform/link_transport.h"
+#include "platform/dexnav_native.h"
 #include "link.h"
 
 extern void (*const gIntrTable[])(void);
@@ -73,6 +75,7 @@ static FILE *sTestAudio;
 static FILE *sTestState;
 static const char *sWorldConfigPath;
 static const char *sWorldInputPath;
+static const char *sGeneratedMapPath;
 static const char *sWorldShotPath;
 static bool sWorldBootstrap;
 static u32 sWorldFrame;
@@ -129,10 +132,115 @@ static bool BeginNativeFrame(bool8 headless)
 /* SDL2 main/windows/SDL_windows_main.c converts CommandLineToArgvW output
  * with WIN_StringToUTF8W before calling SDL_main (the SDL.h main macro).
  * Keep argv and SDL_GetPrefPath UTF-8; NativeFile_Open performs the OS conversion. */
+static bool LoadGeneratedMapTemplate(const char *path)
+{
+    static const u8 magic1[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '1' };
+#if GENERATED_CAVE_PROFILES
+    static const u8 magic2[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '2' };
+#endif
+#if GENERATED_CAVE_WILDLIFE
+    static const u8 magic3[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '3' };
+#endif
+#if GENERATED_MAP_LARGE
+    static const u8 magic4[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '4' };
+#if GENERATED_MAP_WILDS
+    static const u8 magic6[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '6' };
+#if GENERATED_WILDS_GUIDE
+    static const u8 magic7[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '7' };
+#if GENERATED_WILDS_CAST
+    static const u8 magic8[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '8' };
+#if GENERATED_WILDS_EVENTS
+    static const u8 magic9[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '9' };
+#endif
+#endif
+#endif
+#endif
+#if GENERATED_CAVE_WILDLIFE
+    static const u8 magic5[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '5' };
+#endif
+#if GENERATED_WILDS_EVENTS
+    u8 bytes[8 + GENERATED_EVENT_BYTES + GENERATED_CAST_BYTES + GENERATED_LARGE_MAP_TEMPLATE_BYTES];
+#elif GENERATED_WILDS_CAST
+    u8 bytes[8 + GENERATED_CAST_BYTES + GENERATED_LARGE_MAP_TEMPLATE_BYTES];
+#elif GENERATED_WILDS_GUIDE
+    u8 bytes[8 + GENERATED_GUIDE_BYTES + GENERATED_LARGE_MAP_TEMPLATE_BYTES];
+#else
+    u8 bytes[9 + GENERATED_WILDLIFE_BYTES + GENERATED_LARGE_MAP_TEMPLATE_BYTES];
+#endif
+#else
+    u8 bytes[9 + GENERATED_WILDLIFE_BYTES + GENERATED_MAP_TEMPLATE_BYTES];
+#endif
+    FILE *file = NativeFile_Open(path, "rb");
+    size_t count;
+    int extra;
+    bool8 valid = FALSE;
+    if (!file) return false;
+    count = fread(bytes, 1, sizeof(bytes), file);
+    extra = fgetc(file);
+    if (extra == EOF && !ferror(file))
+    {
+        if (count == 8 + GENERATED_MAP_TEMPLATE_BYTES && !memcmp(bytes, magic1, 8))
+            valid = GeneratedMap_StageTemplate(bytes + 8, GENERATED_MAP_TEMPLATE_BYTES);
+#if GENERATED_CAVE_PROFILES
+        else if (count == 9 + GENERATED_MAP_TEMPLATE_BYTES && !memcmp(bytes, magic2, 8)
+              && bytes[8] <= 3 && GeneratedMap_StageTemplate(bytes + 9, GENERATED_MAP_TEMPLATE_BYTES))
+            valid = GeneratedMap_SetEncounterProfile(bytes[8]);
+#endif
+#if GENERATED_CAVE_WILDLIFE
+        else if (count == 9 + GENERATED_WILDLIFE_BYTES + GENERATED_MAP_TEMPLATE_BYTES
+              && !memcmp(bytes, magic3, 8) && bytes[8] <= 3
+              && GeneratedMap_ValidateWildlife(bytes + 9, GENERATED_WILDLIFE_BYTES)
+              && GeneratedMap_StageTemplate(bytes + 9 + GENERATED_WILDLIFE_BYTES, GENERATED_MAP_TEMPLATE_BYTES))
+            valid = GeneratedMap_SetEncounterProfile(bytes[8])
+                 && GeneratedMap_SetWildlife(bytes + 9, GENERATED_WILDLIFE_BYTES);
+#endif
+#if GENERATED_MAP_LARGE
+        else if (count == 8 + GENERATED_LARGE_MAP_TEMPLATE_BYTES && !memcmp(bytes, magic4, 8))
+            valid = GeneratedMap_StageLargeTemplate(bytes + 8, GENERATED_LARGE_MAP_TEMPLATE_BYTES);
+#if GENERATED_MAP_WILDS
+        else if (count == 8 + GENERATED_LARGE_MAP_TEMPLATE_BYTES && !memcmp(bytes, magic6, 8))
+            valid = GeneratedMap_StageWildsTemplate(bytes + 8, GENERATED_LARGE_MAP_TEMPLATE_BYTES);
+#if GENERATED_WILDS_GUIDE
+        else if (count == 8 + GENERATED_GUIDE_BYTES + GENERATED_LARGE_MAP_TEMPLATE_BYTES && !memcmp(bytes, magic7, 8))
+            valid = GeneratedMap_StageGuidedWilds(bytes + 8, GENERATED_GUIDE_BYTES, bytes + 8 + GENERATED_GUIDE_BYTES, GENERATED_LARGE_MAP_TEMPLATE_BYTES);
+#if GENERATED_WILDS_CAST
+        else if (count == 8 + GENERATED_CAST_BYTES + GENERATED_LARGE_MAP_TEMPLATE_BYTES && !memcmp(bytes, magic8, 8))
+            valid = GeneratedMap_StageCastWilds(bytes + 8, GENERATED_CAST_BYTES, bytes + 8 + GENERATED_CAST_BYTES, GENERATED_LARGE_MAP_TEMPLATE_BYTES);
+#if GENERATED_WILDS_EVENTS
+        else if (count == 8 + GENERATED_EVENT_BYTES + GENERATED_CAST_BYTES + GENERATED_LARGE_MAP_TEMPLATE_BYTES && !memcmp(bytes, magic9, 8))
+            valid = GeneratedMap_StageEventWilds(bytes + 8, GENERATED_EVENT_BYTES, bytes + 8 + GENERATED_EVENT_BYTES, GENERATED_CAST_BYTES, bytes + 8 + GENERATED_EVENT_BYTES + GENERATED_CAST_BYTES, GENERATED_LARGE_MAP_TEMPLATE_BYTES);
+#endif
+#endif
+#endif
+#endif
+#if GENERATED_CAVE_WILDLIFE
+        else if (count == 9 + GENERATED_WILDLIFE_BYTES + GENERATED_LARGE_MAP_TEMPLATE_BYTES
+              && !memcmp(bytes, magic5, 8) && bytes[8] <= 3
+              && GeneratedMap_ValidateWildlife(bytes + 9, GENERATED_WILDLIFE_BYTES)
+              && GeneratedMap_StageLargeTemplate(bytes + 9 + GENERATED_WILDLIFE_BYTES, GENERATED_LARGE_MAP_TEMPLATE_BYTES))
+            valid = GeneratedMap_SetEncounterProfile(bytes[8])
+                 && GeneratedMap_SetWildlife(bytes + 9, GENERATED_WILDLIFE_BYTES);
+#endif
+#endif
+    }
+    if (fclose(file) != 0) valid = FALSE;
+    return valid;
+}
+
+bool8 Platform_ReloadGeneratedMap(void)
+{
+    return !sGeneratedMapPath || LoadGeneratedMapTemplate(sGeneratedMapPath);
+}
+
 int main(int argc, char **argv)
 {
     if (!ParseArgs(argc, argv))
         return 1;
+    if (sGeneratedMapPath && (sWorldConfigPath || !LoadGeneratedMapTemplate(sGeneratedMapPath)))
+    {
+        fprintf(stderr, "Generated map unavailable: use a valid offline template and enable the experimental feature.\n");
+        return 1;
+    }
 
     if (sPlayerControlPath != NULL && sTestMode)
     {
@@ -187,6 +295,7 @@ int main(int argc, char **argv)
 #endif
         return 1;
     }
+    DexNavNative_Init(sSavePath, !sTestMode);
     // Before AgbMain, whose RtcInit reads it
     InitInternalClock();
 
@@ -416,6 +525,7 @@ static bool StoreSaveFile(void)
 
 bool8 Platform_StoreSaveFile(void)
 {
+    if (GeneratedMap_IsInside()) return FALSE;
     return StoreSaveFile();
 }
 
@@ -727,7 +837,7 @@ static bool ParseArgs(int argc, char **argv)
             fprintf(stderr, "Missing player control option value.\n");
             return false;
         }
-        if (value == NULL && (!strcmp(arg, "--world-config") || !strcmp(arg, "--world-input") || !strcmp(arg, "--world-shot")))
+        if (value == NULL && (!strcmp(arg, "--world-config") || !strcmp(arg, "--world-input") || !strcmp(arg, "--world-shot") || !strcmp(arg, "--generated-map")))
         {
             fprintf(stderr, "Missing world option value.\n");
             return false;
@@ -748,6 +858,11 @@ static bool ParseArgs(int argc, char **argv)
             if (sPlayerControlPath != NULL)
                 return false;
             sPlayerControlPath = value;
+        }
+        else if (strcmp(arg, "--generated-map") == 0)
+        {
+            if (sGeneratedMapPath != NULL || !strncmp(value, "--", 2)) return false;
+            sGeneratedMapPath = value;
         }
         else if (strcmp(arg, "--world-config") == 0)
         {

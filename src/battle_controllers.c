@@ -859,7 +859,13 @@ static bool8 NativeBattleCommandValid(const u8 *data, u16 size, u8 bufferId)
 #ifdef PORTABLE
         if (data[0] == CONTROLLER_EXPUPDATE && WorldCoop_IsBattle())
             return WorldCoop_RewardPacketValid(data, size)
-                || WorldCoop_CatchPacketValid(data, size);
+                || WorldCoop_CatchPacketValid(data, size)
+                || WorldCoop_MedicinePacketValid(data, size)
+#if COOP_FULL_SIX_READY
+                || WorldCoop_RosterRequestValid(data, size)
+                || WorldCoop_RosterMirrorValid(data, size)
+#endif
+                ;
 #endif
         if (data[1] >= PARTY_SIZE)
             return FALSE;
@@ -872,6 +878,10 @@ static bool8 NativeBattleCommandValid(const u8 *data, u16 size, u8 bufferId)
     case CONTROLLER_PRINTSTRING:
     case CONTROLLER_PRINTSTRINGPLAYERONLY:
         needed = 4 + sizeof(struct BattleMsgData);
+        break;
+    case CONTROLLER_OPENBAG:
+        if (WorldCoop_IsBattle() && (size != 8 || data[4] > 1 || data[5] || data[6] || data[7]))
+            return FALSE;
         break;
     case CONTROLLER_CHOOSEMOVE:
         needed = 4 + sizeof(struct ChooseMoveStruct);
@@ -1001,6 +1011,11 @@ static bool8 NativeBattleReplyValid(u8 battler, const u8 *data)
     switch (data[0])
     {
     case CONTROLLER_DATATRANSFER:
+#if COOP_FULL_SIX_READY
+        if (WorldCoop_IsBattle() && request[0] == CONTROLLER_EXPUPDATE
+         && request[1] == WORLD_COOP_ROSTER_REQUEST_TAG)
+            return WorldCoop_RosterReplyValid(battler, data + 4, data[2] | (data[3] << 8));
+#endif
         if (request[0] != CONTROLLER_GETMONDATA || request[1] != REQUEST_ALL_BATTLE)
             return FALSE;
         mask = request[2];
@@ -1016,6 +1031,11 @@ static bool8 NativeBattleReplyValid(u8 battler, const u8 *data)
         return TRUE;
     case CONTROLLER_CHOSENMONRETURNVALUE:
         if (request[0] != CONTROLLER_CHOOSEPOKEMON
+         || (WorldCoop_IsBattle() && data[1] > PARTY_SIZE
+#if COOP_FULL_SIX_READY
+             && !WorldCoop_RosterChoiceValid(battler, data[1])
+#endif
+            )
          || (WorldCoop_IsBattle() && !(battler & BIT_SIDE) && data[1] < PARTY_SIZE
              && data[1] / MULTI_PARTY_SIZE != NativeBattleOwner(battler)))
             return FALSE;
@@ -1029,6 +1049,9 @@ static bool8 NativeBattleReplyValid(u8 battler, const u8 *data)
         }
         return TRUE;
     case CONTROLLER_TWORETURNVALUES:
+        if (WorldCoop_IsBattle() && request[0] == CONTROLLER_EXPUPDATE
+         && request[1] == WORLD_COOP_MEDICINE_TAG)
+            return data[1] <= 1 && data[2] == 0 && data[3] == 0;
         /* The engine indexes its move table from bytes 2/3 after CHOOSEMOVE,
          * regardless of the action byte. Do not let another action disguise
          * an unchecked move index or target as an otherwise valid reply. */
@@ -1042,7 +1065,7 @@ static bool8 NativeBattleReplyValid(u8 battler, const u8 *data)
     case CONTROLLER_ONERETURNVALUE_DUPLICATE:
         return request[0] == CONTROLLER_OPENBAG && data[3] == 0
             && (WorldCoop_IsBattle()
-                ? !(battler & BIT_SIDE) && WorldCoop_BallReplyValid(data[1] | (data[2] << 8))
+                ? !(battler & BIT_SIDE) && WorldCoop_ItemReplyValid(data[1] | (data[2] << 8))
                 : (data[1] | (data[2] << 8)) < ITEMS_COUNT);
     }
     return FALSE;
@@ -1461,8 +1484,9 @@ static void Task_HandleCopyReceivedLinkBuffersData(u8 taskId)
                  && sNativeBattleRequest[battler][1] == REQUEST_ALL_BATTLE)
                 {
                     u8 mask = sNativeBattleRequest[battler][2];
-                    /* Reserve batches are not public selected-battler data. */
-                    if (mask == 0 || (mask & (mask - 1)) == 0)
+                    /* Only the active slot belongs in the public view. A
+                     * single reserve query may be a private medicine target. */
+                    if (mask == 0 || mask == (1u << gBattlerPartyIndexes[battler]))
                     {
                         struct BattlePokemon mon;
                         u8 slot = gBattlerPartyIndexes[battler];
@@ -1766,6 +1790,14 @@ void BtlController_EmitChooseItem(u8 bufferId, u8 *battlePartyOrder)
     sBattleBuffersTransferData[0] = CONTROLLER_OPENBAG;
     for (i = 0; i < PARTY_SIZE / 2; i++)
         sBattleBuffersTransferData[1 + i] = battlePartyOrder[i];
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle())
+    {
+        sBattleBuffersTransferData[4] = !!(gBattleMons[gActiveBattler].status2 & STATUS2_CONFUSION);
+        PrepareBufferDataTransfer(bufferId, sBattleBuffersTransferData, 5);
+        return;
+    }
+#endif
     PrepareBufferDataTransfer(bufferId, sBattleBuffersTransferData, 4);
 }
 

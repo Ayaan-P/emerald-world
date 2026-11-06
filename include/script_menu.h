@@ -4,6 +4,10 @@
 #include "constants/script_menu.h"
 
 extern const u8 *const gStdStrings[];
+#ifdef PORTABLE
+struct MenuAction;
+bool8 ScriptMenu_DrawRepelChoice(u8 left, u8 top, const struct MenuAction *actions, u8 count);
+#endif
 
 bool8 ScriptMenu_Multichoice(u8 left, u8 top, u8 multichoiceId, bool8 ignoreBPress);
 bool8 ScriptMenu_MultichoiceWithDefault(u8 left, u8 top, u8 multichoiceId, bool8 ignoreBPress, u8 defaultChoice);

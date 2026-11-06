@@ -1,4 +1,10 @@
 #include "global.h"
+#ifdef PORTABLE
+#include "platform/generated_map.h"
+#endif
+#ifdef PORTABLE
+#include "dexnav.h"
+#endif
 #include "overworld.h"
 #include "battle_pyramid.h"
 #include "battle_setup.h"
@@ -539,7 +545,13 @@ const struct MapLayout *GetMapLayout(void)
 {
     u16 mapLayoutId = gSaveBlock1Ptr->mapLayoutId;
     if (mapLayoutId)
+    {
+#ifdef PORTABLE
+        return GeneratedMap_ResolveLayout(gMapLayouts[mapLayoutId - 1]);
+#else
         return gMapLayouts[mapLayoutId - 1];
+#endif
+    }
     return NULL;
 }
 
@@ -631,6 +643,9 @@ static void SetPlayerCoordsFromWarp(void)
 
 void WarpIntoMap(void)
 {
+#ifdef PORTABLE
+    ResetDexNavSearch();
+#endif
     ApplyCurrentWarp();
     LoadCurrentMapData();
     SetPlayerCoordsFromWarp();
@@ -793,6 +808,10 @@ bool8 SetDiveWarpDive(u16 x, u16 y)
 void LoadMapFromCameraTransition(u8 mapGroup, u8 mapNum)
 {
     s32 paletteIndex;
+
+#ifdef PORTABLE
+    ResetDexNavSearch();
+#endif
 
     SetWarpDestination(mapGroup, mapNum, WARP_ID_NONE, -1, -1);
 

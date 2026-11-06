@@ -6,6 +6,25 @@ REVISION    := 0
 MODERN      ?= 0
 KEEP_TEMPS  ?= 0
 PORTABLE    ?= 0
+RC5_FEATURES ?= 1
+COOP_FULL_SIX_READY ?= $(RC5_FEATURES)
+GENERATED_MAP_READY ?= $(RC5_FEATURES)
+GENERATED_MAP_AUTOTILE ?= $(RC5_FEATURES)
+GENERATED_MAP_LARGE ?= $(RC5_FEATURES)
+GENERATED_MAP_WILDS ?= $(RC5_FEATURES)
+GENERATED_CAVE_PROFILES ?= $(RC5_FEATURES)
+GENERATED_CAVE_BIOMES ?= $(RC5_FEATURES)
+GENERATED_CAVE_WILDLIFE ?= $(RC5_FEATURES)
+WORLD_EXTENDED_OBJECTS ?= $(RC5_FEATURES)
+WORLD_EXTENDED_SPRITES ?= $(RC5_FEATURES)
+WORLD_NATIVE_OAM ?= $(RC5_FEATURES)
+WORLD_NATIVE_TILEBANK ?= $(RC5_FEATURES)
+WORLD_MATCHED_TRAINERS ?= $(RC5_FEATURES)
+WORLD_SMOOTH_PRESENCE ?= $(RC5_FEATURES)
+RC6_FEATURES ?= 1
+GENERATED_WILDS_GUIDE ?= $(RC6_FEATURES)
+GENERATED_WILDS_CAST ?= $(RC6_FEATURES)
+GENERATED_WILDS_EVENTS ?= $(RC6_FEATURES)
 IS64BIT     ?= 1
 TARGET_OS       ?= NONE
 
@@ -280,7 +299,9 @@ ifeq ($(MODERN),0)
   LIBPATH := -L ../../tools/agbcc/lib
   LIB := $(LIBPATH) -lgcc -lc -L../../libagbsyscall -lagbsyscall
 else ifeq ($(PORTABLE),1)
-  CPPFLAGS += -std=gnu99 -D NONMATCHING -D PORTABLE -D UBFIX $(CPPFLAGS64) $(PLATFORM_INCLUDES)
+  # Sources are preprocessed in a separate command before cc1; feature
+  # switches must be here, not only in CFLAGS passed to the compiler stage.
+  CPPFLAGS += -std=gnu99 -D NONMATCHING -D PORTABLE -D UBFIX -DCOOP_FULL_SIX_READY=$(COOP_FULL_SIX_READY) -DGENERATED_MAP_READY=$(GENERATED_MAP_READY) -DGENERATED_MAP_AUTOTILE=$(GENERATED_MAP_AUTOTILE) -DGENERATED_MAP_LARGE=$(GENERATED_MAP_LARGE) -DGENERATED_MAP_WILDS=$(GENERATED_MAP_WILDS) -DGENERATED_WILDS_GUIDE=$(GENERATED_WILDS_GUIDE) -DGENERATED_WILDS_CAST=$(GENERATED_WILDS_CAST) -DGENERATED_WILDS_EVENTS=$(GENERATED_WILDS_EVENTS) -DGENERATED_CAVE_PROFILES=$(GENERATED_CAVE_PROFILES) -DGENERATED_CAVE_BIOMES=$(GENERATED_CAVE_BIOMES) -DGENERATED_CAVE_WILDLIFE=$(GENERATED_CAVE_WILDLIFE) -DWORLD_EXTENDED_OBJECTS=$(WORLD_EXTENDED_OBJECTS) -DWORLD_EXTENDED_SPRITES=$(WORLD_EXTENDED_SPRITES) -DWORLD_NATIVE_OAM=$(WORLD_NATIVE_OAM) -DWORLD_NATIVE_TILEBANK=$(WORLD_NATIVE_TILEBANK) -DWORLD_MATCHED_TRAINERS=$(WORLD_MATCHED_TRAINERS) -DWORLD_SMOOTH_PRESENCE=$(WORLD_SMOOTH_PRESENCE) $(CPPFLAGS64) $(PLATFORM_INCLUDES)
   ifneq ($(SDL_DIR),)
     CPPFLAGS += -I$(SDL_DIR)/include
   endif
@@ -296,6 +317,7 @@ else ifeq ($(PORTABLE),1)
   endif
   PATH_MODERNCC := PATH="$(PATH)" $(MODERNCC)
   override CFLAGS += $(OS_CFLAGS) $(PLATFORM_CFLAGS) -Werror=implicit-function-declaration -Werror=incompatible-pointer-types -Werror=int-conversion -Werror=pointer-to-int-cast -Werror=int-to-pointer-cast -Wno-trigraphs -Wimplicit -Wparentheses -Wunused -m$(BIT_WIDTH) -std=gnu99 $(LEADING_UNDERSCORE_FLAG) -fno-common -fno-builtin -Wno-unused-function -DPORTABLE -DNONMATCHING -D UBFIX -DMODERN=$(MODERN)
+  override CFLAGS += -DWORLD_EXTENDED_OBJECTS=$(WORLD_EXTENDED_OBJECTS) -DWORLD_EXTENDED_SPRITES=$(WORLD_EXTENDED_SPRITES) -DWORLD_NATIVE_OAM=$(WORLD_NATIVE_OAM) -DWORLD_NATIVE_TILEBANK=$(WORLD_NATIVE_TILEBANK) -DWORLD_MATCHED_TRAINERS=$(WORLD_MATCHED_TRAINERS) -DWORLD_SMOOTH_PRESENCE=$(WORLD_SMOOTH_PRESENCE)
   # The same floating point results everywhere, which the tests' frame hashes
   # need: on ARM, compilers would otherwise fuse multiplies and adds
   override CFLAGS += -ffp-contract=off
@@ -583,12 +605,12 @@ ifeq ($(COMPILER),clang)
 	@$(CPP) $(CPPFLAGS) $(GAME_RAM_CPPFLAGS) $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(MODERNCC) $(CFLAGS) -x c -c -o $@ -
 else ifneq ($(KEEP_TEMPS),1)
 	@echo "$(CC1) <flags> -o $@ $<"
-	@$(CPP) $(CPPFLAGS) $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(CC1) $(CFLAGS) -o - - | cat - <(echo -e ".text\n\t.align\t2, 0") | $(AS) $(ASFLAGS) -o $@ -
+	@$(CPP) $(CPPFLAGS) $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(CC1) $(CFLAGS) -o - - | cat - <(echo -e ".text\n	.align	2, 0") | $(AS) $(ASFLAGS) -o $@ -
 	@$(GAME_RAM_SECTION)
 else
 	@$(CPP) $(CPPFLAGS) $< -o $(C_BUILDDIR)/$*.i
 	@$(PREPROC) -g $(ASSETS_DIR_NAME) $(C_BUILDDIR)/$*.i charmap.txt | $(CC1) $(CFLAGS) -o $(C_BUILDDIR)/$*.s
-	@echo -e ".text\n\t.align\t2, 0\n" >> $(C_BUILDDIR)/$*.s
+	@echo -e ".text\n	.align	2, 0\n" >> $(C_BUILDDIR)/$*.s
 	$(AS) $(ASFLAGS) -o $@ $(C_BUILDDIR)/$*.s
 	@$(GAME_RAM_SECTION)
 endif
@@ -673,7 +695,7 @@ $(ROM): $(ELF)
 
 # Symbol file (`make syms`)
 $(SYM): $(ELF)
-	$(OBJDUMP) -t $< | sort -u | grep -E "^0[2389]" | $(PERL) -p -e 's/^(\w{8}) (\w).{6} \S+\t(\w{8}) (\S+)$$/\1 \2 \3 \4/g' > $@
+	$(OBJDUMP) -t $< | sort -u | grep -E "^0[2389]" | $(PERL) -p -e 's/^(\w{8}) (\w).{6} \S+	(\w{8}) (\S+)$$/\1 \2 \3 \4/g' > $@
 else ifeq ($(TARGET_OS),MACOS)
 # ld warns about each of the 28000 pointers that aren't aligned, which is fine
 # without chained fixups (see -no_fixup_chains)

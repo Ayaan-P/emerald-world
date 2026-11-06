@@ -29,6 +29,9 @@
 #include "constants/moves.h"
 #include "constants/songs.h"
 #include "constants/trainer_types.h"
+#ifdef PORTABLE
+#include "platform/dexnav_native.h"
+#endif
 
 #define NUM_FORCED_MOVEMENTS 18
 #define NUM_ACRO_BIKE_COLLISIONS 5
@@ -648,6 +651,15 @@ static void PlayerNotOnBikeMoving(u8 direction, u16 heldKeys)
         }
     }
 
+#ifdef PORTABLE
+    DexNavNative_SetCreeping(FALSE);
+    if (DexNavNative_ShouldCreep(heldKeys))
+    {
+        DexNavNative_SetCreeping(TRUE);
+        PlayerSetAnimId(GetWalkSlowMovementAction(direction), COPY_MOVE_WALK);
+        return;
+    }
+#endif
     if (gPlayerAvatar.flags & PLAYER_AVATAR_FLAG_SURFING)
     {
         // same speed as running

@@ -1,6 +1,7 @@
 #include "global.h"
 #ifdef PORTABLE
 #include "platform/world_coop.h"
+#include "platform/native_link.h"
 #endif
 #include "battle.h"
 #include "battle_anim.h"
@@ -1401,7 +1402,7 @@ static void CompleteWhenChoseItem(void)
     {
 #ifdef PORTABLE
         if (WorldCoop_IsBattle())
-            BtlController_EmitOneReturnValue(B_COMM_TO_ENGINE, WorldCoop_SelectBall(gSpecialVar_ItemId));
+            BtlController_EmitOneReturnValue(B_COMM_TO_ENGINE, WorldCoop_SelectBattleItem(gSpecialVar_ItemId));
         else
 #endif
         BtlController_EmitOneReturnValue(B_COMM_TO_ENGINE, gSpecialVar_ItemId);
@@ -2670,7 +2671,9 @@ void InitMoveSelectionsVarsAndStrings(void)
 static void PlayerHandleChooseItem(void)
 {
     s32 i;
-
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle()) WorldCoop_SetMenuConfusion(gBattleBufferA[gActiveBattler][4] != 0);
+#endif
     BeginNormalPaletteFade(PALETTES_ALL, 0, 0, 0x10, RGB_BLACK);
     gBattlerControllerFuncs[gActiveBattler] = OpenBagAndChooseItem;
     gBattlerInMenuId = gActiveBattler;
@@ -2747,6 +2750,31 @@ static void PlayerHandleExpUpdate(void)
 #ifdef PORTABLE
     if (WorldCoop_IsBattle())
     {
+#if COOP_FULL_SIX_READY
+        if (gBattleBufferA[gActiveBattler][1] == WORLD_COOP_ROSTER_REQUEST_TAG)
+        {
+            u8 reply[WORLD_COOP_ROSTER_REPLY_SIZE];
+            if (!WorldCoop_ApplyRosterRequest(gBattleBufferA[gActiveBattler], reply))
+                NativeLink_Abort();
+            else
+                BtlController_EmitDataTransfer(B_COMM_TO_ENGINE, sizeof(reply), reply);
+            PlayerBufferExecCompleted();
+            return;
+        }
+        if (gBattleBufferA[gActiveBattler][1] == WORLD_COOP_ROSTER_MIRROR_TAG)
+        {
+            if (!WorldCoop_ApplyRosterMirror(gBattleBufferA[gActiveBattler])) NativeLink_Abort();
+            PlayerBufferExecCompleted();
+            return;
+        }
+#endif
+        if (gBattleBufferA[gActiveBattler][1] == WORLD_COOP_MEDICINE_TAG)
+        {
+            bool8 consumed = WorldCoop_ConsumeMedicine(gBattleBufferA[gActiveBattler]);
+            BtlController_EmitTwoReturnValues(B_COMM_TO_ENGINE, consumed ? 1 : 0, 0);
+            PlayerBufferExecCompleted();
+            return;
+        }
         if (gBattleBufferA[gActiveBattler][1] >= 254)
             WorldCoop_RecordCatchEvent(gBattleBufferA[gActiveBattler]);
         else

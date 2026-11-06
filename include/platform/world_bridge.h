@@ -3,6 +3,7 @@
 #ifdef PORTABLE
 #include <stdio.h>
 #include "gba/types.h"
+#include "platform/world_rally.h"
 
 /* NULL config is a strict no-op. Invalid explicit config returns FALSE.
  * Optional visible_peers 1..8 bounds locally rendered humans (default 8).
@@ -11,6 +12,11 @@
  * Public telemetry roster includes relevant peers even without a sprite. */
 bool8 WorldBridge_Init(const char *configPath);
 bool8 WorldBridge_Enabled(void);
+/* True only after an authenticated authority template has been validated and acknowledged. */
+bool8 WorldBridge_GeneratedCaveReady(void);
+struct ObjectEvent;
+/* True only for a currently owned remote trainer object. */
+bool8 WorldBridge_IsRemoteObject(const struct ObjectEvent *object);
 /* Committed presence only; stale/disconnected snapshots are unavailable. */
 struct WorldBridgePeer { char name[25]; unsigned group, num, x, y; bool8 ready; };
 bool8 WorldBridge_GetPeer(unsigned index, struct WorldBridgePeer *peer);
@@ -36,6 +42,9 @@ void WorldBridge_PrepareSave(void);
 void WorldBridge_Close(void);
 /* SDL-side chat never locks, scripts, pauses, or writes the native game. */
 int WorldBridge_ChatSend(const char *target, const char *text);
+/* Typed rally transport. A stale/disconnected snapshot is never returned. */
+bool8 WorldBridge_RallySend(unsigned action, unsigned id, unsigned arg);
+bool8 WorldBridge_RallySnapshot(struct WorldRallySnapshot *out);
 unsigned WorldBridge_ChatCount(void);
 const char *WorldBridge_ChatStatus(void);
 void WorldBridge_ChatLine(unsigned index, char *out, unsigned size);

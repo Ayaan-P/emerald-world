@@ -67,6 +67,9 @@ class LinuxPackageTests(unittest.TestCase):
         self.assertIn('libc.so.6', manifest['runtime']['native_libraries'])
         self.assertTrue((bundle / 'scripts/__init__.py').is_file())
         self.assertTrue((bundle / 'world/web_launcher.py').is_file())
+        self.assertEqual((bundle / 'credits/expansion/CREDITS.md').read_bytes(),
+                         (REPO / 'vendor/expansion-dexnav/upstream/CREDITS.md').read_bytes())
+        self.assertTrue((bundle / 'credits/expansion/provenance.json').is_file())
         self.assertTrue((bundle / 'launcher-web/dist/index.html').is_file())
         self.assertTrue(os.access(bundle / 'build/pokeemerald64', os.X_OK))
         for name, metadata in manifest['files'].items():

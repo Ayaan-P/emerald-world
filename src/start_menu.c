@@ -1,4 +1,7 @@
 #include "global.h"
+#ifdef PORTABLE
+#include "platform/generated_map.h"
+#endif
 #include "battle_pike.h"
 #include "battle_pyramid.h"
 #include "battle_pyramid_bag.h"
@@ -47,10 +50,9 @@
 #include "constants/rgb.h"
 #include "constants/songs.h"
 #ifdef PORTABLE
-#include "platform/world_bridge.h"
-#include "platform/world_travel.h"
-static bool8 StartMenuFriendsCallback(void);
-static const u8 sText_Friends[] = _("FRIENDS");
+#include "platform/world_menu.h"
+static bool8 StartMenuWorldCallback(void);
+static const u8 sText_World[] = _("WORLD");
 #endif
 
 // Menu actions
@@ -70,7 +72,7 @@ enum
     MENU_ACTION_RETIRE_FRONTIER,
     MENU_ACTION_PYRAMID_BAG
 #ifdef PORTABLE
-    , MENU_ACTION_FRIENDS
+    , MENU_ACTION_WORLD
 #endif
 };
 
@@ -204,7 +206,7 @@ static const struct MenuAction sStartMenuItems[] =
     [MENU_ACTION_RETIRE_FRONTIER] = {gText_MenuRetire,  {.u8_void = StartMenuBattlePyramidRetireCallback}},
     [MENU_ACTION_PYRAMID_BAG]     = {gText_MenuBag,     {.u8_void = StartMenuBattlePyramidBagCallback}}
 #ifdef PORTABLE
-    , [MENU_ACTION_FRIENDS] = {sText_Friends, {.u8_void = StartMenuFriendsCallback}}
+    , [MENU_ACTION_WORLD] = {sText_World, {.u8_void = StartMenuWorldCallback}}
 #endif
 };
 
@@ -343,10 +345,13 @@ static void BuildNormalStartMenu(void)
     }
 
     AddStartMenuAction(MENU_ACTION_PLAYER);
-    AddStartMenuAction(MENU_ACTION_SAVE);
+#if defined(PORTABLE) && GENERATED_MAP_READY
+    if (!GeneratedMap_IsInside())
+#endif
+        AddStartMenuAction(MENU_ACTION_SAVE);
     AddStartMenuAction(MENU_ACTION_OPTION);
 #ifdef PORTABLE
-    if (WorldBridge_Enabled()) AddStartMenuAction(MENU_ACTION_FRIENDS);
+    AddStartMenuAction(MENU_ACTION_WORLD); // Reuses the Friends row. DexNav also works offline.
 #endif
     AddStartMenuAction(MENU_ACTION_EXIT);
 }
@@ -644,7 +649,7 @@ static bool8 HandleStartMenuInput(void)
         if (gMenuCallback != StartMenuSaveCallback
             && gMenuCallback != StartMenuExitCallback
 #ifdef PORTABLE
-            && gMenuCallback != StartMenuFriendsCallback
+            && gMenuCallback != StartMenuWorldCallback
 #endif
             && gMenuCallback != StartMenuSafariZoneRetireCallback
             && gMenuCallback != StartMenuBattlePyramidRetireCallback)
@@ -774,11 +779,11 @@ static bool8 StartMenuOptionCallback(void)
 }
 
 #ifdef PORTABLE
-static bool8 StartMenuFriendsCallback(void)
+static bool8 StartMenuWorldCallback(void)
 {
     RemoveExtraStartMenuWindows();
     HideStartMenu();
-    WorldTravel_RequestMenu();
+    WorldMenu_RequestOpen();
     return TRUE;
 }
 #endif

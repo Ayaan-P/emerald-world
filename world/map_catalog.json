@@ -5182,6 +5182,26 @@
       "height": 9,
       "primary_count": 8,
       "secondary_count": 512
+    },
+    {
+      "group": 34,
+      "num": 0,
+      "name": "GeneratedWorld_Cave",
+      "layout": "LAYOUT_GENERATED_WORLD_CAVE",
+      "width": 31,
+      "height": 31,
+      "primary_count": 512,
+      "secondary_count": 414
+    },
+    {
+      "group": 34,
+      "num": 1,
+      "name": "GeneratedWorld_Wilds",
+      "layout": "LAYOUT_GENERATED_WORLD_WILDS",
+      "width": 20,
+      "height": 20,
+      "primary_count": 512,
+      "secondary_count": 144
     }
   ]
 }

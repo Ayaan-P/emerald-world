@@ -43,7 +43,16 @@
 // capacities of various saveblock objects
 #define DAYCARE_MON_COUNT 2
 #define POKEBLOCKS_COUNT 40
-#define OBJECT_EVENTS_COUNT 16
+// The on-disk save always contains the original sixteen object events.
+#define SAVED_OBJECT_EVENTS_COUNT 16
+#ifndef WORLD_EXTENDED_OBJECTS
+#define WORLD_EXTENDED_OBJECTS 0
+#endif
+#if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
+#define OBJECT_EVENTS_COUNT 48
+#else
+#define OBJECT_EVENTS_COUNT SAVED_OBJECT_EVENTS_COUNT
+#endif
 #define MAIL_COUNT (10 + PARTY_SIZE)
 #define SECRET_BASES_COUNT 20
 #define POKE_NEWS_COUNT 16

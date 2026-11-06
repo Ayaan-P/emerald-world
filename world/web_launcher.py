@@ -82,6 +82,20 @@ class LauncherBridge:
                     found.append({'world': world.name, 'trainer': trainer.name, 'name': label})
         return found
 
+    def _ensure_game_display(self):
+        from scripts.linux_client import discover_display
+        managed = self.session.managed_display
+        if managed is not None and (managed.process is None or managed.process.poll() is not None
+                or not Path('/tmp/.X11-unix/X' + managed.display[1:]).is_socket()):
+            if any(process.poll() is None for process, _ in self.session.games.values()):
+                raise SessionError('Close the running game before replacing its missing display.')
+            self.stop_browser_input()
+            managed.close()
+            self.session.managed_display = None
+        if self.session.managed_display is None:
+            self.session.start_display(discover_display())
+        return self.session.managed_display.display
+
     def _start_offline(self, world, trainer, copy=False, seed_save=None):
         if self.session.state is not None or any(p.poll() is None for p, _ in self.session.games.values()):
             raise SessionError('Disconnect and close any running game before playing offline.')
@@ -89,8 +103,7 @@ class LauncherBridge:
         from scripts.linux_client import binary_ready, discover_display
         if not binary_ready(self.binary):
             raise SessionError('The native game is not built. Follow INSTALL_PC.md first.')
-        if self.session.managed_display is None:
-            self.session.start_display(discover_display())
+        self._ensure_game_display()
         options = {'copy_online': copy}
         if seed_save is not None:
             options['seed_save'] = seed_save
@@ -119,7 +132,7 @@ class LauncherBridge:
                 raise ValueError('invalid telemetry')
             nearby = None
             roster = value.get('roster')
-            if value['connected'] and isinstance(roster, list) and len(roster) <= 8:
+            if value['connected'] and isinstance(roster, list) and len(roster) <= 32:
                 nearby = []
                 for peer in roster:
                     if (not isinstance(peer, dict) or not isinstance(peer.get('trainer'), str)
@@ -132,6 +145,40 @@ class LauncherBridge:
             return {'state': 'connected' if value['connected'] else 'disconnected', 'nearby': nearby}
         except (OSError, ValueError, TypeError, KeyError, UnicodeError):
             return {'state': 'waiting', 'nearby': []}
+
+    def local_expeditions(self):
+        """Only list worlds created by this launcher's scoped local-host flow."""
+        from .world_library import _read_metadata
+        found = []
+        for item in self.session.worlds():
+            path = Path(item['path'])
+            if not re.fullmatch(r'(?:expedition-[0-9a-f]{24}|e-[A-Za-z0-9_-]{12})', path.name):
+                continue
+            try:
+                label = _read_metadata(path)['display_name']
+            except (OSError, ValueError, TypeError, KeyError):
+                label = 'Local expedition · ' + path.name[-4:]
+            profiles = []
+            trainers = path / 'trainers'
+            if trainers.is_dir() and not trainers.is_symlink():
+                for profile in trainers.iterdir():
+                    if (not profile.is_symlink() and profile.is_dir()
+                            and re.fullmatch(r'[A-Za-z0-9_-]{1,24}', profile.name)):
+                        save = profile / 'game.sav'
+                        has_save = save.is_file() and not save.is_symlink() and save.stat().st_size > 0
+                        activity = profile / 'native.log'
+                        touched = activity.stat().st_mtime if activity.is_file() and not activity.is_symlink() else 0
+                        profiles.append((has_save, max(touched, save.stat().st_mtime if has_save else 0), profile.name))
+            selection = path / '.launcher-trainer'
+            try:
+                selected = selection.read_text().strip() if not selection.is_symlink() else ''
+            except OSError:
+                selected = ''
+            names = {profile[2] for profile in profiles}
+            trainer = selected if selected in names else max(profiles, default=(False, 0, 'Player'))[2]
+            found.append({'key': path.name, 'name': label, 'trainer': trainer,
+                          'has_save': any(saved and name == trainer for saved, _, name in profiles)})
+        return found
 
     def snapshot(self):
         with self.lock:
@@ -164,12 +211,52 @@ class LauncherBridge:
             from scripts.linux_client import prerequisites
             setup = [{'name': name, 'ready': ready, 'help': help_text}
                      for name, ready, help_text in prerequisites(self.binary) if name != 'tkinter']
-            return {'worlds': worlds, 'offline_saves': self.offline_saves(), 'presence': self.game_presence(), 'hosting': self.hosted.state(), 'setup': setup, 'connected': self.session.state is not None,
+            server = self.session.server
+            local_host = server is not None and not getattr(server, '_closed', True)
+            wilds_authoring = bool(server is not None and local_host and server.wilds_map is not None)
+            areas, archive_error = [], None
+            archive_enabled = bool(local_host and getattr(server, 'archive_generated_areas', False))
+            if archive_enabled and server is not None:
+                try:
+                    # The archive stores every outdoor format as "wilds".
+                    # Read only the header to distinguish guides, casts and
+                    # owner-published events without exposing their contents.
+                    with server.lock:
+                        areas = self.session.list_generated_areas()
+                        formats = dict(server.db.execute(
+                            'SELECT identity, substr(template, 1, 8) FROM generated_area_archive'))
+                    kinds = {b'EWGMAP06': 'wilds', b'EWGMAP07': 'guided_wilds',
+                             b'EWGMAP08': 'cast_wilds', b'EWGMAP09': 'event_wilds'}
+                    areas = [dict(area, kind=kinds.get(formats.get(area['identity'], b''), area['kind']))
+                             for area in areas]
+                except Exception:
+                    archive_error = 'Saved areas could not be loaded. Reopen the local host and try again.'
+            live_games = [name for name, (process, _paths) in self.session.games.items()
+                          if process.poll() is None]
+            game_exit = None
+            if not live_games and self.session.games:
+                name = self.session.remote_trainer
+                if name not in self.session.games:
+                    name = next(reversed(self.session.games))
+                process, _paths = self.session.games[name]
+                code = process.poll()
+                if code is not None:
+                    game_exit = {'trainer': name, 'code': code, 'unexpected': code != 0}
+            return {'local_worlds': self.local_expeditions(),
+                    'game_exit': game_exit,
+                    'generated_areas': areas, 'area_archive': archive_enabled,
+                    'area_archive_error': archive_error,
+                    'wilds_authoring': wilds_authoring,
+                    'guided_wilds_authoring': wilds_authoring,
+                    'cast_wilds_authoring': wilds_authoring,
+                    'local_host': local_host,
+                    'cave_authoring': server is not None and local_host and server.cave_map is not None,
+                    'cave_persistent': bool(server is not None and local_host and server.persist_generated_cave),
+                    'worlds': worlds, 'offline_saves': self.offline_saves(), 'presence': self.game_presence(), 'hosting': self.hosted.state(), 'setup': setup, 'connected': self.session.state is not None,
                     'trainer': self.session.remote_trainer,
                     'world_key': self.session.state.name if self.session.state is not None else None,
                     'offline_world_key': offline_world_key,
-                    'games': [name for name, (process, _paths) in self.session.games.items()
-                              if process.poll() is None], 'status': self.session.status}
+                    'games': live_games, 'status': self.session.status}
 
     def stop_browser_input(self):
         # Also used by launcher shutdown. Serialize teardown with HTTP lifecycle
@@ -182,7 +269,7 @@ class LauncherBridge:
 
     def action(self, action, payload):
         with self.lock:
-            if action in ('join', 'rejoin', 'host_create', 'host_resume', 'host_join'):
+            if action in ('join', 'rejoin', 'host_create', 'host_resume', 'host_join', 'local_create', 'local_resume'):
                 if any(p.poll() is None for p, _ in self.session.games.values()):
                     raise SessionError('Close your running game before switching worlds.')
                 if self.session.state is not None:
@@ -239,6 +326,61 @@ class LauncherBridge:
                     raise SessionError(message) from None
                 except (OSError, ValueError):
                     raise SessionError('Could not complete the hosted-world request. Check your access file and connection, then retry.') from None
+            elif action in ('local_create', 'local_resume'):
+                trainer = payload.get('trainer')
+                if not isinstance(trainer, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,24}', trainer):
+                    raise SessionError('Use 1 to 24 letters, numbers, underscores or hyphens for your trainer.')
+                if action == 'local_create':
+                    label = payload.get('name')
+                    if (not isinstance(label, str) or not 1 <= len(label.strip()) <= 80
+                            or any(ord(c) < 32 for c in label)):
+                        raise SessionError('Use 1 to 80 printable characters for the expedition name.')
+                    name = 'e-' + secrets.token_urlsafe(9)
+                    self.session.create_world(name)
+                    self.session.rename_world(name, label.strip(), [])
+                else:
+                    name = payload.get('world')
+                    if not any(item['key'] == name for item in self.local_expeditions()):
+                        raise SessionError('Choose an existing local expedition.')
+                try:
+                    self.session.host(name)
+                    self.remote_paths = self.session.local_profile(trainer)
+                    self.session.remote_trainer = trainer
+                    # Atomic replacement never follows an existing selection symlink.
+                    with tempfile.NamedTemporaryFile(mode='w', dir=self.session._world(name),
+                                                     prefix='.launcher-trainer-', delete=False) as selection:
+                        selection.write(trainer + '\n')
+                    os.replace(selection.name, self.session._world(name) / '.launcher-trainer')
+                except (OSError, ValueError):
+                    self.remote_paths = None
+                    self.session.disconnect()
+                    raise SessionError('Could not open the local expedition. Check the local world and trainer setup, then retry.') from None
+            elif action == 'author_cave':
+                # Keep bridge mutations serialized throughout authoring, but never
+                # hold the world server lock while waiting for the provider.
+                if payload.get('confirmed') is not True:
+                    raise SessionError('Confirm provider usage and area replacement before generating.')
+                if (self.session.state is None or payload.get('world') != self.session.state.name
+                        or self.session.server is None):
+                    raise SessionError('Host the selected local expedition before generating an area.')
+                kind = payload.get('kind', 'cave')
+                if kind not in ('cave', 'wilds', 'guided_wilds', 'cast_wilds'):
+                    raise SessionError('Choose a cave, outdoor wilds, wilds with a guide or wilds with a cast.')
+                try:
+                    self.session.author_shared_cave(payload.get('theme'), wilds=kind != 'cave',
+                        guide=kind == 'guided_wilds', cast=kind == 'cast_wilds')
+                except SessionError:
+                    raise
+                except Exception:
+                    raise SessionError('Area generation could not complete. Check model login and local host setup before retrying.') from None
+            elif action == 'activate_area':
+                if payload.get('confirmed') is not True:
+                    raise SessionError('Confirm changing the active generated area.')
+                if (self.session.server is None or self.session.state is None
+                        or payload.get('world') != self.session.state.name):
+                    raise SessionError('The hosted world changed. Choose a saved area from the current local host.')
+                self.session.activate_generated_area(payload.get('identity'),
+                    expected_server=self.session.server, expected_state=self.session.state)
             elif action == 'join':
                 raw = payload.get('invitation')
                 if not isinstance(raw, str) or len(raw.encode('utf-8')) > 4096:
@@ -275,7 +417,9 @@ class LauncherBridge:
                 if offline:
                     known = any(item['world'] == world and item['trainer'] == trainer for item in self.offline_saves())
                 else:
-                    known = any(item['name'] == world and item['trainer'] == trainer for item in self.session.friend_worlds())
+                    known = (any(item['name'] == world and item['trainer'] == trainer for item in self.session.friend_worlds())
+                             or any(item['key'] == world and item['trainer'] == trainer and item['has_save']
+                                    for item in self.local_expeditions()))
                 if not known:
                     raise SessionError('Choose an available saved trainer profile.')
                 from .save_backup import backup_save
@@ -303,9 +447,7 @@ class LauncherBridge:
                 from scripts.linux_client import binary_ready, discover_display
                 if not binary_ready(self.binary):
                     raise SessionError('The native game is not built. Follow INSTALL_PC.md first.')
-                if self.session.managed_display is None:
-                    self.session.start_display(discover_display())
-                self.session.launch(self.remote_paths, self.binary, self.session.managed_display.display)
+                self.session.launch(self.remote_paths, self.binary, self._ensure_game_display())
             elif action == 'offline':
                 world = payload.get('world')
                 copy = payload.get('copy')

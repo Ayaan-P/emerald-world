@@ -1,6 +1,7 @@
 #ifdef PORTABLE
 #include "global.h"
 #include "constants/map_groups.h"
+#include "constants/maps.h"
 #include "constants/flags.h"
 #include <string.h>
 
@@ -29,6 +30,7 @@
 #include "constants/characters.h"
 #include "constants/map_types.h"
 #include "constants/moves.h"
+#include "field_screen_effect.h"
 
 static bool8 BlockedByEvents(const struct MapEvents *events, int x, int y);
 static bool8 SafeFloor(u16 block, u8 behavior);
@@ -238,6 +240,55 @@ static bool8 TravelField(void)
         && !gMain.inBattle && !gPaletteFade.active && !ScriptContext_IsEnabled()
         && !gPlayerAvatar.tileTransitionState && !gWirelessCommType
         && !NativeLink_IsActive() && !WorldActivity_OwnsFieldInput();
+}
+
+bool8 WorldTravel_RallyTileSafe(unsigned group, unsigned num, s16 x, s16 y, unsigned elevation, bool8 online)
+{
+    const struct MapHeader *map;
+    const struct MapLayout *layout;
+    const u16 *attributes;
+    unsigned id, i;
+    u16 block;
+    if (group > 127 || num > 127 || x < 0 || y < 0 || x > 127 || y > 127
+        || elevation != ELEVATION_DEFAULT || !WorldCatalog_Coords(group, num, x, y)) return FALSE;
+    map = Overworld_GetMapHeaderByGroupAndId(group, num);
+    if (!map || !map->mapLayout) return FALSE;
+    layout = map->mapLayout;
+    if (!layout->map || !layout->primaryTileset || !layout->secondaryTileset
+        || x >= layout->width || y >= layout->height) return FALSE;
+    block = layout->map[x + y * layout->width];
+    id = UNPACK_METATILE(block);
+    if (!WorldCatalog_Metatile(group, num, id)) return FALSE;
+    attributes = id < NUM_METATILES_IN_PRIMARY ? layout->primaryTileset->metatileAttributes
+        : layout->secondaryTileset->metatileAttributes;
+    if (!attributes || !SafeFloor(block, UNPACK_BEHAVIOR(attributes[id < NUM_METATILES_IN_PRIMARY
+            ? id : id - NUM_METATILES_IN_PRIMARY]))
+        || BlockedByEvents(map->events, x, y)
+        || (online && !WorldBridge_TravelTileClear(group, num, x, y))) return FALSE;
+    if (gSaveBlock1Ptr && group == (unsigned)gSaveBlock1Ptr->location.mapGroup
+        && num == (unsigned)gSaveBlock1Ptr->location.mapNum)
+    {
+        if (MapGridGetCollisionAt(x + MAP_OFFSET, y + MAP_OFFSET)
+            || MapGridGetElevationAt(x + MAP_OFFSET, y + MAP_OFFSET) != elevation
+            || MapGridGetMetatileBehaviorAt(x + MAP_OFFSET, y + MAP_OFFSET) != MB_NORMAL) return FALSE;
+        for (i = 0; i < OBJECT_EVENTS_COUNT; i++)
+            if (gObjectEvents[i].active && !gObjectEvents[i].isPlayer
+                && gObjectEvents[i].currentCoords.x == x + MAP_OFFSET
+                && gObjectEvents[i].currentCoords.y == y + MAP_OFFSET) return FALSE;
+    }
+    return TRUE;
+}
+
+bool8 WorldTravel_RallyWarp(unsigned group, unsigned num, s16 x, s16 y, unsigned elevation, bool8 online)
+{
+    unsigned i;
+    if (!TravelField() || ArePlayerFieldControlsLocked() || WorldTravel_OwnsFieldInput()
+        || !WorldTravel_RallyTileSafe(group, num, x, y, elevation, online)) return FALSE;
+    for (i = 0; i < NUM_TASKS; i++) if (!gTasks[i].isActive) break;
+    if (i == NUM_TASKS) return FALSE;
+    SetWarpDestination(group, num, WARP_ID_NONE, x, y);
+    DoWarp();
+    return TRUE;
 }
 
 static void TravelEncode(u8 *dest, const char *text)

@@ -1,4 +1,8 @@
 #include "global.h"
+#ifdef PORTABLE
+#include "platform/world_coop.h"
+#include "platform/native_link.h"
+#endif
 #include "battle.h"
 #include "battle_ai_script_commands.h"
 #include "battle_anim.h"
@@ -1366,6 +1370,10 @@ static void LinkPartnerHandleHealthBarUpdate(void)
 
 static void LinkPartnerHandleExpUpdate(void)
 {
+#if defined(PORTABLE) && COOP_FULL_SIX_READY
+    if (WorldCoop_IsBattle() && gBattleBufferA[gActiveBattler][1] == WORLD_COOP_ROSTER_MIRROR_TAG
+     && !WorldCoop_ApplyRosterMirror(gBattleBufferA[gActiveBattler])) NativeLink_Abort();
+#endif
     LinkPartnerBufferExecCompleted();
 }
 

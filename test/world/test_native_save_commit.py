@@ -61,6 +61,7 @@ static FILE *sSaveFile;
 static unsigned char FLASH_BASE[131072];
 static u32 tick, *gTrainerHillVBlankCounter = &tick;
 static u8 gFlashMemoryPresent = TRUE, gSaveAttemptStatus;
+static bool8 GeneratedMap_IsInside(void) {return FALSE;}
 static u16 gLastWrittenSector = 3, gLastKnownGoodSector = 3;
 static u32 gSaveCounter = 9, gLastSaveCounter = 9, gDamagedSaveSectors;
 static u8 gDecompressionBuffer[2*SECTOR_DATA_SIZE];

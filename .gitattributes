@@ -24,3 +24,9 @@ Makefile text eol=lf
 
 *.h linguist-language=C
 *.inc linguist-language=Assembly
+
+# Pinned DexNav inputs retain upstream bytes across checkout on every host.
+vendor/expansion-dexnav/upstream/** -text whitespace=-blank-at-eol
+graphics/dexnav/*.pal -text
+graphics/field_effects/palettes/cave_dust.pal -text
+graphics/text_window/dexnav_pal.pal -text

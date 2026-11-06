@@ -1,4 +1,8 @@
 #include "global.h"
+#ifdef PORTABLE
+#include "platform/dexnav_native.h"
+#include "dexnav.h"
+#endif
 #include "battle_setup.h"
 #include "battle_pike.h"
 #include "battle_pyramid.h"
@@ -16,6 +20,9 @@
 #include "script.h"
 #include "tv.h"
 #include "wild_encounter.h"
+#ifdef PORTABLE
+#include "platform/generated_map.h"
+#endif
 #include "constants/abilities.h"
 #include "constants/game_stat.h"
 #include "constants/items.h"
@@ -305,15 +312,31 @@ static u8 ChooseWildMonLevel(const struct WildPokemon *wildPokemon)
 static u16 GetCurrentMapWildMonHeaderId(void)
 {
     u16 i;
-
+#if defined(PORTABLE) && GENERATED_CAVE_PROFILES
+    u8 group = gSaveBlock1Ptr->location.mapGroup;
+    u8 num = gSaveBlock1Ptr->location.mapNum;
+    /* A versioned offline cave may select a known, compiled encounter table.
+     * Other maps and network cave templates retain their existing behavior. */
+    switch (GeneratedMap_EncounterProfile())
+    {
+    case 1: group = MAP_GROUP(MAP_METEOR_FALLS_1F_1R); num = MAP_NUM(MAP_METEOR_FALLS_1F_1R); break;
+    case 2: group = MAP_GROUP(MAP_SHOAL_CAVE_LOW_TIDE_ICE_ROOM); num = MAP_NUM(MAP_SHOAL_CAVE_LOW_TIDE_ICE_ROOM); break;
+    case 3: group = MAP_GROUP(MAP_VICTORY_ROAD_1F); num = MAP_NUM(MAP_VICTORY_ROAD_1F); break;
+    }
+#endif
     for (i = 0; ; i++)
     {
         const struct WildPokemonHeader *wildHeader = &gWildMonHeaders[i];
         if (wildHeader->mapGroup == MAP_GROUP(MAP_UNDEFINED))
             break;
 
+#if defined(PORTABLE) && GENERATED_CAVE_PROFILES
+        if (gWildMonHeaders[i].mapGroup == group &&
+            gWildMonHeaders[i].mapNum == num)
+#else
         if (gWildMonHeaders[i].mapGroup == gSaveBlock1Ptr->location.mapGroup &&
             gWildMonHeaders[i].mapNum == gSaveBlock1Ptr->location.mapNum)
+#endif
         {
             if (gSaveBlock1Ptr->location.mapGroup == MAP_GROUP(MAP_ALTERING_CAVE) &&
                 gSaveBlock1Ptr->location.mapNum == MAP_NUM(MAP_ALTERING_CAVE))
@@ -331,6 +354,13 @@ static u16 GetCurrentMapWildMonHeaderId(void)
 
     return HEADER_NONE;
 }
+
+#ifdef PORTABLE
+u16 WildEncounter_GetDexNavHeader(void)
+{
+    return GetCurrentMapWildMonHeaderId();
+}
+#endif
 
 static u8 PickWildMonNature(void)
 {
@@ -413,6 +443,22 @@ static void CreateWildMon(u16 species, u8 level)
 
     CreateMonWithNature(&gEnemyParty[0], species, level, USE_RANDOM_IVS, PickWildMonNature());
 }
+
+#ifdef PORTABLE
+void WildEncounter_CreateDexNavMon(u16 species, u8 level)
+{
+    u32 roll;
+    u32 extraRolls = CalculateDexNavShinyRolls();
+    /* Donor chain/random bonus only for the final intentional hunt. Native
+     * creation and shiny predicates retain the stock Pokemon representation. */
+    for (roll = 0; roll <= extraRolls; ++roll)
+    {
+        CreateWildMon(species, level);
+        if (IsMonShiny(&gEnemyParty[0]))
+            break;
+    }
+}
+#endif
 #ifdef BUGFIX
 #define TRY_GET_ABILITY_INFLUENCED_WILD_MON_INDEX(wildPokemon, type, ability, ptr, count) TryGetAbilityInfluencedWildMonIndex(wildPokemon, type, ability, ptr, count)
 #else
@@ -549,10 +595,37 @@ static bool8 AreLegendariesInSootopolisPreventingEncounters(void)
     return FlagGet(FLAG_LEGENDARIES_IN_SOOTOPOLIS);
 }
 
+#if defined(PORTABLE) && GENERATED_CAVE_WILDLIFE
+/* -1 means no custom cave table, so the stock path must run unchanged. */
+static s8 TryGeneratedCaveWildEncounter(u16 cur, u16 prev)
+{
+    const struct WildPokemonInfo *custom = GeneratedMap_Wildlife();
+    if (custom == NULL) return -1;
+    if (prev != cur && !AllowWildCheckOnNewMetatile()) return 0;
+    if (WildEncounterCheck(custom->encounterRate, FALSE) != TRUE) return 0;
+    if (TryGenerateWildMon(custom, WILD_AREA_LAND, WILD_CHECK_REPEL | WILD_CHECK_KEEN_EYE) != TRUE) return 0;
+    BattleSetup_StartWildBattle();
+    return 1;
+}
+
+static s8 TryGeneratedCaveSweetScent(void)
+{
+    const struct WildPokemonInfo *custom = GeneratedMap_Wildlife();
+    if (custom == NULL) return -1;
+    if (TryGenerateWildMon(custom, WILD_AREA_LAND, 0) != TRUE) return 0;
+    BattleSetup_StartWildBattle();
+    return 1;
+}
+#endif
+
 bool8 StandardWildEncounter(u16 curMetatileBehavior, u16 prevMetatileBehavior)
 {
     u16 headerId;
     struct Roamer *roamer;
+
+#if defined(PORTABLE) && GENERATED_MAP_READY
+    if (GeneratedMap_IsInside() && !GeneratedMap_HasUsableParty()) return FALSE;
+#endif
 
     if (sWildEncountersDisabled == TRUE)
         return FALSE;
@@ -594,6 +667,10 @@ bool8 StandardWildEncounter(u16 curMetatileBehavior, u16 prevMetatileBehavior)
     {
         if (MetatileBehavior_IsLandWildEncounter(curMetatileBehavior) == TRUE)
         {
+#if defined(PORTABLE) && GENERATED_CAVE_WILDLIFE
+            s8 generated = TryGeneratedCaveWildEncounter(curMetatileBehavior, prevMetatileBehavior);
+            if (generated >= 0) return generated;
+#endif
             if (gWildMonHeaders[headerId].landMonsInfo == NULL)
                 return FALSE;
             else if (prevMetatileBehavior != curMetatileBehavior && !AllowWildCheckOnNewMetatile())
@@ -699,6 +776,10 @@ bool8 SweetScentWildEncounter(void)
     s16 x, y;
     u16 headerId;
 
+#if defined(PORTABLE) && GENERATED_MAP_READY
+    if (GeneratedMap_IsInside() && !GeneratedMap_HasUsableParty()) return FALSE;
+#endif
+
     PlayerGetDestCoords(&x, &y);
     headerId = GetCurrentMapWildMonHeaderId();
     if (headerId == HEADER_NONE)
@@ -728,6 +809,10 @@ bool8 SweetScentWildEncounter(void)
     {
         if (MetatileBehavior_IsLandWildEncounter(MapGridGetMetatileBehaviorAt(x, y)) == TRUE)
         {
+#if defined(PORTABLE) && GENERATED_CAVE_WILDLIFE
+            s8 generated = TryGeneratedCaveSweetScent();
+            if (generated >= 0) return generated;
+#endif
             if (gWildMonHeaders[headerId].landMonsInfo == NULL)
                 return FALSE;
 
