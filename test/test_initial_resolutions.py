@@ -106,3 +106,9 @@ class InitialResolutions(unittest.TestCase):
   s=self.read('src/battle_main.c')
   self.assertGreaterEqual(s.count('WorldCoop_IsBattle() && (gAbsentBattlerFlags & (1u << battler))'),2)
   self.assertIn('WorldCoop_FullPartyMenuActive()',s)
+
+ def test_coop_switch_and_trainer_flee_hooks_present(self):
+  s=self.read('src/battle_main.c')
+  self.assertIn('WorldCoop_BeginRosterAction(battler',s)
+  self.assertIn('WorldCoop_AdvanceRosterAction(battler)',s)
+  self.assertIn('|| WorldCoop_IsBattle()',s)

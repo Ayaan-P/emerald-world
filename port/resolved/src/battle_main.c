@@ -3819,7 +3819,11 @@ u8 IsRunningFromBattleImpossible(enum BattlerId battler)
         return BATTLE_RUN_SUCCESS;
     if (GetConfig(B_GHOSTS_ESCAPE) >= GEN_6 && IS_BATTLER_OF_TYPE(battler, TYPE_GHOST))
         return BATTLE_RUN_SUCCESS;
-    if (gBattleTypeFlags & BATTLE_TYPE_LINK)
+    if ((gBattleTypeFlags & BATTLE_TYPE_LINK)
+#ifdef PORTABLE
+        && !WorldCoop_IsBattle()
+#endif
+       )
         return BATTLE_RUN_SUCCESS;
     if (GetBattlerAbility(battler) == ABILITY_RUN_AWAY)
         return BATTLE_RUN_SUCCESS;
@@ -4170,7 +4174,11 @@ static void HandleTurnActionSelectionState(void)
                     return;
                 }
                 else if (gBattleTypeFlags & BATTLE_TYPE_TRAINER
-                      && !(gBattleTypeFlags & (BATTLE_TYPE_LINK | BATTLE_TYPE_RECORDED_LINK))
+                      && (!(gBattleTypeFlags & (BATTLE_TYPE_LINK | BATTLE_TYPE_RECORDED_LINK))
+#ifdef PORTABLE
+                          || WorldCoop_IsBattle()
+#endif
+                         )
                       && gBattleResources->bufferB[battler][1] == B_ACTION_RUN)
                 {
                     BattleScriptExecute(BattleScript_PrintCantRunFromTrainer);
@@ -4282,6 +4290,20 @@ static void HandleTurnActionSelectionState(void)
                     }
                     break;
                 case B_ACTION_SWITCH:
+#if defined(PORTABLE) && COOP_FULL_SIX_READY
+                    if (WorldCoop_IsBattle() && (WorldCoop_RosterActionActive(battler)
+                     || (gBattleResources->bufferB[battler][1] & 0x80)))
+                    {
+                        int result;
+                        if (WorldCoop_RosterActionActive(battler))
+                            result = WorldCoop_AdvanceRosterAction(battler);
+                        else
+                            result = WorldCoop_BeginRosterAction(battler, gBattleResources->bufferB[battler][1],
+                                                               &gBattleResources->bufferB[battler][2]);
+                        if (result < 0) { NativeLink_Abort(); return; }
+                        if (!result) return;
+                    }
+#endif
                     if (gBattleResources->bufferB[battler][1] == PARTY_SIZE)
                     {
                         gBattleCommunication[battler] = STATE_BEFORE_ACTION_CHOSEN;
