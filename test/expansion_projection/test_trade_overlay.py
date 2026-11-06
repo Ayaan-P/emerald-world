@@ -20,6 +20,8 @@ class TradeOverlayTests(unittest.TestCase):
         self.assertIn('playerPartyIdx >= gPartiesCount[B_TRAINER_PLAYER]',result)
         self.assertIn('partnerPartyIdx >= gPartiesCount[B_TRAINER_OPPONENT_A]',result)
         self.assertEqual(result.count('if (LinkFullSave_SetLastSectorSignature()) break;'),2)
+        self.assertIn('Expansion trade mail ABI exceeds wire block',result)
+        self.assertIn('Expansion trade ribbon ABI exceeds wire block',result)
     def test_changed_donor_is_rejected(self):
         donor, vanilla = self.sources()
         changed=donor.replace('    u8 partnerConfirmStatus;\n    u8 filler_7C[2];','',1)

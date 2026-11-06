@@ -57,6 +57,9 @@ extern int ExpansionTrade_PairValid(const void *data, size_t size);''')
 }
 ''' + helpers[b:]
     helpers = helpers.replace('GIFT_RIBBONS_COUNT', 'NUM_GIFT_RIBBONS')
+    helpers = '''_Static_assert(PARTY_SIZE * sizeof(struct Mail) + 4 <= 220, "Expansion trade mail ABI exceeds wire block");
+_Static_assert(sizeof(sTradeMenu->giftRibbons) <= 40, "Expansion trade ribbon ABI exceeds wire block");
+''' + helpers
     donor = one(donor, 'static bool8 BufferTradeParties(void)\n{', helpers + '\nstatic bool8 BufferTradeParties(void)\n{')
     for index in (0, 2, 4):
         old = f'            Trade_Memcpy(&gParties[B_TRAINER_OPPONENT_A][{index}], gBlockRecvBuffer[id ^ 1], '
@@ -103,9 +106,7 @@ extern int ExpansionTrade_PairValid(const void *data, size_t size);''')
     {
         if (NativeLink_IsActive()) SetVBlankCallback(NULL);''')
     # Do not proceed past a failed final sector write during a native trade.
-    donor = one(donor, '            LinkFullSave_SetLastSectorSignature();', '''            if (NativeLink_IsActive()) {
-                if (LinkFullSave_SetLastSectorSignature()) break;
-            } else LinkFullSave_SetLastSectorSignature();''', expected=2)
+    donor = one(donor, '            LinkFullSave_SetLastSectorSignature();', '''            if (LinkFullSave_SetLastSectorSignature()) break;''', expected=2)
     return donor
 
 if __name__ == '__main__':

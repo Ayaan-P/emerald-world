@@ -66,7 +66,7 @@ $(EW_PATCHED_TRADE): src/trade.c ../../src/trade.c ../../scripts/patch_expansion
 	python3 ../../scripts/patch_expansion_trade.py src/trade.c ../../src/trade.c $@
 $(C_BUILDDIR)/trade.o: $(EW_PATCHED_TRADE) $(C_FILTER_SCRIPT) ../../include/platform/native_link.h
 	@echo "$(TARGET_CC) <Expansion trade guard overlay> -o $@"
-	@$(CPP) $(CPPFLAGS) -iquote ../../include $(EW_PATCHED_TRADE) | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $(EW_PATCHED_TRADE) charmap.txt | $(C_FILTER) > $(C_PREPROCESSED) && $(TARGET_CC) $(CFLAGS) -c -x c -o $@ $(C_PREPROCESSED); status=$$?; rm -f $(C_PREPROCESSED); exit $$status
+	@$(CPP) $(CPPFLAGS) -iquote src -iquote ../../include $(EW_PATCHED_TRADE) | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $(EW_PATCHED_TRADE) charmap.txt | $(C_FILTER) > $(C_PREPROCESSED) && $(TARGET_CC) $(CFLAGS) -c -x c -o $@ $(C_PREPROCESSED); status=$$?; rm -f $(C_PREPROCESSED); exit $$status
 
 $(EW_TRADE_SAVE): ../expansion_trade_save.c
 	@mkdir -p $(@D)
