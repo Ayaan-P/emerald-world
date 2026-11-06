@@ -111,12 +111,12 @@ class ChatIntegrationTests(unittest.TestCase):
         # Execute the actual server methods against a fake in-memory authority.
         module=ast.parse((ROOT/'world/server.py').read_text())
         cls=next(n for n in module.body if isinstance(n,ast.ClassDef) and n.name=='WorldServer')
-        methods=[n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name in ('_line','_chat','_guild_message')]
+        methods=[n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name in ('_line','_chat','_guild_message','_guild_online')]
         ns={'re':re,'time':time,'bounded':bounded,'ID':re.compile(r'[A-Za-z0-9_-]{1,24}\\Z'), 'GuildError':guilds.GuildError, 'HASH':re.compile(r'[0-9a-fA-F]{16}\Z'), 'PRESENCE_HEARTBEAT_INTERVAL':1, 'TRAVEL_FRESH_SECONDS':3, 'validate_coords':lambda *args:{'name':'Route101'}}
         ns['ID']=re.compile(r'[A-Za-z0-9_-]{1,24}\Z')
         exec(compile(ast.fix_missing_locations(ast.Module(body=methods,type_ignores=[])),'server.py','exec'),ns)
         class Server:
-            _line=ns['_line'];_chat=ns['_chat'];_guild_message=ns['_guild_message']
+            _line=ns['_line'];_chat=ns['_chat'];_guild_message=ns['_guild_message'];_guild_online=ns['_guild_online']
             def _queue(self,conn,msg):conn.setdefault('snapshots',[]).append(msg)
             def _snapshot(self,conn):return list(conn['chat_history'])
             def _broadcast(self):
@@ -147,6 +147,17 @@ class ChatIntegrationTests(unittest.TestCase):
         self.assertIn('[Guild] meet at the gym',self.lines('Bob'))
         self.assertEqual(self.lines('Eve'),[])
         self.assertFalse(any('/guild' in x for x in self.lines('Eve')))
+    def test_guild_online_shows_only_members_and_no_coordinates(self):
+        self.send('Alice','/guild create Rockets');self.send('Alice','/guild invite Bob');self.send('Bob','/guild accept Rockets')
+        self.s.peers['Bob']['state']=[0,9,5,6,1,7,1];self.s.peers['Bob']['state_time']=time.monotonic()
+        self.s.peers['Eve']['state']=[0,9,3,4,1,7,1]
+        self.send('Alice','/guild online')
+        self.assertIn('Guild: Bob: Route101',self.lines('Alice'))
+        self.assertFalse(any('Eve' in x for x in self.lines('Alice')))
+        self.assertFalse(any('5,6' in x for x in self.lines('Alice')))
+        self.assertEqual(self.lines('Eve'),[])
+        self.send('Eve','/guild online')
+        self.assertTrue(any('not in a guild' in x for x in self.lines('Eve')))
     def test_board_notifications_and_content_are_guild_private(self):
         self.send('Alice','/guild create Rockets');self.send('Alice','/guild invite Bob');self.send('Bob','/guild accept Rockets')
         self.send('Alice','/guild post Meet me tomorrow')

@@ -5,7 +5,7 @@ Guilds are optional persistent groups in one World authority. Players use the ex
 - `/guild create NAME` creates a guild and makes you its leader.
 - `/guild invite TRAINER` invites an existing trainer in this world. Online invitees see a private message; offline invitees can check `/guild invites`.
 - `/guild accept NAME` or `/guild decline NAME` responds to an invitation.
-- `/guild info` and `/guild roster` show your own guild. `/guild leave` leaves it.
+- `/guild info` and `/guild roster` show your own guild. `/guild online` (or `/guild online PAGE`) shows connected members and their recently reported map names, without coordinates; this shares your map name with your guildmates while your field report is fresh. `/guild leave` leaves the guild.
 - `/guild kick TRAINER`, `/guild transfer TRAINER` and `/guild disband` are leader actions. A leader must transfer leadership or disband rather than leave.
 - `/g MESSAGE` sends chat only to currently connected guild members. Guild chat is session-only; offline players do not receive missed chat.
 - A leader can start a shared travel goal with `/guild expedition start Route101 2` (canonical World map name and number of distinct guild members). Each authenticated member's ready field report at that map counts once. `/guild expedition` shows progress; `/guild expedition cancel` cancels it. Completion is announced privately to online members and persists across server restarts. This is a cooperative visit goal, not proof against modified clients, and it grants no items or rewards.

@@ -814,8 +814,13 @@ class WorldServer:
         if fields[2] == '*' and (decoded == '/guild' or decoded.startswith('/guild ')):
             with self.lock:
                 try:
-                    lines = self.guilds.command(conn['id'], decoded[6:].strip())
-                    self.guild_epoch += 1  # Recheck active field reports after membership/mission changes.
+                    command = decoded[6:].strip()
+                    words = command.split()
+                    if words and words[0].lower() == 'online':
+                        lines = self._guild_online(conn['id'], words[1:])
+                    else:
+                        lines = self.guilds.command(conn['id'], command)
+                        self.guild_epoch += 1  # Recheck active field reports after membership/mission changes.
                 except GuildError as exc:
                     lines = [str(exc)]
                 for line in lines:
@@ -864,6 +869,35 @@ class WorldServer:
                 recipient['chat_history'] = (recipient['chat_history'] + [message])[-16:]
         conn['chat_status'] = 'sent'
         self._broadcast()
+
+    def _guild_online(self, trainer, args):
+        # A member deliberately sees guildmates' map names, never coordinates,
+        # parties or inventories. Presence is a recent client report.
+        if len(args) > 1 or (args and (not args[0].isascii() or not args[0].isdecimal() or len(args[0]) > 2)):
+            raise GuildError('Use /guild online or /guild online PAGE.')
+        page = int(args[0]) if args else 1
+        if page < 1: raise GuildError('Page must start at 1.')
+        guild, members = self.guilds.members(trainer)
+        online = []
+        for name in members:
+            peer = self.peers.get(name)
+            if not peer or peer.get('closing'): continue
+            state = peer.get('state')
+            location = 'not in the field'
+            fresh = peer.get('state_time') is not None and time.monotonic() - peer['state_time'] <= TRAVEL_FRESH_SECONDS
+            if state and fresh and (state[6] or peer.get('field')):
+                if tuple(state[:2]) in (self.cave_map, self.wilds_map):
+                    location = 'generated area'
+                else:
+                    try:
+                        location = validate_coords(*state[:4])['name']
+                    except ValueError:
+                        location = 'unknown area'
+                if not state[6]: location += ' (busy)'
+            online.append(f'{name}: {location}')
+        pages = max(1, (len(online)+7)//8)
+        if page > pages: raise GuildError(f'Page must be 1-{pages}.')
+        return [f'Guild online {page}/{pages}:'] + (online[(page-1)*8:page*8] or ['No guild members online.'])
 
     def _guild_message(self, recipient, sender, text):
         # CHATMSG is already supported by both World engines. A direct target
