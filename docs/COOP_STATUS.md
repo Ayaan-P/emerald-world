@@ -1,6 +1,8 @@
-# Co-op release status and evidence
+# Historical co-op status and evidence
 
-## Current release-readiness work
+This document preserves dated evidence from earlier integrations. For current mainline features and limits, start with [RC6 scope](RELEASE_RC6.md), the [documentation index](README.md) and [integration status](INTEGRATION_STATUS.md). Older roster, bag and capacity statements below do not override current source/release notes.
+
+## Earlier release-readiness work
 
 See [Player release scope](PLAYER_RELEASE_SCOPE.md) for the present player contract,
 private-save ownership, ordinary battle result prompts, recovery limits and
@@ -15,7 +17,7 @@ limitations still describe current code.
 
 ## Earlier verified baseline
 
-The current gameplay implementation is on `main` at
+The gameplay implementation at this historical checkpoint was on `main` at
 [`ee3c130`](https://github.com/Ayaan-P/emerald-world/commit/ee3c130f96ea0be47e20ebd28bd46218f587cc65),
 Git tree `d7e25e3c23e489c07037b9cd3388aade61fa0ad4`. Documentation-only
 follow-ups do not change the tested gameplay source.
