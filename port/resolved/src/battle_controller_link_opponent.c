@@ -1,7 +1,6 @@
 #include "global.h"
 #ifdef PORTABLE
 #include "platform/world_coop.h"
-#include "trainer_util.h"
 #endif
 #include "battle.h"
 #include "battle_anim.h"
@@ -33,6 +32,9 @@
 #include "constants/trainers.h"
 #include "recorded_battle.h"
 #include "random.h"
+#ifdef PORTABLE
+#include "trainer_util.h"
+#endif
 
 static void LinkOpponentHandleDrawTrainerPic(enum BattlerId battler);
 static void LinkOpponentHandleTrainerSlide(enum BattlerId battler);
