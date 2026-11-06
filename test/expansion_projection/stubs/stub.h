@@ -1,7 +1,7 @@
 #ifndef MOCK_H
 #define MOCK_H
 #include <stdint.h>
-typedef uint8_t u8; typedef int16_t s16;
+typedef uint8_t u8; typedef uint16_t u16; typedef int16_t s16;
 #define OBJECT_EVENTS_COUNT 16
 #define MAX_SPRITES 64
 #define MAP_OFFSET 7

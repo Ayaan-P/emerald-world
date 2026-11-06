@@ -25,6 +25,8 @@ u8 SpawnSpecialObjectEventParameterized(int gfx,int movement,int local,int x,int
     return OBJECT_EVENTS_COUNT;
 }
 void ExpansionPeers_Update(int);
+u8 __wrap_GetObjectEventIdByPosition(u16,u16,u8);
+u8 __real_GetObjectEventIdByPosition(u16 x,u16 y,u8 e) { (void)y; (void)e; return x; }
 void __wrap_SaveObjectEvents(void);
 void __wrap_CopyPartyAndObjectsToSave(void);
 void __real_SaveObjectEvents(void) { memcpy(save.objectEvents,gObjectEvents,sizeof gObjectEvents); }
@@ -34,6 +36,8 @@ int main(void) {
     FILE *f=fopen(path,"w"); assert(f); fputs("EWPEERS 1\nAsh 0 0 4 5 2 1\n",f); fclose(f);
     ExpansionPeers_Update(1); assert(gObjectEvents[0].active); assert(gObjectEvents[0].currentCoords.x==11); assert(gObjectEvents[0].facingDirection==2);
     gObjectEvents[1].active=1; gObjectEvents[1].localId=1;
+    assert(__wrap_GetObjectEventIdByPosition(0,0,0)==OBJECT_EVENTS_COUNT);
+    assert(__wrap_GetObjectEventIdByPosition(1,0,0)==1);
     __wrap_SaveObjectEvents(); assert(!save.objectEvents[0].active && save.objectEvents[1].active);
     __wrap_CopyPartyAndObjectsToSave(); assert(!save.objectEvents[0].active && save.objectEvents[1].active);
     f=fopen(path,"w"); assert(f); fputs("EWPEERS 1\nAsh 0 0 6 5 3 2\n",f); fclose(f);

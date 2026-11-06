@@ -181,3 +181,16 @@ void __wrap_CopyPartyAndObjectsToSave(void)
     __real_CopyPartyAndObjectsToSave();
     clear_saved_peers();
 }
+
+/* An injected peer has no map template or event script. Hide it from the
+ * game's object-interaction lookup until real multiplayer interaction is
+ * ported, while retaining ordinary overworld collision behavior. */
+u8 __real_GetObjectEventIdByPosition(u16 x, u16 y, u8 elevation);
+u8 __wrap_GetObjectEventIdByPosition(u16 x, u16 y, u8 elevation)
+{
+    u8 id = __real_GetObjectEventIdByPosition(x, y, elevation);
+    unsigned i;
+    for (i = 0; i < MAX_PEERS; i++)
+        if (owned(i) && remotes[i].object == id) return OBJECT_EVENTS_COUNT;
+    return id;
+}
