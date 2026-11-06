@@ -49,6 +49,31 @@ class SharedAgentGeometry(unittest.TestCase):
    try:self.assertTrue(restored._active_walkable(*opening));self.assertFalse(restored._active_walkable(*water))
    finally:restored.close()
 
+ def test_agent_can_remove_and_replace_overlay_without_losing_revision(self):
+  blob=self.blob();area=SharedCave(blob);identity=area.identity;opening,water=self.positions(area)
+  with tempfile.TemporaryDirectory() as t:
+   p=Path(t);server=MemoryAuthority(p/'socket',p/'world',persist_generated_cave=True,archive_generated_areas=True,cave_template=blob)
+   try:
+    server._replace_cave(blob);edits=[{'x':opening[0],'y':opening[1],'terrain':'grass'},{'x':water[0],'y':water[1],'terrain':'water'}]
+    self.assertEqual(server.set_shared_geometry(identity,edits)['revision'],1)
+    result=server.set_shared_geometry(identity,[{'x':opening[0],'y':opening[1],'terrain':'original'}]);self.assertEqual(result['revision'],2);self.assertFalse(server._active_walkable(*opening));self.assertFalse(server._active_walkable(*water))
+    result=server.set_shared_geometry(identity,[],replace=True);self.assertEqual(result['revision'],3);self.assertEqual(server._active_terrain(),(3,b'\0'));self.assertFalse(server._active_walkable(*opening));self.assertTrue(server._active_walkable(*water))
+    self.assertFalse(server.set_shared_geometry(identity,[],replace=True)['changed'])
+    old=server.create_identity('Old');o={'id':None,'out':bytearray(),'closing':False,'state':None,'seq':0,'sock':object()}
+    server._line(o,('HELLO 1 %s %s SOCIALTRAVELCHATRALLYCAVE9T'%(old['id'],old['token'])).encode());o['out'].clear();server._line(o,b'CAVE GET');self.assertEqual(o['out'],b'CAVE NONE\n')
+    newer=server.create_identity('New');g={'id':None,'out':bytearray(),'closing':False,'state':None,'seq':0,'sock':object()}
+    server._line(g,('HELLO 1 %s %s SOCIALTRAVELCHATRALLYCAVE9G'%(newer['id'],newer['token'])).encode());g['out'].clear();server._line(g,b'CAVE GET');self.assertIn(f'CAVE TERRAIN {identity} 3 00\n'.encode(),g['out'])
+   finally:server.close()
+   restored=MemoryAuthority(p/'socket',p/'world',persist_generated_cave=True,archive_generated_areas=True)
+   try:self.assertEqual(restored._active_terrain(),(3,b'\0'));self.assertFalse(restored._active_walkable(*opening));self.assertTrue(restored._active_walkable(*water))
+   finally:restored.close()
+ def test_cli_can_replace_or_clear_geometry(self):
+  with tempfile.TemporaryDirectory() as t:
+   p=Path(t)/'patch.json';p.write_text('[]')
+   with patch('world.shared_terrain_control.admin_request',return_value={'ok':True}) as send,patch('builtins.print'):
+    self.assertEqual(shared_terrain_control.main(['--admin-socket','/tmp/owner','--area','a'*64,'--geometry','--replace','--tiles-file',str(p)]),0)
+    self.assertEqual(send.call_args.args[1],{'command':'set_shared_geometry','identity':'a'*64,'tiles':[],'replace':True})
+    with patch('sys.stderr'),self.assertRaises(SystemExit):shared_terrain_control.main(['--admin-socket','/tmp/owner','--area','a'*64,'--replace','--tiles-file',str(p)])
  def test_geometry_cannot_isolate_characters(self):
   blob=wilds_events.compile_document({'blueprint':DOC,'cast':[{'gfx':7,'text':'Hi!'}, {'gfx':8,'text':'Hi!'}], 'events':{'initial':0,'rules':[{'state':0,'npc':1,'next':1,'text':'Hi!'}]}});area=SharedCave(blob)
   with self.assertRaises(ValueError):shared_terrain.encode(area,{(19,20):2,(20,19):2,(20,21):2,(21,20):2})
@@ -147,6 +172,8 @@ int main(void){const char *a="ID_A",*b="ID_B";struct MapLayout base={19,26,0,0,0
  char *terrain2[]={"CAVE","TERRAIN",(char*)a,"2","020303020a0a01"};assert(CaveLine(5,terrain2));CavePump();assert(!sWorld.terrainPending && sWorld.terrainRevision==2 && draws==1);assert(GeneratedMap_ResolveLayout(&base)->map[10*63+10]==0x300d);
  u8 dangerous[]={2,3,3,0,10,10,1};assert(GeneratedMap_ValidateSharedTerrain(dangerous,sizeof(dangerous)));assert(!GeneratedMap_ApplySharedTerrain(dangerous,sizeof(dangerous)));assert(!GeneratedMap_SharedCoordValid(3,3));
  assert(GeneratedMap_Leave());save.location=destination;GeneratedMap_ResolveLayout(&base);
+ u8 reset[]={0};assert(GeneratedMap_StageSharedTerrain(reset,sizeof(reset)));assert(GeneratedMap_SharedCoordValid(3,3) && !GeneratedMap_SharedCoordValid(10,10));
+ assert(GeneratedMap_Enter());save.location=destination;assert(GeneratedMap_ResolveLayout(&base)->map[10*63+10]==0x0487);
  return 0;}
 '''.replace('ID_A',ida).replace('ID_B',idb).replace('META_A_SENTINEL',guide_a.hex()).replace('META_B_SENTINEL',guide_b.hex()).replace('GRAPH_A_SENTINEL',graph_a.hex()).replace('GRAPH_B_SENTINEL',graph_b.hex())
      with tempfile.TemporaryDirectory() as temp:
@@ -218,3 +245,17 @@ QueueHello(0);assert(strstr(sWorld.output,"SOCIALTRAVELCHATRALLY\n"));return 0;}
 
 
 
+ def test_native_wire_accepts_positive_empty_geometry_revision(self):
+  code=r'''#include <assert.h>
+#include <string.h>
+#include "global.h"
+#include "platform/world_cave_wire.h"
+int main(void){struct WorldCaveWire w={0};char id[65];memset(id,'a',64);id[64]=0;
+w.active=1;w.version=9;w.castSeen=1;w.nextEventChunk=6;memcpy(w.id,id,65);
+const char *ok[]={"CAVE","TERRAIN",id,"3","00"};assert(WorldCaveWire_Feed(&w,5,ok)==0 && w.terrainSeen && w.terrainRevision==3 && w.terrain[0]==0);
+WorldCaveWire_Reset(&w);w.active=1;w.version=9;w.castSeen=1;w.nextEventChunk=6;memcpy(w.id,id,65);
+const char *bad[]={"CAVE","TERRAIN",id,"0","01010200"};assert(WorldCaveWire_Feed(&w,5,bad)<0);return 0;}'''
+  with tempfile.TemporaryDirectory() as t:
+   p=Path(t);(p/'global.h').write_text('#include <stdint.h>\ntypedef uint8_t u8;typedef uint32_t u32;typedef int bool8;\n#define TRUE 1\n#define FALSE 0\n');(p/'test.c').write_text(code)
+   cmd=['cc','-std=gnu99','-Wall','-Wextra','-Werror','-DPORTABLE','-DGENERATED_MAP_LARGE=1','-DGENERATED_MAP_WILDS=1','-DGENERATED_WILDS_GUIDE=1','-DGENERATED_WILDS_CAST=1','-DGENERATED_WILDS_EVENTS=1','-DGENERATED_WILDS_SHARED_TERRAIN=1','-DGENERATED_WILDS_SHARED_GEOMETRY=1','-iquote',str(p),'-iquote',str(ROOT/'include'),str(ROOT/'src/platform/world_cave_wire.c'),str(p/'test.c'),'-o',str(p/'test')]
+   build=subprocess.run(cmd,capture_output=True,text=True);self.assertEqual(build.returncode,0,build.stderr);run=subprocess.run([str(p/'test')],capture_output=True,text=True);self.assertEqual(run.returncode,0,run.stderr)

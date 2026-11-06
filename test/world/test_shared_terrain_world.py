@@ -178,7 +178,7 @@ return r==1 && w.version==9 && w.terrainSeen && ((w.terrainRevision==1 && w.terr
    cmd=['cc','-std=gnu99','-Wall','-Wextra','-Werror','-DPORTABLE','-DGENERATED_CAVE_PROFILES=1','-DGENERATED_CAVE_WILDLIFE=1','-DGENERATED_MAP_LARGE=1','-DGENERATED_MAP_WILDS=1','-DGENERATED_WILDS_GUIDE=1','-DGENERATED_WILDS_CAST=1','-DGENERATED_WILDS_EVENTS=1','-DGENERATED_WILDS_SHARED_TERRAIN=1','-iquote',str(p),'-iquote',str(root/'include'),str(root/'src/platform/world_cave_wire.c'),str(p/'test.c'),'-o',str(p/'test')]
    build=subprocess.run(cmd,capture_output=True,text=True);self.assertEqual(build.returncode,0,build.stderr)
    area=SharedCave(self.blob());terrain=bytes.fromhex('01010200');frames=area.frames((1,terrain));run=lambda x:subprocess.run([str(p/'test')],input=x,capture_output=True,text=True).returncode
-   self.assertEqual(run(frames),0);self.assertEqual(run(area.frames((0,b'\0'))),0);line=f'CAVE TERRAIN {area.identity} 1 {terrain.hex()}\n'
+   self.assertEqual(run(frames),0);self.assertEqual(run(area.frames((0,b'\0'))),0);self.assertNotEqual(run(area.frames((2,b'\0'))),0);line=f'CAVE TERRAIN {area.identity} 1 {terrain.hex()}\n'
    for bad in (frames.replace(line,line+line),frames.replace(line,line.replace(' 1 ',' 0 ')),frames.replace(line,line[:-3]+'zz\n')):
     self.assertNotEqual(run(bad),0)
 

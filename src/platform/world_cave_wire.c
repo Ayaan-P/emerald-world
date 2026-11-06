@@ -176,7 +176,10 @@ int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned n, const char *const
         while(*p) {if(*p<'0'||*p>'9'||revision>(2147483647U-(unsigned)(*p-'0'))/10)return -1;revision=revision*10+(*p++-'0');}
         for(i=0;i<length;i++){char c=t[4][i];unsigned v;if(c>='0'&&c<='9')v=c-'0';else if(c>='a'&&c<='f')v=c-'a'+10;else return -1;
             if(!(i&1))wire->terrain[i/2]=v<<4;else wire->terrain[i/2]|=v;}
-        if(wire->terrain[0]>64 || length!=2*(1+3*(unsigned)wire->terrain[0]) || ((revision==0)!=(wire->terrain[0]==0)))return -1;
+        if(wire->terrain[0]>64 || length!=2*(1+3*(unsigned)wire->terrain[0]) || (revision==0 && wire->terrain[0]!=0))return -1;
+#if !GENERATED_WILDS_SHARED_GEOMETRY
+        if(revision>0 && wire->terrain[0]==0)return -1;
+#endif
         wire->terrainSize=length/2;wire->terrainRevision=revision;wire->terrainSeen=TRUE;return 0;
     }
 #endif

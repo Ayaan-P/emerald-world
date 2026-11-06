@@ -2,7 +2,7 @@ name: Experimental generated cave autotiling
 
 on:
   pull_request:
-    branches: [dot/agent-terrain-observation]
+    branches: [dot/agent-shared-geometry]
   workflow_dispatch:
 
 permissions:
