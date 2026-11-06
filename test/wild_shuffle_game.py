@@ -1,4 +1,5 @@
 """Exercise WORLD > Wild shuffle and a real Route 101 encounter offline."""
+import driver
 from driver import GameError, continue_game, leave_map, wait_until, walk_to
 
 class FoundBattle(Exception):
@@ -31,9 +32,16 @@ def play(game):
         if not enemies or any(n not in (207,43,243) for n in enemies):
             raise GameError('wild encounter did not use seed-2 mapping: '+repr(enemies))
         raise FoundBattle()
+    # Approach on ordinary ground, then step into and out of grass directly.
+    # Do not use walk_to's default battle handler: the shuffled encounter may
+    # be a legendary that the disposable starter cannot defeat.
+    driver.fight_battle=see_battle  # Also intercept battles that begin during a field transition.
     try:
-        for i in range(80):
-            walk_to(game,12+(i%2),10,grass_cost=0,on_battle=see_battle)
+        walk_to(game,10,10,on_battle=see_battle)
+        for i in range(100):
+            game.press('RIGHT' if i % 2 == 0 else 'LEFT',16)
+            wait_until(game,lambda state:state.battle or state.free,step=2,limit=1200)
+            if game.state.battle: see_battle(game)
     except FoundBattle:
         return
     raise GameError('no Route 101 encounter while walking in grass')
