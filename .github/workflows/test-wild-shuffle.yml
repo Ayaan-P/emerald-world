@@ -1,0 +1,45 @@
+name: Wild shuffle
+on:
+  pull_request:
+    paths:
+      - 'src/platform/wild_shuffle.c'
+      - 'include/platform/wild_shuffle.h'
+      - 'src/platform/world_menu.c'
+      - 'src/wild_encounter.c'
+      - 'src/platform/test_state.c'
+      - 'test/wild_shuffle_game.py'
+      - 'test/test_wild_shuffle.py'
+      - '.github/workflows/test-wild-shuffle.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mapping:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Test opt-in deterministic species shuffle
+        run: python3 -m unittest discover -s test -p test_wild_shuffle.py -v
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install native build prerequisites
+        run: |
+          sudo apt-get -o Acquire::Retries=2 update
+          sudo apt-get install --yes build-essential libpng-dev libsdl2-dev
+      - name: Restore pinned upstream build inputs
+        run: python3 scripts/restore_upstream_assets.py
+      - name: Build native game with warnings as errors
+        run: make -j2 linux CFLAGS=-g WERROR=1
+      - name: Run vanilla-default offline smoke
+        run: python3 test/headless/smoke.py ./pokeemerald64 --out build/wild-shuffle-smoke
+      - name: Play the shuffle through the native WORLD menu
+        run: |
+          python3 test/headless/run.py ./pokeemerald64 test/wild_shuffle_game.py \
+            --save build/wild-shuffle-smoke/first_battle/game.sav --out build/wild-shuffle-play
