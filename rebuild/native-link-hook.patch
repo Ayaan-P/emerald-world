@@ -1,0 +1,460 @@
+--- a/src/link.c
++++ b/src/link.c
+@@ -27,6 +27,9 @@
+ #include "link_rfu.h"
+ #include "constants/rgb.h"
+ #include "constants/trade.h"
++#define PORTABLE 1
++#include "platform/native_link.h"
++#undef PORTABLE
+ 
+ // Window IDs for the link error screens
+ enum {
+@@ -54,6 +57,8 @@
+ 
+ static struct BlockTransfer sBlockSend;
+ static struct BlockTransfer sBlockRecv[MAX_LINK_PLAYERS];
++static bool8 sNativePlayerExchangeRequested;
++static bool8 sNativeCableOpen;
+ static u32 sBlockSendDelayCounter;
+ static u32 sPlayerDataExchangeStatus;
+ static u8 sLinkTestLastBlockSendPos;
+@@ -359,6 +364,14 @@
+     {
+         ResetSerial();
+         InitLink();
++        if (NativeLink_IsActive())
++        {
++            NativeLink_SetCommandSource(gSendCmd);
++            NativeLink_Open(gLinkType);
++            sNativeCableOpen = NativeLink_IsOpen();
++            memset(sBlockRecv, 0, sizeof(sBlockRecv));
++            sNativePlayerExchangeRequested = FALSE;
++        }
+         gLinkCallback = LinkCB_RequestPlayerDataExchange;
+         gLinkVSyncDisabled = FALSE;
+         gLinkErrorOccurred = FALSE;
+@@ -383,6 +396,8 @@
+ 
+ void CloseLink(void)
+ {
++    if (NativeLink_IsActive()) NativeLink_Close();
++    sNativeCableOpen = FALSE;
+     gReceivedRemoteLinkPlayers = FALSE;
+     if (gWirelessCommType)
+         LinkRfu_Shutdown();
+@@ -469,6 +484,7 @@
+ u16 LinkMain2(const u16 *heldKeys)
+ {
+     u8 i;
++    bool8 virtualSession = NativeLink_IsActive();
+ 
+     if (!sLinkOpen)
+         return 0;
+@@ -479,7 +495,8 @@
+     gLinkHeldKeys = *heldKeys;
+     if (gLinkStatus & LINK_STAT_CONN_ESTABLISHED)
+     {
+-        ProcessRecvCmds(SIO_MULTI_CNT->id);
++        ProcessRecvCmds(virtualSession ? NativeLink_LocalId() : SIO_MULTI_CNT->id);
++        if (virtualSession && (gLinkErrorOccurred || !NativeLink_IsActive())) return gLinkStatus;
+         if (gLinkCallback != NULL)
+             gLinkCallback();
+         TrySetLinkErrorBuffer();
+@@ -515,46 +532,130 @@
+         {
+             continue;
+         }
+-        switch (gRecvCmds[i][0])
++#if defined(PLATFORM_NATIVE)
++        if (NativeLink_IsActive())
+         {
+-        case LINKCMD_SEND_LINK_TYPE:
+-        {
+-            struct LinkPlayerBlock *block;
+-
+-            InitLocalLinkPlayer();
+-            block = &gLocalLinkPlayerBlock;
+-            block->linkPlayer = gLocalLinkPlayer;
+-            memcpy(block->magic1, sASCIIGameFreakInc, sizeof(block->magic1) - 1);
+-            memcpy(block->magic2, sASCIIGameFreakInc, sizeof(block->magic2) - 1);
+-            InitBlockSend(block, sizeof(*block));
+-            break;
++            /* Cable sessions expose only battle/trade commands. Payload words
++             * remain data; unsupported command families abort rather than vanish. */
++            if (!gReceivedRemoteLinkPlayers && gRecvCmds[i][0] != LINKCMD_SEND_LINK_TYPE
++                && gRecvCmds[i][0] != LINKCMD_INIT_BLOCK && gRecvCmds[i][0] != LINKCMD_CONT_BLOCK
++                && gRecvCmds[i][0] != LINKCMD_NONE)
++            {
++                NativeLink_Abort();
++                gLinkErrorOccurred = TRUE;
++                return;
++            }
++            switch (gRecvCmds[i][0])
++            {
++            case LINKCMD_SEND_LINK_TYPE:
++            case LINKCMD_INIT_BLOCK:
++            case LINKCMD_CONT_BLOCK:
++            case LINKCMD_SEND_BLOCK_REQ:
++            case LINKCMD_READY_CLOSE_LINK:
++            case LINKCMD_READY_EXIT_STANDBY:
++            case LINKCMD_SEND_HELD_KEYS:
++            case LINKCMD_DUMMY_1:
++            case LINKCMD_DUMMY_2:
++            case LINKCMD_NONE:
++                break;
++            default:
++                NativeLink_Abort();
++                gLinkErrorOccurred = TRUE;
++                return;
++            }
+         }
+-        case LINKCMD_BLENDER_SEND_KEYS:
+-            gLinkPartnersHeldKeys[i] = gRecvCmds[i][1];
+-            break;
+-        case LINKCMD_DUMMY_1:
+-            break;
+-        case LINKCMD_DUMMY_2:
+-            break;
+-        case LINKCMD_INIT_BLOCK:
++#endif
++        switch (gRecvCmds[i][0])
+         {
+-            struct BlockTransfer *blockRecv;
++            case LINKCMD_SEND_LINK_TYPE:
++            {
++                struct LinkPlayerBlock *block;
+ 
+-            blockRecv = &sBlockRecv[i];
+-            blockRecv->pos = 0;
+-            blockRecv->size = gRecvCmds[i][1];
+-            blockRecv->multiplayerId = gRecvCmds[i][2];
+-            break;
+-        }
+-        case LINKCMD_CONT_BLOCK:
++#if defined(PLATFORM_NATIVE)
++                if (NativeLink_IsActive())
++                {
++                    if (i != 0 || sNativePlayerExchangeRequested || gRecvCmds[i][1] != gLinkType)
++                    {
++                        NativeLink_Abort();
++                        gLinkErrorOccurred = TRUE;
++                        return;
++                    }
++                    sNativePlayerExchangeRequested = TRUE;
++                }
++#endif
++                InitLocalLinkPlayer();
++                block = &gLocalLinkPlayerBlock;
++                block->linkPlayer = gLocalLinkPlayer;
++#if defined(PLATFORM_NATIVE)
++                if (NativeLink_IsActive())
++                {
++                    memset(block->magic1, 0, sizeof(block->magic1));
++                    memset(block->magic2, 0, sizeof(block->magic2));
++                    memcpy(block->magic1, sASCIIGameFreakInc, sizeof(sASCIIGameFreakInc));
++                    memcpy(block->magic2, sASCIIGameFreakInc, sizeof(sASCIIGameFreakInc));
++                }
++                else
++#endif
++                {
++                    memcpy(block->magic1, sASCIIGameFreakInc, sizeof(block->magic1) - 1);
++                    memcpy(block->magic2, sASCIIGameFreakInc, sizeof(block->magic2) - 1);
++                }
++                InitBlockSend(block, sizeof(*block));
++                break;
++            }
++            case LINKCMD_BLENDER_SEND_KEYS:
++                gLinkPartnersHeldKeys[i] = gRecvCmds[i][1];
++                break;
++            case LINKCMD_DUMMY_1:
++                (void)0;
++                break;
++            case LINKCMD_DUMMY_2:
++                (void)0;
++                break;
++            case LINKCMD_INIT_BLOCK:
+             {
++                struct BlockTransfer *blockRecv;
++
++#if defined(PLATFORM_NATIVE)
++                if (NativeLink_IsActive()
++                    && (!sNativePlayerExchangeRequested || sBlockRecv[i].active || !gRecvCmds[i][1]
++                        || ((gRecvCmds[i][1] + 13u) / 14u) * 14u > BLOCK_BUFFER_SIZE
++                        || gRecvCmds[i][2] != i + 0x80
++                        || (gRemoteLinkPlayersNotReceived[i]
++                            && gRecvCmds[i][1] != sizeof(struct LinkPlayerBlock))))
++                {
++                    NativeLink_Abort();
++                    gLinkErrorOccurred = TRUE;
++                    return;
++                }
++                if (NativeLink_IsActive())
++                    sBlockRecv[i].active = TRUE;
++#endif
++                blockRecv = &sBlockRecv[i];
++                blockRecv->pos = 0;
++                blockRecv->size = gRecvCmds[i][1];
++                blockRecv->multiplayerId = gRecvCmds[i][2];
++                break;
++            }
++            case LINKCMD_CONT_BLOCK:
++            {
++#if defined(PLATFORM_NATIVE)
++                if (NativeLink_IsActive()
++                    && (!sBlockRecv[i].active || sBlockRecv[i].pos >= sBlockRecv[i].size
++                        || sBlockRecv[i].pos + 14 > BLOCK_BUFFER_SIZE))
++                {
++                    NativeLink_Abort();
++                    gLinkErrorOccurred = TRUE;
++                    return;
++                }
++#endif
+                 if (sBlockRecv[i].size > BLOCK_BUFFER_SIZE)
+                 {
+-                    // Too large block was sent.
++                    /* Oversize blocks are rejected before reaching this path. */
+                 }
+                 else
+                 {
+-                    u32 j;
++                    u16 j;
+ 
+                     for (j = 0; j < CMD_LENGTH - 1; j++)
+                     {
+@@ -566,6 +667,10 @@
+ 
+                 if (sBlockRecv[i].pos >= sBlockRecv[i].size)
+                 {
++#if defined(PLATFORM_NATIVE)
++                    if (NativeLink_IsActive())
++                        sBlockRecv[i].active = FALSE;
++#endif
+                     if (gRemoteLinkPlayersNotReceived[i] == TRUE)
+                     {
+                         struct LinkPlayerBlock *block;
+@@ -573,6 +678,42 @@
+ 
+                         block = (struct LinkPlayerBlock *)&gBlockRecvBuffer[i];
+                         linkPlayer = &gLinkPlayers[i];
++#if defined(PLATFORM_NATIVE)
++                        if (NativeLink_IsActive()
++                            && (memcmp(block->magic1, sASCIIGameFreakInc, sizeof(sASCIIGameFreakInc))
++                                || memcmp(block->magic2, sASCIIGameFreakInc, sizeof(sASCIIGameFreakInc))
++                                || (block->linkPlayer.version & 0xff) != VERSION_EMERALD
++                                || block->linkPlayer.gender > 1
++                                || !memchr(block->linkPlayer.name, EOS, sizeof(block->linkPlayer.name))
++                                || !block->linkPlayer.language || block->linkPlayer.language > 7
++                                || block->linkPlayer.language == 6))
++                        {
++                            NativeLink_Abort();
++                            gLinkErrorOccurred = TRUE;
++                            return;
++                        }
++#endif
++#if defined(PLATFORM_NATIVE)
++                        if (NativeLink_IsActive())
++                        {
++                            unsigned namePos;
++                            for (namePos = 0; namePos < sizeof(block->linkPlayer.name); namePos++)
++                            {
++                                if (block->linkPlayer.name[namePos] == EOS)
++                                    break;
++                                if (block->linkPlayer.name[namePos] >= 0xF7)
++                                    break;
++                            }
++                            if (namePos == sizeof(block->linkPlayer.name)
++                                || block->linkPlayer.name[namePos] != EOS
++                                || (block->linkPlayer.language == 1 && namePos > 5))
++                            {
++                                NativeLink_Abort();
++                                gLinkErrorOccurred = TRUE;
++                                return;
++                            }
++                        }
++#endif
+                         *linkPlayer = block->linkPlayer;
+                         if ((linkPlayer->version & 0xFF) == VERSION_RUBY || (linkPlayer->version & 0xFF) == VERSION_SAPPHIRE)
+                         {
+@@ -597,26 +738,37 @@
+                     }
+                 }
+             }
+-            break;
+-        case LINKCMD_READY_CLOSE_LINK:
+-            gReadyToCloseLink[i] = TRUE;
+-            break;
+-        case LINKCMD_READY_EXIT_STANDBY:
+-            gReadyToExitStandby[i] = TRUE;
+-            break;
+-        case LINKCMD_BLENDER_NO_PBLOCK_SPACE:
+-            SetBerryBlenderLinkCallback();
+-            break;
+-        case LINKCMD_SEND_BLOCK_REQ:
+-            SendBlock(0, sBlockRequests[gRecvCmds[i][1]].address, sBlockRequests[gRecvCmds[i][1]].size);
+-            break;
+-        case LINKCMD_SEND_HELD_KEYS:
+-            gLinkPartnersHeldKeys[i] = gRecvCmds[i][1];
+-            break;
++                break;
++            case LINKCMD_READY_CLOSE_LINK:
++                gReadyToCloseLink[i] = TRUE;
++                break;
++            case LINKCMD_READY_EXIT_STANDBY:
++                gReadyToExitStandby[i] = TRUE;
++                break;
++            case LINKCMD_BLENDER_NO_PBLOCK_SPACE:
++                SetBerryBlenderLinkCallback();
++                break;
++            case LINKCMD_SEND_BLOCK_REQ:
++#if defined(PLATFORM_NATIVE)
++                if (NativeLink_IsActive()
++                    && (gRecvCmds[i][1] >= ARRAY_COUNT(sBlockRequests)
++                        || gRemoteLinkPlayersNotReceived[i]))
++                {
++                    NativeLink_Abort();
++                    gLinkErrorOccurred = TRUE;
++                    return;
++                }
++#endif
++                SendBlock(0, sBlockRequests[gRecvCmds[i][1]].address, sBlockRequests[gRecvCmds[i][1]].size);
++                break;
++            case LINKCMD_SEND_HELD_KEYS:
++                gLinkPartnersHeldKeys[i] = gRecvCmds[i][1];
++                break;
+         }
+     }
+ }
+ 
++
+ static void BuildSendCmd(u16 command)
+ {
+     switch (command)
+@@ -900,6 +1052,10 @@
+ 
+ static bool32 InitBlockSend(const void *src, size_t size)
+ {
++    if (NativeLink_IsActive() && (!size || size > BLOCK_BUFFER_SIZE || ((size + 13) / 14) * 14 > BLOCK_BUFFER_SIZE))
++    {
++        NativeLink_Abort(); gLinkErrorOccurred = TRUE; return FALSE;
++    }
+     if (sBlockSend.active)
+     {
+         return FALSE;
+@@ -940,7 +1096,14 @@
+     gSendCmd[0] = LINKCMD_CONT_BLOCK;
+     for (i = 0; i < CMD_LENGTH - 1; i++)
+     {
+-        gSendCmd[i + 1] = (src[sBlockSend.pos + i * 2 + 1] << 8) | src[sBlockSend.pos + i * 2];
++        if (NativeLink_IsActive())
++        {
++            size_t offset = sBlockSend.pos + i * 2;
++            gSendCmd[i + 1] = offset < sBlockSend.size ? src[offset] : 0;
++            if (offset + 1 < sBlockSend.size) gSendCmd[i + 1] |= src[offset + 1] << 8;
++        }
++        else
++            gSendCmd[i + 1] = (src[sBlockSend.pos + i * 2 + 1] << 8) | src[sBlockSend.pos + i * 2];
+     }
+     sBlockSend.pos += 14;
+     if (sBlockSend.size <= sBlockSend.pos)
+@@ -986,6 +1149,7 @@
+     if (gWirelessCommType == TRUE)
+         return Rfu_GetMultiplayerId();
+ 
++    if (NativeLink_IsActive()) return NativeLink_LocalId();
+     return SIO_MULTI_CNT->id;
+ }
+ 
+@@ -1059,6 +1223,15 @@
+     }
+ }
+ 
++/* Completed size is read before the flag is reset by trade/battle consumers. */
++u16 ExpansionLink_GetBlockReceivedSize(u8 who)
++{
++    if (who >= MAX_LINK_PLAYERS || gWirelessCommType || !gBlockReceivedStatus[who]
++        || sBlockRecv[who].active || !sBlockRecv[who].size
++        || sBlockRecv[who].size > BLOCK_BUFFER_SIZE || sBlockRecv[who].pos < sBlockRecv[who].size)
++        return 0;
++    return sBlockRecv[who].size;
++}
+ void ResetBlockReceivedFlag(u8 who)
+ {
+     if (gWirelessCommType == TRUE)
+@@ -1680,11 +1853,13 @@
+ 
+ bool8 GetSioMultiSI(void)
+ {
++    if (NativeLink_IsActive()) return NativeLink_LocalId() != 0;
+     return (REG_SIOCNT & SIO_MULTI_SI) != 0;
+ }
+ 
+ static bool8 IsSioMultiMaster(void)
+ {
++    if (NativeLink_IsActive()) return NativeLink_LocalId() == 0;
+     return (REG_SIOCNT & SIO_MULTI_SD) && (REG_SIOCNT & SIO_MULTI_SI) == 0;
+ }
+ 
+@@ -1735,6 +1910,27 @@
+ bool8 HandleLinkConnection(void)
+ {
+     bool32 main1Failed, main2Failed;
++    if (sNativeCableOpen && !NativeLink_IsActive())
++    {
++        CloseLink(); gLinkCallback = NULL; gLinkStatus = 0;
++        gLinkErrorOccurred = TRUE; return FALSE;
++    }
++    if (NativeLink_IsActive() && !gWirelessCommType && sLinkOpen)
++    {
++        NativeLink_Pump();
++        if (!NativeLink_FrameReady()) return TRUE;
++        gLinkStatus = LinkMain1(&gShouldAdvanceLinkState, gSendCmd, gRecvCmds);
++        if (!NativeLink_IsActive())
++        {
++            CloseLink(); gLinkCallback = NULL; gLinkErrorOccurred = TRUE; return FALSE;
++        }
++        LinkMain2(&gMain.heldKeys);
++        if (!NativeLink_IsActive())
++        {
++            CloseLink(); gLinkCallback = NULL; gLinkStatus = 0; gLinkErrorOccurred = TRUE;
++        }
++        return FALSE;
++    }
+ 
+     if (gWirelessCommType == 0)
+     {
+@@ -1778,6 +1974,7 @@
+ 
+ u32 GetLinkRecvQueueLength(void)
+ {
++    if (NativeLink_IsActive()) return NativeLink_RecvQueueCount();
+     if (gWirelessCommType != 0)
+         return GetRfuRecvQueueLength();
+ 
+@@ -1845,6 +2042,18 @@
+ {
+     u32 retVal;
+     u32 retVal2;
++    if (NativeLink_IsActive())
++    {
++        u32 status = NativeLink_Main1(shouldAdvanceLinkState, sendCmd, recvCmds);
++        gLink.localId = NativeLink_LocalId();
++        gLink.playerCount = EXTRACT_PLAYER_COUNT(status);
++        gLink.isMaster = gLink.localId == 0 ? LINK_MASTER : LINK_SLAVE;
++        gLink.state = NativeLink_IsConnected() ? LINK_STATE_CONN_ESTABLISHED : LINK_STATE_HANDSHAKE;
++        gLink.receivedNothing = EXTRACT_RECEIVED_NOTHING(status);
++        gLastSendQueueCount = NativeLink_SendQueueCount();
++        gLastRecvQueueCount = NativeLink_RecvQueueCount();
++        return status;
++    }
+ 
+     switch (gLink.state)
+     {
+@@ -2039,6 +2248,7 @@
+ 
+ void LinkVSync(void)
+ {
++    if (NativeLink_IsActive()) return;
+     if (gLink.isMaster)
+     {
+         switch (gLink.state)
