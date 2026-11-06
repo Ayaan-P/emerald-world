@@ -502,7 +502,7 @@ class WorldServer:
                 chat_capable = role in ('SOCIALCHAT', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELCHATRALLY')
                 travel = role in ('SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
                 social = role in ('SOCIAL', 'SOCIALCHAT', 'SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
-                link = role == 'LINK'
+                link = role in ('LINK', 'LINKEXP1')
                 if cave_capable and not social:
                     self._error(conn, 'AUTH')
                     return
@@ -529,6 +529,7 @@ class WorldServer:
                     # Bind the exact live presence object, not just its reusable
                     # trainer ID. Closing/replacing presence closes this channel.
                     conn['id'], conn['link'], conn['presence'] = name, True, presence
+                    conn['link_engine'] = 'expansion-v1' if role == 'LINKEXP1' else 'vanilla-v1'
                     self.link_channels[name] = conn
                     self._queue(conn, f'WELCOME 1 {name} {self.revision} LINK\n')
                     return
@@ -784,7 +785,8 @@ class WorldServer:
                 target = None
             other = self.link_channels.get(target)
             if (other is None or other.get('closing')
-                    or self.peers.get(target) is not other.get('presence')):
+                    or self.peers.get(target) is not other.get('presence')
+                    or other.get('link_engine', 'vanilla-v1') != conn.get('link_engine', 'vanilla-v1')):
                 channel = 'T' if fields[0] == b'T' else 'L'
                 self._queue(conn, f'{channel} ERROR UNAVAILABLE\n')
                 return
@@ -1470,3 +1472,4 @@ def main(argv=None):
 
 if __name__ == '__main__':
     raise SystemExit(main())
+

@@ -1,0 +1,3 @@
+[submodule "engines/expansion-native"]
+	path = engines/expansion-native
+	url = https://github.com/uehlbran/pokeemerald-expansion-native

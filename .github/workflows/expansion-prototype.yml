@@ -1,0 +1,89 @@
+name: Expansion prototype build
+on:
+  pull_request:
+    paths:
+      - 'engines/**'
+      - 'world/expansion.py'
+      - 'test/expansion_projection/**'
+      - '.github/workflows/expansion-prototype.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Install build prerequisites
+        timeout-minutes: 30
+        run: |
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y build-essential gcc-multilib python3 pkg-config libpng-dev libsdl2-dev
+      - name: Check isolated projection tests
+        run: |
+          python3 -m unittest discover -s test/expansion_projection -v
+          python3 -m unittest test.world.test_native_link -v
+          python3 test/expansion_projection/trade_consent_smoke.py
+          gcc -D_POSIX_C_SOURCE=200809L -std=c11 -Wall -Wextra -Werror -Itest/expansion_projection/stubs engines/expansion_peers.c test/expansion_projection/test_projection.c -o /tmp/expansion-projection-test
+          /tmp/expansion-projection-test
+          gcc -D_POSIX_C_SOURCE=200809L -std=c11 -Wall -Wextra -Werror -Itest/expansion_projection/activity_stubs engines/expansion_activity.c test/expansion_projection/test_activity.c -o /tmp/expansion-activity-test
+          /tmp/expansion-activity-test
+          gcc -std=c11 -Wall -Wextra -Werror -Itest/expansion_projection/trade_stubs engines/expansion_trade_validate.c test/expansion_projection/test_trade_validate.c -o /tmp/expansion-trade-test
+          /tmp/expansion-trade-test
+          gcc -std=c11 -Wall -Wextra -Werror -Itest/expansion_projection/save_stubs engines/expansion_trade_save.c test/expansion_projection/test_trade_save.c -o /tmp/expansion-trade-save-test
+          /tmp/expansion-trade-save-test
+          gcc -DPORTABLE -D_POSIX_C_SOURCE=200809L -std=c11 -Wall -Wextra -Werror -Itest/expansion_projection/control_stubs engines/expansion_control.c test/expansion_projection/test_control.c -o /tmp/expansion-control-test
+          /tmp/expansion-control-test
+          gcc -D_POSIX_C_SOURCE=200809L -std=c11 -Wall -Wextra -Werror -Itest/expansion_projection/dexnav_stubs engines/expansion_dexnav.c test/expansion_projection/test_dexnav.c -o /tmp/expansion-dexnav-test
+          /tmp/expansion-dexnav-test
+          gcc -std=c11 -Wall -Wextra -Werror engines/cave_geometry.c test/expansion_projection/test_cave_geometry.c -o /tmp/expansion-cave-geometry-test
+          /tmp/expansion-cave-geometry-test
+          gcc -D_POSIX_C_SOURCE=200809L -std=c11 -Wall -Wextra -Werror -Itest/expansion_projection/cave_stubs engines/expansion_cave.c engines/cave_geometry.c test/expansion_projection/test_cave.c -o /tmp/expansion-cave-test
+          /tmp/expansion-cave-test
+      - name: Build pinned Expansion donor and adapter
+        working-directory: engines/expansion-native
+        run: make -f ../expansion.mk -j2 native BITS=64
+      - name: Check native activity hooks are linked
+        run: |
+          nm engines/expansion-native/build/native64/pokeemerald-native | grep -F 'ExpansionActivity_StartBattle'
+          nm engines/expansion-native/build/native64/pokeemerald-native | grep -F 'ExpansionTrade_PairValid'
+      - name: Check Expansion LINK compatibility role
+        run: strings engines/expansion-native/build/native64/pokeemerald-native | grep -F 'HELLO 1 %s %s LINKEXP1'
+      - name: Run donor opening and save smoke test
+        working-directory: engines/expansion-native
+        run: tests/smoke/run.sh build/native64/pokeemerald-native /tmp/expansion-smoke
+
+      - name: Exercise real peer projection in the donor
+        run: python3 test/expansion_projection/real_engine_smoke.py engines/expansion-native/build/native64/pokeemerald-native engines/expansion-native
+
+      - name: Exercise modern species, forms and items
+        working-directory: engines/expansion-native
+        run: |
+          EW_EXPANSION_PRESENCE=/tmp/expansion-trade-audit.json EW_EXPANSION_TRADE_AUDIT=1 EW_EXPANSION_CONTROL_AUDIT=1 tests/smoke/run_debug_menu.sh build/native64/pokeemerald-native /tmp/expansion-dex-smoke
+          python3 -c "import json; d=json.load(open('/tmp/expansion-trade-audit.json')); assert d['trade_pair_valid'] is True; assert len(d['control_audit']['party']) >= 2; assert d['control_audit']['party'][0]['species'] > 0; assert len(d['control_audit']['party'][0]['moves']) == 4; assert isinstance(d['control_audit']['objects'], list); assert 'facing' in d['control_audit']"
+
+      - name: Exercise opt-in Expansion DexNav
+        run: python3 test/expansion_projection/real_dexnav_smoke.py engines/expansion-native/build/native64/pokeemerald-native /tmp/expansion-dex-smoke/work/pokeemerald.sav
+
+      - name: Exercise two isolated Expansion engines
+        run: python3 test/expansion_projection/dual_engine_smoke.py engines/expansion-native/build/native64/pokeemerald-native engines/expansion-native
+
+      - name: Exercise offline generated cave in donor
+        run: python3 test/expansion_projection/real_cave_smoke.py engines/expansion-native/build/native64/pokeemerald-native engines/expansion-native
+
+      - name: Save and reload after leaving generated cave
+        run: python3 test/expansion_projection/cave_save_roundtrip.py engines/expansion-native/build/native64/pokeemerald-native /tmp/expansion-dex-smoke/work/pokeemerald.sav
+
+      - name: Build isolated file-relay test variant
+        working-directory: engines/expansion-native
+        run: |
+          make -f ../expansion.mk -j2 BITS=64 EW_FAKE_FILE_LINK=1 ../../build/expansion-fake-link.o
+          rm -f build/native64/pokeemerald-native
+          make -f ../expansion.mk -j2 native BITS=64 EW_FAKE_FILE_LINK=1
+          nm build/native64/pokeemerald-native | grep -F __wrap_LinkTransport_Init
+      - name: Exercise two donor battle engines without sockets
+        run: python3 test/expansion_projection/real_battle_files.py engines/expansion-native/build/native64/pokeemerald-native /tmp/expansion-dex-smoke/work/pokeemerald.sav

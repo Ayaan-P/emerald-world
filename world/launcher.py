@@ -76,11 +76,18 @@ def tk_environment(root):
     return env
 
 
-def profile_paths(state_dir, trainer):
+def engine_state(state_dir, engine='vanilla'):
+    if engine not in ('vanilla', 'expansion-native'):
+        raise ValueError('engine must be vanilla or expansion-native')
+    state = Path(state_dir).resolve()
+    return state if engine == 'vanilla' else state / 'engines' / engine
+
+
+def profile_paths(state_dir, trainer, *, engine='vanilla'):
     if not re.fullmatch(r'[A-Za-z0-9_-]{1,24}', trainer):
         raise ValueError('trainer must be 1..24 ASCII letters, digits, _ or -')
     state_dir = Path(state_dir).resolve()
-    profile = state_dir / 'trainers' / trainer
+    profile = engine_state(state_dir, engine) / 'trainers' / trainer
     if profile.resolve() != profile:
         raise ValueError('trainer profile and its ancestors cannot be symlinks')
     paths = {'profile': profile, 'save': profile / 'game.sav',
@@ -195,14 +202,28 @@ def check_player_endpoint(paths):
     raise ValueError('An existing player control endpoint is active. Stop its owner first.')
 
 
-def game_command(binary, state_dir, paths, display=None, agent_control=False, *, online=True):
+def game_command(binary, state_dir, paths, display=None, agent_control=False, *, online=True, engine='vanilla', cave_template=None):
     """Construct explicit allowlist mounts. Never mount whole HOME or /run."""
+    engine_state(state_dir, engine)
+    expanded = engine == 'expansion-native'
+    if expanded:
+        if agent_control and os.environ.get('EW_EXPERIMENTAL_EXPANSION_CONTROL') != '1':
+            raise ValueError('Expansion player control is experimental; set EW_EXPERIMENTAL_EXPANSION_CONTROL=1')
+        if paths != profile_paths(state_dir, paths['profile'].name, engine=engine):
+            raise ValueError('Expansion requires its own separate profile')
+    if cave_template is not None:
+        cave_template = Path(cave_template)
+        if (not expanded or online or os.environ.get('EW_EXPERIMENTAL_EXPANSION_CAVE') != '1'
+                or cave_template.parent != paths['profile'] or cave_template.is_symlink()):
+            raise ValueError('Expansion cave requires an opted-in offline profile template')
     binary = Path(binary).resolve()
     state_dir = Path(state_dir).resolve()
     if online:
         require_online_state(state_dir)
-    transport = state_dir / 'transport'
-    if online:
+    transport = engine_state(state_dir, engine) / 'transport'
+    expansion_link = expanded and online and os.environ.get('EW_EXPERIMENTAL_EXPANSION_LINK') == '1'
+    mount_transport = online and (not expanded or expansion_link)
+    if mount_transport:
         if transport.resolve() != transport:
             raise ValueError('transport cannot be a symlink')
         if transport.exists() and any(p.name != 'world.sock' for p in transport.iterdir()):
@@ -216,7 +237,7 @@ def game_command(binary, state_dir, paths, display=None, agent_control=False, *,
             '--ro-bind', str(binary), str(binary),
             '--bind', str(paths['profile']), str(paths['profile']),
             '--chdir', str(paths['profile'])]
-    if online:
+    if mount_transport:
         args += ['--ro-bind', str(transport), str(transport)]
     env = {'HOME': '/home/sandbox', 'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8',
            'SDL_AUDIODRIVER': 'dummy', 'SDL_RENDER_DRIVER': 'software'}
@@ -229,8 +250,31 @@ def game_command(binary, state_dir, paths, display=None, agent_control=False, *,
         env['DISPLAY'] = display
     else:
         env['SDL_VIDEODRIVER'] = 'dummy'
+    if expanded:
+        env['EW_EXPANSION_PRESENCE'] = str(paths['profile'] / 'presence.json')
+        env['EW_EXPANSION_PEERS'] = str(paths['profile'] / 'peers.txt')
+        if os.environ.get('EW_EXPERIMENTAL_EXPANSION_DEXNAV') == '1':
+            env['EW_EXPERIMENTAL_EXPANSION_DEXNAV'] = '1'
+        if cave_template is not None:
+            env['EW_EXPANSION_OFFLINE'] = '1'
+            env['EW_EXPERIMENTAL_EXPANSION_CAVE'] = '1'
+            env['EW_EXPANSION_CAVE_TEMPLATE'] = str(cave_template)
+        if agent_control:
+            env['EW_EXPANSION_CONTROL'] = str(player_endpoint(paths))
+            env['EW_EXPANSION_SAVE'] = str(paths['save'])
+        if expansion_link:
+            env['EW_EXPANSION_LINK_CONFIG'] = str(paths['config'])
+        if os.environ.get('EW_EXPERIMENTAL_EXPANSION_PEERS') == '1':
+            env['EW_EXPERIMENTAL_EXPANSION_PEERS'] = '1'
+            if expansion_link and os.environ.get('EW_EXPERIMENTAL_EXPANSION_ACTIVITIES') == '1':
+                env['EW_EXPERIMENTAL_EXPANSION_ACTIVITIES'] = '1'
+                if os.environ.get('EW_EXPERIMENTAL_EXPANSION_TRADE') == '1':
+                    env['EW_EXPERIMENTAL_EXPANSION_TRADE'] = '1'
     for key, value in env.items():
         args += ['--setenv', key, value]
+    if expanded:
+        return args + ['--', str(binary), '--data-dir', str(paths['profile']),
+                       '--save', str(paths['save']), '--rtc-offset', str(paths['profile'] / 'clock.rtc')] + ([] if display else ['--headless', '--silent'])
     command = args + ['--', str(binary), '--save', str(paths['save']),
                       '--config', str(paths['settings'])]
     if online:
@@ -332,10 +376,14 @@ def main(argv=None):
     desktop.add_argument('--ui-python', type=Path, default=Path('/usr/bin/python3'), help='UI interpreter used with --tk-runtime')
     worlds = sub.add_parser('list-worlds', help='discover worlds under an explicit directory')
     worlds.add_argument('--worlds-root', type=Path, required=True, help='directory whose immediate child worlds to list')
-    sub.add_parser('host', help='run persistent local world service in foreground')
+    host = sub.add_parser('host', help='run persistent local world service in foreground')
+    host.add_argument('--engine', choices=('vanilla', 'expansion-native'), default='vanilla')
     join = sub.add_parser('join', help='create/resume an independent trainer and launch the native game')
     join.add_argument('trainer')
-    join.add_argument('--binary', type=Path, default=REPO / 'build/pokeemerald64')
+    join.add_argument('--binary', type=Path)
+    join.add_argument('--engine', choices=('vanilla', 'expansion-native'), default='vanilla')
+    join.add_argument('--replay', type=Path, help='Expansion donor replay script')
+    join.add_argument('--frames', type=int, help='Expansion frame limit')
     join.add_argument('--seed-save', type=Path, help='explicit copy into a new profile; never modifies original')
     join.add_argument('--display', help='dedicated nested Xephyr display :90..:199')
     join.add_argument('--test-input', type=Path, help='run upstream headless engine input instead of GUI')
@@ -348,13 +396,18 @@ def main(argv=None):
     join.add_argument('--pin', help='trusted remote TLS certificate SHA256 pin')
     offline = sub.add_parser('offline', help='play a separate offline trainer copy without world services')
     offline.add_argument('trainer')
-    offline.add_argument('--binary', type=Path, default=REPO / 'build/pokeemerald64')
+    offline.add_argument('--binary', type=Path)
+    offline.add_argument('--engine', choices=('vanilla', 'expansion-native'), default='vanilla')
+    offline.add_argument('--replay', type=Path, help='Expansion donor replay script')
+    offline.add_argument('--generated-map', type=Path, help='experimental Expansion EWGMAP01 cave template')
+    offline.add_argument('--frames', type=int, help='Expansion frame limit')
     seed = offline.add_mutually_exclusive_group()
     seed.add_argument('--seed-save', type=Path, help='copy an explicit disposable save once, never merge back')
     seed.add_argument('--copy-online', action='store_true', help='copy this trainer while its online game is stopped')
     offline.add_argument('--display', help='dedicated nested Xephyr display :90..:199')
     offline.add_argument('--test-input', type=Path, help='run upstream headless engine input instead of GUI')
     offline.add_argument('--print-command', action='store_true')
+    offline.add_argument('--agent-control', action='store_true', help='experimental Expansion player control')
     sub.add_parser('inspect', help='show players, shared tiles, mechanic revision/errors')
     deploy = sub.add_parser('deploy', help='stage and deploy a source candidate under state-dir/candidates')
     deploy.add_argument('source', type=Path)
@@ -374,11 +427,25 @@ def main(argv=None):
         return 0
     if args.state_dir is None:
         p.error('--state-dir is required for this command')
+    if args.command in ('join', 'offline'):
+        if args.engine == 'expansion-native':
+            from world.expansion import run
+            return run(args)
+        if args.replay or args.frames is not None:
+            p.error('--replay and --frames require --engine expansion-native')
+        args.binary = args.binary or REPO / 'build/pokeemerald64'
     if args.command == 'offline':
+        if args.agent_control or args.generated_map:
+            p.error('--agent-control and --generated-map offline require --engine expansion-native')
         from world.offline import run_offline
         return run_offline(args)
     state = args.state_dir.resolve()
     require_online_state(state)
+    if args.command == 'host':
+        state = engine_state(state, args.engine)
+        if state.resolve() != state:
+            raise ValueError('engine state cannot contain symlinks')
+        state.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
     from world.world_library import WorldActivityLock
     with WorldActivityLock(state):
         state.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -473,3 +540,4 @@ if __name__ == '__main__':
     except (OSError, ValueError) as error:
         print(f'Emerald World: {error}', file=sys.stderr)
         raise SystemExit(1)
+
