@@ -70,6 +70,24 @@ jobs:
               --rtc-offset "$RUNNER_TEMP/bulk-debug/player.rtc" --rtc-fixed 1700000000 \
               2>&1 | tee "$RUNNER_TEMP/bulk-gdb.log"
           fi
+      - name: Diagnose failed generated-area replay
+        if: failure()
+        working-directory: engines/expansion-native
+        timeout-minutes: 7
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          if [ -x build/native64/pokeemerald-native ] && [ -f "$RUNNER_TEMP/bulk-generated/generated.replay" ]; then
+            mkdir -p "$RUNNER_TEMP/bulk-generated-debug"
+            EW_GENERATED_MAP="$RUNNER_TEMP/bulk-generated/cave.bin" \
+              gdb -batch -ex run -ex 'x/12i $pc-16' -ex 'info registers' -ex 'thread apply all bt full' --args \
+              build/native64/pokeemerald-native --headless --silent --unthrottled \
+              --replay "$RUNNER_TEMP/bulk-generated/generated.replay" --out "$RUNNER_TEMP/bulk-generated-debug" \
+              --save "$RUNNER_TEMP/bulk-generated-debug/player.sav" \
+              --rtc-offset "$RUNNER_TEMP/bulk-generated-debug/player.rtc" --rtc-fixed 1700000000 \
+              2>&1 | tee "$RUNNER_TEMP/bulk-generated-gdb.log"
+          fi
       - name: Preserve failed replay and trace
         if: failure()
         uses: actions/upload-artifact@v4
@@ -80,6 +98,7 @@ jobs:
             ${{ runner.temp }}/bulk-smoke/work/*.txt
             ${{ runner.temp }}/bulk-smoke/work/24_start_menu.ppm
             ${{ runner.temp }}/bulk-gdb.log
+            ${{ runner.temp }}/bulk-generated-gdb.log
             ${{ runner.temp }}/bulk-generated/*.log
             ${{ runner.temp }}/bulk-generated/out/*.txt
           if-no-files-found: ignore

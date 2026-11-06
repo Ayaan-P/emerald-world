@@ -28,9 +28,11 @@ wait-until map_name=MAP_LITTLEROOT_TOWN max 1800
 release DOWN
 wait-until controls_locked=0 max 600
 wait 30
+dump generated_outside
 press START
 wait-until task_last=Task_ShowStartMenu max 300
 wait 15
+dump generated_start_menu
 press DOWN
 wait 10
 press DOWN
@@ -43,6 +45,7 @@ press DOWN
 wait 10
 press A
 wait 60
+dump generated_world_menu
 press DOWN
 wait 10
 press DOWN
@@ -50,6 +53,8 @@ wait 10
 press DOWN
 wait 10
 press A
+wait 10
+dump generated_selected
 wait-until map=34.0 max 1800
 wait-until callback2=CB2_Overworld max 900
 wait 30
