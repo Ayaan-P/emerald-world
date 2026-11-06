@@ -11,6 +11,9 @@ from world.rally import RallyCoordinator
 class TravelRosterTests(unittest.TestCase):
     def setUp(self):
         self.server = WorldServer.__new__(WorldServer)
+        self.server.cave_map = None
+        self.server.wilds_map = None
+        self.server.shared_cave = None
         self.server.revision = 1
         self.server.tiles = []
         self.server.objects = []
@@ -138,3 +141,4 @@ int main(void) {
 
 if __name__ == '__main__':
     unittest.main()
+
