@@ -1,6 +1,6 @@
 """XL authority and actual native wire parser; no socket access required."""
 from pathlib import Path
-import subprocess, tempfile, unittest
+import base64, json, subprocess, tempfile, unittest
 from test_shared_generated_cave import MemoryAuthority
 from world.shared_cave import SharedCave
 from world.xl_wilds import encode
@@ -25,6 +25,16 @@ class SharedXL(unittest.TestCase):
      s._line(c,('CAVE ACK '+cave.identity).encode());self.assertIn(b'CAVE OK',c['out']);c['out'].clear()
      g,n=s.wilds_map;s._line(c,(f'STATE 1 {g} {n} 100 100 1 7 1 '+('a'*16)+' '+('b'*16)).encode());self.assertFalse(c['closing']);self.assertEqual(c['state'][2:4],[100,100])
     s._line(old,b'CAVE GET');self.assertEqual(old['out'],b'CAVE NONE\n')
+   finally:s.close()
+ def test_owner_admin_can_publish_full_xl_blob(self):
+  from world.server import MAX_ADMIN_LINE, MAX_CONTROL_LINE
+  with tempfile.TemporaryDirectory() as t:
+   p=Path(t);s=MemoryAuthority(p/'socket',p/'world')
+   try:
+    raw=json.dumps({'command':'replace_cave','template':base64.b64encode(blob()).decode()}).encode()
+    self.assertGreater(len(raw),MAX_CONTROL_LINE);self.assertLess(len(raw),MAX_ADMIN_LINE)
+    c={'out':bytearray(),'closing':False};s._admin_line(c,raw)
+    result=json.loads(c['out']);self.assertTrue(result['ok']);self.assertEqual(result['id'],SharedCave(blob()).identity)
    finally:s.close()
  def test_native_wire_and_corruption(self):
   code=r'''#include <stdio.h>
