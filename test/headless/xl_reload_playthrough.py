@@ -15,12 +15,12 @@ def run(binary,seed,out):
   game=driver.Game(str(wrapper),str(out),save=str(seed),max_frames=80000);before=hashlib.sha256(Path(game.save_path).read_bytes()).digest()
   try:
    driver.continue_game(game);driver.walk_to(game,6,11);driver.leave_map(game,'DOWN');driver.wait_until(game,lambda s:s.free);origin=(tuple(game.state.map),game.state.pos)
-   def enter():
-    game.tap('START',gap=30);game.tap('DOWN',times=5);game.tap('A',gap=60);game.tap('DOWN',times=2);game.tap('A',gap=90);driver.wait_until(game,lambda s:s.map_name=='GeneratedWorld_Wilds' and s.free)
+   def enter(first=False):
+    game.tap('START',gap=30);game.tap('DOWN',times=5 if first else 1);game.tap('A',gap=60);game.tap('DOWN',times=2);game.tap('A',gap=90);driver.wait_until(game,lambda s:s.map_name=='GeneratedWorld_Wilds' and s.free)
    def leave():
     game.tap('START',gap=30);game.tap('UP');game.tap('A',gap=60);game.tap('UP');game.tap('A',gap=90);driver.wait_until(game,lambda s:tuple(s.map)==origin[0] and s.free)
     if game.state.pos!=origin[1]:raise RuntimeError('returned to wrong position')
-   enter()
+   enter(first=True)
    if (2,1) in game.state.objects:raise RuntimeError('initial world unexpectedly contains the replacement character')
    leave()
    write_map(area,encode_cast(proposal,[{'gfx':7,'x':2,'y':1,'text':'A new visitor!'}]),replace=True)
