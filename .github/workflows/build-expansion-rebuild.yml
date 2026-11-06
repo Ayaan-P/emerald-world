@@ -1,0 +1,88 @@
+name: Build clean Expansion world slice
+on:
+  pull_request:
+    paths:
+      - 'rebuild/**'
+      - '.github/workflows/build-expansion-rebuild.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check out pinned native Expansion
+        uses: actions/checkout@v4
+        with:
+          repository: uehlbran/pokeemerald-expansion-native
+          ref: bb3fd057061cdd7e6a9e79b76abb41924ee44ecc
+          path: engines/expansion-native
+          persist-credentials: false
+      - name: Test presence protocol without sockets
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -Irebuild/overlay/include rebuild/overlay/src/world/presence_wire.c rebuild/test/test_presence_wire.c -o /tmp/ew-presence-test
+          ASAN_OPTIONS=detect_leaks=0 /tmp/ew-presence-test
+      - name: Test map compatibility and server snapshots
+        run: |
+          python3 -m unittest discover -s rebuild/test -p 'test_*.py' -v
+          python3 -m unittest discover -s test/world -p 'test_native_link_latency.py' -v
+      - name: Apply presence slice to clean Expansion
+        run: python3 rebuild/scripts/apply.py engines/expansion-native
+      - name: Install native prerequisites
+        timeout-minutes: 30
+        run: |
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y build-essential gcc-multilib python3 pkg-config libpng-dev libsdl2-dev
+      - name: Build native Expansion with presence
+        working-directory: engines/expansion-native
+        shell: bash
+        run: |
+          set -o pipefail
+          make -f "$GITHUB_WORKSPACE/rebuild/expansion.mk" -j2 native BITS=64 2>&1 | tee "$RUNNER_TEMP/rebuild-build.log"
+      - name: Replay vanilla opening with no World config
+        working-directory: engines/expansion-native
+        timeout-minutes: 10
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: tests/smoke/run.sh build/native64/pokeemerald-native "$RUNNER_TEMP/rebuild-smoke"
+      - name: Exercise remote sprite in a real game replay without sockets
+        working-directory: engines/expansion-native
+        timeout-minutes: 15
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+          EW_TEST_PRESENCE: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 "$GITHUB_WORKSPACE/rebuild/test/inject_presence.py" .
+          make -f "$GITHUB_WORKSPACE/rebuild/expansion.mk" -j2 native BITS=64 > "$RUNNER_TEMP/rebuild-test-build.log" 2>&1
+          out="$RUNNER_TEMP/presence-replay"
+          mkdir -p "$out"
+          build/native64/pokeemerald-native --headless --silent --unthrottled \
+            --replay tests/smoke/opening.replay --out "$out" \
+            --save "$out/test.sav" --rtc-offset "$out/test.rtc" --rtc-fixed 1700000000 \
+            > "$out/stdout.log" 2> "$out/stderr.log"
+          grep -q EW_TEST_PRESENCE_SPAWNED "$out/stderr.log"
+          grep -q EW_TEST_PRESENCE_CLEARED "$out/stderr.log"
+          test -s "$out/09_outside.ppm"
+          if cmp -s "$out/09_outside.ppm" "$RUNNER_TEMP/rebuild-smoke/work/09_outside.ppm"; then
+            echo "Synthetic peer did not change the overworld screenshot" >&2
+            exit 1
+          fi
+      - name: Preserve build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: expansion-rebuild-build-log
+          path: |
+            ${{ runner.temp }}/rebuild-build.log
+            ${{ runner.temp }}/rebuild-test-build.log
+            ${{ runner.temp }}/presence-replay/stderr.log
+          if-no-files-found: ignore
+          retention-days: 7

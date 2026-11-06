@@ -1,0 +1,40 @@
+--- a/src/main.c
++++ b/src/main.c
+@@ -1,4 +1,7 @@
+ #include "global.h"
++#ifdef EW_WORLD_PRESENCE
++#include "world/presence.h"
++#endif
+ #include "crt0.h"
+ #include "malloc.h"
+ #include "link.h"
+@@ -149,6 +152,9 @@
+ {
+     for (;;)
+     {
++#ifdef EW_WORLD_PRESENCE
++        if (!EwPresenceBeforeFrame()) { WaitForVBlank(); continue; }
++#endif
+         ReadKeys();
+ 
+         if (gSoftResetDisabled == FALSE
+@@ -157,6 +163,9 @@
+         {
+             rfu_REQ_stopMode();
+             rfu_waitREQComplete();
++#ifdef EW_WORLD_PRESENCE
++            EwPresenceShutdown();
++#endif
+             DoSoftReset();
+         }
+ 
+@@ -183,6 +192,9 @@
+ 
+         PlayTimeCounter_Update();
+         MapMusicMain();
++#ifdef EW_WORLD_PRESENCE
++        EwPresenceAfterFrame();
++#endif
+         WaitForVBlank();
+     }
+ }
