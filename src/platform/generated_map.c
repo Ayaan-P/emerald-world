@@ -10,6 +10,9 @@
 #include "platform/link_transport.h"
 #include "platform/world_rally.h"
 #include "platform/generated_map.h"
+#if GENERATED_WORLD_XL && GENERATED_WILDS_EVENTS
+#include "platform/xl_progress_store.h"
+#endif
 #if GENERATED_WILDS_EVENTS
 #include "field_camera.h"
 #include "event_data.h"
@@ -90,6 +93,36 @@ static struct WarpEvent sXLWarp;static struct MapEvents sXLEvents;
 #define XL_PROGRESS_SLOTS 4
 static struct {bool8 valid;u8 trainer[4],state,events[GENERATED_EVENT_BYTES],cast[GENERATED_CAST_BYTES],cells[XL_CELLS];} sXLProgress[XL_PROGRESS_SLOTS];
 static u8 sXLProgressCurrent=0xFF,sXLProgressNext;
+#define XL_PROGRESS_SLOT_BYTES (6 + GENERATED_EVENT_BYTES + GENERATED_CAST_BYTES + XL_CELLS)
+#define XL_PROGRESS_PAYLOAD_BYTES (1 + XL_PROGRESS_SLOTS * XL_PROGRESS_SLOT_BYTES)
+static u8 sXLProgressPayload[XL_PROGRESS_PAYLOAD_BYTES];static bool8 sXLProgressDurable;
+static void XLProgressPack(void)
+{
+    unsigned i;u8 *p=sXLProgressPayload;*p++=sXLProgressNext;
+    for(i=0;i<XL_PROGRESS_SLOTS;i++){*p++=sXLProgress[i].valid;memcpy(p,sXLProgress[i].trainer,4);p+=4;*p++=sXLProgress[i].state;
+        memcpy(p,sXLProgress[i].events,GENERATED_EVENT_BYTES);p+=GENERATED_EVENT_BYTES;memcpy(p,sXLProgress[i].cast,GENERATED_CAST_BYTES);p+=GENERATED_CAST_BYTES;memcpy(p,sXLProgress[i].cells,XL_CELLS);p+=XL_CELLS;}
+}
+static bool8 XLProgressUnpack(void)
+{
+    unsigned i;const u8 *p=sXLProgressPayload;
+    if(*p>=XL_PROGRESS_SLOTS)return FALSE;
+    for(i=0;i<XL_PROGRESS_SLOTS;i++){const u8 *r=p+1+i*XL_PROGRESS_SLOT_BYTES;if(r[0]>1 || r[5]>15)return FALSE;}
+    sXLProgressNext=*p++;
+    for(i=0;i<XL_PROGRESS_SLOTS;i++){sXLProgress[i].valid=*p++;memcpy(sXLProgress[i].trainer,p,4);p+=4;sXLProgress[i].state=*p++;
+        memcpy(sXLProgress[i].events,p,GENERATED_EVENT_BYTES);p+=GENERATED_EVENT_BYTES;memcpy(sXLProgress[i].cast,p,GENERATED_CAST_BYTES);p+=GENERATED_CAST_BYTES;memcpy(sXLProgress[i].cells,p,XL_CELLS);p+=XL_CELLS;}
+    return TRUE;
+}
+bool8 GeneratedMap_InitXLProgress(const char *savePath,bool8 enabled)
+{
+    if(!enabled)return TRUE;
+    if(!XLProgressStore_Init(savePath,TRUE,sXLProgressPayload,sizeof(sXLProgressPayload)))return FALSE;
+    if(!XLProgressUnpack()){XLProgressStore_Close();return FALSE;}
+    sXLProgressDurable=TRUE;return TRUE;
+}
+static void XLProgressPersist(void)
+{
+    if(sXLProgressDurable){XLProgressPack();if(!XLProgressStore_Save(sXLProgressPayload,sizeof(sXLProgressPayload)))sXLProgressDurable=FALSE;}
+}
 static void XLRestoreEventProgress(void)
 {
     unsigned i;const u8 *trainer;
@@ -107,9 +140,12 @@ static void XLRestoreEventProgress(void)
 static void XLRememberEventProgress(void)
 {
     if(sXLProgressCurrent<XL_PROGRESS_SLOTS && gSaveBlock2Ptr && !memcmp(sXLProgress[sXLProgressCurrent].trainer,gSaveBlock2Ptr->playerTrainerId,4))
-        sXLProgress[sXLProgressCurrent].state=sEventState;
+    {sXLProgress[sXLProgressCurrent].state=sEventState;XLProgressPersist();}
 }
 #endif
+#endif
+#if !(GENERATED_WORLD_XL && GENERATED_WILDS_EVENTS)
+bool8 GeneratedMap_InitXLProgress(const char *savePath,bool8 enabled){(void)savePath;return !enabled;}
 #endif
 static bool8 sHasTemplate;
 #if GENERATED_CAVE_PROFILES

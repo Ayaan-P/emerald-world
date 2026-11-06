@@ -19,7 +19,7 @@ typedef uint8_t u8;typedef int bool8;
 static bool8 sXLActive=1,sEventActive=1;static u8 sEventState,sEventData[1466],sCastMetadata[184],sXLTemplate[16129];
 static struct {bool8 valid;u8 trainer[4],state,events[1466],cast[184],cells[16129];} sXLProgress[4];static u8 sXLProgressCurrent=0xFF,sXLProgressNext;
 static struct {u8 playerTrainerId[4];} save,*gSaveBlock2Ptr=&save;
-static int online;static int WorldBridge_Enabled(void){return online;}
+static int online;static int WorldBridge_Enabled(void){return online;}static void XLProgressPersist(void){}
 '''+function(src,'XLRestoreEventProgress')+'\n'+function(src,'XLRememberEventProgress')+r'''
 int main(void){save.playerTrainerId[0]=1;sEventState=0;XLRestoreEventProgress();sEventState=3;XLRememberEventProgress();
 sEventState=0;XLRestoreEventProgress();assert(sEventState==3);
