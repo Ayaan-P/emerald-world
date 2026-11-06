@@ -94,3 +94,10 @@ class InitialResolutions(unittest.TestCase):
   for x in ('WorldCoop_SelectBattleItem(', 'WorldCoop_SetMenuConfusion(', 'WorldCoop_ApplyRosterRequest(', 'WorldCoop_ApplyRosterMirror(', 'WorldCoop_ConsumeMedicine(', 'WorldCoop_RecordCatchEvent(', 'WorldCoop_RecordDefeat('):
    self.assertIn(x,s)
   self.assertNotIn('gActiveBattler',s)
+
+ def test_coop_battle_entry_wiring_exists(self):
+  s=self.read('src/battle_main.c')
+  self.assertIn('if (WorldCoop_IsBattle())\n    {\n        CB2_InitBattleInternal();',s)
+  self.assertIn('SetMainCallback2(CB2_HandleStartCoopBattle)',s)
+  self.assertIn('gBattleEnvironment = WorldCoop_Environment()',s)
+  self.assertIn('WorldCoop_Abort()',s)
