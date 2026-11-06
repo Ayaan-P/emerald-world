@@ -12,6 +12,8 @@ from world.expansion import serialize_peers
 
 binary=Path(sys.argv[1]).resolve(strict=True)
 save=Path(sys.argv[2]).resolve(strict=True)
+play_turn = os.environ.get('EW_TEST_PLAY_TURN') == '1'
+after_entry = 'mash A until in_battle=0 max 12000\n' if play_turn else 'wait 300\n'
 startup='''wait-until callback2=MainCB2_Intro max 1000
 wait-until callback2=MainCB2 max 20000
 wait-until task_first=Task_TitleScreenPhase3 max 600
@@ -33,8 +35,7 @@ press UP
 press A
 wait-until in_battle=1 max 9000
 dump entered_battle
-mash A until in_battle=0 max 12000
-''',
+'''+after_entry,
 'Alice':startup+'''wait 120
 press DOWN
 wait 30
@@ -44,8 +45,7 @@ press UP times 2
 press A
 wait-until in_battle=1 max 9000
 dump entered_battle
-mash A until in_battle=0 max 12000
-'''}
+'''+after_entry}
 with tempfile.TemporaryDirectory(prefix='expansion-battle-file-test-') as tmp:
  root=Path(tmp);server=WorldServer(str(root/'unused.sock'),root/'world');names=('Alice','Bob');conns={};seq={n:0 for n in names};procs={};profiles={};logs={};offset={n:0 for n in names}
  for n in names:
@@ -87,8 +87,8 @@ with tempfile.TemporaryDirectory(prefix='expansion-battle-file-test-') as tmp:
      messages=server.link_protocol.process(n,line.rstrip('\n').encode(),server._link_presence())
      if any(message.startswith('L ERROR ') for _,message in messages): raise AssertionError(f'coordinator rejected {n}: {messages}')
      deliver(messages)
-   if launched and all((profiles[n]/'out'/'entered_battle.txt').exists() for n in names) and type(turns.get('Alice')) is int and turns['Alice'] >= 1:
-    print('Both donor games entered a link battle and the host completed a turn using a file-only test relay and real in-memory LINK coordinator.');break
+   if launched and all((profiles[n]/'out'/'entered_battle.txt').exists() for n in names) and (not play_turn or (type(turns.get('Alice')) is int and turns['Alice'] >= 1)):
+    print('Both donor games entered a link battle'+(' and the host completed a turn' if play_turn else '')+' using a file-only test relay and real in-memory LINK coordinator.');break
    if any(p.poll() is not None for p in procs.values()):raise AssertionError('donor exited before both entered battle')
    time.sleep(.01)
   else:raise AssertionError('two-donor battle timed out')

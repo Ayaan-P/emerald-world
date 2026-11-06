@@ -57,3 +57,8 @@ An additional test-only build substitutes a file relay for the link transport
 and drives two real donor games through the in-memory LINK coordinator. It
 creates no sockets and cannot establish actual network, TLS, or transport
 correctness. The two-game battle test is experimental until it passes.
+
+The optional `EW_TEST_PLAY_TURN=1` extension did not observe a completed turn
+before a donor process exited; investigate the gameplay state and termination
+before claiming battles work end-to-end. The normal CI gate checks battle entry
+only. Both paths use the file-only test relay, not real transport.
