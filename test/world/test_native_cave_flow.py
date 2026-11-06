@@ -20,6 +20,10 @@ class NativeSharedCaveFlow(unittest.TestCase):
 #include <string.h>
 #include "global.h"
 #include "platform/generated_map.h"
+#include "pokemon.h"
+u8 gPlayerPartyCount=1;
+struct Pokemon gPlayerParty[PARTY_SIZE]={{{1,0,10}}};
+u32 GetMonData(const struct Pokemon *mon,int field){assert(field>=0 && field<=2);return mon->fields[field];}
 #include "platform/world_cave_wire.h"
 struct Task {int isActive;};struct Task gTasks[16];
 struct Save save,*gSaveBlock1Ptr=&save;__typeof__(gMain) gMain;__typeof__(gMapHeader) gMapHeader;
@@ -126,6 +130,7 @@ int main(void){
    p=Path(d);(p/'platform').mkdir();(p/'constants').mkdir();(p/'global.h').write_text('#ifndef G\n#define G\n'+global_h+'\n#endif\n')
    for name in ('main.h','overworld.h','field_screen_effect.h','field_player_avatar.h','fieldmap.h'):
     (p/name).write_text('#include "global.h"\nint IsMapTypeOutdoors(int);int TestPlayerAvatarFlags(int);void SetWarpDestination(s8,s8,s8,s8,s8);void SetDynamicWarpWithCoords(int,s8,s8,s8,s8,s8);void PlayerGetDestCoords(s16*,s16*);void StoreInitialPlayerAvatarState(void);void DoWarp(void);\n#define MAP_OFFSET 7\n')
+   (p/'pokemon.h').write_text('#include "global.h"\n#define PARTY_SIZE 6\n#define MON_DATA_SPECIES 0\n#define MON_DATA_IS_EGG 1\n#define MON_DATA_HP 2\nstruct Pokemon {u16 fields[3];};\nextern u8 gPlayerPartyCount;\nextern struct Pokemon gPlayerParty[PARTY_SIZE];\nu32 GetMonData(const struct Pokemon *, int);\n')
    (p/'task.h').write_text('struct Task {int isActive;}; extern struct Task gTasks[16];\n#define NUM_TASKS 16\n')
    (p/'platform/world_rally.h').write_text('struct WorldRallySnapshot{unsigned id;}; int WorldRally_HasReturn(void); int WorldRally_GetSnapshot(struct WorldRallySnapshot *);\n')
    (p/'platform/link_transport.h').write_text('const char *LinkTransport_TagPeer(void); const void *LinkTransport_PendingTag(void); const void *LinkTransport_PendingInvitation(void);\n')

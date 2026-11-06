@@ -119,7 +119,8 @@ int main(void) {
    self.assertEqual(outputs[0][:3],outputs[1][:3]);self.assertEqual(outputs[0][3],'16');self.assertEqual(outputs[1][3],'48')
  def test_build_exposes_gate_to_both_preprocessor_and_compiler(self):
   makefile=(ROOT/'Makefile').read_text()
-  self.assertIn('WORLD_EXTENDED_OBJECTS ?= 0',makefile)
+  self.assertIn('RC5_FEATURES ?= 1',makefile)
+  self.assertIn('WORLD_EXTENDED_OBJECTS ?= $(RC5_FEATURES)',makefile)
   self.assertRegex(makefile,r'CPPFLAGS \+= [^\n]*-DWORLD_EXTENDED_OBJECTS=\$\(WORLD_EXTENDED_OBJECTS\)')
   self.assertRegex(makefile,r'override CFLAGS \+= -DWORLD_EXTENDED_OBJECTS=\$\(WORLD_EXTENDED_OBJECTS\)')
  def test_save_layout_remains_at_original_count(self):

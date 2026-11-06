@@ -38,6 +38,10 @@ extern struct { int mapType; struct MapLayout *mapLayout; } gMapHeader;
 #include <string.h>
 #include "global.h"
 #include "platform/generated_map.h"
+#include "pokemon.h"
+u8 gPlayerPartyCount=1;
+struct Pokemon gPlayerParty[PARTY_SIZE]={{{1,0,10}}};
+u32 GetMonData(const struct Pokemon *mon,int field){assert(field>=0 && field<=2);return mon->fields[field];}
 struct Task {int isActive;};struct Task gTasks[16];
 struct Save save,*gSaveBlock1Ptr=&save;
 struct { u32 vblankCounter1; } gMain;
@@ -63,6 +67,25 @@ FILE *NativeFile_Open(const char *p,const char *m){return fopen(p,m);}
 /* LOADER_BODY */
 int main(int argc, char **argv){
  assert(argc==2);
+ /* Entry must fail without a live, non-egg party member, without warping or
+  * changing the saved return location. Exercise the real usable-party guard. */
+ struct MapLayout guardBase={19,26,0,0,0,0};
+ gMapHeader.mapType=1;gMapHeader.mapLayout=&guardBase;
+ save.location=(struct WarpData){3,4,0,8,9};
+ save.dynamicWarp=(struct WarpData){7,8,9,10,11};
+ gPlayerPartyCount=0;
+ assert(!GeneratedMap_HasUsableParty()&&!GeneratedMap_CanEnter()&&!GeneratedMap_Enter());
+ gPlayerPartyCount=1;gPlayerParty[0].fields[MON_DATA_SPECIES]=0;
+ assert(!GeneratedMap_HasUsableParty()&&!GeneratedMap_CanEnter()&&!GeneratedMap_Enter());
+ gPlayerParty[0].fields[MON_DATA_SPECIES]=1;gPlayerParty[0].fields[MON_DATA_IS_EGG]=1;
+ assert(!GeneratedMap_HasUsableParty()&&!GeneratedMap_CanEnter()&&!GeneratedMap_Enter());
+ gPlayerParty[0].fields[MON_DATA_IS_EGG]=0;gPlayerParty[0].fields[MON_DATA_HP]=0;
+ assert(!GeneratedMap_HasUsableParty()&&!GeneratedMap_CanEnter()&&!GeneratedMap_Enter());
+ assert(warps==0 && save.dynamicWarp.mapGroup==7 && save.dynamicWarp.x==10);
+ gPlayerPartyCount=2;gPlayerParty[1]=(struct Pokemon){{2,0,1}};
+ assert(GeneratedMap_HasUsableParty()&&GeneratedMap_CanEnter());
+ gPlayerPartyCount=1;gPlayerParty[0].fields[MON_DATA_HP]=10;
+ assert(GeneratedMap_HasUsableParty()&&GeneratedMap_CanEnter());
  u16 seen[961], queue[961], first[961]; struct MapLayout base={19,26,0,0,0,0};
  for(unsigned seed=1;seed<=100;seed++){
   save.location=(struct WarpData){3,4,0,8,9};save.dynamicWarp=(struct WarpData){7,8,9,10,11};save.pos.x=2;save.pos.y=3;gMain.vblankCounter1=seed;gMapHeader.mapType=1;gMapHeader.mapLayout=&base;playerX=15;playerY=16;
@@ -132,6 +155,7 @@ int main(int argc, char **argv){
    p=Path(d);(p/'platform').mkdir();(p/'constants').mkdir();(p/'global.h').write_text('#ifndef G\n#define G\n'+global_h+'\n#endif\n')
    for name in ('main.h','overworld.h','field_screen_effect.h','field_player_avatar.h','fieldmap.h'):
     (p/name).write_text('#include "global.h"\nint IsMapTypeOutdoors(int); int TestPlayerAvatarFlags(int); void SetWarpDestination(s8,s8,s8,s8,s8); void SetDynamicWarpWithCoords(int,s8,s8,s8,s8,s8); void PlayerGetDestCoords(s16*,s16*); void StoreInitialPlayerAvatarState(void); void DoWarp(void);\n#define MAP_OFFSET 7\n')
+   (p/'pokemon.h').write_text('#include "global.h"\n#define PARTY_SIZE 6\n#define MON_DATA_SPECIES 0\n#define MON_DATA_IS_EGG 1\n#define MON_DATA_HP 2\nstruct Pokemon {u16 fields[3];};\nextern u8 gPlayerPartyCount;\nextern struct Pokemon gPlayerParty[PARTY_SIZE];\nu32 GetMonData(const struct Pokemon *, int);\n')
    (p/'task.h').write_text('struct Task {int isActive;}; extern struct Task gTasks[16];\n#define NUM_TASKS 16\n')
    (p/'platform/world_rally.h').write_text('struct WorldRallySnapshot{unsigned id;}; int WorldRally_HasReturn(void); int WorldRally_GetSnapshot(struct WorldRallySnapshot *);\n')
    (p/'platform/link_transport.h').write_text('const char *LinkTransport_TagPeer(void); const void *LinkTransport_PendingTag(void); const void *LinkTransport_PendingInvitation(void);\n')
