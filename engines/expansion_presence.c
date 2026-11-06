@@ -10,12 +10,21 @@
 #include "platform/frame.h"
 #include "platform/inspect.h"
 
+int LinkTransport_Init(const char *configPath);
+void LinkTransport_Pump(void);
+int LinkTransport_Ready(void);
 void ExpansionPeers_Update(int overworld);
 unsigned ExpansionPeers_Count(void);
 enum frame_result __real_frame_run(void);
 enum frame_result __wrap_frame_run(void)
 {
     enum frame_result result = __real_frame_run();
+    static int link_state;
+    const char *config = getenv("EW_EXPANSION_LINK_CONFIG");
+    if (config && link_state == 0)
+        link_state = LinkTransport_Init(config) ? 1 : -1;
+    if (link_state == 1)
+        LinkTransport_Pump();
     const char *path = getenv("EW_EXPANSION_PRESENCE");
     if (path == NULL || frame_count() % 6 != 0)
         return result;
@@ -44,8 +53,8 @@ enum frame_result __wrap_frame_run(void)
     FILE *out = fopen(temporary, "w");
     if (out != NULL) {
         int written = fprintf(out, "{\"schema\":1,\"engine\":\"expansion-native\",\"frame\":%u,"
-                          "\"field\":%s,\"group\":%u,\"num\":%u,\"x\":%u,\"y\":%u,\"peers\":%u,\"facing\":%u,\"gfx\":%u}\n",
-                          frame_count(), field ? "true" : "false", group, num, x, y, ExpansionPeers_Count(), facing, gfx);
+                          "\"field\":%s,\"group\":%u,\"num\":%u,\"x\":%u,\"y\":%u,\"peers\":%u,\"facing\":%u,\"gfx\":%u,\"link_ready\":%s}\n",
+                          frame_count(), field ? "true" : "false", group, num, x, y, ExpansionPeers_Count(), facing, gfx, link_state == 1 && LinkTransport_Ready() ? "true" : "false");
         int closed = fclose(out);
         if (written > 0 && closed == 0)
             (void)rename(temporary, path);

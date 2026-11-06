@@ -20,3 +20,10 @@ broker operates in the Expansion engine's separate world/profile namespace;
 no vanilla save is copied or reinterpreted. The routing and credential reuse
 have mock tests only. An actual remote session, hosting UI, and feature parity
 are not verified. This is not safe for real saves or ready for playtesting.
+
+An additional opt-in, `EW_EXPERIMENTAL_EXPANSION_LINK=1`, compiles and starts
+Emerald World's existing authenticated LINK transport and virtual cable state
+machine in the donor process, mounting only that world's transport directory.
+This is the protocol transport, not the Expansion battle or trade integration:
+no game menu issues invitations, and the donor's engine link hooks have not yet
+been ported. Real socket connections and LINK traffic have not been tested.

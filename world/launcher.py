@@ -215,8 +215,10 @@ def game_command(binary, state_dir, paths, display=None, agent_control=False, *,
     state_dir = Path(state_dir).resolve()
     if online:
         require_online_state(state_dir)
-    transport = state_dir / 'transport'
-    if online:
+    transport = engine_state(state_dir, engine) / 'transport'
+    expansion_link = expanded and online and os.environ.get('EW_EXPERIMENTAL_EXPANSION_LINK') == '1'
+    mount_transport = online and (not expanded or expansion_link)
+    if mount_transport:
         if transport.resolve() != transport:
             raise ValueError('transport cannot be a symlink')
         if transport.exists() and any(p.name != 'world.sock' for p in transport.iterdir()):
@@ -230,7 +232,7 @@ def game_command(binary, state_dir, paths, display=None, agent_control=False, *,
             '--ro-bind', str(binary), str(binary),
             '--bind', str(paths['profile']), str(paths['profile']),
             '--chdir', str(paths['profile'])]
-    if online:
+    if mount_transport:
         args += ['--ro-bind', str(transport), str(transport)]
     env = {'HOME': '/home/sandbox', 'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8',
            'SDL_AUDIODRIVER': 'dummy', 'SDL_RENDER_DRIVER': 'software'}
@@ -246,6 +248,8 @@ def game_command(binary, state_dir, paths, display=None, agent_control=False, *,
     if expanded:
         env['EW_EXPANSION_PRESENCE'] = str(paths['profile'] / 'presence.json')
         env['EW_EXPANSION_PEERS'] = str(paths['profile'] / 'peers.txt')
+        if expansion_link:
+            env['EW_EXPANSION_LINK_CONFIG'] = str(paths['config'])
         if os.environ.get('EW_EXPERIMENTAL_EXPANSION_PEERS') == '1':
             env['EW_EXPERIMENTAL_EXPANSION_PEERS'] = '1'
     for key, value in env.items():

@@ -214,7 +214,7 @@ class ExpansionSession:
                     _prepare_profile(self.state, self.trainer, None, self.paths)
             else:
                 self.paths['profile'].mkdir(parents=True, mode=0o700, exist_ok=True)
-            command = game_command(binary, self.base, self.paths, display, online=False, engine=ENGINE)
+            command = game_command(binary, self.base, self.paths, display, online=self.online, engine=ENGINE)
             boundary = command.index('--')
             extra = []
             symbols = Path(str(Path(binary).resolve()) + '.symbols')
