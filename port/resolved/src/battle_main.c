@@ -3,6 +3,9 @@
 #include "platform/world_coop.h"
 #include "platform/world_activity.h"
 #include "platform/native_link.h"
+#include "constants/battle_script_commands.h"
+extern const u8 BattleScript_CoopPrivateCatch[];
+extern void BattleRebuildPrivateRewardHealthbox(void);
 #endif
 #include "battle.h"
 #include "battle_anim.h"
@@ -1806,13 +1809,91 @@ static void CB2_HandleStartCoopBattle(void)
 
 #endif
 
+#ifdef PORTABLE
+static const u8 sCoopTrainerPrizeScript[] =
+{
+    B_SCR_OP_GETMONEYREWARD,
+    B_SCR_OP_END,
+};
+static bool8 sCoopTrainerPrizeDone;
+static bool8 sCoopPayoffDone;
+
+static const u8 sCoopExpScript[] =
+{
+    B_SCR_OP_GETEXP, BS_OPPONENT1,
+    B_SCR_OP_END,
+};
+
+static void CoopPrivateRewards(void)
+{
+    if (gPaletteFade.active || gBattleControllerExecFlags)
+        return;
+    if (WorldCoop_BeginCatchRewards())
+        BattleScriptExecute(BattleScript_CoopPrivateCatch);
+    else if (WorldCoop_NextReward())
+        BattleScriptExecute(sCoopExpScript);
+    else if (!sCoopTrainerPrizeDone && gBattleOutcome == B_OUTCOME_WON)
+    {
+        sCoopTrainerPrizeDone = TRUE;
+        BattleScriptExecute(sCoopTrainerPrizeScript);
+    }
+    else if (!sCoopPayoffDone && gBattleOutcome == B_OUTCOME_WON)
+    {
+        sCoopPayoffDone = TRUE;
+        BattleScriptExecute(BattleScript_PayDayMoneyAndPickUpItems);
+    }
+    else
+    {
+        BeginFastPaletteFade(3);
+        gBattleMainFunc = FreeResetData_ReturnToOvOrDoEvolutions;
+        gCB2_AfterEvolution = BattleMainCB2;
+    }
+}
+
+void WorldCoop_BeginPrivateRewards(void)
+{
+    u8 localBattler = gBattleScripting.multiplayerId * 2;
+    if (localBattler == 2)
+    {
+        /* Keep the owner's mon sprite for native level-up animations.
+         * No remote mon is imported into the private party. */
+        gBattlerSpriteIds[0] = gBattlerSpriteIds[2];
+    }
+    sCoopTrainerPrizeDone = !WorldCoop_IsTrainer();
+    sCoopPayoffDone = !WorldCoop_PreparePrivateRewards();
+    if (sCoopPayoffDone)
+        sCoopTrainerPrizeDone = TRUE;
+    ResetTasks();
+    gBattlersCount = 2;
+    gBattlerPositions[0] = B_POSITION_PLAYER_LEFT;
+    gBattlerPositions[1] = B_POSITION_OPPONENT_LEFT;
+    gAbsentBattlerFlags = 0;
+    gLeveledUpInBattle = 0;
+    BattleRebuildPrivateRewardHealthbox();
+    /* Stock level-up and prize scripts print through the attacker. The shared
+     * attacker may be battler 2 or 3, which the private controller loop retires. */
+    gBattlerAttacker = 0;
+    SetControllerToPlayer(0);
+    gBattlerControllerFuncs[1] = BattleControllerDummy;
+    gBattleResources->battleScriptsStack->size = 0;
+    gBattleResources->battleCallbackStack->size = 0;
+    gMain.callback1 = BattleMainCB1;
+    gBattleMainFunc = CoopPrivateRewards;
+    BeginNormalPaletteFade(PALETTES_ALL, 0, 16, 0, RGB_BLACK);
+    SetMainCallback2(BattleMainCB2);
+}
+#endif
+
 void BattleMainCB2(void)
 {
 #ifdef PORTABLE
     if (WorldCoop_IsBattle() && !NativeLink_IsActive())
     {
-        /* Until private reward integration is complete, abort safely rather
-         * than committing an unverified battle result. */
+        if (WorldCoop_CompletionCommitted())
+        {
+            WorldCoop_BeginPrivateRewards();
+            return;
+        }
         WorldCoop_Abort();
         FreeAllWindowBuffers();
         FreeRestoreBattleData();
@@ -5362,6 +5443,22 @@ static void HandleEndTurn_FinishBattle(void)
 {
     if (gCurrentActionFuncId == B_ACTION_TRY_FINISH || gCurrentActionFuncId == B_ACTION_FINISHED)
     {
+#ifdef PORTABLE
+        if (WorldCoop_IsBattle())
+        {
+            if (gBattleControllerExecFlags) return;
+            if (gBattleOutcome == B_OUTCOME_RAN || gBattleOutcome == B_OUTCOME_CAUGHT
+             || gBattleOutcome == B_OUTCOME_PLAYER_TELEPORTED || gBattleOutcome == B_OUTCOME_MON_FLED
+             || gBattleOutcome == B_OUTCOME_MON_TELEPORTED)
+            {
+                enum BattlerId battler = GetBattlerAtPosition(B_POSITION_PLAYER_LEFT);
+                BtlController_EmitEndLinkBattle(battler, B_COMM_TO_CONTROLLER, gBattleOutcome);
+                MarkBattlerForControllerExec(battler);
+            }
+            gBattleMainFunc = BeginBattleIntroDummy;
+            return;
+        }
+#endif
         if (!(gBattleTypeFlags & (BATTLE_TYPE_LINK
                                   | BATTLE_TYPE_RECORDED_LINK
                                   | BATTLE_TYPE_FIRST_BATTLE

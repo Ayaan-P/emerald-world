@@ -122,3 +122,10 @@ class InitialResolutions(unittest.TestCase):
   s=self.read('src/battle_controller_link_opponent.c')
   self.assertIn('WorldCoop_IsBattle() && (gAbsentBattlerFlags',s)
   self.assertIn('GetTrainerPicFromId(TRAINER_BATTLE_PARAM.opponentA)',s)
+
+ def test_coop_completion_and_private_reward_wiring(self):
+  main=self.read('src/battle_main.c');player=self.read('src/battle_controller_player.c');script=self.read('data/battle_scripts_2.s')
+  for x in ('WorldCoop_CompletionCommitted()', 'WorldCoop_BeginPrivateRewards(void)', 'WorldCoop_PreparePrivateRewards()', 'WorldCoop_NextReward()'):
+   self.assertIn(x,main)
+  self.assertIn('WorldCoop_ReadyForPrivateRewards()',player)
+  self.assertIn('BattleScript_CoopPrivateCatch::',script)

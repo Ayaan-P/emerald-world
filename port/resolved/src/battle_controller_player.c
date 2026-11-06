@@ -1227,6 +1227,15 @@ static void SetLinkBattleEndCallbacks(enum BattlerId battler)
 // Despite handling link battles separately, this is only ever used by link battles
 void SetBattleEndCallbacks(enum BattlerId battler)
 {
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle())
+    {
+        if (!gPaletteFade.active && gBattleControllerExecFlags == 0 && IsLinkTaskFinished()
+         && WorldCoop_ReadyForPrivateRewards())
+            WorldCoop_BeginPrivateRewards();
+        return;
+    }
+#endif
     if (!gPaletteFade.active)
     {
         if (gBattleTypeFlags & BATTLE_TYPE_LINK)

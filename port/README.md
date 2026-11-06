@@ -82,11 +82,10 @@ without obvious clipping. Only that expected hash was updated. The later
 experimental co-op controller merge still needs a fresh build and replay.
 
 Expansion's player battle controller now carries the existing co-op item,
-roster, medicine, catch and defeat message hooks. Battle-end/private reward
-flow still needs its battle-main integration; no co-op behavior is verified.
+roster, medicine, catch and defeat message hooks. Battle-end/private reward flow is being integrated against Expansion; the
+current source and co-op behavior remain unverified.
 
 The co-op battle entry path now bypasses Expansion's four-player pre-entry
-exchange and starts from the parties already staged by WorldCoop. Private
-reward and end-of-battle integration are still absent, and the entry path has
-not yet been validated in a two-client battle. This is not a playable co-op
+exchange and starts from the parties already staged by WorldCoop. The private reward and end-of-battle code has been carried over but is
+unverified, as is the entry path in a two-client battle. This is not a playable co-op
 release.
