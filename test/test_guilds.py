@@ -1,5 +1,5 @@
 import ast
-import importlib.util
+import sys
 import re
 import sqlite3
 import tempfile
@@ -9,8 +9,9 @@ import unittest
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]
-spec=importlib.util.spec_from_file_location('guilds', ROOT/'world/guilds.py')
-guilds=importlib.util.module_from_spec(spec);spec.loader.exec_module(guilds)
+sys.path.insert(0,str(ROOT))
+from world import guilds
+from world.guild_chat import GuildChat
 
 def database(path=':memory:'):
     db=sqlite3.connect(path)
@@ -111,12 +112,12 @@ class ChatIntegrationTests(unittest.TestCase):
         # Execute the actual server methods against a fake in-memory authority.
         module=ast.parse((ROOT/'world/server.py').read_text())
         cls=next(n for n in module.body if isinstance(n,ast.ClassDef) and n.name=='WorldServer')
-        methods=[n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name in ('_line','_chat','_guild_message','_guild_online')]
+        methods=[n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name in ('_line','_chat')]
         ns={'re':re,'time':time,'bounded':bounded,'ID':re.compile(r'[A-Za-z0-9_-]{1,24}\\Z'), 'GuildError':guilds.GuildError, 'HASH':re.compile(r'[0-9a-fA-F]{16}\Z'), 'PRESENCE_HEARTBEAT_INTERVAL':1, 'TRAVEL_FRESH_SECONDS':3, 'validate_coords':lambda *args:{'name':'Route101'}}
         ns['ID']=re.compile(r'[A-Za-z0-9_-]{1,24}\Z')
         exec(compile(ast.fix_missing_locations(ast.Module(body=methods,type_ignores=[])),'server.py','exec'),ns)
         class Server:
-            _line=ns['_line'];_chat=ns['_chat'];_guild_message=ns['_guild_message'];_guild_online=ns['_guild_online']
+            _line=ns['_line'];_chat=ns['_chat']
             def _queue(self,conn,msg):conn.setdefault('snapshots',[]).append(msg)
             def _snapshot(self,conn):return list(conn['chat_history'])
             def _broadcast(self):
@@ -127,7 +128,7 @@ class ChatIntegrationTests(unittest.TestCase):
             def _link_presence(self):return {}
             def _deliver_links(self,msg):pass
             def _schedule_presence(self,now):pass
-        self.db=database();self.s=Server();self.s.db=self.db;self.s.guilds=guilds.Guilds(self.db,{(0,9):{'name':'Route101'}});self.s.lock=threading.RLock();self.s.chat_serial=0;self.s.guild_epoch=0
+        self.db=database();self.s=Server();self.s.db=self.db;self.s.guilds=guilds.Guilds(self.db,{(0,9):{'name':'Route101'}});self.s.lock=threading.RLock();self.s.chat_serial=0;self.s.guild_chat=GuildChat(self.s,lambda *args:{'name':'Route101'},3)
         self.s.cave_map=None;self.s.wilds_map=None;self.s.shared_cave=None;self.s.pending_states={};self.s.last_presence_broadcast=0
         class Links:
             def update_presence(self,presence):return []

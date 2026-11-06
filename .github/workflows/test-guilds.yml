@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'world/guilds.py'
+      - 'world/guild_chat.py'
       - 'world/server.py'
       - 'src/platform/world_chat.c'
       - 'test/test_guilds.py'

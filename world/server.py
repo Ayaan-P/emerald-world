@@ -22,7 +22,8 @@ import sys
 from .build_catalog import validate_coords, validate_tile, catalog_maps
 from .mechanics import validate_objects
 from .link_protocol import LinkProtocol
-from .guilds import Guilds, GuildError
+from .guilds import Guilds
+from .guild_chat import GuildChat
 from .rally import RallyCoordinator
 
 MAX_QUEUE = 65536
@@ -134,7 +135,7 @@ class WorldServer:
             CREATE INDEX IF NOT EXISTS events_kind_seq ON events(kind,seq);
         ''')
         self.guilds = Guilds(self.db, catalog_maps())
-        self.guild_epoch = 0
+        self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
         self.db.executescript('''
             CREATE TABLE IF NOT EXISTS module (
                 singleton INTEGER PRIMARY KEY CHECK(singleton=1), source TEXT,
@@ -760,22 +761,7 @@ class WorldServer:
                 self._deliver_links(self.link_protocol.update_presence(self._link_presence()))
                 if changed or now - self.last_presence_broadcast >= PRESENCE_HEARTBEAT_INTERVAL:
                     self._schedule_presence(now)
-                # Distinct guild members can advance a shared expedition only
-                # through an authenticated, validated, interaction-ready field report.
-                if state[6] and tuple(state[:2]) not in (self.cave_map, self.wilds_map):
-                    visit_key = (self.guild_epoch, state[0], state[1])
-                    if conn.get('guild_visit_key') != visit_key:
-                        conn['guild_visit_key'] = visit_key
-                        map_name = validate_coords(*state[:4])['name']
-                        completed = self.guilds.visit(conn['id'], map_name)
-                        if completed:
-                            guild, destination, goal, members = completed
-                            notice = f'Guild expedition complete: {destination} ({goal} trainers).'
-                            for name in members:
-                                recipient = self.peers.get(name)
-                                if recipient and recipient.get('chat') and not recipient.get('closing'):
-                                    self._guild_message(recipient, conn['id'], notice)
-                                    self._queue(recipient, self._snapshot(recipient))
+                self.guild_chat.observe(conn, state)
         except (UnicodeError, ValueError):
             self._error(conn, 'MALFORMED')
 
@@ -808,65 +794,7 @@ class WorldServer:
             self._queue(conn, self._snapshot(conn))
             return
         conn['chat_credit'] = credit - 1
-        # Guild commands use the existing authenticated chat channel. Replies
-        # are private, and ordinary broadcast/whisper behavior is unchanged.
-        decoded = text.decode('ascii')
-        if fields[2] == '*' and (decoded == '/guild' or decoded.startswith('/guild ')):
-            with self.lock:
-                try:
-                    command = decoded[6:].strip()
-                    words = command.split()
-                    if words and words[0].lower() == 'online':
-                        lines = self._guild_online(conn['id'], words[1:])
-                    else:
-                        if (len(words) == 4 and words[0].lower() == 'expedition'
-                                and words[1].lower() == 'start' and words[2].lower() == 'here'):
-                            state = conn.get('state')
-                            fresh = conn.get('state_time') is not None and time.monotonic() - conn['state_time'] <= TRAVEL_FRESH_SECONDS
-                            if not state or not fresh or not state[6] or tuple(state[:2]) in (self.cave_map, self.wilds_map):
-                                raise GuildError('Stand ready on a standard map before starting here.')
-                            command = f'expedition start {validate_coords(*state[:4])["name"]} {words[3]}'
-                        lines = self.guilds.command(conn['id'], command)
-                        self.guild_epoch += 1  # Recheck active field reports after membership/mission changes.
-                except GuildError as exc:
-                    lines = [str(exc)]
-                for line in lines:
-                    self._guild_message(conn, conn['id'], 'Guild: ' + line)
-                parts = decoded.split()
-                if len(parts) == 3 and parts[1].lower() == 'invite' and lines[0].startswith('Invited '):
-                    invitee = self.peers.get(parts[2])
-                    guild = self.guilds._member(conn['id'])
-                    if invitee and invitee.get('chat') and not invitee.get('closing') and guild:
-                        self._guild_message(invitee, conn['id'], f'Guild: {conn["id"]} invited you to {guild[1]}. Use /guild accept {guild[1]}')
-                        self._queue(invitee, self._snapshot(invitee))
-                if len(parts) >= 3 and parts[1].lower() == 'post' and lines[0] == 'Posted to the guild board.':
-                    guild_name, members = self.guilds.members(conn['id'])
-                    for name in members:
-                        if name == conn['id']:
-                            continue
-                        recipient = self.peers.get(name)
-                        if recipient and recipient.get('chat') and not recipient.get('closing'):
-                            self._guild_message(recipient, conn['id'], f'Guild board: {conn["id"]} posted. Use /guild board')
-                            self._queue(recipient, self._snapshot(recipient))
-            conn['chat_status'] = 'sent'
-            self._queue(conn, self._snapshot(conn))
-            return
-        if fields[2] == '*' and (decoded == '/g' or decoded.startswith('/g ')):
-            with self.lock:
-                try:
-                    guild, members = self.guilds.members(conn['id'])
-                    body = decoded[3:].strip()
-                    if not body or len(body) > 112: raise GuildError('Use /g followed by 1-112 characters.')
-                    for name in members:
-                        recipient = self.peers.get(name)
-                        if recipient and recipient.get('chat') and not recipient.get('closing'):
-                            self._guild_message(recipient, conn['id'], '[Guild] ' + body)
-                            self._queue(recipient, self._snapshot(recipient))
-                except GuildError as exc:
-                    self._guild_message(conn, conn['id'], 'Guild: ' + str(exc))
-                    self._queue(conn, self._snapshot(conn))
-            conn['chat_status'] = 'sent'
-            self._queue(conn, self._snapshot(conn))
+        if fields[2] == '*' and self.guild_chat.handle(conn, text.decode('ascii')):
             return
         self.chat_serial += 1
         message = (self.chat_serial, conn['id'], fields[2], fields[3])
@@ -876,44 +804,6 @@ class WorldServer:
                 recipient['chat_history'] = (recipient['chat_history'] + [message])[-16:]
         conn['chat_status'] = 'sent'
         self._broadcast()
-
-    def _guild_online(self, trainer, args):
-        # A member deliberately sees guildmates' map names, never coordinates,
-        # parties or inventories. Presence is a recent client report.
-        if len(args) > 1 or (args and (not args[0].isascii() or not args[0].isdecimal() or len(args[0]) > 2)):
-            raise GuildError('Use /guild online or /guild online PAGE.')
-        page = int(args[0]) if args else 1
-        if page < 1: raise GuildError('Page must start at 1.')
-        guild, members = self.guilds.members(trainer)
-        online = []
-        for name in members:
-            peer = self.peers.get(name)
-            if not peer or peer.get('closing'): continue
-            state = peer.get('state')
-            location = 'not in the field'
-            fresh = peer.get('state_time') is not None and time.monotonic() - peer['state_time'] <= TRAVEL_FRESH_SECONDS
-            if state and fresh and (state[6] or peer.get('field')):
-                if tuple(state[:2]) in (self.cave_map, self.wilds_map):
-                    location = 'generated area'
-                else:
-                    try:
-                        location = validate_coords(*state[:4])['name']
-                    except ValueError:
-                        location = 'unknown area'
-                if not state[6]: location += ' (busy)'
-            online.append(f'{name}: {location}')
-        pages = max(1, (len(online)+7)//8)
-        if page > pages: raise GuildError(f'Page must be 1-{pages}.')
-        return [f'Guild online {page}/{pages}:'] + (online[(page-1)*8:page*8] or ['No guild members online.'])
-
-    def _guild_message(self, recipient, sender, text):
-        # CHATMSG is already supported by both World engines. A direct target
-        # prevents guild information from entering unrelated player snapshots.
-        if not 1 <= len(text) <= 120 or not text.isascii():
-            raise ValueError('invalid guild response')
-        self.chat_serial += 1
-        message = (self.chat_serial, sender, recipient['id'], text.encode('ascii').hex())
-        recipient['chat_history'] = (recipient['chat_history'] + [message])[-16:]
 
     def _deliver_links(self, messages):
         for trainer, line in messages:
