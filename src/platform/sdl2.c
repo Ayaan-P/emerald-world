@@ -145,6 +145,16 @@ static bool LoadGeneratedMapTemplate(const char *path)
     static const u8 magic4[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '4' };
 #if GENERATED_MAP_WILDS
     static const u8 magic6[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '6' };
+#if GENERATED_WORLD_XL
+    static const u8 magicXL[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', 'A' };
+    static const u8 magicXLPalette[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', 'D' };
+#if GENERATED_WILDS_CAST
+    static const u8 magicXLCast[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', 'B' };
+#if GENERATED_WILDS_EVENTS
+    static const u8 magicXLEvents[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', 'C' };
+#endif
+#endif
+#endif
 #if GENERATED_WILDS_GUIDE
     static const u8 magic7[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '7' };
 #if GENERATED_WILDS_CAST
@@ -158,7 +168,15 @@ static bool LoadGeneratedMapTemplate(const char *path)
 #if GENERATED_CAVE_WILDLIFE
     static const u8 magic5[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '5' };
 #endif
+#if GENERATED_WORLD_XL
 #if GENERATED_WILDS_EVENTS
+    u8 bytes[8 + GENERATED_EVENT_BYTES + GENERATED_CAST_BYTES + GENERATED_XL_MAP_BYTES];
+#elif GENERATED_WILDS_CAST
+    u8 bytes[8 + GENERATED_CAST_BYTES + GENERATED_XL_MAP_BYTES];
+#else
+    u8 bytes[8 + GENERATED_XL_MAP_BYTES];
+#endif
+#elif GENERATED_WILDS_EVENTS
     u8 bytes[8 + GENERATED_EVENT_BYTES + GENERATED_CAST_BYTES + GENERATED_LARGE_MAP_TEMPLATE_BYTES];
 #elif GENERATED_WILDS_CAST
     u8 bytes[8 + GENERATED_CAST_BYTES + GENERATED_LARGE_MAP_TEMPLATE_BYTES];
@@ -200,6 +218,20 @@ static bool LoadGeneratedMapTemplate(const char *path)
 #if GENERATED_MAP_WILDS
         else if (count == 8 + GENERATED_LARGE_MAP_TEMPLATE_BYTES && !memcmp(bytes, magic6, 8))
             valid = GeneratedMap_StageWildsTemplate(bytes + 8, GENERATED_LARGE_MAP_TEMPLATE_BYTES);
+#if GENERATED_WORLD_XL
+        else if (count == 8 + GENERATED_XL_MAP_BYTES && !memcmp(bytes, magicXL, 8))
+            valid = GeneratedMap_StageXLWilds(bytes + 8, GENERATED_XL_MAP_BYTES);
+        else if (count == 8 + GENERATED_XL_MAP_BYTES && !memcmp(bytes, magicXLPalette, 8))
+            valid = GeneratedMap_StageXLPalette(bytes + 8, GENERATED_XL_MAP_BYTES);
+#if GENERATED_WILDS_CAST
+        else if (count == 8 + GENERATED_CAST_BYTES + GENERATED_XL_MAP_BYTES && !memcmp(bytes, magicXLCast, 8))
+            valid = GeneratedMap_StageXLCast(bytes + 8, GENERATED_CAST_BYTES, bytes + 8 + GENERATED_CAST_BYTES, GENERATED_XL_MAP_BYTES);
+#if GENERATED_WILDS_EVENTS
+        else if (count == 8 + GENERATED_EVENT_BYTES + GENERATED_CAST_BYTES + GENERATED_XL_MAP_BYTES && !memcmp(bytes, magicXLEvents, 8))
+            valid = GeneratedMap_StageXLEvents(bytes + 8, GENERATED_EVENT_BYTES, bytes + 8 + GENERATED_EVENT_BYTES, GENERATED_CAST_BYTES, bytes + 8 + GENERATED_EVENT_BYTES + GENERATED_CAST_BYTES, GENERATED_XL_MAP_BYTES);
+#endif
+#endif
+#endif
 #if GENERATED_WILDS_GUIDE
         else if (count == 8 + GENERATED_GUIDE_BYTES + GENERATED_LARGE_MAP_TEMPLATE_BYTES && !memcmp(bytes, magic7, 8))
             valid = GeneratedMap_StageGuidedWilds(bytes + 8, GENERATED_GUIDE_BYTES, bytes + 8 + GENERATED_GUIDE_BYTES, GENERATED_LARGE_MAP_TEMPLATE_BYTES);
