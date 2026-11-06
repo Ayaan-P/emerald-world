@@ -50,6 +50,6 @@ index 9def3ef3f3..d4cea199df 100644
 +    if (key <= SDL_SCANCODE_UNKNOWN || key >= SDL_NUM_SCANCODES) return false;
 +    struct input_keymap map = state.initialised ? state.keymap : input_default_keymap();
 +    for (size_t i = 0; i < INPUT_BUTTON_COUNT; ++i)
-+        if (map.scancodes[i] == key) return true;
++        if (map.scancodes[i] == (int)key) return true;
 +    return false;
 +}
