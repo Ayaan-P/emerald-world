@@ -28,6 +28,7 @@ wait-until pos=5,10 max 120
 release DOWN
 wait 60
 wait-until task_last=task_menu max 9000
+wait 5
 press UP
 press A
 wait-until in_battle=1 max 9000
@@ -38,6 +39,7 @@ wait 300
 press DOWN
 wait 30
 mash A until task_last=task_menu max 3000
+wait 5
 press UP times 2
 press A
 wait-until in_battle=1 max 9000
@@ -80,7 +82,9 @@ with tempfile.TemporaryDirectory(prefix='expansion-battle-file-test-') as tmp:
      f.seek(offset[n]);lines=f.readlines();offset[n]=f.tell()
     for line in lines:
      if not line.endswith('\n'):raise AssertionError('partial test file line')
+     if line.startswith('L REJECT '): raise AssertionError(f'{n} declined the invitation in the test replay')
      messages=server.link_protocol.process(n,line.rstrip('\n').encode(),server._link_presence())
+     if any(message.startswith('L ERROR ') for _,message in messages): raise AssertionError(f'coordinator rejected {n}: {messages}')
      deliver(messages)
    if launched and all((profiles[n]/'out'/'entered_battle.txt').exists() for n in names):
     print('Both donor games entered a link battle using file-only test relay and real in-memory LINK coordinator.');break
