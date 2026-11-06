@@ -13,9 +13,9 @@ serialize_peers = scope['serialize_peers']
 class TestPeerWire(unittest.TestCase):
     def test_snapshot(self):
         p = dict(group=0, num=1, x=12, y=9, facing=2, gfx=4, ready=0)
-        self.assertEqual(serialize_peers({'peers': {'Pikachu': p}}), 'EWPEERS 1\nPikachu 0 1 12 9 2\n')
+        self.assertEqual(serialize_peers({'peers': {'Pikachu': p}}), 'EWPEERS 1\nPikachu 0 1 12 9 2 4\n')
     def test_rejects_bad_wire(self):
-        p = dict(group=0, num=1, x=12, y=9, facing=2)
+        p = dict(group=0, num=1, x=12, y=9, facing=2, gfx=7)
         for peers in ({'x\ny': p}, {'x': dict(p, x=True)}, {'x': dict(p, facing=0)},
                       {'x': dict(p, x=32768)}, {str(i): p for i in range(9)}):
             with self.subTest(peers=peers), self.assertRaises(ValueError):

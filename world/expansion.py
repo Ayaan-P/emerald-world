@@ -78,10 +78,10 @@ def serialize_peers(snapshot):
         if (type(name) is not str or not re.fullmatch(r'[A-Za-z0-9_-]{1,24}', name)
                 or type(peer) is not dict):
             raise ValueError('invalid Expansion peer')
-        keys = ('group', 'num', 'x', 'y', 'facing')
+        keys = ('group', 'num', 'x', 'y', 'facing', 'gfx')
         values = [peer.get(k) for k in keys]
         if any(type(v) is not int or v < lo or v > hi for v, lo, hi in
-               zip(values, (0, 0, 0, 0, 1), (255, 255, 32767, 32767, 4))):
+               zip(values, (0, 0, 0, 0, 1, 0), (255, 255, 32767, 32767, 4, 255))):
             raise ValueError('invalid Expansion peer position')
         lines.append(' '.join([name, *(str(v) for v in values)]))
     return '\n'.join(lines) + '\n'
@@ -161,7 +161,10 @@ class ExpansionSession:
             if coordinates is not None:
                 # FIELD is the SOCIAL protocol's visible-but-busy state.
                 # Zero hashes mean unavailable, not portable ownership.
-                values = [seq, *coordinates, 1, 0, 0]
+                facing, gfx = state.get('facing', 1), state.get('gfx', 0)
+                if type(facing) is not int or not 1 <= facing <= 4 or type(gfx) is not int or not 0 <= gfx <= 255:
+                    raise ValueError('invalid Expansion avatar')
+                values = [seq, *coordinates, facing, gfx, 0]
                 message = 'FIELD ' + ' '.join(map(str, values)) + ' ' + '0'*16 + ' ' + '0'*16 + '\n'
                 client.sock.sendall(message.encode('ascii'))
             else:

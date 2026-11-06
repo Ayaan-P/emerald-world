@@ -34,3 +34,7 @@ jobs:
 
       - name: Exercise real peer projection in the donor
         run: python3 test/expansion_projection/real_engine_smoke.py engines/expansion-native/build/native64/pokeemerald-native engines/expansion-native
+
+      - name: Exercise modern species, forms and items
+        working-directory: engines/expansion-native
+        run: tests/smoke/run_debug_menu.sh build/native64/pokeemerald-native /tmp/expansion-dex-smoke

@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory(prefix='expansion-peer-smoke-') as directory:
     presence = root / 'presence.json'
     out = root / 'out'
     out.mkdir()
-    peers.write_text('EWPEERS 1\nTestPeer 0 9 10 11 2\n', encoding='ascii')
+    peers.write_text('EWPEERS 1\nTestPeer 0 9 10 11 2 0\n', encoding='ascii')
     stop = threading.Event()
     def keep_fresh():
         while not stop.wait(1):

@@ -19,7 +19,7 @@
 #define MAX_PEERS 8
 #define LOCAL_BASE 224
 #define PEER_MARKER 0x5742
-struct Peer { char id[25]; unsigned group, num, x, y, facing; };
+struct Peer { char id[25]; unsigned group, num, x, y, facing, gfx; };
 struct Remote { char id[25]; u8 object, sprite, group, num; };
 static struct Remote remotes[MAX_PEERS];
 
@@ -63,10 +63,10 @@ static unsigned read_peers(struct Peer *out)
     while (fgets(line, sizeof line, f)) {
         struct Peer p;
         if (n == MAX_PEERS || !strchr(line, '\n')
-            || sscanf(line, "%24s %u %u %u %u %u %c", p.id, &p.group, &p.num,
-                      &p.x, &p.y, &p.facing, &extra) != 6 || !peer_id(p.id)
+            || sscanf(line, "%24s %u %u %u %u %u %u %c", p.id, &p.group, &p.num,
+                      &p.x, &p.y, &p.facing, &p.gfx, &extra) != 7 || !peer_id(p.id)
             || p.group > 255 || p.num > 255 || p.x > 32767 || p.y > 32767
-            || p.facing < 1 || p.facing > 4) goto invalid;
+            || p.facing < 1 || p.facing > 4 || p.gfx > 255) goto invalid;
         for (j = 0; j < n; j++) if (!strcmp(out[j].id, p.id)) goto invalid;
         out[n++] = p;
     }
@@ -126,11 +126,14 @@ void ExpansionPeers_Update(int overworld)
             continue;
         }
         for (i = 0; i < MAX_PEERS; i++) if (!strcmp(remotes[i].id, p->id)) break;
-        if (i == MAX_PEERS) {
+        if (i < MAX_PEERS && owned(i) && gObjectEvents[remotes[i].object].graphicsId !=
+            (p->gfx == OBJ_EVENT_GFX_GIRL_1 ? OBJ_EVENT_GFX_GIRL_1 : OBJ_EVENT_GFX_BOY_1))
+            remove_remote(i);
+        if (i == MAX_PEERS || !remotes[i].id[0]) {
             u8 id;
             for (i = 0; i < MAX_PEERS; i++) if (!remotes[i].id[0] && local_id_free(i)) break;
             if (i == MAX_PEERS) continue;
-            id = SpawnSpecialObjectEventParameterized(OBJ_EVENT_GFX_BOY_1, MOVEMENT_TYPE_NONE,
+            id = SpawnSpecialObjectEventParameterized(p->gfx == OBJ_EVENT_GFX_GIRL_1 ? OBJ_EVENT_GFX_GIRL_1 : OBJ_EVENT_GFX_BOY_1, MOVEMENT_TYPE_NONE,
                 LOCAL_BASE + i, p->x + MAP_OFFSET, p->y + MAP_OFFSET,
                 MapGridGetElevationAt(p->x + MAP_OFFSET, p->y + MAP_OFFSET));
             if (id >= OBJECT_EVENTS_COUNT || gObjectEvents[id].spriteId >= MAX_SPRITES) continue;

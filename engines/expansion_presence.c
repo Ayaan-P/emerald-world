@@ -4,6 +4,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "global.h"
+#include "global.fieldmap.h"
+#include "constants/event_objects.h"
 #include "platform/frame.h"
 #include "platform/inspect.h"
 
@@ -26,6 +29,13 @@ enum frame_result __wrap_frame_run(void)
              && sscanf(pos, "%u,%u", &x, &y) == 2
              && strcmp(callback, "CB2_Overworld") == 0
              && strcmp(battle, "0") == 0;
+    unsigned facing = 1, gfx = OBJ_EVENT_GFX_BOY_1;
+    if (field && gPlayerAvatar.objectEventId < OBJECT_EVENTS_COUNT) {
+        const struct ObjectEvent *player = &gObjectEvents[gPlayerAvatar.objectEventId];
+        if (player->active && player->isPlayer && player->facingDirection >= 1 && player->facingDirection <= 4)
+            facing = player->facingDirection;
+        if (gPlayerAvatar.gender == 1) gfx = OBJ_EVENT_GFX_GIRL_1;
+    }
     if (getenv("EW_EXPERIMENTAL_EXPANSION_PEERS") != NULL)
         ExpansionPeers_Update(field);
     char temporary[4096];
@@ -34,8 +44,8 @@ enum frame_result __wrap_frame_run(void)
     FILE *out = fopen(temporary, "w");
     if (out != NULL) {
         int written = fprintf(out, "{\"schema\":1,\"engine\":\"expansion-native\",\"frame\":%u,"
-                          "\"field\":%s,\"group\":%u,\"num\":%u,\"x\":%u,\"y\":%u,\"peers\":%u}\n",
-                          frame_count(), field ? "true" : "false", group, num, x, y, ExpansionPeers_Count());
+                          "\"field\":%s,\"group\":%u,\"num\":%u,\"x\":%u,\"y\":%u,\"peers\":%u,\"facing\":%u,\"gfx\":%u}\n",
+                          frame_count(), field ? "true" : "false", group, num, x, y, ExpansionPeers_Count(), facing, gfx);
         int closed = fclose(out);
         if (written > 0 && closed == 0)
             (void)rename(temporary, path);

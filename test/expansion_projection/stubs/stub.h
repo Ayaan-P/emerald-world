@@ -6,9 +6,10 @@ typedef uint8_t u8; typedef int16_t s16;
 #define MAX_SPRITES 64
 #define MAP_OFFSET 7
 #define OBJ_EVENT_GFX_BOY_1 1
+#define OBJ_EVENT_GFX_GIRL_1 2
 #define MOVEMENT_TYPE_NONE 0
 struct Coord { s16 x,y; };
-struct ObjectEvent { int active,isPlayer,localId,mapGroup,mapNum,spriteId, currentElevation,previousElevation,facingDirection; struct Coord currentCoords,initialCoords; };
+struct ObjectEvent { int active,isPlayer,graphicsId,localId,mapGroup,mapNum,spriteId, currentElevation,previousElevation,facingDirection; struct Coord currentCoords,initialCoords; };
 struct Sprite { int inUse; s16 data[8]; };
 struct ObjectEventTemplate { int localId; };
 struct Save { struct { int mapGroup,mapNum; } location; struct ObjectEventTemplate objectEventTemplates[64]; struct ObjectEvent objectEvents[OBJECT_EVENTS_COUNT]; };
