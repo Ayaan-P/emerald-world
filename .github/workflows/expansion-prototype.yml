@@ -58,7 +58,7 @@ jobs:
         working-directory: engines/expansion-native
         run: |
           EW_EXPANSION_PRESENCE=/tmp/expansion-trade-audit.json EW_EXPANSION_TRADE_AUDIT=1 EW_EXPANSION_CONTROL_AUDIT=1 tests/smoke/run_debug_menu.sh build/native64/pokeemerald-native /tmp/expansion-dex-smoke
-          python3 -c "import json; d=json.load(open('/tmp/expansion-trade-audit.json')); assert d['trade_pair_valid'] is True; assert len(d['control_audit']['party']) >= 2; assert d['control_audit']['party'][0]['species'] > 0; assert len(d['control_audit']['party'][0]['moves']) == 4"
+          python3 -c "import json; d=json.load(open('/tmp/expansion-trade-audit.json')); assert d['trade_pair_valid'] is True; assert len(d['control_audit']['party']) >= 2; assert d['control_audit']['party'][0]['species'] > 0; assert len(d['control_audit']['party'][0]['moves']) == 4; assert isinstance(d['control_audit']['objects'], list); assert 'facing' in d['control_audit']"
 
       - name: Exercise two isolated Expansion engines
         run: python3 test/expansion_projection/dual_engine_smoke.py engines/expansion-native/build/native64/pokeemerald-native engines/expansion-native

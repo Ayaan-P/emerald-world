@@ -5,7 +5,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include "pokemon.h"
+#include "global.fieldmap.h"
+#include "main.h"
 bool ExpansionControl_BeforeFrame(void); void ExpansionControl_AfterFrame(void);
+void CB2_Overworld(void){} int ArePlayerFieldControlsLocked(void){return 0;} int ScriptContext_IsEnabled(void){return 0;}
+struct Main gMain = {CB2_Overworld,0}; struct PlayerAvatar gPlayerAvatar = {0};
+struct ObjectEvent gObjectEvents[OBJECT_EVENTS_COUNT] = {{.active=1,.isPlayer=1,.facingDirection=2},{.active=1,.currentCoords={10,11}}};
 struct Pokemon gParties[4][6] = {{{7}}}; uint8_t gPartiesCount[4] = {1}; static int save; void *gSaveBlock1Ptr = &save, *gSaveBlock2Ptr = &save;
 unsigned GetMonData(struct Pokemon *p,int field){return p->slot + field;}
 static uint16_t reg, keys; static unsigned frame, consumed, polls; static void (*state)(FILE*,uint32_t); static bool (*shot)(FILE*);
@@ -19,5 +24,5 @@ void PlayerControl_AfterFrame(uint32_t f){assert(f==1);assert(reg==0x3fe);consum
 uint16_t PlayerControl_Buttons(void){return keys;}
 int main(void){setenv("EW_EXPANSION_CONTROL","/tmp/profile/player.sock",1);setenv("EW_EXPANSION_SAVE","/tmp/profile/game.sav",1);
  assert(ExpansionControl_BeforeFrame()); assert(consumed==0);frame=1;ExpansionControl_AfterFrame();assert(polls==1&&reg==0x3fe);assert(ExpansionControl_BeforeFrame());assert(consumed==1);
- FILE *f=tmpfile();assert(f);state(f,frame);rewind(f);char buf[1024];assert(fgets(buf,sizeof buf,f));assert(strstr(buf,"\"map\":[1,2]")&&strstr(buf,"\"pos\":[3,4]")&&strstr(buf,"\"battle\":false")&&strstr(buf,"\"species\":7")&&strstr(buf,"\"moves\":["));fclose(f);
+ FILE *f=tmpfile();assert(f);state(f,frame);rewind(f);char buf[1024];assert(fgets(buf,sizeof buf,f));assert(strstr(buf,"\"map\":[1,2]")&&strstr(buf,"\"pos\":[3,4]")&&strstr(buf,"\"battle\":false")&&strstr(buf,"\"species\":7")&&strstr(buf,"\"moves\":[")&&strstr(buf,"\"facing\":2")&&strstr(buf,"\"objects\":[[3,4]]"));fclose(f);
  f=tmpfile();assert(f&&shot(f));assert(ftell(f)>240*160*3);fclose(f);return 0;}

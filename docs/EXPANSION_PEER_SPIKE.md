@@ -16,7 +16,7 @@ The switches are deliberately nested and all default off:
   and exposes party-only trade. It is not ready for user testing.
 - `EW_EXPERIMENTAL_EXPANSION_CONTROL=1` with `--agent-control` opts into
   a separate player-control endpoint. It reports frame, map, position, battle
-  flag, own party and screenshots using an explicitly limited Expansion schema; it is not
+  flag, field objects, own party and screenshots using a limited Expansion schema; it is not
   the full vanilla observation ABI and is not yet ready for use.
 
 Expansion LINK channels use the `LINKEXP1` compatibility label. A new server

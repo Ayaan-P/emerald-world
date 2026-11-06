@@ -5,6 +5,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "global.h"
+#include "global.fieldmap.h"
+#include "fieldmap.h"
+#include "main.h"
+#include "overworld.h"
+#include "script.h"
 #include "battle.h"
 #include "pokemon.h"
 #include "platform/frame.h"
@@ -27,6 +32,24 @@ void ExpansionControl_WriteObservation(FILE *out, uint32_t frame)
     fputs(",\"pos\":", out);
     if (has_pos) fprintf(out, "[%u,%u]", x, y); else fputs("null", out);
     fprintf(out, ",\"battle\":%s", battle[0] == '1' && battle[1] == '\0' ? "true" : battle[0] == '0' && battle[1] == '\0' ? "false" : "null");
+    bool field = gSaveBlock1Ptr && gMain.callback2 == CB2_Overworld && !gMain.inBattle;
+    fprintf(out, ",\"overworld\":%s,\"locked\":%s,\"script\":%s", field ? "true" : "false",
+            field && ArePlayerFieldControlsLocked() ? "true" : "false", field && ScriptContext_IsEnabled() ? "true" : "false");
+    fputs(",\"facing\":", out);
+    if (field && gPlayerAvatar.objectEventId < OBJECT_EVENTS_COUNT) {
+        const struct ObjectEvent *p = &gObjectEvents[gPlayerAvatar.objectEventId];
+        if (p->active && p->isPlayer) fprintf(out, "%u", (unsigned)p->facingDirection);
+        else fputs("null", out);
+    } else fputs("null", out);
+    fputs(",\"objects\":[", out);
+    bool first = true;
+    if (field) for (unsigned i = 0; i < OBJECT_EVENTS_COUNT; i++) {
+        const struct ObjectEvent *o = &gObjectEvents[i];
+        if (!o->active || o->isPlayer || o->invisible || o->offScreen) continue;
+        fprintf(out, "%s[%d,%d]", first ? "" : ",", (int)o->currentCoords.x - MAP_OFFSET, (int)o->currentCoords.y - MAP_OFFSET);
+        first = false;
+    }
+    fputs("]", out);
     /* Own party only: never reveal opponent reserves or unrevealed moves. */
     fputs(",\"party\":[", out);
     if (gSaveBlock1Ptr && gSaveBlock2Ptr) {
