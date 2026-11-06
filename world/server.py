@@ -19,7 +19,7 @@ import errno
 import hashlib
 import sys
 
-from .build_catalog import validate_coords, validate_tile
+from .build_catalog import validate_coords, validate_tile, catalog_maps
 from .mechanics import validate_objects
 from .link_protocol import LinkProtocol
 from .guilds import Guilds, GuildError
@@ -133,7 +133,8 @@ class WorldServer:
                 seq INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, data TEXT);
             CREATE INDEX IF NOT EXISTS events_kind_seq ON events(kind,seq);
         ''')
-        self.guilds = Guilds(self.db)
+        self.guilds = Guilds(self.db, catalog_maps())
+        self.guild_epoch = 0
         self.db.executescript('''
             CREATE TABLE IF NOT EXISTS module (
                 singleton INTEGER PRIMARY KEY CHECK(singleton=1), source TEXT,
@@ -759,6 +760,22 @@ class WorldServer:
                 self._deliver_links(self.link_protocol.update_presence(self._link_presence()))
                 if changed or now - self.last_presence_broadcast >= PRESENCE_HEARTBEAT_INTERVAL:
                     self._schedule_presence(now)
+                # Distinct guild members can advance a shared expedition only
+                # through an authenticated, validated, interaction-ready field report.
+                if state[6] and tuple(state[:2]) not in (self.cave_map, self.wilds_map):
+                    visit_key = (self.guild_epoch, state[0], state[1])
+                    if conn.get('guild_visit_key') != visit_key:
+                        conn['guild_visit_key'] = visit_key
+                        map_name = validate_coords(*state[:4])['name']
+                        completed = self.guilds.visit(conn['id'], map_name)
+                        if completed:
+                            guild, destination, goal, members = completed
+                            notice = f'Guild expedition complete: {destination} ({goal} trainers).'
+                            for name in members:
+                                recipient = self.peers.get(name)
+                                if recipient and recipient.get('chat') and not recipient.get('closing'):
+                                    self._guild_message(recipient, conn['id'], notice)
+                                    self._queue(recipient, self._snapshot(recipient))
         except (UnicodeError, ValueError):
             self._error(conn, 'MALFORMED')
 
@@ -798,6 +815,7 @@ class WorldServer:
             with self.lock:
                 try:
                     lines = self.guilds.command(conn['id'], decoded[6:].strip())
+                    self.guild_epoch += 1  # Recheck active field reports after membership/mission changes.
                 except GuildError as exc:
                     lines = [str(exc)]
                 for line in lines:

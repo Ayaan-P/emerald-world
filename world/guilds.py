@@ -12,8 +12,9 @@ class GuildError(ValueError):
     pass
 
 class Guilds:
-    def __init__(self, db):
+    def __init__(self, db, catalog=None):
         self.db = db
+        self.maps = {m['name'].lower(): m['name'] for m in (catalog or {}).values()}
         db.executescript('''
             CREATE TABLE IF NOT EXISTS guilds (
                 id INTEGER PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE,
@@ -22,6 +23,12 @@ class Guilds:
                 trainer TEXT PRIMARY KEY, guild_id INTEGER NOT NULL);
             CREATE INDEX IF NOT EXISTS guild_members_guild ON guild_members(guild_id);
             CREATE TABLE IF NOT EXISTS guild_invites (
+                guild_id INTEGER NOT NULL, trainer TEXT NOT NULL,
+                PRIMARY KEY(guild_id, trainer));
+            CREATE TABLE IF NOT EXISTS guild_expeditions (
+                guild_id INTEGER PRIMARY KEY, map_name TEXT NOT NULL,
+                goal INTEGER NOT NULL, complete INTEGER NOT NULL DEFAULT 0);
+            CREATE TABLE IF NOT EXISTS guild_expedition_visits (
                 guild_id INTEGER NOT NULL, trainer TEXT NOT NULL,
                 PRIMARY KEY(guild_id, trainer));
         ''')
@@ -51,8 +58,10 @@ class Guilds:
             raise GuildError('Invalid guild command.')
         words = command.split()
         if not words or words == ['help']:
-            return ['/guild create NAME | /guild invite TRAINER', '/guild invites | /guild accept NAME | /guild decline NAME', '/guild info | /guild roster | /guild leave', '/guild kick TRAINER | /guild transfer TRAINER | /guild disband', '/g MESSAGE sends guild-only chat.']
+            return ['/guild create NAME | /guild invite TRAINER', '/guild invites | /guild accept NAME | /guild decline NAME', '/guild info | /guild roster | /guild leave', '/guild expedition shows your current expedition.', '/guild kick TRAINER | /guild transfer TRAINER | /guild disband', '/g MESSAGE sends guild-only chat.']
         op, args = words[0].lower(), words[1:]
+        if op == 'expedition':
+            return self.expedition(trainer, args)
         arity = {'create':1,'invite':1,'accept':1,'decline':1,'invites':0,'info':0,'roster':0,'leave':0,'kick':1,'transfer':1,'disband':0}
         if op not in arity or len(args) != arity[op]:
             raise GuildError('Invalid command. Use /guild help.')
@@ -110,6 +119,48 @@ class Guilds:
                 return [f'Left {guild[1]}.']
             self._require(trainer,leader=True)
             self.db.execute('DELETE FROM guild_invites WHERE guild_id=?',(guild[0],))
+            self.db.execute('DELETE FROM guild_expedition_visits WHERE guild_id=?',(guild[0],))
+            self.db.execute('DELETE FROM guild_expeditions WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_members WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guilds WHERE id=?',(guild[0],))
             return [f'Disbanded {guild[1]}.']
+
+    def expedition(self, trainer, args):
+        """A cooperative visit objective. Arrival is client-reported, not anti-cheat."""
+        with self.db:
+            guild=self._require(trainer)
+            if not args:
+                row=self.db.execute('SELECT map_name,goal,complete FROM guild_expeditions WHERE guild_id=?',(guild[0],)).fetchone()
+                if not row: return ['No expedition. Leader: /guild expedition start MAP COUNT']
+                count=self.db.execute('SELECT COUNT(*) FROM guild_expedition_visits WHERE guild_id=?',(guild[0],)).fetchone()[0]
+                state='complete' if row[2] else 'active'
+                return [f'Expedition: {row[0]} {count}/{row[1]} trainers ({state}).']
+            self._require(trainer,leader=True)
+            if args == ['cancel']:
+                self.db.execute('DELETE FROM guild_expedition_visits WHERE guild_id=?',(guild[0],))
+                removed=self.db.execute('DELETE FROM guild_expeditions WHERE guild_id=?',(guild[0],)).rowcount
+                return ['Expedition cancelled.' if removed else 'No expedition to cancel.']
+            if len(args)!=3 or args[0].lower()!='start' or not args[2].isascii() or not args[2].isdecimal() or len(args[2])>2:
+                raise GuildError('Use /guild expedition start MAP COUNT or cancel.')
+            name=self.maps.get(args[1].lower())
+            if not name: raise GuildError('Unknown map. Use a canonical World map name, e.g. Route101.')
+            goal=int(args[2]); member_count=self.db.execute('SELECT COUNT(*) FROM guild_members WHERE guild_id=?',(guild[0],)).fetchone()[0]
+            if not 1<=goal<=min(member_count,MAX_MEMBERS): raise GuildError('COUNT must be 1 through your current guild size.')
+            current=self.db.execute('SELECT complete FROM guild_expeditions WHERE guild_id=?',(guild[0],)).fetchone()
+            if current and not current[0]: raise GuildError('Finish or cancel the active expedition first.')
+            self.db.execute('DELETE FROM guild_expedition_visits WHERE guild_id=?',(guild[0],))
+            self.db.execute('INSERT OR REPLACE INTO guild_expeditions VALUES(?,?,?,0)',(guild[0],name,goal))
+            return [f'Expedition started: {goal} trainers visit {name}.']
+
+    def visit(self, trainer, map_name):
+        """Record a distinct member's validated field report, returning completion recipients."""
+        with self.db:
+            guild=self._member(trainer)
+            if not guild: return None
+            row=self.db.execute('SELECT map_name,goal,complete FROM guild_expeditions WHERE guild_id=?',(guild[0],)).fetchone()
+            if not row or row[2] or row[0] != map_name: return None
+            self.db.execute('INSERT OR IGNORE INTO guild_expedition_visits VALUES(?,?)',(guild[0],trainer))
+            count=self.db.execute('SELECT COUNT(*) FROM guild_expedition_visits WHERE guild_id=?',(guild[0],)).fetchone()[0]
+            if count < row[1]: return None
+            self.db.execute('UPDATE guild_expeditions SET complete=1 WHERE guild_id=?',(guild[0],))
+            return guild[1],row[0],row[1],self.members(trainer)[1]
