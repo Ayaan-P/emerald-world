@@ -20,3 +20,9 @@ class InitialResolutions(unittest.TestCase):
  def test_script_special_order_and_unique_dexnav(self):
   e=self.read('data/event_scripts.s');sp=self.read('data/specials.inc')
   self.assertEqual(e.count('.include "data/scripts/dexnav.inc"'),1);self.assertIn('WorldActivity_EventScript_StoragePC::',e);self.assertIn('def_special GeneratedMap_RunEvent',sp)
+ def test_bulk_module_provenance_matches_carried_sources(self):
+  import hashlib,json
+  data=json.loads((ROOT.parent/'world-port-provenance.json').read_text())
+  self.assertEqual(len(data['files']),37)
+  for item in data['files']:
+   self.assertEqual(hashlib.sha256((ROOT/item['path']).read_bytes()).hexdigest(),item['merged_sha256'],item['path'])

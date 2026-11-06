@@ -47,8 +47,8 @@ def main():
         raise SystemExit('wrong donor revision; no files were changed')
     if git(donor,'status','--porcelain','--untracked-files=all').stdout.strip():
         raise SystemExit('donor checkout must be clean; no files were changed')
-    patches=sorted(PORT.glob('auto-engine-*.patch'))+[PORT/'world-runtime.patch']
-    if len(patches)!=7:raise SystemExit('bulk source patches are incomplete')
+    patches=sorted(PORT.glob('auto-engine-*.patch'))+[PORT/'world-runtime.patch',PORT/'world-platform.patch']
+    if len(patches)!=8:raise SystemExit('bulk source patches are incomplete')
     for patch in patches:apply(donor,patch)
     for source in sorted((PORT/'resolved').rglob('*')):
         if source.is_file():

@@ -34,3 +34,11 @@ hooks into the donor's field and virtual-cable code. The save conflict uses the
 Expansion platform's `frame_flush_save` instead of the old native save writer.
 Save failure/retry semantics and cross-engine LINK isolation are still
 unverified; these source merges must not be interpreted as safe gameplay.
+
+The 17 existing World implementation modules and 20 matching headers were
+three-way merged from the earlier Expansion adaptation, the RC6 World source,
+and the RC8 World source. No textual conflicts were reported in those files;
+this does not establish ABI compatibility or gameplay correctness. Exact input
+and output hashes are recorded in `world-port-provenance.json`. The earlier
+adaptation targeted the 1.17.2 foundation; this candidate targets the pinned
+1.17.1 donor, so compilation and reconciliation are required.
