@@ -957,7 +957,7 @@ class WorldServer:
     def _replace_cave(self, blob, *, label=None):
         from .shared_cave import SharedCave
         candidate = SharedCave(blob)  # validate completely before mutating anything
-        if label is not None and (type(label) is not str or not label or len(label) > 80 or any(ord(c) < 32 or ord(c) == 127 for c in label)):
+        if label is not None and (type(label) is not str or not label.strip() or len(label) > 80 or any(ord(c) < 32 or ord(c) == 127 for c in label)):
             raise ValueError('invalid generated area label')
         with self.lock:
             if (self.wilds_map if candidate.version in (6, 7, 8, 9) else self.cave_map) is None:
@@ -1050,7 +1050,8 @@ class WorldServer:
             request = json.loads(raw)
             if request.get('command') == 'replace_cave':
                 try:
-                    if set(request) != {'command', 'template'} or type(request['template']) is not str:
+                    if (set(request) not in ({'command', 'template'}, {'command', 'template', 'label'})
+                            or type(request['template']) is not str):
                         raise ValueError('invalid cave request')
                     try:
                         blob = base64.b64decode(request['template'], validate=True)
@@ -1058,7 +1059,7 @@ class WorldServer:
                         raise ValueError('invalid cave encoding') from None
                     if base64.b64encode(blob).decode('ascii') != request['template']:
                         raise ValueError('noncanonical cave encoding')
-                    result = dict(ok=True, id=self._replace_cave(blob), persistent=self.persist_generated_cave)
+                    result = dict(ok=True, id=self._replace_cave(blob, label=request.get('label')), persistent=self.persist_generated_cave)
                 except ValueError as exc:
                     # Expected validation/occupancy refusal is not a mechanic error.
                     result = dict(ok=False, error=str(exc))

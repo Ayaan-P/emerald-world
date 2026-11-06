@@ -29,11 +29,16 @@ def publish_blueprint(path, admin_socket):
     return publish_bytes(blob, admin_socket)
 
 
-def publish_bytes(blob, admin_socket):
+def publish_bytes(blob, admin_socket, *, label=None):
     # Validate again using the authority's production format before touching admin.
     cave = SharedCave(blob)
-    response = admin_request('', {'command':'replace_cave', 'template':base64.b64encode(blob).decode('ascii')},
-                             admin_path=admin_socket)
+    request = {'command': 'replace_cave', 'template': base64.b64encode(blob).decode('ascii')}
+    if label is not None:
+        if (type(label) is not str or not label.strip() or len(label) > 80
+                or any(ord(c) < 32 or ord(c) == 127 for c in label)):
+            raise ValueError('Use 1 to 80 printable characters for the area name')
+        request['label'] = label
+    response = admin_request('', request, admin_path=admin_socket)
     if (type(response) is not dict or response.get('ok') is not True
             or response.get('id') != cave.identity or type(response.get('persistent')) is not bool):
         raise ValueError('authority did not accept the cave')

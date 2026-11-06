@@ -231,7 +231,19 @@ class LauncherBridge:
                              for area in areas]
                 except Exception:
                     archive_error = 'Saved areas could not be loaded. Reopen the local host and try again.'
+            live_games = [name for name, (process, _paths) in self.session.games.items()
+                          if process.poll() is None]
+            game_exit = None
+            if not live_games and self.session.games:
+                name = self.session.remote_trainer
+                if name not in self.session.games:
+                    name = next(reversed(self.session.games))
+                process, _paths = self.session.games[name]
+                code = process.poll()
+                if code is not None:
+                    game_exit = {'trainer': name, 'code': code, 'unexpected': code != 0}
             return {'local_worlds': self.local_expeditions(),
+                    'game_exit': game_exit,
                     'generated_areas': areas, 'area_archive': archive_enabled,
                     'area_archive_error': archive_error,
                     'wilds_authoring': wilds_authoring,
@@ -244,8 +256,7 @@ class LauncherBridge:
                     'trainer': self.session.remote_trainer,
                     'world_key': self.session.state.name if self.session.state is not None else None,
                     'offline_world_key': offline_world_key,
-                    'games': [name for name, (process, _paths) in self.session.games.items()
-                              if process.poll() is None], 'status': self.session.status}
+                    'games': live_games, 'status': self.session.status}
 
     def stop_browser_input(self):
         # Also used by launcher shutdown. Serialize teardown with HTTP lifecycle
@@ -406,7 +417,9 @@ class LauncherBridge:
                 if offline:
                     known = any(item['world'] == world and item['trainer'] == trainer for item in self.offline_saves())
                 else:
-                    known = any(item['name'] == world and item['trainer'] == trainer for item in self.session.friend_worlds())
+                    known = (any(item['name'] == world and item['trainer'] == trainer for item in self.session.friend_worlds())
+                             or any(item['key'] == world and item['trainer'] == trainer and item['has_save']
+                                    for item in self.local_expeditions()))
                 if not known:
                     raise SessionError('Choose an available saved trainer profile.')
                 from .save_backup import backup_save

@@ -54,6 +54,29 @@ class SharedAgentEvents(unittest.TestCase):
                 self.assertEqual(server.shared_cave.version,9);self.assertEqual(server.shared_cave.identity,SharedCave(wilds_events.compile_document(doc)).identity)
             finally:server.close()
 
+    def test_named_adventure_owner_payload_and_rejection(self):
+        import base64
+        blob = self.blob()
+        with tempfile.TemporaryDirectory() as directory:
+            p = Path(directory)
+            server = MemoryAuthority(p/'socket', p/'world', persist_generated_cave=True, archive_generated_areas=True)
+            def request(payload):
+                conn = {'id': None, 'out': bytearray(), 'closing': False, 'sock': object()}
+                server._admin_line(conn, json.dumps(payload).encode())
+                return json.loads(conn['out'])
+            try:
+                payload = {'command': 'replace_cave', 'template': base64.b64encode(blob).decode(), 'label': 'The Lantern Trail'}
+                self.assertTrue(request(payload)['ok'])
+                identity = server.shared_cave.identity
+                self.assertEqual(server.list_generated_areas()[0]['label'], 'The Lantern Trail')
+                for invalid in ('   ', '\nunsafe', 'x'*81, 42):
+                    self.assertFalse(request(dict(payload, label=invalid))['ok'])
+                self.assertFalse(request(dict(payload, unknown='no'))['ok'])
+                self.assertEqual(server.shared_cave.identity, identity)
+                self.assertEqual(server.list_generated_areas()[0]['label'], 'The Lantern Trail')
+            finally:
+                server.close()
+
     def test_real_c_wire_and_chunk_integrity(self):
         code=r'''#include <stdio.h>
 #include <string.h>

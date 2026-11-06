@@ -45,6 +45,7 @@ export default function SaveBackups({ state, busy, onBack }) {
   }
 
   const profiles = [
+    ...(state.local_worlds || []).filter(world => world.has_save).map(world => ({ world: world.key, trainer: world.trainer, name: world.name, offline: false, local: true })),
     ...state.worlds.map(world => ({ world: world.key, trainer: world.trainer, name: world.name, offline: false })),
     ...state.offline_saves.map(save => ({ ...save, offline: true })),
   ];
@@ -57,7 +58,7 @@ export default function SaveBackups({ state, busy, onBack }) {
     <div className="settings-card"><div className="settings-icon"><ShieldCheck size={22} /></div><div><h3>Your progress is separate</h3><p>Trainer saves live on this device. An owner-account backup does not include them. Save backups do not contain server worlds or host credentials.</p></div></div>
     {availability === null ? <p className="muted-copy">Checking save backup support…</p> : availability === 'error' ? <p className="inline-error" role="alert">The local launcher is unavailable. Restart it and try again.</p> : !availability ? <p className="muted-copy">Save backup support is not installed in this version yet.</p> : profiles.length === 0 ? <p className="muted-copy">No saved trainer profiles are available yet. Start an adventure first.</p> : <div className="backup-list">{profiles.map(profile => {
       const running = state.games.includes(profile.offline ? `offline/${profile.trainer}` : profile.trainer);
-      return <article className="solo-item" key={`${profile.offline ? 'offline' : 'online'}/${profile.world}/${profile.trainer}`}><div className="session-icon"><LockKeyhole size={20} /></div><div className="session-copy"><strong>{profile.name}</strong><span>{profile.trainer} · {profile.offline ? 'Offline save' : 'Online-world save'}{running ? ' · Close the game first' : ''}</span></div><button className="button small primary" disabled={busy || working || running} onClick={() => backup(profile)}>Create backup</button></article>;
+      return <article className="solo-item" key={`${profile.offline ? 'offline' : 'online'}/${profile.world}/${profile.trainer}`}><div className="session-icon"><LockKeyhole size={20} /></div><div className="session-copy"><strong>{profile.name}</strong><span>{profile.trainer} · {profile.local ? 'Local expedition save' : profile.offline ? 'Offline save' : 'Online-world save'}{running ? ' · Close the game first' : ''}</span></div><button className="button small primary" disabled={busy || working || running} onClick={() => backup(profile)}>Create backup</button></article>;
     })}</div>}
     {error && <p className="inline-error" role="alert">{error}</p>}
     {download && <div className="settings-card" role="status"><div className="settings-icon"><ArrowDownToLine size={22} /></div><div><h3>Your save backup is ready</h3><p>Your browser's downloads folder may not be private. Move the file to encrypted storage. The original save was not changed; save compatibility is not verified.</p><a className="button small primary" href={download.url} download={download.filename}><ArrowDownToLine size={16} /> Download save</a><button className="button small ghost" onClick={() => setDownload(null)}>Done</button></div></div>}

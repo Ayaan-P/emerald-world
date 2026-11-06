@@ -37,17 +37,39 @@ def compile_document(doc):
     return encode(proposal_from_blueprint(doc['blueprint'],side=63),doc['cast'],doc['events'])
 
 def main(argv=None):
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('input',type=Path);p.add_argument('output',type=Path,nargs='?');p.add_argument('--admin-socket',type=Path);a=p.parse_args(argv)
-    if (a.output is None)==(a.admin_socket is None):p.error('choose exactly one output file or owner admin socket')
-    data=a.input.read_bytes()
-    if len(data)>MAX_JSON:raise ValueError('input too large')
-    doc=json.loads(data.decode('utf-8'));blob=compile_document(doc)
-    if a.admin_socket is not None:
-        from .publish_cave import publish_bytes
-        print('Published validated event area:',publish_bytes(blob,a.admin_socket))
-    else:
-        with a.output.open('xb') as f:f.write(blob)
-        print('Wrote validated event area:',a.output)
+    parser = argparse.ArgumentParser(description=__doc__, epilog=(
+        'Publish only after everyone has left the active generated area. '
+        'The launcher lists a published graph as an interactive adventure. '
+        'Compiling or publishing this JSON does not call a model.'))
+    parser.add_argument('input', type=Path, help='Authored blueprint, characters and interaction graph JSON')
+    parser.add_argument('output', type=Path, nargs='?', help='New offline area file, never overwritten')
+    parser.add_argument('--admin-socket', type=Path, help='Owner socket for publishing to a running world')
+    parser.add_argument('--name', help='Player-visible adventure name, 1 to 80 printable characters')
+    args = parser.parse_args(argv)
+    if (args.output is None) == (args.admin_socket is None):
+        parser.error('choose exactly one output file or owner admin socket')
+    if args.name is not None and args.admin_socket is None:
+        parser.error('--name applies to a published adventure, not an offline file')
+    try:
+        with args.input.open('rb') as stream:
+            data = stream.read(MAX_JSON + 1)
+        if len(data) > MAX_JSON:
+            raise ValueError('input too large')
+        blob = compile_document(json.loads(data.decode('utf-8')))
+        if args.admin_socket is not None:
+            from .publish_cave import publish_bytes
+            identity = (publish_bytes(blob, args.admin_socket, label=args.name) if args.name is not None
+                        else publish_bytes(blob, args.admin_socket))
+            print('Published interactive adventure:', identity)
+        else:
+            with args.output.open('xb') as stream:
+                stream.write(blob)
+            print('Wrote validated event area:', args.output)
+    except (OSError, ValueError, TypeError):
+        parser.exit(1, 'Adventure could not be prepared or confirmed. Check the JSON, destination, '
+                    'owner socket and area occupancy. If the response was lost, inspect the active '
+                    'area before retrying.\n')
+    return 0
 
 
 def validate_wire(events, cast, cells):

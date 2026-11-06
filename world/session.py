@@ -458,7 +458,7 @@ class DesktopSession:
         if type(wilds) is not bool or type(guide) is not bool or type(cast) is not bool or ((guide or cast) and not wilds) or (guide and cast):
             raise SessionError('Choose a cave or outdoor area.')
         if type(theme) is not str or not theme.strip() or len(theme.encode('utf-8')) > MAX_THEME:
-            raise SessionError('Enter a cave description of at most 2,000 UTF-8 bytes.')
+            raise SessionError('Enter an area description of at most 2,000 UTF-8 bytes.')
         server, state = self.server, self.state
         if server is None or state is None or getattr(server, '_closed', True) or (server.wilds_map if wilds else server.cave_map) is None:
             raise SessionError('Host a compatible local world before generating an area.')
@@ -466,7 +466,7 @@ class DesktopSession:
             if any(peer.get('in_generated_cave') or
                    (peer.get('state') is not None and tuple(peer['state'][:2]) in (server.cave_map, server.wilds_map))
                    for peer in server.peers.values() if not peer.get('closing')):
-                raise SessionError('Ask everyone to leave the generated cave before replacing it.')
+                raise SessionError('Everyone must leave the active generated area before you generate another.')
         try:
             if cast:
                 _, blob = author(theme, large=True, wilds=True, cast=True)
@@ -477,14 +477,14 @@ class DesktopSession:
             else:
                 _, blob = author(theme, large=True, custom_wildlife=True)
         except (OSError, ValueError, TypeError, TimeoutError, UnicodeError):
-            raise SessionError('Cave generation failed. Check model login and configuration, then retry.') from None
+            raise SessionError('Area generation failed before publication. Check the supported model CLI version, login and configuration. A new attempt may incur another charge.') from None
         if self.server is not server or self.state != state or getattr(server, '_closed', True):
-            raise SessionError('The hosted world changed while the cave was being generated; nothing was published.')
+            raise SessionError('The hosted world changed during generation. Nothing was published to the new session.')
         try:
             label = ' '.join(''.join(' ' if ord(c) < 32 or ord(c) == 127 else c for c in theme).split())[:80]
             identity = server._replace_cave(blob, label=label or ('Outdoor area' if wilds else 'Cave'))
         except (OSError, ValueError):
-            raise SessionError('The cave could not be installed. Check that everyone has left and try again.') from None
+            raise SessionError('The generated area could not be activated. Check that everyone has left the current area before trying again.') from None
         self.status = (('Generated outdoor area' if wilds else 'Generated cave') + ' installed for compatible players. ' +
                        ('It will persist when this world restarts.' if server.persist_generated_cave else
                         'It lasts for this host session unless persistence is enabled.'))

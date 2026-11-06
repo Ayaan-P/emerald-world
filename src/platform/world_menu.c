@@ -33,15 +33,8 @@
 /* One field window, not another Start-menu row or another input consumer.
  * Lists are rebuilt from live state, but focus is an action identity. */
 enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, RALLY, DISPATCH };
-#if GENERATED_MAP_WILDS
 #define GEN_EXPLORE_LABEL "Explore generated area"
 #define GEN_LEAVE_LABEL "Leave generated area"
-#define GEN_BLOCKED_LABEL "Stand outside on foot; online needs a ready shared area."
-#else
-#define GEN_EXPLORE_LABEL "Explore generated area"
-#define GEN_LEAVE_LABEL "Leave generated area"
-#define GEN_BLOCKED_LABEL "Stand outside on foot; online needs a ready shared area."
-#endif
 enum Action { FRIENDS, STORY, DEXNAV, BACK, MODE, SCOPE, REQUEST, READY,
     LATER, CANCEL, GO, FINISH, RETURN, STAY,
 #if GENERATED_MAP_READY
@@ -155,6 +148,22 @@ static void AddRow(struct Row *rows, unsigned *count, enum Action action,
     rows[(*count)++] = (struct Row){action, label, reason};
 }
 
+#if GENERATED_MAP_READY
+static const char *GeneratedAreaReason(void)
+{
+    struct WorldRallySnapshot rally = {0};
+    if (GeneratedMap_IsInside() || GeneratedMap_CanEnter()) return NULL;
+    if (!GeneratedMap_HasUsableParty()) return "You need a conscious Pokemon that is not an Egg.";
+    if (!IsMapTypeOutdoors(gMapHeader.mapType)) return "Go outdoors before entering a generated area.";
+    if (!TestPlayerAvatarFlags(PLAYER_AVATAR_FLAG_ON_FOOT)) return "Get off your Bike or stop Surfing first.";
+    if (WorldRally_HasReturn() || (WorldRally_GetSnapshot(&rally) && rally.id))
+        return "Finish your rally and return before exploring another area.";
+    if (WorldBridge_Enabled() && !WorldBridge_GeneratedCaveReady())
+        return "No shared area is ready. Select an area in the launcher and wait for it to arrive.";
+    return "Finish the current activity and stand on safe ground before exploring.";
+}
+#endif
+
 static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 online)
 {
     unsigned n = 0, member = MemberState(r);
@@ -178,9 +187,7 @@ static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 onlin
         AddRow(rows, &n, DEXNAV, "DexNav", DexNavNative_Available() ? NULL :
             "DexNav needs a Pokedex and conscious party outside restricted or link areas.");
 #if GENERATED_MAP_READY
-        AddRow(rows, &n, GEN_CAVE, GeneratedMap_IsInside() ? GEN_LEAVE_LABEL : GEN_EXPLORE_LABEL,
-            GeneratedMap_IsInside() || GeneratedMap_CanEnter() ? NULL :
-            !GeneratedMap_HasUsableParty() ? "You need a conscious Pokemon before exploring." : GEN_BLOCKED_LABEL);
+        AddRow(rows, &n, GEN_CAVE, GEN_EXPLORE_LABEL, GeneratedAreaReason());
 #endif
         AddRow(rows, &n, BACK, "Back", NULL);
         return n;
@@ -311,6 +318,11 @@ static void Draw(const struct Row *rows, unsigned count, unsigned selected,
             sMenu.focus == FINISH ? "Ends the visit. Only the encounter owner earns boss credit." :
             sMenu.focus == STAY ? "Keep this position and discard your pre-rally return point." :
             sMenu.focus == STORY ? "Roxanne visit for up to four trainers. Normal two-player battles. Boss credit stays personal." :
+#if GENERATED_MAP_READY
+            sMenu.focus == GEN_CAVE ? (GeneratedMap_IsInside() ?
+                "Return to where you entered. Save after returning. Adventure conversations restart on a new visit." :
+                "Explore the active area selected in your launcher. Face a character and press A to talk.") :
+#endif
             "A choose. B back. Check status for local requirements.");
     }
     else if (sMenu.page == ROSTER)
@@ -370,7 +382,7 @@ static void Dispatch(void)
         || JOY_HELD(DPAD_ANY))
     {
         sMenu.state = CLOSED;
-        sMenu.notice = "Choice cancelled by field input. Open Story rally to try again.";
+        sMenu.notice = "Choice cancelled by field input. Open WORLD to try again.";
         return;
     }
     if (!FreeField() || JOY_HELD(A_BUTTON | B_BUTTON | L_BUTTON | R_BUTTON))
