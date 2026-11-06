@@ -1,6 +1,6 @@
 {
   "prior_work": "d0fbd2de6c5fb5bdfe6100abc6091569e7eddbe6 native-world-wip.patch",
-  "method": "Applied earlier patch to the pinned donor and merged RC6 to RC8 changes. Some RC8 hooks missing from the earlier patch were then restored manually. This is an incomplete source port, not behavioral verification.",
+  "method": "Applied earlier World patches directly to pinned donor, carried RC8 changes where applicable and restored selected missing hooks. The files remain incomplete and unverified.",
   "files": [
     {
       "path": "src/fieldmap.c",
@@ -28,14 +28,14 @@
       "donor_sha256": "7ccc8edb0f1b2cf7d647c89553a22322620bfefe38a58b0655217188b3b9f8bc",
       "rc6_sha256": "e073490dce2403ba5f3a6fc8fbe1649d9899e77a0c9b22e5329db846d17644e2",
       "rc8_sha256": "e073490dce2403ba5f3a6fc8fbe1649d9899e77a0c9b22e5329db846d17644e2",
-      "merged_sha256": "fb6e7510b495870e06631f2dc953722d2274123635b91213b99cc4a053ea9ce9"
+      "merged_sha256": "ff789c2225cc141b1542c09594a7a4dcd67156c160980923f19ccf0f1d766f89"
     },
     {
       "path": "src/event_object_movement.c",
       "donor_sha256": "c2fadd8cf603095d89f53a1f92227a390c1b2e246bec73fb9c83635941ce86e7",
       "rc6_sha256": "1b1db67a5112d1dcbc3776ecbbe4ea254c8b7f6aa56dff95ec53f504e9fa26a9",
       "rc8_sha256": "1b1db67a5112d1dcbc3776ecbbe4ea254c8b7f6aa56dff95ec53f504e9fa26a9",
-      "merged_sha256": "ac3a1b7cdade6b513beb008875c0f0f223f4e8a3363323b8f71b292b6432e8f9"
+      "merged_sha256": "2098eca293024bf0ce11a583739b927fe602d8503797cbd9d3972b524bf8b9a4"
     },
     {
       "path": "src/field_effect.c",
