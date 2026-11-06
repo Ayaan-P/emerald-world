@@ -462,7 +462,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
-                cave_geometry = role.endswith('CAVE9G')
+                cave_large_terrain = role.endswith('CAVE9H')
+                cave_geometry = cave_large_terrain or role.endswith('CAVE9G')
                 cave_terrain = cave_geometry or role.endswith('CAVE9T')
                 cave_events = cave_terrain or role.endswith('CAVE9')
                 cave_cast = cave_events or role.endswith('CAVE8')
@@ -543,6 +544,7 @@ class WorldServer:
                 conn['cave_events'] = cave_events
                 conn['cave_terrain'] = cave_terrain
                 conn['cave_geometry'] = cave_geometry
+                conn['cave_large_terrain'] = cave_large_terrain
                 conn['event_command_seq'] = 0
                 conn['event_commands'] = {}
                 conn['event_command_session'] = secrets.token_hex(8)
@@ -594,6 +596,7 @@ class WorldServer:
                                 or (self.shared_cave.version == 9 and not conn.get('cave_events'))
                                 or (self.shared_cave.version == 9 and self._active_terrain()[1]!=b'\0' and not conn.get('cave_terrain'))
                                 or (self.shared_cave.version == 9 and self._terrain_requires_geometry() and not conn.get('cave_geometry'))
+                                or (self.shared_cave.version == 9 and self._terrain_requires_large() and not conn.get('cave_large_terrain'))
                                 or (self.shared_cave.version == 8 and not conn.get('cave_cast'))
                                 or (self.shared_cave.version == 7 and not conn.get('cave_guide'))
                                 or (self.shared_cave.version == 6 and not conn.get('cave_wilds'))
@@ -610,7 +613,7 @@ class WorldServer:
                             return
                         conn['cave_next'] = now + .5
                         terrain = self._active_terrain() if self.shared_cave.version==9 and conn.get('cave_terrain') else None
-                        frames = self.shared_cave.frames(terrain=terrain)
+                        frames = self.shared_cave.frames(terrain=terrain,terrain_large=bool(conn.get('cave_large_terrain')))
                         if len(conn['out']) + len(frames) > MAX_QUEUE:
                             self._queue(conn, 'CAVE BUSY\n')
                             return
@@ -1008,6 +1011,11 @@ class WorldServer:
         revision,payload=self._active_terrain()
         return (revision>0 and payload==b'\0') or needs_geometry(self.shared_cave,payload)
 
+    def _terrain_requires_large(self):
+        from .shared_terrain import needs_large
+        if not self.shared_cave or self.shared_cave.version!=9:return False
+        return needs_large(self._active_terrain()[1])
+
     def _active_walkable(self, x, y):
         cave=self.shared_cave
         if not cave:return False
@@ -1038,11 +1046,15 @@ class WorldServer:
             if payload==old:return {'ok':True,'identity':identity,'revision':revision,'tiles':len(merged),'changed':False}
             if revision>=2147483647:raise ValueError('terrain revision exhausted')
             peers=[p for p in self.peers.values() if not p.get('closing') and p.get('cave_capable')]
-            if any((p.get('in_generated_cave') or (p.get('state') is not None and tuple(p['state'][:2]) in (self.cave_map,self.wilds_map))) and not p.get('cave_terrain') for p in peers):raise ValueError('incompatible trainer is inside')
-            revision+=1;update=f'CAVE TERRAIN {identity} {revision} {payload.hex()}\n';reset=f'CAVE RESET {identity}\n'
-            targets=[p for p in peers if p.get('cave_ack')==identity and p.get('cave_terrain') and not p.get('cave_transfer_pending')]
-            legacy=[p for p in peers if p.get('cave_ack')==identity and not p.get('cave_terrain')]
-            if any(len(p['out'])+len(update)>MAX_QUEUE for p in targets) or any(len(p['out'])+len(reset)>MAX_QUEUE for p in legacy):raise ValueError('trainer connection is busy')
+            from .shared_terrain import needs_geometry,needs_large,frames as terrain_frames
+            geometry=needs_geometry(cave,payload);large=needs_large(payload)
+            def compatible(p):return bool(p.get('cave_terrain') and (not geometry or p.get('cave_geometry')) and (not large or p.get('cave_large_terrain')))
+            if any((p.get('in_generated_cave') or (p.get('state') is not None and tuple(p['state'][:2]) in (self.cave_map,self.wilds_map))) and not compatible(p) for p in peers):raise ValueError('incompatible trainer is inside')
+            revision+=1;reset=f'CAVE RESET {identity}\n'
+            targets=[p for p in peers if p.get('cave_ack')==identity and compatible(p) and not p.get('cave_transfer_pending')]
+            legacy=[p for p in peers if p.get('cave_ack')==identity and not compatible(p)]
+            updates=[(p,terrain_frames(identity,revision,payload,bool(p.get('cave_large_terrain')))) for p in targets]
+            if any(len(p['out'])+len(update)>MAX_QUEUE for p,update in updates) or any(len(p['out'])+len(reset)>MAX_QUEUE for p in legacy):raise ValueError('trainer connection is busy')
             try:
                 with self.db:self.db.execute('INSERT OR REPLACE INTO generated_area_terrain(identity,revision,payload) VALUES(?,?,?)',(identity,revision,payload))
             except sqlite3.Error:
@@ -1050,7 +1062,7 @@ class WorldServer:
             from .shared_terrain import project
             self._terrain_walk_cache=(identity,revision,project(cave,payload))
             queued=0;delivery_failed=0
-            for peer in targets:
+            for peer,update in updates:
                 try:
                     self._queue(peer,update)
                     if peer.get('closing'):delivery_failed+=1
@@ -1073,7 +1085,7 @@ class WorldServer:
     def set_shared_geometry(self, identity, tiles, replace=False):
         """Commit connected terrain geometry only while the generated area is empty."""
         from .shared_terrain import validate,encode,project
-        if type(identity) is not str or not re.fullmatch(r'[0-9a-f]{64}',identity) or type(tiles) is not list or type(replace) is not bool or len(tiles)>64 or (not tiles and not replace):raise ValueError('invalid shared geometry request')
+        if type(identity) is not str or not re.fullmatch(r'[0-9a-f]{64}',identity) or type(tiles) is not list or type(replace) is not bool or len(tiles)>512 or (not tiles and not replace):raise ValueError('invalid shared geometry request')
         changes={}
         for tile in tiles:
             if type(tile) is not dict or set(tile)!={'x','y','terrain'}:raise ValueError('invalid shared geometry request')
@@ -1226,6 +1238,21 @@ class WorldServer:
                     if set(request)!={'command','trainer','identity','x','y','terrain'}:raise ValueError('invalid event tile command')
                     result=self.set_event_tile(request['trainer'],request['identity'],request['x'],request['y'],request['terrain'])
                 except ValueError as exc:
+                    result=dict(ok=False,error=str(exc))
+            elif request.get('command') == 'set_shared_geometry_compact':
+                try:
+                    if set(request)!={'command','identity','data','replace'} or type(request['data']) is not str:raise ValueError('invalid compact geometry')
+                    raw=base64.b64decode(request['data'],validate=True)
+                    if base64.b64encode(raw).decode('ascii')!=request['data'] or len(raw)<2:raise ValueError('invalid compact geometry')
+                    count=int.from_bytes(raw[:2],'little')
+                    if count>512 or len(raw)!=2+3*count:raise ValueError('invalid compact geometry')
+                    kinds=('grass','tall_grass','water','original');tiles=[]
+                    for i in range(count):
+                        x,y,kind=raw[2+3*i:5+3*i]
+                        if kind>=len(kinds):raise ValueError('invalid compact geometry')
+                        tiles.append({'x':x,'y':y,'terrain':kinds[kind]})
+                    result=self.set_shared_geometry(request['identity'],tiles,request['replace'])
+                except (ValueError,binascii.Error) as exc:
                     result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'set_shared_geometry':
                 try:

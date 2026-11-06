@@ -256,6 +256,6 @@ const char *ok[]={"CAVE","TERRAIN",id,"3","00"};assert(WorldCaveWire_Feed(&w,5,o
 WorldCaveWire_Reset(&w);w.active=1;w.version=9;w.castSeen=1;w.nextEventChunk=6;memcpy(w.id,id,65);
 const char *bad[]={"CAVE","TERRAIN",id,"0","01010200"};assert(WorldCaveWire_Feed(&w,5,bad)<0);return 0;}'''
   with tempfile.TemporaryDirectory() as t:
-   p=Path(t);(p/'global.h').write_text('#include <stdint.h>\ntypedef uint8_t u8;typedef uint32_t u32;typedef int bool8;\n#define TRUE 1\n#define FALSE 0\n');(p/'test.c').write_text(code)
+   p=Path(t);(p/'global.h').write_text('#include <stdint.h>\ntypedef uint8_t u8;typedef uint16_t u16;typedef uint32_t u32;typedef int bool8;\n#define TRUE 1\n#define FALSE 0\n');(p/'test.c').write_text(code)
    cmd=['cc','-std=gnu99','-Wall','-Wextra','-Werror','-DPORTABLE','-DGENERATED_MAP_LARGE=1','-DGENERATED_MAP_WILDS=1','-DGENERATED_WILDS_GUIDE=1','-DGENERATED_WILDS_CAST=1','-DGENERATED_WILDS_EVENTS=1','-DGENERATED_WILDS_SHARED_TERRAIN=1','-DGENERATED_WILDS_SHARED_GEOMETRY=1','-iquote',str(p),'-iquote',str(ROOT/'include'),str(ROOT/'src/platform/world_cave_wire.c'),str(p/'test.c'),'-o',str(p/'test')]
    build=subprocess.run(cmd,capture_output=True,text=True);self.assertEqual(build.returncode,0,build.stderr);run=subprocess.run([str(p/'test')],capture_output=True,text=True);self.assertEqual(run.returncode,0,run.stderr)

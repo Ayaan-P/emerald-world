@@ -114,8 +114,11 @@ static struct {
     bool8 caveV9TProbe, caveV9TLegacy, terrainPending, terrainReportPending, terrainReportedApplied;
 #if GENERATED_WILDS_SHARED_GEOMETRY
     bool8 caveV9GProbe, caveV9GLegacy;
+#if GENERATED_WILDS_LARGE_TERRAIN
+    bool8 caveV9HProbe, caveV9HLegacy;u8 terrainRx[1539],terrainRxNext,terrainRxTotal;u16 terrainRxSize;u32 terrainRxRevision;
 #endif
-    u32 terrainRevision;u8 terrainSize, terrainData[193];
+#endif
+    u32 terrainRevision;u16 terrainSize;u8 terrainData[GENERATED_TERRAIN_MAX_BYTES];
 #endif
     u8 eventHead, eventCount; unsigned eventSetSeq;
     struct {u8 kind, state, rule[61], x, y, terrain, tiles[193], tilesSize;unsigned sequence;} eventQueue[8];
@@ -449,6 +452,9 @@ static void Disconnect(void)
     sWorld.caveV9TProbe=FALSE;
 #if GENERATED_WILDS_SHARED_GEOMETRY
     sWorld.caveV9GProbe=FALSE;
+#if GENERATED_WILDS_LARGE_TERRAIN
+    sWorld.caveV9HProbe=FALSE;sWorld.terrainRxNext=sWorld.terrainRxTotal=0;sWorld.terrainRxSize=0;
+#endif
 #endif
     sWorld.terrainPending=FALSE;sWorld.terrainReportPending=FALSE;sWorld.terrainReportedApplied=FALSE;sWorld.terrainRevision=0;
 #endif
@@ -678,6 +684,9 @@ invalid:
 static bool8 CaveProbeRejected(unsigned n, char **tokens)
 {
     if (sWorld.caveProbe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
+#if GENERATED_WILDS_LARGE_TERRAIN && GENERATED_CAVE_WILDLIFE
+        if(sWorld.caveV9HProbe){sWorld.caveV9HLegacy=TRUE;return TRUE;}
+#endif
 #if GENERATED_WILDS_SHARED_GEOMETRY && GENERATED_CAVE_WILDLIFE
         if(sWorld.caveV9GProbe){sWorld.caveV9GLegacy=TRUE;return TRUE;}
 #endif
@@ -737,6 +746,9 @@ static bool8 CaveLine(unsigned n, char **tokens)
 #if GENERATED_WILDS_SHARED_TERRAIN
     if(n==5 && !strcmp(tokens[1],"TERRAIN") && sWorld.caveState==CAVE_READY) {
         unsigned revision,i,length=strlen(tokens[4]);u8 patch[193]={0};
+#if GENERATED_WILDS_LARGE_TERRAIN
+        if(sWorld.caveV9HProbe)return FALSE;
+#endif
         if(!sWorld.caveV9TProbe || sWorld.caveWire.version!=9 || strcmp(tokens[2],sWorld.caveWire.id)
            || !Decimal(tokens[3],&revision) || revision>2147483647U || length<2 || length>386 || (length&1))return FALSE;
         for(i=0;i<length;i++){char c=tokens[4][i];unsigned v;if(c>='0'&&c<='9')v=c-'0';else if(c>='a'&&c<='f')v=c-'a'+10;else return FALSE;
@@ -750,6 +762,27 @@ static bool8 CaveLine(unsigned n, char **tokens)
 #endif
         if(revision<=sWorld.terrainRevision)return TRUE;
         memcpy(sWorld.terrainData,patch,length/2);sWorld.terrainSize=length/2;sWorld.terrainRevision=revision;sWorld.terrainReportPending=FALSE;sWorld.terrainReportedApplied=FALSE;sWorld.terrainPending=TRUE;return TRUE;
+    }
+#endif
+#if GENERATED_WILDS_LARGE_TERRAIN
+    if(n==7 && !strcmp(tokens[1],"TERRAINH") && sWorld.caveState==CAVE_READY) {
+        unsigned revision,chunk,total,i,length=strlen(tokens[6]),bytes,offset;
+        if(!sWorld.caveV9HProbe || sWorld.caveWire.version!=9 || strcmp(tokens[2],sWorld.caveWire.id)
+         || !Decimal(tokens[3],&revision) || revision>2147483647U || !Decimal(tokens[4],&chunk) || !Decimal(tokens[5],&total)
+         || !total || total>8 || chunk>=total || !length || length>400 || (length&1) || (chunk+1<total && length!=400))return FALSE;
+        if(!chunk){sWorld.terrainRxNext=0;sWorld.terrainRxTotal=total;sWorld.terrainRxSize=0;sWorld.terrainRxRevision=revision;}
+        if(chunk!=sWorld.terrainRxNext || total!=sWorld.terrainRxTotal || revision!=sWorld.terrainRxRevision)return FALSE;
+        bytes=length/2;offset=sWorld.terrainRxSize;if(offset+bytes>sizeof(sWorld.terrainRx))return FALSE;
+        for(i=0;i<length;i++){char c=tokens[6][i];unsigned v;if(c>='0'&&c<='9')v=c-'0';else if(c>='a'&&c<='f')v=c-'a'+10;else return FALSE;
+            if(!(i&1))sWorld.terrainRx[offset+i/2]=v<<4;else sWorld.terrainRx[offset+i/2]|=v;}
+        sWorld.terrainRxSize+=bytes;sWorld.terrainRxNext++;
+        if(sWorld.terrainRxNext==total){
+            if(!GeneratedMap_ValidateSharedTerrain(sWorld.terrainRx,sWorld.terrainRxSize) || (revision==0 && (sWorld.terrainRxSize!=1 || sWorld.terrainRx[0]!=0)))return FALSE;
+            if(revision>sWorld.terrainRevision){memcpy(sWorld.terrainData,sWorld.terrainRx,sWorld.terrainRxSize);sWorld.terrainSize=sWorld.terrainRxSize;
+                sWorld.terrainRevision=revision;sWorld.terrainReportPending=FALSE;sWorld.terrainReportedApplied=FALSE;sWorld.terrainPending=TRUE;}
+            sWorld.terrainRxNext=sWorld.terrainRxTotal=0;sWorld.terrainRxSize=0;
+        }
+        return TRUE;
     }
 #endif
 #if GENERATED_WILDS_EVENTS
@@ -821,6 +854,9 @@ static bool8 CaveLine(unsigned n, char **tokens)
         sWorld.eventHead=sWorld.eventCount=0;
 #if GENERATED_WILDS_SHARED_TERRAIN
         sWorld.terrainPending=FALSE;sWorld.terrainReportPending=FALSE;sWorld.terrainReportedApplied=FALSE;sWorld.terrainRevision=0;
+#if GENERATED_WILDS_LARGE_TERRAIN
+        sWorld.terrainRxNext=sWorld.terrainRxTotal=0;sWorld.terrainRxSize=0;
+#endif
 #endif
 #endif
         WorldCaveWire_Reset(&sWorld.caveWire);
@@ -915,6 +951,9 @@ static bool8 CaveLine(unsigned n, char **tokens)
         if (sWorld.caveWire.version == 9) {
 #if GENERATED_WILDS_SHARED_TERRAIN
             if(sWorld.caveV9TProbe && !sWorld.caveWire.terrainSeen)return FALSE;
+#if GENERATED_WILDS_LARGE_TERRAIN
+            if(sWorld.caveV9TProbe && (sWorld.caveV9HProbe != sWorld.caveWire.terrainLargeFraming))return FALSE;
+#endif
 #endif
             if ((GeneratedMap_IsInside() || GeneratedMap_EntryPending())
              && !GeneratedMap_MatchesPreparedEventWilds(sWorld.caveWire.events, WORLD_CAVE_EVENT_BYTES, sWorld.caveWire.cast, WORLD_CAVE_CAST_BYTES, sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS))
@@ -1304,6 +1343,10 @@ static void QueueHello(bool8 headless)
 #if GENERATED_WILDS_SHARED_GEOMETRY
         sWorld.caveV9GProbe=sWorld.caveV9TProbe && !sWorld.caveV9GLegacy;
         if(sWorld.caveV9GProbe)suffix="CAVE9G";
+#if GENERATED_WILDS_LARGE_TERRAIN
+        sWorld.caveV9HProbe=sWorld.caveV9GProbe && !sWorld.caveV9HLegacy;
+        if(sWorld.caveV9HProbe)suffix="CAVE9H";
+#endif
 #endif
 #endif
 #endif
