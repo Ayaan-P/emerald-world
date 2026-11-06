@@ -19,9 +19,11 @@ import errno
 import hashlib
 import sys
 
-from .build_catalog import validate_coords, validate_tile
+from .build_catalog import validate_coords, validate_tile, catalog_maps
 from .mechanics import validate_objects
 from .link_protocol import LinkProtocol
+from .guilds import Guilds
+from .guild_chat import GuildChat
 from .rally import RallyCoordinator
 
 MAX_QUEUE = 65536
@@ -132,6 +134,8 @@ class WorldServer:
                 seq INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, data TEXT);
             CREATE INDEX IF NOT EXISTS events_kind_seq ON events(kind,seq);
         ''')
+        self.guilds = Guilds(self.db, catalog_maps())
+        self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
         self.db.executescript('''
             CREATE TABLE IF NOT EXISTS module (
                 singleton INTEGER PRIMARY KEY CHECK(singleton=1), source TEXT,
@@ -757,6 +761,7 @@ class WorldServer:
                 self._deliver_links(self.link_protocol.update_presence(self._link_presence()))
                 if changed or now - self.last_presence_broadcast >= PRESENCE_HEARTBEAT_INTERVAL:
                     self._schedule_presence(now)
+                self.guild_chat.observe(conn, state)
         except (UnicodeError, ValueError):
             self._error(conn, 'MALFORMED')
 
@@ -789,6 +794,8 @@ class WorldServer:
             self._queue(conn, self._snapshot(conn))
             return
         conn['chat_credit'] = credit - 1
+        if fields[2] == '*' and self.guild_chat.handle(conn, text.decode('ascii')):
+            return
         self.chat_serial += 1
         message = (self.chat_serial, conn['id'], fields[2], fields[3])
         recipients = self.peers.values() if fields[2] == '*' else (conn, target)

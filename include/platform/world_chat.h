@@ -9,8 +9,11 @@
 #define WORLD_CHAT_HEIGHT 64
 #endif
 /* Graphical thread only. Rendering is outside the deterministic GBA image. */
+/* Open chat with the guild help probe prepared; returns zero if unavailable. */
+int WorldChat_OpenGuild(void);
 int WorldChat_Event(const SDL_Event *event);
 int WorldChat_BlocksInput(void);
 void WorldChat_Draw(SDL_Renderer *renderer);
 #endif
 #endif
+
