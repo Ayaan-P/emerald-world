@@ -15,3 +15,10 @@ class ControlLaunch(unittest.TestCase):
             args = game_command('/tmp/engine', root, paths, agent_control=True, online=False, engine='expansion-native')
             self.assertEqual(args[args.index('EW_EXPANSION_CONTROL') + 1], str(paths['profile'] / 'player.sock'))
             self.assertEqual(args[args.index('EW_EXPANSION_SAVE') + 1], str(paths['save']))
+
+    def test_offline_expansion_routes_control_flag(self):
+        from world.launcher import main
+        with patch('world.expansion.run', return_value=0) as run:
+            self.assertEqual(main(['--state-dir', '/tmp/world', 'offline', 'Alice',
+                                   '--engine', 'expansion-native', '--agent-control']), 0)
+            self.assertTrue(run.call_args.args[0].agent_control)

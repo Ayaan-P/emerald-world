@@ -395,6 +395,7 @@ def main(argv=None):
     offline.add_argument('--display', help='dedicated nested Xephyr display :90..:199')
     offline.add_argument('--test-input', type=Path, help='run upstream headless engine input instead of GUI')
     offline.add_argument('--print-command', action='store_true')
+    offline.add_argument('--agent-control', action='store_true', help='experimental Expansion player control')
     sub.add_parser('inspect', help='show players, shared tiles, mechanic revision/errors')
     deploy = sub.add_parser('deploy', help='stage and deploy a source candidate under state-dir/candidates')
     deploy.add_argument('source', type=Path)
@@ -422,6 +423,8 @@ def main(argv=None):
             p.error('--replay and --frames require --engine expansion-native')
         args.binary = args.binary or REPO / 'build/pokeemerald64'
     if args.command == 'offline':
+        if args.agent_control:
+            p.error('--agent-control offline requires --engine expansion-native')
         from world.offline import run_offline
         return run_offline(args)
     state = args.state_dir.resolve()
