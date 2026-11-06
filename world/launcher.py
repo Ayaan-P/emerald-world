@@ -252,6 +252,8 @@ def game_command(binary, state_dir, paths, display=None, agent_control=False, *,
             env['EW_EXPANSION_LINK_CONFIG'] = str(paths['config'])
         if os.environ.get('EW_EXPERIMENTAL_EXPANSION_PEERS') == '1':
             env['EW_EXPERIMENTAL_EXPANSION_PEERS'] = '1'
+            if expansion_link and os.environ.get('EW_EXPERIMENTAL_EXPANSION_ACTIVITIES') == '1':
+                env['EW_EXPERIMENTAL_EXPANSION_ACTIVITIES'] = '1'
     for key, value in env.items():
         args += ['--setenv', key, value]
     if expanded:

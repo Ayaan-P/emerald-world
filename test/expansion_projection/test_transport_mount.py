@@ -28,6 +28,16 @@ class TransportMountTests(unittest.TestCase):
             args = game_command(base/'game', base, paths, online=True, engine='expansion-native')
             self.assertNotIn('EW_EXPANSION_LINK_CONFIG', args)
             self.assertNotIn(str(base/'engines'/'expansion-native'/'transport'), args)
+    def test_battle_activity_needs_both_transport_and_peer_opt_ins(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d); paths = profile_paths(base, 'Ash', engine='expansion-native')
+            for env, expected in [({'EW_EXPERIMENTAL_EXPANSION_ACTIVITIES':'1'}, False),
+                ({'EW_EXPERIMENTAL_EXPANSION_LINK':'1','EW_EXPERIMENTAL_EXPANSION_ACTIVITIES':'1'}, False),
+                ({'EW_EXPERIMENTAL_EXPANSION_LINK':'1','EW_EXPERIMENTAL_EXPANSION_PEERS':'1',
+                  'EW_EXPERIMENTAL_EXPANSION_ACTIVITIES':'1'}, True)]:
+                with self.subTest(env=env), patch.dict('os.environ', env, clear=True):
+                    args = game_command(base/'game', base, paths, online=True, engine='expansion-native')
+                    self.assertEqual('EW_EXPERIMENTAL_EXPANSION_ACTIVITIES' in args, expected)
     def test_offline_expansion_has_no_link_transport(self):
         with tempfile.TemporaryDirectory() as d:
             base = Path(d)

@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+struct PlayerAvatar gPlayerAvatar;
+void GetXYCoordsOneStepInFrontOfPlayer(s16 *x,s16 *y) { *x=11; *y=12; }
 struct ObjectEvent gObjectEvents[OBJECT_EVENTS_COUNT]; struct Sprite gSprites[MAX_SPRITES];
 struct Save save; struct Save *gSaveBlock1Ptr=&save; struct Layout layout={100,100};
 struct Events events; struct Header gMapHeader={&layout,&events};
@@ -25,6 +27,7 @@ u8 SpawnSpecialObjectEventParameterized(int gfx,int movement,int local,int x,int
     return OBJECT_EVENTS_COUNT;
 }
 void ExpansionPeers_Update(int);
+const char *ExpansionPeers_Facing(void);
 u8 __wrap_GetObjectEventIdByPosition(u16,u16,u8);
 u8 __real_GetObjectEventIdByPosition(u16 x,u16 y,u8 e) { (void)y; (void)e; return x; }
 void __wrap_SaveObjectEvents(void);
@@ -34,7 +37,7 @@ void __real_CopyPartyAndObjectsToSave(void) { __real_SaveObjectEvents(); }
 int main(void) {
     char path[]="/tmp/ew-peers-XXXXXX"; int fd=mkstemp(path); assert(fd>=0); close(fd); assert(!setenv("EW_EXPANSION_PEERS",path,1));
     FILE *f=fopen(path,"w"); assert(f); fputs("EWPEERS 1\nAsh 0 0 4 5 2 1\n",f); fclose(f);
-    ExpansionPeers_Update(1); assert(gObjectEvents[0].active); assert(gObjectEvents[0].currentCoords.x==11); assert(gObjectEvents[0].facingDirection==2);
+    ExpansionPeers_Update(1); assert(gObjectEvents[0].active); assert(gObjectEvents[0].currentCoords.x==11); assert(gObjectEvents[0].facingDirection==2); assert(!strcmp(ExpansionPeers_Facing(),"Ash"));
     gObjectEvents[1].active=1; gObjectEvents[1].localId=1;
     assert(__wrap_GetObjectEventIdByPosition(0,0,0)==OBJECT_EVENTS_COUNT);
     assert(__wrap_GetObjectEventIdByPosition(1,0,0)==1);

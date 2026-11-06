@@ -45,3 +45,11 @@ there rather than silently negotiating a potentially incompatible session.
 The dual-engine replay can also exercise the real world authority and client
 snapshot parser using in-memory protocol delivery. It does not open sockets or
 establish that networking, matchmaking, battle or trade work end to end.
+
+A further `EW_EXPERIMENTAL_EXPANSION_ACTIVITIES=1` opt-in (requiring both
+experimental peer projection and LINK) adds a single-battle invitation and
+explicit accept/decline menu using the donor's own cable-battle task. Other
+activities, including trade, double battle and tagged encounters, remain
+disabled. This new flow has not been exercised between real clients and must
+not be used with valuable saves. Engine labels prevent accidental mixed-engine
+pairing but are not protection against a malicious peer.

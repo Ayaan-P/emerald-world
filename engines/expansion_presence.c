@@ -17,6 +17,8 @@ void NativeLink_AfterFrame(void);
 int NativeLink_BeforeFrame(const u16 send[8]);
 extern u16 gSendCmd[8];
 void ExpansionPeers_Update(int overworld);
+void ExpansionActivity_Update(void);
+int ExpansionActivity_PresenceReady(void);
 unsigned ExpansionPeers_Count(void);
 enum frame_result __real_frame_run(void);
 enum frame_result __wrap_frame_run(void)
@@ -29,6 +31,7 @@ enum frame_result __wrap_frame_run(void)
         NativeLink_AfterFrame();
         LinkTransport_Pump();
         (void)NativeLink_BeforeFrame(gSendCmd);
+        ExpansionActivity_Update();
     }
     enum frame_result result = __real_frame_run();
     const char *path = getenv("EW_EXPANSION_PRESENCE");
@@ -59,8 +62,9 @@ enum frame_result __wrap_frame_run(void)
     FILE *out = fopen(temporary, "w");
     if (out != NULL) {
         int written = fprintf(out, "{\"schema\":1,\"engine\":\"expansion-native\",\"frame\":%u,"
-                          "\"field\":%s,\"group\":%u,\"num\":%u,\"x\":%u,\"y\":%u,\"peers\":%u,\"facing\":%u,\"gfx\":%u,\"link_ready\":%s}\n",
-                          frame_count(), field ? "true" : "false", group, num, x, y, ExpansionPeers_Count(), facing, gfx, link_state == 1 && LinkTransport_Ready() ? "true" : "false");
+                          "\"field\":%s,\"group\":%u,\"num\":%u,\"x\":%u,\"y\":%u,\"peers\":%u,\"facing\":%u,\"gfx\":%u,\"link_ready\":%s,\"ready\":%s}\n",
+                          frame_count(), field ? "true" : "false", group, num, x, y, ExpansionPeers_Count(), facing, gfx, link_state == 1 && LinkTransport_Ready() ? "true" : "false",
+                          field && ExpansionActivity_PresenceReady() ? "true" : "false");
         int closed = fclose(out);
         if (written > 0 && closed == 0)
             (void)rename(temporary, path);

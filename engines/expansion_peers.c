@@ -9,6 +9,7 @@
 #include "global.h"
 #include "global.fieldmap.h"
 #include "fieldmap.h"
+#include "field_player_avatar.h"
 #include "event_object_movement.h"
 #include "sprite.h"
 #include "script.h"
@@ -193,4 +194,18 @@ u8 __wrap_GetObjectEventIdByPosition(u16 x, u16 y, u8 elevation)
     for (i = 0; i < MAX_PEERS; i++)
         if (owned(i) && remotes[i].object == id) return OBJECT_EVENTS_COUNT;
     return id;
+}
+
+/* Borrowed peer name; the caller copies it before the next projection update. */
+const char *ExpansionPeers_Facing(void)
+{
+    unsigned i;
+    s16 x, y;
+    if (gPlayerAvatar.objectEventId >= OBJECT_EVENTS_COUNT) return NULL;
+    GetXYCoordsOneStepInFrontOfPlayer(&x, &y);
+    for (i = 0; i < MAX_PEERS; i++)
+        if (owned(i) && gObjectEvents[remotes[i].object].currentCoords.x == x
+            && gObjectEvents[remotes[i].object].currentCoords.y == y)
+            return remotes[i].id;
+    return NULL;
 }

@@ -15,6 +15,8 @@ struct ObjectEventTemplate { int localId; };
 struct Save { struct { int mapGroup,mapNum; } location; struct ObjectEventTemplate objectEventTemplates[64]; struct ObjectEvent objectEvents[OBJECT_EVENTS_COUNT]; };
 struct Layout { int width,height; }; struct Events { int objectEventCount; };
 struct Header { struct Layout *mapLayout; struct Events *events; };
+struct PlayerAvatar { int objectEventId; }; extern struct PlayerAvatar gPlayerAvatar;
+void GetXYCoordsOneStepInFrontOfPlayer(s16 *, s16 *);
 extern struct ObjectEvent gObjectEvents[OBJECT_EVENTS_COUNT]; extern struct Sprite gSprites[MAX_SPRITES];
 extern struct Save *gSaveBlock1Ptr; extern struct Header gMapHeader;
 void RemoveObjectEvent(struct ObjectEvent *); int ScriptContext_IsEnabled(void); int FuncIsActiveTask(void (*)(u8)); void Task_ShowStartMenu(u8);

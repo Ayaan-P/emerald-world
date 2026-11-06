@@ -164,8 +164,11 @@ class ExpansionSession:
                 facing, gfx = state.get('facing', 1), state.get('gfx', 0)
                 if type(facing) is not int or not 1 <= facing <= 4 or type(gfx) is not int or not 0 <= gfx <= 255:
                     raise ValueError('invalid Expansion avatar')
-                values = [seq, *coordinates, facing, gfx, 0]
-                message = 'FIELD ' + ' '.join(map(str, values)) + ' ' + '0'*16 + ' ' + '0'*16 + '\n'
+                ready = state.get('ready', False)
+                if type(ready) is not bool:
+                    raise ValueError('invalid Expansion activity readiness')
+                values = [seq, *coordinates, facing, gfx, int(ready)]
+                message = ('STATE ' if ready else 'FIELD ') + ' '.join(map(str, values)) + ' ' + '0'*16 + ' ' + '0'*16 + '\n'
                 client.sock.sendall(message.encode('ascii'))
             else:
                 client.send_state(seq, 0, 0, 0, 0, 1, 7, 0, '0'*16, '0'*16)
