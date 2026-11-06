@@ -30,7 +30,11 @@
 /* GBATEK "GBA Memory Map", General Internal Memory:
  * 02000000-0203FFFF "WRAM - On-board Work RAM (256 KBytes)", known as EWRAM. */
 #define GBA_EWRAM_BASE UINT32_C(0x02000000)
+#if WORLD_NATIVE_EWRAM
+#define GBA_EWRAM_SIZE UINT32_C(0x00080000)
+#else
 #define GBA_EWRAM_SIZE UINT32_C(0x00040000)
+#endif
 
 /* GBATEK "GBA Memory Map": 03000000-03007FFF "WRAM - On-chip Work RAM
  * (32 KBytes)", known as IWRAM. */

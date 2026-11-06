@@ -62,3 +62,9 @@ capacity, ordering and visual correctness are not verified.
 The earlier native renderer's extended OAM and OBJ tile-bank changes are
 carried into the donor platform library. Its separate build receives explicit
 feature flags. These changes must still be built and visually tested.
+
+The native EWRAM mapping and linker region are expanded from 256 KiB to
+512 KiB for this candidate, while retaining a size assertion. The platform
+mapping and game-side bound are changed together; pointer relocation, reset,
+heap behavior and saves still require verification. This does not change a
+GBA ROM's memory map.

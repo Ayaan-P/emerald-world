@@ -51,7 +51,11 @@
 #define ROM_END 0xA000000
 
 #define EWRAM_START 0x02000000
+#if defined(PORTABLE) && WORLD_NATIVE_EWRAM
+#define EWRAM_END   (EWRAM_START + 0x80000)
+#else
 #define EWRAM_END   (EWRAM_START + 0x40000)
+#endif
 #define IWRAM_START 0x03000000
 #define IWRAM_END   (IWRAM_START + 0x8000)
 

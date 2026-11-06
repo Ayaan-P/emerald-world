@@ -58,6 +58,12 @@ class InitialResolutions(unittest.TestCase):
  def test_renderer_flags_reach_platform_library(self):
   flags=(ROOT.parent/'expansion-world.mk').read_text()
   make=self.read('platform/Makefile');ppu=self.read('platform/ppu_obj.c');memory=self.read('platform/gba_memmap.h');defs=self.read('include/gba/defines.h')
-  self.assertIn('export WORLD_NATIVE_CPPFLAGS := -DWORLD_NATIVE_OAM=1 -DWORLD_NATIVE_TILEBANK=1',flags)
+  self.assertIn('export WORLD_NATIVE_CPPFLAGS := -DWORLD_NATIVE_OAM=1 -DWORLD_NATIVE_TILEBANK=1 -DWORLD_NATIVE_EWRAM=1',flags)
   self.assertIn('CFLAGS_ALL += $(WORLD_NATIVE_CPPFLAGS)',make)
   self.assertIn('world_oam_order(',ppu);self.assertIn('0x00020000',memory);self.assertIn('OAM_ENTRY_COUNT 192',defs)
+
+ def test_native_ewram_is_consistently_expanded_and_bounded(self):
+  flags=(ROOT.parent/'expansion-world.mk').read_text(); mem=self.read('platform/gba_memmap.h'); defs=self.read('include/gba/defines.h'); link=self.read('platform/gba_regions.ld')
+  self.assertIn('-DWORLD_NATIVE_EWRAM=1',flags);self.assertIn('gba_native_ewram_size=0x80000',flags)
+  self.assertIn('GBA_EWRAM_SIZE UINT32_C(0x00080000)',mem);self.assertIn('EWRAM_START + 0x80000',defs)
+  self.assertIn('ASSERT(gba_ewram_data_end <= gba_linked_ewram_start + gba_native_ewram_size',link)

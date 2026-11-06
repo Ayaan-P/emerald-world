@@ -20,6 +20,7 @@
  */
 /* RC7 may select a larger, checked native OBJ tile bank at link time. */
 PROVIDE(gba_native_vram_size = 0x18000);
+PROVIDE(gba_native_ewram_size = 0x40000);
 SECTIONS
 {
     HIDDEN(gba_regions_saved_dot = .);
@@ -52,11 +53,11 @@ SECTIONS
     {
         *(.sbss .sbss.*)
         HIDDEN(gba_ewram_data_end = .);
-        . = MAX(., gba_linked_ewram_start + 0x40000);
+        . = MAX(., gba_linked_ewram_start + gba_native_ewram_size);
         gba_linked_ewram_end = .;
     }
-    ASSERT(gba_ewram_data_end <= gba_linked_ewram_start + 0x40000,
-           "gba_regions.ld: EWRAM_DATA (.sbss) is larger than the 256 KiB of EWRAM")
+    ASSERT(gba_ewram_data_end <= gba_linked_ewram_start + gba_native_ewram_size,
+           "gba_regions.ld: EWRAM_DATA (.sbss) is larger than the configured EWRAM region")
 
     /* IWRAM: GBATEK "GBA Memory Map", 03000000-03007FFF, 32 KBytes. The
      * game's IWRAM variables stay in the native .bss (docs/RESEARCH.md,
