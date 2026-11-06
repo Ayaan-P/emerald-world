@@ -58,3 +58,7 @@ port. Exact behavior, including multiplayer restrictions, is not yet verified.
 The earlier native sprite tile-bank and OAM source changes are carried over
 against the pinned donor to satisfy object-event hooks. Renderer integration,
 capacity, ordering and visual correctness are not verified.
+
+The earlier native renderer's extended OAM and OBJ tile-bank changes are
+carried into the donor platform library. Its separate build receives explicit
+feature flags. These changes must still be built and visually tested.

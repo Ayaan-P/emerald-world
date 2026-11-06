@@ -54,3 +54,10 @@ class InitialResolutions(unittest.TestCase):
   s=self.read('src/sprite.c')
   self.assertIn('NativeSpriteTileClone(',s);self.assertIn('NativeSpriteTileScope(',s)
   self.assertIn('#elif defined(PORTABLE) && WORLD_EXTENDED_SPRITES',s)
+
+ def test_renderer_flags_reach_platform_library(self):
+  flags=(ROOT.parent/'expansion-world.mk').read_text()
+  make=self.read('platform/Makefile');ppu=self.read('platform/ppu_obj.c');memory=self.read('platform/gba_memmap.h');defs=self.read('include/gba/defines.h')
+  self.assertIn('export WORLD_NATIVE_CPPFLAGS := -DWORLD_NATIVE_OAM=1 -DWORLD_NATIVE_TILEBANK=1',flags)
+  self.assertIn('CFLAGS_ALL += $(WORLD_NATIVE_CPPFLAGS)',make)
+  self.assertIn('world_oam_order(',ppu);self.assertIn('0x00020000',memory);self.assertIn('OAM_ENTRY_COUNT 192',defs)
