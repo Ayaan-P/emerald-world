@@ -202,7 +202,7 @@ def check_player_endpoint(paths):
     raise ValueError('An existing player control endpoint is active. Stop its owner first.')
 
 
-def game_command(binary, state_dir, paths, display=None, agent_control=False, *, online=True, engine='vanilla'):
+def game_command(binary, state_dir, paths, display=None, agent_control=False, *, online=True, engine='vanilla', cave_template=None):
     """Construct explicit allowlist mounts. Never mount whole HOME or /run."""
     engine_state(state_dir, engine)
     expanded = engine == 'expansion-native'
@@ -211,6 +211,11 @@ def game_command(binary, state_dir, paths, display=None, agent_control=False, *,
             raise ValueError('Expansion player control is experimental; set EW_EXPERIMENTAL_EXPANSION_CONTROL=1')
         if paths != profile_paths(state_dir, paths['profile'].name, engine=engine):
             raise ValueError('Expansion requires its own separate profile')
+    if cave_template is not None:
+        cave_template = Path(cave_template)
+        if (not expanded or online or os.environ.get('EW_EXPERIMENTAL_EXPANSION_CAVE') != '1'
+                or cave_template.parent != paths['profile'] or cave_template.is_symlink()):
+            raise ValueError('Expansion cave requires an opted-in offline profile template')
     binary = Path(binary).resolve()
     state_dir = Path(state_dir).resolve()
     if online:
@@ -248,6 +253,10 @@ def game_command(binary, state_dir, paths, display=None, agent_control=False, *,
     if expanded:
         env['EW_EXPANSION_PRESENCE'] = str(paths['profile'] / 'presence.json')
         env['EW_EXPANSION_PEERS'] = str(paths['profile'] / 'peers.txt')
+        if cave_template is not None:
+            env['EW_EXPANSION_OFFLINE'] = '1'
+            env['EW_EXPERIMENTAL_EXPANSION_CAVE'] = '1'
+            env['EW_EXPANSION_CAVE_TEMPLATE'] = str(cave_template)
         if agent_control:
             env['EW_EXPANSION_CONTROL'] = str(player_endpoint(paths))
             env['EW_EXPANSION_SAVE'] = str(paths['save'])
@@ -388,6 +397,7 @@ def main(argv=None):
     offline.add_argument('--binary', type=Path)
     offline.add_argument('--engine', choices=('vanilla', 'expansion-native'), default='vanilla')
     offline.add_argument('--replay', type=Path, help='Expansion donor replay script')
+    offline.add_argument('--generated-map', type=Path, help='experimental Expansion EWGMAP01 cave template')
     offline.add_argument('--frames', type=int, help='Expansion frame limit')
     seed = offline.add_mutually_exclusive_group()
     seed.add_argument('--seed-save', type=Path, help='copy an explicit disposable save once, never merge back')
@@ -423,8 +433,8 @@ def main(argv=None):
             p.error('--replay and --frames require --engine expansion-native')
         args.binary = args.binary or REPO / 'build/pokeemerald64'
     if args.command == 'offline':
-        if args.agent_control:
-            p.error('--agent-control offline requires --engine expansion-native')
+        if args.agent_control or args.generated_map:
+            p.error('--agent-control and --generated-map offline require --engine expansion-native')
         from world.offline import run_offline
         return run_offline(args)
     state = args.state_dir.resolve()

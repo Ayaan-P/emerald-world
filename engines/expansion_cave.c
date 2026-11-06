@@ -78,8 +78,8 @@ void ExpansionCave_Update(void)
         sPrepared = sSeenInside = sStaged = FALSE;
     }
 }
-/* Only call from a locally opted-in, offline UI after staging. Online/link
- * admission and every save path still need guards before this is enabled. */
+/* Only call after staging in an explicitly opted-in offline session.
+ * The synthetic-map and save guards still require end-to-end verification. */
 bool8 ExpansionCave_Enter(void)
 {
     s16 x,y; bool8 taskAvailable=FALSE;
@@ -108,6 +108,9 @@ bool8 ExpansionCave_Leave(void)
     if (!sPrepared || !ExpansionCave_IsInside() || gMain.callback2 != CB2_Overworld
         || gMain.inBattle || gPaletteFade.active || ScriptContext_IsEnabled()
         || ArePlayerFieldControlsLocked()) return FALSE;
+    bool8 taskAvailable=FALSE;
+    for (unsigned i=0;i<NUM_TASKS;i++) if (!gTasks[i].isActive) {taskAvailable=TRUE; break;}
+    if (!taskAvailable) return FALSE;
     SetWarpDestination(sReturn.mapGroup,sReturn.mapNum,WARP_ID_NONE,sReturn.x,sReturn.y);
     StoreInitialPlayerAvatarState(); DoWarp(); return TRUE;
 }
@@ -140,7 +143,14 @@ static bool8 LoadTemplate(void)
 }
 bool8 ExpansionCave_HandleInput(u16 newKeys,u16 heldKeys)
 {
+    if (getenv("EW_CAVE_DIAGNOSTIC") && (newKeys & SELECT_BUTTON))
+        fprintf(stderr, "cave input: new=%u held=%u enabled=%d\n",newKeys,heldKeys,CaveEnabled());
     if (!CaveEnabled() || !(newKeys & SELECT_BUTTON) || !(heldKeys & R_BUTTON)) return FALSE;
     if (ExpansionCave_IsInside()) return ExpansionCave_Leave();
-    return LoadTemplate() && ExpansionCave_Enter();
+    bool8 loaded=LoadTemplate();
+    bool8 entered=loaded && ExpansionCave_Enter();
+    if (getenv("EW_CAVE_DIAGNOSTIC"))
+        fprintf(stderr, "cave stage=%d entered=%d callbacks=%d/%d battle=%d fade=%d script=%d locked=%d outdoor=%d foot=%d\n", loaded,entered,
+            gMain.callback1==CB1_Overworld,gMain.callback2==CB2_Overworld,gMain.inBattle,gPaletteFade.active,ScriptContext_IsEnabled(),ArePlayerFieldControlsLocked(),IsMapTypeOutdoors(gMapHeader.mapType),TestPlayerAvatarFlags(PLAYER_AVATAR_FLAG_ON_FOOT));
+    return entered;
 }

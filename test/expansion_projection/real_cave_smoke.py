@@ -32,7 +32,7 @@ wait 30
     out = root / 'out'
     out.mkdir()
     env = dict(os.environ, EW_EXPERIMENTAL_EXPANSION_CAVE='1', EW_EXPANSION_OFFLINE='1',
-               EW_EXPANSION_CAVE_TEMPLATE=str(template))
+               EW_EXPANSION_CAVE_TEMPLATE=str(template), EW_CAVE_DIAGNOSTIC='1')
     p = subprocess.run([str(binary), '--headless', '--silent', '--unthrottled',
         '--replay', str(script), '--out', str(out), '--save', str(root / 'game.sav'),
         '--rtc-offset', str(root / 'clock.rtc'), '--rtc-fixed', '1700000000'],

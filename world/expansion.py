@@ -18,6 +18,26 @@ ENGINE = 'expansion-native'
 BINARY = REPO / 'build/expansion-native/pokeemerald-native'
 
 
+def stage_cave(source, profile):
+    """Stage a bounded inert template in the private profile; return its path."""
+    source = Path(source).resolve(strict=True)
+    with source.open('rb') as stream:
+        wire = stream.read(8 + 31 * 31 + 1)
+    if len(wire) != 8 + 31 * 31 or wire[:8] != b'EWGMAP01':
+        raise ValueError('Expansion cave requires an EWGMAP01 31x31 template')
+    from .shared_cave import SharedCave
+    SharedCave(wire)
+    with tempfile.NamedTemporaryFile(dir=profile, prefix='.expansion-cave-', delete=False) as out:
+        path = Path(out.name)
+        try:
+            os.chmod(path, 0o600)
+            out.write(wire)
+            out.flush()
+        except BaseException:
+            path.unlink(missing_ok=True)
+            raise
+    return path
+
 def stage_replay(source, profile):
     """Flatten bounded textual includes, never mount an input directory.
 
@@ -197,7 +217,9 @@ class ExpansionSession:
         except (OSError, ValueError, KeyError) as exc:
             self.error = str(exc)
 
-    def run(self, binary=BINARY, display=None, *, replay=None, frames=None, print_command=False, prepared_remote=False, agent_control=False):
+    def run(self, binary=BINARY, display=None, *, replay=None, frames=None, print_command=False, prepared_remote=False, agent_control=False, generated_map=None):
+        if generated_map and (self.online or os.environ.get('EW_EXPERIMENTAL_EXPANSION_CAVE') != '1'):
+            raise ValueError('Expansion generated caves require an opted-in offline session')
         if agent_control and replay:
             raise ValueError('Expansion agent control and replay are mutually exclusive')
         if self.state.resolve() != self.state:
@@ -218,55 +240,60 @@ class ExpansionSession:
                     _prepare_profile(self.state, self.trainer, None, self.paths)
             else:
                 self.paths['profile'].mkdir(parents=True, mode=0o700, exist_ok=True)
-            command = game_command(binary, self.base, self.paths, display, agent_control=agent_control, online=self.online, engine=ENGINE)
-            boundary = command.index('--')
-            extra = []
-            symbols = Path(str(Path(binary).resolve()) + '.symbols')
-            if symbols.is_file():
-                extra += ['--ro-bind', str(symbols), str(symbols)]
-            if replay:
-                replay = stage_replay(replay, self.paths['profile'])
-                command += ['--replay', str(replay), '--out', str(self.paths['profile'] / 'replay-out'),
-                            '--unthrottled', '--rtc-fixed', '1700000000']
-            if frames is not None:
-                command += ['--frames', str(frames)]
-            command[boundary:boundary] = extra
-            if print_command:
-                print(json.dumps(command, indent=2))
-                return 0
-            # Discard only our disposable telemetry, never any save or settings.
-            for filename in ('presence.json', 'telemetry.json', 'peers.txt'):
-                path = self.paths['profile'] / filename
-                if path.is_symlink():
-                    raise ValueError('Expansion telemetry cannot be a symlink')
-                path.unlink(missing_ok=True)
-            if agent_control:
-                check_player_endpoint(self.paths)
-            process = subprocess.Popen(command)
-            worker = None
+            cave_template = stage_cave(generated_map, self.paths['profile']) if generated_map else None
             try:
-                if self.online:
-                    worker = threading.Thread(target=self._presence, daemon=True, name='expansion-presence')
-                    worker.start()
-                while process.poll() is None:
+                command = game_command(binary, self.base, self.paths, display, agent_control=agent_control, online=self.online, engine=ENGINE, cave_template=cave_template)
+                boundary = command.index('--')
+                extra = []
+                symbols = Path(str(Path(binary).resolve()) + '.symbols')
+                if symbols.is_file():
+                    extra += ['--ro-bind', str(symbols), str(symbols)]
+                if replay:
+                    replay = stage_replay(replay, self.paths['profile'])
+                    command += ['--replay', str(replay), '--out', str(self.paths['profile'] / 'replay-out'),
+                                '--unthrottled', '--rtc-fixed', '1700000000']
+                if frames is not None:
+                    command += ['--frames', str(frames)]
+                command[boundary:boundary] = extra
+                if print_command:
+                    print(json.dumps(command, indent=2))
+                    return 0
+                # Discard only our disposable telemetry, never any save or settings.
+                for filename in ('presence.json', 'telemetry.json', 'peers.txt'):
+                    path = self.paths['profile'] / filename
+                    if path.is_symlink():
+                        raise ValueError('Expansion telemetry cannot be a symlink')
+                    path.unlink(missing_ok=True)
+                if agent_control:
+                    check_player_endpoint(self.paths)
+                process = subprocess.Popen(command)
+                worker = None
+                try:
+                    if self.online:
+                        worker = threading.Thread(target=self._presence, daemon=True, name='expansion-presence')
+                        worker.start()
+                    while process.poll() is None:
+                        if self.error:
+                            raise ValueError('Expansion presence bridge: ' + self.error)
+                        time.sleep(0.1)
+                    code = process.wait()
                     if self.error:
                         raise ValueError('Expansion presence bridge: ' + self.error)
-                    time.sleep(0.1)
-                code = process.wait()
-                if self.error:
-                    raise ValueError('Expansion presence bridge: ' + self.error)
-                return code
+                    return code
+                finally:
+                    self.stop.set()
+                    if process.poll() is None:
+                        process.terminate()
+                    try:
+                        process.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                    if worker:
+                        worker.join(timeout=2)
             finally:
-                self.stop.set()
-                if process.poll() is None:
-                    process.terminate()
-                try:
-                    process.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
-                if worker:
-                    worker.join(timeout=2)
+                if cave_template is not None:
+                    cave_template.unlink(missing_ok=True)
 
 
 def run(args):
@@ -274,7 +301,7 @@ def run(args):
            ('seed_save', 'copy_online', 'test_input', 'bootstrap')):
         raise ValueError('Expansion does not accept vanilla saves, controls or input scripts. Use --replay for donor replays.')
     session = ExpansionSession(args.state_dir, args.trainer, online=args.command == 'join')
-    options = dict(replay=args.replay, frames=args.frames, print_command=args.print_command, agent_control=getattr(args, 'agent_control', False))
+    options = dict(replay=args.replay, frames=args.frames, print_command=args.print_command, agent_control=getattr(args, 'agent_control', False), generated_map=getattr(args, 'generated_map', None))
     remote = tuple(getattr(args, name, None) for name in ('remote', 'invitation', 'pin'))
     if not any(remote):
         return session.run(args.binary or BINARY, args.display, **options)
