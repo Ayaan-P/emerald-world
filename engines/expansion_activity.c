@@ -1,5 +1,5 @@
 /* Opt-in native battle consent flow for Expansion. No automatic acceptance.
- * This prototype supports single battles only; trade/co-op remain disabled. */
+ * Battles and party-only trade are opt-in; tagged co-op remains disabled. */
 #include <stdlib.h>
 #include <string.h>
 #include "global.h"
@@ -14,6 +14,7 @@
 #include "task.h"
 #include "pokemon.h"
 #include "battle.h"
+#include "trade.h"
 #include "link.h"
 #include "event_data.h"
 #include "field_control_avatar.h"
@@ -46,6 +47,11 @@ static bool8 enabled(void)
     const char *p = getenv("EW_EXPERIMENTAL_EXPANSION_ACTIVITIES");
     return p && !strcmp(p, "1");
 }
+static bool8 trade_enabled(void)
+{
+    const char *p = getenv("EW_EXPERIMENTAL_EXPANSION_TRADE");
+    return p && !strcmp(p, "1");
+}
 static bool8 field_context(void)
 {
     return gMain.callback1 == CB1_Overworld && gMain.callback2 == CB2_Overworld
@@ -61,6 +67,7 @@ int ExpansionActivity_PresenceReady(void)
 static bool8 party_ready(unsigned mode)
 {
     unsigned i, usable = 0;
+    if (mode == NATIVE_LINK_TRADE) return gPartiesCount[B_TRAINER_PLAYER] > 0;
     for (i = 0; i < gPartiesCount[B_TRAINER_PLAYER] && i < PARTY_SIZE; i++)
         if (GetMonData(&gParties[B_TRAINER_PLAYER][i], MON_DATA_SPECIES)
             && !GetMonData(&gParties[B_TRAINER_PLAYER][i], MON_DATA_IS_EGG)
@@ -127,8 +134,8 @@ static void task_menu(u8 task)
         if (!LinkTransport_Accept(sActivity.invite)) { stop_activity(); return; }
         sActivity.outgoing = FALSE;
     } else {
-        if (choice < 0 || choice > 1) { stop_activity(); return; }
-        sActivity.mode = choice == 0 ? NATIVE_LINK_SINGLE : NATIVE_LINK_DOUBLE;
+        if (choice < 0 || choice > 2 || (choice == 2 && !trade_enabled())) { stop_activity(); return; }
+        sActivity.mode = choice == 0 ? NATIVE_LINK_SINGLE : choice == 1 ? NATIVE_LINK_DOUBLE : NATIVE_LINK_TRADE;
         if (!party_ready(sActivity.mode) || !LinkTransport_Offer(sActivity.peer, sActivity.mode)) {
             stop_activity(); return;
         }
@@ -140,24 +147,30 @@ static void task_menu(u8 task)
 }
 static bool8 show_menu(bool8 incoming)
 {
-    struct WindowTemplate window = {0, 1, 1, 28, 10, 15, 0x125};
+    struct WindowTemplate window = {0, 1, 1, 28, 12, 15, 0x125};
     u8 text[64];
     sActivity.window = AddWindow(&window);
     if (sActivity.window == WINDOW_NONE) return FALSE;
     SetStandardWindowBorderStyle(sActivity.window, FALSE);
     encode(text, sActivity.peer);
     AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 0, TEXT_SKIP_DRAW, NULL);
-    encode(text, incoming ? (sActivity.mode == NATIVE_LINK_DOUBLE ? "Double battle invitation" : "Single battle invitation") : "Battle this trainer");
+    encode(text, incoming ? (sActivity.mode == NATIVE_LINK_TRADE ? "Trade invitation" :
+        sActivity.mode == NATIVE_LINK_DOUBLE ? "Double battle invitation" : "Single battle invitation") : "Choose an activity");
     AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 16, TEXT_SKIP_DRAW, NULL);
     encode(text, incoming ? "Yes" : "Single battle");
     AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 32, TEXT_SKIP_DRAW, NULL);
     encode(text, incoming ? "No" : "Double battle");
     AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 48, TEXT_SKIP_DRAW, NULL);
     if (!incoming) {
+        if (trade_enabled()) {
+            encode(text, "Trade party");
+            AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 64, TEXT_SKIP_DRAW, NULL);
+        }
         encode(text, "Cancel");
-        AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 64, TEXT_SKIP_DRAW, NULL);
+        AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, trade_enabled() ? 80 : 64, TEXT_SKIP_DRAW, NULL);
     }
-    InitMenuNormal(sActivity.window, FONT_NORMAL, 0, 32, 16, incoming ? 2 : 3, incoming ? 1 : 2);
+    InitMenuNormal(sActivity.window, FONT_NORMAL, 0, 32, 16, incoming ? 2 : trade_enabled() ? 4 : 3,
+                   incoming ? 1 : trade_enabled() ? 3 : 2);
     CopyWindowToVram(sActivity.window, COPYWIN_FULL);
     sActivity.task = CreateTask(task_menu, 80);
     if (sActivity.task == TASK_NONE) { close_menu(); return FALSE; }
@@ -203,8 +216,8 @@ void ExpansionActivity_Update(void)
     if (sActivity.phase == ACT_IDLE) {
         pending = LinkTransport_PendingInvitation();
         if (!pending) return;
-        if ((pending->mode != NATIVE_LINK_SINGLE && pending->mode != NATIVE_LINK_DOUBLE)
-            || !party_ready(pending->mode)) { LinkTransport_Reject(pending->id); return; }
+        if ((pending->mode != NATIVE_LINK_SINGLE && pending->mode != NATIVE_LINK_DOUBLE
+             && !(pending->mode == NATIVE_LINK_TRADE && trade_enabled())) || !party_ready(pending->mode)) { LinkTransport_Reject(pending->id); return; }
         sActivity.mode = pending->mode;
         if (!begin_menu(pending->name, TRUE)) { LinkTransport_Reject(pending->id); return; }
         sActivity.invite = pending->id;
@@ -224,7 +237,9 @@ void ExpansionActivity_Update(void)
             stop_activity(); return;
         }
         if (!NativeLink_IsActive()) return;
-        gWirelessCommType = 0; gLinkType = sActivity.mode == NATIVE_LINK_DOUBLE ? LINKTYPE_DOUBLE_BATTLE : LINKTYPE_SINGLE_BATTLE;
+        gWirelessCommType = 0;
+        gLinkType = sActivity.mode == NATIVE_LINK_TRADE ? LINKTYPE_TRADE_SETUP :
+            sActivity.mode == NATIVE_LINK_DOUBLE ? LINKTYPE_DOUBLE_BATTLE : LINKTYPE_SINGLE_BATTLE;
         OpenLink(); ResetLinkPlayers();
         sActivity.phase = ACT_CONNECT; sActivity.timer = 0;
         show_waiting("Connecting");
@@ -237,7 +252,13 @@ void ExpansionActivity_Update(void)
         gFieldLinkPlayerCount = 2; gLocalLinkPlayerId = GetMultiplayerId(); SaveLinkPlayers(2);
         SetDynamicWarp(0, gSaveBlock1Ptr->location.mapGroup, gSaveBlock1Ptr->location.mapNum, -1);
         ClearLinkCallback_2(); close_menu(); sActivity.phase = ACT_BATTLE;
-        if (!ExpansionActivity_StartBattle(sActivity.mode)) stop_activity();
+        if (sActivity.mode == NATIVE_LINK_TRADE) {
+            gBattleTypeFlags = 0;
+            gSpecialVar_0x8004 = USING_TRADE_CENTER;
+            gSelectedTradeMonPositions[0] = gSelectedTradeMonPositions[1] = 0;
+            CleanupOverworldWindowsAndTilemaps();
+            SetMainCallback2(CB2_StartCreateTradeMenu);
+        } else if (!ExpansionActivity_StartBattle(sActivity.mode)) stop_activity();
         return;
     }
     if (sActivity.phase == ACT_BATTLE) {

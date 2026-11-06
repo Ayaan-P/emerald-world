@@ -1,7 +1,7 @@
 #ifndef ACTIVITY_STUB_H
 #define ACTIVITY_STUB_H
 #include <stdint.h>
-typedef uint8_t u8; typedef uint16_t u16; typedef uint64_t u64; typedef int8_t s8; typedef uint8_t bool8; typedef void (*MainCallback)(void);
+typedef uint8_t u8; typedef uint16_t u16; typedef uint32_t u32; typedef uint64_t u64; typedef int8_t s8; typedef uint8_t bool8; typedef void (*MainCallback)(void);
 #define TRUE 1
 #define FALSE 0
 #define WINDOW_NONE 255
@@ -24,6 +24,8 @@ typedef uint8_t u8; typedef uint16_t u16; typedef uint64_t u64; typedef int8_t s
 #define A_BUTTON 1
 #define LINKTYPE_SINGLE_BATTLE 0x2233
 #define LINKTYPE_DOUBLE_BATTLE 0x2244
+#define LINKTYPE_TRADE_SETUP 0x1111
+#define USING_TRADE_CENTER 3
 struct Pokemon { int species,hp,egg; };
 extern struct Pokemon gParties[4][6]; extern u8 gPartiesCount[4];
 struct Save1 { struct { int mapGroup,mapNum; } location; }; extern struct Save1 *gSaveBlock1Ptr; extern void *gSaveBlock2Ptr;
@@ -31,7 +33,8 @@ struct Main { MainCallback callback1,callback2; int inBattle; }; extern struct M
 struct PaletteFade { int active; }; extern struct PaletteFade gPaletteFade;
 struct FieldInput { int unused; }; struct WindowTemplate { int bg,x,y,w,h,pal,base; };
 extern u8 gWirelessCommType, gFieldLinkPlayerCount, gLocalLinkPlayerId, gReceivedRemoteLinkPlayers;
-extern u16 gLinkType; extern void (*gFieldCallback)(void); extern bool8 (*gFieldCallback2)(void);
+extern u16 gLinkType, gSpecialVar_0x8004; extern u32 gBattleTypeFlags; extern u8 gSelectedTradeMonPositions[2]; extern void (*gFieldCallback)(void); extern bool8 (*gFieldCallback2)(void);
+void CB2_StartCreateTradeMenu(void); void CleanupOverworldWindowsAndTilemaps(void);
 void CB1_Overworld(void); void CB2_Overworld(void); void CB2_ReturnToField(void); void CB2_ReturnToFieldFromMultiplayer(void); void FieldCB_WarpExitFadeFromBlack(void);
 int ScriptContext_IsEnabled(void); int ArePlayerFieldControlsLocked(void); void LockPlayerFieldControls(void); void UnlockPlayerFieldControls(void); void ScriptContext_Init(void);
 void FreezeObjectEvents(void); void UnfreezeObjectEvents(void); void StopPlayerAvatar(void);

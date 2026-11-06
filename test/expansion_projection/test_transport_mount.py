@@ -38,6 +38,18 @@ class TransportMountTests(unittest.TestCase):
                 with self.subTest(env=env), patch.dict('os.environ', env, clear=True):
                     args = game_command(base/'game', base, paths, online=True, engine='expansion-native')
                     self.assertEqual('EW_EXPERIMENTAL_EXPANSION_ACTIVITIES' in args, expected)
+    def test_trade_requires_all_experimental_opt_ins(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d); paths = profile_paths(base, 'Ash', engine='expansion-native')
+            flags = {'EW_EXPERIMENTAL_EXPANSION_LINK':'1','EW_EXPERIMENTAL_EXPANSION_PEERS':'1',
+                     'EW_EXPERIMENTAL_EXPANSION_ACTIVITIES':'1','EW_EXPERIMENTAL_EXPANSION_TRADE':'1'}
+            with patch.dict('os.environ', flags, clear=True):
+                args=game_command(base/'game',base,paths,online=True,engine='expansion-native')
+                self.assertIn('EW_EXPERIMENTAL_EXPANSION_TRADE',args)
+            del flags['EW_EXPERIMENTAL_EXPANSION_ACTIVITIES']
+            with patch.dict('os.environ', flags, clear=True):
+                args=game_command(base/'game',base,paths,online=True,engine='expansion-native')
+                self.assertNotIn('EW_EXPERIMENTAL_EXPANSION_TRADE',args)
     def test_offline_expansion_has_no_link_transport(self):
         with tempfile.TemporaryDirectory() as d:
             base = Path(d)

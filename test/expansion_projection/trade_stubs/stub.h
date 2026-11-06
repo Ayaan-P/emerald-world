@@ -14,6 +14,8 @@ typedef uint16_t u16; typedef uint32_t u32; typedef uint8_t u8;
 #define ITEMS_COUNT 100
 #define POKEBALL_COUNT 28
 #define NUMBER_OF_MON_TYPES 21
+#define NUM_ABILITY_SLOTS 3
+#define MON_DATA_ABILITY_NUM 31
 #define MAX_MON_MOVES 4
 #define POKEMON_NAME_LENGTH 12
 #define MON_DATA_NICKNAME 30

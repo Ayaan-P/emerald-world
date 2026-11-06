@@ -35,6 +35,7 @@ static int mon_valid(struct Pokemon *mon)
         || (mon->mail != MAIL_NONE && mon->mail >= PARTY_SIZE)
         || GetMonData(mon, MON_DATA_HELD_ITEM) >= ITEMS_COUNT
         || GetMonData(mon, MON_DATA_POKEBALL) >= POKEBALL_COUNT
+        || GetMonData(mon, MON_DATA_ABILITY_NUM) >= NUM_ABILITY_SLOTS
         || GetMonData(mon, MON_DATA_TERA_TYPE) >= NUMBER_OF_MON_TYPES
         || GetMonData(mon, MON_DATA_DYNAMAX_LEVEL) > MAX_DYNAMAX_LEVEL
         || GetMonData(mon, MON_DATA_EXP) > 1640000) return 0;
