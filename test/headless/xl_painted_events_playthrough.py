@@ -20,7 +20,7 @@ def run(binary,seed,out):
     def wire(candidate):
         return '\n'.join(json.dumps(x) for x in ({'type':'item.completed','item':{'type':'agent_message','text':json.dumps(candidate)}},{'type':'turn.completed'})).encode()
     invalid={**doc,'paint':[{'x':1,'y':1,'width':1,'height':1,'terrain':'water'}]}
-    catalog=json.dumps({'models':[{'slug':runtime_gm.MODEL}]}).encode()
+    catalog=json.dumps({'models':[{'slug':'gpt-6-luna'}]}).encode()
     with patch('world.author_cave.gm._run_author',side_effect=[runtime_gm.CODEX_VERSION.encode(),catalog,wire(invalid),wire(doc)]):
         _,blob=author_cave.author('mock theme',large=True,wilds=True,xl=True,cast=True,events=True,painted=True,attempts=2)
     with tempfile.TemporaryDirectory(prefix='wilds-guide-') as t:
