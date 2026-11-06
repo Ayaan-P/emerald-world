@@ -75,3 +75,11 @@ class InitialResolutions(unittest.TestCase):
   self.assertIn('sWorldMovementFinished |= (1ULL << moveScrId)',s)
   self.assertIn('sWorldMovementObjectIds[i] = 0xFF',s)
   self.assertIn('pObjEventId = sWorldMovementObjectIds',s)
+
+ def test_coop_battle_source_is_carried_but_not_certified(self):
+  import hashlib,json
+  s=self.read('src/battle_controllers.c');data=json.loads((ROOT.parent/'battle-controller-provenance.json').read_text())
+  self.assertEqual(hashlib.sha256((ROOT/'src/battle_controllers.c').read_bytes()).hexdigest(),data['candidate_sha256'])
+  for symbol in ('WorldCoop_InitControllers()', 'NativeBattleHeaderValid(', 'NativeBattleSourceValid(', 'NativeBattleReplyValid(', 'WorldCoop_ReceiveCompletion(', 'WorldCoop_ObserveController(', 'WorldCoop_ObserveMonData('):
+   self.assertIn(symbol,s)
+  self.assertNotIn('gBattleBufferA',s);self.assertNotIn('gBattleBufferB',s);self.assertNotIn('gActiveBattler',s)

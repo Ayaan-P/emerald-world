@@ -47,8 +47,9 @@ adaptation targeted the 1.17.2 foundation; this candidate targets the pinned
 The prior Expansion adaptations of battle setup, object events and Fly have
 been carried forward with the missing RC8 trainer, remote-collision and arrival
 hooks restored. This does not establish co-op, rendering, travel, DexNav or
-save correctness. Notably the older battle-controller adaptation omits World
-packet validation and co-op hooks, so it is not treated as a resolution.
+save correctness. The earlier battle-controller adaptation omitted World packet validation and
+co-op hooks; those have now been source-merged separately and require compile
+and protocol verification. Treat the result as experimental, not safe online.
 
 Expansion's own DexNav input and Repel/Lure menu are used in the candidate;
 the World-only RepeatRepel implementation is excluded from compilation. The
