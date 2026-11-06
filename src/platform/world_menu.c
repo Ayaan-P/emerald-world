@@ -1,4 +1,5 @@
 #ifdef PORTABLE
+#include "platform/world_chat.h"
 #include "global.h"
 #include "main.h"
 #include "overworld.h"
@@ -19,7 +20,6 @@
 #include "platform/native_link.h"
 #include "platform/world_activity.h"
 #include "platform/world_bridge.h"
-#include "platform/world_chat.h"
 #include "platform/world_menu.h"
 #include "platform/generated_map.h"
 #include "platform/world_rally.h"
