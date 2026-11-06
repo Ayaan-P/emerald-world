@@ -26,6 +26,7 @@ jobs:
       - name: Check isolated projection tests
         run: |
           python3 -m unittest discover -s test/expansion_projection -v
+          python3 -m unittest test.world.test_native_link -v
           gcc -D_POSIX_C_SOURCE=200809L -std=c11 -Wall -Wextra -Werror -Itest/expansion_projection/stubs engines/expansion_peers.c test/expansion_projection/test_projection.c -o /tmp/expansion-projection-test
           /tmp/expansion-projection-test
       - name: Build pinned Expansion donor and adapter
