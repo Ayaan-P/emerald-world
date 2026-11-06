@@ -19,7 +19,9 @@ jobs:
           submodules: recursive
           persist-credentials: false
       - name: Test port preparation
-        run: python3 -m unittest discover -s test -p test_apply_bulk_expansion_port.py -v
+        run: |
+          python3 -m unittest discover -s test -p test_apply_bulk_expansion_port.py -v
+          python3 -m unittest discover -s test -p test_initial_resolutions.py -v
       - name: Apply candidate to clean pinned donor
         run: python3 scripts/apply_bulk_expansion_port.py engines/expansion-native
       - name: Install native build prerequisites

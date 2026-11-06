@@ -23,3 +23,14 @@ reference builds rather than disabling its relocation checks.
 
 Battle, save, object, renderer and other conflicts remain; this candidate is
 not playable or safe to release. See `conflicts.txt` for the original list.
+
+The `src/link.c` conflict resolution reuses the prior donor virtual-cable port
+and exposes the World block-size API. It is not a validated co-op or trade
+integration. LINK engine compatibility, cross-engine pairing prevention and
+session recovery must be reconciled before any online use.
+
+Initial field-input and link conflict resolutions carry the existing World
+hooks into the donor's field and virtual-cable code. The save conflict uses the
+Expansion platform's `frame_flush_save` instead of the old native save writer.
+Save failure/retry semantics and cross-engine LINK isolation are still
+unverified; these source merges must not be interpreted as safe gameplay.
