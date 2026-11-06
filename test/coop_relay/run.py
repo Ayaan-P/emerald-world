@@ -67,6 +67,8 @@ try:
      raise AssertionError('private-party report unexpected: '+report)
    print('Two game processes completed a co-op battle via file relay and restored their own parties.')
    break
+  if any('coop-diag failure-site=' in (p/'stderr.log').read_text() for p in players.values()):
+   raise AssertionError('co-op exchange reported failure')
   if any(proc.poll() is not None for proc in procs.values()):
    raise AssertionError('game exited before both committed and returned')
   time.sleep(.005)
