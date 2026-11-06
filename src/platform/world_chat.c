@@ -42,6 +42,20 @@ static int GuildAvailable(void)
     return 0;
 }
 
+static int TradeBoardAvailable(void)
+{
+    const char *trainer = WorldBridge_TrainerName();
+    char expected[128], line[184];
+    unsigned i;
+    if (!trainer || !Identifier(trainer)) return 0;
+    snprintf(expected, sizeof(expected), "%s > %s: Trade: protocol 1", trainer, trainer);
+    for (i = 0; i < WorldBridge_ChatCount(); i++) {
+        WorldBridge_ChatLine(i, line, sizeof(line));
+        if (!strcmp(line, expected)) return 1;
+    }
+    return 0;
+}
+
 static void Submit(void)
 {
     char copy[152], *text = copy, *target = "*", *space;
@@ -60,6 +74,12 @@ static void Submit(void)
       || (!strncmp(text, "/g", 2) && (text[2] == 0 || text[2] == ' ')))
      && strcmp(text, "/guild help") && !GuildAvailable()) {
         strcpy(sChat.hint, "Send /guild help to check server support first.");
+        return;
+    }
+    if (!strcmp(target, "*") && !strncmp(text, "/trade", 6)
+     && (text[6] == 0 || text[6] == ' ') && strcmp(text, "/trade help")
+     && !TradeBoardAvailable()) {
+        strcpy(sChat.hint, "Send /trade help to check server support first.");
         return;
     }
     if (!WorldBridge_ChatSend(target, text)) {
@@ -85,6 +105,18 @@ int WorldChat_OpenGuild(void)
     sChat.scroll = 0;
     strcpy(sChat.draft, "/guild help");
     strcpy(sChat.hint, "Press Enter for guild commands.");
+    SDL_FlushEvent(SDL_TEXTINPUT);
+    SDL_StartTextInput();
+    return 1;
+}
+
+int WorldChat_OpenTradeBoard(void)
+{
+    if (!WORLD_CHAT_HEIGHT || !WorldBridge_Enabled() || sChat.editing) return 0;
+    sChat.editing = 1;
+    sChat.scroll = 0;
+    strcpy(sChat.draft, "/trade help");
+    strcpy(sChat.hint, "Press Enter for trade board commands.");
     SDL_FlushEvent(SDL_TEXTINPUT);
     SDL_StartTextInput();
     return 1;

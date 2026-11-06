@@ -1,0 +1,27 @@
+name: Trade board
+on:
+  pull_request:
+    paths:
+      - 'world/trade_board.py'
+      - 'world/trade_chat.py'
+      - 'world/server.py'
+      - 'src/platform/world_chat.c'
+      - 'src/platform/world_menu.c'
+      - 'include/platform/world_chat.h'
+      - 'test/test_trade_board.py'
+      - 'test/test_guild_chat_gate.py'
+      - '.github/workflows/test-trade-board.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  board:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Test trade board and native chat gate without sockets
+        run: |
+          python3 -m unittest discover -s test -p test_trade_board.py -v
+          python3 -m unittest discover -s test -p test_guild_chat_gate.py -v
