@@ -1,0 +1,39 @@
+name: Bulk Expansion source merge
+on:
+  pull_request:
+    paths:
+      - 'scripts/bulk_merge_probe.py'
+      - 'test/test_bulk_merge_probe.py'
+      - '.github/workflows/bulk-expansion-port.yml'
+      - '.gitmodules'
+      - 'engines/expansion-native'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  merge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+      - name: Check merge machinery
+        run: python3 -m unittest discover -s test -p test_bulk_merge_probe.py -v
+      - name: Fetch pinned RC8 candidate
+        run: git fetch --no-tags origin fc0335fda988ced00aeb8d09af7c547816c536a7
+      - name: Merge complete source trees in isolation
+        run: |
+          python3 scripts/bulk_merge_probe.py --repo "$GITHUB_WORKSPACE" --donor "$GITHUB_WORKSPACE/engines/expansion-native" --base 4d246489f736ab7f19592b0b50f01dcd88c8e954 --world fc0335fda988ced00aeb8d09af7c547816c536a7 --output "$RUNNER_TEMP/bulk-port"
+      - name: Preserve provisional source delta and conflict inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: bulk-expansion-port
+          path: |
+            ${{ runner.temp }}/bulk-port/auto-merged.patch
+            ${{ runner.temp }}/bulk-port/conflicts.txt
+            ${{ runner.temp }}/bulk-port/summary.json
+          if-no-files-found: error
+          retention-days: 7
