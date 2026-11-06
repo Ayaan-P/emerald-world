@@ -1,5 +1,7 @@
 /* Opt-in native battle consent flow for Expansion. No automatic acceptance.
  * This prototype supports single battles only; trade/co-op remain disabled. */
+#include <stdlib.h>
+#include <string.h>
 #include "global.h"
 #include "global.fieldmap.h"
 #include "main.h"
@@ -24,8 +26,6 @@
 #include "platform/native_link.h"
 #include "platform/link_transport.h"
 #undef PORTABLE
-#include <stdlib.h>
-#include <string.h>
 
 enum ActivityPhase { ACT_IDLE, ACT_MENU, ACT_INVITE, ACT_WAIT, ACT_CONNECT, ACT_BATTLE, ACT_RETURN };
 static struct {
@@ -61,10 +61,10 @@ int ExpansionActivity_PresenceReady(void)
 static bool8 party_ready(void)
 {
     unsigned i;
-    for (i = 0; i < gPlayerPartyCount && i < PARTY_SIZE; i++)
-        if (GetMonData(&gPlayerParty[i], MON_DATA_SPECIES)
-            && !GetMonData(&gPlayerParty[i], MON_DATA_IS_EGG)
-            && GetMonData(&gPlayerParty[i], MON_DATA_HP)) return TRUE;
+    for (i = 0; i < gPartiesCount[B_TRAINER_PLAYER] && i < PARTY_SIZE; i++)
+        if (GetMonData(&gParties[B_TRAINER_PLAYER][i], MON_DATA_SPECIES)
+            && !GetMonData(&gParties[B_TRAINER_PLAYER][i], MON_DATA_IS_EGG)
+            && GetMonData(&gParties[B_TRAINER_PLAYER][i], MON_DATA_HP)) return TRUE;
     return FALSE;
 }
 static void encode(u8 *out, const char *text)
@@ -87,6 +87,20 @@ static void close_menu(void)
         RemoveWindow(sActivity.window);
         sActivity.window = WINDOW_NONE;
     }
+}
+static void show_waiting(const char *message)
+{
+    struct WindowTemplate window = {0, 1, 1, 28, 6, 15, 0x125};
+    u8 text[64];
+    close_menu();
+    sActivity.window = AddWindow(&window);
+    if (sActivity.window == WINDOW_NONE) return;
+    SetStandardWindowBorderStyle(sActivity.window, FALSE);
+    encode(text, sActivity.peer);
+    AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 0, TEXT_SKIP_DRAW, NULL);
+    encode(text, message);
+    AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 24, TEXT_SKIP_DRAW, NULL);
+    CopyWindowToVram(sActivity.window, COPYWIN_FULL);
 }
 static void stop_activity(void)
 {
@@ -120,6 +134,7 @@ static void task_menu(u8 task)
     }
     sActivity.phase = ACT_WAIT;
     sActivity.timer = 0;
+    show_waiting("Waiting for reply");
 }
 static bool8 show_menu(bool8 incoming)
 {
@@ -147,7 +162,7 @@ static bool8 begin_menu(const char *peer, bool8 incoming)
 {
     size_t n;
     if (!enabled() || sActivity.phase != ACT_IDLE || !field_context()
-        || ArePlayerFieldControlsLocked() || !LinkTransport_Ready() || !peer) return FALSE;
+        || ArePlayerFieldControlsLocked() || !LinkTransport_Ready() || NativeLink_IsActive() || !peer) return FALSE;
     n = strlen(peer);
     if (!n || n > 24) return FALSE;
     memcpy(sActivity.peer, peer, n + 1);
@@ -204,6 +219,7 @@ void ExpansionActivity_Update(void)
         gWirelessCommType = 0; gLinkType = LINKTYPE_SINGLE_BATTLE;
         OpenLink(); ResetLinkPlayers();
         sActivity.phase = ACT_CONNECT; sActivity.timer = 0;
+        show_waiting("Connecting");
         return;
     }
     if (sActivity.phase == ACT_CONNECT) {
