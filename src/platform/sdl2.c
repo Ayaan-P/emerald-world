@@ -76,6 +76,7 @@ static FILE *sTestState;
 static const char *sWorldConfigPath;
 static const char *sWorldInputPath;
 static const char *sGeneratedMapPath;
+static bool sGeneratedProgress;
 static const char *sWorldShotPath;
 static bool sWorldBootstrap;
 static u32 sWorldFrame;
@@ -145,6 +146,17 @@ static bool LoadGeneratedMapTemplate(const char *path)
     static const u8 magic4[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '4' };
 #if GENERATED_MAP_WILDS
     static const u8 magic6[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '6' };
+#if GENERATED_WORLD_XL
+    static const u8 magicXL[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', 'A' };
+    static const u8 magicXLPalette[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', 'D' };
+#if GENERATED_WILDS_CAST
+    static const u8 magicXLCast[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', 'B' };
+#if GENERATED_WILDS_EVENTS
+    static const u8 magicXLEvents[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', 'C' };
+    static const u8 magicXLPaintedEvents[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', 'E' };
+#endif
+#endif
+#endif
 #if GENERATED_WILDS_GUIDE
     static const u8 magic7[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '7' };
 #if GENERATED_WILDS_CAST
@@ -158,7 +170,15 @@ static bool LoadGeneratedMapTemplate(const char *path)
 #if GENERATED_CAVE_WILDLIFE
     static const u8 magic5[8] = { 'E', 'W', 'G', 'M', 'A', 'P', '0', '5' };
 #endif
+#if GENERATED_WORLD_XL
 #if GENERATED_WILDS_EVENTS
+    u8 bytes[8 + GENERATED_EVENT_BYTES + GENERATED_CAST_BYTES + GENERATED_XL_MAP_BYTES];
+#elif GENERATED_WILDS_CAST
+    u8 bytes[8 + GENERATED_CAST_BYTES + GENERATED_XL_MAP_BYTES];
+#else
+    u8 bytes[8 + GENERATED_XL_MAP_BYTES];
+#endif
+#elif GENERATED_WILDS_EVENTS
     u8 bytes[8 + GENERATED_EVENT_BYTES + GENERATED_CAST_BYTES + GENERATED_LARGE_MAP_TEMPLATE_BYTES];
 #elif GENERATED_WILDS_CAST
     u8 bytes[8 + GENERATED_CAST_BYTES + GENERATED_LARGE_MAP_TEMPLATE_BYTES];
@@ -200,6 +220,22 @@ static bool LoadGeneratedMapTemplate(const char *path)
 #if GENERATED_MAP_WILDS
         else if (count == 8 + GENERATED_LARGE_MAP_TEMPLATE_BYTES && !memcmp(bytes, magic6, 8))
             valid = GeneratedMap_StageWildsTemplate(bytes + 8, GENERATED_LARGE_MAP_TEMPLATE_BYTES);
+#if GENERATED_WORLD_XL
+        else if (count == 8 + GENERATED_XL_MAP_BYTES && !memcmp(bytes, magicXL, 8))
+            valid = GeneratedMap_StageXLWilds(bytes + 8, GENERATED_XL_MAP_BYTES);
+        else if (count == 8 + GENERATED_XL_MAP_BYTES && !memcmp(bytes, magicXLPalette, 8))
+            valid = GeneratedMap_StageXLPalette(bytes + 8, GENERATED_XL_MAP_BYTES);
+#if GENERATED_WILDS_CAST
+        else if (count == 8 + GENERATED_CAST_BYTES + GENERATED_XL_MAP_BYTES && !memcmp(bytes, magicXLCast, 8))
+            valid = GeneratedMap_StageXLCast(bytes + 8, GENERATED_CAST_BYTES, bytes + 8 + GENERATED_CAST_BYTES, GENERATED_XL_MAP_BYTES);
+#if GENERATED_WILDS_EVENTS
+        else if (count == 8 + GENERATED_EVENT_BYTES + GENERATED_CAST_BYTES + GENERATED_XL_MAP_BYTES && !memcmp(bytes, magicXLEvents, 8))
+            valid = GeneratedMap_StageXLEvents(bytes + 8, GENERATED_EVENT_BYTES, bytes + 8 + GENERATED_EVENT_BYTES, GENERATED_CAST_BYTES, bytes + 8 + GENERATED_EVENT_BYTES + GENERATED_CAST_BYTES, GENERATED_XL_MAP_BYTES);
+        else if (count == 8 + GENERATED_EVENT_BYTES + GENERATED_CAST_BYTES + GENERATED_XL_MAP_BYTES && !memcmp(bytes, magicXLPaintedEvents, 8))
+            valid = GeneratedMap_StageXLPaintedEvents(bytes + 8, GENERATED_EVENT_BYTES, bytes + 8 + GENERATED_EVENT_BYTES, GENERATED_CAST_BYTES, bytes + 8 + GENERATED_EVENT_BYTES + GENERATED_CAST_BYTES, GENERATED_XL_MAP_BYTES);
+#endif
+#endif
+#endif
 #if GENERATED_WILDS_GUIDE
         else if (count == 8 + GENERATED_GUIDE_BYTES + GENERATED_LARGE_MAP_TEMPLATE_BYTES && !memcmp(bytes, magic7, 8))
             valid = GeneratedMap_StageGuidedWilds(bytes + 8, GENERATED_GUIDE_BYTES, bytes + 8 + GENERATED_GUIDE_BYTES, GENERATED_LARGE_MAP_TEMPLATE_BYTES);
@@ -236,6 +272,11 @@ int main(int argc, char **argv)
 {
     if (!ParseArgs(argc, argv))
         return 1;
+    if (sGeneratedProgress && !sGeneratedMapPath)
+    {
+        fprintf(stderr, "Generated story progress requires an offline generated map.\n");
+        return 1;
+    }
     if (sGeneratedMapPath && (sWorldConfigPath || !LoadGeneratedMapTemplate(sGeneratedMapPath)))
     {
         fprintf(stderr, "Generated map unavailable: use a valid offline template and enable the experimental feature.\n");
@@ -296,6 +337,8 @@ int main(int argc, char **argv)
         return 1;
     }
     DexNavNative_Init(sSavePath, !sTestMode);
+    if (sGeneratedProgress && !GeneratedMap_InitXLProgress(sSavePath, TRUE))
+        fprintf(stderr, "Generated story progress is session-only: private sidecar unavailable.\n");
     // Before AgbMain, whose RtcInit reads it
     InitInternalClock();
 
@@ -837,7 +880,7 @@ static bool ParseArgs(int argc, char **argv)
             fprintf(stderr, "Missing player control option value.\n");
             return false;
         }
-        if (value == NULL && (!strcmp(arg, "--world-config") || !strcmp(arg, "--world-input") || !strcmp(arg, "--world-shot") || !strcmp(arg, "--generated-map")))
+        if (value == NULL && (!strcmp(arg, "--world-config") || !strcmp(arg, "--world-input") || !strcmp(arg, "--world-shot") || !strcmp(arg, "--generated-map") || !strcmp(arg, "--generated-progress")))
         {
             fprintf(stderr, "Missing world option value.\n");
             return false;
@@ -863,6 +906,11 @@ static bool ParseArgs(int argc, char **argv)
         {
             if (sGeneratedMapPath != NULL || !strncmp(value, "--", 2)) return false;
             sGeneratedMapPath = value;
+        }
+        else if (strcmp(arg, "--generated-progress") == 0)
+        {
+            if (sGeneratedProgress || strcmp(value,"on")) return false;
+            sGeneratedProgress = true;
         }
         else if (strcmp(arg, "--world-config") == 0)
         {
