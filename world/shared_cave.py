@@ -116,7 +116,7 @@ class SharedCave:
     def walkable(self, x, y):
         return type(x) is int and type(y) is int and 0 <= x < self.side and 0 <= y < self.side and (self.version != 7 or (x,y) != (2,1)) and (self.version not in (8,9) or (x,y) not in ((2,1),(20,20),(40,40))[:self.cast[0]]) and self._rows[y][x] == ord('.')
 
-    def frames(self):
+    def frames(self, terrain=None):
         suffix = '' if self.profile is None else f' {self.profile}'
         if self.version == 3: suffix += ' 3'
         if self.version == 4: suffix = ' LARGE'
@@ -135,6 +135,9 @@ class SharedCave:
                 frames.append(f'CAVE EVENTS {self.identity} {index} {self.events[index*256:(index+1)*256].hex()}')
         if self.guide is not None:
             frames.append(f'CAVE GUIDE {self.identity} {self.guide.hex()}')
+        if terrain is not None:
+            revision,payload=terrain
+            frames.append(f'CAVE TERRAIN {self.identity} {revision} {payload.hex()}')
         frames.extend(f'CAVE ROW {self.identity} {i} {row.decode("ascii")}' for i, row in enumerate(self._rows))
         frames.append(f'CAVE END {self.identity}')
         return '\n'.join(frames) + '\n'
