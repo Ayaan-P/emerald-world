@@ -1,0 +1,5 @@
+# Model-authored painted XL story worlds
+
+The opt-in existing author can turn a theme into an offline 127×127 world with bounded water/grass/tall-grass paint, positioned characters and state-dependent dialogue: `python -m world.author_cave 'theme' --xl-painted-events-output area.bin`. The `--replace-output` flag explicitly atomically replaces an existing regular output file for the running offline game to reload on re-entry. Invoking the author sends the theme to its configured model provider and may incur charges. No model runs implicitly. The compiler and native game validate the inert data; no generated code executes.
+
+Tests use mocked model responses; no real model call has been performed. Native CI attempts to compile a mocked response and play a story on its painted terrain, then separately tests replacing and reloading an offline world. Visual quality, actual model output and multiplayer remain unverified. This draft stacks #223 and its predecessors. Before combining with #221, extend the story identity to include the new painted format and palette; integration is separate.
