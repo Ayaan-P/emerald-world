@@ -1,0 +1,27 @@
+{
+  "prior_work": "d0fbd2de6c5fb5bdfe6100abc6091569e7eddbe6 native-world-wip.patch",
+  "method": "Applied prior patch to pinned donor, then merged RC6 to RC8 changes. Textual checks do not establish behavior.",
+  "files": [
+    {
+      "path": "src/fieldmap.c",
+      "donor_sha256": "aba6abe11db684815fda78a3ce7c7bf220e59696236d4a9305c7b0d4bcac1e5d",
+      "rc6_sha256": "b99452da312ae09eb22a6e592fb4b2e9b2388fec58b4c4bf8afba0e4e08017d8",
+      "rc8_sha256": "b99452da312ae09eb22a6e592fb4b2e9b2388fec58b4c4bf8afba0e4e08017d8",
+      "merged_sha256": "44905bcd48d220011a952ff0d95ef96079b2b3685fc1f9ac38e92d488a2c75e3"
+    },
+    {
+      "path": "src/script_menu.c",
+      "donor_sha256": "9b749b9018379964818a60e513cc86affb3df51b2816053b4e82b63541d3ef60",
+      "rc6_sha256": "1aa4170a451aded012a70d42b491596a8427cc8e697f65557e04a2c030cdcd1d",
+      "rc8_sha256": "1aa4170a451aded012a70d42b491596a8427cc8e697f65557e04a2c030cdcd1d",
+      "merged_sha256": "651419ff5d593ed67bc735453b4cdc0cd9e1f55ff52c389b28e577a9252c0012"
+    },
+    {
+      "path": "src/task.c",
+      "donor_sha256": "6913caae3cb29f6baad5317e913636cdd6c8808d2f897f228850745c0cf5e2bb",
+      "rc6_sha256": "c3093bb039711c8d0601532c0493be15915a055a59ffc67982c0343d1fbd9411",
+      "rc8_sha256": "c3093bb039711c8d0601532c0493be15915a055a59ffc67982c0343d1fbd9411",
+      "merged_sha256": "86c8f001239597e5e28dc1390ae04e524e1adf2898b9742339f9c74287a5d651"
+    }
+  ]
+}

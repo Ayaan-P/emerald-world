@@ -26,3 +26,12 @@ class InitialResolutions(unittest.TestCase):
   self.assertEqual(len(data['files']),37)
   for item in data['files']:
    self.assertEqual(hashlib.sha256((ROOT/item['path']).read_bytes()).hexdigest(),item['merged_sha256'],item['path'])
+
+ def test_carried_engine_hooks(self):
+  import hashlib,json
+  self.assertIn('WorldBridge_PrepareSave()',self.read('src/fieldmap.c'))
+  self.assertIn('ScriptMenu_DrawRepelChoice(',self.read('src/script_menu.c'))
+  self.assertIn('GetTaskCount(void)',self.read('src/task.c'))
+  data=json.loads((ROOT.parent/'prior-hooks-provenance.json').read_text())
+  for item in data['files']:
+   self.assertEqual(hashlib.sha256((ROOT/item['path']).read_bytes()).hexdigest(),item['merged_sha256'])
