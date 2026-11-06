@@ -1,6 +1,7 @@
 #include "global.h"
 #ifdef PORTABLE
 #include "platform/world_coop.h"
+#include "platform/native_link.h"
 #endif
 #include "battle.h"
 #include "battle_anim.h"
@@ -318,11 +319,35 @@ void HandleAction_UseItem(void)
     gBattle_BG0_X = 0;
     gBattle_BG0_Y = 0;
     ClearFuryCutterDestinyBondGrudge(gBattlerAttacker);
+#ifdef PORTABLE
+    if (WorldCoop_MedicineActionActive(gBattlerAttacker))
+    {
+        int result = WorldCoop_AdvanceMedicineAction(gBattlerAttacker);
+        if (result == 0) return;
+        if (result < 0) { NativeLink_Abort(); return; }
+        gBattleScripting.battler = gBattlerAttacker;
+        if (result == 3)
+        {
+            PREPARE_MON_NICK_BUFFER(gBattleTextBuff1, gBattlerAttacker, WorldCoop_MedicineTarget());
+            gBattlescriptCurrInstr = BattleScript_WorldCoopMedicineReserve;
+        }
+        else
+            gBattlescriptCurrInstr = result == 1 ? BattleScript_WorldCoopMedicineHeal : BattleScript_WorldCoopMedicineStatus;
+        gCurrentActionFuncId = B_ACTION_EXEC_SCRIPT;
+        return;
+    }
+#endif
     gLastUsedItem = gBattleBufferB[gBattlerAttacker][1] | (gBattleBufferB[gBattlerAttacker][2] << 8);
 
 #ifdef PORTABLE
     if (WorldCoop_IsBattle())
     {
+        if ((gLastUsedItem & 0xF800) == WORLD_COOP_MEDICINE_REPLY)
+        {
+            if (WorldCoop_BeginMedicineAction(gBattlerAttacker, gLastUsedItem) < 0)
+                NativeLink_Abort();
+            return;
+        }
         if (!WorldCoop_BallReplyValid(gLastUsedItem) || !gLastUsedItem
          || (gBattlerAttacker & BIT_SIDE))
         {
@@ -2347,6 +2372,10 @@ bool8 HasNoMonsToSwitch(u8 battler, u8 partyIdBattlerOn1, u8 partyIdBattlerOn2)
              && !GetMonData(&party[i], MON_DATA_IS_EGG)
              && GetMonData(&party[i], MON_DATA_HP))
                 return FALSE;
+#if COOP_FULL_SIX_READY
+        if (GetBattlerSide(battler) == B_SIDE_PLAYER && WorldCoop_HasHiddenUsable(battler))
+            return FALSE;
+#endif
         return TRUE;
     }
 #endif

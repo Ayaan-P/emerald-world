@@ -2,6 +2,7 @@
 #ifdef PORTABLE
 #include "global.h"
 #include "platform/dexnav_native.h"
+#include "platform/generated_map.h"
 #include "dexnav.h"
 #include "battle.h"
 #include "battle_main.h"
@@ -210,6 +211,10 @@ void DexNavNative_Persist(void)
 bool8 DexNavNative_Available(void)
 {
     u32 i;
+#if GENERATED_CAVE_WILDLIFE
+    /* DexNav reads compiled map headers; do not offer a mismatched roster. */
+    if (GeneratedMap_Wildlife() != NULL) return FALSE;
+#endif
     if (!FlagGet(FLAG_SYS_POKEDEX_GET) || GetSafariZoneFlag() || InBattlePike()
         || CurrentBattlePyramidLocation() != PYRAMID_LOCATION_NONE
         || gMapHeader.regionMapSectionId == MAPSEC_BATTLE_FRONTIER

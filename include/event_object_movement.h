@@ -3,6 +3,13 @@
 
 #include "constants/event_object_movement.h"
 
+#ifndef WORLD_MATCHED_TRAINERS
+#define WORLD_MATCHED_TRAINERS 0
+#endif
+#if WORLD_MATCHED_TRAINERS && (!defined(PORTABLE) || !WORLD_EXTENDED_OBJECTS)
+#error WORLD_MATCHED_TRAINERS requires portable extended objects
+#endif
+
 // Palette slots for overworld NPCs.
 // The same standard set of palettes for overworld objects are normally always loaded at the same
 // time while walking around the overworld. The only exceptions are the palettes for the player and
@@ -127,6 +134,10 @@ void TrySpawnObjectEvents(s16 cameraX, s16 cameraY);
 u8 CreateObjectGraphicsSprite(u16 graphicsId, void (*callback)(struct Sprite *), s16 x, s16 y, u8 subpriority);
 u8 TrySpawnObjectEvent(u8 localId, u8 mapNum, u8 mapGroup);
 u8 SpawnSpecialObjectEventParameterized(u8 graphicsId, u8 movementBehavior, u8 localId, s16 x, s16 y, u8 elevation);
+#if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
+bool8 WorldPlayerPaletteCompatible(u8 graphicsId);
+u8 SpawnWorldObjectEventParameterized(u8 graphicsId, u8 movementBehavior, u8 localId, s16 x, s16 y, u8 elevation);
+#endif
 u8 SpawnSpecialObjectEvent(struct ObjectEventTemplate *objectEventTemplate);
 void SetSpritePosToMapCoords(s16 mapX, s16 mapY, s16 *destX, s16 *destY);
 void CameraObjectReset(void);
@@ -162,6 +173,7 @@ u8 GetTrainerFacingDirectionMovementType(u8 direction);
 const u8 *GetObjectEventScriptPointerByObjectEventId(u8 objectEventId);
 u8 GetCollisionFlagsAtCoords(struct ObjectEvent *objectEvent, s16 x, s16 y, u8 direction);
 u8 GetFaceDirectionMovementAction(u32);
+u8 GetMoveDirectionAnimNum(u8 direction);
 u8 GetWalkNormalMovementAction(u32);
 u8 GetWalkFastMovementAction(u32);
 u8 GetRideWaterCurrentMovementAction(u32);

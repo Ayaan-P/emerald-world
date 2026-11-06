@@ -432,6 +432,44 @@ static bool winCheckHorizontalBounds(u16 left, u16 right, u16 xpos)
 }
 
 // Parts of this code heavily borrowed from NanoboyAdvance.
+#if WORLD_NATIVE_TILEBANK
+/* Reconstruct the original sorted OAM order when extra-bank sprites were
+ * deferred to native-only slots. Invalid metadata falls back to physical
+ * order rather than reading outside the OAM buffer. */
+static unsigned NativeTileBankOamOrder(u8 out[OAM_ENTRY_COUNT])
+{
+    const struct OamData *oam = (const struct OamData *)OAM;
+    const struct OamData *meta = &oam[191];
+    unsigned normal, extra, start, n = 0, e = 0, count = 0, i, last = 0;
+    if (meta->x != 511 || meta->y != 255 || meta->shape != 3 || meta->size != 3
+     || meta->tileNum != 1023 || meta->paletteNum != 15 || meta->affineMode != 2
+     || (meta->affineParam & 0xc000) != 0x4000) goto fallback;
+    normal = meta->affineParam & 0xff;
+    extra = (meta->affineParam >> 8) & 0x3f;
+    start = normal < 128 ? 128 : normal;
+    if (normal > 191 || !extra || start + extra > 191) goto fallback;
+    for (i = 0; i < extra; i++)
+    {
+        unsigned tag = oam[start + i].affineParam, rank = tag & 0xff;
+        if ((tag & 0xff00) != 0x8000 || rank > normal || (i && rank < last)) goto fallback;
+        last = rank;
+    }
+    while (n < normal || e < extra)
+    {
+        if (e < extra && (oam[start + e].affineParam & 0xff) <= n)
+            out[count++] = start + e++;
+        else if (n < normal)
+            out[count++] = n++;
+        else
+            goto fallback;
+    }
+    return count;
+fallback:
+    for (i = 0; i < OAM_ENTRY_COUNT; i++) out[i] = i;
+    return OAM_ENTRY_COUNT;
+}
+#endif
+
 static void DrawSprites(struct scanlineData* scanline, uint16_t vcount, bool windowsEnabled)
 {
     int i;
@@ -446,8 +484,19 @@ static void DrawSprites(struct scanlineData* scanline, uint16_t vcount, bool win
         puts("2-D OBJ Character mapping not supported.");
     }
 
-    for (i = 127; i >= 0; i--)
+#if WORLD_NATIVE_TILEBANK
+    u8 nativeOrder[OAM_ENTRY_COUNT];
+    unsigned nativeCount = NativeTileBankOamOrder(nativeOrder);
+#else
+    unsigned nativeCount = OAM_ENTRY_COUNT;
+#endif
+    for (int drawIndex = (int)nativeCount - 1; drawIndex >= 0; drawIndex--)
     {
+#if WORLD_NATIVE_TILEBANK
+        i = nativeOrder[drawIndex];
+#else
+        i = drawIndex;
+#endif
         struct OamData *oam = &((struct OamData *)OAM)[i];
         unsigned int width;
         unsigned int height;
@@ -576,11 +625,16 @@ static void DrawSprites(struct scanlineData* scanline, uint16_t vcount, bool win
                 int block_x = tex_x / 8;
                 int block_y = tex_y / 8;
                 int block_offset = ((block_y * (REG_DISPCNT & 0x40 ? (width / 8) : 16)) + block_x);
+                unsigned int spriteTileNum = oam->tileNum;
+#if WORLD_NATIVE_TILEBANK
+                if (i >= 128 && (oam->affineParam & 0xff00) == 0x8000)
+                    spriteTileNum += 1024;
+#endif
                 uint16_t pixel = 0;
 
                 if (!is8BPP)
                 {
-                    pixel = tiledata[(block_offset + oam->tileNum) * 32 + (tile_y * 4) + (tile_x / 2)];
+                    pixel = tiledata[(block_offset + spriteTileNum) * 32 + (tile_y * 4) + (tile_x / 2)];
                     if (tile_x & 1)
                         pixel >>= 4;
                     else
@@ -589,7 +643,7 @@ static void DrawSprites(struct scanlineData* scanline, uint16_t vcount, bool win
                 }
                 else
                 {
-                    pixel = tiledata[(block_offset * 2 + oam->tileNum) * 32 + (tile_y * 8) + tile_x];
+                    pixel = tiledata[(block_offset * 2 + spriteTileNum) * 32 + (tile_y * 8) + tile_x];
                 }
 
                 if (pixel != 0)

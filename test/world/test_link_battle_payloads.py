@@ -40,6 +40,7 @@ typedef int16_t s16; typedef int32_t s32; typedef u8 bool8;
 #define UNUSED
 #define FALSE 0
 #define MAX_BATTLERS_COUNT 4
+#define WORLD_COOP_MEDICINE_TAG 253
 #define MAX_LINK_PLAYERS 4
 #define PARTY_SIZE 6
 #define MAX_MON_MOVES 4
@@ -82,6 +83,9 @@ static bool8 WorldCoop_CatchPacketValid(const u8 *p, u16 n) { return FALSE; }
 static bool8 WorldCoop_BallReplyValid(u16 reply) {
     return reply == 0 || (reply >= ITEM_MASTER_BALL && reply <= LAST_BALL && reply != ITEM_SAFARI_BALL);
 }
+static bool8 WorldCoop_MedicinePacketValid(const u8 *p, u16 n) { return n == 20 && p[1] == WORLD_COOP_MEDICINE_TAG; }
+static bool8 WorldCoop_ItemReplyValid(u16 reply) { return WorldCoop_BallReplyValid(reply); }
+
 static u8 GetMultiplayerId(void) { return localPlayer; }
 static u8 GetLinkPlayerCount(void) { return 2; }
 static u8 GetBlockReceivedStatus(void) { return 1 << source; }
@@ -92,6 +96,28 @@ static void MarkBattlerReceivedLinkData(u8 i) { (void)i; dispatched++; }
 
 
 class LinkBattlePayloadTests(unittest.TestCase):
+    def test_coop_bag_confusion_flag_is_bounded(self):
+        self.run_c(r'''
+ coopMode=TRUE;
+ u8 request[8]={CONTROLLER_OPENBAG,0x10,0x32,0x54,1,0,0,0};
+ assert(NativeBattleCommandValid(request,8,B_COMM_TO_CONTROLLER));
+ request[4]=2;assert(!NativeBattleCommandValid(request,8,B_COMM_TO_CONTROLLER));
+ request[4]=1;request[7]=1;assert(!NativeBattleCommandValid(request,8,B_COMM_TO_CONTROLLER));
+''')
+
+    def test_potion_response_is_bound_to_pending_request(self):
+        self.run_c(r'''
+ coopMode=TRUE;
+ u8 reply[8]={CONTROLLER_TWORETURNVALUES,1,0,0};
+ sNativeBattleRequestPending[2]=TRUE;
+ sNativeBattleRequest[2][0]=CONTROLLER_EXPUPDATE;
+ sNativeBattleRequest[2][1]=WORLD_COOP_MEDICINE_TAG;
+ assert(NativeBattleReplyValid(2,reply));
+ reply[1]=2;assert(!NativeBattleReplyValid(2,reply));
+ reply[1]=1;reply[2]=1;assert(!NativeBattleReplyValid(2,reply));
+ reply[2]=0;sNativeBattleReplyUsed[2]=TRUE;assert(!NativeBattleReplyValid(2,reply));
+''')
+
     def run_c(self, body, emitters=()):
         source = (ROOT / 'src/battle_controllers.c').read_text()
         header = (ROOT / 'include/battle_controllers.h').read_text()
@@ -371,6 +397,29 @@ static void WorldCoop_ObserveController(u8 battler, const u8 *data) {
  Task_HandleCopyReceivedLinkBuffersData(0);
  assert(aborted==1 && !gBattleBufferB[1][0] && !gTasks[0].tCurrentBlock_Start);
  ''')
+
+    def test_reserve_query_does_not_replace_public_active_view(self):
+        self.run_c(r'''
+ coopMode=TRUE;gBattleTypeFlags |= BATTLE_TYPE_LINK | BATTLE_TYPE_IS_MASTER;
+ struct BattlePokemon mon={0};mon.species=1;mon.level=10;mon.maxHP=30;mon.hp=0;
+ mon.attack=mon.defense=mon.speed=mon.spAttack=mon.spDefense=20;
+ u8 *p=gLinkBattleRecvBuffer;p[0]=B_COMM_TO_ENGINE;p[1]=0;
+ unsigned n=4+sizeof(mon);n=n-n%4+4;p[4]=n;
+ p[8]=CONTROLLER_DATATRANSFER;p[10]=sizeof(mon);memcpy(p+12,&mon,sizeof(mon));
+ sNativeBattleSources[0]=0;sNativeBattleRequestPending[0]=TRUE;
+ sNativeBattleRequest[0][0]=CONTROLLER_GETMONDATA;sNativeBattleRequest[0][1]=REQUEST_ALL_BATTLE;
+ sNativeBattleRequest[0][2]=1<<1;gBattlerPartyIndexes[0]=0;gTasks[0].tCurrentBlock_End=n+8;
+ Task_HandleCopyReceivedLinkBuffersData(0);
+ assert(!aborted && !observedMon && gBattleBufferB[0][0]==CONTROLLER_DATATRANSFER);
+''')
+
+    def test_coop_switch_reply_rejects_unnegotiated_extended_slot(self):
+        self.run_c(r'''
+ coopMode=TRUE;gBattleTypeFlags |= BATTLE_TYPE_IS_MASTER;
+ u8 reply[8]={CONTROLLER_CHOSENMONRETURNVALUE,0x8d,0x10,0x32,0x54,0,0,0};
+ sNativeBattleRequestPending[0]=TRUE;sNativeBattleRequest[0][0]=CONTROLLER_CHOOSEPOKEMON;
+ assert(!NativeBattleReplyValid(0,reply));
+''')
 
     def test_coop_switch_reply_cannot_select_partners_mon(self):
         for party_slot in [0, 3]:

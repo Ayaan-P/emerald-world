@@ -1,4 +1,7 @@
 #include "global.h"
+#ifdef PORTABLE
+#include "platform/generated_map.h"
+#endif
 #include "battle_pike.h"
 #include "battle_pyramid.h"
 #include "battle_pyramid_bag.h"
@@ -342,7 +345,10 @@ static void BuildNormalStartMenu(void)
     }
 
     AddStartMenuAction(MENU_ACTION_PLAYER);
-    AddStartMenuAction(MENU_ACTION_SAVE);
+#if defined(PORTABLE) && GENERATED_MAP_READY
+    if (!GeneratedMap_IsInside())
+#endif
+        AddStartMenuAction(MENU_ACTION_SAVE);
     AddStartMenuAction(MENU_ACTION_OPTION);
 #ifdef PORTABLE
     AddStartMenuAction(MENU_ACTION_WORLD); // Reuses the Friends row. DexNav also works offline.

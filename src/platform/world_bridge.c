@@ -34,6 +34,10 @@
 #include "constants/event_objects.h"
 #include "constants/map_groups.h"
 #include "platform/world_bridge.h"
+#include "platform/generated_map.h"
+#if GENERATED_MAP_READY
+#include "platform/world_cave_wire.h"
+#endif
 #include "platform/world_activity.h"
 #include "platform/world_travel.h"
 #include "platform/world_rally.h"
@@ -47,17 +51,29 @@
 #include <poll.h>
 #endif
 
-/* Per-recipient relevance window, NOT the server's configurable population.
- * The server selects at most eight peers; the stock field pool may draw fewer. */
+/* A negotiated relevance window, not the server's total population.
+ * The experimental native pool can request 32; older servers get 16 or eight. */
 #define WB_PEERS 8
+#if WORLD_EXTENDED_OBJECTS
+#undef WB_PEERS
+#define WB_PEERS 32
+#endif
 #define WB_TRAVEL_PEERS 63
 #define WB_OBJECTS 8
 #define WB_REMOTES (WB_PEERS + WB_OBJECTS)
 #define WB_TILES 128
 #define WB_BUFFER 65536
 #define WB_HANDSHAKE_POLLS 300
+#if WORLD_EXTENDED_OBJECTS
+// 160..199 avoids the Berry Blender reserved local IDs 236..240.
+#define WB_LOCALID 160
+#else
 #define WB_LOCALID 224
+#endif
 #define WB_MARKER 0x5742
+#ifndef WORLD_SMOOTH_PRESENCE
+#define WORLD_SMOOTH_PRESENCE 0
+#endif
 
 struct Peer { char id[26], text[58]; unsigned group, num, x, y, facing, gfx, ready; };
 struct Tile { unsigned group, num, x, y, metatile, collision; };
@@ -79,12 +95,56 @@ struct Snapshot {
     unsigned rallyExpected;
     struct WorldRallySnapshot rally;
 };
-struct Remote { char id[26]; u8 object, sprite, group, num; };
+#if GENERATED_MAP_READY
+enum CaveState { CAVE_DISABLED, CAVE_IDLE, CAVE_WAIT, CAVE_WAIT_RESET, CAVE_ACK, CAVE_WAIT_OK,
+                 CAVE_READY, CAVE_MISMATCH, CAVE_RETURN_NONE };
+#endif
+struct Remote { char id[26]; u8 object, sprite, group, num;
+#if WORLD_SMOOTH_PRESENCE
+    s16 motionX, motionY;
+    u8 motionDirection;
+    bool8 walking;
+#endif
+};
 struct Applied { struct Tile tile; u16 original, raw; };
 static struct {
     bool8 enabled, connected, connecting, staging, chatProbe, chatLegacy, chatAvailable;
     bool8 travelProbe, travelLegacy, travelAvailable;
     bool8 rallyProbe, rallyLegacy, rallyAvailable;
+#if GENERATED_MAP_READY
+    bool8 caveProbe, caveLegacy, caveAvailable, caveReturning;
+#if GENERATED_CAVE_PROFILES
+    bool8 caveV2Probe, caveV2Legacy;
+#if GENERATED_CAVE_WILDLIFE
+    bool8 caveV3Probe, caveV3Legacy;
+#if GENERATED_MAP_LARGE
+    bool8 caveV4Probe, caveV4Legacy;
+    bool8 caveV5Probe, caveV5Legacy;
+#if GENERATED_MAP_WILDS
+    bool8 caveV6Probe, caveV6Legacy;
+#if GENERATED_WILDS_GUIDE
+    bool8 caveV7Probe, caveV7Legacy;
+#if GENERATED_WILDS_CAST
+    bool8 caveV8Probe, caveV8Legacy;
+#if GENERATED_WILDS_EVENTS
+    bool8 caveV9Probe, caveV9Legacy;
+    u8 eventHead, eventCount; unsigned eventSetSeq;
+    struct {u8 kind, state, rule[61];unsigned sequence;} eventQueue[8];
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+    enum CaveState caveState;
+    unsigned caveTimeout, caveRetry;
+    char caveExpected[WORLD_CAVE_ID + 1];
+    struct WorldCaveWire caveWire;
+#endif
+#if WORLD_EXTENDED_OBJECTS
+    bool8 peer32Probe, peer32Legacy, peer16Probe, peer16Legacy;
+#endif
 #ifdef _WIN32
     SOCKET fd;
     bool8 winsockStarted;
@@ -189,8 +249,27 @@ static void EncodeText(const char *text, u8 *out)
 }
 
 /* Generated dimensions reject unknown maps before any engine lookup. */
+#if GENERATED_MAP_READY
+static bool8 IsGeneratedCaveMap(unsigned group, unsigned num)
+{
+    return (group == MAP_GROUP(MAP_GENERATED_WORLD_CAVE) && num == MAP_NUM(MAP_GENERATED_WORLD_CAVE))
+#if GENERATED_MAP_WILDS
+        || (group == MAP_GROUP(MAP_GENERATED_WORLD_WILDS) && num == MAP_NUM(MAP_GENERATED_WORLD_WILDS))
+#endif
+        ;
+}
+#endif
 static bool8 MapCoords(unsigned group, unsigned num, unsigned x, unsigned y)
 {
+#if GENERATED_MAP_READY
+    if (IsGeneratedCaveMap(group, num))
+        return sWorld.connected && sWorld.caveAvailable && sWorld.caveState == CAVE_READY
+#if GENERATED_MAP_WILDS
+            && ((sWorld.caveWire.version == 6 || sWorld.caveWire.version == 7 || sWorld.caveWire.version == 8 || sWorld.caveWire.version == 9) == (group == MAP_GROUP(MAP_GENERATED_WORLD_WILDS)
+                                                && num == MAP_NUM(MAP_GENERATED_WORLD_WILDS)))
+#endif
+            && GeneratedMap_SharedCoordValid(x, y);
+#endif
     return WorldCatalog_Coords(group, num, x, y);
 }
 
@@ -223,6 +302,12 @@ static void UpdateFieldPresence(void)
     const char *phase = WorldActivity_Phase();
     bool8 native = activity && (!strcmp(phase, "native") || !strcmp(phase, "connecting")
         || !strcmp(phase, "returning") || WorldActivity_IsEncounterPending());
+#if GENERATED_MAP_READY
+    if (GeneratedMap_IsInside() && !WorldBridge_GeneratedCaveReady()) {
+        sWorld.fieldKnown = sWorld.menuAnchor = FALSE;
+        return;
+    }
+#endif
     if (!gSaveBlock1Ptr || (!native && gMain.callback1 != CB1_Overworld)
      || (sWorld.fieldKnown
       && (sWorld.field.group != (unsigned)gSaveBlock1Ptr->location.mapGroup
@@ -261,6 +346,16 @@ static bool8 Owned(unsigned slot)
         && o->mapGroup == r->group && o->mapNum == r->num && o->spriteId == r->sprite
         && gSprites[r->sprite].inUse && gSprites[r->sprite].data[0] == r->object
         && gSprites[r->sprite].data[7] == WB_MARKER;
+}
+
+bool8 WorldBridge_IsRemoteObject(const struct ObjectEvent *object)
+{
+    unsigned i;
+    if (object == NULL) return FALSE;
+    for (i = 0; i < WB_REMOTES; i++)
+        if (Owned(i) && &gObjectEvents[sWorld.remotes[i].object] == object)
+            return TRUE;
+    return FALSE;
 }
 
 static void RemoveRemote(unsigned slot)
@@ -347,6 +442,36 @@ static void Disconnect(void)
     sWorld.connected = sWorld.connecting = sWorld.staging = FALSE;
     sWorld.chatProbe = sWorld.chatAvailable = FALSE;
     sWorld.travelProbe = sWorld.travelAvailable = FALSE;
+#if GENERATED_MAP_READY
+    sWorld.caveProbe = sWorld.caveAvailable = sWorld.caveReturning = FALSE;
+#if GENERATED_CAVE_PROFILES
+    sWorld.caveV2Probe = FALSE;
+#if GENERATED_CAVE_WILDLIFE
+    sWorld.caveV3Probe = FALSE;
+#if GENERATED_MAP_LARGE
+    sWorld.caveV4Probe = FALSE;
+    sWorld.caveV5Probe = FALSE;
+#if GENERATED_MAP_WILDS
+    sWorld.caveV6Probe = FALSE;
+#if GENERATED_WILDS_GUIDE
+    sWorld.caveV7Probe = FALSE;
+#if GENERATED_WILDS_CAST
+    sWorld.caveV8Probe = FALSE;
+#if GENERATED_WILDS_EVENTS
+    sWorld.caveV9Probe = FALSE;
+    sWorld.eventHead = sWorld.eventCount = 0; sWorld.eventSetSeq = 0;
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+    sWorld.caveState = CAVE_DISABLED;
+    sWorld.caveTimeout = sWorld.caveRetry = 0;
+    sWorld.caveExpected[0] = 0;
+    WorldCaveWire_Reset(&sWorld.caveWire);
+#endif
     sWorld.inputSize = sWorld.outputSize = sWorld.outputSent = 0;
     sWorld.retry = 30;
     sWorld.live.peerCount = sWorld.live.tileCount = sWorld.live.objectCount = 0;
@@ -360,6 +485,15 @@ static void Disconnect(void)
 }
 
 bool8 WorldBridge_Enabled(void) { return sWorld.enabled; }
+bool8 WorldBridge_GeneratedCaveReady(void)
+{
+#if GENERATED_MAP_READY
+    return sWorld.connected && sWorld.caveAvailable && sWorld.caveState == CAVE_READY
+        && sWorld.snapshotAge <= 180;
+#else
+    return FALSE;
+#endif
+}
 
 bool8 WorldBridge_GetPeer(unsigned index, struct WorldBridgePeer *peer)
 {
@@ -547,6 +681,273 @@ invalid:
 
 /* A snapshot is transactional. Malformed/over-limit frames close the connection
  * without publishing any staged peer or tile. Lines and whole snapshots are bounded. */
+#if GENERATED_MAP_READY
+static bool8 CaveProbeRejected(unsigned n, char **tokens)
+{
+    if (sWorld.caveProbe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
+#if GENERATED_WILDS_EVENTS && GENERATED_CAVE_WILDLIFE
+        if (sWorld.caveV9Probe) {sWorld.caveV9Legacy=TRUE;return TRUE;}
+#endif
+#if GENERATED_WILDS_CAST && GENERATED_CAVE_WILDLIFE
+        if (sWorld.caveV8Probe) {sWorld.caveV8Legacy=TRUE;return TRUE;}
+#endif
+#if GENERATED_WILDS_GUIDE && GENERATED_CAVE_WILDLIFE
+        if (sWorld.caveV7Probe) {
+            sWorld.caveV7Legacy = TRUE;
+            return TRUE;
+        }
+#endif
+#if GENERATED_MAP_WILDS && GENERATED_CAVE_WILDLIFE
+        if (sWorld.caveV6Probe) {
+            sWorld.caveV6Legacy = TRUE;
+            return TRUE;
+        }
+#endif
+#if GENERATED_MAP_LARGE && GENERATED_CAVE_WILDLIFE
+        if (sWorld.caveV5Probe) {
+            sWorld.caveV5Legacy = TRUE;
+            return TRUE;
+        }
+        if (sWorld.caveV4Probe) {
+            sWorld.caveV4Legacy = TRUE;
+            return TRUE;
+        }
+#endif
+#if GENERATED_CAVE_WILDLIFE
+        if (sWorld.caveV3Probe) {
+            sWorld.caveV3Legacy = TRUE;
+            return TRUE;
+        }
+#endif
+#if GENERATED_CAVE_PROFILES
+        if (sWorld.caveV2Probe) {
+            sWorld.caveV2Legacy = TRUE;
+            return TRUE;
+        }
+#endif
+        sWorld.caveLegacy = TRUE;
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static bool8 CaveLine(unsigned n, char **tokens)
+{
+    int result;
+    if (!sWorld.caveAvailable || sWorld.staging) return FALSE;
+#if GENERATED_WILDS_EVENTS
+    if (n == 5 && !strcmp(tokens[1], "EVENTSET")) {
+        unsigned sequence,state;
+        if (!WorldCaveWire_ValidId(tokens[2]) || !Decimal(tokens[3],&sequence) || !sequence || !Decimal(tokens[4],&state) || state>15) return FALSE;
+        if (sequence<=sWorld.eventSetSeq) return TRUE;
+        sWorld.eventSetSeq=sequence;
+        if(sWorld.caveState==CAVE_READY && sWorld.caveWire.version==9 && !strcmp(tokens[2],sWorld.caveWire.id) && GeneratedMap_IsInside()) {
+            if(sWorld.eventCount<8) {unsigned i=(sWorld.eventHead+sWorld.eventCount)%8;
+                sWorld.eventQueue[i].kind=1;sWorld.eventQueue[i].state=state;sWorld.eventQueue[i].sequence=sequence;sWorld.eventCount++;}
+        }
+        return TRUE;
+    }
+    if (n == 8 && !strcmp(tokens[1], "EVENTRULE")) {
+        unsigned sequence,state,npc,next,i,length;u8 rule[61]={0};
+        if (!WorldCaveWire_ValidId(tokens[2]) || !Decimal(tokens[3],&sequence) || !sequence
+         || !Decimal(tokens[4],&state) || state>15 || !Decimal(tokens[5],&npc) || !npc || npc>3
+         || !Decimal(tokens[6],&next) || next>15) return FALSE;
+        length=strlen(tokens[7]);if(!length || length>114 || (length&1))return FALSE;
+        rule[0]=state;rule[1]=npc;rule[2]=next;rule[3]=length/2;
+        for(i=0;i<length;i++) {char c=tokens[7][i];unsigned v;
+            if(c>='0' && c<='9')v=c-'0';else if(c>='a' && c<='f')v=c-'a'+10;else return FALSE;
+            if(!(i&1))rule[4+i/2]=v<<4;else rule[4+i/2]|=v;
+        }
+        if(sequence<=sWorld.eventSetSeq)return TRUE;
+        sWorld.eventSetSeq=sequence;
+        if(sWorld.caveState==CAVE_READY && sWorld.caveWire.version==9 && !strcmp(tokens[2],sWorld.caveWire.id) && GeneratedMap_IsInside()) {
+            if(sWorld.eventCount<8) {unsigned q=(sWorld.eventHead+sWorld.eventCount)%8;
+                memcpy(sWorld.eventQueue[q].rule,rule,61);sWorld.eventQueue[q].kind=2;sWorld.eventQueue[q].sequence=sequence;sWorld.eventCount++;}
+        }
+        return TRUE;
+    }
+#endif
+    if (n == 3 && !strcmp(tokens[1], "RESET") && WorldCaveWire_ValidId(tokens[2])) {
+        bool8 requestInFlight = sWorld.caveState == CAVE_WAIT || sWorld.caveState == CAVE_WAIT_RESET;
+#if GENERATED_WILDS_EVENTS
+        sWorld.eventHead=sWorld.eventCount=0;
+#endif
+        WorldCaveWire_Reset(&sWorld.caveWire);
+        memcpy(sWorld.caveExpected, tokens[2], sizeof(sWorld.caveExpected));
+        /* A GET sent just before RESET may already produce the new map.
+         * Wait briefly for it instead of issuing a duplicate request. */
+        sWorld.caveState = requestInFlight ? CAVE_WAIT_RESET : CAVE_IDLE;
+        sWorld.caveTimeout = requestInFlight ? 60 : 0;
+        sWorld.caveRetry = 0;
+        return TRUE;
+    }
+    if (n == 2 && !strcmp(tokens[1], "NONE")
+     && (sWorld.caveState == CAVE_WAIT || sWorld.caveState == CAVE_WAIT_RESET)) {
+        sWorld.caveState = (GeneratedMap_IsInside() || GeneratedMap_EntryPending()) ? CAVE_RETURN_NONE : CAVE_DISABLED;
+        return TRUE;
+    }
+    if (n == 2 && !strcmp(tokens[1], "BUSY")
+     && (sWorld.caveState == CAVE_WAIT || sWorld.caveState == CAVE_WAIT_RESET)) {
+        WorldCaveWire_Reset(&sWorld.caveWire);
+        sWorld.caveState = CAVE_IDLE;sWorld.caveRetry = 60;return TRUE;
+    }
+    if (n == 3 && !strcmp(tokens[1], "OK") && sWorld.caveState == CAVE_WAIT_OK
+     && !strcmp(tokens[2], sWorld.caveWire.id)) {
+        sWorld.caveExpected[0] = 0;
+        sWorld.caveState = CAVE_READY;return TRUE;
+    }
+    if (sWorld.caveState == CAVE_WAIT_RESET && (n == 3 || n == 4 || n == 5) && !strcmp(tokens[1], "BEGIN")) {
+        sWorld.caveState = CAVE_WAIT;
+        sWorld.caveTimeout = 600;
+    }
+    if (sWorld.caveState != CAVE_WAIT) return FALSE;
+    if ((n == 3 || n == 4 || n == 5) && !strcmp(tokens[1], "BEGIN") && sWorld.caveExpected[0]
+     && strcmp(tokens[2], sWorld.caveExpected)) return FALSE;
+#if GENERATED_CAVE_PROFILES
+    if (n == 4 && !strcmp(tokens[1], "BEGIN") && !sWorld.caveV2Probe) return FALSE;
+#endif
+#if GENERATED_CAVE_WILDLIFE
+    if (n == 5 && !strcmp(tokens[1], "BEGIN") && !sWorld.caveV3Probe) return FALSE;
+#endif
+#if GENERATED_MAP_LARGE
+    if (n == 4 && !strcmp(tokens[1], "BEGIN") && !strcmp(tokens[3], "LARGE")) {
+#if GENERATED_CAVE_WILDLIFE
+        if (!sWorld.caveV4Probe) return FALSE;
+#else
+        return FALSE;
+#endif
+    }
+#endif
+#if GENERATED_MAP_LARGE && GENERATED_CAVE_WILDLIFE
+    if (n == 5 && !strcmp(tokens[1], "BEGIN") && !strcmp(tokens[4], "5") && !sWorld.caveV5Probe) return FALSE;
+#endif
+#if GENERATED_MAP_WILDS
+    if (n == 4 && !strcmp(tokens[1], "BEGIN") && !strcmp(tokens[3], "WILDS")) {
+#if GENERATED_CAVE_WILDLIFE
+        if (!sWorld.caveV6Probe) return FALSE;
+#else
+        return FALSE;
+#endif
+    }
+#endif
+#if GENERATED_WILDS_GUIDE
+    if (n == 4 && !strcmp(tokens[1], "BEGIN") && !strcmp(tokens[3], "GUIDE")) {
+#if GENERATED_CAVE_WILDLIFE
+        if (!sWorld.caveV7Probe) return FALSE;
+#else
+        return FALSE;
+#endif
+    }
+#endif
+#if GENERATED_WILDS_CAST
+    if (n == 4 && !strcmp(tokens[1], "BEGIN") && !strcmp(tokens[3], "CAST")) {
+#if GENERATED_CAVE_WILDLIFE
+        if (!sWorld.caveV8Probe) return FALSE;
+#else
+        return FALSE;
+#endif
+    }
+#endif
+#if GENERATED_WILDS_EVENTS
+    if (n == 4 && !strcmp(tokens[1], "BEGIN") && !strcmp(tokens[3], "EVENTS")) {
+#if GENERATED_CAVE_WILDLIFE
+        if (!sWorld.caveV9Probe) return FALSE;
+#else
+        return FALSE;
+#endif
+    }
+#endif
+    result = WorldCaveWire_Feed(&sWorld.caveWire, n, (const char *const *)tokens);
+    if (result < 0) return FALSE;
+    if (result == 1) {
+#if GENERATED_WILDS_EVENTS && GENERATED_CAVE_WILDLIFE
+        if (sWorld.caveWire.version == 9) {
+            if ((GeneratedMap_IsInside() || GeneratedMap_EntryPending())
+             && !GeneratedMap_MatchesPreparedEventWilds(sWorld.caveWire.events, WORLD_CAVE_EVENT_BYTES, sWorld.caveWire.cast, WORLD_CAVE_CAST_BYTES, sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS))
+                sWorld.caveState = CAVE_MISMATCH;
+            else if (GeneratedMap_StageSharedEventWilds(sWorld.caveWire.events, WORLD_CAVE_EVENT_BYTES, sWorld.caveWire.cast, WORLD_CAVE_CAST_BYTES, sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS))
+                sWorld.caveState = CAVE_ACK;
+            else return FALSE;
+            return TRUE;
+        }
+#endif
+#if GENERATED_WILDS_CAST && GENERATED_CAVE_WILDLIFE
+        if (sWorld.caveWire.version == 8) {
+            if ((GeneratedMap_IsInside() || GeneratedMap_EntryPending())
+             && !GeneratedMap_MatchesPreparedCastWilds(sWorld.caveWire.cast, WORLD_CAVE_CAST_BYTES, sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS))
+                sWorld.caveState = CAVE_MISMATCH;
+            else if (GeneratedMap_StageSharedCastWilds(sWorld.caveWire.cast, WORLD_CAVE_CAST_BYTES, sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS))
+                sWorld.caveState = CAVE_ACK;
+            else return FALSE;
+            return TRUE;
+        }
+#endif
+#if GENERATED_WILDS_GUIDE && GENERATED_CAVE_WILDLIFE
+        if (sWorld.caveWire.version == 7) {
+            if ((GeneratedMap_IsInside() || GeneratedMap_EntryPending())
+             && !GeneratedMap_MatchesPreparedGuidedWilds(sWorld.caveWire.guide, WORLD_CAVE_GUIDE_BYTES, sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS))
+                sWorld.caveState = CAVE_MISMATCH;
+            else if (GeneratedMap_StageSharedGuidedWilds(sWorld.caveWire.guide, WORLD_CAVE_GUIDE_BYTES, sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS))
+                sWorld.caveState = CAVE_ACK;
+            else return FALSE;
+            return TRUE;
+        }
+#endif
+#if GENERATED_MAP_WILDS && GENERATED_CAVE_WILDLIFE
+        if (sWorld.caveWire.version == 6) {
+            if ((GeneratedMap_IsInside() || GeneratedMap_EntryPending())
+             && !GeneratedMap_MatchesPreparedWilds(sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS))
+                sWorld.caveState = CAVE_MISMATCH;
+            else if (GeneratedMap_StageSharedWildsTemplate(sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS))
+                sWorld.caveState = CAVE_ACK;
+            else return FALSE;
+            return TRUE;
+        }
+#endif
+#if GENERATED_MAP_LARGE && GENERATED_CAVE_WILDLIFE
+        if (sWorld.caveWire.version == 4 || sWorld.caveWire.version == 5) {
+            if (sWorld.caveWire.version == 5 && !GeneratedMap_ValidateWildlife(sWorld.caveWire.wildlife, WORLD_CAVE_WILDLIFE_BYTES)) return FALSE;
+            if ((GeneratedMap_IsInside() || GeneratedMap_EntryPending())
+             && !(sWorld.caveWire.version == 5
+                 ? GeneratedMap_MatchesPreparedLargeWildlife(sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS, sWorld.caveWire.profile, sWorld.caveWire.wildlife, WORLD_CAVE_WILDLIFE_BYTES)
+                 : GeneratedMap_MatchesPreparedLarge(sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS)))
+                sWorld.caveState = CAVE_MISMATCH;
+            else if (GeneratedMap_StageSharedLargeTemplate(sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS)) {
+                if (sWorld.caveWire.version == 5 && (!GeneratedMap_SetSharedEncounterProfile(sWorld.caveWire.profile)
+                 || !GeneratedMap_SetSharedWildlife(sWorld.caveWire.wildlife, WORLD_CAVE_WILDLIFE_BYTES))) return FALSE;
+                sWorld.caveState = CAVE_ACK;
+            } else return FALSE;
+            return TRUE;
+        }
+#endif
+#if GENERATED_CAVE_WILDLIFE
+        if (sWorld.caveWire.version == 3 && !GeneratedMap_ValidateWildlife(sWorld.caveWire.wildlife, WORLD_CAVE_WILDLIFE_BYTES)) return FALSE;
+#endif
+        if ((GeneratedMap_IsInside() || GeneratedMap_EntryPending())
+#if GENERATED_CAVE_WILDLIFE
+         && !(sWorld.caveWire.version == 3
+              ? GeneratedMap_MatchesPreparedWildlife(sWorld.caveWire.cells, WORLD_CAVE_CELLS, sWorld.caveWire.profile, sWorld.caveWire.wildlife, WORLD_CAVE_WILDLIFE_BYTES)
+              : GeneratedMap_MatchesPreparedProfile(sWorld.caveWire.cells, WORLD_CAVE_CELLS, sWorld.caveWire.profile)))
+#elif GENERATED_CAVE_PROFILES
+         && !GeneratedMap_MatchesPreparedProfile(sWorld.caveWire.cells, WORLD_CAVE_CELLS, sWorld.caveWire.profile))
+#else
+         && !GeneratedMap_MatchesPrepared(sWorld.caveWire.cells, WORLD_CAVE_CELLS))
+#endif
+            sWorld.caveState = CAVE_MISMATCH;
+        else if (GeneratedMap_StageTemplate(sWorld.caveWire.cells, WORLD_CAVE_CELLS)) {
+#if GENERATED_CAVE_PROFILES
+            if ((sWorld.caveWire.version == 2 || sWorld.caveWire.version == 3 || sWorld.caveWire.version == 5) && !GeneratedMap_SetSharedEncounterProfile(sWorld.caveWire.profile)) return FALSE;
+#endif
+#if GENERATED_CAVE_WILDLIFE
+            if ((sWorld.caveWire.version == 3 || sWorld.caveWire.version == 5) && !GeneratedMap_SetSharedWildlife(sWorld.caveWire.wildlife, WORLD_CAVE_WILDLIFE_BYTES)) return FALSE;
+#endif
+            sWorld.caveState = CAVE_ACK;
+        } else return FALSE;
+    }
+    return TRUE;
+}
+#endif
+
 static bool8 Line(char *line)
 {
     char *tokens[12], *save, *p;
@@ -557,6 +958,25 @@ static bool8 Line(char *line)
     }
     if (!n) return FALSE;
     if (!sWorld.connected) {
+#if WORLD_EXTENDED_OBJECTS
+        if (sWorld.peer32Probe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
+            sWorld.peer32Legacy = TRUE;
+            return FALSE;
+        }
+        if (sWorld.peer16Probe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
+            sWorld.peer16Legacy = TRUE;
+            return FALSE;
+        }
+#endif
+#if GENERATED_MAP_READY
+        if (CaveProbeRejected(n, tokens)) {
+#if WORLD_EXTENDED_OBJECTS
+            /* Each lower cave capability gets a fresh peer-window probe. */
+            sWorld.peer32Legacy = sWorld.peer16Legacy = FALSE;
+#endif
+            return FALSE;
+        }
+#endif
         if (sWorld.rallyProbe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
             sWorld.rallyLegacy = TRUE;
             return FALSE;
@@ -577,9 +997,18 @@ static bool8 Line(char *line)
         sWorld.rallyAvailable = sWorld.rallyProbe;
         sWorld.chatAvailable = sWorld.chatProbe;
         sWorld.travelAvailable = sWorld.travelProbe;
+#if GENERATED_MAP_READY
+        sWorld.caveAvailable = sWorld.caveProbe;
+        sWorld.caveState = sWorld.caveAvailable ? CAVE_IDLE :
+            ((GeneratedMap_IsInside() || GeneratedMap_EntryPending()) ? CAVE_RETURN_NONE : CAVE_DISABLED);
+        sWorld.caveRetry = 0;
+#endif
         sWorld.live.revision = v[0];
         return TRUE;
     }
+#if GENERATED_MAP_READY
+    if (!strcmp(tokens[0], "CAVE")) return CaveLine(n, tokens);
+#endif
     if (!strcmp(tokens[0], "BEGIN")) {
         if (n != 2 || sWorld.staging || !Decimal(tokens[1], &v[0]) || v[0] < sWorld.live.revision) return FALSE;
         memset(&sWorld.stage, 0, sizeof(sWorld.stage));
@@ -644,6 +1073,9 @@ static bool8 Line(char *line)
          || !strcmp(tokens[2], tokens[3]) || strcmp(tokens[8], "explore")
          || (strcmp(tokens[2], sWorld.trainer) && strcmp(tokens[3], sWorld.trainer))) return FALSE;
         for (i = 1; i < 5; i++) if (!Decimal(tokens[i+3], &v[i])) return FALSE;
+#if GENERATED_MAP_READY
+        if (IsGeneratedCaveMap(v[1], v[2])) return FALSE;
+#endif
         if (!MapCoords(v[1],v[2],v[3],v[4])) return FALSE;
         m->seq=v[0]; m->group=v[1]; m->num=v[2]; m->x=v[3]; m->y=v[4];
         strcpy(m->player,tokens[2]); strcpy(m->target,tokens[3]);
@@ -701,6 +1133,9 @@ static bool8 Line(char *line)
          || !strcmp(tokens[1], sWorld.trainer)
          || sWorld.stage.travelCount >= sWorld.stage.travelExpected) return FALSE;
         for (i = 0; i < 8; i++) if (!Decimal(tokens[i + 2], &v[i])) return FALSE;
+#if GENERATED_MAP_READY
+        if (IsGeneratedCaveMap(v[0], v[1])) return FALSE;
+#endif
         if (!MapCoords(v[0], v[1], v[2], v[3]) || v[4] < 1 || v[4] > 4
          || v[5] > 255 || v[6] > 1 || v[7] > 180) return FALSE;
         for (i = 0; i < sWorld.stage.travelCount; i++)
@@ -733,6 +1168,9 @@ static bool8 Line(char *line)
          || sWorld.stage.objectCount >= WB_OBJECTS
          || !ObjectText(tokens[7], text)) return FALSE;
         for (i = 0; i < 5; i++) if (!Decimal(tokens[i + 2], &v[i])) return FALSE;
+#if GENERATED_MAP_READY
+        if (IsGeneratedCaveMap(v[0], v[1])) return FALSE;
+#endif
         if (!MapCoords(v[0], v[1], v[2], v[3]) || (v[4] != 7 && v[4] != 8)) return FALSE;
         snprintf(id, sizeof(id), "@%s", tokens[1]);
         for (i = 0; i < sWorld.stage.peerCount; i++) {
@@ -751,6 +1189,9 @@ static bool8 Line(char *line)
         struct Tile *tile;
         if (n != 7 || sWorld.stage.tileCount == WB_TILES) return FALSE;
         for (i = 0; i < 6; i++) if (!Decimal(tokens[i + 1], &v[i])) return FALSE;
+#if GENERATED_MAP_READY
+        if (IsGeneratedCaveMap(v[0], v[1])) return FALSE;
+#endif
         if (!MapCoords(v[0], v[1], v[2], v[3]) || !WorldCatalog_Metatile(v[0], v[1], v[4]) || v[5] > 1) return FALSE;
         for (i = 0; i < sWorld.stage.tileCount; i++) {
             tile = &sWorld.stage.tiles[i];
@@ -774,23 +1215,70 @@ static bool8 SocketOpen(void)
 
 static void QueueHello(bool8 headless)
 {
+    const char *role;
+    const char *suffix = "";
     sWorld.rallyProbe = !sWorld.rallyLegacy;
+#if GENERATED_MAP_READY
+    sWorld.caveProbe = !sWorld.caveLegacy;
+    if (sWorld.caveProbe) {
+#if GENERATED_CAVE_PROFILES
+        sWorld.caveV2Probe = !sWorld.caveV2Legacy;
+        suffix = sWorld.caveV2Probe ? "CAVE2" : "CAVE";
+#if GENERATED_CAVE_WILDLIFE
+        sWorld.caveV3Probe = sWorld.caveV2Probe && !sWorld.caveV3Legacy;
+        if (sWorld.caveV3Probe) suffix = "CAVE3";
+#if GENERATED_MAP_LARGE
+        sWorld.caveV4Probe = sWorld.caveV3Probe && !sWorld.caveV4Legacy;
+        if (sWorld.caveV4Probe) suffix = "CAVE4";
+        sWorld.caveV5Probe = sWorld.caveV4Probe && !sWorld.caveV5Legacy;
+        if (sWorld.caveV5Probe) suffix = "CAVE5";
+#if GENERATED_MAP_WILDS
+        sWorld.caveV6Probe = sWorld.caveV5Probe && !sWorld.caveV6Legacy;
+        if (sWorld.caveV6Probe) suffix = "CAVE6";
+#if GENERATED_WILDS_GUIDE
+        sWorld.caveV7Probe = sWorld.caveV6Probe && !sWorld.caveV7Legacy;
+        if (sWorld.caveV7Probe) suffix = "CAVE7";
+#if GENERATED_WILDS_CAST
+        sWorld.caveV8Probe = sWorld.caveV7Probe && !sWorld.caveV8Legacy;
+        if (sWorld.caveV8Probe) suffix = "CAVE8";
+#if GENERATED_WILDS_EVENTS
+        sWorld.caveV9Probe = sWorld.caveV8Probe && !sWorld.caveV9Legacy;
+        if (sWorld.caveV9Probe) suffix = "CAVE9";
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#else
+        suffix = "CAVE";
+#endif
+    }
+#endif
+#if WORLD_EXTENDED_OBJECTS
+    sWorld.peer32Probe = !sWorld.peer32Legacy;
+    sWorld.peer16Probe = !sWorld.peer32Probe && !sWorld.peer16Legacy;
+#define WB_PEER_SUFFIX (sWorld.peer32Probe ? "PEER32" : sWorld.peer16Probe ? "PEER16" : "")
+#else
+#define WB_PEER_SUFFIX ""
+#endif
 #ifdef _WIN32
     (void)headless;
     sWorld.chatProbe = FALSE;
     sWorld.travelProbe = !sWorld.travelLegacy;
+    role = sWorld.rallyProbe ? "SOCIALTRAVELRALLY" : sWorld.travelProbe ? "SOCIALTRAVEL" : "SOCIAL";
     sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
-        "EWLOCAL1 %s\nHELLO 1 %s %s %s\n", sWorld.loopbackToken, sWorld.trainer, sWorld.token,
-        sWorld.rallyProbe ? "SOCIALTRAVELRALLY" : sWorld.travelProbe ? "SOCIALTRAVEL" : "SOCIAL");
+        "EWLOCAL1 %s\nHELLO 1 %s %s %s%s%s\n", sWorld.loopbackToken, sWorld.trainer, sWorld.token, role, WB_PEER_SUFFIX, suffix);
 #else
     sWorld.chatProbe = !headless && !sWorld.chatLegacy;
     sWorld.travelProbe = !sWorld.travelLegacy;
+    role = sWorld.rallyProbe ? (sWorld.chatProbe ? "SOCIALTRAVELCHATRALLY" : "SOCIALTRAVELRALLY")
+        : sWorld.travelProbe ? (sWorld.chatProbe ? "SOCIALTRAVELCHAT" : "SOCIALTRAVEL")
+        : (sWorld.chatProbe ? "SOCIALCHAT" : "SOCIAL");
     sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
-        "HELLO 1 %s %s %s\n", sWorld.trainer, sWorld.token,
-        sWorld.rallyProbe ? (sWorld.chatProbe ? "SOCIALTRAVELCHATRALLY" : "SOCIALTRAVELRALLY")
-            : sWorld.travelProbe ? (sWorld.chatProbe ? "SOCIALTRAVELCHAT" : "SOCIALTRAVEL")
-            : (sWorld.chatProbe ? "SOCIALCHAT" : "SOCIAL"));
+        "HELLO 1 %s %s %s%s%s\n", sWorld.trainer, sWorld.token, role, WB_PEER_SUFFIX, suffix);
 #endif
+#undef WB_PEER_SUFFIX
 }
 
 static void Flush(void)
@@ -1019,12 +1507,95 @@ void WorldBridge_ChatLine(unsigned index, char *out, unsigned size)
 }
 
 
+#if GENERATED_MAP_READY
+static void CavePump(void)
+{
+    if (!sWorld.connected) return;
+#if GENERATED_WILDS_EVENTS
+    if(sWorld.eventCount) {
+        if(sWorld.caveState!=CAVE_READY || sWorld.caveWire.version!=9 || !GeneratedMap_IsInside())sWorld.eventHead=sWorld.eventCount=0;
+        else if(Ready() && !sWorld.outputSize) {unsigned i=sWorld.eventHead;bool8 applied=FALSE;
+            if(sWorld.eventQueue[i].kind==1)applied=GeneratedMap_SetSharedEventState(sWorld.eventQueue[i].state);
+            else if(sWorld.eventQueue[i].kind==2)applied=GeneratedMap_SetSharedEventRule(sWorld.eventQueue[i].rule,61);
+            sWorld.outputSize=snprintf(sWorld.output,sizeof(sWorld.output),"CAVE EVENTACK %s %u %s\n",sWorld.caveWire.id,sWorld.eventQueue[i].sequence,applied ? "APPLIED" : "REJECTED");
+            sWorld.eventHead=(i+1)%8;sWorld.eventCount--;Flush();
+        }
+    }
+#endif
+    if (sWorld.caveState == CAVE_MISMATCH || sWorld.caveState == CAVE_RETURN_NONE) {
+        /* A warp can still be entering the old cave even before its map ID
+         * changes. Never acknowledge a replacement during that window. */
+        if (GeneratedMap_EntryPending()) return;
+        if (GeneratedMap_IsInside()) {
+            if (!sWorld.caveReturning && Ready() && GeneratedMap_Leave()) sWorld.caveReturning = TRUE;
+            return;
+        }
+        sWorld.caveReturning = FALSE;
+        if (sWorld.caveState == CAVE_MISMATCH) {
+#if GENERATED_WILDS_EVENTS && GENERATED_CAVE_WILDLIFE
+            if (sWorld.caveWire.version == 9) {
+                if (!GeneratedMap_StageSharedEventWilds(sWorld.caveWire.events, WORLD_CAVE_EVENT_BYTES, sWorld.caveWire.cast, WORLD_CAVE_CAST_BYTES, sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS)) { Disconnect(); return; }
+            } else
+#endif
+#if GENERATED_WILDS_CAST && GENERATED_CAVE_WILDLIFE
+            if (sWorld.caveWire.version == 8) {
+                if (!GeneratedMap_StageSharedCastWilds(sWorld.caveWire.cast, WORLD_CAVE_CAST_BYTES, sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS)) { Disconnect(); return; }
+            } else
+#endif
+#if GENERATED_WILDS_GUIDE && GENERATED_CAVE_WILDLIFE
+            if (sWorld.caveWire.version == 7) {
+                if (!GeneratedMap_StageSharedGuidedWilds(sWorld.caveWire.guide, WORLD_CAVE_GUIDE_BYTES, sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS)) { Disconnect(); return; }
+            } else
+#endif
+#if GENERATED_MAP_WILDS && GENERATED_CAVE_WILDLIFE
+            if (sWorld.caveWire.version == 6) {
+                if (!GeneratedMap_StageSharedWildsTemplate(sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS)) { Disconnect(); return; }
+            } else
+#endif
+#if GENERATED_MAP_LARGE && GENERATED_CAVE_WILDLIFE
+            if (sWorld.caveWire.version == 4 || sWorld.caveWire.version == 5) {
+                if (!GeneratedMap_StageSharedLargeTemplate(sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS)) { Disconnect(); return; }
+            } else
+#endif
+            if (!GeneratedMap_StageTemplate(sWorld.caveWire.cells, WORLD_CAVE_CELLS)) { Disconnect(); return; }
+#if GENERATED_CAVE_PROFILES
+            if ((sWorld.caveWire.version == 2 || sWorld.caveWire.version == 3 || sWorld.caveWire.version == 5) && !GeneratedMap_SetSharedEncounterProfile(sWorld.caveWire.profile)) { Disconnect(); return; }
+#endif
+#if GENERATED_CAVE_WILDLIFE
+            if ((sWorld.caveWire.version == 3 || sWorld.caveWire.version == 5) && !GeneratedMap_SetSharedWildlife(sWorld.caveWire.wildlife, WORLD_CAVE_WILDLIFE_BYTES)) { Disconnect(); return; }
+#endif
+            sWorld.caveState = CAVE_ACK;
+        } else sWorld.caveState = CAVE_DISABLED;
+    }
+    if (sWorld.caveState == CAVE_WAIT_RESET && sWorld.caveTimeout && --sWorld.caveTimeout == 0)
+        sWorld.caveState = CAVE_IDLE;
+    if ((sWorld.caveState == CAVE_WAIT || sWorld.caveState == CAVE_WAIT_OK)
+     && sWorld.caveTimeout && --sWorld.caveTimeout == 0) { Disconnect(); return; }
+    if (sWorld.caveRetry) { sWorld.caveRetry--; return; }
+    if (sWorld.outputSize) return;
+    if (sWorld.caveState == CAVE_IDLE) {
+        WorldCaveWire_Reset(&sWorld.caveWire);
+        sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output), "CAVE GET\n");
+        sWorld.caveState = CAVE_WAIT;sWorld.caveTimeout = 600;Flush();
+    } else if (sWorld.caveState == CAVE_ACK) {
+        sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output), "CAVE ACK %s\n", sWorld.caveWire.id);
+        sWorld.caveState = CAVE_WAIT_OK;sWorld.caveTimeout = 600;Flush();
+    }
+}
+#endif
+
 static void SendState(void)
 {
     const struct Peer *p = &sWorld.field;
     char party[17], bag[17];
     bool8 ready;
     if (!sWorld.connected || sWorld.outputSize) return;
+#if GENERATED_MAP_READY
+    /* Do not rely on frame ordering: no call site may publish a stale cave
+     * position before this connection has acknowledged its exact layout. */
+    if (GeneratedMap_IsInside() && !WorldBridge_GeneratedCaveReady())
+        sWorld.fieldKnown = sWorld.menuAnchor = FALSE;
+#endif
     /* Pending encounters lock controls but retain authoritative tag range.
      * Never revive a revoked or unsafe field position. */
     ready = sWorld.fieldKnown && Overworld()
@@ -1079,6 +1650,26 @@ static unsigned SelectPeers(unsigned order[WB_REMOTES])
     }
     return selected;
 }
+
+#if WORLD_SMOOTH_PRESENCE
+// Limit walking animation to graphics with known standard animation tables.
+static bool8 RemoteWalkAnimationSafe(u8 gfx)
+{
+    switch (gfx)
+    {
+    case OBJ_EVENT_GFX_BOY_1:
+    case OBJ_EVENT_GFX_BRENDAN_NORMAL:
+    case OBJ_EVENT_GFX_BRENDAN_MACH_BIKE:
+    case OBJ_EVENT_GFX_BRENDAN_ACRO_BIKE:
+    case OBJ_EVENT_GFX_MAY_NORMAL:
+    case OBJ_EVENT_GFX_MAY_MACH_BIKE:
+    case OBJ_EVENT_GFX_MAY_ACRO_BIKE:
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+#endif
 
 static void SyncEngine(void)
 {
@@ -1160,6 +1751,9 @@ static void SyncEngine(void)
         if (p->gfx < NUM_OBJ_EVENT_GFX && GetObjectEventGraphicsInfo(p->gfx)->paletteSlot >= PALSLOT_NPC_1
          && GetObjectEventGraphicsInfo(p->gfx)->paletteSlot <= PALSLOT_NPC_4
          && !GetObjectEventGraphicsInfo(p->gfx)->inanimate) gfx = p->gfx;
+#if WORLD_EXTENDED_OBJECTS && WORLD_MATCHED_TRAINERS
+        else if (p->gfx < NUM_OBJ_EVENT_GFX && WorldPlayerPaletteCompatible(p->gfx)) gfx = p->gfx;
+#endif
         /* A different size needs a fresh OBJ allocation. Replace it during
          * this reconciliation, rather than hiding the peer for a frame. */
         if (r->id[0] && Owned(i) && gObjectEvents[r->object].graphicsId != gfx)
@@ -1172,7 +1766,11 @@ static void SyncEngine(void)
             if (gMapHeader.events) for (id = 0; id < gMapHeader.events->objectEventCount; id++)
                 if (gSaveBlock1Ptr->objectEventTemplates[id].localId == WB_LOCALID + i) collision = TRUE;
             if (collision) continue;
+#if WORLD_EXTENDED_OBJECTS
+            id = SpawnWorldObjectEventParameterized(gfx, MOVEMENT_TYPE_NONE, WB_LOCALID + i,
+#else
             id = SpawnSpecialObjectEventParameterized(gfx, MOVEMENT_TYPE_NONE, WB_LOCALID + i,
+#endif
                 p->x + MAP_OFFSET, p->y + MAP_OFFSET, MapGridGetElevationAt(p->x + MAP_OFFSET, p->y + MAP_OFFSET));
             if (id >= OBJECT_EVENTS_COUNT) continue;
             strcpy(r->id, p->id);
@@ -1183,7 +1781,29 @@ static void SyncEngine(void)
         if (!Owned(i)) continue;
         o = &gObjectEvents[r->object];
         if (o->currentCoords.x != (int)p->x + MAP_OFFSET || o->currentCoords.y != (int)p->y + MAP_OFFSET)
+        {
+#if WORLD_SMOOTH_PRESENCE
+            int dx = (int)p->x + MAP_OFFSET - o->currentCoords.x;
+            int dy = (int)p->y + MAP_OFFSET - o->currentCoords.y;
+            // Interpolate only adjacent human steps. Authority, collision and
+            // interaction positions remain at the committed destination.
+            if (r->id[0] != '@' && RemoteWalkAnimationSafe(o->graphicsId) && ((dx == 0 && (dy == -1 || dy == 1))
+                                  || (dy == 0 && (dx == -1 || dx == 1))))
+            {
+                int nextX = r->motionX - 16 * dx;
+                int nextY = r->motionY - 16 * dy;
+                if (nextX >= -32 && nextX <= 32 && nextY >= -32 && nextY <= 32)
+                {
+                    r->motionX = nextX; r->motionY = nextY;
+                    r->motionDirection = dx < 0 ? DIR_WEST : dx > 0 ? DIR_EAST
+                                             : dy < 0 ? DIR_NORTH : DIR_SOUTH;
+                }
+                else r->motionX = r->motionY = 0;
+            }
+            else r->motionX = r->motionY = 0;
+#endif
             MoveObjectEventToMapCoords(o, p->x + MAP_OFFSET, p->y + MAP_OFFSET);
+        }
         o->initialCoords = o->currentCoords;
         o->currentElevation = o->previousElevation = MapGridGetElevationAt(p->x + MAP_OFFSET, p->y + MAP_OFFSET);
         if (o->facingDirection != p->facing) ObjectEventTurn(o, p->facing);
@@ -1366,8 +1986,11 @@ u16 WorldBridge_FilterInput(u16 keys)
         /* Dynamic peers have no map-script template. Do not pass them to the
          * vanilla interaction lookup, including through a counter tile. */
         if (InteractionTarget(p, o)) {
-            if ((pressed & A_BUTTON) && FacingObject(p, o))
-                strcpy(sWorld.pendingObject, sWorld.remotes[i].id);
+            if ((pressed & A_BUTTON) && FacingObject(p, o)
+#if GENERATED_MAP_READY
+             && !GeneratedMap_IsInside()
+#endif
+               ) strcpy(sWorld.pendingObject, sWorld.remotes[i].id);
             return keys & ~A_BUTTON;
         }
     }
@@ -1473,12 +2096,51 @@ void WorldBridge_Poll(bool8 headless)
     if (SocketOpen()) Receive(headless);
 }
 
+#if WORLD_SMOOTH_PRESENCE
+// Called once per game frame, not once per reconciliation (which can run twice).
+static void AdvanceRemoteMotion(void)
+{
+    unsigned i;
+    for (i = 0; i < WB_REMOTES; i++)
+    {
+        struct Remote *r = &sWorld.remotes[i];
+        struct Sprite *sprite;
+        struct ObjectEvent *object;
+        if (!Owned(i) || r->id[0] == '@' || !RemoteWalkAnimationSafe(gObjectEvents[r->object].graphicsId)) continue;
+        sprite = &gSprites[r->sprite];
+        object = &gObjectEvents[r->object];
+        sprite->x2 = r->motionX;
+        sprite->y2 = r->motionY;
+        if (r->motionX || r->motionY)
+        {
+            if (RemoteWalkAnimationSafe(object->graphicsId))
+            {
+                StartSpriteAnimIfDifferent(sprite, GetMoveDirectionAnimNum(r->motionDirection));
+                r->walking = TRUE;
+            }
+            if (r->motionX > 0) r->motionX -= 2;
+            else if (r->motionX < 0) r->motionX += 2;
+            if (r->motionY > 0) r->motionY -= 2;
+            else if (r->motionY < 0) r->motionY += 2;
+        }
+        else if (r->walking)
+        {
+            ObjectEventTurn(object, object->facingDirection);
+            r->walking = FALSE;
+        }
+    }
+}
+#endif
+
 void WorldBridge_BeforeFrame(u32 frame, bool8 headless)
 {
     (void)frame;
     if (!sWorld.enabled) return;
     WorldBridge_Poll(headless);
     SyncEngine();
+#if WORLD_SMOOTH_PRESENCE
+    AdvanceRemoteMotion();
+#endif
 }
 
 void WorldBridge_AfterFrame(u32 frame)
@@ -1487,6 +2149,9 @@ void WorldBridge_AfterFrame(u32 frame)
     char path[1100];
     WorldMenu_Update();
     if (!sWorld.enabled) return;
+#if GENERATED_MAP_READY
+    CavePump();
+#endif
     UpdateFieldPresence();
     if (sWorld.snapshotAge <= 180) sWorld.snapshotAge++;
     WorldTravel_Update();

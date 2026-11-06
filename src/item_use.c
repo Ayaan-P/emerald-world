@@ -1,6 +1,7 @@
 #include "global.h"
 #ifdef PORTABLE
 #include "platform/world_coop.h"
+#include "platform/world_coop_potion.h"
 #endif
 #include "item_use.h"
 #include "battle.h"
@@ -1029,7 +1030,12 @@ static void ItemUseInBattle_ShowPartyMenu(u8 taskId)
 
 void ItemUseInBattle_Medicine(u8 taskId)
 {
-    gItemUseCB = ItemUseCB_Medicine;
+#ifdef PORTABLE
+    if (WorldCoop_IsBattle() && WorldCoop_IsMedicine(gSpecialVar_ItemId))
+        gItemUseCB = ItemUseCB_WorldCoopMedicine;
+    else
+#endif
+        gItemUseCB = ItemUseCB_Medicine;
     ItemUseInBattle_ShowPartyMenu(taskId);
 }
 

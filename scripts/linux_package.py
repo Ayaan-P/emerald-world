@@ -127,6 +127,9 @@ def assemble(binary, web_dist, version, output):
         b'The installer creates ~/.local/share/emerald-world-player and a separate player desktop shortcut.\n'
         b'It never changes ~/.local/bin/emerald-world or existing source-checkout launchers.\n'
         b'Only package trusted clean release builds. Checksums are not signatures.\n', 0o644)
+    notes = REPO / 'docs' / ('RELEASE_RC' + version.rsplit('-rc.', 1)[-1] + '.md') if '-rc.' in version else None
+    if notes is not None and notes.is_file():
+        frozen['RELEASE_NOTES.md'] = (plain(notes).read_bytes(), 0o644)
     manifest = {'format': 1, 'version': version, 'architecture': 'x86_64', 'runtime': runtime,
                 'files': {name: {'sha256': hashlib.sha256(data).hexdigest(), 'mode': mode}
                           for name, (data, mode) in sorted(frozen.items())}}

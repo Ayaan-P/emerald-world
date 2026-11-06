@@ -5204,7 +5204,25 @@ static void Cmd_switchhandleorder(void)
     s32 i;
     if (gBattleControllerExecFlags)
         return;
-
+#if defined(PORTABLE) && COOP_FULL_SIX_READY
+    /* Forced switches can carry two independent choices. Resolve each staged
+     * replacement before the stock script treats the reply as a party index. */
+    if (WorldCoop_IsBattle())
+    {
+        for (i = 0; i < gBattlersCount && i < MAX_BATTLERS_COUNT; i += 2)
+        {
+            if (WorldCoop_RosterActionActive(i)
+             || (gBattleBufferB[i][0] == CONTROLLER_CHOSENMONRETURNVALUE && (gBattleBufferB[i][1] & 0x80)))
+            {
+                int result = WorldCoop_RosterActionActive(i)
+                    ? WorldCoop_AdvanceRosterAction(i)
+                    : WorldCoop_BeginRosterAction(i, gBattleBufferB[i][1], &gBattleBufferB[i][2]);
+                if (result < 0) { NativeLink_Abort(); return; }
+                if (!result) return;
+            }
+        }
+    }
+#endif
     gActiveBattler = GetBattlerForBattleScript(gBattlescriptCurrInstr[1]);
 
     switch (gBattlescriptCurrInstr[2])

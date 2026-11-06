@@ -13,6 +13,7 @@
 #include "script.h"
 #include "constants/songs.h"
 #include "platform/test_state.h"
+#include "platform/generated_map.h"
 #include "platform/world_bridge.h"
 #include "platform/world_activity.h"
 #include "platform/native_link.h"
@@ -184,6 +185,17 @@ void WriteTestState(FILE *file, u32 frame)
             NativeLink_IsConnected() ? "true" : "false", (unsigned)NativeLink_Generation(), TradeMenu_Phase(),
             LinkTransport_TagPeer() ? LinkTransport_TagPeer() : "", LinkTransport_TagInRange() ? "true" : "false",
             WorldCoop_IsBattle() ? "true" : "false");
+#if GENERATED_MAP_READY && GENERATED_CAVE_BIOMES
+    /* Public test-mode observation of the generated floor and exit metatiles. */
+    if (GeneratedMap_IsInside() && gMapHeader.mapLayout && gPlayerAvatar.objectEventId < OBJECT_EVENTS_COUNT
+     && player->active)
+        fprintf(file, ", \"cave_tile\": %d, \"cave_exit_tile\": %d",
+                (int)MapGridGetMetatileIdAt(player->currentCoords.x, player->currentCoords.y),
+                (int)MapGridGetMetatileIdAt(29 + MAP_OFFSET, 29 + MAP_OFFSET));
+#endif
+#if GENERATED_WILDS_EVENTS
+    if (GeneratedMap_IsInside()) fprintf(file, ", \"event_state\": %u", (unsigned)GeneratedMap_EventState());
+#endif
     if (WorldBridge_Enabled())
     {
         fprintf(file, ", \"world\": ");

@@ -521,6 +521,8 @@ static const struct WorldCatalogMap sWorldCatalog[] = {
     {32, 1, 20, 11, 8, 158},
     {32, 2, 10, 9, 8, 512},
     {33, 0, 10, 9, 8, 512},
+    {34, 0, 31, 31, 512, 414},
+    {34, 1, 20, 20, 512, 144},
 };
 static const struct WorldCatalogMap *WorldCatalog_Find(unsigned group, unsigned num)
 {

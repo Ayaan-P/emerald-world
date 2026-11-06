@@ -1,4 +1,7 @@
 #include "global.h"
+#ifdef PORTABLE
+#include "platform/generated_map.h"
+#endif
 #include "platform.h"
 #include "agb_flash.h"
 #include "gba/flash_internal.h"
@@ -1004,6 +1007,7 @@ u8 HandleSavingData(u8 saveType)
 #ifdef PORTABLE
     u16 previousSector = gLastWrittenSector;
     u32 previousCounter = gSaveCounter;
+    if (GeneratedMap_IsInside()) return SAVE_STATUS_ERROR;
 #endif
 
     gTrainerHillVBlankCounter = NULL;
@@ -1073,6 +1077,13 @@ u8 HandleSavingData(u8 saveType)
 
 u8 TrySavingData(u8 saveType)
 {
+#ifdef PORTABLE
+    if (GeneratedMap_IsInside())
+    {
+        gSaveAttemptStatus = SAVE_STATUS_ERROR;
+        return SAVE_STATUS_ERROR;
+    }
+#endif
     if (gFlashMemoryPresent != TRUE)
     {
         gSaveAttemptStatus = SAVE_STATUS_ERROR;
@@ -1103,6 +1114,9 @@ u8 TrySavingData(u8 saveType)
 
 bool8 LinkFullSave_Init(void)
 {
+#ifdef PORTABLE
+    if (GeneratedMap_IsInside()) return TRUE;
+#endif
     if (gFlashMemoryPresent != TRUE)
         return TRUE;
     UpdateSaveAddresses();
@@ -1159,6 +1173,9 @@ bool8 LinkFullSave_SetLastSectorSignature(void)
 
 bool8 WriteSaveBlock2(void)
 {
+#ifdef PORTABLE
+    if (GeneratedMap_IsInside()) return TRUE;
+#endif
     if (gFlashMemoryPresent != TRUE)
         return TRUE;
 
@@ -1178,7 +1195,11 @@ bool8 WriteSaveBlock2(void)
 bool8 WriteSaveBlock1Sector(void)
 {
     u8 finished = FALSE;
-    u16 sectorId = ++gIncrementalSectorId; // Because WriteSaveBlock2 will have been called prior, this will be SECTOR_ID_SAVEBLOCK1_START
+    u16 sectorId;
+#ifdef PORTABLE
+    if (GeneratedMap_IsInside()) return TRUE;
+#endif
+    sectorId = ++gIncrementalSectorId; // Because WriteSaveBlock2 will have been called prior, this will be SECTOR_ID_SAVEBLOCK1_START
     if (sectorId <= SECTOR_ID_SAVEBLOCK1_END)
     {
         // Write a single sector of SaveBlock1

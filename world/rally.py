@@ -31,7 +31,7 @@ class RallyCoordinator:
     def fresh(self, conn, eligible=True):
         state = conn.get('state')
         now = self.clock()
-        return (self.peers.get(conn['id']) is conn and not conn.get('closing')
+        return (self.peers.get(conn['id']) is conn and not conn.get('closing') and not conn.get('in_generated_cave')
                 and state is not None and state[6] == 1
                 and now - conn.get('state_time', -100) <= 3
                 and (not eligible or conn.get('rally_eligible', False))

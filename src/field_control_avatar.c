@@ -1,4 +1,7 @@
 #include "global.h"
+#ifdef PORTABLE
+#include "platform/generated_map.h"
+#endif
 #include "battle_setup.h"
 #include "bike.h"
 #include "coord_event_weather.h"
@@ -721,6 +724,10 @@ static bool8 TryArrowWarp(struct MapPosition *position, u16 metatileBehavior, u8
 
     if (IsArrowWarpMetatileBehavior(metatileBehavior, direction) == TRUE && warpEventId != WARP_ID_NONE)
     {
+#if defined(PORTABLE) && GENERATED_MAP_READY
+        /* The generated cave owns its return and checks warp-task capacity. */
+        if (GeneratedMap_IsInside()) return GeneratedMap_Leave();
+#endif
         StoreInitialPlayerAvatarState();
         SetupWarp(&gMapHeader, warpEventId, position);
         DoWarp();

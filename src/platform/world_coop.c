@@ -26,13 +26,20 @@
 #include "platform/native_link.h"
 #include "platform/world_activity.h"
 #include "platform/world_coop.h"
+#include "platform/world_coop_potion.h"
+#include "platform/world_coop_roster.h"
 #include <string.h>
 
 /* No saved data or pointers cross this boundary. The native Pokemon layout is
  * exactly the 100-byte GBA layout on every supported native architecture. */
 STATIC_ASSERT(sizeof(struct Pokemon) == 100, CoopPokemonWireSize);
 enum { COOP_IDLE, COOP_EXCHANGE, COOP_BATTLE, COOP_REWARDS };
-enum { COOP_MAGIC = 0x4357, COOP_VERSION = 3, COOP_TIMEOUT = 1800,
+#if COOP_FULL_SIX_READY
+#define COOP_VERSION 8
+#else
+#define COOP_VERSION 7
+#endif
+enum { COOP_MAGIC = 0x4357, COOP_TIMEOUT = 1800,
        COOP_CONFIRM = 4 + PARTY_SIZE, COOP_READY = COOP_CONFIRM + 1, COOP_COMMIT = COOP_CONFIRM + 2 };
 struct CoopHeader
 {
@@ -42,6 +49,9 @@ struct CoopHeader
     u32 seed;
     u16 trainer;
     u8 kind, enemyCount;
+#if COOP_FULL_SIX_READY
+    u8 hiddenUsable, reserved[3];
+#endif
 };
 struct CoopMonBlock
 {
@@ -50,7 +60,11 @@ struct CoopMonBlock
     struct Pokemon mon;
 };
 STATIC_ASSERT(sizeof(struct CoopMonBlock) <= 256, CoopBlockBound);
+#if COOP_FULL_SIX_READY
+STATIC_ASSERT(sizeof(struct CoopHeader) == 20, CoopHeaderWireSize);
+#else
 STATIC_ASSERT(sizeof(struct CoopHeader) == 16, CoopHeaderWireSize);
+#endif
 struct CoopCompletion
 {
     u16 magic;
@@ -72,11 +86,27 @@ static struct
 {
     u8 catchOwner;
     bool8 catchDelivered;
-    u16 pendingBall;
+    u16 pendingBall, pendingMedicine;
+    u16 medicineSpent[17];
+    u16 medicineHeal, medicineItem;
+    u32 medicineStatusBefore, medicineStatusAfter;
+    u16 medicineHPAfter;
+    u8 medicineAction, medicineBattler, medicineTarget;
+    bool8 menuConfused, medicineClearConfusion;
     struct Pokemon caughtMon;
     u8 readySent, commitSent, commitEchoed, peerReady, peerCommit, peerOutcome, peerReward;
     u8 state, phase, local, ownerPeer, count, originalCount;
     u8 slots[MULTI_PARTY_SIZE];
+    struct CoopRoster roster;
+    struct Pokemon working[PARTY_SIZE];
+    struct Pokemon menuShared[PARTY_SIZE];
+    u8 menuSharedCount, fullMenuChoice;
+    struct CoopRosterPlan fullMenuPlan;
+    bool8 fullMenuActive;
+    bool8 hiddenUsable[2];
+#if COOP_FULL_SIX_READY
+    u8 rosterAction, rosterBattler, rosterStage, rosterOrder[3];
+#endif
     u8 rewardMask[PARTY_SIZE], rewardRead;
     u8 kind, enemyCount, capturedKind, capturedCount;
     u16 trainer, capturedTrainer;
@@ -224,7 +254,7 @@ const struct Pokemon *WorldCoop_GetOwnMon(u8 originalSlot)
     u8 i;
     if (originalSlot >= PARTY_SIZE)
         return NULL;
-    if (!WorldCoop_IsBattle())
+    if (!WorldCoop_IsBattle() || sCoop.fullMenuActive)
         return &gPlayerParty[originalSlot];
     if (sCoop.staged)
         for (i = 0; i < sCoop.count; i++)
@@ -235,7 +265,7 @@ const struct Pokemon *WorldCoop_GetOwnMon(u8 originalSlot)
                     index = GetPartyIdFromBattlePartyId(index);
                 return &gPlayerParty[index];
             }
-    return &sCoop.original[originalSlot];
+    return &sCoop.working[originalSlot];
 }
 
 u8 WorldCoop_GetOwnPartyCount(void)
@@ -243,19 +273,347 @@ u8 WorldCoop_GetOwnPartyCount(void)
     return WorldCoop_IsBattle() ? sCoop.originalCount : gPlayerPartyCount;
 }
 
+/* Capture each currently staged private mon before rotating a slot. The
+ * immutable original remains the abort rollback and identity boundary. */
+static bool8 WorldCoop_CaptureWorkingParty(struct Pokemon out[PARTY_SIZE], u8 *activeStage)
+{
+    u8 i, active;
+    if (sCoop.state != COOP_BATTLE || !sCoop.staged || sCoop.partyMenuOrder || sCoop.fullMenuActive) return FALSE;
+    active = gBattlerPartyIndexes[sCoop.local * 2];
+    if (active >= PARTY_SIZE || active / MULTI_PARTY_SIZE != sCoop.local) return FALSE;
+    *activeStage = active % MULTI_PARTY_SIZE;
+    memcpy(out, sCoop.working, sizeof(sCoop.working));
+    for (i = 0; i < MULTI_PARTY_SIZE; i++)
+    {
+        u8 originalSlot = i < sCoop.count ? sCoop.slots[i] : COOP_ROSTER_EMPTY;
+        struct Pokemon *mon, *original;
+        if (sCoop.roster.staged[i] != originalSlot) return FALSE;
+        if (originalSlot == COOP_ROSTER_EMPTY) continue;
+        if (originalSlot >= PARTY_SIZE) return FALSE;
+        mon = &gPlayerParty[sCoop.local * MULTI_PARTY_SIZE + i];
+        original = &sCoop.original[originalSlot];
+        if (!MonValid(mon, FALSE) || mon->box.personality != original->box.personality
+         || mon->box.otId != original->box.otId
+         || GetMonData(mon, MON_DATA_SPECIES) != GetMonData(original, MON_DATA_SPECIES)) return FALSE;
+        out[originalSlot] = *mon;
+    }
+    return TRUE;
+}
+
+static bool8 WorldCoop_OwnHiddenUsable(void)
+{
+    u8 i, j;
+    for (i = 0; i < PARTY_SIZE; i++)
+    {
+        if (!(sCoop.roster.validMask & (1u << i))) continue;
+        for (j = 0; j < MULTI_PARTY_SIZE && sCoop.roster.staged[j] != i; j++);
+        if (j == MULTI_PARTY_SIZE && MonValid(&sCoop.working[i], FALSE)
+         && !GetMonData(&sCoop.working[i], MON_DATA_IS_EGG)
+         && GetMonData(&sCoop.working[i], MON_DATA_HP)) return TRUE;
+    }
+    return FALSE;
+}
+
+bool8 WorldCoop_HasHiddenUsable(u8 battler)
+{
+    return COOP_FULL_SIX_READY && sCoop.state == COOP_BATTLE
+        && battler < MAX_BATTLERS_COUNT && !(battler & BIT_SIDE)
+        && sCoop.hiddenUsable[battler / 2];
+}
+
+bool8 WorldCoop_PlanRosterRotation(u8 originalSlot, struct CoopRosterPlan *plan)
+{
+    struct Pokemon candidate[PARTY_SIZE];
+    u8 activeStage;
+    if (originalSlot >= PARTY_SIZE || !WorldCoop_CaptureWorkingParty(candidate, &activeStage)
+     || !MonValid(&candidate[originalSlot], FALSE) || GetMonData(&candidate[originalSlot], MON_DATA_IS_EGG)
+     || !GetMonData(&candidate[originalSlot], MON_DATA_HP)) return FALSE;
+    return CoopRoster_Plan(&sCoop.roster, originalSlot, activeStage, plan);
+}
+
+bool8 WorldCoop_CommitRosterRotation(const struct CoopRosterPlan *plan, const u8 participation[6], u8 knockedStageMask)
+{
+    struct Pokemon candidate[PARTY_SIZE];
+    struct CoopRoster next = sCoop.roster;
+    u8 i, activeStage;
+    if (!plan || !participation || !WorldCoop_CaptureWorkingParty(candidate, &activeStage)
+     || plan->incoming >= PARTY_SIZE || !MonValid(&candidate[plan->incoming], FALSE)
+     || GetMonData(&candidate[plan->incoming], MON_DATA_IS_EGG)
+     || !GetMonData(&candidate[plan->incoming], MON_DATA_HP)
+     || !CoopRoster_Commit(&next, plan, activeStage, participation, knockedStageMask)) return FALSE;
+    memcpy(sCoop.working, candidate, sizeof(sCoop.working));
+    sCoop.roster = next;
+    sCoop.hiddenUsable[sCoop.local] = WorldCoop_OwnHiddenUsable();
+    gPlayerParty[sCoop.local * MULTI_PARTY_SIZE + plan->stage] = candidate[plan->incoming];
+    sCoop.count = 0;
+    for (i = 0; i < MULTI_PARTY_SIZE; i++)
+    {
+        sCoop.slots[i] = next.staged[i];
+        if (next.staged[i] != COOP_ROSTER_EMPTY) sCoop.count = i + 1;
+    }
+    return TRUE;
+}
+
+/* A temporary local view. Nothing is sent and the shared party is restored
+ * before the controller returns its choice. The engine integration remains
+ * disabled until slot rotation and synchronization are wired together. */
+bool8 WorldCoop_BeginFullPartyMenu(void)
+{
+    struct Pokemon candidate[PARTY_SIZE];
+    u8 activeStage;
+    if (!COOP_FULL_SIX_READY || !WorldCoop_CaptureWorkingParty(candidate, &activeStage)) return FALSE;
+    memcpy(sCoop.menuShared, gPlayerParty, sizeof(sCoop.menuShared));
+    sCoop.menuSharedCount = gPlayerPartyCount;
+    memcpy(gPlayerParty, candidate, sizeof(candidate));
+    gPlayerPartyCount = sCoop.originalCount;
+    sCoop.fullMenuChoice = COOP_ROSTER_EMPTY;
+    sCoop.fullMenuActive = TRUE;
+    return TRUE;
+}
+
+bool8 WorldCoop_FullPartyMenuActive(void) { return sCoop.fullMenuActive; }
+
+bool8 WorldCoop_ChooseFullPartyMenu(u8 originalSlot)
+{
+    struct CoopRosterPlan plan;
+    u8 active;
+    if (!COOP_FULL_SIX_READY || !sCoop.fullMenuActive || originalSlot >= PARTY_SIZE) return FALSE;
+    active = gBattlerPartyIndexes[sCoop.local * 2];
+    if (active >= PARTY_SIZE || active / MULTI_PARTY_SIZE != sCoop.local
+     || !MonValid(&gPlayerParty[originalSlot], FALSE)
+     || GetMonData(&gPlayerParty[originalSlot], MON_DATA_IS_EGG)
+     || !GetMonData(&gPlayerParty[originalSlot], MON_DATA_HP)
+     || !CoopRoster_Plan(&sCoop.roster, originalSlot, active % MULTI_PARTY_SIZE, &plan)) return FALSE;
+    sCoop.fullMenuChoice = originalSlot;
+    sCoop.fullMenuPlan = plan;
+    return TRUE;
+}
+
+void WorldCoop_EndFullPartyMenu(void)
+{
+    if (!sCoop.fullMenuActive) return;
+    memcpy(gPlayerParty, sCoop.menuShared, sizeof(sCoop.menuShared));
+    gPlayerPartyCount = sCoop.menuSharedCount;
+    sCoop.fullMenuActive = FALSE;
+}
+
+u8 WorldCoop_FullPartyChoice(void) { return sCoop.fullMenuChoice; }
+u8 WorldCoop_FullPartyChoiceStage(void)
+{
+    return sCoop.fullMenuChoice < PARTY_SIZE
+        ? sCoop.local * MULTI_PARTY_SIZE + sCoop.fullMenuPlan.stage : PARTY_SIZE;
+}
+u8 WorldCoop_FullPartyChoiceReply(void)
+{
+    u8 stage = WorldCoop_FullPartyChoiceStage();
+    if (stage >= PARTY_SIZE) return PARTY_SIZE;
+    return sCoop.fullMenuPlan.incoming == sCoop.fullMenuPlan.outgoing
+        ? stage : (0x80 | (stage << 3) | sCoop.fullMenuChoice);
+}
+
+#if COOP_FULL_SIX_READY
+/* Version-8 roster commands use authenticated controller channels and carry
+ * only the newly selected combatant, never the owner's unstaged party. */
+struct CoopRosterReply { u8 tag, owner, stage, hidden; struct Pokemon mon; };
+struct CoopRosterMirror { u8 command, tag, owner, stage; u32 generation; u8 hidden, reserved[3]; struct Pokemon mon; };
+STATIC_ASSERT(sizeof(struct CoopRosterReply) == WORLD_COOP_ROSTER_REPLY_SIZE, CoopRosterReplySize);
+STATIC_ASSERT(sizeof(struct CoopRosterMirror) == 112, CoopRosterMirrorSize);
+enum { ROSTER_WAIT_OWNER = 1, ROSTER_WAIT_MIRROR = 2, ROSTER_REPLY_TAG = 0xA7 };
+
+bool8 WorldCoop_RosterChoiceValid(u8 battler, u8 choice)
+{
+    u8 stage = (choice >> 3) & 7, original = choice & 7;
+    return sCoop.state == COOP_BATTLE && battler < MAX_BATTLERS_COUNT && !(battler & BIT_SIDE)
+        && (choice & 0xC0) == 0x80 && original < PARTY_SIZE && stage < PARTY_SIZE
+        && stage / MULTI_PARTY_SIZE == battler / 2 && stage != gBattlerPartyIndexes[battler];
+}
+
+bool8 WorldCoop_RosterRequestValid(const u8 *data, u16 size)
+{
+    u32 generation;
+    u8 i, owner, stage;
+    if (!data || sCoop.state != COOP_BATTLE || sCoop.generation != NativeLink_Generation()
+     || size != 20 || data[0] != CONTROLLER_EXPUPDATE || data[1] != WORLD_COOP_ROSTER_REQUEST_TAG
+     || data[2] < 1 || data[2] > 2 || data[3] >= PARTY_SIZE) return FALSE;
+    owner = data[2] - 1; stage = data[8];
+    memcpy(&generation, data + 4, sizeof(generation));
+    if (generation != sCoop.generation || stage >= PARTY_SIZE || stage / MULTI_PARTY_SIZE != owner
+     || stage == gBattlerPartyIndexes[owner * 2] || (data[15] & ~7) || data[16] || data[17] || data[18] || data[19]) return FALSE;
+    for (i = 9; i < 15; i++) if (data[i] & ~7) return FALSE;
+    return TRUE;
+}
+
+bool8 WorldCoop_ApplyRosterRequest(const u8 *data, u8 reply[WORLD_COOP_ROSTER_REPLY_SIZE])
+{
+    struct CoopRosterReply result = {0};
+    struct CoopRosterPlan plan;
+    u8 original, stage;
+    if (!reply || !WorldCoop_RosterRequestValid(data, 20) || data[2] != sCoop.local + 1
+     || gActiveBattler != sCoop.local * 2) return FALSE;
+    original = data[3]; stage = data[8];
+    if (sCoop.fullMenuChoice != original || !WorldCoop_PlanRosterRotation(original, &plan)
+     || plan.stage + sCoop.local * MULTI_PARTY_SIZE != stage
+     || !WorldCoop_CommitRosterRotation(&plan, data + 9, data[15])) return FALSE;
+    sCoop.fullMenuChoice = COOP_ROSTER_EMPTY;
+    result.tag = ROSTER_REPLY_TAG; result.owner = sCoop.local + 1; result.stage = stage;
+    result.hidden = sCoop.hiddenUsable[sCoop.local]
+        | (!!(sCoop.roster.knockedOff & (1u << original)) << 1); result.mon = gPlayerParty[stage];
+    memcpy(reply, &result, sizeof(result));
+    return TRUE;
+}
+
+bool8 WorldCoop_RosterReplyValid(u8 battler, const u8 *data, u16 size)
+{
+    struct CoopRosterReply reply;
+    if (!data || size != sizeof(reply) || battler >= MAX_BATTLERS_COUNT || (battler & BIT_SIDE)) return FALSE;
+    memcpy(&reply, data, sizeof(reply));
+    return reply.tag == ROSTER_REPLY_TAG && reply.owner == battler / 2 + 1
+        && reply.stage < PARTY_SIZE && reply.stage / MULTI_PARTY_SIZE == battler / 2
+        && reply.stage != gBattlerPartyIndexes[battler] && reply.hidden <= 3
+        && MonValid(&reply.mon, FALSE) && GetMonData(&reply.mon, MON_DATA_HP) != 0;
+}
+
+bool8 WorldCoop_RosterMirrorValid(const u8 *data, u16 size)
+{
+    struct CoopRosterMirror packet;
+    if (sCoop.state != COOP_BATTLE || sCoop.generation != NativeLink_Generation()
+     || !data || size != sizeof(packet) + 4) return FALSE;
+    memcpy(&packet, data, sizeof(packet));
+    return packet.command == CONTROLLER_EXPUPDATE && packet.tag == WORLD_COOP_ROSTER_MIRROR_TAG
+        && packet.owner >= 1 && packet.owner <= 2 && packet.stage < PARTY_SIZE
+        && packet.stage / MULTI_PARTY_SIZE == packet.owner - 1
+        && packet.stage != gBattlerPartyIndexes[(packet.owner - 1) * 2]
+        && packet.generation == sCoop.generation && packet.hidden <= 3
+        && !packet.reserved[0] && !packet.reserved[1] && !packet.reserved[2]
+        && !data[112] && !data[113] && !data[114] && !data[115]
+        && MonValid(&packet.mon, FALSE) && GetMonData(&packet.mon, MON_DATA_HP) != 0;
+}
+
+bool8 WorldCoop_ApplyRosterMirror(const u8 *data)
+{
+    struct CoopRosterMirror packet;
+    if (!WorldCoop_RosterMirrorValid(data, sizeof(packet) + 4)) return FALSE;
+    memcpy(&packet, data, sizeof(packet));
+    if (gActiveBattler != (packet.owner - 1) * 2) return FALSE;
+    if (packet.owner == sCoop.local + 1)
+    {
+        /* The master can never overwrite the owner's private mon. */
+        if (memcmp(&gPlayerParty[packet.stage], &packet.mon, sizeof(packet.mon))) return FALSE;
+    }
+    else
+        gPlayerParty[packet.stage] = packet.mon;
+    sCoop.hiddenUsable[packet.owner - 1] = packet.hidden & 1;
+    if (packet.hidden & 2) gWishFutureKnock.knockedOffMons[B_SIDE_PLAYER] |= 1u << packet.stage;
+    else gWishFutureKnock.knockedOffMons[B_SIDE_PLAYER] &= ~(1u << packet.stage);
+    return TRUE;
+}
+
+bool8 WorldCoop_RosterActionActive(u8 battler)
+{
+    return sCoop.state == COOP_BATTLE && sCoop.rosterAction && sCoop.rosterBattler == battler;
+}
+
+int WorldCoop_BeginRosterAction(u8 battler, u8 choice, const u8 order[3])
+{
+    u8 packet[16] = { CONTROLLER_EXPUPDATE, WORLD_COOP_ROSTER_REQUEST_TAG, 0, 0 };
+    u8 flank, enemy, slot, stage = (choice >> 3) & 7;
+    u32 generation = sCoop.generation;
+    if (!order || sCoop.rosterAction || !WorldCoop_RosterChoiceValid(battler, choice)) return -1;
+    packet[2] = battler / 2 + 1; packet[3] = choice & 7; packet[8] = stage;
+    memcpy(packet + 4, &generation, sizeof(generation));
+    for (flank = 0; flank < 2; flank++)
+    {
+        enemy = 1 + flank * 2;
+        if (enemy >= gBattlersCount || (gAbsentBattlerFlags & (1u << enemy))) continue;
+        slot = gBattlerPartyIndexes[enemy];
+        if (slot < PARTY_SIZE)
+            packet[9 + slot] |= (gSentPokesToOpponent[flank] >> ((battler / 2) * MULTI_PARTY_SIZE)) & 7;
+    }
+    packet[15] = (gWishFutureKnock.knockedOffMons[B_SIDE_PLAYER]
+                  >> ((battler / 2) * MULTI_PARTY_SIZE)) & 7;
+    sCoop.rosterAction = ROSTER_WAIT_OWNER; sCoop.rosterBattler = battler; sCoop.rosterStage = stage;
+    memcpy(sCoop.rosterOrder, order, sizeof(sCoop.rosterOrder));
+    gActiveBattler = battler;
+    PrepareBufferDataTransferLink(B_COMM_TO_CONTROLLER, sizeof(packet), packet);
+    MarkBattlerForControllerExec(battler);
+    return 0;
+}
+
+int WorldCoop_AdvanceRosterAction(u8 battler)
+{
+    struct CoopRosterReply reply;
+    struct CoopRosterMirror packet = {0};
+    u8 flank;
+    if (!WorldCoop_RosterActionActive(battler)) return -1;
+    if (gBattleControllerExecFlags) return 0;
+    if (sCoop.rosterAction == ROSTER_WAIT_OWNER)
+    {
+        if (gBattleBufferB[battler][0] != CONTROLLER_DATATRANSFER
+         || (gBattleBufferB[battler][2] | (gBattleBufferB[battler][3] << 8)) != sizeof(reply)
+         || !WorldCoop_RosterReplyValid(battler, &gBattleBufferB[battler][4], sizeof(reply))) return -1;
+        memcpy(&reply, &gBattleBufferB[battler][4], sizeof(reply));
+        if (reply.stage != sCoop.rosterStage) return -1;
+        packet.command = CONTROLLER_EXPUPDATE; packet.tag = WORLD_COOP_ROSTER_MIRROR_TAG;
+        packet.owner = reply.owner; packet.stage = reply.stage; packet.generation = sCoop.generation;
+        packet.hidden = reply.hidden; packet.mon = reply.mon;
+        sCoop.rosterAction = ROSTER_WAIT_MIRROR;
+        gActiveBattler = battler;
+        PrepareBufferDataTransferLink(B_COMM_TO_CONTROLLER, sizeof(packet), (u8 *)&packet);
+        MarkBattlerForControllerExec(battler);
+        return 0;
+    }
+    if (sCoop.rosterAction != ROSTER_WAIT_MIRROR) return -1;
+    for (flank = 0; flank < 2; flank++)
+        gSentPokesToOpponent[flank] &= ~(1u << sCoop.rosterStage);
+    gBattleBufferB[battler][0] = CONTROLLER_CHOSENMONRETURNVALUE;
+    gBattleBufferB[battler][1] = sCoop.rosterStage;
+    memcpy(&gBattleBufferB[battler][2], sCoop.rosterOrder, sizeof(sCoop.rosterOrder));
+    sCoop.rosterAction = 0;
+    return 1;
+}
+#endif
+
 void WorldCoop_SetPartyMenuOrder(bool8 inMenuOrder)
 {
     sCoop.partyMenuOrder = inMenuOrder;
 }
 
+static const u16 sCoopMedicines[] = { ITEM_POTION, ITEM_SUPER_POTION, ITEM_HYPER_POTION, ITEM_MAX_POTION,
+    ITEM_ANTIDOTE, ITEM_BURN_HEAL, ITEM_ICE_HEAL, ITEM_AWAKENING, ITEM_PARALYZE_HEAL,
+    ITEM_FRESH_WATER, ITEM_SODA_POP, ITEM_LEMONADE, ITEM_MOOMOO_MILK,
+    ITEM_FULL_HEAL, ITEM_FULL_RESTORE, ITEM_REVIVE, ITEM_MAX_REVIVE };
+
+static bool8 WorldCoop_RefundMedicine(void)
+{
+    u8 i;
+    for (i = 0; i < ARRAY_COUNT(sCoopMedicines); i++)
+    {
+        if (sCoop.medicineSpent[i])
+        {
+            /* The consumed stack or slot is available: no battle operation
+             * adds medicine to this private bag. */
+            if (!AddBagItem(sCoopMedicines[i], sCoop.medicineSpent[i]))
+                return FALSE; /* Leave the remaining ledger intact. */
+            sCoop.medicineSpent[i] = 0;
+        }
+    }
+    return TRUE;
+}
+
 void WorldCoop_Abort(void)
 {
+    WorldCoop_RefundMedicine();
     if (sCoop.staged)
     {
         memcpy(gPlayerParty, sCoop.original, sizeof(sCoop.original));
         gPlayerPartyCount = sCoop.originalCount;
     }
     sCoop.state = COOP_IDLE;
+    sCoop.fullMenuActive = FALSE;
+    sCoop.fullMenuChoice = COOP_ROSTER_EMPTY;
+#if COOP_FULL_SIX_READY
+    sCoop.rosterAction = 0;
+#endif
     sCoop.staged = sCoop.captured = FALSE;
     sCoop.reward = FALSE;
     NativeLink_Abort();
@@ -273,6 +631,9 @@ static bool8 HeaderValid(const struct CoopHeader *header, u8 phase)
         && header->phase == phase && header->owner <= 1 && header->count > 0
         && header->count <= MULTI_PARTY_SIZE && header->weather <= WEATHER_ABNORMAL
         && header->environment <= BATTLE_ENVIRONMENT_PLAIN && header->kind <= 2
+#if COOP_FULL_SIX_READY
+        && header->hiddenUsable <= 1 && !header->reserved[0] && !header->reserved[1] && !header->reserved[2]
+#endif
         && (header->owner
             ? (header->kind ? header->trainer > 0 && header->trainer < TRAINERS_COUNT
                 && header->enemyCount == gTrainers[header->trainer].partySize
@@ -408,6 +769,10 @@ static void CB2_Exchange(void)
     sCoop.captured = FALSE;
     sCoop.generation = NativeLink_Generation();
     sCoop.state = COOP_BATTLE;
+#if COOP_FULL_SIX_READY
+    sCoop.hiddenUsable[0] = sCoop.headers[0].hiddenUsable;
+    sCoop.hiddenUsable[1] = sCoop.headers[1].hiddenUsable;
+#endif
     gRngValue = gRecordedBattleRngSeed = sCoop.seed;
     gBattleTypeFlags = BATTLE_TYPE_LINK | BATTLE_TYPE_MULTI | BATTLE_TYPE_DOUBLE;
     if (sCoop.kind)
@@ -435,8 +800,17 @@ int WorldCoop_StartBattle(bool8 encounterOwner)
      || GetLinkPlayerCount() != 2 || GetMultiplayerId() > 1
      || (encounterOwner && !sCoop.captured))
         return 0;
+    /* A failed refund must never be discarded by a new battle. */
+    if (!WorldCoop_RefundMedicine()) return 0;
     sCoop.readySent = sCoop.commitSent = sCoop.commitEchoed = sCoop.peerReady = sCoop.peerCommit = FALSE;
     sCoop.catchOwner = sCoop.catchDelivered = sCoop.pendingBall = 0;
+    sCoop.pendingMedicine = sCoop.medicineAction = 0;
+#if COOP_FULL_SIX_READY
+    sCoop.rosterAction = 0;
+#endif
+    sCoop.fullMenuActive = FALSE;
+    sCoop.fullMenuChoice = COOP_ROSTER_EMPTY;
+    memset(sCoop.medicineSpent, 0, sizeof(sCoop.medicineSpent));
     sCoop.count = 0;
     memset(sCoop.selected, 0, sizeof(sCoop.selected));
     for (i = 0; i < PARTY_SIZE && sCoop.count < MULTI_PARTY_SIZE; i++)
@@ -453,6 +827,16 @@ int WorldCoop_StartBattle(bool8 encounterOwner)
     if (!sCoop.count)
         return 0;
     memcpy(sCoop.original, gPlayerParty, sizeof(sCoop.original));
+    memcpy(sCoop.working, gPlayerParty, sizeof(sCoop.working));
+    {
+        u8 validMask = 0, staged[MULTI_PARTY_SIZE];
+        for (i = 0; i < PARTY_SIZE; i++)
+            if (GetMonData(&gPlayerParty[i], MON_DATA_SPECIES)
+             && !GetMonData(&gPlayerParty[i], MON_DATA_IS_EGG)) validMask |= 1u << i;
+        for (i = 0; i < MULTI_PARTY_SIZE; i++)
+            staged[i] = i < sCoop.count ? sCoop.slots[i] : COOP_ROSTER_EMPTY;
+        if (!CoopRoster_Init(&sCoop.roster, validMask, staged)) return 0;
+    }
     sCoop.originalCount = gPlayerPartyCount;
     sCoop.owner = !!encounterOwner;
     sCoop.local = GetMultiplayerId();
@@ -475,6 +859,9 @@ int WorldCoop_StartBattle(bool8 encounterOwner)
     header->kind = sCoop.owner ? sCoop.capturedKind : 0;
     header->trainer = sCoop.owner ? sCoop.capturedTrainer : 0;
     header->enemyCount = sCoop.owner ? sCoop.capturedCount : 0;
+#if COOP_FULL_SIX_READY
+    header->hiddenUsable = WorldCoop_OwnHiddenUsable();
+#endif
     sCoop.state = COOP_EXCHANGE;
     ResetBlockReceivedFlags();
     SetMainCallback1(NULL);
@@ -564,6 +951,219 @@ bool8 WorldCoop_GetPublicMon(u8 battler, struct WorldCoopPublicMon *mon)
         return FALSE;
     *mon = sCoop.publicMons[battler];
     return TRUE;
+}
+
+bool8 WorldCoop_CanSelectBattleItem(u16 item)
+{
+    return WorldCoop_CanSelectBall(item)
+        || (sCoop.state == COOP_BATTLE && WorldCoop_IsMedicine(item));
+}
+
+void WorldCoop_SetMenuConfusion(bool8 confused)
+{
+    sCoop.menuConfused = !!confused;
+    sCoop.pendingMedicine = 0;
+    sCoop.medicineTarget = PARTY_SIZE;
+}
+
+bool8 WorldCoop_SelectMedicineTarget(u16 item, u8 slot, struct Pokemon *mon)
+{
+    u8 battler = gBattlerInMenuId;
+    u16 heal; u32 status; bool8 cureConfusion, confused;
+    if (sCoop.state != COOP_BATTLE || !WorldCoop_IsMedicine(item)
+     || battler != sCoop.local * 2 || slot >= PARTY_SIZE
+     || slot / MULTI_PARTY_SIZE != sCoop.local || !mon || !CheckBagHasItem(item, 1)) return FALSE;
+    confused = slot == gBattlerPartyIndexes[battler] && sCoop.menuConfused;
+    if (!WorldCoop_MedicineEffect(item, GetMonData(mon, MON_DATA_HP),
+         GetMonData(mon, MON_DATA_MAX_HP), GetMonData(mon, MON_DATA_STATUS), confused,
+         &heal, &status, &cureConfusion)) return FALSE;
+    sCoop.pendingMedicine = item;
+    sCoop.medicineTarget = slot;
+    return TRUE;
+}
+
+bool8 WorldCoop_CanUseMedicine(u16 item)
+{
+    u8 slot = sCoop.medicineTarget;
+    if (slot >= PARTY_SIZE || sCoop.pendingMedicine != item) return FALSE;
+    return WorldCoop_SelectMedicineTarget(item, slot, &gPlayerParty[slot]);
+}
+
+bool8 WorldCoop_ItemReplyValid(u16 reply)
+{
+    if (sCoop.state != COOP_BATTLE) return FALSE;
+    if (!reply) return TRUE;
+    if ((reply & 0xF800) == WORLD_COOP_MEDICINE_REPLY)
+        return ((reply >> 8) & 7) < PARTY_SIZE && WorldCoop_IsMedicine(reply & 0xFF);
+    return WorldCoop_BallReplyValid(reply);
+}
+
+u16 WorldCoop_SelectBattleItem(u16 item)
+{
+    if (WorldCoop_IsMedicine(item))
+    {
+        if (!WorldCoop_CanUseMedicine(item)) return 0;
+        return WORLD_COOP_MEDICINE_REPLY | (sCoop.medicineTarget << 8) | item;
+    }
+    sCoop.pendingMedicine = 0;
+    sCoop.medicineTarget = PARTY_SIZE;
+    return WorldCoop_SelectBall(item);
+}
+
+bool8 WorldCoop_MedicinePacketValid(const u8 *data, u16 size)
+{
+    u32 generation, status, newStatus;
+    u16 hp, maxHP, heal; bool8 cureConfusion;
+    if (sCoop.state != COOP_BATTLE || sCoop.generation != NativeLink_Generation()
+     || size != 20 || data[0] != CONTROLLER_EXPUPDATE || data[1] != WORLD_COOP_MEDICINE_TAG
+     || data[2] < 1 || data[2] > 2 || !WorldCoop_IsMedicine(data[3])
+     || data[17] >= PARTY_SIZE || data[17] / MULTI_PARTY_SIZE != data[2] - 1) return FALSE;
+    memcpy(&generation, data + 4, sizeof(generation));
+    hp = data[8] | (data[9] << 8); maxHP = data[10] | (data[11] << 8);
+    status = (u32)data[12] | ((u32)data[13] << 8) | ((u32)data[14] << 16) | ((u32)data[15] << 24);
+    return generation == sCoop.generation && !(status & ~0xFFFu)
+        && data[16] <= 1 && !data[18] && !data[19]
+        && WorldCoop_MedicineEffect(data[3], hp, maxHP, status, data[16], &heal, &newStatus, &cureConfusion);
+}
+
+bool8 WorldCoop_ConsumeMedicine(const u8 *data)
+{
+    u16 hp, maxHP, item;
+    u32 status;
+    u8 i, slot;
+    bool8 confused;
+    struct Pokemon *mon;
+    if (!WorldCoop_MedicinePacketValid(data, 20) || data[2] != sCoop.local + 1
+     || gActiveBattler != sCoop.local * 2) return FALSE;
+    item = data[3]; slot = data[17];
+    if (slot >= PARTY_SIZE || slot / MULTI_PARTY_SIZE != sCoop.local
+     || sCoop.pendingMedicine != item || sCoop.medicineTarget != slot) return FALSE;
+    mon = &gPlayerParty[slot];
+    hp = data[8] | (data[9] << 8); maxHP = data[10] | (data[11] << 8);
+    status = (u32)data[12] | ((u32)data[13] << 8) | ((u32)data[14] << 16) | ((u32)data[15] << 24);
+    confused = slot == gBattlerPartyIndexes[gActiveBattler] && sCoop.menuConfused;
+    if (GetMonData(mon, MON_DATA_HP) != hp || GetMonData(mon, MON_DATA_MAX_HP) != maxHP
+     || (GetMonData(mon, MON_DATA_STATUS) & STATUS1_ANY) != (status & STATUS1_ANY)
+     || confused != data[16]) return FALSE;
+    for (i = 0; i < ARRAY_COUNT(sCoopMedicines) && sCoopMedicines[i] != item; i++);
+    if (i == ARRAY_COUNT(sCoopMedicines) || sCoop.medicineSpent[i] == 0xFFFF
+     || !RemoveBagItem(item, 1)) return FALSE;
+    sCoop.medicineSpent[i]++;
+    sCoop.pendingMedicine = 0;
+    return TRUE;
+}
+
+enum { MEDICINE_WAIT_MON = 1, MEDICINE_WAIT_OWNER, MEDICINE_WAIT_HP, MEDICINE_WAIT_STATUS };
+
+static bool8 WorldCoop_SendMedicineEvent(u8 battler, u16 hp, u16 maxHP, u32 status, bool8 confused)
+{
+    u8 packet[18] = { CONTROLLER_EXPUPDATE, WORLD_COOP_MEDICINE_TAG, 0, 0 };
+    u32 generation = sCoop.generation;
+    if ((status & ~0xFFFu) || !WorldCoop_MedicineEffect(sCoop.medicineItem, hp, maxHP, status,
+         confused, &sCoop.medicineHeal, &sCoop.medicineStatusAfter, &sCoop.medicineClearConfusion)) return FALSE;
+    sCoop.medicineStatusBefore = status;
+    sCoop.medicineHPAfter = hp + sCoop.medicineHeal;
+    packet[2] = battler / 2 + 1; packet[3] = sCoop.medicineItem;
+    memcpy(packet + 4, &generation, sizeof(generation));
+    packet[8] = hp; packet[9] = hp >> 8; packet[10] = maxHP; packet[11] = maxHP >> 8;
+    packet[12] = status; packet[13] = status >> 8; packet[14] = status >> 16; packet[15] = status >> 24;
+    packet[16] = confused; packet[17] = sCoop.medicineTarget;
+    sCoop.medicineAction = MEDICINE_WAIT_OWNER;
+    gActiveBattler = battler;
+    PrepareBufferDataTransferLink(B_COMM_TO_CONTROLLER, sizeof(packet), packet);
+    MarkBattlerForControllerExec(battler);
+    return TRUE;
+}
+
+bool8 WorldCoop_MedicineActionActive(u8 battler)
+{
+    return sCoop.state == COOP_BATTLE && sCoop.medicineAction && sCoop.medicineBattler == battler;
+}
+
+u8 WorldCoop_MedicineTarget(void) { return sCoop.medicineTarget; }
+
+int WorldCoop_BeginMedicineAction(u8 battler, u16 reply)
+{
+    u8 target = (reply >> 8) & 7;
+    if (sCoop.state != COOP_BATTLE || sCoop.medicineAction || (battler & BIT_SIDE)
+     || battler >= MAX_BATTLERS_COUNT || !WorldCoop_ItemReplyValid(reply)
+     || (reply & 0xF800) != WORLD_COOP_MEDICINE_REPLY
+     || target / MULTI_PARTY_SIZE != battler / 2) return -1;
+    sCoop.medicineBattler = battler; sCoop.medicineTarget = target; sCoop.medicineItem = reply & 0xFF;
+    if (target == gBattlerPartyIndexes[battler])
+        return WorldCoop_SendMedicineEvent(battler, gBattleMons[battler].hp, gBattleMons[battler].maxHP,
+            gBattleMons[battler].status1, !!(gBattleMons[battler].status2 & STATUS2_CONFUSION)) ? 0 : -1;
+    /* Query only the selected staged slot from its owner. The reply is
+     * authenticated and validated by the existing GETMONDATA boundary. */
+    sCoop.medicineAction = MEDICINE_WAIT_MON;
+    gActiveBattler = battler;
+    BtlController_EmitGetMonData(B_COMM_TO_CONTROLLER, REQUEST_ALL_BATTLE, 1u << target);
+    MarkBattlerForControllerExec(battler);
+    return 0;
+}
+
+int WorldCoop_AdvanceMedicineAction(u8 battler)
+{
+    if (!WorldCoop_MedicineActionActive(battler)) return -1;
+    if (gBattleControllerExecFlags) return 0;
+    if (sCoop.medicineAction == MEDICINE_WAIT_MON)
+    {
+        struct BattlePokemon mon;
+        if (gBattleBufferB[battler][0] != CONTROLLER_DATATRANSFER
+         || (gBattleBufferB[battler][2] | (gBattleBufferB[battler][3] << 8)) != sizeof(mon)) return -1;
+        memcpy(&mon, &gBattleBufferB[battler][4], sizeof(mon));
+        return WorldCoop_SendMedicineEvent(battler, mon.hp, mon.maxHP, mon.status1, FALSE) ? 0 : -1;
+    }
+    if (sCoop.medicineAction == MEDICINE_WAIT_OWNER)
+    {
+        if (gBattleBufferB[battler][0] != CONTROLLER_TWORETURNVALUES
+         || gBattleBufferB[battler][1] != 1 || gBattleBufferB[battler][2] || gBattleBufferB[battler][3]) return -1;
+        gLastUsedItem = sCoop.medicineItem;
+        gBattleMoveDamage = -(s32)sCoop.medicineHeal;
+        if (sCoop.medicineTarget == gBattlerPartyIndexes[battler])
+        {
+            sCoop.medicineAction = 0;
+            if (sCoop.medicineClearConfusion) gBattleMons[battler].status2 &= ~STATUS2_CONFUSION;
+            if (sCoop.medicineStatusAfter != sCoop.medicineStatusBefore)
+            {
+                gBattleMons[battler].status1 = sCoop.medicineStatusAfter;
+                if ((sCoop.medicineStatusBefore & STATUS1_SLEEP) && !(sCoop.medicineStatusAfter & STATUS1_SLEEP))
+                    gBattleMons[battler].status2 &= ~STATUS2_NIGHTMARE;
+                gActiveBattler = battler;
+                BtlController_EmitSetMonData(B_COMM_TO_CONTROLLER, REQUEST_STATUS_BATTLE, 0,
+                                             sizeof(gBattleMons[battler].status1), &gBattleMons[battler].status1);
+                MarkBattlerForControllerExec(battler);
+            }
+            return sCoop.medicineHeal ? 1 : 2;
+        }
+        sCoop.medicineAction = MEDICINE_WAIT_HP;
+        if (sCoop.medicineHeal)
+        {
+            gActiveBattler = battler;
+            BtlController_EmitSetMonData(B_COMM_TO_CONTROLLER, REQUEST_HP_BATTLE, 1u << sCoop.medicineTarget,
+                                         sizeof(sCoop.medicineHPAfter), &sCoop.medicineHPAfter);
+            MarkBattlerForControllerExec(battler);
+            return 0;
+        }
+    }
+    if (sCoop.medicineAction == MEDICINE_WAIT_HP)
+    {
+        sCoop.medicineAction = MEDICINE_WAIT_STATUS;
+        if (sCoop.medicineStatusAfter != sCoop.medicineStatusBefore)
+        {
+            gActiveBattler = battler;
+            BtlController_EmitSetMonData(B_COMM_TO_CONTROLLER, REQUEST_STATUS_BATTLE, 1u << sCoop.medicineTarget,
+                                         sizeof(sCoop.medicineStatusAfter), &sCoop.medicineStatusAfter);
+            MarkBattlerForControllerExec(battler);
+            return 0;
+        }
+    }
+    if (sCoop.medicineAction == MEDICINE_WAIT_STATUS)
+    {
+        sCoop.medicineAction = 0;
+        return 3;
+    }
+    return -1;
 }
 
 /* The owner supplies only private, ball-specific context. No partner bag or
@@ -772,13 +1372,10 @@ bool8 WorldCoop_RewardPacketValid(const u8 *data, u16 size)
 
 void WorldCoop_RecordDefeat(const u8 *data)
 {
-    u8 i, mask = data[5] >> (sCoop.local * MULTI_PARTY_SIZE);
+    u8 mask = data[5] >> (sCoop.local * MULTI_PARTY_SIZE);
     if (!WorldCoop_RewardPacketValid(data, 12) || (sCoop.reward & (1 << data[1])))
         return;
-    sCoop.rewardMask[data[1]] = 0;
-    for (i = 0; i < sCoop.count; i++)
-        if (mask & (1 << i))
-            sCoop.rewardMask[data[1]] |= 1 << sCoop.slots[i];
+    sCoop.rewardMask[data[1]] = CoopRoster_RewardMask(&sCoop.roster, data[1], mask & 7);
     sCoop.reward |= 1 << data[1];
     sCoop.rewardPayday = data[6] | (data[7] << 8);
     sCoop.rewardMultiplier = data[8];
@@ -788,7 +1385,7 @@ static bool8 BuildPrivateParty(struct Pokemon merged[PARTY_SIZE])
 {
     u8 i;
     bool8 valid = TRUE;
-    memcpy(merged, sCoop.original, sizeof(sCoop.original));
+    memcpy(merged, sCoop.working, sizeof(sCoop.working));
     for (i = 0; i < sCoop.count; i++)
     {
         struct Pokemon mon = gPlayerParty[sCoop.local * MULTI_PARTY_SIZE + i];
@@ -963,6 +1560,10 @@ bool8 WorldCoop_PreparePrivateRewards(void)
     if (!WorldCoop_CompletionCommitted())
         return FALSE;
     valid = BuildPrivateParty(merged);
+    if (valid)
+        memset(sCoop.medicineSpent, 0, sizeof(sCoop.medicineSpent));
+    else
+        WorldCoop_RefundMedicine();
     memcpy(gPlayerParty, valid ? merged : sCoop.original, sizeof(merged));
     gPlayerPartyCount = sCoop.originalCount;
     gBattlerPartyIndexes[0] = sCoop.slots[active < sCoop.count ? active : 0];

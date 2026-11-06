@@ -7,7 +7,7 @@ import SaveBackups from './SaveBackups';
 import PlayerHome from './PlayerHome';
 import GameMirror from './GameMirror';
 
-const empty = { worlds: [], offline_saves: [], presence: null, hosting: { available: false, backup_available: false, enrolled: false, loaded: false, worlds: [], pending: null }, setup: [], connected: false, world_key: null, offline_world_key: null, trainer: null, games: [], status: 'Choose a world to begin.' };
+const empty = { local_worlds: [], local_host: false, cave_authoring: false, cave_persistent: false, worlds: [], offline_saves: [], presence: null, hosting: { available: false, backup_available: false, enrolled: false, loaded: false, worlds: [], pending: null }, setup: [], connected: false, world_key: null, offline_world_key: null, trainer: null, games: [], status: 'Choose a world to begin.' };
 
 export function App() {
   const [state, setState] = useState(empty);
@@ -127,9 +127,9 @@ export function App() {
   }
 
   async function run(action, payload = {}, options = {}) {
-    if (busyRef.current) return;
+    if (busyRef.current) return false;
     busyRef.current = true; setBusy(true); setError('');
-    setWorkLabel(options.disconnectFirst ? 'Closing current session' : options.playAfter ? 'Connecting' : 'Working');
+    setWorkLabel(action === 'author_cave' ? 'Generating and installing area' : action === 'activate_area' ? 'Opening saved area or adventure' : options.disconnectFirst ? 'Closing current session' : options.playAfter ? 'Connecting' : 'Working');
     try {
       if (options.disconnectFirst) {
         const detached = await perform('disconnect', {});
@@ -139,7 +139,7 @@ export function App() {
       let next = await perform(action, payload);
       if (action === 'quit') {
         forgetCapability(); setState(empty); setReady(false); setDialog(null);
-        setError('Launcher closed. You can close this window.'); return;
+        setError('Launcher closed. You can close this window.'); return true;
       }
       let confirmationError = '';
       if (action === 'host_create') {
@@ -150,12 +150,12 @@ export function App() {
         const url = URL.createObjectURL(new Blob([next.download], { type: 'application/json' }));
         delete next.download;
         const kind = next.download_kind; delete next.download_kind;
-        setState(next); setReady(true); setDialog({ type: 'share', url, kind }); return;
+        setState(next); setReady(true); setDialog({ type: 'share', url, kind }); return true;
       }
       setState(next); setReady(true);
       if (action === 'host_enroll') { setHostAccess(null); setHostFileName(''); setDialog('create'); }
       else setDialog(null);
-      if (['join', 'rejoin', 'reconnect', 'offline', 'solo_new', 'solo_resume', 'host_create', 'host_resume', 'host_join', 'host_restore'].includes(action)) setPage('play');
+      if (['join', 'rejoin', 'reconnect', 'offline', 'solo_new', 'solo_resume', 'local_create', 'local_resume', 'host_create', 'host_resume', 'host_join', 'host_restore'].includes(action)) setPage('play');
       if (action === 'join') { setInvitation(null); setFileName(''); }
       if (options.playAfter) {
         setWorkLabel('Opening game');
@@ -164,11 +164,12 @@ export function App() {
           setState(next);
         } catch (launchError) {
           setError(`Your world connected, but the game did not start. ${launchError.message}`);
-          return;
+          return false;
         }
       }
       if (confirmationError) setError(confirmationError);
-    } catch (e) { setError(e.message); }
+      return !confirmationError;
+    } catch (e) { setError(e.message); return false; }
     finally { busyRef.current = false; setBusy(false); setWorkLabel('Working'); }
   }
 
@@ -176,7 +177,7 @@ export function App() {
     if (busyRef.current) return;
     const playAfter = options.playAfter !== false;
     if (state.connected && key && state.world_key === key) {
-      if (!state.games.includes(state.trainer)) run('launch');
+      if (playAfter && !state.games.includes(state.trainer)) run('launch');
       else setPage('play');
       return;
     }
@@ -251,6 +252,9 @@ export function App() {
     <main className="main">
       <header className="topbar"><button className="menu-button icon-button" aria-label="Open navigation" onClick={() => setMenu(true)}><Menu size={21} /></button><div className="top-path"><span>EMERALD WORLD</span><span className="slash">/</span><b>{page === 'play' ? 'PLAY' : page === 'worlds' ? 'YOUR WORLDS' : page === 'backups' ? 'SAVE BACKUPS' : page === 'screen' ? 'GAME SCREEN' : 'SETTINGS'}</b></div><div className="top-right">{busyText}<span className={`dot ${state.connected ? 'online' : ''}`} /><span>{state.connected ? 'Session open' : 'No session'}</span></div></header>
       {page === 'play' && <PlayerHome state={state} ready={ready} busy={busy}
+        onLocalOpen={(action, payload, key, options = {}) => requestPlay(action, payload, key, { playAfter: false, ...options })}
+        onAuthorCave={payload => run('author_cave', payload)}
+        onActivateArea={payload => run('activate_area', payload)}
         onJoin={() => { setError(''); setDialog('join'); }} onCreate={openCreate}
         onSolo={() => { setError(''); setDialog('solo'); }} onWorlds={() => go('worlds')}
         onLaunch={() => run('launch')} onScreen={() => go('screen')} onClose={game => setDialog({ type: 'leave', game })}
@@ -262,7 +266,7 @@ export function App() {
         onPlaySaved={world => requestPlay('rejoin', { world: world.key }, world.key)}
         onPlayHosted={world => requestPlay('host_resume', { world: world.id }, `hosted-${world.id}`)}
         onPlayOffline={save => requestPlay('solo_resume', { world: save.world, trainer: save.trainer }, null, { playAfter: false })} />}
-      {page === 'worlds'  && <div className="interior"><button className="back" onClick={() => go('play')}><ArrowLeft size={16} /> Back to play</button><span className="eyebrow gold">YOUR ADVENTURES</span><h1>Worlds worth<br /><em>returning to.</em></h1><p className="lead">Your saved connections live here. Your private trainer progress stays on your device.</p><div className="world-toolbar"><h2>Saved worlds <span className="count">{state.worlds.length}</span></h2><button className="button small primary" onClick={() => { setError(''); setDialog('join'); }} disabled={!ready || busy}><Plus size={16} /> Join a world</button></div>{state.worlds.length > 0 && <label className="world-search"><span className="visually-hidden">Search saved worlds</span><input className="text-input" type="search" value={worldSearch} placeholder="Search worlds or trainers" onChange={event => setWorldSearch(event.target.value)} /></label>}{state.worlds.length ? (visibleWorlds.length ? <div className="world-grid">{visibleWorlds.map((world, i) => <WorldCard key={world.key} world={world} index={i} busy={busy} ready={ready} onContinue={() => requestPlay('rejoin', { world: world.key }, world.key)} onForget={() => setDialog({ type: 'forget', world })} onOffline={() => { setError(''); setDialog({ type: 'offline', world }); }} onRename={() => { setError(''); setWorldName(world.name); setDialog({ type: 'rename', world }); }} onFavorite={() => run('favorite', { world: world.key, favorite: !world.favorite })} />)}</div> : <p className="muted-copy">No worlds match that search.</p>) : <EmptyWorlds onJoin={() => setDialog('join')} ready={ready} />}</div>}
+      {page === 'worlds'  && <div className="interior"><button className="back" onClick={() => go('play')}><ArrowLeft size={16} /> Back to play</button><span className="eyebrow gold">YOUR ADVENTURES</span><h1>Worlds worth<br /><em>returning to.</em></h1><p className="lead">Your remote connections live here. Your private trainer progress stays on your device.</p><section className="worlds-section" aria-labelledby="local-worlds-title"><h2 id="local-worlds-title">Local worlds</h2><p className="muted-copy">Local expeditions, published adventures and new local saves are on the Play page.</p><button className="button small ghost" onClick={() => go('play')}>Browse local expeditions ({(state.local_worlds || []).length})</button></section><div className="world-toolbar"><h2>Saved connections <span className="count">{state.worlds.length}</span></h2><button className="button small primary" onClick={() => { setError(''); setDialog('join'); }} disabled={!ready || busy}><Plus size={16} /> Join a world</button></div>{state.worlds.length > 0 && <label className="world-search"><span className="visually-hidden">Search saved worlds</span><input className="text-input" type="search" value={worldSearch} placeholder="Search worlds or trainers" onChange={event => setWorldSearch(event.target.value)} /></label>}{state.worlds.length ? (visibleWorlds.length ? <div className="world-grid">{visibleWorlds.map((world, i) => <WorldCard key={world.key} world={world} index={i} busy={busy} ready={ready} onContinue={() => requestPlay('rejoin', { world: world.key }, world.key)} onForget={() => setDialog({ type: 'forget', world })} onOffline={() => { setError(''); setDialog({ type: 'offline', world }); }} onRename={() => { setError(''); setWorldName(world.name); setDialog({ type: 'rename', world }); }} onFavorite={() => run('favorite', { world: world.key, favorite: !world.favorite })} />)}</div> : <p className="muted-copy">No worlds match that search.</p>) : <EmptyWorlds onJoin={() => setDialog('join')} ready={ready} />}</div>}
       {page === 'screen' && <GameMirror gameRunning={state.games.length > 0} onBack={() => go('play')} />}
       {page === 'backups' && <SaveBackups state={state} busy={busy} onBack={() => go('play')} />}
       {page === 'settings' && <div className="interior narrow"><button className="back" onClick={() => go('play')}><ArrowLeft size={16} /> Back to play</button><span className="eyebrow gold">THE DETAILS</span><h1>Settings</h1><p className="lead">A little more control, when you need it.</p><div className="settings-card"><div className="settings-icon"><ShieldCheck size={22} /></div><div><h3>Your adventure stays yours</h3><p>Trainer saves stay on this device. Invitations are private credentials, so only import one from a trusted host.</p></div></div><div className="settings-card"><div className="settings-icon"><Settings2 size={22} /></div><div><h3>Game setup</h3><p>Basic checks for the native Linux game. Follow INSTALL_PC.md for installation and troubleshooting.</p><ul className="setup-list">{state.setup.map(item => <li key={item.name}><span className={`dot ${item.ready ? 'online' : 'error-dot'}`} /><span><strong>{item.name}</strong> {item.ready ? 'available' : 'needed'}{!item.ready && <small>{item.help}</small>}</span></li>)}</ul><p>Passing these checks does not guarantee the game will launch.</p></div></div><button className="text-button danger" onClick={() => setDialog('quit')}><DoorOpen size={16} /> Quit launcher</button></div>}

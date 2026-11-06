@@ -140,6 +140,32 @@ BattleScript_TrainerBallBlock::
 	waitmessage B_WAIT_TIME_LONG
 	finishaction
 
+.ifdef PORTABLE
+BattleScript_WorldCoopMedicineHeal::
+	playse SE_USE_ITEM
+	orword gHitMarker, HITMARKER_IGNORE_SUBSTITUTE
+	healthbarupdate BS_ATTACKER
+	datahpupdate BS_ATTACKER
+	printstring STRINGID_PKMNSITEMRESTOREDHEALTH
+	waitmessage B_WAIT_TIME_LONG
+	updatestatusicon BS_ATTACKER
+	moveendcase MOVEEND_MIRROR_MOVE
+	finishaction
+BattleScript_WorldCoopMedicineStatus::
+	playse SE_USE_ITEM
+	printstring STRINGID_PKMNSITEMRESTOREDHEALTH
+	waitmessage B_WAIT_TIME_LONG
+	updatestatusicon BS_ATTACKER
+	moveendcase MOVEEND_MIRROR_MOVE
+	finishaction
+BattleScript_WorldCoopMedicineReserve::
+	playse SE_USE_ITEM
+	printstring STRINGID_COOP_MEDICINE_RESERVE
+	waitmessage B_WAIT_TIME_LONG
+	moveendcase MOVEEND_MIRROR_MOVE
+	finishaction
+.endif
+
 BattleScript_PlayerUsesItem::
 	moveendcase MOVEEND_MIRROR_MOVE
 	end

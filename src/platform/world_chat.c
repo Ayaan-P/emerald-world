@@ -130,7 +130,10 @@ int WorldChat_BlocksInput(void)
     if (sChat.editing) return 1;
     if (!sChat.releaseKeys) return 0;
     keys = SDL_GetKeyboardState(&count);
-    for (i = 0; i < count; i++) if (keys[i]) return 1;
+    /* Only game-bound keys can leak a typing action into gameplay. Lock keys
+     * (notably Num Lock in Xephyr) may remain reported as down indefinitely. */
+    for (i = 0; i < count; i++)
+        if (keys[i] && Input_KeyIsBound((SDL_Scancode)i)) return 1;
     sChat.releaseKeys = 0;
     return 0;
 }

@@ -1,0 +1,86 @@
+"""Bounded generated outdoor cast; all dialogue is literal inert text."""
+from collections import deque
+import re
+from .wilds import encode as encode_wilds
+from .wilds_guide import prepare as prepare_guide
+
+SIDE=63
+MAGIC=b'EWGMAP08'
+POSITIONS=((2,1),(20,20),(40,40))
+RECORD_BYTES=61
+META_BYTES=1+3*RECORD_BYTES
+
+def prepare(proposal,count):
+    if type(count) is not int or not 1<=count<=3:raise ValueError('cast must have one to three characters')
+    rows=[list(row) for row in prepare_guide(proposal)['rows']]
+    blocked=set(POSITIONS[:count])
+    for x,y in blocked:
+        rows[y][x]='.';rows[y][x-1]='.'
+    while True:
+        seen={(1,1)};q=deque([(1,1)])
+        while q:
+            x,y=q.popleft()
+            for nx,ny in ((x,y-1),(x+1,y),(x,y+1),(x-1,y)):
+                if 0<nx<SIDE-1 and 0<ny<SIDE-1 and (nx,ny) not in blocked and rows[ny][nx]=='.' and (nx,ny) not in seen:
+                    seen.add((nx,ny));q.append((nx,ny))
+        missing={(x,y) for y in range(1,SIDE-1) for x in range(1,SIDE-1) if rows[y][x]=='.' and (x,y) not in blocked and (x,y) not in seen}
+        if not missing:break
+        # Multi-source BFS finds the shortest carve through interior walls,
+        # never through a character. Sorted seeds make the result deterministic.
+        q=deque(sorted(seen));parent={xy:None for xy in seen};target=None
+        while q and target is None:
+            x,y=q.popleft()
+            for nx,ny in ((x,y-1),(x+1,y),(x,y+1),(x-1,y)):
+                point=(nx,ny)
+                if 0<nx<SIDE-1 and 0<ny<SIDE-1 and point not in blocked and point not in parent:
+                    parent[point]=(x,y)
+                    if point in missing:target=point;break
+                    q.append(point)
+        if target is None:raise ValueError('cannot connect cast layout')
+        while target is not None:
+            x,y=target;rows[y][x]='.';target=parent[target]
+    result={'rows':[''.join(row) for row in rows],'spawn':[1,1],'exit':[61,61]}
+    encode_wilds(result)
+    return result
+
+def _text(text):
+    if (type(text) is not str or not re.fullmatch(r"[A-Za-z0-9 .,!?'-]+(?:\n[A-Za-z0-9 .,!?'-]+)?",text)
+            or any(len(line)>28 or not line.strip() for line in text.split('\n'))):
+        raise ValueError('character dialogue needs one or two short literal lines')
+    value=text.encode('ascii')
+    if len(value)>57:raise ValueError('dialogue too long')
+    return value
+
+def encode(proposal,cast):
+    if type(cast) is not list or not 1<=len(cast)<=3:raise ValueError('cast must have one to three characters')
+    records=bytearray()
+    for index,item in enumerate(cast):
+        if type(item) is not dict or set(item)!={'gfx','text'} or type(item['gfx']) is not int or item['gfx'] not in (7,8):
+            raise ValueError('invalid character')
+        text=_text(item['text']);x,y=POSITIONS[index]
+        records.extend((item['gfx'],x,y,len(text)));records.extend(text.ljust(57,b'\0'))
+    records.extend(bytes((3-len(cast))*RECORD_BYTES))
+    terrain=prepare(proposal,len(cast))
+    return MAGIC+bytes([len(cast)])+bytes(records)+encode_wilds(terrain)[8:]
+
+def validate_wire(metadata, cells):
+    """Reject noncanonical metadata and layouts where any character blocks passage."""
+    if type(metadata) is not bytes or len(metadata)!=META_BYTES or type(cells) is not bytes or len(cells)!=SIDE*SIDE:
+        raise ValueError('invalid cast payload')
+    count=metadata[0]
+    if not 1<=count<=3:raise ValueError('invalid cast count')
+    cast=[]
+    for i in range(3):
+        record=metadata[1+i*RECORD_BYTES:1+(i+1)*RECORD_BYTES]
+        if i>=count:
+            if any(record):raise ValueError('invalid cast padding')
+            continue
+        gfx,x,y,n=record[:4]
+        if (x,y)!=POSITIONS[i] or not 1<=n<=57 or any(record[4+n:]):raise ValueError('invalid cast character')
+        try:text=record[4:4+n].decode('ascii')
+        except UnicodeDecodeError:raise ValueError('invalid cast text') from None
+        cast.append({'gfx':gfx,'text':text})
+    try:rows=[cells[y*SIDE:(y+1)*SIDE].decode('ascii') for y in range(SIDE)]
+    except UnicodeDecodeError:raise ValueError('invalid terrain') from None
+    proposal={'rows':rows,'spawn':[1,1],'exit':[61,61]}
+    if encode(proposal,cast)!=MAGIC+metadata+cells:raise ValueError('cast blocks access')

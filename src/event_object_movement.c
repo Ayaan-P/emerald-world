@@ -22,6 +22,12 @@
 #include "trainer_see.h"
 #include "trainer_hill.h"
 #include "util.h"
+#ifdef PORTABLE
+#include "platform/generated_map.h"
+#if GENERATED_MAP_READY
+#include "platform/world_bridge.h"
+#endif
+#endif
 #include "constants/event_object_movement.h"
 #include "constants/event_objects.h"
 #include "constants/field_effects.h"
@@ -1219,16 +1225,21 @@ static void CreateReflectionEffectSprites(void)
     gSprites[spriteId].invisible = TRUE;
 }
 
+#if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
+// Set only around the synchronous bridge spawn on the game thread.
+static bool8 sWorldObjectAllocation;
+#endif
+
 u8 GetFirstInactiveObjectEventId(void)
 {
     u8 i;
-    for (i = 0; i < OBJECT_EVENTS_COUNT; i++)
+    for (i = 0; i < SAVED_OBJECT_EVENTS_COUNT; i++)
     {
         if (!gObjectEvents[i].active)
             break;
     }
 
-    return i;
+    return i == SAVED_OBJECT_EVENTS_COUNT ? OBJECT_EVENTS_COUNT : i;
 }
 
 u8 GetObjectEventIdByLocalIdAndMap(u8 localId, u8 mapNum, u8 mapGroupId)
@@ -1362,6 +1373,24 @@ static bool8 GetAvailableObjectEventId(u16 localId, u8 mapNum, u8 mapGroup, u8 *
 // If no slots are available, or if the object is already
 // loaded, returns TRUE.
 {
+#if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
+    u8 i, first, last;
+    // Duplicate identities are rejected even across the two pools.
+    for (i = 0; i < OBJECT_EVENTS_COUNT; i++)
+        if (gObjectEvents[i].active && gObjectEvents[i].localId == localId
+         && gObjectEvents[i].mapNum == mapNum && gObjectEvents[i].mapGroup == mapGroup)
+            return TRUE;
+    first = sWorldObjectAllocation ? SAVED_OBJECT_EVENTS_COUNT : 0;
+    last = sWorldObjectAllocation ? OBJECT_EVENTS_COUNT : SAVED_OBJECT_EVENTS_COUNT;
+    for (i = first; i < last; i++)
+        if (!gObjectEvents[i].active) { *objectEventId = i; return FALSE; }
+    // When extension slots are full the bridge may use otherwise free stock slots.
+    if (sWorldObjectAllocation)
+        for (i = 0; i < SAVED_OBJECT_EVENTS_COUNT; i++)
+            if (!gObjectEvents[i].active) { *objectEventId = i; return FALSE; }
+    return TRUE;
+#else
+
     u8 i = 0;
 
     for (i = 0; i < OBJECT_EVENTS_COUNT && gObjectEvents[i].active; i++)
@@ -1378,6 +1407,7 @@ static bool8 GetAvailableObjectEventId(u16 localId, u8 mapNum, u8 mapGroup, u8 *
             return TRUE;
     }
     return FALSE;
+#endif
 }
 
 static void RemoveObjectEvent(struct ObjectEvent *objectEvent)
@@ -1415,6 +1445,43 @@ void RemoveAllObjectEventsExceptPlayer(void)
     }
 }
 
+#if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
+// Only share the player's palette when both graphics request the same asset.
+// Never load a remote palette over the local player's reserved palette.
+bool8 WorldPlayerPaletteCompatible(u8 graphicsId)
+{
+#if WORLD_MATCHED_TRAINERS
+    const struct ObjectEvent *player;
+    const struct ObjectEventGraphicsInfo *remote, *local;
+    // Surfing and field-move avatars need additional effects/animation state.
+    switch (graphicsId)
+    {
+    case OBJ_EVENT_GFX_BRENDAN_NORMAL:
+    case OBJ_EVENT_GFX_BRENDAN_MACH_BIKE:
+    case OBJ_EVENT_GFX_BRENDAN_ACRO_BIKE:
+    case OBJ_EVENT_GFX_MAY_NORMAL:
+    case OBJ_EVENT_GFX_MAY_MACH_BIKE:
+    case OBJ_EVENT_GFX_MAY_ACRO_BIKE:
+        break;
+    default:
+        return FALSE;
+    }
+    if (graphicsId >= NUM_OBJ_EVENT_GFX || gPlayerAvatar.objectEventId >= OBJECT_EVENTS_COUNT)
+        return FALSE;
+    player = &gObjectEvents[gPlayerAvatar.objectEventId];
+    if (!player->active || !player->isPlayer || player->graphicsId >= NUM_OBJ_EVENT_GFX)
+        return FALSE;
+    remote = GetObjectEventGraphicsInfo(graphicsId);
+    local = GetObjectEventGraphicsInfo(player->graphicsId);
+    return !remote->inanimate && remote->paletteSlot == PALSLOT_PLAYER
+        && local->paletteSlot == PALSLOT_PLAYER && remote->paletteTag == local->paletteTag;
+#else
+    (void)graphicsId;
+    return FALSE;
+#endif
+}
+#endif
+
 static u8 TrySetupObjectEventSprite(const struct ObjectEventTemplate *objectEventTemplate, struct SpriteTemplate *spriteTemplate, u8 mapNum, u8 mapGroup, s16 cameraX, s16 cameraY)
 {
     u8 spriteId;
@@ -1431,9 +1498,20 @@ static u8 TrySetupObjectEventSprite(const struct ObjectEventTemplate *objectEven
     objectEvent = &gObjectEvents[objectEventId];
     graphicsInfo = GetObjectEventGraphicsInfo(objectEvent->graphicsId);
     paletteSlot = graphicsInfo->paletteSlot;
+#if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS && WORLD_MATCHED_TRAINERS
+    if (sWorldObjectAllocation && paletteSlot == PALSLOT_PLAYER
+        && !WorldPlayerPaletteCompatible(objectEvent->graphicsId))
+    {
+        objectEvent->active = FALSE;
+        return OBJECT_EVENTS_COUNT;
+    }
+#endif
     if (paletteSlot == PALSLOT_PLAYER)
     {
-        LoadPlayerObjectReflectionPalette(graphicsInfo->paletteTag, paletteSlot);
+#if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS && WORLD_MATCHED_TRAINERS
+        if (!sWorldObjectAllocation)
+#endif
+            LoadPlayerObjectReflectionPalette(graphicsInfo->paletteTag, paletteSlot);
     }
     else if (paletteSlot == PALSLOT_NPC_SPECIAL)
     {
@@ -1526,6 +1604,23 @@ u8 SpawnSpecialObjectEventParameterized(u8 graphicsId, u8 movementBehavior, u8 l
     objectEventTemplate.trainerRange_berryTreeId = 0;
     return SpawnSpecialObjectEvent(&objectEventTemplate);
 }
+
+#if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
+u8 SpawnWorldObjectEventParameterized(u8 graphicsId, u8 movementBehavior, u8 localId, s16 x, s16 y, u8 elevation)
+{
+    u8 result;
+    sWorldObjectAllocation = TRUE;
+#if WORLD_NATIVE_TILEBANK
+    NativeSpriteTileScope(TRUE);
+#endif
+    result = SpawnSpecialObjectEventParameterized(graphicsId, movementBehavior, localId, x, y, elevation);
+#if WORLD_NATIVE_TILEBANK
+    NativeSpriteTileScope(FALSE);
+#endif
+    sWorldObjectAllocation = FALSE;
+    return result;
+}
+#endif
 
 u8 TrySpawnObjectEvent(u8 localId, u8 mapNum, u8 mapGroup)
 {
@@ -2331,6 +2426,9 @@ u8 CopySprite(struct Sprite *sprite, s16 x, s16 y, u8 subpriority)
         if (!gSprites[i].inUse)
         {
             gSprites[i] = *sprite;
+#if defined(PORTABLE) && WORLD_NATIVE_TILEBANK
+            NativeSpriteTileClone(sprite, &gSprites[i]);
+#endif
             gSprites[i].x = x;
             gSprites[i].y = y;
             gSprites[i].subpriority = subpriority;
@@ -2349,6 +2447,9 @@ u8 CreateCopySpriteAt(struct Sprite *sprite, s16 x, s16 y, u8 subpriority)
         if (!gSprites[i].inUse)
         {
             gSprites[i] = *sprite;
+#if defined(PORTABLE) && WORLD_NATIVE_TILEBANK
+            NativeSpriteTileClone(sprite, &gSprites[i]);
+#endif
             gSprites[i].x = x;
             gSprites[i].y = y;
             gSprites[i].subpriority = subpriority;
@@ -4731,6 +4832,13 @@ static bool8 DoesObjectCollideWithObjectAt(struct ObjectEvent *objectEvent, s16 
         curObject = &gObjectEvents[i];
         if (curObject->active && curObject != objectEvent)
         {
+#if defined(PORTABLE) && GENERATED_MAP_READY
+            // Shared cave corridors and entry tiles must remain passable by players.
+            // NPCs and remote objects outside this map keep normal collision.
+            if (objectEvent->isPlayer && GeneratedMap_IsInside()
+             && WorldBridge_IsRemoteObject(curObject))
+                continue;
+#endif
             if ((curObject->currentCoords.x == x && curObject->currentCoords.y == y) || (curObject->previousCoords.x == x && curObject->previousCoords.y == y))
             {
                 if (AreElevationsCompatible(objectEvent->currentElevation, curObject->currentElevation))

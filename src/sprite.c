@@ -3,7 +3,7 @@
 #include "main.h"
 #include "palette.h"
 
-#define MAX_SPRITE_COPY_REQUESTS 64
+#define MAX_SPRITE_COPY_REQUESTS MAX_SPRITES
 
 #define sAnchorX data[6]
 #define sAnchorY data[7]
@@ -277,12 +277,115 @@ static u16 sSpritePaletteTags[16];
 COMMON_DATA u32 gOamMatrixAllocBitmap = 0;
 COMMON_DATA u8 gReservedSpritePaletteCount = 0;
 
+#if defined(PORTABLE) && WORLD_NATIVE_OAM
+// Keep gMain and its original 128-entry buffer layout unchanged.
+static ALIGNED(4) struct OamData sNativeExtraOam[OAM_ENTRY_COUNT - 128];
+#define OAM_SLOT(i) ((i) < 128 ? &gMain.oamBuffer[(i)] : &sNativeExtraOam[(i) - 128])
+#else
+#define OAM_SLOT(i) (&gMain.oamBuffer[(i)])
+#endif
+
 EWRAM_DATA struct Sprite gSprites[MAX_SPRITES + 1] = {0};
+#if defined(PORTABLE) && WORLD_NATIVE_TILEBANK
+#define NATIVE_TILE_BASE 1024
+#define NATIVE_TILE_COUNT 1024
+static u8 sNativeTileUsed[NATIVE_TILE_COUNT], sNativeTileRefs[NATIVE_TILE_COUNT];
+static u8 sNativeOamRank[MAX_SPRITES];
+static u16 sNativeSpriteBase[MAX_SPRITES], sNativeSpriteCount[MAX_SPRITES];
+static bool8 sNativeTileScope;
+static void NativeSpriteCancelCopies(unsigned first, unsigned count);
+
+static unsigned NativeSpriteSlot(const struct Sprite *sprite)
+{
+    uintptr_t p = (uintptr_t)sprite, start = (uintptr_t)gSprites;
+    if (p < start || p >= start + sizeof(gSprites[0]) * MAX_SPRITES
+     || (p - start) % sizeof(gSprites[0])) return MAX_SPRITES;
+    return (p - start) / sizeof(gSprites[0]);
+}
+void NativeSpriteTileScope(bool8 active) { sNativeTileScope = active; }
+static void NativeSpriteTileRelease(struct Sprite *sprite)
+{
+    unsigned slot = NativeSpriteSlot(sprite), i, first;
+    if (slot >= MAX_SPRITES || !sNativeSpriteBase[slot]) return;
+    first = sNativeSpriteBase[slot] - NATIVE_TILE_BASE;
+    if (sNativeTileRefs[first] && --sNativeTileRefs[first] == 0) {
+        NativeSpriteCancelCopies(first, sNativeSpriteCount[slot]);
+        for (i = 0; i < sNativeSpriteCount[slot]; i++) sNativeTileUsed[first + i] = FALSE;
+    }
+    sNativeSpriteBase[slot] = sNativeSpriteCount[slot] = 0;
+}
+void NativeSpriteTileClone(const struct Sprite *source, struct Sprite *target)
+{
+    unsigned from = NativeSpriteSlot(source), to = NativeSpriteSlot(target);
+    if (to >= MAX_SPRITES || from == to) return;
+    NativeSpriteTileRelease(target);
+    if (from < MAX_SPRITES) {
+        sNativeSpriteBase[to] = sNativeSpriteBase[from];
+        sNativeSpriteCount[to] = sNativeSpriteCount[from];
+        if (sNativeSpriteBase[to])
+            sNativeTileRefs[sNativeSpriteBase[to] - NATIVE_TILE_BASE]++;
+    }
+}
+static s16 NativeSpriteTileAllocate(struct Sprite *sprite, u16 count)
+{
+    unsigned slot = NativeSpriteSlot(sprite), start, i;
+    if (!sNativeTileScope || slot >= MAX_SPRITES || !count || count > NATIVE_TILE_COUNT) return -1;
+    for (start = 0; start + count <= NATIVE_TILE_COUNT; start++) {
+        for (i = 0; i < count && !sNativeTileUsed[start + i]; i++) {}
+        if (i != count) { start += i; continue; }
+        for (i = 0; i < count; i++) sNativeTileUsed[start + i] = TRUE;
+        sNativeSpriteBase[slot] = NATIVE_TILE_BASE + start;
+        sNativeSpriteCount[slot] = count;
+        sNativeTileRefs[start] = 1;
+        return sNativeSpriteBase[slot];
+    }
+    return -1;
+}
+static u16 NativeSpriteTileNumber(const struct Sprite *sprite)
+{
+    unsigned slot = NativeSpriteSlot(sprite);
+    return slot < MAX_SPRITES && sNativeSpriteBase[slot]
+        ? sNativeSpriteBase[slot] : sprite->oam.tileNum;
+}
+static bool8 NativeSpriteHasExtra(const struct Sprite *sprite)
+{
+    unsigned slot = NativeSpriteSlot(sprite);
+    return slot < MAX_SPRITES && sNativeSpriteBase[slot] != 0;
+}
+static void NativeOamMark(const struct Sprite *sprite, struct OamData *oam, u8 index)
+{
+    if (index >= 128)
+        oam->affineParam = NativeSpriteHasExtra(sprite)
+            ? 0x8000 | sNativeOamRank[NativeSpriteSlot(sprite)] : 0;
+}
+#define SPRITE_TILE_NUMBER(sprite) NativeSpriteTileNumber(sprite)
+#else
+#define SPRITE_TILE_NUMBER(sprite) ((sprite)->oam.tileNum)
+#endif
+
 EWRAM_DATA static u16 sSpritePriorities[MAX_SPRITES] = {0};
 EWRAM_DATA static u8 sSpriteOrder[MAX_SPRITES] = {0};
 EWRAM_DATA static bool8 sShouldProcessSpriteCopyRequests = 0;
 EWRAM_DATA static u8 sSpriteCopyRequestCount = 0;
 EWRAM_DATA static struct SpriteCopyRequest sSpriteCopyRequests[MAX_SPRITES] = {0};
+#if defined(PORTABLE) && WORLD_NATIVE_TILEBANK
+/* Discard queued frame copies before freed extra tiles can be reused. */
+static void NativeSpriteCancelCopies(unsigned first, unsigned count)
+{
+    uintptr_t start = (uintptr_t)OBJ_VRAM0 + (NATIVE_TILE_BASE + first) * TILE_SIZE_4BPP;
+    uintptr_t end = start + count * TILE_SIZE_4BPP;
+    u8 read, write = 0;
+    for (read = 0; read < sSpriteCopyRequestCount; read++)
+    {
+        uintptr_t dest = (uintptr_t)sSpriteCopyRequests[read].dest;
+        unsigned size = sSpriteCopyRequests[read].size;
+        bool8 overlap = dest < end && (dest >= start || size > start - dest);
+        if (!overlap) sSpriteCopyRequests[write++] = sSpriteCopyRequests[read];
+    }
+    sSpriteCopyRequestCount = write;
+}
+#endif
+
 EWRAM_DATA u8 gOamLimit = 0;
 EWRAM_DATA u16 gReservedSpriteTileCount = 0;
 EWRAM_DATA static u8 sSpriteTileAllocBitmap[128] = {0};
@@ -293,12 +396,18 @@ EWRAM_DATA bool8 gAffineAnimsDisabled = FALSE;
 
 void ResetSpriteData(void)
 {
-    ResetOamRange(0, 128);
+    ResetOamRange(0, OAM_ENTRY_COUNT);
     ResetAllSprites();
     ClearSpriteCopyRequests();
     ResetAffineAnimData();
     FreeSpriteTileRanges();
+#if defined(PORTABLE) && WORLD_NATIVE_OAM
+    gOamLimit = OAM_ENTRY_COUNT;
+#elif defined(PORTABLE) && WORLD_EXTENDED_SPRITES
+    gOamLimit = 128;
+#else
     gOamLimit = 64;
+#endif
     gReservedSpriteTileCount = 0;
     AllocSpriteTiles(0);
     gSpriteCoordOffsetX = 0;
@@ -484,19 +593,76 @@ void AddSpritesToOamBuffer(void)
     u8 i = 0;
     u8 oamIndex = 0;
 
+#if defined(PORTABLE) && WORLD_NATIVE_OAM
+    for (i = gOamLimit; i < OAM_ENTRY_COUNT; i++)
+        *OAM_SLOT(i) = gDummyOamData;
+    i = 0;
+#endif
+#if defined(PORTABLE) && WORLD_NATIVE_TILEBANK
+    {
+        u8 originalLimit = gOamLimit, normalCount, extraStart, extraCount;
+        bool8 anyExtra = FALSE, full = FALSE;
+        for (i = 0; i < MAX_SPRITES; i++)
+        {
+            struct Sprite *sprite = &gSprites[sSpriteOrder[i]];
+            if (sprite->inUse && !sprite->invisible && NativeSpriteHasExtra(sprite)) anyExtra = TRUE;
+        }
+        if (anyExtra && originalLimit > 128)
+        {
+            // Reserve hidden slot 191 for the order metadata consumed by the PC renderer.
+            if (gOamLimit > 191) gOamLimit = 191;
+            *OAM_SLOT(191) = gDummyOamData;
+            for (i = 0; i < MAX_SPRITES; i++)
+            {
+                struct Sprite *sprite = &gSprites[sSpriteOrder[i]];
+                if (!sprite->inUse || sprite->invisible) continue;
+                if (NativeSpriteHasExtra(sprite))
+                    sNativeOamRank[NativeSpriteSlot(sprite)] = oamIndex;
+                else if (AddSpriteToOamBuffer(sprite, &oamIndex)) { full = TRUE; break; }
+            }
+            normalCount = oamIndex;
+            while (!full && oamIndex < 128 && oamIndex < gOamLimit)
+            {
+                *OAM_SLOT(oamIndex) = gDummyOamData;
+                oamIndex++;
+            }
+            extraStart = oamIndex;
+            if (!full && oamIndex >= 128)
+                for (i = 0; i < MAX_SPRITES; i++)
+                {
+                    struct Sprite *sprite = &gSprites[sSpriteOrder[i]];
+                    if (sprite->inUse && !sprite->invisible && NativeSpriteHasExtra(sprite)
+                     && AddSpriteToOamBuffer(sprite, &oamIndex)) break;
+                }
+            extraCount = oamIndex - extraStart;
+            while (oamIndex < gOamLimit) { *OAM_SLOT(oamIndex) = gDummyOamData; oamIndex++; }
+            gOamLimit = originalLimit;
+            if (extraCount)
+            {
+                struct OamData *meta = OAM_SLOT(191);
+                *meta = gDummyOamData;
+                meta->x = 511; meta->y = 255; meta->shape = 3; meta->size = 3;
+                meta->tileNum = 1023; meta->paletteNum = 15; meta->affineMode = 2;
+                meta->affineParam = 0x4000 | (extraCount << 8) | normalCount;
+            }
+            return;
+        }
+    }
+    // The extra-sprite detection pass exhausted i when no extra sprites exist.
+    i = 0;
+#endif
     while (i < MAX_SPRITES)
     {
         struct Sprite *sprite = &gSprites[sSpriteOrder[i]];
-        if (sprite->inUse && !sprite->invisible && AddSpriteToOamBuffer(sprite, &oamIndex))
-            return;
+#if defined(PORTABLE) && WORLD_NATIVE_TILEBANK
+        if (sprite->inUse && !sprite->invisible && !NativeSpriteHasExtra(sprite)
+            && AddSpriteToOamBuffer(sprite, &oamIndex)) return;
+#else
+        if (sprite->inUse && !sprite->invisible && AddSpriteToOamBuffer(sprite, &oamIndex)) return;
+#endif
         i++;
     }
-
-    while (oamIndex < gOamLimit)
-    {
-        gMain.oamBuffer[oamIndex] = gDummyOamData;
-        oamIndex++;
-    }
+    while (oamIndex < gOamLimit) { *OAM_SLOT(oamIndex) = gDummyOamData; oamIndex++; }
 }
 
 u8 CreateSprite(const struct SpriteTemplate *template, s16 x, s16 y, u8 subpriority)
@@ -563,7 +729,11 @@ u8 CreateSpriteAt(u8 index, const struct SpriteTemplate *template, s16 x, s16 y,
     {
         s16 tileNum;
         sprite->images = template->images;
-        tileNum = AllocSpriteTiles((u8)(sprite->images->size / TILE_SIZE_4BPP));
+#if defined(PORTABLE) && WORLD_NATIVE_TILEBANK
+        tileNum = NativeSpriteTileAllocate(sprite, (u8)(sprite->images->size / TILE_SIZE_4BPP));
+        if (tileNum == -1)
+#endif
+            tileNum = AllocSpriteTiles((u8)(sprite->images->size / TILE_SIZE_4BPP));
         if (tileNum == -1)
         {
             ResetSprite(sprite);
@@ -621,10 +791,15 @@ void DestroySprite(struct Sprite *sprite)
     {
         if (!sprite->usingSheet)
         {
-            u16 i;
-            u16 tileEnd = (sprite->images->size / TILE_SIZE_4BPP) + sprite->oam.tileNum;
-            for (i = sprite->oam.tileNum; i < tileEnd; i++)
-                FREE_SPRITE_TILE(i);
+#if defined(PORTABLE) && WORLD_NATIVE_TILEBANK
+            if (!NativeSpriteHasExtra(sprite))
+#endif
+            {
+                u16 i;
+                u16 tileEnd = (sprite->images->size / TILE_SIZE_4BPP) + sprite->oam.tileNum;
+                for (i = sprite->oam.tileNum; i < tileEnd; i++)
+                    FREE_SPRITE_TILE(i);
+            }
         }
         ResetSprite(sprite);
     }
@@ -633,14 +808,24 @@ void DestroySprite(struct Sprite *sprite)
 void ResetOamRange(u8 start, u8 end)
 {
     u8 i;
+#if defined(PORTABLE) && WORLD_NATIVE_OAM
+    // Stock scene transitions use [0,128) to mean "all OAM".
+    if (start == 0 && end == 128)
+        end = OAM_ENTRY_COUNT;
+#endif
     for (i = start; i < end; i++)
-        gMain.oamBuffer[i] = *(struct OamData *)&gDummyOamData;
+        *OAM_SLOT(i) = *(struct OamData *)&gDummyOamData;
 }
 
 void LoadOam(void)
 {
     if (!gMain.oamLoadDisabled)
+    {
         CpuCopy32(gMain.oamBuffer, (void *)OAM, sizeof(gMain.oamBuffer));
+#if defined(PORTABLE) && WORLD_NATIVE_OAM
+        CpuCopy32(sNativeExtraOam, (u8 *)OAM + sizeof(gMain.oamBuffer), sizeof(sNativeExtraOam));
+#endif
+    }
 }
 
 void ClearSpriteCopyRequests(void)
@@ -681,6 +866,9 @@ void SetOamMatrix(u8 matrixNum, u16 a, u16 b, u16 c, u16 d)
 
 void ResetSprite(struct Sprite *sprite)
 {
+#if defined(PORTABLE) && WORLD_NATIVE_TILEBANK
+    NativeSpriteTileRelease(sprite);
+#endif
     *sprite = sDummySprite;
 }
 
@@ -936,7 +1124,7 @@ void BeginAnim(struct Sprite *sprite)
         if (sprite->usingSheet)
             sprite->oam.tileNum = sprite->sheetTileStart + imageValue;
         else
-            RequestSpriteFrameImageCopy(imageValue, sprite->oam.tileNum, sprite->images);
+            RequestSpriteFrameImageCopy(imageValue, SPRITE_TILE_NUMBER(sprite), sprite->images);
     }
 }
 
@@ -988,7 +1176,7 @@ void AnimCmd_frame(struct Sprite *sprite)
     if (sprite->usingSheet)
         sprite->oam.tileNum = sprite->sheetTileStart + imageValue;
     else
-        RequestSpriteFrameImageCopy(imageValue, sprite->oam.tileNum, sprite->images);
+        RequestSpriteFrameImageCopy(imageValue, SPRITE_TILE_NUMBER(sprite), sprite->images);
 }
 
 void AnimCmd_end(struct Sprite *sprite)
@@ -1022,7 +1210,7 @@ void AnimCmd_jump(struct Sprite *sprite)
     if (sprite->usingSheet)
         sprite->oam.tileNum = sprite->sheetTileStart + imageValue;
     else
-        RequestSpriteFrameImageCopy(imageValue, sprite->oam.tileNum, sprite->images);
+        RequestSpriteFrameImageCopy(imageValue, SPRITE_TILE_NUMBER(sprite), sprite->images);
 }
 
 void AnimCmd_loop(struct Sprite *sprite)
@@ -1666,13 +1854,16 @@ bool8 AddSpriteToOamBuffer(struct Sprite *sprite, u8 *oamIndex)
 
     if (!sprite->subspriteTables || sprite->subspriteMode == SUBSPRITES_OFF)
     {
-        gMain.oamBuffer[*oamIndex] = sprite->oam;
+        *OAM_SLOT(*oamIndex) = sprite->oam;
+#if defined(PORTABLE) && WORLD_NATIVE_TILEBANK
+        NativeOamMark(sprite, OAM_SLOT(*oamIndex), *oamIndex);
+#endif
         (*oamIndex)++;
         return FALSE;
     }
     else
     {
-        return AddSubspritesToOamBuffer(sprite, &gMain.oamBuffer[*oamIndex], oamIndex);
+        return AddSubspritesToOamBuffer(sprite, OAM_SLOT(*oamIndex), oamIndex);
     }
 }
 
@@ -1690,6 +1881,9 @@ bool8 AddSubspritesToOamBuffer(struct Sprite *sprite, struct OamData *destOam, u
     if (!subspriteTable || !subspriteTable->subsprites)
     {
         *destOam = *oam;
+#if defined(PORTABLE) && WORLD_NATIVE_TILEBANK
+        NativeOamMark(sprite, destOam, *oamIndex);
+#endif
         (*oamIndex)++;
         return FALSE;
     }
@@ -1739,6 +1933,23 @@ bool8 AddSubspritesToOamBuffer(struct Sprite *sprite, struct OamData *destOam, u
                 y = ~y + 1;
             }
 
+#if defined(PORTABLE) && WORLD_NATIVE_OAM
+            // A subsprite group may cross the original 128-entry boundary.
+            {
+                struct OamData *out = OAM_SLOT(*oamIndex);
+                *out = *oam;
+                out->shape = subspriteTable->subsprites[i].shape;
+                out->size = subspriteTable->subsprites[i].size;
+                out->x = (s16)baseX + (s16)x;
+                out->y = baseY + y;
+                out->tileNum = tileNum + subspriteTable->subsprites[i].tileOffset;
+#if WORLD_NATIVE_TILEBANK
+                NativeOamMark(sprite, out, *oamIndex);
+#endif
+                if (sprite->subspriteMode != SUBSPRITES_IGNORE_PRIORITY)
+                    out->priority = subspriteTable->subsprites[i].priority;
+            }
+#else
             destOam[i] = *oam;
             destOam[i].shape = subspriteTable->subsprites[i].shape;
             destOam[i].size = subspriteTable->subsprites[i].size;
@@ -1748,6 +1959,7 @@ bool8 AddSubspritesToOamBuffer(struct Sprite *sprite, struct OamData *destOam, u
 
             if (sprite->subspriteMode != SUBSPRITES_IGNORE_PRIORITY)
                 destOam[i].priority = subspriteTable->subsprites[i].priority;
+#endif
         }
     }
 

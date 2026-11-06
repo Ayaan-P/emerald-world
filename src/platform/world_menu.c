@@ -20,6 +20,7 @@
 #include "platform/world_activity.h"
 #include "platform/world_bridge.h"
 #include "platform/world_menu.h"
+#include "platform/generated_map.h"
 #include "platform/world_rally.h"
 #include "platform/world_travel.h"
 #include "constants/characters.h"
@@ -32,8 +33,14 @@
 /* One field window, not another Start-menu row or another input consumer.
  * Lists are rebuilt from live state, but focus is an action identity. */
 enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, RALLY, DISPATCH };
+#define GEN_EXPLORE_LABEL "Explore generated area"
+#define GEN_LEAVE_LABEL "Leave generated area"
 enum Action { FRIENDS, STORY, DEXNAV, BACK, MODE, SCOPE, REQUEST, READY,
-    LATER, CANCEL, GO, FINISH, RETURN, STAY, ACTION_COUNT };
+    LATER, CANCEL, GO, FINISH, RETURN, STAY,
+#if GENERATED_MAP_READY
+    GEN_CAVE,
+#endif
+    ACTION_COUNT };
 enum Page { CONTROLS, ROSTER, STATUS, PAGE_COUNT };
 enum { WORLD_MENU_WIDTH = 28, WORLD_MENU_HEIGHT = 18, LINE_HEIGHT = 12,
     SCREEN_LINES = WORLD_MENU_HEIGHT * 8 / LINE_HEIGHT, TEXT_BYTES = 96 };
@@ -141,6 +148,22 @@ static void AddRow(struct Row *rows, unsigned *count, enum Action action,
     rows[(*count)++] = (struct Row){action, label, reason};
 }
 
+#if GENERATED_MAP_READY
+static const char *GeneratedAreaReason(void)
+{
+    struct WorldRallySnapshot rally = {0};
+    if (GeneratedMap_IsInside() || GeneratedMap_CanEnter()) return NULL;
+    if (!GeneratedMap_HasUsableParty()) return "You need a conscious Pokemon that is not an Egg.";
+    if (!IsMapTypeOutdoors(gMapHeader.mapType)) return "Go outdoors before entering a generated area.";
+    if (!TestPlayerAvatarFlags(PLAYER_AVATAR_FLAG_ON_FOOT)) return "Get off your Bike or stop Surfing first.";
+    if (WorldRally_HasReturn() || (WorldRally_GetSnapshot(&rally) && rally.id))
+        return "Finish your rally and return before exploring another area.";
+    if (WorldBridge_Enabled() && !WorldBridge_GeneratedCaveReady())
+        return "No shared area is ready. Select an area in the launcher and wait for it to arrive.";
+    return "Finish the current activity and stand on safe ground before exploring.";
+}
+#endif
+
 static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 online)
 {
     unsigned n = 0, member = MemberState(r);
@@ -152,10 +175,20 @@ static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 onlin
     const char *approach = eligible ? eligible : ApproachReason();
     if (sMenu.state == FEATURES)
     {
+#if GENERATED_MAP_READY
+        if (GeneratedMap_IsInside()) {
+            AddRow(rows, &n, GEN_CAVE, GEN_LEAVE_LABEL, NULL);
+            AddRow(rows, &n, BACK, "Back", NULL);
+            return n;
+        }
+#endif
         AddRow(rows, &n, FRIENDS, "Friends", WorldBridge_Enabled() ? NULL : "Connect to a world to visit friends.");
         AddRow(rows, &n, STORY, "Story rally", NULL);
         AddRow(rows, &n, DEXNAV, "DexNav", DexNavNative_Available() ? NULL :
             "DexNav needs a Pokedex and conscious party outside restricted or link areas.");
+#if GENERATED_MAP_READY
+        AddRow(rows, &n, GEN_CAVE, GEN_EXPLORE_LABEL, GeneratedAreaReason());
+#endif
         AddRow(rows, &n, BACK, "Back", NULL);
         return n;
     }
@@ -285,6 +318,11 @@ static void Draw(const struct Row *rows, unsigned count, unsigned selected,
             sMenu.focus == FINISH ? "Ends the visit. Only the encounter owner earns boss credit." :
             sMenu.focus == STAY ? "Keep this position and discard your pre-rally return point." :
             sMenu.focus == STORY ? "Roxanne visit for up to four trainers. Normal two-player battles. Boss credit stays personal." :
+#if GENERATED_MAP_READY
+            sMenu.focus == GEN_CAVE ? (GeneratedMap_IsInside() ?
+                "Return to where you entered. Save after returning. Adventure conversations restart on a new visit." :
+                "Explore the active area selected in your launcher. Face a character and press A to talk.") :
+#endif
             "A choose. B back. Check status for local requirements.");
     }
     else if (sMenu.page == ROSTER)
@@ -344,7 +382,7 @@ static void Dispatch(void)
         || JOY_HELD(DPAD_ANY))
     {
         sMenu.state = CLOSED;
-        sMenu.notice = "Choice cancelled by field input. Open Story rally to try again.";
+        sMenu.notice = "Choice cancelled by field input. Open WORLD to try again.";
         return;
     }
     if (!FreeField() || JOY_HELD(A_BUTTON | B_BUTTON | L_BUTTON | R_BUTTON))
@@ -354,6 +392,14 @@ static void Dispatch(void)
      * backend's fresh report queue and normal STATE publication intervals. */
     if (++sMenu.freeFrames < 2) return;
     sMenu.state = CLOSED;
+#if GENERATED_MAP_READY
+    if (sMenu.pending == GEN_CAVE)
+    {
+        accepted = GeneratedMap_IsInside() ? GeneratedMap_Leave() : GeneratedMap_Enter();
+        sMenu.notice = accepted ? NULL : "Generated area unavailable in this field state.";
+        return;
+    }
+#endif
     if (sMenu.pending == FRIENDS) { WorldTravel_RequestMenu(); return; }
     if (sMenu.pending == DEXNAV)
     {
