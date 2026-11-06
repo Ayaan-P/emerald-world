@@ -91,7 +91,7 @@ static u16 sXLTiles[XL_CELLS];static u8 sXLTemplate[XL_CELLS],sXLPalette[XL_CELL
 #if GENERATED_WILDS_EVENTS
 static bool8 sXLHasStableId;static u8 sXLStableId[16];
 #endif
-static bool8 sXLStaged,sXLActive;
+static bool8 sXLStaged,sXLActive,sXLShared;
 #if GENERATED_WILDS_CAST
 static bool8 sXLCastStaged;
 #endif
@@ -343,11 +343,11 @@ bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size)
 #endif
 }
 
-bool8 GeneratedMap_StageXLWilds(const u8 *cells, u32 size)
+static bool8 StageXLWilds(const u8 *cells, u32 size, bool8 shared)
 {
 #if GENERATED_MAP_READY && GENERATED_WORLD_XL
     u8 seen[XL_CELLS]={0};u16 queue[XL_CELLS],head=0,tail=0,i;
-    if(!cells || size!=XL_CELLS || WorldBridge_Enabled() || GeneratedMap_IsInside() || GeneratedMap_EntryPending())return FALSE;
+    if(!cells || size!=XL_CELLS || (WorldBridge_Enabled() && !shared) || GeneratedMap_IsInside() || GeneratedMap_EntryPending())return FALSE;
     for(i=0;i<XL_CELLS;i++){unsigned x=i%XL_SIDE,y=i/XL_SIDE;
         if((cells[i]!='.' && cells[i]!='#') || ((x==0||y==0||x==XL_SIDE-1||y==XL_SIDE-1) && cells[i]!='#'))return FALSE;
     }
@@ -357,7 +357,7 @@ bool8 GeneratedMap_StageXLWilds(const u8 *cells, u32 size)
         for(d=0;d<4;d++)if(next[d]>=0 && next[d]<XL_CELLS && cells[next[d]]=='.' && !seen[next[d]]){seen[next[d]]=TRUE;queue[tail++]=next[d];}
     }
     for(i=0;i<XL_CELLS;i++)if(cells[i]=='.' && !seen[i])return FALSE;
-    memcpy(sXLTemplate,cells,XL_CELLS);sXLStaged=TRUE;sXLHasPalette=FALSE;
+    memcpy(sXLTemplate,cells,XL_CELLS);sXLStaged=TRUE;sXLShared=shared;sXLHasPalette=FALSE;
 #if GENERATED_WILDS_EVENTS
     sXLHasStableId=FALSE;
 #endif
@@ -376,7 +376,18 @@ bool8 GeneratedMap_StageXLWilds(const u8 *cells, u32 size)
 #endif
     return TRUE;
 #else
-    (void)cells;(void)size;return FALSE;
+    (void)cells;(void)size;(void)shared;return FALSE;
+#endif
+}
+
+bool8 GeneratedMap_StageXLWilds(const u8 *cells, u32 size) { return StageXLWilds(cells, size, FALSE); }
+bool8 GeneratedMap_StageSharedXLWilds(const u8 *cells, u32 size) { return StageXLWilds(cells, size, TRUE); }
+bool8 GeneratedMap_MatchesPreparedXLWilds(const u8 *cells, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_WORLD_XL
+    return cells && size==XL_CELLS && sXLStaged && sXLShared && !memcmp(cells,sXLTemplate,XL_CELLS);
+#else
+    (void)cells; (void)size; return FALSE;
 #endif
 }
 bool8 GeneratedMap_StageXLPalette(const u8 *cells,u32 size)
@@ -1205,6 +1216,9 @@ bool8 GeneratedMap_MatchesPreparedWildlife(const u8 *cells, u32 size, u8 profile
 bool8 GeneratedMap_SharedCoordValid(unsigned x, unsigned y)
 {
 #if GENERATED_MAP_READY
+#if GENERATED_WORLD_XL
+    if (sXLStaged && sXLShared) return x<XL_SIDE && y<XL_SIDE && sXLTemplate[y*XL_SIDE+x]=='.';
+#endif
 #if GENERATED_MAP_LARGE
     if (sLargeStaged && sLargeShared)
         return x < LARGE_SIDE && y < LARGE_SIDE
@@ -1252,6 +1266,9 @@ bool8 GeneratedMap_CanEnter(void)
 #if GENERATED_MAP_LARGE
             || (sLargeStaged && sLargeShared)
 #endif
+#if GENERATED_WORLD_XL
+            || (sXLStaged && sXLShared)
+#endif
         )))
         && IsMapTypeOutdoors(gMapHeader.mapType)
         && TestPlayerAvatarFlags(PLAYER_AVATAR_FLAG_ON_FOOT)
@@ -1275,7 +1292,7 @@ bool8 GeneratedMap_Enter(void)
     SetDynamicWarpWithCoords(0, sReturn.mapGroup, sReturn.mapNum, WARP_ID_NONE, sReturn.x, sReturn.y);
     sSeenInside = FALSE;
 #if GENERATED_WORLD_XL
-    sXLActive=sXLStaged && !WorldBridge_Enabled();
+    sXLActive=sXLStaged && (!WorldBridge_Enabled() || sXLShared);
 #endif
 #if GENERATED_MAP_LARGE
     sLargeActive = sLargeStaged && (!WorldBridge_Enabled() || sLargeShared);

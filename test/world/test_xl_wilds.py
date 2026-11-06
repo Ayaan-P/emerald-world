@@ -11,7 +11,7 @@ class XLWilds(unittest.TestCase):
         for style in ('rooms','rounded','organic','maze'):
             p=cave_blueprint.proposal_from_blueprint({**DOC,'style':style},side=127);b=xl_wilds.encode(p)
             self.assertEqual(len(b),16137);self.assertEqual(b[:8],b'EWGMAP0A');self.assertEqual(p['exit'],[125,125])
-            with self.assertRaises(CaveError):SharedCave(b)
+            self.assertEqual(SharedCave(b).side,127)
         bad=dict(p);bad['rows']=p['rows'].copy();bad['rows'][0]='.'+bad['rows'][0][1:]
         with self.assertRaises(ValueError):xl_wilds.encode(bad)
         with tempfile.TemporaryDirectory() as t:
@@ -91,6 +91,7 @@ int main(void){u8 data[16129],bad[16129],paint[16129];unsigned chosen=0;struct M
  assert(!GeneratedMap_StageXLWilds(data,sizeof(data)));
  assert(GeneratedMap_Leave());save.location=destination;GeneratedMap_ResolveLayout(&base);
  assert(save.location.mapGroup==3 && save.location.mapNum==4 && save.location.x==8 && save.location.y==9);
+ online=1;assert(GeneratedMap_StageSharedXLWilds(data,sizeof(data)));assert(GeneratedMap_MatchesPreparedXLWilds(data,sizeof(data)));assert(GeneratedMap_SharedCoordValid(1,1));assert(!GeneratedMap_SharedCoordValid(0,0));assert(GeneratedMap_Enter());save.location=destination;layout=GeneratedMap_ResolveLayout(&base);assert(layout->width==127 && layout->height==127);
  return 0;}
 '''
         with tempfile.TemporaryDirectory() as t:
