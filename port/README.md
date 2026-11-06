@@ -42,3 +42,9 @@ this does not establish ABI compatibility or gameplay correctness. Exact input
 and output hashes are recorded in `world-port-provenance.json`. The earlier
 adaptation targeted the 1.17.2 foundation; this candidate targets the pinned
 1.17.1 donor, so compilation and reconciliation are required.
+
+The prior Expansion adaptations of battle setup, object events and Fly have
+been carried forward with the missing RC8 trainer, remote-collision and arrival
+hooks restored. This does not establish co-op, rendering, travel, DexNav or
+save correctness. Notably the older battle-controller adaptation omits World
+packet validation and co-op hooks, so it is not treated as a resolution.

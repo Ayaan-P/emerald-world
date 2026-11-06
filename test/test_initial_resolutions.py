@@ -35,3 +35,10 @@ class InitialResolutions(unittest.TestCase):
   data=json.loads((ROOT.parent/'prior-hooks-provenance.json').read_text())
   for item in data['files']:
    self.assertEqual(hashlib.sha256((ROOT/item['path']).read_bytes()).hexdigest(),item['merged_sha256'])
+
+ def test_additional_carried_hooks(self):
+  battle=self.read('src/battle_setup.c');objects=self.read('src/event_object_movement.c');fly=self.read('src/field_effect.c')
+  self.assertEqual(battle.count('WorldActivity_TryCoopTrainerBattle()'),2)
+  self.assertIn('DexNavNative_BattleFinished(gBattleOutcome)',battle)
+  self.assertIn('WorldBridge_IsRemoteObject(curObject)',objects)
+  self.assertIn('WorldTravel_ArrivalFallback()',fly)

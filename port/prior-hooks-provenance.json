@@ -1,6 +1,6 @@
 {
   "prior_work": "d0fbd2de6c5fb5bdfe6100abc6091569e7eddbe6 native-world-wip.patch",
-  "method": "Applied prior patch to pinned donor, then merged RC6 to RC8 changes. Textual checks do not establish behavior.",
+  "method": "Applied earlier patch to the pinned donor and merged RC6 to RC8 changes. Some RC8 hooks missing from the earlier patch were then restored manually. This is an incomplete source port, not behavioral verification.",
   "files": [
     {
       "path": "src/fieldmap.c",
@@ -22,6 +22,27 @@
       "rc6_sha256": "c3093bb039711c8d0601532c0493be15915a055a59ffc67982c0343d1fbd9411",
       "rc8_sha256": "c3093bb039711c8d0601532c0493be15915a055a59ffc67982c0343d1fbd9411",
       "merged_sha256": "86c8f001239597e5e28dc1390ae04e524e1adf2898b9742339f9c74287a5d651"
+    },
+    {
+      "path": "src/battle_setup.c",
+      "donor_sha256": "7ccc8edb0f1b2cf7d647c89553a22322620bfefe38a58b0655217188b3b9f8bc",
+      "rc6_sha256": "e073490dce2403ba5f3a6fc8fbe1649d9899e77a0c9b22e5329db846d17644e2",
+      "rc8_sha256": "e073490dce2403ba5f3a6fc8fbe1649d9899e77a0c9b22e5329db846d17644e2",
+      "merged_sha256": "ca8176af1bf56ef9b347fdbbf749be2e910da40466b0128f3b6aa7ccdfb64009"
+    },
+    {
+      "path": "src/event_object_movement.c",
+      "donor_sha256": "c2fadd8cf603095d89f53a1f92227a390c1b2e246bec73fb9c83635941ce86e7",
+      "rc6_sha256": "1b1db67a5112d1dcbc3776ecbbe4ea254c8b7f6aa56dff95ec53f504e9fa26a9",
+      "rc8_sha256": "1b1db67a5112d1dcbc3776ecbbe4ea254c8b7f6aa56dff95ec53f504e9fa26a9",
+      "merged_sha256": "ac3a1b7cdade6b513beb008875c0f0f223f4e8a3363323b8f71b292b6432e8f9"
+    },
+    {
+      "path": "src/field_effect.c",
+      "donor_sha256": "383fbdf26d96682a8150b1e5969ef55edcc671ad7d408fdbff57222badc76fc4",
+      "rc6_sha256": "fbe7af8a39f5f49551f23765d73f8bf7907bf7fe237f2b5dd2bceb1c94357fbe",
+      "rc8_sha256": "fbe7af8a39f5f49551f23765d73f8bf7907bf7fe237f2b5dd2bceb1c94357fbe",
+      "merged_sha256": "859d9324d7d875b05b189922879e454a8122c088a5c6f8752617e62ad1976b0a"
     }
   ]
 }
