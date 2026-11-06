@@ -8,6 +8,7 @@
 #include "platform/inspect.h"
 
 void ExpansionPeers_Update(int overworld);
+unsigned ExpansionPeers_Count(void);
 enum frame_result __real_frame_run(void);
 enum frame_result __wrap_frame_run(void)
 {
@@ -33,8 +34,8 @@ enum frame_result __wrap_frame_run(void)
     FILE *out = fopen(temporary, "w");
     if (out != NULL) {
         int written = fprintf(out, "{\"schema\":1,\"engine\":\"expansion-native\",\"frame\":%u,"
-                          "\"field\":%s,\"group\":%u,\"num\":%u,\"x\":%u,\"y\":%u}\n",
-                          frame_count(), field ? "true" : "false", group, num, x, y);
+                          "\"field\":%s,\"group\":%u,\"num\":%u,\"x\":%u,\"y\":%u,\"peers\":%u}\n",
+                          frame_count(), field ? "true" : "false", group, num, x, y, ExpansionPeers_Count());
         int closed = fclose(out);
         if (written > 0 && closed == 0)
             (void)rename(temporary, path);

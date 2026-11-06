@@ -148,3 +148,10 @@ void ExpansionPeers_Update(int overworld)
         if ((unsigned)o->facingDirection != p->facing) ObjectEventTurn(o, p->facing);
     }
 }
+
+unsigned ExpansionPeers_Count(void)
+{
+    unsigned i, count = 0;
+    for (i = 0; i < MAX_PEERS; i++) if (owned(i)) count++;
+    return count;
+}
