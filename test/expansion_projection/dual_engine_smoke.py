@@ -1,10 +1,11 @@
 """Run two Expansion processes with an in-memory/file presence relay.
 
 This does not use the world server or any sockets and is not a network test.
-It checks that independent engines can consume each other's real position
-telemetry and instantiate both remote objects. Saves are disposable.
+It uses the production world authority and client parser in memory, checks
+independent engines consume each other's positions and instantiate peers. Saves are disposable.
 """
 import json
+import io
 import os
 from pathlib import Path
 import subprocess
@@ -14,6 +15,8 @@ import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from world.expansion import serialize_peers
+from world.server import WorldServer
+from world.client import WorldClient
 
 binary = Path(sys.argv[1]).resolve(strict=True)
 donor = Path(sys.argv[2]).resolve(strict=True)
@@ -21,6 +24,18 @@ with tempfile.TemporaryDirectory(prefix='expansion-dual-') as temp:
     root = Path(temp)
     script = root / 'two-clients.replay'
     script.write_text((donor / 'tests/smoke/opening_start.replay').read_text() + '\nwait 4000\n')
+    server = WorldServer(str(root/'unused.sock'), root/'world')
+    conns = []
+    for name in ('Alice', 'Bob'):
+        token = server.create_identity(name)['token']
+        conn = dict(sock=object(), id=None, seq=-1, state=None, incoming=bytearray(),
+                    out=bytearray(), closing=False, born=time.monotonic(), admin=False)
+        server._line(conn, f'HELLO 1 {name} {token} SOCIAL'.encode())
+        if conn.get('id') != name or conn.get('closing'):
+            raise AssertionError('in-memory social authentication failed')
+        conn['out'].clear()
+        conns.append(conn)
+    sequences = [0, 0]
     processes = []
     profiles = []
     logs = []
@@ -56,14 +71,26 @@ with tempfile.TemporaryDirectory(prefix='expansion-dual-') as temp:
                 state, other = states[i], states[1-i]
                 if state and state.get('field') and state.get('peers', 0) >= 1:
                     seen[i] = True
-                if other and other.get('field'):
-                    name, peerfile, _ = profiles[i]
-                    other_name = profiles[1-i][0]
-                    peer = {k: other[k] for k in ('group','num','x','y','facing','gfx')}
-                    peer['ready'] = 0
-                    temporary = peerfile.with_suffix('.tmp')
-                    temporary.write_text(serialize_peers({'peers': {other_name: peer}}))
-                    temporary.replace(peerfile)
+                if state and state.get('field'):
+                    sequences[i] += 1
+                    values = [sequences[i], *(state[k] for k in ('group','num','x','y','facing','gfx')), 0]
+                    message = 'FIELD ' + ' '.join(map(str, values)) + ' ' + '0'*16 + ' ' + '0'*16
+                    server._line(conns[i], message.encode('ascii'))
+                    if conns[i].get('closing'):
+                        raise AssertionError('world authority rejected Expansion presence')
+                # Use the actual authority snapshot and production client parser;
+                # the test substitutes only an in-memory wire for network I/O.
+                client = WorldClient.__new__(WorldClient)
+                client.stream = io.BytesIO(server._snapshot(conns[i]).encode('ascii'))
+                client.control = False
+                client.social = True
+                client.trainer_id = profiles[i][0]
+                snapshot = client.snapshot()
+                peerfile = profiles[i][1]
+                temporary = peerfile.with_suffix('.tmp')
+                temporary.write_text(serialize_peers(snapshot))
+                temporary.replace(peerfile)
+                conns[i]['out'].clear()
             if any(p.poll() is not None and not seen[i] for i,p in enumerate(processes)):
                 break
             time.sleep(.01)
@@ -71,7 +98,7 @@ with tempfile.TemporaryDirectory(prefix='expansion-dual-') as temp:
             for log in logs: log.flush()
             details = '\n'.join((root/name/'stderr.log').read_text()[-2000:] for name in ('Alice','Bob'))
             raise AssertionError(f'Dual-engine projection not observed by both clients: {seen}; states={states}\n{details}')
-        print('Both independent native engines projected a peer from the other engine telemetry.')
+        print('Both native engines exchanged presence through the real in-memory world authority.')
     finally:
         for p in processes:
             if p.poll() is None: p.terminate()
@@ -79,3 +106,4 @@ with tempfile.TemporaryDirectory(prefix='expansion-dual-') as temp:
             try: p.wait(timeout=5)
             except subprocess.TimeoutExpired: p.kill(); p.wait()
         for log in logs: log.close()
+        server.close()

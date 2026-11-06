@@ -41,3 +41,7 @@ label supplied by the client, not authentication or proof of executable
 integrity. Incompatible Expansion ABI revisions must use a new label. Older
 servers do not recognize the label, so experimental LINK remains unavailable
 there rather than silently negotiating a potentially incompatible session.
+
+The dual-engine replay can also exercise the real world authority and client
+snapshot parser using in-memory protocol delivery. It does not open sockets or
+establish that networking, matchmaking, battle or trade work end to end.
