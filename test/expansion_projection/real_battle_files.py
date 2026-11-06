@@ -27,14 +27,20 @@ scripts={
 wait-until pos=5,10 max 120
 release DOWN
 wait 60
-mash A until in_battle=1 max 9000
+wait-until task_last=task_menu max 9000
+press UP
+press A
+wait-until in_battle=1 max 9000
 dump entered_battle
 wait 300
 ''',
 'Alice':startup+'''wait 120
 press DOWN
 wait 30
-mash A until in_battle=1 max 9000
+mash A until task_last=task_menu max 3000
+press UP times 2
+press A
+wait-until in_battle=1 max 9000
 dump entered_battle
 wait 300
 '''}
