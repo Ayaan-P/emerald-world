@@ -40,7 +40,8 @@ worlds, co-op, complete launcher integration, map catalog and save migration
 are not yet fully ported. An offline-only 31×31 EWGMAP01 cave experiment is
 under development and not ready for user testing. A donor replay entered and
 left a 31×31 cave; a forced save attempt inside was rejected without a flash
-write. It does not enable shared worlds, encounters, wilds or authored events.
+write. Another replay saved after returning and reloaded the original map and
+party. It does not enable shared worlds, encounters, wilds or authored events.
 Expansion map IDs that collide with vanilla generated worlds are withheld from
 presence.
 
@@ -62,3 +63,9 @@ The optional `EW_TEST_PLAY_TURN=1` extension did not observe a completed turn
 before a donor process exited; investigate the gameplay state and termination
 before claiming battles work end-to-end. The normal CI gate checks battle entry
 only. Both paths use the file-only test relay, not real transport.
+
+The donor's DexNav is an opt-in experiment behind
+`EW_EXPERIMENTAL_EXPANSION_DEXNAV=1`. Its menu unlock is transient, and the
+adapter gates search hooks when the switch is off. It uses reserved donor
+flags/variables; per-species search levels stay disabled to avoid changing the
+save layout. Donor GUI and gameplay validation are pending.

@@ -253,6 +253,8 @@ def game_command(binary, state_dir, paths, display=None, agent_control=False, *,
     if expanded:
         env['EW_EXPANSION_PRESENCE'] = str(paths['profile'] / 'presence.json')
         env['EW_EXPANSION_PEERS'] = str(paths['profile'] / 'peers.txt')
+        if os.environ.get('EW_EXPERIMENTAL_EXPANSION_DEXNAV') == '1':
+            env['EW_EXPERIMENTAL_EXPANSION_DEXNAV'] = '1'
         if cave_template is not None:
             env['EW_EXPANSION_OFFLINE'] = '1'
             env['EW_EXPERIMENTAL_EXPANSION_CAVE'] = '1'

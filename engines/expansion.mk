@@ -1,5 +1,8 @@
 # Run in the pinned donor directory. Keep its source and ABI unchanged.
 include Makefile.native
+EW_DEXNAV_CONFIG := ../../build/expansion-dexnav-config.h
+EW_DEXNAV := ../../build/expansion-dexnav.o
+CPPFLAGS += -include $(EW_DEXNAV_CONFIG)
 EW_CAVE := ../../build/expansion-cave.o
 EW_CAVE_GEOMETRY := ../../build/expansion-cave-geometry.o
 EW_CONTROL := ../../build/expansion-control.o
@@ -11,11 +14,11 @@ EW_CABLE := ../../build/expansion-cable.o
 EW_ACTIVITY := ../../build/expansion-activity.o
 EW_TRADE_VALIDATE := ../../build/expansion-trade-validate.o
 EW_TRADE_SAVE := ../../build/expansion-trade-save.o
-OBJS += $(EW_CAVE) $(EW_CAVE_GEOMETRY) $(EW_CONTROL) $(EW_CONTROL_TRANSPORT) $(EW_ADAPTER) $(EW_PEERS) $(EW_LINK) $(EW_CABLE) $(EW_ACTIVITY) $(EW_TRADE_VALIDATE) $(EW_TRADE_SAVE)
+OBJS += $(EW_DEXNAV) $(EW_CAVE) $(EW_CAVE_GEOMETRY) $(EW_CONTROL) $(EW_CONTROL_TRANSPORT) $(EW_ADAPTER) $(EW_PEERS) $(EW_LINK) $(EW_CABLE) $(EW_ACTIVITY) $(EW_TRADE_VALIDATE) $(EW_TRADE_SAVE)
 # A relocated multilib sysroot does not contain the host's SDL dependencies.
 # Resolve those at link time only; do not bake a private runtime search path.
 NATIVE_LDFLAGS += -Wl,--wrap=frame_run -Wl,--wrap=SaveObjectEvents -Wl,--wrap=CopyPartyAndObjectsToSave -Wl,--wrap=GetObjectEventIdByPosition -Wl,--wrap=FieldGetPlayerInput -Wl,--wrap=LinkFullSave_SetLastSectorSignature -Wl,-rpath-link,/usr/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu/pulseaudio
-$(NATIVE_EXE): $(EW_CAVE) $(EW_CAVE_GEOMETRY) $(EW_CONTROL) $(EW_CONTROL_TRANSPORT) $(EW_ADAPTER) $(EW_PEERS) $(EW_LINK) $(EW_CABLE) $(EW_ACTIVITY) $(EW_TRADE_VALIDATE) $(EW_TRADE_SAVE)
+$(NATIVE_EXE): $(EW_DEXNAV) $(EW_CAVE) $(EW_CAVE_GEOMETRY) $(EW_CONTROL) $(EW_CONTROL_TRANSPORT) $(EW_ADAPTER) $(EW_PEERS) $(EW_LINK) $(EW_CABLE) $(EW_ACTIVITY) $(EW_TRADE_VALIDATE) $(EW_TRADE_SAVE)
 $(EW_ADAPTER): ../expansion_presence.c
 	@mkdir -p $(@D)
 	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
@@ -116,3 +119,21 @@ $(EW_FAKE_LINK): ../../test/expansion_projection/fake_link_files.c
 	@mkdir -p $(@D)
 	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -DPORTABLE -iquote ../../include -c $< -o $@
 endif
+
+# Enable the pinned donor's complete DexNav implementation at build time;
+# its transient unlock flag stays off unless explicitly enabled at runtime.
+$(EW_DEXNAV_CONFIG): include/config/dexnav.h ../../scripts/patch_expansion_dexnav.py
+	@mkdir -p $(@D)
+	python3 ../../scripts/patch_expansion_dexnav.py config $< $@
+$(OBJS): $(EW_DEXNAV_CONFIG)
+$(EW_DEXNAV): ../expansion_dexnav.c $(EW_DEXNAV_CONFIG)
+	@mkdir -p $(@D)
+	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+EW_DEXNAV_GAME := ../../build/expansion-dexnav-game.c
+$(EW_DEXNAV_GAME): src/dexnav.c ../../scripts/patch_expansion_dexnav.py
+	@mkdir -p $(@D)
+	python3 ../../scripts/patch_expansion_dexnav.py source $< $@
+$(C_BUILDDIR)/dexnav.o: $(EW_DEXNAV_GAME) $(C_FILTER_SCRIPT)
+	@echo "$(TARGET_CC) <Expansion DexNav overlay> -o $@"
+	@$(CPP) $(CPPFLAGS) -iquote src $(EW_DEXNAV_GAME) | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $(EW_DEXNAV_GAME) charmap.txt | $(C_FILTER) > $(C_PREPROCESSED) && $(TARGET_CC) $(CFLAGS) -c -x c -o $@ $(C_PREPROCESSED); status=$$?; rm -f $(C_PREPROCESSED); exit $$status
