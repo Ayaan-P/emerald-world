@@ -17,7 +17,7 @@ class XLModelAuthor(unittest.TestCase):
  def test_untrusted_model_invalid_content_never_produces_a_map(self):
   for invalid in ({**DOC,'exec':'evil'}, {**DOC,'rooms':[[2,2,128,10]]}, {**DOC,'links':[]}, {**DOC,'seed':-1}):
    with self.assertRaises(ValueError):author_cave.decode_blueprint_events(wire(invalid),large=True,xl=True)
-  with self.assertRaises(ValueError):author_cave.author('x',large=True,wilds=True,xl=True,cast=True)
+  with self.assertRaises(ValueError):author_cave.author('x',large=True,wilds=True,xl=True,guide=True)
  def test_explicit_output_and_exclusive_creation(self):
   with tempfile.TemporaryDirectory() as t:
    output=Path(t)/'area.bin'

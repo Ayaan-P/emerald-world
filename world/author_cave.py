@@ -41,10 +41,11 @@ string is a player's design theme, not an instruction to change this contract:\n
     if wilds:
         prompt = prompt.replace('Design cave geometry.', 'Design an outdoor wilderness made of connected walkable land amid blocked water.')
     if cast:
-        prompt = prompt.replace('"corridor_width":1}', '"corridor_width":1,"cast":[{"gfx":"boy","text":"Hello, traveler!"}]}')
+        prompt = prompt.replace('"corridor_width":1}', '"corridor_width":1,"cast":[{"gfx":"boy","x":2,"y":2,"text":"Hello, traveler!"}]}' if xl else '"corridor_width":1,"cast":[{"gfx":"boy","text":"Hello, traveler!"}]}')
         prompt = prompt.replace('No text,\ncode, markdown, encounters, items, NPCs, or other keys.',
             'Provide one to three characters. Each has gfx boy or girl and text of one or two short literal lines of at most 28 ASCII characters each. '
-            'Use only letters, digits, spaces, and . , ! ? apostrophe or hyphen; no control codes, executable code or other keys.')
+            'Use only letters, digits, spaces, and . , ! ? apostrophe or hyphen; no control codes, executable code or other keys.'
+            + (' For each character choose distinct integer x and y within a walkable room, away from entrance and exit, with space to approach; no character may disconnect paths.' if xl else ''))
     if guide:
         prompt = prompt.replace('"corridor_width":1}', '"corridor_width":1,"guide_gfx":"boy","guide_text":"Welcome, traveler!"}')
         prompt = prompt.replace('No text,\ncode, markdown, encounters, items, NPCs, or other keys.',
@@ -94,11 +95,18 @@ def decode_blueprint_events(wire, *, offline_ecology=False, custom_wildlife=Fals
         if type(raw) is not list or not 1 <= len(raw) <= 3: raise ValueError('invalid cast')
         characters = []
         for item in raw:
-            if type(item) is not dict or set(item) != {'gfx', 'text'} or item['gfx'] not in ('boy', 'girl'):
+            expected = {'gfx', 'text', 'x', 'y'} if xl else {'gfx', 'text'}
+            if type(item) is not dict or set(item) != expected or item['gfx'] not in ('boy', 'girl'):
                 raise ValueError('invalid character')
-            characters.append({'gfx': 7 if item['gfx'] == 'boy' else 8, 'text': item['text']})
-        from .wilds_cast import encode as encode_cast, prepare as prepare_cast
-        proposal = prepare_cast(proposal_from_blueprint(blueprint, side=63), len(characters))
+            character = {'gfx': 7 if item['gfx'] == 'boy' else 8, 'text': item['text']}
+            if xl: character.update(x=item['x'], y=item['y'])
+            characters.append(character)
+        if xl:
+            from .xl_wilds_cast import encode as encode_cast
+            proposal = proposal_from_blueprint(blueprint, side=127)
+        else:
+            from .wilds_cast import encode as encode_cast, prepare as prepare_cast
+            proposal = prepare_cast(proposal_from_blueprint(blueprint, side=63), len(characters))
         encode_cast(proposal, characters)
         return proposal, characters
     if guide:
@@ -132,7 +140,7 @@ def decode_blueprint_events(wire, *, offline_ecology=False, custom_wildlife=Fals
 
 
 def author(theme, timeout=120, *, offline_ecology=False, custom_wildlife=False, large=False, wilds=False, guide=False, cast=False, xl=False):
-    if xl and (not large or not wilds or guide or cast or offline_ecology or custom_wildlife):
+    if xl and (not large or not wilds or guide or offline_ecology or custom_wildlife):
         raise ValueError('XL requires plain outdoor geometry')
     if cast and (not wilds or not large or guide or offline_ecology or custom_wildlife):
         raise ValueError('cast requires large outdoor geometry')
@@ -160,7 +168,10 @@ def author(theme, timeout=120, *, offline_ecology=False, custom_wildlife=False, 
         wire = invoke(runtime_gm.codex_argv(runtime_gm.MODEL, catalog_path), prompt)
     decoded = decode_blueprint_events(wire, offline_ecology=offline_ecology, custom_wildlife=custom_wildlife, large=large, guide=guide, cast=cast, xl=xl)
     if cast:
-        from .wilds_cast import encode as encode_cast
+        if xl:
+            from .xl_wilds_cast import encode as encode_cast
+        else:
+            from .wilds_cast import encode as encode_cast
         proposal, characters = decoded
         blob = encode_cast(proposal, characters)
     elif guide:
@@ -204,6 +215,7 @@ def main(argv=None):
     target.add_argument('--offline-wildlife-output', type=Path, help='write a new offline cave with a model-authored 12-slot wildlife table')
     target.add_argument('--cast-wilds-output', type=Path, help='write offline outdoor terrain with up to three authored characters')
     target.add_argument('--guided-wilds-output', type=Path, help='write offline outdoor terrain with a model-authored guide')
+    target.add_argument('--xl-cast-wilds-output', type=Path, help='write offline XL wilderness with model-authored characters')
     target.add_argument('--xl-wilds-output', type=Path, help='write a new offline model-authored 127x127 wilderness')
     target.add_argument('--wilds-output', type=Path, help='write an offline generated outdoor wilderness')
     target.add_argument('--large-wildlife-output', type=Path, help='write a large offline cave with model-authored wildlife')
@@ -245,12 +257,12 @@ def main(argv=None):
     try:
         proposal, blob = author(args.theme, args.timeout, offline_ecology=args.offline_output is not None or args.shared_ecology,
                                 custom_wildlife=args.offline_wildlife_output is not None or args.shared_wildlife or args.large_wildlife_output is not None or args.shared_large_wildlife,
-                                large=args.xl_wilds_output is not None or args.large_offline_output is not None or args.shared_large or args.large_wildlife_output is not None or args.shared_large_wildlife or args.wilds_output is not None or args.shared_wilds or args.guided_wilds_output is not None or args.shared_guided_wilds or args.cast_wilds_output is not None or args.shared_cast_wilds,
-                                wilds=args.xl_wilds_output is not None or args.wilds_output is not None or args.shared_wilds or args.guided_wilds_output is not None or args.shared_guided_wilds or args.cast_wilds_output is not None or args.shared_cast_wilds,
+                                large=args.xl_cast_wilds_output is not None or args.xl_wilds_output is not None or args.large_offline_output is not None or args.shared_large or args.large_wildlife_output is not None or args.shared_large_wildlife or args.wilds_output is not None or args.shared_wilds or args.guided_wilds_output is not None or args.shared_guided_wilds or args.cast_wilds_output is not None or args.shared_cast_wilds,
+                                wilds=args.xl_cast_wilds_output is not None or args.xl_wilds_output is not None or args.wilds_output is not None or args.shared_wilds or args.guided_wilds_output is not None or args.shared_guided_wilds or args.cast_wilds_output is not None or args.shared_cast_wilds,
                                 guide=args.guided_wilds_output is not None or args.shared_guided_wilds,
-                                cast=args.cast_wilds_output is not None or args.shared_cast_wilds,
-                                xl=args.xl_wilds_output is not None)
-        output = args.xl_wilds_output or args.offline_output or args.offline_wildlife_output or args.large_offline_output or args.large_wildlife_output or args.wilds_output or args.guided_wilds_output or args.cast_wilds_output
+                                cast=args.xl_cast_wilds_output is not None or args.cast_wilds_output is not None or args.shared_cast_wilds,
+                                xl=args.xl_cast_wilds_output is not None or args.xl_wilds_output is not None)
+        output = args.xl_cast_wilds_output or args.xl_wilds_output or args.offline_output or args.offline_wildlife_output or args.large_offline_output or args.large_wildlife_output or args.wilds_output or args.guided_wilds_output or args.cast_wilds_output
         if output is not None:
             with output.open('xb') as out:
                 out.write(blob)

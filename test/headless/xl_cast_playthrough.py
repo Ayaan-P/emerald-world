@@ -1,18 +1,23 @@
 """Observe and talk to a generated outdoor guide in the actual native game."""
 import argparse
 import hashlib
+import json
 from pathlib import Path
 import shlex
 import tempfile
 import driver
 from large_cave_playthrough import flee
 from world.xl_wilds_cast import encode
+from world.author_cave import decode_blueprint_events
 
 
 def run(binary,seed,out):
     binary,seed,out=map(lambda p:Path(p).resolve(),(binary,seed,out));out.mkdir(parents=True,exist_ok=True)
-    rows=['#'*127]+['#'+'.'*125+'#']*125+['#'*127]
-    blob=encode({'rows':rows,'spawn':[1,1],'exit':[125,125]},[{'gfx':7,'x':2,'y':1,'text':'Welcome, traveler!'},{'gfx':8,'x':75,'y':20,'text':'Far away!'}])
+    doc={'rooms':[[1,1,125,125]],'links':[],'entrance_room':0,'exit_room':0,
+         'cast':[{'gfx':'boy','x':2,'y':1,'text':'Welcome, traveler!'},{'gfx':'girl','x':75,'y':20,'text':'Far away!'}]}
+    wire='\n'.join(json.dumps(x) for x in ({'type':'item.completed','item':{'type':'agent_message','text':json.dumps(doc)}},{'type':'turn.completed'})).encode()
+    proposal,cast=decode_blueprint_events(wire,large=True,xl=True,cast=True)
+    blob=encode(proposal,cast)
     with tempfile.TemporaryDirectory(prefix='wilds-guide-') as t:
         root=Path(t);area=root/'area.bin';area.write_bytes(blob)
         wrapper=root/'run';wrapper.write_text('#!/bin/sh\nexec '+shlex.quote(str(binary))+' --generated-map '+shlex.quote(str(area))+' "$@"\n');wrapper.chmod(0o700)
