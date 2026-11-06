@@ -105,3 +105,14 @@ $(EW_CAVE_SAVE): src/save.c data/maps/map_groups.json ../../scripts/patch_expans
 $(C_BUILDDIR)/save.o: $(EW_CAVE_SAVE) $(C_FILTER_SCRIPT)
 	@echo "$(TARGET_CC) <Expansion cave save overlay> -o $@"
 	@$(CPP) $(CPPFLAGS) -iquote src $(EW_CAVE_SAVE) | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $(EW_CAVE_SAVE) charmap.txt | $(C_FILTER) > $(C_PREPROCESSED) && $(TARGET_CC) $(CFLAGS) -c -x c -o $@ $(C_PREPROCESSED); status=$$?; rm -f $(C_PREPROCESSED); exit $$status
+
+# CI-only file relay. Never enable for a distributed/user executable.
+ifeq ($(EW_FAKE_FILE_LINK),1)
+EW_FAKE_LINK := ../../build/expansion-fake-link.o
+OBJS += $(EW_FAKE_LINK)
+$(NATIVE_EXE): $(EW_FAKE_LINK)
+NATIVE_LDFLAGS += -Wl,--wrap=LinkTransport_Init -Wl,--wrap=LinkTransport_Pump -Wl,--wrap=LinkTransport_Ready -Wl,--wrap=LinkTransport_Offer -Wl,--wrap=LinkTransport_OfferPending -Wl,--wrap=LinkTransport_PendingInvitation -Wl,--wrap=LinkTransport_Accept -Wl,--wrap=LinkTransport_Reject
+$(EW_FAKE_LINK): ../../test/expansion_projection/fake_link_files.c
+	@mkdir -p $(@D)
+	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -DPORTABLE -iquote ../../include -c $< -o $@
+endif

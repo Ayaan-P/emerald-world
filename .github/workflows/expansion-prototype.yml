@@ -69,3 +69,9 @@ jobs:
 
       - name: Exercise offline generated cave in donor
         run: python3 test/expansion_projection/real_cave_smoke.py engines/expansion-native/build/native64/pokeemerald-native engines/expansion-native
+
+      - name: Build isolated file-relay test variant
+        working-directory: engines/expansion-native
+        run: make -f ../expansion.mk -j2 native BITS=64 EW_FAKE_FILE_LINK=1
+      - name: Exercise two donor battle engines without sockets
+        run: python3 test/expansion_projection/real_battle_files.py engines/expansion-native/build/native64/pokeemerald-native /tmp/expansion-dex-smoke/work/pokeemerald.sav

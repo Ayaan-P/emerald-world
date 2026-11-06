@@ -38,14 +38,22 @@ sockets or TLS. The battle/trade state tests use mocks, and real client-to-clien
 battle, trade, disconnection and save behavior remain unverified. Generated
 worlds, co-op, complete launcher integration, map catalog and save migration
 are not yet fully ported. An offline-only 31×31 EWGMAP01 cave experiment is
-under development and not ready for user testing. It does not enable generated
-shared worlds, encounters, wilds or authored events. Expansion maps whose IDs collide with vanilla generated
-worlds are intentionally not advertised as presence.
+under development and not ready for user testing. A donor replay entered and
+left a 31×31 cave; a forced save attempt inside was rejected without a flash
+write. It does not enable shared worlds, encounters, wilds or authored events.
+Expansion map IDs that collide with vanilla generated worlds are withheld from
+presence.
 
-Control frame scheduling, output and launcher scoping have only been tested with
-fakes. No live player-control socket has been exercised. Replay and control are
+Control frame scheduling and launcher scoping have only been tested with fakes.
+A donor replay inspected actual party data and the field-observation schema; no
+live player-control socket has been exercised. Replay and control are
 mutually exclusive; vanilla world and battle observations still require porting.
 
 The cave adapter reserves donor-local group 75 only after verifying that the
 pinned donor has 75 groups; it uses a separate synthetic header and refuses
 saves while inside. This is experimental and not a save-safety proof.
+
+An additional test-only build substitutes a file relay for the link transport
+and drives two real donor games through the in-memory LINK coordinator. It
+creates no sockets and cannot establish actual network, TLS, or transport
+correctness. The two-game battle test is experimental until it passes.
