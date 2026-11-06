@@ -1,0 +1,7 @@
+{
+  "donor_sha256": "51fd3e0c9ca7a50b2c05789cab59aa7bf53be9ba23c75ea34c0326f3daf07c8e",
+  "base_sha256": "de59402b2828e99d0f76ae0549385f331d3facf1ab4d31cb81dbc8b457103f29",
+  "rc8_sha256": "a5e4a8d89937eb45f14a5ccca4f1ea6b9bc7b8fa62ab86568b7a1f0a565289b7",
+  "candidate_sha256": "5f205fbe6d017b3cf72cad224990aa6bdaa7f28f2c1b24489beeb4a842ec3d19",
+  "method": "Three-way source merge adapted to Expansion battler arguments, buffer ownership and types; protocol semantics remain unverified."
+}

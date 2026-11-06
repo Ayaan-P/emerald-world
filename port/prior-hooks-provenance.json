@@ -1,0 +1,55 @@
+{
+  "prior_work": "d0fbd2de6c5fb5bdfe6100abc6091569e7eddbe6 native-world-wip.patch",
+  "method": "Applied earlier World patches directly to pinned donor, carried RC8 changes where applicable and restored selected missing hooks. The files remain incomplete and unverified.",
+  "files": [
+    {
+      "path": "src/fieldmap.c",
+      "donor_sha256": "aba6abe11db684815fda78a3ce7c7bf220e59696236d4a9305c7b0d4bcac1e5d",
+      "rc6_sha256": "b99452da312ae09eb22a6e592fb4b2e9b2388fec58b4c4bf8afba0e4e08017d8",
+      "rc8_sha256": "b99452da312ae09eb22a6e592fb4b2e9b2388fec58b4c4bf8afba0e4e08017d8",
+      "merged_sha256": "44905bcd48d220011a952ff0d95ef96079b2b3685fc1f9ac38e92d488a2c75e3"
+    },
+    {
+      "path": "src/script_menu.c",
+      "donor_sha256": "9b749b9018379964818a60e513cc86affb3df51b2816053b4e82b63541d3ef60",
+      "rc6_sha256": "1aa4170a451aded012a70d42b491596a8427cc8e697f65557e04a2c030cdcd1d",
+      "rc8_sha256": "1aa4170a451aded012a70d42b491596a8427cc8e697f65557e04a2c030cdcd1d",
+      "merged_sha256": "651419ff5d593ed67bc735453b4cdc0cd9e1f55ff52c389b28e577a9252c0012"
+    },
+    {
+      "path": "src/task.c",
+      "donor_sha256": "6913caae3cb29f6baad5317e913636cdd6c8808d2f897f228850745c0cf5e2bb",
+      "rc6_sha256": "c3093bb039711c8d0601532c0493be15915a055a59ffc67982c0343d1fbd9411",
+      "rc8_sha256": "c3093bb039711c8d0601532c0493be15915a055a59ffc67982c0343d1fbd9411",
+      "merged_sha256": "86c8f001239597e5e28dc1390ae04e524e1adf2898b9742339f9c74287a5d651"
+    },
+    {
+      "path": "src/battle_setup.c",
+      "donor_sha256": "7ccc8edb0f1b2cf7d647c89553a22322620bfefe38a58b0655217188b3b9f8bc",
+      "rc6_sha256": "e073490dce2403ba5f3a6fc8fbe1649d9899e77a0c9b22e5329db846d17644e2",
+      "rc8_sha256": "e073490dce2403ba5f3a6fc8fbe1649d9899e77a0c9b22e5329db846d17644e2",
+      "merged_sha256": "ff789c2225cc141b1542c09594a7a4dcd67156c160980923f19ccf0f1d766f89"
+    },
+    {
+      "path": "src/event_object_movement.c",
+      "donor_sha256": "c2fadd8cf603095d89f53a1f92227a390c1b2e246bec73fb9c83635941ce86e7",
+      "rc6_sha256": "1b1db67a5112d1dcbc3776ecbbe4ea254c8b7f6aa56dff95ec53f504e9fa26a9",
+      "rc8_sha256": "1b1db67a5112d1dcbc3776ecbbe4ea254c8b7f6aa56dff95ec53f504e9fa26a9",
+      "merged_sha256": "2098eca293024bf0ce11a583739b927fe602d8503797cbd9d3972b524bf8b9a4"
+    },
+    {
+      "path": "src/field_effect.c",
+      "donor_sha256": "383fbdf26d96682a8150b1e5969ef55edcc671ad7d408fdbff57222badc76fc4",
+      "rc6_sha256": "fbe7af8a39f5f49551f23765d73f8bf7907bf7fe237f2b5dd2bceb1c94357fbe",
+      "rc8_sha256": "fbe7af8a39f5f49551f23765d73f8bf7907bf7fe237f2b5dd2bceb1c94357fbe",
+      "merged_sha256": "859d9324d7d875b05b189922879e454a8122c088a5c6f8752617e62ad1976b0a"
+    },
+    {
+      "path": "src/sprite.c",
+      "donor_sha256": "e247bb4df23db065c3999eac3336e87a5215d489f09653a27eeb05a5f05aecff",
+      "rc6_sha256": "18956f8821ea288e46cfee0fcc2ea48ea20c00a5bf791e65fb82e131255f74e4",
+      "rc8_sha256": "18956f8821ea288e46cfee0fcc2ea48ea20c00a5bf791e65fb82e131255f74e4",
+      "merged_sha256": "ac4aa41d49f115972e3fe8d74a751f344982862100fb940c47fa0d3f0ac3e8f9"
+    }
+  ]
+}

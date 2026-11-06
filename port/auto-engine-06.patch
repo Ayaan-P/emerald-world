@@ -1,0 +1,1688 @@
+diff --git a/src/platform/world_menu.c b/src/platform/world_menu.c
+new file mode 100644
+index 0000000..c4b69cd
+--- /dev/null
++++ b/src/platform/world_menu.c
+@@ -0,0 +1,541 @@
++#ifdef PORTABLE
++#include "global.h"
++#include "main.h"
++#include "overworld.h"
++#include "palette.h"
++#include "script.h"
++#include "menu.h"
++#include "window.h"
++#include "text.h"
++#include "fieldmap.h"
++#include "field_player_avatar.h"
++#include "event_object_movement.h"
++#include "event_data.h"
++#include "battle_setup.h"
++#include "pokemon.h"
++#include "link.h"
++#include "dexnav.h"
++#include "platform/dexnav_native.h"
++#include "platform/native_link.h"
++#include "platform/world_activity.h"
++#include "platform/world_bridge.h"
++#include "platform/world_menu.h"
++#include "platform/generated_map.h"
++#include "platform/world_rally.h"
++#include "platform/world_travel.h"
++#include "constants/characters.h"
++#include "constants/flags.h"
++#include "constants/map_groups.h"
++#include "constants/opponents.h"
++#include <stdio.h>
++#include <string.h>
++
++/* One field window, not another Start-menu row or another input consumer.
++ * Lists are rebuilt from live state, but focus is an action identity. */
++enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, RALLY, DISPATCH };
++#define GEN_EXPLORE_LABEL "Explore generated area"
++#define GEN_LEAVE_LABEL "Leave generated area"
++enum Action { FRIENDS, STORY, DEXNAV, BACK, MODE, SCOPE, REQUEST, READY,
++    LATER, CANCEL, GO, FINISH, RETURN, STAY,
++#if GENERATED_MAP_READY
++    GEN_CAVE,
++#endif
++    ACTION_COUNT };
++enum Page { CONTROLS, ROSTER, STATUS, PAGE_COUNT };
++enum { WORLD_MENU_WIDTH = 28, WORLD_MENU_HEIGHT = 18, LINE_HEIGHT = 12,
++    SCREEN_LINES = WORLD_MENU_HEIGHT * 8 / LINE_HEIGHT, TEXT_BYTES = 96 };
++struct Row { enum Action action; const char *label, *reason; };
++struct Screen { char lines[SCREEN_LINES][TEXT_BYTES]; };
++static const struct WindowTemplate sWindow = {0, 1, 1, WORLD_MENU_WIDTH, WORLD_MENU_HEIGHT, 15, 0x125};
++static struct {
++    enum MenuState state;
++    enum Page page;
++    enum Action focus, pending;
++    unsigned scope, pendingScope, pendingId, freeFrames, group, num;
++    bool8 locked, delay, dirty, offerPending;
++    u8 window;
++    const char *notice;
++    struct Screen drawn;
++} sMenu = {.window = WINDOW_NONE};
++
++static bool8 FieldContext(void)
++{
++    return gSaveBlock1Ptr && gSaveBlock2Ptr && gMain.callback1 == CB1_Overworld
++        && gMain.callback2 == CB2_Overworld && !gMain.inBattle && !gPaletteFade.active
++        && !ScriptContext_IsEnabled() && !gPlayerAvatar.tileTransitionState
++        && !gWirelessCommType && !IsOverworldLinkActive() && !NativeLink_IsActive()
++        && !WorldActivity_OwnsFieldInput() && !WorldTravel_OwnsFieldInput()
++        && !WorldTravel_NativeFlyRunning();
++}
++
++static bool8 FreeField(void)
++{
++    return FieldContext() && !ArePlayerFieldControlsLocked();
++}
++
++static void Forget(void)
++{
++    /* A scene replacement can reuse both window IDs and the global field lock.
++     * Neither belongs to us any more. Never tear down the replacement UI. */
++    sMenu.window = WINDOW_NONE;
++    sMenu.locked = FALSE;
++    sMenu.state = CLOSED;
++}
++
++static void Close(void)
++{
++    if (sMenu.window != WINDOW_NONE)
++    {
++        ClearStdWindowAndFrame(sMenu.window, TRUE);
++        RemoveWindow(sMenu.window);
++        sMenu.window = WINDOW_NONE;
++    }
++    if (sMenu.locked)
++    {
++        UnlockPlayerFieldControls();
++        UnfreezeObjectEvents();
++        sMenu.locked = FALSE;
++    }
++    sMenu.state = CLOSED;
++}
++
++/* Explain only locally observable prerequisites. The backend still owns final
++ * ledger, geometry, presence freshness and server acceptance checks. */
++static const char *PersonalReason(void)
++{
++    unsigned i;
++    if (FlagGet(FLAG_BADGE01_GET) || FlagGet(FLAG_DEFEATED_RUSTBORO_GYM)
++        || HasTrainerBeenFought(TRAINER_ROXANNE_1))
++        return "Your save already cleared Roxanne. This first scene is unavailable.";
++    if (VarGet(VAR_RUSTBORO_CITY_STATE) != 0)
++        return "Finish your Rustboro story event first.";
++    if (!FlagGet(FLAG_VISITED_RUSTBORO_CITY)) return "Visit Rustboro on your own save first.";
++    if (!HasTrainerBeenFought(TRAINER_JOSH) || !HasTrainerBeenFought(TRAINER_TOMMY)
++        || !HasTrainerBeenFought(TRAINER_MARC))
++        return "Defeat all three Rustboro Gym trainers on your own save first.";
++    for (i = 0; i < gPlayerPartyCount && i < PARTY_SIZE; i++)
++        if (GetMonData(&gPlayerParty[i], MON_DATA_SPECIES)
++            && !GetMonData(&gPlayerParty[i], MON_DATA_IS_EGG)
++            && GetMonData(&gPlayerParty[i], MON_DATA_HP)) return NULL;
++    return "You need a conscious Pokemon that is not an Egg.";
++}
++
++static const char *ApproachReason(void)
++{
++    const struct ObjectEvent *player;
++    if (gSaveBlock1Ptr->location.mapGroup != MAP_GROUP(MAP_RUSTBORO_CITY_GYM)
++        || gSaveBlock1Ptr->location.mapNum != MAP_NUM(MAP_RUSTBORO_CITY_GYM))
++        return "Stand at Roxanne's approach in Rustboro Gym.";
++    if (gPlayerAvatar.objectEventId >= OBJECT_EVENTS_COUNT) return "Your field position is unavailable.";
++    player = &gObjectEvents[gPlayerAvatar.objectEventId];
++    if (!player->active || !player->isPlayer || player->currentCoords.x != 5 + MAP_OFFSET
++        || player->currentCoords.y != 3 + MAP_OFFSET || player->currentElevation != ELEVATION_DEFAULT)
++        return "Stand directly below Roxanne at Gym tile 5,3.";
++    return NULL;
++}
++
++static unsigned MemberState(const struct WorldRallySnapshot *r)
++{
++    unsigned i;
++    for (i = 0; i < r->count && i < WORLD_RALLY_ROSTER; i++)
++        if (!strcmp(r->members[i].name, WorldBridge_TrainerName())) return r->members[i].state;
++    return 0;
++}
++
++static void AddRow(struct Row *rows, unsigned *count, enum Action action,
++                   const char *label, const char *reason)
++{
++    rows[(*count)++] = (struct Row){action, label, reason};
++}
++
++#if GENERATED_MAP_READY
++static const char *GeneratedAreaReason(void)
++{
++    struct WorldRallySnapshot rally = {0};
++    if (GeneratedMap_IsInside() || GeneratedMap_CanEnter()) return NULL;
++    if (!GeneratedMap_HasUsableParty()) return "You need a conscious Pokemon that is not an Egg.";
++    if (!IsMapTypeOutdoors(gMapHeader.mapType)) return "Go outdoors before entering a generated area.";
++    if (!TestPlayerAvatarFlags(PLAYER_AVATAR_FLAG_ON_FOOT)) return "Get off your Bike or stop Surfing first.";
++    if (WorldRally_HasReturn() || (WorldRally_GetSnapshot(&rally) && rally.id))
++        return "Finish your rally and return before exploring another area.";
++    if (WorldBridge_Enabled() && !WorldBridge_GeneratedCaveReady())
++        return "No shared area is ready. Select an area in the launcher and wait for it to arrive.";
++    return "Finish the current activity and stand on safe ground before exploring.";
++}
++#endif
++
++static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 online)
++{
++    unsigned n = 0, member = MemberState(r);
++    bool8 owner = online && r->id && !strcmp(r->owner, WorldBridge_TrainerName());
++    bool8 anchor = WorldRally_HasReturn();
++    const char *personal = PersonalReason();
++    const char *network = online ? NULL : "No fresh rally snapshot. Connect to a rally-enabled world.";
++    const char *eligible = network ? network : personal;
++    const char *approach = eligible ? eligible : ApproachReason();
++    if (sMenu.state == FEATURES)
++    {
++#if GENERATED_MAP_READY
++        if (GeneratedMap_IsInside()) {
++            AddRow(rows, &n, GEN_CAVE, GEN_LEAVE_LABEL, NULL);
++            AddRow(rows, &n, BACK, "Back", NULL);
++            return n;
++        }
++#endif
++        AddRow(rows, &n, FRIENDS, "Friends", WorldBridge_Enabled() ? NULL : "Connect to a world to visit friends.");
++        AddRow(rows, &n, STORY, "Story rally", NULL);
++        AddRow(rows, &n, DEXNAV, "DexNav", DexNavNative_Available() ? NULL :
++            "DexNav needs a Pokedex and conscious party outside restricted or link areas.");
++#if GENERATED_MAP_READY
++        AddRow(rows, &n, GEN_CAVE, GEN_EXPLORE_LABEL, GeneratedAreaReason());
++#endif
++        AddRow(rows, &n, BACK, "Back", NULL);
++        return n;
++    }
++    AddRow(rows, &n, MODE, WorldRally_GetAutoJoin() ? "Mode AUTO-JOIN" : "Mode ASK", NULL);
++    AddRow(rows, &n, SCOPE, sMenu.scope ? "Scope World" : "Scope Nearby", r->id ?
++        "Scope applies to your next request. It cannot change a running rally." : NULL);
++    if (!r->id)
++    {
++        AddRow(rows, &n, REQUEST, "Request Roxanne", sMenu.offerPending ?
++            "A local request was queued. Check backend status or cancel it before retrying." :
++            anchor ? "Return or Stay before requesting another rally." : approach);
++        if (sMenu.offerPending) AddRow(rows, &n, CANCEL, "Cancel pending request", NULL);
++    }
++    else if (r->phase == WORLD_RALLY_GATHER)
++    {
++        AddRow(rows, &n, READY, "Ready", anchor ? "A return is still pending." : eligible);
++        AddRow(rows, &n, LATER, "Not yet", network);
++        AddRow(rows, &n, CANCEL, owner ? "Cancel rally" : "Leave rally", network);
++        if (owner) AddRow(rows, &n, GO, "Go on", approach);
++    }
++    else if (r->phase == WORLD_RALLY_TRAVEL || r->phase == WORLD_RALLY_ACTIVE)
++    {
++        if (owner) AddRow(rows, &n, FINISH, "Finish rally", network);
++        if (!(anchor && member == WORLD_RALLY_RETURNING))
++            AddRow(rows, &n, RETURN, anchor ? "Return" : "Leave rally", network);
++    }
++    if (anchor && (!r->id || r->phase == WORLD_RALLY_RETURN || member == WORLD_RALLY_RETURNING))
++    {
++        AddRow(rows, &n, RETURN, "Return", NULL);
++        AddRow(rows, &n, STAY, "Stay here", r->id && member != WORLD_RALLY_RETURNING ?
++            "Wait for your returning state before choosing Stay." : NULL);
++    }
++    AddRow(rows, &n, BACK, "Back", NULL);
++    return n;
++}
++
++static u8 EncodeChar(unsigned char c)
++{
++    if (c >= 'A' && c <= 'Z') return CHAR_A + c - 'A';
++    if (c >= 'a' && c <= 'z') return CHAR_a + c - 'a';
++    if (c >= '0' && c <= '9') return CHAR_0 + c - '0';
++    switch (c)
++    {
++    case '.': return CHAR_PERIOD;
++    case ',': return CHAR_COMMA;
++    case '-': return CHAR_HYPHEN;
++    case '?': return CHAR_QUESTION_MARK;
++    case ':': return CHAR_COLON;
++    case '/': return CHAR_SLASH;
++    case '\'': return CHAR_SGL_QUOTE_RIGHT;
++    case '>': return CHAR_RIGHT_ARROW;
++    default: return CHAR_SPACE;
++    }
++}
++
++static void Encode(u8 *dest, const char *text)
++{
++    for (; *text; text++) *dest++ = EncodeChar(*text);
++    *dest = EOS;
++}
++
++static void Line(struct Screen *screen, unsigned row, const char *text)
++{
++    if (row < SCREEN_LINES) snprintf(screen->lines[row], TEXT_BYTES, "%s", text);
++}
++
++static void Wrap(struct Screen *screen, unsigned row, unsigned end, const char *text)
++{
++    /* Measure actual native glyphs, including long unbroken trainer names.
++     * Never pass arbitrary server bytes to the game's text control decoder. */
++    while (*text && row < end && row < SCREEN_LINES)
++    {
++        char line[TEXT_BYTES] = {0};
++        u8 encoded[TEXT_BYTES];
++        unsigned n = 0, space = 0;
++        while (text[n] && text[n] != '\n' && n + 1 < sizeof(line))
++        {
++            line[n] = text[n];
++            line[n + 1] = 0;
++            Encode(encoded, line);
++            if (GetStringWidth(FONT_SMALL, encoded, 0) > WORLD_MENU_WIDTH * 8 - 16) break;
++            if (text[n] == ' ') space = n;
++            n++;
++        }
++        if (text[n] && text[n] != '\n' && space) n = space;
++        if (!n) n = 1;
++        line[n] = 0;
++        Line(screen, row++, line);
++        text += n;
++        while (*text == ' ' || *text == '\n') text++;
++    }
++}
++
++static void Draw(const struct Row *rows, unsigned count, unsigned selected,
++                 const struct WorldRallySnapshot *r, bool8 online)
++{
++    static const char *const phases[] = {"No rally", "Gathering", "Travelling", "Active", "Returning"};
++    static const char *const states[] = {"Unknown", "Invited", "Ready", "Not yet", "Moving",
++        "Arrived", "Returning", "Staying", "Left"};
++    struct Screen screen = {0};
++    char text[TEXT_BYTES];
++    u8 encoded[TEXT_BYTES];
++    unsigned i;
++    if (sMenu.state == FEATURES)
++    {
++        Line(&screen, 0, "WORLD");
++        Line(&screen, 1, "Up/Down choose. A open. B close.");
++    }
++    else
++    {
++        snprintf(text, sizeof(text), "Roxanne   %s", online ? phases[r->phase <= WORLD_RALLY_RETURN ? r->phase : 0] : "Offline");
++        Line(&screen, 0, text);
++        Line(&screen, 1, "Left/Right controls roster status");
++    }
++    if (sMenu.state == FEATURES || sMenu.page == CONTROLS)
++    {
++        for (i = 0; i < count; i++)
++        {
++            snprintf(text, sizeof(text), "%s%s%s", i == selected ? "> " : "  ",
++                rows[i].reason ? "X " : "", rows[i].label);
++            Line(&screen, 2 + i, text);
++        }
++        Wrap(&screen, 9, SCREEN_LINES, rows[selected].reason ? rows[selected].reason :
++            sMenu.notice ? sMenu.notice : sMenu.focus == GO ?
++            "Go on leaves invited, not-yet and busy guests behind." :
++            sMenu.focus == MODE ? "AUTO-JOIN still checks your own save and free field. ASK never auto-accepts." :
++            sMenu.focus == FINISH ? "Ends the visit. Only the encounter owner earns boss credit." :
++            sMenu.focus == STAY ? "Keep this position and discard your pre-rally return point." :
++            sMenu.focus == STORY ? "Roxanne visit for up to four trainers. Normal two-player battles. Boss credit stays personal." :
++#if GENERATED_MAP_READY
++            sMenu.focus == GEN_CAVE ? (GeneratedMap_IsInside() ?
++                "Return to where you entered. Save after returning. Adventure conversations restart on a new visit." :
++                "Explore the active area selected in your launcher. Face a character and press A to talk.") :
++#endif
++            "A choose. B back. Check status for local requirements.");
++    }
++    else if (sMenu.page == ROSTER)
++    {
++        snprintf(text, sizeof(text), "Owner %s", r->id ? r->owner : "none");
++        Line(&screen, 2, text);
++        snprintf(text, sizeof(text), "Scope %s", r->id ? (r->scope ? "World" : "Nearby") : "not requested");
++        Line(&screen, 3, text);
++        for (i = 0; i < r->count && i < WORLD_RALLY_ROSTER; i++)
++        {
++            Line(&screen, 4 + i * 2, r->members[i].name);
++            snprintf(text, sizeof(text), "  Slot %u  %s", r->members[i].slot + 1,
++                states[r->members[i].state <= WORLD_RALLY_LEFT ? r->members[i].state : 0]);
++            Line(&screen, 5 + i * 2, text);
++        }
++    }
++    else
++    {
++        Line(&screen, 2, "Backend status");
++        Wrap(&screen, 3, 7, WorldRally_Status());
++        Line(&screen, 7, WorldRally_HasReturn() ? "Your return point is recorded." : "No return point is recorded.");
++        Wrap(&screen, 8, SCREEN_LINES, sMenu.notice ? sMenu.notice : PersonalReason() ? PersonalReason() :
++            "Local story checks pass. Backend checks private return storage, safe ground and fresh presence after closing.");
++    }
++    if (!sMenu.dirty && !memcmp(&screen, &sMenu.drawn, sizeof(screen))) return;
++    FillWindowPixelBuffer(sMenu.window, PIXEL_FILL(1));
++    for (i = 0; i < SCREEN_LINES; i++)
++    {
++        Encode(encoded, screen.lines[i]);
++        AddTextPrinterParameterized(sMenu.window, FONT_SMALL, encoded, 8, i * LINE_HEIGHT, TEXT_SKIP_DRAW, NULL);
++    }
++    CopyWindowToVram(sMenu.window, COPYWIN_FULL);
++    sMenu.drawn = screen;
++    sMenu.dirty = FALSE;
++}
++
++static void Queue(enum Action action, unsigned id)
++{
++    sMenu.pending = action;
++    sMenu.pendingId = id;
++    sMenu.pendingScope = sMenu.scope;
++    Close();
++    sMenu.state = DISPATCH;
++    sMenu.freeFrames = 0;
++    sMenu.notice = "Waiting for the free field. No rally approval has been received.";
++}
++
++static void Dispatch(void)
++{
++    struct WorldRallySnapshot r = {0};
++    struct Row rows[ACTION_COUNT];
++    bool8 accepted = FALSE, online;
++    unsigned action, i, count;
++    /* Human input always wins. Do not replay a deferred click after another
++     * menu, script, battle, trade or field transition has taken ownership. */
++    if (JOY_NEW(A_BUTTON | B_BUTTON | START_BUTTON | SELECT_BUTTON | L_BUTTON | R_BUTTON | DPAD_ANY)
++        || JOY_HELD(DPAD_ANY))
++    {
++        sMenu.state = CLOSED;
++        sMenu.notice = "Choice cancelled by field input. Open WORLD to try again.";
++        return;
++    }
++    if (!FreeField() || JOY_HELD(A_BUTTON | B_BUTTON | L_BUTTON | R_BUTTON))
++    { sMenu.freeFrames = 0; return; }
++    /* The first free frame lets the bridge restore its ordinary local field
++     * presence. This is not server readiness. Request/Ready/Go still use the
++     * backend's fresh report queue and normal STATE publication intervals. */
++    if (++sMenu.freeFrames < 2) return;
++    sMenu.state = CLOSED;
++#if GENERATED_MAP_READY
++    if (sMenu.pending == GEN_CAVE)
++    {
++        accepted = GeneratedMap_IsInside() ? GeneratedMap_Leave() : GeneratedMap_Enter();
++        sMenu.notice = accepted ? NULL : "Generated area unavailable in this field state.";
++        return;
++    }
++#endif
++    if (sMenu.pending == FRIENDS) { WorldTravel_RequestMenu(); return; }
++    if (sMenu.pending == DEXNAV)
++    {
++        accepted = DexNav_RequestOpen();
++        sMenu.notice = accepted ? NULL : "DexNav is unavailable in the current field state.";
++        return;
++    }
++    online = WorldRally_GetSnapshot(&r);
++    if (r.id != sMenu.pendingId || (!online && sMenu.pending != RETURN && sMenu.pending != STAY
++        && !(sMenu.pending == CANCEL && sMenu.offerPending)))
++    {
++        sMenu.notice = "Rally changed or disconnected. Review it before choosing again.";
++        return;
++    }
++    /* Identity alone is insufficient: ownership, phase, personal state and
++     * available recovery choices may have changed since the button press. */
++    count = Rows(rows, &r, online);
++    for (i = 0; i < count && rows[i].action != sMenu.pending; i++);
++    if (i == count || rows[i].reason)
++    {
++        sMenu.notice = i == count ? "That choice is no longer available. Review the live rally." : rows[i].reason;
++        return;
++    }
++    switch (sMenu.pending)
++    {
++    case REQUEST:
++        accepted = WorldRally_Request(WORLD_RALLY_ROXANNE, sMenu.pendingScope);
++        if (accepted) sMenu.offerPending = TRUE;
++        break;
++    case READY: action = WORLD_RALLY_ACCEPT; goto choose;
++    case LATER: action = WORLD_RALLY_LATER; goto choose;
++    case CANCEL: action = WORLD_RALLY_CANCEL; goto choose;
++    case GO: action = WORLD_RALLY_GO; goto choose;
++    case FINISH: action = WORLD_RALLY_FINISH; goto choose;
++    case RETURN: action = WORLD_RALLY_BACK; goto choose;
++    case STAY: action = WORLD_RALLY_KEEP;
++choose:
++        accepted = WorldRally_Choose(action);
++        break;
++    default: break;
++    }
++    if (sMenu.pending == CANCEL) sMenu.offerPending = FALSE;
++    sMenu.notice = accepted ? "Choice queued locally. Check live roster and backend status for the result." :
++        "Choice not accepted. Check backend status, personal eligibility and private return storage. No approval is implied.";
++}
++
++void WorldMenu_RequestOpen(void)
++{
++    if (sMenu.state == CLOSED) sMenu.state = OPEN_REQUEST;
++}
++
++bool8 WorldMenu_OwnsFieldInput(void)
++{
++    return sMenu.state != CLOSED;
++}
++
++void WorldMenu_Update(void)
++{
++    struct WorldRallySnapshot r = {0};
++    struct Row rows[ACTION_COUNT];
++    unsigned count, selected;
++    bool8 online;
++    if (sMenu.state == CLOSED) return;
++    if (sMenu.state == DISPATCH) { Dispatch(); return; }
++    if (sMenu.state == OPEN_REQUEST)
++    {
++        if (!FreeField()) { Forget(); return; }
++        sMenu.group = gSaveBlock1Ptr->location.mapGroup;
++        sMenu.num = gSaveBlock1Ptr->location.mapNum;
++        sMenu.window = AddWindow(&sWindow);
++        if (sMenu.window == WINDOW_NONE) { Forget(); return; }
++        LockPlayerFieldControls();
++        FreezeObjectEvents();
++        sMenu.locked = TRUE;
++        SetStandardWindowBorderStyle(sMenu.window, FALSE);
++        sMenu.state = FEATURES;
++        sMenu.focus = STORY;
++        sMenu.delay = sMenu.dirty = TRUE;
++    }
++    if (!FieldContext() || !ArePlayerFieldControlsLocked()
++        || sMenu.group != (unsigned)gSaveBlock1Ptr->location.mapGroup
++        || sMenu.num != (unsigned)gSaveBlock1Ptr->location.mapNum)
++    {
++        Forget();
++        return;
++    }
++    online = WorldRally_GetSnapshot(&r);
++    count = Rows(rows, &r, online);
++    if (online && r.id) sMenu.offerPending = FALSE;
++    for (selected = 0; selected < count && rows[selected].action != sMenu.focus; selected++);
++    if (selected == count) { selected = count - 1; sMenu.focus = BACK; }
++    if (sMenu.delay) { sMenu.delay = FALSE; Draw(rows, count, selected, &r, online); return; }
++    if (JOY_NEW(B_BUTTON))
++    {
++        if (sMenu.state == FEATURES) { Close(); return; }
++        sMenu.state = FEATURES;
++        sMenu.focus = STORY;
++        sMenu.dirty = TRUE;
++        return;
++    }
++    if (sMenu.state == RALLY && JOY_NEW(DPAD_LEFT | DPAD_RIGHT))
++    {
++        sMenu.page = (sMenu.page + (JOY_NEW(DPAD_LEFT) ? PAGE_COUNT - 1 : 1)) % PAGE_COUNT;
++        sMenu.dirty = TRUE;
++    }
++    if (sMenu.state == FEATURES || sMenu.page == CONTROLS)
++    {
++        if (JOY_REPEAT(DPAD_UP) && selected) selected--;
++        if (JOY_REPEAT(DPAD_DOWN) && selected + 1 < count) selected++;
++        sMenu.focus = rows[selected].action;
++        if (JOY_NEW(A_BUTTON))
++        {
++            if (rows[selected].reason) { sMenu.notice = rows[selected].reason; }
++            else if (sMenu.focus == BACK)
++            {
++                if (sMenu.state == FEATURES) { Close(); return; }
++                sMenu.state = FEATURES;
++                sMenu.focus = STORY;
++                sMenu.dirty = TRUE;
++                return;
++            }
++            else if (sMenu.focus == STORY)
++            {
++                sMenu.state = RALLY;
++                sMenu.page = CONTROLS;
++                sMenu.focus = MODE;
++                sMenu.dirty = TRUE;
++                return;
++            }
++            else if (sMenu.focus == MODE) WorldRally_SetAutoJoin(!WorldRally_GetAutoJoin());
++            else if (sMenu.focus == SCOPE) sMenu.scope ^= 1;
++            else { Queue(sMenu.focus, r.id); return; }
++            /* Labels/reasons can change after a local mode or scope toggle. */
++            count = Rows(rows, &r, online);
++        }
++    }
++    Draw(rows, count, selected, &r, online);
++}
++#endif
+diff --git a/src/platform/world_rally.c b/src/platform/world_rally.c
+new file mode 100644
+index 0000000..0bbf2eb
+--- /dev/null
++++ b/src/platform/world_rally.c
+@@ -0,0 +1,433 @@
++#ifdef PORTABLE
++#include "global.h"
++#include "main.h"
++#include "overworld.h"
++#include "palette.h"
++#include "script.h"
++#include "fieldmap.h"
++#include "field_player_avatar.h"
++#include "event_object_movement.h"
++#include "event_data.h"
++#include "battle_setup.h"
++#include "pokemon.h"
++#include "link.h"
++#include "constants/flags.h"
++#include "constants/opponents.h"
++#include "constants/map_groups.h"
++#include "platform/native_link.h"
++#include "platform/world_activity.h"
++#include "platform/world_bridge.h"
++#include "platform/world_travel.h"
++#include "platform/world_rally.h"
++#include "platform/world_menu.h"
++#include <string.h>
++#include <stdio.h>
++#ifndef _WIN32
++#include <unistd.h>
++#include <fcntl.h>
++#include <sys/stat.h>
++#include <errno.h>
++#endif
++
++/* A private spatial anchor, never a save snapshot. Committed party, bag, trades
++ * and story remain precisely the current engine state on return/restart. */
++struct RallyAnchor {
++    u32 magic;
++    char trainer[25];
++    u8 trainerId[4];
++    u8 group, num, elevation;
++    s16 x, y;
++};
++static struct {
++    bool8 autoJoin, loaded, ledgerOK, anchored, recover, offering, cancelOffer;
++    unsigned pulse, consent, trip, transit, timer, returning;
++    unsigned pending, pendingId, pendingArg, pendingDelay, pendingAge;
++    s16 destX, destY;
++    struct RallyAnchor anchor;
++    const char *status;
++#ifndef _WIN32
++    int directory;
++    char file[256];
++#endif
++} sRally = {
++#ifndef _WIN32
++    .directory = -1,
++#endif
++    .status = "ASK. Rally at Roxanne after clearing her Gym trainers."
++};
++static const s16 sSlots[WORLD_RALLY_ROSTER][2] = {{5,3}, {4,3}, {6,3}, {5,4}};
++
++static bool8 FieldReady(void)
++{
++    return gSaveBlock1Ptr && gSaveBlock2Ptr && gMain.callback1 == CB1_Overworld
++        && gMain.callback2 == CB2_Overworld && !gMain.inBattle && !gPaletteFade.active
++        && !ScriptContext_IsEnabled() && !ArePlayerFieldControlsLocked()
++        && !gPlayerAvatar.tileTransitionState && !gWirelessCommType
++        && !NativeLink_IsActive() && !WorldActivity_OwnsFieldInput()
++        && !WorldTravel_OwnsFieldInput() && !WorldTravel_NativeFlyRunning()
++        && !WorldMenu_OwnsFieldInput();
++}
++
++static bool8 Eligible(void)
++{
++    unsigned i;
++    if (!sRally.ledgerOK || !FieldReady() || FlagGet(FLAG_BADGE01_GET)
++        || FlagGet(FLAG_DEFEATED_RUSTBORO_GYM) || HasTrainerBeenFought(TRAINER_ROXANNE_1)
++        || VarGet(VAR_RUSTBORO_CITY_STATE) != 0 || !FlagGet(FLAG_VISITED_RUSTBORO_CITY)
++        || !HasTrainerBeenFought(TRAINER_JOSH) || !HasTrainerBeenFought(TRAINER_TOMMY)
++        || !HasTrainerBeenFought(TRAINER_MARC)) return FALSE;
++    for (i = 0; i < gPlayerPartyCount && i < PARTY_SIZE; i++)
++        if (GetMonData(&gPlayerParty[i], MON_DATA_SPECIES)
++            && !GetMonData(&gPlayerParty[i], MON_DATA_IS_EGG)
++            && GetMonData(&gPlayerParty[i], MON_DATA_HP)) return TRUE;
++    return FALSE;
++}
++
++void WorldRally_Init(const char *configPath)
++{
++#ifndef _WIN32
++    char parent[1100], *slash;
++    struct stat st;
++    size_t length;
++    if (sRally.directory >= 0) close(sRally.directory);
++    memset(&sRally, 0, sizeof(sRally));
++    sRally.directory = -1;
++    sRally.status = "ASK. Rally at Roxanne after clearing her Gym trainers.";
++    if (!configPath || (length = strlen(configPath)) >= sizeof(parent)) return;
++    memcpy(parent, configPath, length+1);
++    slash = strrchr(parent, '/');
++    if (!slash || !slash[1] || strlen(slash+1)+7 >= sizeof(sRally.file)) return;
++    snprintf(sRally.file, sizeof(sRally.file), "%s.rally", slash+1);
++    *slash = 0;
++    sRally.directory = open(parent, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
++    if (sRally.directory < 0) return;
++    if (fstat(sRally.directory, &st) || st.st_uid != getuid() || (st.st_mode & 077)) {
++        close(sRally.directory);
++        sRally.directory = -1;
++        sRally.status = "Rally requires a private trainer directory.";
++    }
++#else
++    (void)configPath;
++    sRally.status = "Rally travel is not supported on this platform.";
++#endif
++}
++
++static void LoadAnchor(void)
++{
++    sRally.loaded = TRUE;
++#ifndef _WIN32
++    {
++        int fd;
++        struct stat st;
++        struct RallyAnchor anchor;
++        if (sRally.directory < 0) return;
++        fd = openat(sRally.directory, sRally.file, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
++        if (fd < 0) {
++            sRally.ledgerOK = errno == ENOENT;
++            return;
++        }
++        memset(&anchor, 0, sizeof(anchor));
++        if (fstat(fd, &st) || !S_ISREG(st.st_mode) || st.st_uid != getuid()
++            || st.st_nlink != 1 || (st.st_mode & 077) || st.st_size != (off_t)sizeof(anchor)
++            || read(fd, &anchor, sizeof(anchor)) != (ssize_t)sizeof(anchor)
++            || anchor.magic != 0x52414c31 || !memchr(anchor.trainer, 0, sizeof(anchor.trainer))
++            || strcmp(anchor.trainer, WorldBridge_TrainerName())
++            || memcmp(anchor.trainerId, gSaveBlock2Ptr->playerTrainerId, sizeof(anchor.trainerId))
++            || anchor.x < 0 || anchor.y < 0 || anchor.x > 127 || anchor.y > 127
++            || anchor.elevation != ELEVATION_DEFAULT) {
++            close(fd);
++            sRally.status = "Return record does not match this trainer save.";
++            return;
++        }
++        close(fd);
++        sRally.anchor = anchor;
++        sRally.ledgerOK = sRally.anchored = sRally.recover = TRUE;
++        sRally.status = "Recovering your pre-rally position when the field is free.";
++    }
++#endif
++}
++
++static bool8 ClearAnchor(void)
++{
++#ifndef _WIN32
++    if (sRally.directory < 0 || (unlinkat(sRally.directory, sRally.file, 0) && errno != ENOENT)
++        || fsync(sRally.directory)) return FALSE;
++#endif
++    sRally.anchored = sRally.recover = FALSE;
++    sRally.transit = sRally.trip = sRally.returning = 0;
++    return TRUE;
++}
++
++static bool8 CaptureAnchor(void)
++{
++#ifndef _WIN32
++    int fd;
++    bool8 written;
++    struct RallyAnchor anchor;
++    const struct ObjectEvent *player;
++    if (!FieldReady() || !sRally.ledgerOK || sRally.anchored
++        || sRally.directory < 0 || gPlayerAvatar.objectEventId >= OBJECT_EVENTS_COUNT) return FALSE;
++    player = &gObjectEvents[gPlayerAvatar.objectEventId];
++    if (!player->active || !player->isPlayer) return FALSE;
++    memset(&anchor, 0, sizeof(anchor));
++    anchor.magic = 0x52414c31;
++    strcpy(anchor.trainer, WorldBridge_TrainerName());
++    memcpy(anchor.trainerId, gSaveBlock2Ptr->playerTrainerId, sizeof(anchor.trainerId));
++    anchor.group = gSaveBlock1Ptr->location.mapGroup;
++    anchor.num = gSaveBlock1Ptr->location.mapNum;
++    anchor.x = player->currentCoords.x - MAP_OFFSET;
++    anchor.y = player->currentCoords.y - MAP_OFFSET;
++    anchor.elevation = player->currentElevation;
++    if (!WorldTravel_RallyTileSafe(anchor.group, anchor.num, anchor.x, anchor.y, anchor.elevation, TRUE)) return FALSE;
++    fd = openat(sRally.directory, sRally.file, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
++    if (fd < 0) return FALSE;
++    written = write(fd, &anchor, sizeof(anchor)) == (ssize_t)sizeof(anchor) && !fsync(fd);
++    if (close(fd)) written = FALSE;
++    if (fsync(sRally.directory)) written = FALSE;
++    if (!written) {
++        unlinkat(sRally.directory, sRally.file, 0);
++        return FALSE;
++    }
++    sRally.anchor = anchor;
++    sRally.anchored = TRUE;
++    return TRUE;
++#else
++    return FALSE;
++#endif
++}
++
++void WorldRally_SetAutoJoin(bool8 enabled) { sRally.autoJoin = !!enabled; }
++bool8 WorldRally_GetAutoJoin(void) { return sRally.autoJoin; }
++bool8 WorldRally_HasReturn(void) { return sRally.anchored; }
++const char *WorldRally_Status(void) { return sRally.status; }
++bool8 WorldRally_GetSnapshot(struct WorldRallySnapshot *out) { return WorldBridge_RallySnapshot(out); }
++
++/* UI closes its field window before queueing. Wait for two ordinary STATE
++ * intervals after a fresh local eligibility report; the relay must never admit
++ * stale menu-time readiness or be told that a busy client is ready. */
++static bool8 QueueChoice(unsigned action, unsigned id, unsigned arg)
++{
++    if (sRally.pending || !FieldReady()) return FALSE;
++    sRally.pending = action+1;
++    sRally.pendingId = id;
++    sRally.pendingArg = arg;
++    sRally.pendingDelay = sRally.pendingAge = 0;
++    sRally.status = "Sending rally choice after local field readiness.";
++    return TRUE;
++}
++
++bool8 WorldRally_Request(unsigned scene, unsigned scope)
++{
++    struct WorldRallySnapshot rally;
++    if (!WorldBridge_RallySnapshot(&rally) || rally.id || sRally.offering) return FALSE;
++    if (scene != WORLD_RALLY_ROXANNE || scope > 1 || !Eligible() || sRally.anchored
++        || gSaveBlock1Ptr->location.mapGroup != MAP_GROUP(MAP_RUSTBORO_CITY_GYM)
++        || gSaveBlock1Ptr->location.mapNum != MAP_NUM(MAP_RUSTBORO_CITY_GYM)) return FALSE;
++    {
++        const struct ObjectEvent *player;
++        if (gPlayerAvatar.objectEventId >= OBJECT_EVENTS_COUNT) return FALSE;
++        player = &gObjectEvents[gPlayerAvatar.objectEventId];
++        if (!player->active || !player->isPlayer || player->currentCoords.x != 5+MAP_OFFSET
++            || player->currentCoords.y != 3+MAP_OFFSET || player->currentElevation != ELEVATION_DEFAULT) return FALSE;
++    }
++    if (!QueueChoice(WORLD_RALLY_OFFER, 0, scope)) return FALSE;
++    sRally.offering = TRUE;
++    return TRUE;
++}
++
++bool8 WorldRally_Choose(unsigned action)
++{
++    struct WorldRallySnapshot rally;
++    bool8 cancelledOffer = FALSE;
++    if (action == WORLD_RALLY_CANCEL || action == WORLD_RALLY_LATER || action == WORLD_RALLY_BACK) {
++        if (sRally.offering && action == WORLD_RALLY_CANCEL) {
++            cancelledOffer = TRUE;
++            if (sRally.pending == WORLD_RALLY_OFFER+1) sRally.offering = FALSE;
++            else sRally.cancelOffer = TRUE;
++        }
++        sRally.pending = sRally.consent = 0;
++        if (action != WORLD_RALLY_LATER) sRally.recover = sRally.anchored;
++    }
++    if (!WorldBridge_RallySnapshot(&rally) || !rally.id) {
++        if (cancelledOffer) { sRally.status = "Rally cancelled."; return TRUE; }
++        if (action == WORLD_RALLY_BACK && sRally.anchored) { sRally.recover = TRUE; return TRUE; }
++        if (action == WORLD_RALLY_KEEP && sRally.anchored && FieldReady()) return ClearAnchor();
++        return FALSE;
++    }
++    if (action == WORLD_RALLY_ACCEPT) {
++        if (rally.phase != WORLD_RALLY_GATHER || !Eligible() || sRally.anchored) return FALSE;
++        return QueueChoice(action, rally.id, 0);
++    }
++    if (action == WORLD_RALLY_GO) {
++        if (rally.phase != WORLD_RALLY_GATHER || !Eligible() || strcmp(rally.owner, WorldBridge_TrainerName())) return FALSE;
++        return QueueChoice(action, rally.id, 0);
++    }
++    if (action != WORLD_RALLY_LATER && action != WORLD_RALLY_CANCEL && action != WORLD_RALLY_GO
++        && action != WORLD_RALLY_BACK && action != WORLD_RALLY_KEEP && action != WORLD_RALLY_FINISH) return FALSE;
++    if (action == WORLD_RALLY_LATER || action == WORLD_RALLY_CANCEL || action == WORLD_RALLY_BACK) {
++        sRally.pending = sRally.consent = 0;
++        if (action != WORLD_RALLY_LATER) sRally.recover = sRally.anchored;
++    }
++    if (action == WORLD_RALLY_KEEP) {
++        unsigned i;
++        bool8 returning = FALSE;
++        for (i = 0; i < rally.count; i++)
++            if (!strcmp(rally.members[i].name, WorldBridge_TrainerName())
++                && rally.members[i].state == WORLD_RALLY_RETURNING) returning = TRUE;
++        if (!returning || !FieldReady() || sRally.transit) return FALSE;
++    }
++    if (!WorldBridge_RallySend(action, rally.id, 0)) return FALSE;
++    if (action == WORLD_RALLY_BACK || action == WORLD_RALLY_CANCEL) sRally.recover = sRally.anchored;
++    if (action == WORLD_RALLY_KEEP && sRally.anchored) return ClearAnchor();
++    return TRUE;
++}
++
++void WorldRally_Disconnected(void)
++{
++    if (sRally.anchored) sRally.recover = TRUE;
++    sRally.consent = sRally.pulse = sRally.pending = 0;
++    sRally.offering = sRally.cancelOffer = FALSE;
++}
++
++static bool8 At(int group, int num, s16 x, s16 y, unsigned elevation)
++{
++    const struct ObjectEvent *player;
++    if (!FieldReady() || gPlayerAvatar.objectEventId >= OBJECT_EVENTS_COUNT) return FALSE;
++    player = &gObjectEvents[gPlayerAvatar.objectEventId];
++    return player->active && player->isPlayer && gSaveBlock1Ptr->location.mapGroup == group
++        && gSaveBlock1Ptr->location.mapNum == num && player->currentCoords.x == x + MAP_OFFSET
++        && player->currentCoords.y == y + MAP_OFFSET && player->currentElevation == elevation;
++}
++
++void WorldRally_Update(void)
++{
++    struct WorldRallySnapshot rally;
++    struct WorldRallyMember *member = NULL;
++    struct WorldBridgePeer owner;
++    unsigned i;
++    bool8 online = WorldBridge_RallySnapshot(&rally);
++    if (!sRally.loaded && FieldReady()) LoadAnchor();
++    if (!sRally.loaded) return;
++    if (online && rally.id && !strcmp(rally.owner, WorldBridge_TrainerName())) {
++        sRally.offering = FALSE;
++        if (sRally.cancelOffer && WorldBridge_RallySend(WORLD_RALLY_CANCEL, rally.id, 0)) {
++            sRally.cancelOffer = FALSE;
++            sRally.status = "Rally cancelled.";
++        }
++    }
++    if (sRally.offering && !sRally.pending && online && !rally.id && ++sRally.pendingAge > 300) {
++        sRally.offering = sRally.cancelOffer = FALSE;
++        sRally.status = "Rally was unavailable. Check your position and try again.";
++    }
++    if (sRally.pending) {
++        if (++sRally.pendingAge > 1800) {
++            sRally.pending = 0;
++            sRally.offering = FALSE;
++            sRally.status = "Rally request timed out. No travel was started.";
++        }
++        else if (FieldReady()) {
++            unsigned action = sRally.pending-1;
++            if (!Eligible() || sRally.anchored) {
++                sRally.pending = 0;
++                sRally.offering = FALSE;
++                sRally.status = "Rally no longer available from your local field state.";
++            }
++            else if (!sRally.pendingDelay) {
++                if (WorldBridge_RallySend(WORLD_RALLY_REPORT, 0, 1 | (sRally.autoJoin ? 2 : 0)))
++                    sRally.pendingDelay = 12;
++            } else if (sRally.pendingDelay > 1) sRally.pendingDelay--;
++            else if (WorldBridge_RallySend(action, sRally.pendingId, sRally.pendingArg)) {
++                if (action == WORLD_RALLY_ACCEPT) sRally.consent = sRally.pendingId;
++                sRally.pending = 0;
++            }
++        } else sRally.pendingDelay = 0;
++    }
++    if (++sRally.pulse >= 60) {
++        if (WorldBridge_RallySend(WORLD_RALLY_REPORT, 0,
++                (Eligible() && !sRally.anchored ? 1 : 0) | (sRally.autoJoin ? 2 : 0))) sRally.pulse = 0;
++    }
++    if (online) for (i = 0; i < rally.count; i++)
++        if (!strcmp(rally.members[i].name, WorldBridge_TrainerName())) member = &rally.members[i];
++    if (sRally.anchored && (!online || !member || rally.id != sRally.trip)) sRally.recover = TRUE;
++    if (sRally.transit) {
++        if (++sRally.timer > 1200) sRally.recover = TRUE;
++        if (!FieldReady()) return; /* Never abort a battle, trade, script or warp. */
++        if (sRally.transit == 2) {
++            if (At(sRally.anchor.group, sRally.anchor.num, sRally.destX, sRally.destY, sRally.anchor.elevation)
++                && WorldTravel_RallyTileSafe(sRally.anchor.group, sRally.anchor.num,
++                    sRally.destX, sRally.destY, sRally.anchor.elevation, online)) {
++                if (online && rally.id == sRally.trip) WorldBridge_RallySend(WORLD_RALLY_HOME, rally.id, 0);
++                if (ClearAnchor()) sRally.status = "Returned. Your current party, items and progress are unchanged.";
++                return;
++            }
++            sRally.transit = 0;
++            sRally.recover = TRUE;
++        } else {
++            sRally.transit = 0;
++            if (!At(MAP_GROUP(MAP_RUSTBORO_CITY_GYM), MAP_NUM(MAP_RUSTBORO_CITY_GYM),
++                    sRally.destX, sRally.destY, ELEVATION_DEFAULT)
++                || !WorldTravel_RallyTileSafe(MAP_GROUP(MAP_RUSTBORO_CITY_GYM), MAP_NUM(MAP_RUSTBORO_CITY_GYM),
++                    sRally.destX, sRally.destY, ELEVATION_DEFAULT, online)) sRally.recover = TRUE;
++            else sRally.status = "Arrived. Use the normal Gym script and two-player tag controls.";
++        }
++    }
++    if (sRally.anchored && sRally.recover && FieldReady()) {
++        /* Prefer the exact anchor. If occupied, use the nearest checked tile
++         * within one step at the SAME elevation. No gate/warp/script tiles. */
++        int radius, dx, dy;
++        for (radius = 0; radius <= 1; radius++) for (dy = -radius; dy <= radius; dy++)
++            for (dx = -radius; dx <= radius; dx++) {
++                if (abs(dx)+abs(dy) != radius) continue;
++                if (WorldTravel_RallyWarp(sRally.anchor.group, sRally.anchor.num,
++                        sRally.anchor.x+dx, sRally.anchor.y+dy, sRally.anchor.elevation, online)) {
++                    sRally.destX = sRally.anchor.x+dx; sRally.destY = sRally.anchor.y+dy;
++                    sRally.transit = 2; sRally.timer = 0;
++                    sRally.status = "Returning to your pre-rally map.";
++                    return;
++                }
++            }
++        sRally.status = "Return ground is occupied. Move freely, then retry Return or Stay.";
++        return;
++    }
++    if (!online || !member) return;
++    if (member->state == WORLD_RALLY_RETURNING) {
++        if (!sRally.returning++) sRally.status = "Rally ended. Choose Return or Stay.";
++        if (!sRally.anchored) WorldBridge_RallySend(WORLD_RALLY_HOME, rally.id, 0);
++        else if (sRally.returning >= 7200) sRally.recover = TRUE;
++        return;
++    }
++    sRally.returning = 0;
++    if (rally.phase == WORLD_RALLY_GATHER && member->state == WORLD_RALLY_INVITED && sRally.autoJoin)
++        WorldRally_Choose(WORLD_RALLY_ACCEPT);
++    if (rally.phase == WORLD_RALLY_ACTIVE && !strcmp(rally.owner, WorldBridge_TrainerName())
++        && FieldReady() && FlagGet(FLAG_BADGE01_GET)) WorldBridge_RallySend(WORLD_RALLY_FINISH, rally.id, 0);
++    if (member->state != WORLD_RALLY_MOVING || !FieldReady()) return;
++    if (sRally.anchored && sRally.trip == rally.id) {
++        if (!sRally.recover) WorldBridge_RallySend(WORLD_RALLY_LAND, rally.id, 0);
++        return;
++    }
++    if (sRally.consent != rally.id || !Eligible() || member->slot >= WORLD_RALLY_ROSTER) {
++        WorldBridge_RallySend(WORLD_RALLY_FAIL, rally.id, 0);
++        return;
++    }
++    for (i = 0; WorldBridge_GetTravelPeer(i, &owner); i++)
++        if (!strcmp(owner.name, rally.owner)) break;
++    if (!WorldBridge_GetTravelPeer(i, &owner) || !owner.ready
++        || owner.group != MAP_GROUP(MAP_RUSTBORO_CITY_GYM) || owner.num != MAP_NUM(MAP_RUSTBORO_CITY_GYM)
++        || abs((int)owner.x-5)+abs((int)owner.y-3) > 1) {
++        WorldBridge_RallySend(WORLD_RALLY_FAIL, rally.id, 0);
++        return;
++    }
++    sRally.destX = sSlots[member->slot][0]; sRally.destY = sSlots[member->slot][1];
++    if (!CaptureAnchor()) { WorldBridge_RallySend(WORLD_RALLY_FAIL, rally.id, 0); return; }
++    sRally.trip = rally.id;
++    if (!WorldTravel_RallyWarp(MAP_GROUP(MAP_RUSTBORO_CITY_GYM), MAP_NUM(MAP_RUSTBORO_CITY_GYM),
++            sRally.destX, sRally.destY, ELEVATION_DEFAULT, TRUE)) {
++        ClearAnchor();
++        WorldBridge_RallySend(WORLD_RALLY_FAIL, rally.id, 0);
++        return;
++    }
++    sRally.transit = 1; sRally.timer = 0;
++    sRally.status = "Travelling to Roxanne. Only the encounter owner earns boss credit.";
++}
++#endif
+diff --git a/src/platform/world_travel.c b/src/platform/world_travel.c
+new file mode 100644
+index 0000000..2203999
+--- /dev/null
++++ b/src/platform/world_travel.c
+@@ -0,0 +1,536 @@
++#ifdef PORTABLE
++#include "global.h"
++#include "constants/map_groups.h"
++#include "constants/maps.h"
++#include "constants/flags.h"
++#include <string.h>
++
++#define TRAVEL_CELLS 8192
++#include "constants/metatile_behaviors.h"
++#include "event_data.h"
++#include "fieldmap.h"
++#include "platform/world_bridge.h"
++#include "platform/world_catalog.h"
++#include "platform/world_travel.h"
++#include "platform/world_activity.h"
++#include "platform/native_link.h"
++#include "main.h"
++#include "task.h"
++#include "link.h"
++#include "overworld.h"
++#include "palette.h"
++#include "pokemon.h"
++#include "script.h"
++#include "menu.h"
++#include "window.h"
++#include "field_player_avatar.h"
++#include "event_object_movement.h"
++#include "heal_location.h"
++#include "constants/heal_locations.h"
++#include "constants/characters.h"
++#include "constants/map_types.h"
++#include "constants/moves.h"
++#include "field_screen_effect.h"
++
++static bool8 BlockedByEvents(const struct MapEvents *events, int x, int y);
++static bool8 SafeFloor(u16 block, u8 behavior);
++
++static bool8 BuildLandingGrid(const struct MapHeader *map, unsigned group, unsigned num, u8 *grid)
++{
++    const struct MapLayout *layout = map->mapLayout;
++    unsigned x, y;
++    if (!layout || !layout->map || !layout->primaryTileset || !layout->secondaryTileset
++        || layout->width <= 0 || layout->height <= 0 || layout->width > 128 || layout->height > 128
++        || layout->width * layout->height > TRAVEL_CELLS) return FALSE;
++    for (y = 0; y < (unsigned)layout->height; y++) for (x = 0; x < (unsigned)layout->width; x++)
++    {
++        unsigned id;
++        const u16 *attributes;
++        u16 block = layout->map[x + y * layout->width];
++        id = UNPACK_METATILE(block);
++        grid[x + y * layout->width] = 0;
++        if (!WorldCatalog_Metatile(group, num, id)) continue;
++        attributes = id < NUM_METATILES_IN_PRIMARY ? layout->primaryTileset->metatileAttributes
++            : layout->secondaryTileset->metatileAttributes;
++        if (!attributes) continue;
++        if (!SafeFloor(block, UNPACK_BEHAVIOR(attributes[id < NUM_METATILES_IN_PRIMARY ? id : id - NUM_METATILES_IN_PRIMARY]))
++            || BlockedByEvents(map->events, x, y)
++            || !WorldBridge_TravelTileClear(group, num, x, y)) continue;
++        /* Already-loaded field scripts and moving NPCs can disagree with their
++         * static templates. If visiting our current map, also check live state. */
++        if (gSaveBlock1Ptr && group == (unsigned)gSaveBlock1Ptr->location.mapGroup
++            && num == (unsigned)gSaveBlock1Ptr->location.mapNum)
++        {
++            unsigned i;
++            if (MapGridGetCollisionAt(x + MAP_OFFSET, y + MAP_OFFSET)
++                || MapGridGetElevationAt(x + MAP_OFFSET, y + MAP_OFFSET) != ELEVATION_DEFAULT) continue;
++            for (i = 0; i < OBJECT_EVENTS_COUNT; i++)
++                if (gObjectEvents[i].active && gObjectEvents[i].currentCoords.x == (int)x + MAP_OFFSET
++                    && gObjectEvents[i].currentCoords.y == (int)y + MAP_OFFSET) break;
++            if (i < OBJECT_EVENTS_COUNT) continue;
++        }
++        grid[x + y * layout->width] = 1;
++    }
++    return TRUE;
++}
++
++static bool8 BlockedByEvents(const struct MapEvents *events, int x, int y)
++{
++    unsigned i;
++    if (!events) return TRUE;
++    for (i = 0; i < events->warpCount; i++)
++        if (events->warps[i].x == x && events->warps[i].y == y) return TRUE;
++    for (i = 0; i < events->coordEventCount; i++)
++        if (events->coordEvents[i].x == x && events->coordEvents[i].y == y) return TRUE;
++    for (i = 0; i < events->objectEventCount; i++)
++    {
++        const struct ObjectEventTemplate *o = &events->objectEvents[i];
++        if (o->flagId && FlagGet(o->flagId)) continue;
++        if (abs(x - o->x) <= o->movementRangeX && abs(y - o->y) <= o->movementRangeY) return TRUE;
++    }
++    return FALSE;
++}
++
++static bool8 SafeFloor(u16 block, u8 behavior)
++{
++    return block != MAPGRID_UNDEFINED && !UNPACK_COLLISION(block)
++        && UNPACK_ELEVATION(block) == ELEVATION_DEFAULT && behavior == MB_NORMAL;
++}
++
++/* Flood from an ordinary Fly landing, so a friend behind an unopened gate
++ * cannot become a shortcut. The supplied grid excludes occupied/script tiles.
++ * Neither this bounded search nor its caller modifies the native map. */
++static bool8 FindLanding(const u8 *grid, unsigned width, unsigned height,
++    int startX, int startY, int friendX, int friendY, s16 *outX, s16 *outY)
++{
++    static u8 seen[TRAVEL_CELLS];
++    static u16 queue[TRAVEL_CELLS];
++    unsigned head = 0, tail = 0;
++    static const s8 dx[] = {0, 0, -1, 1}, dy[] = {1, -1, 0, 0};
++    if (!grid || !width || !height || width > 128 || height > 128
++        || width * height > TRAVEL_CELLS || startX < 0 || startY < 0
++        || (unsigned)startX >= width || (unsigned)startY >= height
++        || friendX < 0 || friendY < 0 || (unsigned)friendX >= width
++        || (unsigned)friendY >= height || !grid[startX + startY * width]) return FALSE;
++    memset(seen, 0, width * height);
++    queue[tail++] = startX + startY * width;
++    seen[queue[0]] = 1;
++    while (head < tail)
++    {
++        unsigned cell = queue[head++], i;
++        int x = cell % width, y = cell / width;
++        if (abs(x - friendX) + abs(y - friendY) == 1)
++        {
++            *outX = x;
++            *outY = y;
++            return TRUE;
++        }
++        for (i = 0; i < ARRAY_COUNT(dx); i++)
++        {
++            int nx = x + dx[i], ny = y + dy[i];
++            unsigned next;
++            if (nx < 0 || ny < 0 || (unsigned)nx >= width || (unsigned)ny >= height) continue;
++            next = nx + ny * width;
++            if (!grid[next] || seen[next]) continue;
++            seen[next] = 1;
++            queue[tail++] = next;
++        }
++    }
++    return FALSE;
++}
++
++/* Towns only follows the newer public Fly restriction. Use each visiting
++ * trainer's own flags, never a host's badges or campaign state. */
++static u16 VisitedFlag(unsigned group, unsigned num)
++{
++    static const struct { unsigned group, num; u16 flag; } towns[] = {
++#define TOWN(name) { MAP_GROUP(MAP_##name), MAP_NUM(MAP_##name), FLAG_VISITED_##name }
++        TOWN(LITTLEROOT_TOWN), TOWN(OLDALE_TOWN), TOWN(DEWFORD_TOWN),
++        TOWN(LAVARIDGE_TOWN), TOWN(FALLARBOR_TOWN), TOWN(VERDANTURF_TOWN),
++        TOWN(PACIFIDLOG_TOWN), TOWN(PETALBURG_CITY), TOWN(SLATEPORT_CITY),
++        TOWN(MAUVILLE_CITY), TOWN(RUSTBORO_CITY), TOWN(FORTREE_CITY),
++        TOWN(LILYCOVE_CITY), TOWN(MOSSDEEP_CITY), TOWN(SOOTOPOLIS_CITY),
++        TOWN(EVER_GRANDE_CITY)
++#undef TOWN
++    };
++    unsigned i;
++    for (i = 0; i < ARRAY_COUNT(towns); i++)
++        if (towns[i].group == group && towns[i].num == num) return towns[i].flag;
++    return 0;
++}
++
++static bool8 TravelStoryReady(unsigned group, unsigned num)
++{
++    if (group == MAP_GROUP(MAP_SOOTOPOLIS_CITY) && num == MAP_NUM(MAP_SOOTOPOLIS_CITY))
++    {
++        u16 state = VarGet(VAR_SOOTOPOLIS_CITY_STATE);
++        /* These arrival scenes distinguish the native Fly pad from Dive by
++         * exact coordinates, replace the layout and reposition actors. A
++         * nearby-friend landing must not enter them from an invented spot. */
++        return (state == 0 || state >= 6) && VarGet(VAR_SKY_PILLAR_STATE) != 1;
++    }
++    return TRUE;
++}
++
++enum { TRAVEL_IDLE, TRAVEL_REQUEST, TRAVEL_FRIENDS, TRAVEL_CONFIRM, TRAVEL_MESSAGE };
++static struct {
++    unsigned state, count, delay, group, num;
++    unsigned page;
++    bool8 nextPage;
++    u8 window;
++    bool8 locked, flightActive;
++    unsigned flightGroup, flightNum, flightHeal;
++    char names[6][25], target[25];
++    const char *status;
++    s16 landingX, landingY;
++} sTravel = { .window = WINDOW_NONE, .status = "idle" };
++
++bool8 WorldTravel_CanAllocateFly(void)
++{
++    unsigned i, free = 0;
++    /* Departure concurrently owns Task_UseFly, Task_FlyOut and the native
++     * Pokemon portrait task. CreateTask returns zero on exhaustion, not
++     * TASK_NONE, so its return value cannot protect task zero. */
++    for (i = 0; i < NUM_TASKS; i++) if (!gTasks[i].isActive) free++;
++    return free >= 3;
++}
++
++unsigned WorldTravel_ArrivalFallback(void)
++{
++    struct WorldBridgePeer peer;
++    unsigned i;
++    int x, y;
++    bool8 valid = FALSE;
++    if (!sTravel.flightActive) return 0;
++    sTravel.flightActive = FALSE;
++    x = gSaveBlock1Ptr->pos.x;
++    y = gSaveBlock1Ptr->pos.y;
++    for (i = 0; WorldBridge_GetTravelPeer(i, &peer); i++)
++    {
++        if (strcmp(peer.name, sTravel.target)) continue;
++        valid = peer.ready && peer.group == sTravel.flightGroup && peer.num == sTravel.flightNum
++            && peer.group == (unsigned)gSaveBlock1Ptr->location.mapGroup
++            && peer.num == (unsigned)gSaveBlock1Ptr->location.mapNum
++            && abs((int)peer.x - x) + abs((int)peer.y - y) == 1
++            && WorldBridge_TravelTileClear(peer.group, peer.num, x, y);
++        break;
++    }
++    if (valid)
++    {
++        u16 block = PACK_ELEVATION(MapGridGetElevationAt(x + MAP_OFFSET, y + MAP_OFFSET))
++            | PACK_COLLISION(MapGridGetCollisionAt(x + MAP_OFFSET, y + MAP_OFFSET));
++        valid = SafeFloor(block, MapGridGetMetatileBehaviorAt(x + MAP_OFFSET, y + MAP_OFFSET))
++            && !BlockedByEvents(gMapHeader.events, x, y);
++        for (i = 0; valid && i < OBJECT_EVENTS_COUNT; i++)
++            if (gObjectEvents[i].active && !gObjectEvents[i].isPlayer
++                && gObjectEvents[i].currentCoords.x == x + MAP_OFFSET
++                && gObjectEvents[i].currentCoords.y == y + MAP_OFFSET) valid = FALSE;
++    }
++    if (valid) { sTravel.status = "Arrived beside friend."; return 0; }
++    /* No reservations or save rewinds. If a friend moves, disconnects or a
++     * loaded script changes the tile, finish at the already-qualified native
++     * Fly point instead of releasing controls on a stale custom landing. */
++    sTravel.status = "Friend moved. Landing at the Fly point.";
++    return sTravel.flightHeal;
++}
++
++static bool8 TravelField(void)
++{
++    return gSaveBlock1Ptr && gMain.callback1 == CB1_Overworld && gMain.callback2 == CB2_Overworld
++        && !gMain.inBattle && !gPaletteFade.active && !ScriptContext_IsEnabled()
++        && !gPlayerAvatar.tileTransitionState && !gWirelessCommType
++        && !NativeLink_IsActive() && !WorldActivity_OwnsFieldInput();
++}
++
++bool8 WorldTravel_RallyTileSafe(unsigned group, unsigned num, s16 x, s16 y, unsigned elevation, bool8 online)
++{
++    const struct MapHeader *map;
++    const struct MapLayout *layout;
++    const u16 *attributes;
++    unsigned id, i;
++    u16 block;
++    if (group > 127 || num > 127 || x < 0 || y < 0 || x > 127 || y > 127
++        || elevation != ELEVATION_DEFAULT || !WorldCatalog_Coords(group, num, x, y)) return FALSE;
++    map = Overworld_GetMapHeaderByGroupAndId(group, num);
++    if (!map || !map->mapLayout) return FALSE;
++    layout = map->mapLayout;
++    if (!layout->map || !layout->primaryTileset || !layout->secondaryTileset
++        || x >= layout->width || y >= layout->height) return FALSE;
++    block = layout->map[x + y * layout->width];
++    id = UNPACK_METATILE(block);
++    if (!WorldCatalog_Metatile(group, num, id)) return FALSE;
++    attributes = id < NUM_METATILES_IN_PRIMARY ? layout->primaryTileset->metatileAttributes
++        : layout->secondaryTileset->metatileAttributes;
++    if (!attributes || !SafeFloor(block, UNPACK_BEHAVIOR(attributes[id < NUM_METATILES_IN_PRIMARY
++            ? id : id - NUM_METATILES_IN_PRIMARY]))
++        || BlockedByEvents(map->events, x, y)
++        || (online && !WorldBridge_TravelTileClear(group, num, x, y))) return FALSE;
++    if (gSaveBlock1Ptr && group == (unsigned)gSaveBlock1Ptr->location.mapGroup
++        && num == (unsigned)gSaveBlock1Ptr->location.mapNum)
++    {
++        if (MapGridGetCollisionAt(x + MAP_OFFSET, y + MAP_OFFSET)
++            || MapGridGetElevationAt(x + MAP_OFFSET, y + MAP_OFFSET) != elevation
++            || MapGridGetMetatileBehaviorAt(x + MAP_OFFSET, y + MAP_OFFSET) != MB_NORMAL) return FALSE;
++        for (i = 0; i < OBJECT_EVENTS_COUNT; i++)
++            if (gObjectEvents[i].active && !gObjectEvents[i].isPlayer
++                && gObjectEvents[i].currentCoords.x == x + MAP_OFFSET
++                && gObjectEvents[i].currentCoords.y == y + MAP_OFFSET) return FALSE;
++    }
++    return TRUE;
++}
++
++bool8 WorldTravel_RallyWarp(unsigned group, unsigned num, s16 x, s16 y, unsigned elevation, bool8 online)
++{
++    unsigned i;
++    if (!TravelField() || ArePlayerFieldControlsLocked() || WorldTravel_OwnsFieldInput()
++        || !WorldTravel_RallyTileSafe(group, num, x, y, elevation, online)) return FALSE;
++    for (i = 0; i < NUM_TASKS; i++) if (!gTasks[i].isActive) break;
++    if (i == NUM_TASKS) return FALSE;
++    SetWarpDestination(group, num, WARP_ID_NONE, x, y);
++    DoWarp();
++    return TRUE;
++}
++
++static void TravelEncode(u8 *dest, const char *text)
++{
++    for (; *text; text++, dest++)
++    {
++        unsigned char c = *text;
++        if (c >= 'A' && c <= 'Z') *dest = CHAR_A + c - 'A';
++        else if (c >= 'a' && c <= 'z') *dest = CHAR_a + c - 'a';
++        else if (c >= '0' && c <= '9') *dest = CHAR_0 + c - '0';
++        else if (c == '\n') *dest = CHAR_NEWLINE;
++        else if (c == '.') *dest = CHAR_PERIOD;
++        else if (c == '-') *dest = CHAR_HYPHEN;
++        else if (c == '?') *dest = CHAR_QUESTION_MARK;
++        else *dest = CHAR_SPACE;
++    }
++    *dest = EOS;
++}
++
++static void TravelPrint(const char *text, unsigned y)
++{
++    u8 encoded[128];
++    TravelEncode(encoded, text);
++    AddTextPrinterParameterized(sTravel.window, FONT_SMALL, encoded, 8, y, TEXT_SKIP_DRAW, NULL);
++}
++
++static void TravelCloseWindow(void)
++{
++    if (sTravel.window != WINDOW_NONE)
++    {
++        ClearStdWindowAndFrame(sTravel.window, TRUE);
++        RemoveWindow(sTravel.window);
++        sTravel.window = WINDOW_NONE;
++    }
++}
++
++void WorldTravel_Close(void)
++{
++    TravelCloseWindow();
++    if (sTravel.locked && gMain.callback2 == CB2_Overworld)
++    {
++        UnlockPlayerFieldControls();
++        UnfreezeObjectEvents();
++    }
++    sTravel.locked = FALSE;
++    sTravel.flightActive = FALSE;
++    sTravel.state = TRAVEL_IDLE;
++    sTravel.page = 0;
++}
++
++static bool8 TravelWindow(void)
++{
++    struct WindowTemplate window = { 0, 1, 1, 28, 18, 15, 0x125 };
++    TravelCloseWindow();
++    sTravel.window = AddWindow(&window);
++    if (sTravel.window == WINDOW_NONE) { WorldTravel_Close(); return FALSE; }
++    SetStandardWindowBorderStyle(sTravel.window, FALSE);
++    sTravel.delay = 1;
++    return TRUE;
++}
++
++static void TravelFriends(void)
++{
++    struct WorldBridgePeer peer;
++    unsigned i;
++    if (!TravelWindow()) return;
++    TravelPrint("Friends   Choose a trainer to Fly to", 0);
++    sTravel.count = 0;
++    /* Leave room for page controls without enlarging the field window.
++     * Confirmation re-resolves the chosen identity against live presence. */
++    if (sTravel.page && !WorldBridge_GetTravelPeer(sTravel.page * ARRAY_COUNT(sTravel.names), &peer))
++        sTravel.page = 0;
++    for (i = 0; i < ARRAY_COUNT(sTravel.names)
++        && WorldBridge_GetTravelPeer(sTravel.page * ARRAY_COUNT(sTravel.names) + i, &peer); i++)
++    {
++        strcpy(sTravel.names[sTravel.count++], peer.name);
++        TravelPrint(peer.name, 24 + i * 12);
++    }
++    sTravel.nextPage = WorldBridge_GetTravelPeer((sTravel.page + 1) * ARRAY_COUNT(sTravel.names), &peer);
++    i = sTravel.count;
++    if (sTravel.nextPage) TravelPrint("Next page", 24 + i++ * 12);
++    if (sTravel.page) TravelPrint("Previous page", 24 + i++ * 12);
++    TravelPrint("Cancel", 24 + i * 12);
++    if (!sTravel.count) TravelPrint("No friends are connected.", 48);
++    InitMenuNormal(sTravel.window, FONT_SMALL, 0, 24, 12, i + 1, 0);
++    CopyWindowToVram(sTravel.window, COPYWIN_FULL);
++    sTravel.state = TRAVEL_FRIENDS;
++    sTravel.status = "Choose a friend.";
++}
++
++static void TravelMessage(const char *message)
++{
++    sTravel.status = message;
++    if (!TravelWindow()) return;
++    TravelPrint(message, 16);
++    TravelPrint("Press A or B to go back.", 112);
++    CopyWindowToVram(sTravel.window, COPYWIN_FULL);
++    sTravel.state = TRAVEL_MESSAGE;
++}
++
++/* Validate again on confirmation, not when drawing the friend list. */
++static const char *TravelDestination(struct WorldBridgePeer *peer, unsigned *mon, s16 *x, s16 *y)
++{
++    unsigned i, j, flag;
++    const struct MapHeader *map;
++    static u8 grid[TRAVEL_CELLS];
++    if (!FlagGet(FLAG_BADGE06_GET)) return "You need the Feather Badge.";
++    for (i = 0; i < gPlayerPartyCount && i < PARTY_SIZE; i++)
++    {
++        if (!GetMonData(&gPlayerParty[i], MON_DATA_SPECIES) || GetMonData(&gPlayerParty[i], MON_DATA_IS_EGG)) continue;
++        for (j = 0; j < MAX_MON_MOVES; j++)
++            if (GetMonData(&gPlayerParty[i], MON_DATA_MOVE1 + j) == MOVE_FLY) break;
++        if (j < MAX_MON_MOVES) break;
++    }
++    if (i == gPlayerPartyCount || i == PARTY_SIZE) return "A Pokemon must know Fly.";
++    *mon = i;
++    if (!Overworld_MapTypeAllowsTeleportAndFly(gMapHeader.mapType)) return "You cannot Fly from here.";
++    for (i = 0; WorldBridge_GetTravelPeer(i, peer); i++)
++        if (!strcmp(peer->name, sTravel.target)) break;
++    if (strcmp(peer->name, sTravel.target) || !WorldBridge_GetTravelPeer(i, peer)) return "Your friend is no longer connected.";
++    if (!peer->ready) return "Your friend is busy. Try again later.";
++    flag = VisitedFlag(peer->group, peer->num);
++    if (!flag) return "Your friend must be outside\nin a town or city.";
++    if (!FlagGet(flag)) return "Visit that town yourself first.";
++    if (!TravelStoryReady(peer->group, peer->num)) return "Finish the story event there\nbefore flying to a friend.";
++    map = Overworld_GetMapHeaderByGroupAndId(peer->group, peer->num);
++    if (!map || (map->mapType != MAP_TYPE_TOWN && map->mapType != MAP_TYPE_CITY)
++        || !BuildLandingGrid(map, peer->group, peer->num, grid)) return "There is no safe place to land.";
++    for (i = 1; i < NUM_HEAL_LOCATIONS; i++)
++    {
++        const struct HealLocation *heal = GetHealLocation(i);
++        if (i == HEAL_LOCATION_EVER_GRANDE_CITY_POKEMON_LEAGUE && !FlagGet(FLAG_LANDMARK_POKEMON_LEAGUE)) continue;
++        if (heal && (unsigned)heal->mapGroup == peer->group && (unsigned)heal->mapNum == peer->num
++            && FindLanding(grid, map->mapLayout->width, map->mapLayout->height,
++                heal->x, heal->y, peer->x, peer->y, x, y))
++        {
++            sTravel.flightHeal = i;
++            return NULL;
++        }
++    }
++    return "Ask your friend to move to\nopen ground near the Center.";
++}
++
++void WorldTravel_RequestMenu(void)
++{
++    if (sTravel.state == TRAVEL_IDLE && WorldBridge_Enabled()) sTravel.state = TRAVEL_REQUEST;
++}
++
++bool8 WorldTravel_OwnsFieldInput(void) { return sTravel.state != TRAVEL_IDLE; }
++
++void WorldTravel_Update(void)
++{
++    s8 choice;
++    if (sTravel.flightActive && !WorldTravel_NativeFlyRunning()) sTravel.flightActive = FALSE;
++    if (sTravel.state == TRAVEL_IDLE) return;
++    if (!TravelField())
++    {
++        /* A reset/scene replacement owns the new windows and lock. Never clear
++         * its window using our previous numeric ID. */
++        sTravel.window = WINDOW_NONE;
++        sTravel.locked = FALSE;
++        sTravel.state = TRAVEL_IDLE;
++        return;
++    }
++    if (sTravel.state == TRAVEL_REQUEST)
++    {
++        if (ArePlayerFieldControlsLocked()) { sTravel.state = TRAVEL_IDLE; return; }
++        sTravel.group = gSaveBlock1Ptr->location.mapGroup;
++        sTravel.num = gSaveBlock1Ptr->location.mapNum;
++        LockPlayerFieldControls();
++        FreezeObjectEvents();
++        sTravel.locked = TRUE;
++        TravelFriends();
++        return;
++    }
++    if (sTravel.group != (unsigned)gSaveBlock1Ptr->location.mapGroup
++        || sTravel.num != (unsigned)gSaveBlock1Ptr->location.mapNum)
++    {
++        sTravel.window = WINDOW_NONE;
++        sTravel.locked = FALSE;
++        sTravel.state = TRAVEL_IDLE;
++        return;
++    }
++    if (sTravel.delay) { sTravel.delay--; return; }
++    if (sTravel.state == TRAVEL_MESSAGE)
++    {
++        if (gMain.newKeys & (A_BUTTON | B_BUTTON)) TravelFriends();
++        return;
++    }
++    choice = Menu_ProcessInputNoWrap();
++    if (choice == MENU_NOTHING_CHOSEN) return;
++    if (sTravel.state == TRAVEL_FRIENDS)
++    {
++        if (choice >= 0 && sTravel.nextPage && (unsigned)choice == sTravel.count)
++        { sTravel.page++; TravelFriends(); return; }
++        if (choice >= 0 && sTravel.page && (unsigned)choice == sTravel.count + sTravel.nextPage)
++        { sTravel.page--; TravelFriends(); return; }
++        if (choice < 0 || (unsigned)choice >= sTravel.count) { WorldTravel_Close(); return; }
++        strcpy(sTravel.target, sTravel.names[choice]);
++        if (!TravelWindow()) return;
++        TravelPrint(sTravel.target, 0);
++        TravelPrint("Fly to this friend?", 24);
++        TravelPrint("Fly", 48);
++        TravelPrint("Cancel", 64);
++        InitMenuNormal(sTravel.window, FONT_SMALL, 0, 48, 16, 2, 1);
++        CopyWindowToVram(sTravel.window, COPYWIN_FULL);
++        sTravel.state = TRAVEL_CONFIRM;
++        sTravel.status = "Confirm Fly.";
++    }
++    else
++    {
++        struct WorldBridgePeer peer = {0};
++        unsigned mon;
++        s16 x, y;
++        const char *error;
++        if (choice != 0) { TravelFriends(); return; }
++        error = TravelDestination(&peer, &mon, &x, &y);
++        if (error) { TravelMessage(error); return; }
++        WorldTravel_Close();
++        if (!WorldTravel_StartNativeFly(peer.group, peer.num, x, y, mon))
++        {
++            LockPlayerFieldControls();
++            FreezeObjectEvents();
++            sTravel.locked = TRUE;
++            TravelMessage("Fly is unavailable. Try again.");
++            return;
++        }
++        sTravel.flightGroup = peer.group;
++        sTravel.flightNum = peer.num;
++        sTravel.flightActive = TRUE;
++        sTravel.status = "Flying to friend.";
++        sTravel.landingX = x; sTravel.landingY = y;
++    }
++}
++
++void WorldTravel_WriteJSON(FILE *file)
++{
++    static const char *const phases[] = {"idle", "requested", "friends", "confirm", "message"};
++    const char *p;
++    fprintf(file, "{\"phase\":\"%s\",\"status\":\"", phases[sTravel.state]);
++    for (p = sTravel.status; *p; p++)
++        if (*p == '\n') fputs("\\n", file); else fputc(*p, file);
++    fprintf(file, "\",\"target\":\"%s\",\"landing\":[%d,%d]}", sTravel.target, sTravel.landingX, sTravel.landingY);
++}
++#endif
+diff --git a/src/platform/xl_progress_store.c b/src/platform/xl_progress_store.c
+new file mode 100644
+index 0000000..77e0cef
+--- /dev/null
++++ b/src/platform/xl_progress_store.c
+@@ -0,0 +1,63 @@
++#include "platform/xl_progress_store.h"
++#include <string.h>
++#if defined(PORTABLE) && !defined(_WIN32)
++#include "platform/native_save.h"
++#include <stdint.h>
++#include <stdio.h>
++#include <sys/stat.h>
++#include <unistd.h>
++#include <errno.h>
++#define PAYLOAD_SIZE (1 + 64 * (6 + 64))
++#define HEADER_SIZE 12
++#define SNAPSHOT_SIZE (HEADER_SIZE + PAYLOAD_SIZE)
++static FILE *sFile;
++static unsigned char sJournal[2][SNAPSHOT_SIZE];
++static unsigned sCurrent;
++static uint32_t get32(const unsigned char *p){return (uint32_t)p[0]|((uint32_t)p[1]<<8)|((uint32_t)p[2]<<16)|((uint32_t)p[3]<<24);}
++static void put32(unsigned char *p,uint32_t v){p[0]=v;p[1]=v>>8;p[2]=v>>16;p[3]=v>>24;}
++static uint32_t checksum(const unsigned char *p){uint32_t h=2166136261u;size_t i;for(i=0;i<SNAPSHOT_SIZE;i++)if(i<8||i>=12){h^=p[i];h*=16777619u;}return h;}
++static bool valid(const unsigned char *p){return !memcmp(p,"XLP2",4) && get32(p+8)==checksum(p);}
++void XLProgressStore_Close(void){if(sFile){fclose(sFile);sFile=NULL;}memset(sJournal,0,sizeof(sJournal));sCurrent=0;}
++bool XLProgressStore_Init(const char *savePath,bool enabled,void *payload,size_t size)
++{
++    char path[4096];struct stat info;bool a,b;
++    if(!enabled || !savePath || !payload || size!=PAYLOAD_SIZE || sFile)return false;
++    if(snprintf(path,sizeof(path),"%s.generated-story",savePath)>=(int)sizeof(path))return false;
++    sFile=NativeSave_Open(path);if(!sFile)return false;
++    if(fstat(fileno(sFile),&info)!=0 || (info.st_mode&077)!=0)goto fail;
++    memset(sJournal,0,sizeof(sJournal));sCurrent=0;
++    if(info.st_size==0){memset(payload,0,size);return true;}
++    if(info.st_size!=(off_t)sizeof(sJournal) || !NativeSave_Read(sFile,0,sJournal,sizeof(sJournal)))goto fail;
++    a=valid(sJournal[0]);b=valid(sJournal[1]);if(!a&&!b)goto fail;
++    sCurrent=b && (!a || (int32_t)(get32(sJournal[1]+4)-get32(sJournal[0]+4))>0);
++    memcpy(payload,sJournal[sCurrent]+HEADER_SIZE,size);return true;
++fail:
++    XLProgressStore_Close();return false;
++}
++static bool write_slot(unsigned slot,const unsigned char *data)
++{
++    size_t done=0;int fd=fileno(sFile);struct stat info;
++    if(fstat(fd,&info)!=0 || !S_ISREG(info.st_mode) || info.st_nlink!=1 || info.st_uid!=geteuid() || (info.st_mode&077)!=0)return false;
++    while(done<SNAPSHOT_SIZE){ssize_t n=pwrite(fd,data+done,SNAPSHOT_SIZE-done,(off_t)(slot*SNAPSHOT_SIZE+done));
++        if(n<0 && errno==EINTR)continue;
++        if(n<=0)return false;
++        done+=(size_t)n;
++    }
++    while(fsync(fd)!=0)if(errno!=EINTR)return false;
++    return true;
++}
++bool XLProgressStore_Save(const void *payload,size_t size)
++{
++    unsigned next;struct stat info;uint32_t sequence;
++    if(!sFile || !payload || size!=PAYLOAD_SIZE)return false;
++    if(fstat(fileno(sFile),&info)!=0 || (info.st_mode&077)!=0){XLProgressStore_Close();return false;}
++    next=sCurrent^1;sequence=valid(sJournal[sCurrent])?get32(sJournal[sCurrent]+4)+1:1;
++    memset(sJournal[next],0,SNAPSHOT_SIZE);memcpy(sJournal[next],"XLP2",4);put32(sJournal[next]+4,sequence);memcpy(sJournal[next]+HEADER_SIZE,payload,size);put32(sJournal[next]+8,checksum(sJournal[next]));
++    if(!write_slot(next,sJournal[next])){XLProgressStore_Close();return false;}
++    sCurrent=next;return true;
++}
++#else
++bool XLProgressStore_Init(const char *path,bool enabled,void *payload,size_t size){(void)path;(void)enabled;(void)payload;(void)size;return false;}
++bool XLProgressStore_Save(const void *payload,size_t size){(void)payload;(void)size;return false;}
++void XLProgressStore_Close(void){}
++#endif
+diff --git a/src/reshow_battle_screen.c b/src/reshow_battle_screen.c
+index a1a9cc7..29df4d3 100644
+--- a/src/reshow_battle_screen.c
++++ b/src/reshow_battle_screen.c
+@@ -16,6 +16,9 @@
+ #include "battle_interface.h"
+ #include "battle_anim.h"
+ #include "data.h"
++#ifdef PORTABLE
++#include "platform/world_coop.h"
++#endif
+ 
+ // this file's functions
+ static void CB2_ReshowBattleScreenAfterMenu(void);
+@@ -271,6 +274,10 @@ static void ClearBattleBgCntBaseBlocks(void)
+ 
+ static bool8 LoadBattlerSpriteGfx(enum BattlerId battler)
+ {
++#ifdef PORTABLE
++    if (WorldCoop_IsBattle() && battler < MAX_BATTLERS_COUNT && (gAbsentBattlerFlags & (1u << battler)))
++        return TRUE;
++#endif
+     if (battler < gBattlersCount)
+     {
+         enum BattlerPosition position = GetBattlerPosition(battler);
+@@ -302,6 +309,10 @@ static bool8 LoadBattlerSpriteGfx(enum BattlerId battler)
+ 
+ void CreateBattlerSprite(enum BattlerId battler)
+ {
++#ifdef PORTABLE
++    if (WorldCoop_IsBattle() && battler < MAX_BATTLERS_COUNT && (gAbsentBattlerFlags & (1u << battler)))
++        return;
++#endif
+     if (battler < gBattlersCount)
+     {
+         u8 posY;
+@@ -383,6 +394,12 @@ void CreateBattlerSprite(enum BattlerId battler)
+ 
+ static void CreateHealthboxSprite(enum BattlerId battler)
+ {
++#ifdef PORTABLE
++    /* Shared singles keep slot3 absent in the four-battler engine. Rebuilding
++     * its empty HP bar after a Bag/Party menu would divide by maxHP == 0. */
++    if (WorldCoop_IsBattle() && battler < MAX_BATTLERS_COUNT && (gAbsentBattlerFlags & (1u << battler)))
++        return;
++#endif
+     if (battler < gBattlersCount)
+     {
+         u8 healthboxSpriteId;
+diff --git a/src/save_failed_screen.c b/src/save_failed_screen.c
+index 2075ae9..30b6055 100644
+--- a/src/save_failed_screen.c
++++ b/src/save_failed_screen.c
+@@ -271,7 +271,17 @@ static void CB2_WipeSave(void)
+ 
+         FillWindowPixelBuffer(sWindowIds[TEXT_WIN_ID], PIXEL_FILL(1));
+         SaveFailedScreenTextPrint(gText_CheckCompleted, 1, 0);
++#ifdef PORTABLE
++        if (HandleSavingData(sSaveFailedType) == SAVE_STATUS_ERROR)
++        {
++            FillWindowPixelBuffer(sWindowIds[TEXT_WIN_ID], PIXEL_FILL(1));
++            SaveFailedScreenTextPrint(gText_BackupMemoryDamaged, 1, 0);
++            SetMainCallback2(CB2_GameplayCannotBeContinued);
++            return;
++        }
++#else
+         HandleSavingData(sSaveFailedType);
++#endif
+ 
+         if (gDamagedSaveSectors != 0)
+         {
+diff --git a/src/script.c b/src/script.c
+index abbfbbd..4a99f69 100644
+--- a/src/script.c
++++ b/src/script.c
+@@ -275,6 +275,15 @@ bool8 ScriptContext_IsEnabled(void)
+         return FALSE;
+ }
+ 
++#ifdef PORTABLE
++bool8 ScriptContext_IsAt(const u8 *ptr)
++{
++    return sGlobalScriptContextStatus == CONTEXT_RUNNING
++        && sGlobalScriptContext.mode == SCRIPT_MODE_BYTECODE
++        && sGlobalScriptContext.scriptPtr == ptr;
++}
++#endif
++
+ // Re-initializes the global script context to zero.
+ void ScriptContext_Init(void)
+ {

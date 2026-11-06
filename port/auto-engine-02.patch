@@ -1,0 +1,2732 @@
+diff --git a/src/platform/generated_map.c b/src/platform/generated_map.c
+new file mode 100644
+index 0000000..3714b92
+--- /dev/null
++++ b/src/platform/generated_map.c
+@@ -0,0 +1,1478 @@
++#ifdef PORTABLE
++#include "global.h"
++#include "main.h"
++#include "overworld.h"
++#include "field_screen_effect.h"
++#include "field_player_avatar.h"
++#include "fieldmap.h"
++#include "task.h"
++#include "platform/world_bridge.h"
++#include "platform/link_transport.h"
++#include "platform/world_rally.h"
++#include "platform/generated_map.h"
++#if GENERATED_WORLD_XL && GENERATED_WILDS_EVENTS
++#include "platform/xl_progress_store.h"
++#include "platform/world_cave_wire.h"
++#endif
++#if GENERATED_WILDS_EVENTS
++#include "field_camera.h"
++#include "event_data.h"
++#endif
++#include "constants/maps.h"
++#if GENERATED_WILDS_GUIDE
++#include "constants/event_object_movement.h"
++#endif
++#if GENERATED_CAVE_WILDLIFE
++#include "wild_encounter.h"
++#include "constants/species.h"
++#endif
++#include <string.h>
++#if GENERATED_MAP_READY
++#include "pokemon.h"
++#endif
++
++/* The native-only script references this fixed-size literal buffer even when
++ * the optional feature is disabled. It never contains control codes. */
++u8 gGeneratedWildsGuideText[58] = {0xFF};
++u8 gGeneratedWildsCastText2[58] = {0xFF};
++u8 gGeneratedWildsCastText3[58] = {0xFF};
++u8 gGeneratedEventText[58] = {0xFF};
++
++#if GENERATED_MAP_READY
++/* Both supported sizes fit the native backup-map buffer with the view border.
++ * Cave palette and metatiles come from the existing Cave of Origin layout. */
++#define GEN_SIDE 31
++#define GEN_CELLS (GEN_SIDE * GEN_SIDE)
++#define GEN_FLOOR 0x3333
++#define GEN_WALL 0x0722
++#define GEN_EXIT 0x3323
++#define GEN_AUTOFLOOR 0x331b
++#define GEN_MAX_NODES 225
++
++static u16 sTiles[GEN_CELLS];
++static u8 sTemplate[GEN_CELLS];
++#if GENERATED_MAP_LARGE
++#define LARGE_SIDE 63
++#define LARGE_CELLS (LARGE_SIDE * LARGE_SIDE)
++static u16 sLargeTiles[LARGE_CELLS];
++static u8 sLargeTemplate[LARGE_CELLS];
++static bool8 sLargeStaged, sLargeActive, sLargeShared;
++#if GENERATED_MAP_WILDS
++static bool8 sLargeWilds;
++#if GENERATED_WILDS_GUIDE
++static bool8 sGuideStaged, sGuideActive, sGuideShared;
++static u8 sGuideGfx, sGuideMetadata[GENERATED_GUIDE_BYTES];
++static struct MapEvents sGuideEvents;
++static struct ObjectEventTemplate sGuideObjects[OBJECT_EVENT_TEMPLATES_COUNT];
++extern const u8 GeneratedWorld_Wilds_EventScript_Guide[];
++#if GENERATED_WILDS_CAST
++static bool8 sCastStaged, sCastActive;
++#if GENERATED_WILDS_EVENTS
++static bool8 sEventStaged, sEventActive;
++static u8 sEventState, sEventData[GENERATED_EVENT_BYTES], sEventRuntime[GENERATED_EVENT_BYTES];
++#if GENERATED_WILDS_SHARED_TERRAIN
++static u8 sSharedTerrain[GENERATED_TERRAIN_MAX_BYTES];static u16 sSharedTerrainSize;
++#if GENERATED_WILDS_SHARED_GEOMETRY
++static u8 sSharedWalk[LARGE_CELLS];
++#endif
++#endif
++extern const u8 GeneratedWorld_Wilds_EventScript_Graph[];
++#endif
++static u8 sCastMetadata[GENERATED_CAST_BYTES];
++extern const u8 GeneratedWorld_Wilds_EventScript_Cast2[], GeneratedWorld_Wilds_EventScript_Cast3[];
++#endif
++#endif
++#endif
++#endif
++#if GENERATED_WORLD_XL
++#define XL_SIDE 127
++#define XL_CELLS (XL_SIDE*XL_SIDE)
++static u16 sXLTiles[XL_CELLS];static u8 sXLTemplate[XL_CELLS],sXLPalette[XL_CELLS];static bool8 sXLHasPalette;
++#if GENERATED_WILDS_EVENTS
++static bool8 sXLHasStableId;static u8 sXLStableId[16];
++#endif
++static bool8 sXLStaged,sXLActive,sXLShared;
++#if GENERATED_WILDS_CAST
++static bool8 sXLCastStaged;
++#endif
++static struct WarpEvent sXLWarp;static struct MapEvents sXLEvents;
++#if GENERATED_WILDS_EVENTS
++#define XL_PROGRESS_SLOTS 64
++static struct {bool8 valid;u8 trainer[4],state,identity[64];} sXLProgress[XL_PROGRESS_SLOTS];
++static u8 sXLProgressCurrent=0xFF,sXLProgressNext;
++#define XL_PROGRESS_SLOT_BYTES (6 + 64)
++#define XL_PROGRESS_PAYLOAD_BYTES (1 + XL_PROGRESS_SLOTS * XL_PROGRESS_SLOT_BYTES)
++static u8 sXLProgressPayload[XL_PROGRESS_PAYLOAD_BYTES];static bool8 sXLProgressDurable;
++static void XLProgressPack(void)
++{
++    unsigned i;u8 *p=sXLProgressPayload;*p++=sXLProgressNext;
++    for(i=0;i<XL_PROGRESS_SLOTS;i++){*p++=sXLProgress[i].valid;memcpy(p,sXLProgress[i].trainer,4);p+=4;*p++=sXLProgress[i].state;
++        memcpy(p,sXLProgress[i].identity,64);p+=64;}
++}
++static bool8 XLProgressUnpack(void)
++{
++    unsigned i;const u8 *p=sXLProgressPayload;
++    if(*p>=XL_PROGRESS_SLOTS)return FALSE;
++    for(i=0;i<XL_PROGRESS_SLOTS;i++){const u8 *r=p+1+i*XL_PROGRESS_SLOT_BYTES;unsigned j;if(r[0]>1 || r[5]>15)return FALSE;
++        if(r[0])for(j=0;j<64;j++)if(!((r[6+j]>='0' && r[6+j]<='9') || (r[6+j]>='a' && r[6+j]<='f')))return FALSE;}
++    sXLProgressNext=*p++;
++    for(i=0;i<XL_PROGRESS_SLOTS;i++){sXLProgress[i].valid=*p++;memcpy(sXLProgress[i].trainer,p,4);p+=4;sXLProgress[i].state=*p++;
++        memcpy(sXLProgress[i].identity,p,64);p+=64;}
++    return TRUE;
++}
++bool8 GeneratedMap_InitXLProgress(const char *savePath,bool8 enabled)
++{
++    if(!enabled)return TRUE;
++    if(!XLProgressStore_Init(savePath,TRUE,sXLProgressPayload,sizeof(sXLProgressPayload)))return FALSE;
++    if(!XLProgressUnpack()){XLProgressStore_Close();return FALSE;}
++    sXLProgressDurable=TRUE;return TRUE;
++}
++static void XLProgressPersist(void)
++{
++    if(sXLProgressDurable){XLProgressPack();if(!XLProgressStore_Save(sXLProgressPayload,sizeof(sXLProgressPayload)))sXLProgressDurable=FALSE;}
++}
++static void XLRestoreEventProgress(void)
++{
++    unsigned i;const u8 *trainer;char identity[65];
++    sXLProgressCurrent=0xFF;
++    if(!sXLActive || !sEventActive || WorldBridge_Enabled() || !gSaveBlock2Ptr)return;
++    trainer=gSaveBlock2Ptr->playerTrainerId;
++    if(sXLHasStableId)WorldCaveWire_XLStableStoryDigest(sEventData,sCastMetadata,sXLStableId,identity);
++    else if(sXLHasPalette)WorldCaveWire_XLPaintedEventDigest(sEventData,sCastMetadata,sXLPalette,identity);
++    else WorldCaveWire_XLEventDigest(sEventData,sCastMetadata,sXLTemplate,identity);
++    for(i=0;i<XL_PROGRESS_SLOTS;i++)if(sXLProgress[i].valid && !memcmp(sXLProgress[i].trainer,trainer,4)
++       && !memcmp(sXLProgress[i].identity,identity,64)) {sXLProgressCurrent=i;sEventState=sXLProgress[i].state;return;}
++    i=sXLProgressNext;sXLProgressNext=(sXLProgressNext+1)%XL_PROGRESS_SLOTS;
++    memcpy(sXLProgress[i].trainer,trainer,4);memcpy(sXLProgress[i].identity,identity,64);
++    sXLProgress[i].state=sEventState;sXLProgress[i].valid=TRUE;sXLProgressCurrent=i;
++}
++static void XLRememberEventProgress(void)
++{
++    if(sXLProgressCurrent<XL_PROGRESS_SLOTS && gSaveBlock2Ptr && !memcmp(sXLProgress[sXLProgressCurrent].trainer,gSaveBlock2Ptr->playerTrainerId,4))
++    {sXLProgress[sXLProgressCurrent].state=sEventState;XLProgressPersist();}
++}
++#endif
++#endif
++#if !(GENERATED_WORLD_XL && GENERATED_WILDS_EVENTS)
++bool8 GeneratedMap_InitXLProgress(const char *savePath,bool8 enabled){(void)savePath;return !enabled;}
++#endif
++static bool8 sHasTemplate;
++#if GENERATED_CAVE_PROFILES
++static u8 sEncounterProfile;
++static bool8 sSharedEncounterProfile;
++#endif
++#if GENERATED_CAVE_WILDLIFE
++static struct WildPokemon sWildlifeMons[12];
++static struct WildPokemonInfo sWildlifeInfo;
++static bool8 sHasWildlife, sSharedWildlife;
++static u8 sWildlifeRaw[GENERATED_WILDLIFE_BYTES];
++#endif
++static struct MapLayout sLayout;
++static struct WarpData sReturn, sPreviousDynamicWarp;
++static bool8 sPrepared, sSeenInside;
++static u32 sRandom;
++
++static u32 NextRandom(void)
++{
++    sRandom ^= sRandom << 13;
++    sRandom ^= sRandom >> 17;
++    sRandom ^= sRandom << 5;
++    return sRandom;
++}
++
++static void BuildMaze(u32 seed)
++{
++    u16 stack[GEN_MAX_NODES];
++    u16 count = 0, i;
++    sRandom = seed ? seed : 0x6d2b79f5;
++    for (i = 0; i < GEN_CELLS; i++) sTiles[i] = GEN_WALL;
++    stack[count++] = GEN_SIDE + 1;
++    sTiles[GEN_SIDE + 1] = GEN_FLOOR;
++    while (count)
++    {
++        s16 x = stack[count - 1] % GEN_SIDE, y = stack[count - 1] / GEN_SIDE;
++        s8 dx[4] = { 0, 2, 0, -2 }, dy[4] = { -2, 0, 2, 0 };
++        u8 options[4], n = 0, d;
++        for (d = 0; d < 4; d++)
++        {
++            s16 nx = x + dx[d], ny = y + dy[d];
++            if (nx > 0 && nx < GEN_SIDE - 1 && ny > 0 && ny < GEN_SIDE - 1
++             && sTiles[ny * GEN_SIDE + nx] == GEN_WALL) options[n++] = d;
++        }
++        if (!n) { count--; continue; }
++        d = options[NextRandom() % n];
++        sTiles[(y + dy[d] / 2) * GEN_SIDE + x + dx[d] / 2] = GEN_FLOOR;
++        x += dx[d]; y += dy[d];
++        sTiles[y * GEN_SIDE + x] = GEN_FLOOR;
++        stack[count++] = y * GEN_SIDE + x;
++    }
++    /* The south-facing cave exit is reachable from the north. All odd
++     * interior cells belong to the same maze component. */
++    sTiles[28 * GEN_SIDE + 29] = GEN_FLOOR;
++    sTiles[29 * GEN_SIDE + 29] = GEN_EXIT;
++}
++#if GENERATED_MAP_AUTOTILE
++/* Cave of Origin's common wall edges, indexed by walkable neighbors N/E/S/W.
++ * Shape only: each selected wall remains blocked, with the same elevation.
++ * A separate pass prevents the chosen art from affecting neighbor masks. */
++static void GeneratedMap_Autotile(void)
++{
++    static const u16 originWalls[16] = {
++        0x322, 0x332, 0x322, 0x31a, 0x329, 0x329, 0x32a, 0x330,
++        0x320, 0x318, 0x322, 0x330, 0x328, 0x330, 0x330, 0x330
++    };
++    const u16 *walls = originWalls;
++    u16 floor = GEN_AUTOFLOOR, exit = GEN_EXIT;
++#if GENERATED_CAVE_BIOMES
++    /* All three visual sets use the existing general/cave tilesets. Meteor
++     * uses the Origin-inspired set; granite and victory share stone art. */
++    static const u16 stoneWalls[16] = {
++        0x211, 0x209, 0x212, 0x20a, 0x219, 0x219, 0x21a, 0x20a,
++        0x210, 0x208, 0x212, 0x202, 0x218, 0x208, 0x203, 0x202
++    };
++    static const u16 iceWalls[16] = {
++        0x381, 0x379, 0x382, 0x37a, 0x389, 0x389, 0x38a, 0x37d,
++        0x380, 0x37d, 0x382, 0x37a, 0x388, 0x37d, 0x37e, 0x37d
++    };
++    if (sEncounterProfile == 2) {
++        walls = iceWalls; floor = 0x3385; exit = 0x3386;
++    } else if (sEncounterProfile == 0 || sEncounterProfile == 3) {
++        walls = stoneWalls; floor = 0x3201; exit = 0x3207;
++    }
++#endif
++#if GENERATED_MAP_LARGE
++    u8 walkable[LARGE_CELLS];
++    u16 *tiles = sLargeActive ? sLargeTiles : sTiles;
++    const unsigned side = sLargeActive ? LARGE_SIDE : GEN_SIDE;
++#else
++    u8 walkable[GEN_CELLS];
++    u16 *tiles = sTiles;
++    const unsigned side = GEN_SIDE;
++#endif
++    u16 i;
++    for (i = 0; i < (side * side); i++)
++        walkable[i] = tiles[i] == GEN_FLOOR || tiles[i] == GEN_EXIT;
++    for (i = 0; i < (side * side); i++)
++    {
++        unsigned x = i % side, y = i / side, mask = 0;
++        if (walkable[i])
++        {
++            tiles[i] = tiles[i] == GEN_EXIT ? exit : floor;
++            continue;
++        }
++        if (y > 0 && walkable[i - side]) mask |= 1;
++        if (x + 1 < side && walkable[i + 1]) mask |= 2;
++        if (y + 1 < side && walkable[i + side]) mask |= 4;
++        if (x > 0 && walkable[i - 1]) mask |= 8;
++        tiles[i] = 0x400 | walls[mask];
++    }
++}
++#endif
++
++#endif
++
++/* Accept only inert, bounded geometry. Stage atomically after validating the
++ * closed perimeter and reachability of every floor and the south-facing exit. */
++bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size)
++{
++#if GENERATED_MAP_READY
++    u8 seen[GEN_CELLS] = {0};
++    u16 queue[GEN_CELLS], head = 0, tail = 0, i;
++    if (!cells || size != GEN_CELLS) return FALSE;
++    for (i = 0; i < GEN_CELLS; i++)
++    {
++        u8 x = i % GEN_SIDE, y = i / GEN_SIDE;
++        if (cells[i] != '.' && cells[i] != '#') return FALSE;
++        if ((x == 0 || y == 0 || x == GEN_SIDE - 1 || y == GEN_SIDE - 1) && cells[i] != '#') return FALSE;
++    }
++    if (cells[GEN_SIDE + 1] != '.' || cells[28 * GEN_SIDE + 29] != '.'
++     || cells[29 * GEN_SIDE + 29] != '.') return FALSE;
++    queue[tail++] = GEN_SIDE + 1;
++    seen[GEN_SIDE + 1] = TRUE;
++    while (head < tail)
++    {
++        u16 pos = queue[head++];
++        s16 neighbor[4] = { pos - GEN_SIDE, pos + 1, pos + GEN_SIDE, pos - 1 };
++        u8 d;
++        for (d = 0; d < 4; d++)
++        {
++            s16 next = neighbor[d];
++            if (next >= 0 && next < GEN_CELLS && cells[next] == '.' && !seen[next])
++            {
++                seen[next] = TRUE;
++                queue[tail++] = next;
++            }
++        }
++    }
++    for (i = 0; i < GEN_CELLS; i++)
++        if (cells[i] == '.' && !seen[i]) return FALSE;
++    memcpy(sTemplate, cells, sizeof(sTemplate));
++    sHasTemplate = TRUE;
++#if GENERATED_MAP_LARGE
++    sLargeStaged = sLargeShared = FALSE;
++#if GENERATED_WORLD_XL
++    sXLStaged = FALSE;
++#endif
++#if GENERATED_MAP_WILDS
++    sLargeWilds = FALSE;
++#if GENERATED_WILDS_GUIDE
++    sGuideStaged = sGuideShared = FALSE;
++#if GENERATED_WILDS_CAST
++    sCastStaged = FALSE;
++#if GENERATED_WILDS_EVENTS
++    sEventStaged = FALSE;
++#if GENERATED_WILDS_SHARED_TERRAIN
++    sSharedTerrainSize = 0;
++#endif
++#endif
++#endif
++#endif
++#endif
++#endif
++#if GENERATED_CAVE_PROFILES
++    sEncounterProfile = 0;
++    sSharedEncounterProfile = FALSE;
++#endif
++#if GENERATED_CAVE_WILDLIFE
++    sHasWildlife = sSharedWildlife = FALSE;
++#endif
++    return TRUE;
++#else
++    (void)cells; (void)size;
++    return FALSE;
++#endif
++}
++
++static bool8 StageXLWilds(const u8 *cells, u32 size, bool8 shared)
++{
++#if GENERATED_MAP_READY && GENERATED_WORLD_XL
++    u8 seen[XL_CELLS]={0};u16 queue[XL_CELLS],head=0,tail=0,i;
++    if(!cells || size!=XL_CELLS || (WorldBridge_Enabled() && !shared) || GeneratedMap_IsInside() || GeneratedMap_EntryPending())return FALSE;
++    for(i=0;i<XL_CELLS;i++){unsigned x=i%XL_SIDE,y=i/XL_SIDE;
++        if((cells[i]!='.' && cells[i]!='#') || ((x==0||y==0||x==XL_SIDE-1||y==XL_SIDE-1) && cells[i]!='#'))return FALSE;
++    }
++    if(cells[XL_SIDE+1]!='.' || cells[124*XL_SIDE+125]!='.' || cells[125*XL_SIDE+125]!='.')return FALSE;
++    queue[tail++]=XL_SIDE+1;seen[XL_SIDE+1]=TRUE;
++    while(head<tail){s16 pos=queue[head++],next[4]={pos-XL_SIDE,pos+1,pos+XL_SIDE,pos-1};unsigned d;
++        for(d=0;d<4;d++)if(next[d]>=0 && next[d]<XL_CELLS && cells[next[d]]=='.' && !seen[next[d]]){seen[next[d]]=TRUE;queue[tail++]=next[d];}
++    }
++    for(i=0;i<XL_CELLS;i++)if(cells[i]=='.' && !seen[i])return FALSE;
++    memcpy(sXLTemplate,cells,XL_CELLS);sXLStaged=TRUE;sXLShared=shared;sXLHasPalette=FALSE;
++#if GENERATED_WILDS_EVENTS
++    sXLHasStableId=FALSE;
++#endif
++#if GENERATED_WILDS_CAST
++    sXLCastStaged=FALSE;
++#if GENERATED_WILDS_EVENTS
++    sEventStaged=FALSE;
++#endif
++#endif
++    sLargeStaged=FALSE;sLargeShared=FALSE;sHasTemplate=FALSE;sLargeWilds=FALSE;
++#if GENERATED_CAVE_PROFILES
++    sEncounterProfile=0;sSharedEncounterProfile=FALSE;
++#endif
++#if GENERATED_CAVE_WILDLIFE
++    sHasWildlife=sSharedWildlife=FALSE;
++#endif
++    return TRUE;
++#else
++    (void)cells;(void)size;(void)shared;return FALSE;
++#endif
++}
++
++bool8 GeneratedMap_StageXLWilds(const u8 *cells, u32 size) { return StageXLWilds(cells, size, FALSE); }
++bool8 GeneratedMap_StageSharedXLWilds(const u8 *cells, u32 size) { return StageXLWilds(cells, size, TRUE); }
++bool8 GeneratedMap_MatchesPreparedXLWilds(const u8 *cells, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_WORLD_XL
++    return cells && size==XL_CELLS && sXLStaged && sXLShared && !memcmp(cells,sXLTemplate,XL_CELLS);
++#else
++    (void)cells; (void)size; return FALSE;
++#endif
++}
++bool8 GeneratedMap_StageXLPalette(const u8 *cells,u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_WORLD_XL
++    u8 geometry[XL_CELLS];u16 i;
++    if(!cells || size!=XL_CELLS)return FALSE;
++    for(i=0;i<XL_CELLS;i++){
++        if(cells[i]!='#' && cells[i]!='.' && cells[i]!='t')return FALSE;
++        geometry[i]=cells[i]=='#' ? '#' : '.';
++    }
++    if(cells[XL_SIDE+1]!='.' || cells[124*XL_SIDE+125]!='.' || cells[125*XL_SIDE+125]!='.')return FALSE;
++    if(!GeneratedMap_StageXLWilds(geometry,XL_CELLS))return FALSE;
++    memcpy(sXLPalette,cells,XL_CELLS);sXLHasPalette=TRUE;return TRUE;
++#else
++    (void)cells;(void)size;return FALSE;
++#endif
++}
++
++
++/* Validate all geometry before staging. Shared input is accepted only from
++ * the version-negotiated, integrity-checked authority path. */
++#if GENERATED_MAP_READY && GENERATED_MAP_LARGE
++static bool8 StageLarge(const u8 *cells, u32 size, bool8 shared)
++{
++    u8 seen[LARGE_CELLS] = {0};
++    u16 queue[LARGE_CELLS], head = 0, tail = 0, i;
++    if (!cells || size != LARGE_CELLS || (shared != WorldBridge_Enabled())) return FALSE;
++    if (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
++        return shared && sLargeActive && sLargeShared && !memcmp(cells, sLargeTemplate, LARGE_CELLS);
++    for (i = 0; i < LARGE_CELLS; i++) {
++        unsigned x = i % LARGE_SIDE, y = i / LARGE_SIDE;
++        if ((cells[i] != '.' && cells[i] != '#') ||
++            ((x == 0 || y == 0 || x == LARGE_SIDE - 1 || y == LARGE_SIDE - 1) && cells[i] != '#')) return FALSE;
++    }
++    if (cells[LARGE_SIDE + 1] != '.' || cells[60 * LARGE_SIDE + 61] != '.' || cells[61 * LARGE_SIDE + 61] != '.') return FALSE;
++    queue[tail++] = LARGE_SIDE + 1; seen[LARGE_SIDE + 1] = TRUE;
++    while (head < tail) {
++        s16 pos = queue[head++], neighbor[4] = {pos - LARGE_SIDE, pos + 1, pos + LARGE_SIDE, pos - 1};
++        unsigned d;
++        for (d = 0; d < 4; d++) {
++            s16 next = neighbor[d];
++            if (next >= 0 && next < LARGE_CELLS && cells[next] == '.' && !seen[next]) {
++                seen[next] = TRUE; queue[tail++] = next;
++            }
++        }
++    }
++    for (i = 0; i < LARGE_CELLS; i++) if (cells[i] == '.' && !seen[i]) return FALSE;
++    memcpy(sLargeTemplate, cells, LARGE_CELLS);
++    sLargeStaged = TRUE; sLargeShared = shared; sHasTemplate = FALSE;
++#if GENERATED_WORLD_XL
++    sXLStaged = FALSE;
++#endif
++#if GENERATED_MAP_WILDS
++    sLargeWilds = FALSE;
++#if GENERATED_WILDS_GUIDE
++    sGuideStaged = sGuideShared = FALSE;
++#if GENERATED_WILDS_CAST
++    sCastStaged = FALSE;
++#if GENERATED_WILDS_EVENTS
++    sEventStaged = FALSE;
++#if GENERATED_WILDS_SHARED_TERRAIN
++    sSharedTerrainSize = 0;
++#endif
++#endif
++#endif
++#endif
++#endif
++#if GENERATED_CAVE_PROFILES
++    sEncounterProfile = 0; sSharedEncounterProfile = FALSE;
++#endif
++#if GENERATED_CAVE_WILDLIFE
++    sHasWildlife = sSharedWildlife = FALSE;
++#endif
++    return TRUE;
++}
++#endif
++bool8 GeneratedMap_StageLargeTemplate(const u8 *cells, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_MAP_LARGE
++    return StageLarge(cells, size, FALSE);
++#else
++    (void)cells; (void)size; return FALSE;
++#endif
++}
++bool8 GeneratedMap_StageWildsTemplate(const u8 *cells, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_MAP_WILDS
++    if (!StageLarge(cells, size, FALSE)) return FALSE;
++    sLargeWilds = TRUE;
++    return TRUE;
++#else
++    (void)cells; (void)size; return FALSE;
++#endif
++}
++#if GENERATED_MAP_READY && GENERATED_WILDS_GUIDE
++static bool8 ValidateGuideText(const u8 *meta, u32 size)
++{
++    unsigned i, n, line = 0, lines = 1, visible = 0;
++    if (!meta || size != GENERATED_GUIDE_BYTES || (meta[0] != 7 && meta[0] != 8)) return FALSE;
++    n = meta[1]; if (!n || n > 57) return FALSE;
++    for (i = 0; i < n; i++) {
++        u8 c = meta[2 + i];
++        if (c == '\n') { if (!line || !visible || ++lines > 2) return FALSE; line = visible = 0; }
++        else {
++            if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
++                  || c == ' ' || c == '.' || c == ',' || c == '!' || c == '?' || c == '\'' || c == '-')) return FALSE;
++            if (++line > 28) return FALSE;
++            if (c != ' ') visible++;
++        }
++    }
++    if (!line || !visible) return FALSE;
++    for (i = n; i < 57; i++) if (meta[2 + i]) return FALSE;
++    return TRUE;
++}
++static bool8 ValidateGuideGeometry(const u8 *cells, u32 size)
++{
++    u8 seen[LARGE_CELLS] = {0}; u16 queue[LARGE_CELLS], head=0, tail=0, i;
++    const unsigned guide = LARGE_SIDE + 2;
++    if (!cells || size != LARGE_CELLS || cells[guide] != '.' || cells[2 * LARGE_SIDE + 1] != '.') return FALSE;
++    queue[tail++] = LARGE_SIDE + 1; seen[LARGE_SIDE + 1] = TRUE;
++    while (head < tail) {
++        s16 pos=queue[head++], neighbors[4]={pos-LARGE_SIDE,pos+1,pos+LARGE_SIDE,pos-1}; unsigned d;
++        for (d=0;d<4;d++) { s16 next=neighbors[d];
++            if (next>=0 && next<LARGE_CELLS && next!=(s16)guide && cells[next]=='.' && !seen[next]) {
++                seen[next]=TRUE; queue[tail++]=next;
++            }
++        }
++    }
++    for (i=0;i<LARGE_CELLS;i++) if (i!=guide && cells[i]=='.' && !seen[i]) return FALSE;
++    return TRUE;
++}
++static void EncodeGuideText(const u8 *meta, u8 *out)
++{
++    unsigned i;
++    for (i=0;i<meta[1];i++) {
++        u8 c=meta[2+i], v=0;
++        if(c>='A' && c<='Z') v=0xBB+c-'A';
++        else if(c>='a' && c<='z') v=0xD5+c-'a';
++        else if(c>='0' && c<='9') v=0xA1+c-'0';
++        else switch(c) {case '\n':v=0xFE;break;case '.':v=0xAD;break;case ',':v=0xB8;break;
++            case '!':v=0xAB;break;case '?':v=0xAC;break;case '\'':v=0xB4;break;case '-':v=0xAE;break;default:break;}
++        out[i]=v;
++    }
++    out[meta[1]]=0xFF;
++}
++#endif
++bool8 GeneratedMap_StageXLCast(const u8 *meta,u32 metaSize,const u8 *cells,u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_WORLD_XL && GENERATED_WILDS_CAST
++    u8 seen[XL_CELLS]={0},blocked[XL_CELLS]={0},guide[GENERATED_GUIDE_BYTES];u16 queue[XL_CELLS],head=0,tail=0,i;unsigned n,j,d;
++    u8 *texts[3]={gGeneratedWildsGuideText,gGeneratedWildsCastText2,gGeneratedWildsCastText3};
++    if(!meta || metaSize!=GENERATED_CAST_BYTES || !cells || size!=XL_CELLS || WorldBridge_Enabled() || GeneratedMap_IsInside() || GeneratedMap_EntryPending())return FALSE;
++    n=meta[0];if(!n || n>3)return FALSE;
++    for(j=0;j<3;j++){const u8 *r=meta+1+j*61;unsigned x=r[1],y=r[2];
++        if(j>=n){for(d=0;d<61;d++)if(r[d])return FALSE;continue;}
++        if(!x || x>=126 || !y || y>=126 || (x==1 && y==1) || (x==125 && (y==124 || y==125)))return FALSE;
++        i=y*XL_SIDE+x;if(cells[i]!='.' || blocked[i])return FALSE;blocked[i]=TRUE;
++        guide[0]=r[0];guide[1]=r[3];memcpy(guide+2,r+4,57);if(!ValidateGuideText(guide,sizeof(guide)))return FALSE;
++    }
++    queue[tail++]=XL_SIDE+1;seen[XL_SIDE+1]=TRUE;
++    while(head<tail){s16 pos=queue[head++],next[4]={pos-XL_SIDE,pos+1,pos+XL_SIDE,pos-1};
++        for(d=0;d<4;d++)if(next[d]>=0 && next[d]<XL_CELLS && !blocked[next[d]] && cells[next[d]]=='.' && !seen[next[d]]){seen[next[d]]=TRUE;queue[tail++]=next[d];}}
++    for(i=0;i<XL_CELLS;i++)if(cells[i]=='.' && !blocked[i] && !seen[i])return FALSE;
++    for(j=0;j<n;j++){const u8 *r=meta+1+j*61;unsigned pos=r[2]*XL_SIDE+r[1];
++        if(!seen[pos-XL_SIDE] && !seen[pos+1] && !seen[pos+XL_SIDE] && !seen[pos-1])return FALSE;}
++    if(!GeneratedMap_StageXLWilds(cells,size))return FALSE;
++    memcpy(sCastMetadata,meta,GENERATED_CAST_BYTES);sXLCastStaged=TRUE;
++    for(j=0;j<n;j++){const u8 *r=meta+1+j*61;guide[0]=r[0];guide[1]=r[3];memcpy(guide+2,r+4,57);EncodeGuideText(guide,texts[j]);}
++    return TRUE;
++#else
++    (void)meta;(void)metaSize;(void)cells;(void)size;return FALSE;
++#endif
++}
++#if GENERATED_MAP_READY && GENERATED_WILDS_GUIDE
++static bool8 StageGuidedWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size, bool8 shared)
++{
++    if (!ValidateGuideText(metadata,metaSize) || !ValidateGuideGeometry(cells,size)) return FALSE;
++    if (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
++        return shared && sGuideActive && sGuideShared && !memcmp(metadata,sGuideMetadata,GENERATED_GUIDE_BYTES)
++            && !memcmp(cells,sLargeTemplate,LARGE_CELLS);
++    if (!StageLarge(cells,size,shared)) return FALSE;
++    sLargeWilds=TRUE; sGuideStaged=TRUE; sGuideShared=shared; sGuideGfx=metadata[0];
++    memcpy(sGuideMetadata,metadata,GENERATED_GUIDE_BYTES); EncodeGuideText(metadata,gGeneratedWildsGuideText);
++    return TRUE;
++}
++#endif
++bool8 GeneratedMap_StageGuidedWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_WILDS_GUIDE
++    return StageGuidedWilds(metadata,metaSize,cells,size,FALSE);
++#else
++    (void)metadata;(void)metaSize;(void)cells;(void)size;return FALSE;
++#endif
++}
++bool8 GeneratedMap_StageSharedGuidedWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_WILDS_GUIDE
++    return StageGuidedWilds(metadata,metaSize,cells,size,TRUE);
++#else
++    (void)metadata;(void)metaSize;(void)cells;(void)size;return FALSE;
++#endif
++}
++bool8 GeneratedMap_MatchesPreparedGuidedWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_WILDS_GUIDE
++    return metadata && metaSize==GENERATED_GUIDE_BYTES && cells && size==LARGE_CELLS && sGuideActive && sPrepared
++        && (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
++        && !memcmp(metadata,sGuideMetadata,GENERATED_GUIDE_BYTES) && !memcmp(cells,sLargeTemplate,LARGE_CELLS);
++#else
++    (void)metadata;(void)metaSize;(void)cells;(void)size;return FALSE;
++#endif
++}
++#if GENERATED_MAP_READY && GENERATED_WILDS_CAST
++static bool8 ValidateCast(const u8 *meta, u32 metaSize, const u8 *cells, u32 size)
++{
++    static const u8 xs[3]={2,20,40}, ys[3]={1,20,40};
++    u8 seen[LARGE_CELLS]={0}, blocked[LARGE_CELLS]={0}, guide[GENERATED_GUIDE_BYTES];
++    u16 queue[LARGE_CELLS],head=0,tail=0,i; unsigned n,j,d;
++    if (!meta || metaSize!=GENERATED_CAST_BYTES || !cells || size!=LARGE_CELLS) return FALSE;
++    n=meta[0]; if (!n || n>3) return FALSE;
++    for (j=0;j<3;j++) {
++        const u8 *record=meta+1+j*61;
++        if (j>=n) { for (d=0;d<61;d++) if(record[d]) return FALSE; continue; }
++        if(record[1]!=xs[j] || record[2]!=ys[j]) return FALSE;
++        guide[0]=record[0];guide[1]=record[3];memcpy(guide+2,record+4,57);
++        if(!ValidateGuideText(guide,sizeof(guide))) return FALSE;
++        i=ys[j]*LARGE_SIDE+xs[j]; if(cells[i]!='.') return FALSE; blocked[i]=TRUE;
++    }
++    if(cells[LARGE_SIDE+1]!='.') return FALSE;
++    queue[tail++]=LARGE_SIDE+1;seen[LARGE_SIDE+1]=TRUE;
++    while(head<tail) {
++        s16 pos=queue[head++],neighbors[4]={pos-LARGE_SIDE,pos+1,pos+LARGE_SIDE,pos-1};
++        for(d=0;d<4;d++) {s16 next=neighbors[d];
++            if(next>=0 && next<LARGE_CELLS && !blocked[next] && cells[next]=='.' && !seen[next]) {
++                seen[next]=TRUE;queue[tail++]=next;
++            }
++        }
++    }
++    for(i=0;i<LARGE_CELLS;i++) if(cells[i]=='.' && !blocked[i] && !seen[i]) return FALSE;
++    for(j=0;j<n;j++) if(!seen[ys[j]*LARGE_SIDE+xs[j]-1]) return FALSE;
++    return TRUE;
++}
++#endif
++#if GENERATED_MAP_READY && GENERATED_WILDS_CAST
++static bool8 StageCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size, bool8 shared)
++{
++    u8 guide[GENERATED_GUIDE_BYTES];u8 *texts[3]={gGeneratedWildsGuideText,gGeneratedWildsCastText2,gGeneratedWildsCastText3};unsigned j;
++    if(!ValidateCast(metadata,metaSize,cells,size)) return FALSE;
++    if (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
++        return shared && sCastActive && sLargeShared && !memcmp(metadata,sCastMetadata,GENERATED_CAST_BYTES) && !memcmp(cells,sLargeTemplate,LARGE_CELLS);
++    if(!StageLarge(cells,size,shared)) return FALSE;
++    sLargeWilds=TRUE;sCastStaged=TRUE;memcpy(sCastMetadata,metadata,GENERATED_CAST_BYTES);
++    for(j=0;j<metadata[0];j++) {const u8 *record=metadata+1+j*61;
++        guide[0]=record[0];guide[1]=record[3];memcpy(guide+2,record+4,57);EncodeGuideText(guide,texts[j]);
++    }
++    return TRUE;
++}
++#endif
++bool8 GeneratedMap_StageCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_WILDS_CAST
++    return StageCastWilds(metadata,metaSize,cells,size,FALSE);
++#else
++    (void)metadata;(void)metaSize;(void)cells;(void)size;return FALSE;
++#endif
++}
++#if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
++static bool8 ValidateEventRules(const u8 *events,u32 eventSize,const u8 *cast,u32 castSize)
++{
++    u8 guide[GENERATED_GUIDE_BYTES], used[16][3]={{0}};unsigned j,k,n;
++    if(!events || eventSize!=GENERATED_EVENT_BYTES || !cast || castSize!=GENERATED_CAST_BYTES || events[0]>15) return FALSE;
++    n=events[1];if(!n || n>24 || !cast[0] || cast[0]>3)return FALSE;
++    guide[0]=7;
++    for(j=0;j<24;j++) {const u8 *r=events+2+j*61;
++        if(j>=n) {for(k=0;k<61;k++)if(r[k])return FALSE;continue;}
++        if(r[0]>15 || !r[1] || r[1]>cast[0] || r[2]>15 || used[r[0]][r[1]-1])return FALSE;
++        used[r[0]][r[1]-1]=TRUE;guide[1]=r[3];memcpy(guide+2,r+4,57);
++        if(!ValidateGuideText(guide,sizeof(guide)))return FALSE;
++    }
++    return TRUE;
++}
++static bool8 StageEventWilds(const u8 *events, u32 eventSize, const u8 *cast, u32 castSize, const u8 *cells, u32 size, bool8 shared)
++{
++    if(!cells || size!=LARGE_CELLS || !ValidateEventRules(events,eventSize,cast,castSize))return FALSE;
++    if (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
++        return shared && sEventActive && sLargeShared && !memcmp(events,sEventData,GENERATED_EVENT_BYTES)
++            && !memcmp(cast,sCastMetadata,GENERATED_CAST_BYTES) && !memcmp(cells,sLargeTemplate,LARGE_CELLS);
++    if(!StageCastWilds(cast,castSize,cells,size,shared))return FALSE;
++    memcpy(sEventData,events,GENERATED_EVENT_BYTES);sEventStaged=TRUE;return TRUE;
++}
++#endif
++bool8 GeneratedMap_StageXLEvents(const u8 *events,u32 eventSize,const u8 *cast,u32 castSize,const u8 *cells,u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_WORLD_XL && GENERATED_WILDS_EVENTS
++    if(!ValidateEventRules(events,eventSize,cast,castSize) || !GeneratedMap_StageXLCast(cast,castSize,cells,size))return FALSE;
++    memcpy(sEventData,events,GENERATED_EVENT_BYTES);sEventStaged=TRUE;return TRUE;
++#else
++    (void)events;(void)eventSize;(void)cast;(void)castSize;(void)cells;(void)size;return FALSE;
++#endif
++}
++bool8 GeneratedMap_StageXLPaintedEvents(const u8 *events,u32 eventSize,const u8 *cast,u32 castSize,const u8 *cells,u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_WORLD_XL && GENERATED_WILDS_EVENTS
++    u8 geometry[XL_CELLS];u16 i;
++    if(!cells || size!=XL_CELLS)return FALSE;
++    for(i=0;i<XL_CELLS;i++){if(cells[i]!='#' && cells[i]!='.' && cells[i]!='t')return FALSE;geometry[i]=cells[i]=='#' ? '#' : '.';}
++    if(cells[XL_SIDE+1]!='.' || cells[124*XL_SIDE+125]!='.' || cells[125*XL_SIDE+125]!='.')return FALSE;
++    if(!GeneratedMap_StageXLEvents(events,eventSize,cast,castSize,geometry,XL_CELLS))return FALSE;
++    memcpy(sXLPalette,cells,XL_CELLS);sXLHasPalette=TRUE;return TRUE;
++#else
++    (void)events;(void)eventSize;(void)cast;(void)castSize;(void)cells;(void)size;return FALSE;
++#endif
++}
++bool8 GeneratedMap_StageXLVersionedWorld(const u8 *id,u32 idSize,const u8 *events,u32 eventSize,const u8 *cast,u32 castSize,const u8 *cells,u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_WORLD_XL && GENERATED_WILDS_EVENTS
++    unsigned i;bool8 nonzero=FALSE;
++    if(!id || idSize!=16)return FALSE;
++    for(i=0;i<16;i++)if(id[i])nonzero=TRUE;
++    if(!nonzero || !GeneratedMap_StageXLPaintedEvents(events,eventSize,cast,castSize,cells,size))return FALSE;
++    memcpy(sXLStableId,id,16);sXLHasStableId=TRUE;return TRUE;
++#else
++    (void)id;(void)idSize;(void)events;(void)eventSize;(void)cast;(void)castSize;(void)cells;(void)size;return FALSE;
++#endif
++}
++
++
++bool8 GeneratedMap_StageEventWilds(const u8 *events, u32 eventSize, const u8 *cast, u32 castSize, const u8 *cells, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
++    return StageEventWilds(events,eventSize,cast,castSize,cells,size,FALSE);
++#else
++    (void)events;(void)eventSize;(void)cast;(void)castSize;(void)cells;(void)size;return FALSE;
++#endif
++}
++bool8 GeneratedMap_StageSharedEventWilds(const u8 *events, u32 eventSize, const u8 *cast, u32 castSize, const u8 *cells, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
++    return StageEventWilds(events,eventSize,cast,castSize,cells,size,TRUE);
++#else
++    (void)events;(void)eventSize;(void)cast;(void)castSize;(void)cells;(void)size;return FALSE;
++#endif
++}
++bool8 GeneratedMap_MatchesPreparedEventWilds(const u8 *events, u32 eventSize, const u8 *cast, u32 castSize, const u8 *cells, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
++    return events && eventSize==GENERATED_EVENT_BYTES && cast && castSize==GENERATED_CAST_BYTES && cells && size==LARGE_CELLS
++        && sEventActive && sPrepared && (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
++        && !memcmp(events,sEventData,GENERATED_EVENT_BYTES) && !memcmp(cast,sCastMetadata,GENERATED_CAST_BYTES) && !memcmp(cells,sLargeTemplate,LARGE_CELLS);
++#else
++    (void)events;(void)eventSize;(void)cast;(void)castSize;(void)cells;(void)size;return FALSE;
++#endif
++}
++void GeneratedMap_RunEvent(void)
++{
++#if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
++    const u8 *fallback[3]={gGeneratedWildsGuideText,gGeneratedWildsCastText2,gGeneratedWildsCastText3};
++    unsigned j,npc=gSpecialVar_LastTalked;u8 guide[GENERATED_GUIDE_BYTES];
++    if(!sEventActive || !npc || npc>sCastMetadata[0]) {gGeneratedEventText[0]=0xFF;return;}
++    memcpy(gGeneratedEventText,fallback[npc-1],58);
++    for(j=0;j<sEventRuntime[1];j++) {const u8 *r=sEventRuntime+2+j*61;
++        if(r[0]==sEventState && r[1]==npc) {guide[0]=7;guide[1]=r[3];memcpy(guide+2,r+4,57);
++            EncodeGuideText(guide,gGeneratedEventText);sEventState=r[2];
++#if GENERATED_WORLD_XL
++            if(sXLActive && !WorldBridge_Enabled())XLRememberEventProgress();
++#endif
++            break;}
++    }
++#endif
++}
++u8 GeneratedMap_EventState(void)
++{
++#if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
++    return sEventActive ? sEventState : 0;
++#else
++    return 0;
++#endif
++}
++bool8 GeneratedMap_SetSharedEventState(u8 state)
++{
++#if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
++    if(state>15 || !sEventActive || !sLargeShared || !GeneratedMap_IsInside())return FALSE;
++    sEventState=state;return TRUE;
++#else
++    (void)state;return FALSE;
++#endif
++}
++bool8 GeneratedMap_SetSharedEventRule(const u8 *rule, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
++    u8 guide[GENERATED_GUIDE_BYTES];unsigned j,n;
++    if(!rule || size!=61 || !sEventActive || !sLargeShared || !GeneratedMap_IsInside()
++       || rule[0]>15 || !rule[1] || rule[1]>sCastMetadata[0] || rule[2]>15) return FALSE;
++    guide[0]=7;guide[1]=rule[3];memcpy(guide+2,rule+4,57);
++    if(!ValidateGuideText(guide,sizeof(guide)))return FALSE;
++    n=sEventRuntime[1];
++    for(j=0;j<n;j++) {u8 *r=sEventRuntime+2+j*61;if(r[0]==rule[0] && r[1]==rule[1])break;}
++    if(j==n && n>=24)return FALSE;
++    memcpy(sEventRuntime+2+j*61,rule,61);if(j==n)sEventRuntime[1]=n+1;
++    return TRUE;
++#else
++    (void)rule;(void)size;return FALSE;
++#endif
++}
++bool8 GeneratedMap_SetSharedEventTile(unsigned x, unsigned y, unsigned terrain)
++{
++#if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
++    u16 tile;
++    if(terrain>1 || !sEventActive || !sLargeShared || !GeneratedMap_IsInside()
++       || !GeneratedMap_SharedCoordValid(x,y) || (x==1 && y==1) || (x==61 && (y==60 || y==61)))return FALSE;
++    tile=terrain ? 0x300d : 0x3001;
++    sLargeTiles[y*LARGE_SIDE+x]=tile;
++    MapGridSetMetatileEntryAt(x+MAP_OFFSET,y+MAP_OFFSET,tile);
++    CurrentMapDrawMetatileAt(x+MAP_OFFSET,y+MAP_OFFSET);
++    return TRUE;
++#else
++    (void)x;(void)y;(void)terrain;return FALSE;
++#endif
++}
++bool8 GeneratedMap_SetSharedEventTiles(const u8 *patch, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_WILDS_EVENTS
++    unsigned i,j,n,x,y,t;
++    if(!patch || !size || !(n=patch[0]) || n>64 || size!=1+3*n || !sEventActive || !sLargeShared || !GeneratedMap_IsInside())return FALSE;
++    for(i=0;i<n;i++) {x=patch[1+i*3];y=patch[2+i*3];t=patch[3+i*3];
++        if(t>1 || !GeneratedMap_SharedCoordValid(x,y) || (x==1 && y==1) || (x==61 && (y==60 || y==61)))return FALSE;
++        for(j=0;j<i;j++)if(patch[1+j*3]==x && patch[2+j*3]==y)return FALSE;
++    }
++    for(i=0;i<n;i++)GeneratedMap_SetSharedEventTile(patch[1+i*3],patch[2+i*3],patch[3+i*3]);
++    return TRUE;
++#else
++    (void)patch;(void)size;return FALSE;
++#endif
++}
++#if GENERATED_MAP_READY && GENERATED_WILDS_SHARED_GEOMETRY
++static bool8 TerrainHeader(const u8 *patch,u32 size,unsigned *count,unsigned *offset)
++{
++    unsigned n,off;if(!patch || !size)return FALSE;
++#if GENERATED_WILDS_LARGE_TERRAIN
++    if(patch[0]==255){if(size<3)return FALSE;n=patch[1]|((unsigned)patch[2]<<8);off=3;if(n<=64 || n>512)return FALSE;}
++    else
++#endif
++    {n=patch[0];off=1;if(n>64)return FALSE;}
++    if(size!=off+3*n)return FALSE;
++    *count=n;*offset=off;return TRUE;
++}
++#endif
++#if GENERATED_MAP_READY && GENERATED_WILDS_SHARED_GEOMETRY
++static bool8 BuildSharedWalk(const u8 *patch, u32 size, u8 *walk)
++{
++    u8 seen[LARGE_CELLS]={0};u16 queue[LARGE_CELLS],head=0,tail=0,i;unsigned n,off,j,lastX=0,lastY=0,d;
++    if(!walk || !TerrainHeader(patch,size,&n,&off) || !sLargeStaged || !sLargeShared || !sLargeWilds || !sEventStaged)return FALSE;
++    for(i=0;i<LARGE_CELLS;i++)walk[i]=sLargeTemplate[i]=='.';
++    walk[LARGE_SIDE+2]=FALSE;if(sCastMetadata[0]>=2)walk[20*LARGE_SIDE+20]=FALSE;if(sCastMetadata[0]>=3)walk[40*LARGE_SIDE+40]=FALSE;
++    for(j=0;j<n;j++){unsigned x=patch[off+3*j],y=patch[off+3*j+1],kind=patch[off+3*j+2];
++        if(kind>2 || !x || x>=62 || !y || y>=62 || (x==1 && y==1) || (x==61 && (y==60 || y==61))
++         || (x==2 && y==1) || (sCastMetadata[0]>=2 && x==20 && y==20) || (sCastMetadata[0]>=3 && x==40 && y==40)
++         || (j && (x<lastX || (x==lastX && y<=lastY))))return FALSE;
++        walk[y*LARGE_SIDE+x]=kind!=2;lastX=x;lastY=y;
++    }
++    if(!walk[LARGE_SIDE+1] || !walk[60*LARGE_SIDE+61] || !walk[61*LARGE_SIDE+61])return FALSE;
++    for(j=0;j<sCastMetadata[0];j++){unsigned x=sCastMetadata[2+j*61],y=sCastMetadata[3+j*61],pos=y*LARGE_SIDE+x;
++        if(!walk[pos-LARGE_SIDE] && !walk[pos+1] && !walk[pos+LARGE_SIDE] && !walk[pos-1])return FALSE;
++    }
++    queue[tail++]=LARGE_SIDE+1;seen[LARGE_SIDE+1]=TRUE;
++    while(head<tail){s16 pos=queue[head++],neighbors[4]={pos-LARGE_SIDE,pos+1,pos+LARGE_SIDE,pos-1};
++        for(d=0;d<4;d++){s16 next=neighbors[d];if(next>=0 && next<LARGE_CELLS && walk[next] && !seen[next]){seen[next]=TRUE;queue[tail++]=next;}}
++    }
++    for(i=0;i<LARGE_CELLS;i++)if(walk[i] && !seen[i])return FALSE;
++    return TRUE;
++}
++#endif
++bool8 GeneratedMap_ValidateSharedTerrain(const u8 *patch, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_WILDS_SHARED_GEOMETRY
++    u8 walk[LARGE_CELLS];return BuildSharedWalk(patch,size,walk);
++#elif GENERATED_MAP_READY && GENERATED_WILDS_SHARED_TERRAIN
++    unsigned n,i,lastX=0,lastY=0;
++    if(!patch || !size || (n=patch[0])>64 || size!=1+3*n || !sLargeStaged || !sLargeShared || !sLargeWilds || !sEventStaged)return FALSE;
++    for(i=0;i<n;i++){unsigned x=patch[1+3*i],y=patch[2+3*i],kind=patch[3+3*i];
++        if(kind>1 || !GeneratedMap_SharedCoordValid(x,y) || (x==1 && y==1) || (x==61 && (y==60 || y==61))
++           || (i && (x<lastX || (x==lastX && y<=lastY))))return FALSE;
++        lastX=x;lastY=y;
++    }
++    return TRUE;
++#else
++    (void)patch;(void)size;return FALSE;
++#endif
++}
++bool8 GeneratedMap_SharedTerrainNeedsGeometry(const u8 *patch, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_WILDS_SHARED_GEOMETRY
++    unsigned i,n,off;if(!GeneratedMap_ValidateSharedTerrain(patch,size) || !TerrainHeader(patch,size,&n,&off))return TRUE;
++    for(i=0;i<n;i++){unsigned x=patch[off+3*i],y=patch[off+3*i+1];if(patch[off+3*i+2]==2 || sLargeTemplate[y*LARGE_SIDE+x]!='.')return TRUE;}
++    return FALSE;
++#else
++    (void)patch;(void)size;return FALSE;
++#endif
++}
++bool8 GeneratedMap_StageSharedTerrain(const u8 *patch, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_WILDS_SHARED_TERRAIN
++    if(GeneratedMap_IsInside() || GeneratedMap_EntryPending() || !GeneratedMap_ValidateSharedTerrain(patch,size))return FALSE;
++#if GENERATED_WILDS_SHARED_GEOMETRY
++    if(!BuildSharedWalk(patch,size,sSharedWalk))return FALSE;
++#endif
++    memcpy(sSharedTerrain,patch,size);sSharedTerrainSize=size;return TRUE;
++#else
++    (void)patch;(void)size;return FALSE;
++#endif
++}
++bool8 GeneratedMap_ApplySharedTerrain(const u8 *patch, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_WILDS_SHARED_GEOMETRY
++    u8 walk[LARGE_CELLS];unsigned i,n,off;
++    if(!GeneratedMap_IsInside() || !BuildSharedWalk(patch,size,walk) || !TerrainHeader(patch,size,&n,&off) || memcmp(walk,sSharedWalk,LARGE_CELLS))return FALSE;
++    for(i=0;i<n;i++)if(patch[off+3*i+2]!=2 && !GeneratedMap_SetSharedEventTile(patch[off+3*i],patch[off+3*i+1],patch[off+3*i+2]))return FALSE;
++    memcpy(sSharedTerrain,patch,size);sSharedTerrainSize=size;return TRUE;
++#elif GENERATED_MAP_READY && GENERATED_WILDS_SHARED_TERRAIN
++    if(!GeneratedMap_IsInside() || !GeneratedMap_ValidateSharedTerrain(patch,size))return FALSE;
++    if(patch[0] && !GeneratedMap_SetSharedEventTiles(patch,size))return FALSE;
++    memcpy(sSharedTerrain,patch,size);sSharedTerrainSize=size;return TRUE;
++#else
++    (void)patch;(void)size;return FALSE;
++#endif
++}
++bool8 GeneratedMap_StageSharedCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_WILDS_CAST
++    return StageCastWilds(metadata,metaSize,cells,size,TRUE);
++#else
++    (void)metadata;(void)metaSize;(void)cells;(void)size;return FALSE;
++#endif
++}
++bool8 GeneratedMap_MatchesPreparedCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_WILDS_CAST
++    return metadata && metaSize==GENERATED_CAST_BYTES && cells && size==LARGE_CELLS && sCastActive && sPrepared
++#if GENERATED_WILDS_EVENTS
++        && !sEventActive
++#endif
++        && (GeneratedMap_IsInside() || GeneratedMap_EntryPending()) && !memcmp(metadata,sCastMetadata,GENERATED_CAST_BYTES)
++        && !memcmp(cells,sLargeTemplate,LARGE_CELLS);
++#else
++    (void)metadata;(void)metaSize;(void)cells;(void)size;return FALSE;
++#endif
++}
++bool8 GeneratedMap_StageSharedWildsTemplate(const u8 *cells, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_MAP_WILDS
++    if (!StageLarge(cells, size, TRUE)) return FALSE;
++    sLargeWilds = TRUE;
++    return TRUE;
++#else
++    (void)cells; (void)size; return FALSE;
++#endif
++}
++bool8 GeneratedMap_MatchesPreparedWilds(const u8 *cells, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_MAP_WILDS
++    return cells && size == LARGE_CELLS && sLargeWilds && sLargeActive && sPrepared
++#if GENERATED_WILDS_GUIDE
++        && !sGuideActive
++#if GENERATED_WILDS_CAST
++        && !sCastActive
++#endif
++#endif
++        && (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
++        && !memcmp(cells, sLargeTemplate, LARGE_CELLS);
++#else
++    (void)cells; (void)size; return FALSE;
++#endif
++}
++bool8 GeneratedMap_StageSharedLargeTemplate(const u8 *cells, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_MAP_LARGE
++    return StageLarge(cells, size, TRUE);
++#else
++    (void)cells; (void)size; return FALSE;
++#endif
++}
++bool8 GeneratedMap_MatchesPreparedLarge(const u8 *cells, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_MAP_LARGE
++    return cells && size == LARGE_CELLS && sLargeActive && sPrepared
++#if GENERATED_MAP_WILDS
++        && !sLargeWilds
++#endif
++#if GENERATED_CAVE_WILDLIFE
++        && !sHasWildlife
++#endif
++        && (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
++        && !memcmp(cells, sLargeTemplate, LARGE_CELLS);
++#else
++    (void)cells; (void)size; return FALSE;
++#endif
++}
++
++bool8 GeneratedMap_MatchesPreparedLargeWildlife(const u8 *cells, u32 size, u8 profile, const u8 *data, u32 dataSize)
++{
++#if GENERATED_MAP_READY && GENERATED_MAP_LARGE && GENERATED_CAVE_WILDLIFE
++    return cells && size == LARGE_CELLS && sLargeActive && sPrepared && sHasWildlife
++#if GENERATED_MAP_WILDS
++        && !sLargeWilds
++#endif
++        && (GeneratedMap_IsInside() || GeneratedMap_EntryPending()) && profile == sEncounterProfile
++        && data && dataSize == GENERATED_WILDLIFE_BYTES && !memcmp(data, sWildlifeRaw, GENERATED_WILDLIFE_BYTES)
++        && !memcmp(cells, sLargeTemplate, LARGE_CELLS);
++#else
++    (void)cells; (void)size; (void)profile; (void)data; (void)dataSize; return FALSE;
++#endif
++}
++
++/* Profiles are bounded native table choices, not executable data. */
++bool8 GeneratedMap_SetEncounterProfile(u8 profile)
++{
++#if GENERATED_MAP_READY && GENERATED_CAVE_PROFILES
++    if ((!sHasTemplate
++#if GENERATED_MAP_LARGE
++         && !sLargeStaged
++#endif
++        ) || profile > 3) return FALSE;
++    sEncounterProfile = profile;
++    sSharedEncounterProfile = FALSE;
++    return TRUE;
++#else
++    (void)profile;
++    return FALSE;
++#endif
++}
++
++bool8 GeneratedMap_SetSharedEncounterProfile(u8 profile)
++{
++#if GENERATED_MAP_READY && GENERATED_CAVE_PROFILES
++    if ((!sHasTemplate
++#if GENERATED_MAP_LARGE
++         && !sLargeStaged
++#endif
++        ) || profile > 3) return FALSE;
++    sEncounterProfile = profile;
++    sSharedEncounterProfile = TRUE;
++    return TRUE;
++#else
++    (void)profile;
++    return FALSE;
++#endif
++}
++
++u8 GeneratedMap_EncounterProfile(void)
++{
++#if GENERATED_MAP_READY && GENERATED_CAVE_PROFILES
++    if (sPrepared && (sHasTemplate
++#if GENERATED_MAP_LARGE
++        || sLargeStaged
++#endif
++        ) && GeneratedMap_IsInside()
++     && (!WorldBridge_Enabled() || sSharedEncounterProfile))
++        return sEncounterProfile;
++#endif
++    return 0;
++}
++
++/* Versioned wildlife is bounded data, never scripts or pointers from a file. */
++bool8 GeneratedMap_ValidateWildlife(const u8 *data, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_CAVE_WILDLIFE
++    unsigned i;
++    if (!data || size != GENERATED_WILDLIFE_BYTES || data[0] < 1 || data[0] > 100) return FALSE;
++    for (i = 0; i < 12; i++) {
++        unsigned offset = 1 + i * 3;
++        u16 species = data[offset] | ((u16)data[offset + 1] << 8);
++        u8 level = data[offset + 2];
++        if (!species || species >= SPECIES_EGG
++         || (species >= SPECIES_OLD_UNOWN_B && species <= SPECIES_OLD_UNOWN_Z)
++         || level < 1 || level > 100) return FALSE;
++    }
++    return TRUE;
++#else
++    (void)data; (void)size;
++    return FALSE;
++#endif
++}
++
++bool8 GeneratedMap_SetWildlife(const u8 *data, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_CAVE_WILDLIFE
++    unsigned i;
++    if ((!sHasTemplate
++#if GENERATED_MAP_LARGE
++         && !sLargeStaged
++#endif
++        ) || !GeneratedMap_ValidateWildlife(data, size)) return FALSE;
++    for (i = 0; i < 12; i++) {
++        unsigned offset = 1 + i * 3;
++        sWildlifeMons[i].species = data[offset] | ((u16)data[offset + 1] << 8);
++        sWildlifeMons[i].minLevel = sWildlifeMons[i].maxLevel = data[offset + 2];
++    }
++    sWildlifeInfo.encounterRate = data[0];
++    sWildlifeInfo.wildPokemon = sWildlifeMons;
++    memcpy(sWildlifeRaw, data, GENERATED_WILDLIFE_BYTES);
++    sSharedWildlife = FALSE;
++    sHasWildlife = TRUE;
++    return TRUE;
++#else
++    (void)data; (void)size;
++    return FALSE;
++#endif
++}
++
++bool8 GeneratedMap_SetSharedWildlife(const u8 *data, u32 size)
++{
++#if GENERATED_MAP_READY && GENERATED_CAVE_WILDLIFE
++    if (!GeneratedMap_SetWildlife(data, size)) return FALSE;
++    sSharedWildlife = TRUE;
++    return TRUE;
++#else
++    (void)data; (void)size; return FALSE;
++#endif
++}
++
++const struct WildPokemonInfo *GeneratedMap_Wildlife(void)
++{
++#if GENERATED_MAP_READY && GENERATED_CAVE_WILDLIFE
++    if (sHasWildlife && sPrepared && (sHasTemplate
++#if GENERATED_MAP_LARGE
++        || sLargeStaged
++#endif
++        ) && GeneratedMap_IsInside() && (!WorldBridge_Enabled() || sSharedWildlife))
++        return &sWildlifeInfo;
++#endif
++    return NULL;
++}
++
++bool8 GeneratedMap_IsInside(void)
++{
++#if GENERATED_MAP_READY
++    return gSaveBlock1Ptr && ((gSaveBlock1Ptr->location.mapGroup == MAP_GROUP(MAP_GENERATED_WORLD_CAVE)
++        && gSaveBlock1Ptr->location.mapNum == MAP_NUM(MAP_GENERATED_WORLD_CAVE))
++#if GENERATED_MAP_WILDS
++        || (gSaveBlock1Ptr->location.mapGroup == MAP_GROUP(MAP_GENERATED_WORLD_WILDS)
++        && gSaveBlock1Ptr->location.mapNum == MAP_NUM(MAP_GENERATED_WORLD_WILDS))
++#endif
++        );
++#else
++    return FALSE;
++#endif
++}
++
++#if GENERATED_MAP_READY
++static bool8 HasFreeWarpTask(void)
++{
++    u8 i;
++    for (i = 0; i < NUM_TASKS; i++) if (!gTasks[i].isActive) return TRUE;
++    return FALSE;
++}
++
++static bool8 GetReturnCoords(s16 *x, s16 *y)
++{
++    if (!gSaveBlock1Ptr || !gMapHeader.mapLayout || !x || !y) return FALSE;
++    PlayerGetDestCoords(x, y);
++    *x -= MAP_OFFSET;
++    *y -= MAP_OFFSET;
++    return *x >= 0 && *y >= 0 && *x <= 127 && *y <= 127
++        && *x < gMapHeader.mapLayout->width && *y < gMapHeader.mapLayout->height;
++}
++#endif
++
++bool8 GeneratedMap_EntryPending(void)
++{
++#if GENERATED_MAP_READY
++    return sPrepared && !sSeenInside && !GeneratedMap_IsInside();
++#else
++    return FALSE;
++#endif
++}
++
++bool8 GeneratedMap_MatchesPrepared(const u8 *cells, u32 size)
++{
++#if GENERATED_MAP_READY
++    u16 i;
++#if GENERATED_MAP_LARGE
++    if (sLargeActive) return FALSE;
++#endif
++    if (!cells || size != GEN_CELLS || !sPrepared
++     || (!GeneratedMap_IsInside() && !GeneratedMap_EntryPending())) return FALSE;
++    for (i = 0; i < GEN_CELLS; i++)
++        if ((cells[i] == '.') != (sTiles[i] == GEN_FLOOR || sTiles[i] == GEN_EXIT
++#if GENERATED_MAP_AUTOTILE
++                               || sTiles[i] == GEN_AUTOFLOOR
++#endif
++#if GENERATED_CAVE_BIOMES
++                               || sTiles[i] == 0x3201 || sTiles[i] == 0x3207
++                               || sTiles[i] == 0x3385 || sTiles[i] == 0x3386
++#endif
++                               )) return FALSE;
++    return TRUE;
++#else
++    (void)cells; (void)size;
++    return FALSE;
++#endif
++}
++
++bool8 GeneratedMap_MatchesPreparedProfile(const u8 *cells, u32 size, u8 profile)
++{
++#if GENERATED_MAP_READY && GENERATED_CAVE_PROFILES
++#if GENERATED_CAVE_WILDLIFE
++    if (sHasWildlife) return FALSE;
++#endif
++    return profile <= 3 && profile == sEncounterProfile && GeneratedMap_MatchesPrepared(cells, size);
++#else
++    return profile == 0 && GeneratedMap_MatchesPrepared(cells, size);
++#endif
++}
++
++bool8 GeneratedMap_MatchesPreparedWildlife(const u8 *cells, u32 size, u8 profile, const u8 *data, u32 dataSize)
++{
++#if GENERATED_MAP_READY && GENERATED_CAVE_WILDLIFE
++    return sHasWildlife && profile == sEncounterProfile && data && dataSize == GENERATED_WILDLIFE_BYTES
++        && !memcmp(sWildlifeRaw, data, GENERATED_WILDLIFE_BYTES) && GeneratedMap_MatchesPrepared(cells, size);
++#else
++    (void)cells; (void)size; (void)profile; (void)data; (void)dataSize; return FALSE;
++#endif
++}
++
++bool8 GeneratedMap_SharedCoordValid(unsigned x, unsigned y)
++{
++#if GENERATED_MAP_READY
++#if GENERATED_WORLD_XL
++    if (sXLStaged && sXLShared) return x<XL_SIDE && y<XL_SIDE && sXLTemplate[y*XL_SIDE+x]=='.';
++#endif
++#if GENERATED_MAP_LARGE
++    if (sLargeStaged && sLargeShared)
++        return x < LARGE_SIDE && y < LARGE_SIDE
++#if GENERATED_WILDS_GUIDE
++            && !(sGuideStaged && sGuideShared && x == 2 && y == 1)
++#if GENERATED_WILDS_CAST
++            && !(sCastStaged && ((x==2 && y==1) || (sCastMetadata[0]>=2 && x==20 && y==20) || (sCastMetadata[0]>=3 && x==40 && y==40)))
++#endif
++#endif
++#if GENERATED_WILDS_SHARED_GEOMETRY
++            && (sSharedTerrainSize ? sSharedWalk[y*LARGE_SIDE+x] : sLargeTemplate[y*LARGE_SIDE+x]=='.');
++#else
++            && sLargeTemplate[y * LARGE_SIDE + x] == '.';
++#endif
++#endif
++    return sHasTemplate && x < GEN_SIDE && y < GEN_SIDE && sTemplate[y * GEN_SIDE + x] == '.';
++#else
++    (void)x; (void)y;
++    return FALSE;
++#endif
++}
++
++bool8 GeneratedMap_HasUsableParty(void)
++{
++#if GENERATED_MAP_READY
++    u8 i;
++    for (i = 0; i < gPlayerPartyCount && i < PARTY_SIZE; i++)
++        if (GetMonData(&gPlayerParty[i], MON_DATA_SPECIES)
++         && !GetMonData(&gPlayerParty[i], MON_DATA_IS_EGG)
++         && GetMonData(&gPlayerParty[i], MON_DATA_HP))
++            return TRUE;
++#endif
++    return FALSE;
++}
++
++bool8 GeneratedMap_CanEnter(void)
++{
++#if GENERATED_MAP_READY
++    s16 x, y;
++    struct WorldRallySnapshot rally;
++    if (WorldRally_HasReturn() || (WorldRally_GetSnapshot(&rally) && rally.id)) return FALSE;
++    return gSaveBlock1Ptr && GeneratedMap_HasUsableParty() && !sPrepared && !GeneratedMap_IsInside() && HasFreeWarpTask()
++        && !LinkTransport_PendingTag() && !LinkTransport_PendingInvitation()
++        && (!WorldBridge_Enabled() || (WorldBridge_GeneratedCaveReady() && (sHasTemplate
++#if GENERATED_MAP_LARGE
++            || (sLargeStaged && sLargeShared)
++#endif
++#if GENERATED_WORLD_XL
++            || (sXLStaged && sXLShared)
++#endif
++        )))
++        && IsMapTypeOutdoors(gMapHeader.mapType)
++        && TestPlayerAvatarFlags(PLAYER_AVATAR_FLAG_ON_FOOT)
++        && GetReturnCoords(&x, &y);
++#else
++    return FALSE;
++#endif
++}
++
++bool8 GeneratedMap_Enter(void)
++{
++#if GENERATED_MAP_READY
++    s16 x, y;
++    if (!GeneratedMap_CanEnter() || !GetReturnCoords(&x, &y)
++     || (!WorldBridge_Enabled() && !Platform_ReloadGeneratedMap())) return FALSE;
++    sReturn = gSaveBlock1Ptr->location;
++    sReturn.warpId = WARP_ID_NONE;
++    sReturn.x = x;
++    sReturn.y = y;
++    sPreviousDynamicWarp = gSaveBlock1Ptr->dynamicWarp;
++    SetDynamicWarpWithCoords(0, sReturn.mapGroup, sReturn.mapNum, WARP_ID_NONE, sReturn.x, sReturn.y);
++    sSeenInside = FALSE;
++#if GENERATED_WORLD_XL
++    sXLActive=sXLStaged && (!WorldBridge_Enabled() || sXLShared);
++#endif
++#if GENERATED_MAP_LARGE
++    sLargeActive = sLargeStaged && (!WorldBridge_Enabled() || sLargeShared);
++#if GENERATED_WILDS_GUIDE
++    sGuideActive = sLargeActive && sLargeWilds && sGuideStaged;
++#if GENERATED_WILDS_CAST
++    sCastActive = (sLargeActive && sLargeWilds && sCastStaged)
++#if GENERATED_WORLD_XL
++        || (sXLActive && sXLCastStaged)
++#endif
++        ;
++#if GENERATED_WILDS_EVENTS
++    sEventActive = sCastActive && sEventStaged;
++    if(sEventActive) {sEventState=sEventData[0];memcpy(sEventRuntime,sEventData,GENERATED_EVENT_BYTES);
++#if GENERATED_WORLD_XL
++        XLRestoreEventProgress();
++#endif
++    }
++#endif
++#endif
++#endif
++#if GENERATED_WORLD_XL
++    if(sXLActive) {u16 i;for(i=0;i<XL_CELLS;i++){unsigned x=i%XL_SIDE,y=i/XL_SIDE;
++        sXLTiles[i]=sXLHasPalette ? (sXLPalette[i]=='#' ? 0x0487 : sXLPalette[i]=='t' ? 0x300d : 0x3001) : sXLTemplate[i]=='.' ? (((x*13+y*7)%5) ? 0x300d : 0x3001) : 0x0487;}
++        sXLTiles[XL_SIDE+1]=0x3001;sXLTiles[125*XL_SIDE+125]=0x3024;
++    } else
++#endif
++    if (sLargeActive) {
++        u16 i;
++#if GENERATED_MAP_WILDS
++        if (sLargeWilds) {
++            for (i = 0; i < LARGE_CELLS; i++) {
++                unsigned x = i % LARGE_SIDE, y = i / LARGE_SIDE;
++                /* Deterministic walkable path and grass. Blocked cells are water. */
++                sLargeTiles[i] = sLargeTemplate[i] == '.' ? (((x * 13 + y * 7) % 5) ? 0x300d : 0x3001) : 0x0487;
++            }
++            sLargeTiles[LARGE_SIDE + 1] = 0x3001;
++            sLargeTiles[61 * LARGE_SIDE + 61] = 0x3024;
++#if GENERATED_WILDS_SHARED_TERRAIN
++            if(sSharedTerrainSize) {unsigned j,n,off;
++#if GENERATED_WILDS_SHARED_GEOMETRY
++                if(TerrainHeader(sSharedTerrain,sSharedTerrainSize,&n,&off))
++#else
++                n=sSharedTerrain[0];off=1;
++#endif
++                for(j=0;j<n;j++) {unsigned x=sSharedTerrain[off+3*j],y=sSharedTerrain[off+3*j+1],kind=sSharedTerrain[off+3*j+2];
++                    sLargeTiles[y*LARGE_SIDE+x]=kind==2 ? 0x0487 : kind ? 0x300d : 0x3001;
++                }
++            }
++#endif
++        } else
++#endif
++        {
++            for (i = 0; i < LARGE_CELLS; i++) sLargeTiles[i] = sLargeTemplate[i] == '.' ? GEN_FLOOR : GEN_WALL;
++            sLargeTiles[61 * LARGE_SIDE + 61] = GEN_EXIT;
++        }
++    } else
++#endif
++    if (sHasTemplate)
++    {
++        u16 i;
++        for (i = 0; i < GEN_CELLS; i++) sTiles[i] = sTemplate[i] == '.' ? GEN_FLOOR : GEN_WALL;
++        sTiles[29 * GEN_SIDE + 29] = GEN_EXIT;
++    }
++    else
++        BuildMaze(gMain.vblankCounter1 ^ ((u32)sReturn.mapGroup << 24) ^ ((u32)sReturn.mapNum << 16));
++#if GENERATED_MAP_AUTOTILE
++#if GENERATED_MAP_WILDS
++    if (!sLargeActive || !sLargeWilds)
++#endif
++#if GENERATED_WORLD_XL
++    if (!sXLActive)
++#endif
++        GeneratedMap_Autotile();
++#endif
++    sPrepared = TRUE;
++#if GENERATED_MAP_WILDS
++    if ((sLargeActive && sLargeWilds)
++#if GENERATED_WORLD_XL
++        || sXLActive
++#endif
++       )
++        SetWarpDestination(MAP_GROUP(MAP_GENERATED_WORLD_WILDS), MAP_NUM(MAP_GENERATED_WORLD_WILDS), WARP_ID_NONE, 1, 1);
++    else
++#endif
++        SetWarpDestination(MAP_GROUP(MAP_GENERATED_WORLD_CAVE), MAP_NUM(MAP_GENERATED_WORLD_CAVE), WARP_ID_NONE, 1, 1);
++    StoreInitialPlayerAvatarState();
++    DoWarp();
++    return TRUE;
++#else
++    return FALSE;
++#endif
++}
++
++bool8 GeneratedMap_Leave(void)
++{
++#if GENERATED_MAP_READY
++    if (!GeneratedMap_IsInside() || !sPrepared || !HasFreeWarpTask()) return FALSE;
++    SetWarpDestination(sReturn.mapGroup, sReturn.mapNum, WARP_ID_NONE, sReturn.x, sReturn.y);
++    StoreInitialPlayerAvatarState();
++    DoWarp();
++    return TRUE;
++#else
++    return FALSE;
++#endif
++}
++
++const struct MapLayout *GeneratedMap_ResolveLayout(const struct MapLayout *base)
++{
++#if GENERATED_MAP_READY
++    if (base && sPrepared && GeneratedMap_IsInside())
++    {
++        sSeenInside = TRUE;
++        sLayout = *base;
++#if GENERATED_WORLD_XL
++        if(sXLActive && gMapHeader.events && gMapHeader.events->warpCount==1 && gMapHeader.events->warps) {
++            sXLEvents=*gMapHeader.events;sXLWarp=gMapHeader.events->warps[0];sXLWarp.x=125;sXLWarp.y=125;sXLEvents.warps=&sXLWarp;
++#if GENERATED_WILDS_CAST
++            if(sCastActive && sXLCastStaged) {unsigned j;const u8 *scripts[3]={GeneratedWorld_Wilds_EventScript_Guide,GeneratedWorld_Wilds_EventScript_Cast2,GeneratedWorld_Wilds_EventScript_Cast3};
++                memset(sGuideObjects,0,sizeof(sGuideObjects));for(j=0;j<sCastMetadata[0];j++){const u8 *r=sCastMetadata+1+j*61;
++                    sGuideObjects[j].localId=j+1;sGuideObjects[j].graphicsId=r[0];sGuideObjects[j].x=r[1];sGuideObjects[j].y=r[2];sGuideObjects[j].elevation=3;sGuideObjects[j].movementType=MOVEMENT_TYPE_FACE_LEFT;sGuideObjects[j].script=scripts[j];
++#if GENERATED_WILDS_EVENTS
++                    if(sEventActive)sGuideObjects[j].script=GeneratedWorld_Wilds_EventScript_Graph;
++#endif
++                }
++                sXLEvents.objectEventCount=sCastMetadata[0];sXLEvents.objectEvents=sGuideObjects;
++            }
++#endif
++            gMapHeader.events=&sXLEvents;
++        }
++#endif
++#if GENERATED_WILDS_GUIDE
++#if GENERATED_WILDS_CAST
++        if (sCastActive && sLargeWilds && gMapHeader.events) {
++            static const u8 *const scripts[3]={GeneratedWorld_Wilds_EventScript_Guide,GeneratedWorld_Wilds_EventScript_Cast2,GeneratedWorld_Wilds_EventScript_Cast3};
++            unsigned j;
++            sGuideEvents=*gMapHeader.events;memset(sGuideObjects,0,sizeof(sGuideObjects));
++            for(j=0;j<sCastMetadata[0];j++) {const u8 *record=sCastMetadata+1+j*61;
++                sGuideObjects[j].localId=j+1;sGuideObjects[j].graphicsId=record[0];
++                sGuideObjects[j].x=record[1];sGuideObjects[j].y=record[2];sGuideObjects[j].elevation=3;
++                sGuideObjects[j].movementType=MOVEMENT_TYPE_FACE_LEFT;sGuideObjects[j].script=scripts[j];
++#if GENERATED_WILDS_EVENTS
++                if(sEventActive)sGuideObjects[j].script=GeneratedWorld_Wilds_EventScript_Graph;
++#endif
++            }
++            sGuideEvents.objectEventCount=sCastMetadata[0];sGuideEvents.objectEvents=sGuideObjects;gMapHeader.events=&sGuideEvents;
++        } else
++#endif
++        if (sGuideActive && sLargeWilds && gMapHeader.events) {
++            sGuideEvents = *gMapHeader.events;
++            memset(sGuideObjects, 0, sizeof(sGuideObjects));
++            sGuideObjects[0].localId = 1;
++            sGuideObjects[0].graphicsId = sGuideGfx;
++            sGuideObjects[0].x = 2; sGuideObjects[0].y = 1; sGuideObjects[0].elevation = 3;
++            sGuideObjects[0].movementType = MOVEMENT_TYPE_FACE_LEFT;
++            sGuideObjects[0].script = GeneratedWorld_Wilds_EventScript_Guide;
++            sGuideEvents.objectEventCount = 1; sGuideEvents.objectEvents = sGuideObjects;
++            gMapHeader.events = &sGuideEvents;
++        }
++#endif
++#if GENERATED_MAP_LARGE
++#if GENERATED_WORLD_XL
++        sLayout.width = sLayout.height = sXLActive ? XL_SIDE : sLargeActive ? LARGE_SIDE : GEN_SIDE;
++        sLayout.map = sXLActive ? sXLTiles : sLargeActive ? sLargeTiles : sTiles;
++#else
++        sLayout.width = sLayout.height = sLargeActive ? LARGE_SIDE : GEN_SIDE;
++        sLayout.map = sLargeActive ? sLargeTiles : sTiles;
++#endif
++#else
++        sLayout.width = sLayout.height = GEN_SIDE;
++        sLayout.map = sTiles;
++#endif
++        return &sLayout;
++    }
++    if (sPrepared && sSeenInside && !GeneratedMap_IsInside())
++    {
++        gSaveBlock1Ptr->dynamicWarp = sPreviousDynamicWarp;
++        sPrepared = sSeenInside = FALSE;
++    }
++#endif
++    return base;
++}
++#endif
+diff --git a/src/platform/link_transport.c b/src/platform/link_transport.c
+new file mode 100644
+index 0000000..bbd1bc7
+--- /dev/null
++++ b/src/platform/link_transport.c
+@@ -0,0 +1,642 @@
++#ifdef PORTABLE
++#ifndef _WIN32
++#ifndef _POSIX_C_SOURCE
++#define _POSIX_C_SOURCE 200809L
++#endif
++#include <time.h>
++#endif
++#ifdef _WIN32
++#ifndef WIN32_LEAN_AND_MEAN
++#define WIN32_LEAN_AND_MEAN
++#endif
++#include <winsock2.h>
++#include <windows.h>
++#else
++#include <unistd.h>
++#include <fcntl.h>
++#include <sys/socket.h>
++#include <sys/un.h>
++#include <poll.h>
++#endif
++#include <stdio.h>
++#include <string.h>
++#include <stdint.h>
++#include <inttypes.h>
++#include <errno.h>
++#include "platform/native_file.h"
++#include "platform/native_link.h"
++#include "platform/link_transport.h"
++#define QUEUE_CAP 65536
++#define HANDSHAKE_MILLISECONDS 5000
++static uint64_t MonotonicMilliseconds(void)
++{
++#ifdef _WIN32
++    return GetTickCount64();
++#else
++    struct timespec now;
++    if (clock_gettime(CLOCK_MONOTONIC, &now)) return UINT64_MAX;
++    return (uint64_t)now.tv_sec * 1000 + (uint64_t)now.tv_nsec / 1000000;
++#endif
++}
++static struct {
++#ifdef _WIN32
++    SOCKET fd;
++    int winsock;
++    unsigned port;
++    char capability[65];
++#else
++    int fd;
++#endif
++    int initialized, enabled, connecting, ready;
++    unsigned retry;
++    uint64_t handshakeStarted;
++    char path[108], trainer[25], token[65], telemetry[1024];
++    char output[QUEUE_CAP], input[513];
++    size_t queued, sent, used;
++    uint64_t session, accepting;
++    unsigned mode, slot, offered;
++    struct LinkTransportInvitation pending;
++    uint64_t tag, tagAccepting;
++    char tagOffered[25], tagPeer[25];
++    int tagRange, coopOwner;
++    struct LinkTransportInvitation tagPending;
++} sLink;
++
++static void ClearTag(void)
++{
++    sLink.tag = sLink.tagAccepting = 0;
++    sLink.tagOffered[0] = sLink.tagPeer[0] = 0;
++    sLink.tagRange = 0;
++    memset(&sLink.tagPending, 0, sizeof(sLink.tagPending));
++}
++
++static int Identifier(const char *p)
++{
++    size_t n = 0;
++    if (!p || !*p) return 0;
++    for (; *p; p++, n++)
++        if (!((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z')
++           || (*p >= '0' && *p <= '9') || *p == '_' || *p == '-')) return 0;
++    return n <= 24;
++}
++static int Decimal(const char *p, uint64_t max, uint64_t *value)
++{
++    uint64_t n = 0;
++    if (!*p) return 0;
++    for (; *p; p++) {
++        unsigned digit = (unsigned char)*p - '0';
++        if (digit > 9 || n > (max - digit) / 10 || digit > max) return 0;
++        n = n * 10 + digit;
++    }
++    *value = n;
++    return 1;
++}
++static int Hex(char c)
++{
++    if (c >= '0' && c <= '9') return c - '0';
++    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
++    return -1;
++}
++static int Token(const char *p)
++{
++    unsigned i;
++    if (strlen(p) != 64) return 0;
++    for (i = 0; i < 64; i++)
++        if (Hex(p[i]) < 0 && !(p[i] >= 'A' && p[i] <= 'F')) return 0;
++    return 1;
++}
++static int SocketOpen(void)
++{
++#ifdef _WIN32
++    return sLink.initialized && sLink.fd != INVALID_SOCKET;
++#else
++    return sLink.initialized && sLink.fd >= 0;
++#endif
++}
++static void Disconnect(void)
++{
++    if (SocketOpen()) {
++#ifdef _WIN32
++        closesocket(sLink.fd);
++#else
++        close(sLink.fd);
++#endif
++    }
++#ifdef _WIN32
++    sLink.fd = INVALID_SOCKET;
++#else
++    sLink.fd = -1;
++#endif
++    sLink.enabled = sLink.ready = sLink.connecting = 0;
++    sLink.queued = sLink.sent = sLink.used = 0;
++    NativeLink_EndSession(sLink.session);
++    sLink.session = sLink.accepting = 0;
++    sLink.offered = 0;
++    sLink.mode = sLink.slot = 0;
++    sLink.coopOwner = 0;
++    ClearTag();
++    memset(&sLink.pending, 0, sizeof(sLink.pending));
++}
++void LinkTransport_Close(void)
++{
++    if (!sLink.initialized) return;
++    Disconnect();
++    NativeLink_Init(NULL, NULL);
++#ifdef _WIN32
++    if (sLink.winsock) WSACleanup();
++#endif
++    memset(&sLink, 0, sizeof(sLink));
++}
++static int Queue(const char *line)
++{
++    size_t n = strlen(line), remaining = sLink.queued - sLink.sent;
++    if (n > QUEUE_CAP - remaining) return 0;
++    if (sLink.sent) memmove(sLink.output, sLink.output + sLink.sent, remaining);
++    sLink.sent = 0;
++    memcpy(sLink.output + remaining, line, n);
++    sLink.queued = remaining + n;
++    return 1;
++}
++static int Emit(void *context, const struct NativeLinkEvent *e)
++{
++    static const char hex[] = "0123456789abcdef";
++    char words[33], line[256];
++    unsigned i;
++    (void)context;
++    if (!sLink.ready || !e || e->kind < 1 || e->kind > 5
++     || !e->session || e->session != sLink.session || e->mode != sLink.mode
++     || e->slot != sLink.slot) return 0;
++    for (i = 0; i < 16; i++) {
++        unsigned byte = (e->command[i / 2] >> ((i % 2) * 8)) & 255;
++        words[2*i] = hex[byte >> 4]; words[2*i+1] = hex[byte & 15];
++    }
++    words[32] = 0;
++    snprintf(line, sizeof(line), "L EVENT %u %" PRIu64 " %u %u %" PRIu32 " %" PRIu32 " %u %s\n",
++        e->kind, e->session, e->mode, e->slot, e->generation, e->round, e->linkType, words);
++    return Queue(line);
++}
++/* Same config allowlist, field bounds and whitespace grammar as presence.
++ * Validate the entire byte stream before C-string parsing (including comments). */
++static int Config(const char *path)
++{
++    FILE *f = NativeFile_Open(path, "rb");
++    char line[1200];
++    unsigned seen = 0;
++    int c, good = 0;
++    uint32_t code = 0, minimum = 0;
++    unsigned continuation = 0;
++    if (!f) return 0;
++    while ((c = fgetc(f)) != EOF) {
++        if (continuation) {
++            if (c < 0x80 || c > 0xbf) goto done;
++            code = (code << 6) | (c & 63);
++            if (!--continuation && (code < minimum || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff))) goto done;
++        } else if (c >= 0x80) {
++            if (c >= 0xc2 && c <= 0xdf) { continuation = 1; code = c & 31; minimum = 0x80; }
++            else if (c >= 0xe0 && c <= 0xef) { continuation = 2; code = c & 15; minimum = 0x800; }
++            else if (c >= 0xf0 && c <= 0xf4) { continuation = 3; code = c & 7; minimum = 0x10000; }
++            else goto done;
++        } else if ((c < 32 && c != '\t' && c != '\r' && c != '\n') || c == 127) goto done;
++    }
++    if (continuation || ferror(f) || fseek(f, 0, SEEK_SET)) goto done;
++    while (fgets(line, sizeof(line), f)) {
++        char *p = line, *key, *value, *end, *dest;
++        unsigned bit;
++        size_t size;
++        if ((!strchr(line, '\n') && !feof(f)) || strlen(line) > 1150) goto done;
++        if (line[0] == '#' || line[0] == '\n') continue;
++        while (*p == ' ' || *p == '\t') p++;
++        key = p;
++        while (*p && *p != ' ' && *p != '\t' && *p != '\r' && *p != '\n') p++;
++        if (!*p || p - key > 31) goto done;
++        *p++ = 0;
++        while (*p == ' ' || *p == '\t') p++;
++        value = p; end = p + strlen(p);
++        while (end > p && (end[-1] == '\n' || end[-1] == '\r')) *--end = 0;
++#ifndef _WIN32
++        while (end > p && (end[-1] == ' ' || end[-1] == '\t')) *--end = 0;
++#endif
++        if (!*value || strlen(value) > 1099) goto done;
++        for (p = value; *p; p++)
++            if (*p == '\r' || *p == '\n'
++#ifdef _WIN32
++             || (strcmp(key, "telemetry") && (*p == ' ' || *p == '\t'))
++#else
++             || *p == ' ' || *p == '\t'
++#endif
++            ) goto done;
++#ifdef _WIN32
++        if (!strcmp(key, "loopback_port")) {
++            uint64_t port;
++            if ((seen & 1) || !Decimal(value, 65535, &port) || !port) goto done;
++            sLink.port = (unsigned)port; seen |= 1; continue;
++        }
++        if (!strcmp(key, "loopback_token")) { bit = 16; dest = sLink.capability; size = sizeof(sLink.capability); }
++#else
++        if (!strcmp(key, "socket")) { bit = 1; dest = sLink.path; size = sizeof(sLink.path); }
++#endif
++        else if (!strcmp(key, "trainer")) { bit = 2; dest = sLink.trainer; size = sizeof(sLink.trainer); }
++        else if (!strcmp(key, "token")) { bit = 4; dest = sLink.token; size = sizeof(sLink.token); }
++        else if (!strcmp(key, "telemetry")) { bit = 8; dest = sLink.telemetry; size = sizeof(sLink.telemetry); }
++        else goto done;
++        if ((seen & bit) || strlen(value) >= size) goto done;
++        strcpy(dest, value); seen |= bit;
++    }
++#ifdef _WIN32
++    if (seen != 31 || !Token(sLink.capability)) goto done;
++#else
++    if (seen != 15 || sLink.path[0] != '/') goto done;
++#endif
++    good = !ferror(f) && Identifier(sLink.trainer) && Token(sLink.token);
++done:
++    fclose(f);
++    return good;
++}
++static int WouldBlock(void)
++{
++#ifdef _WIN32
++    int error = WSAGetLastError();
++    return error == WSAEWOULDBLOCK || error == WSAEINTR;
++#else
++    return errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR;
++#endif
++}
++static void RetryDisconnect(void)
++{
++    Disconnect();
++    /* Reconnect the channel only. No invitations, consent, or queued commands
++     * survive loss of the authenticated presence binding. */
++    sLink.enabled = 1;
++    sLink.retry = 60;
++}
++static int Connect(void)
++{
++    int result;
++    char hello[256];
++#ifdef _WIN32
++    {
++        struct sockaddr_in addr;
++        u_long nonblock = 1;
++        sLink.fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
++        if (!SocketOpen() || ioctlsocket(sLink.fd, FIONBIO, &nonblock)) goto fail;
++        memset(&addr, 0, sizeof(addr)); addr.sin_family = AF_INET;
++        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); addr.sin_port = htons(sLink.port);
++        result = connect(sLink.fd, (struct sockaddr *)&addr, sizeof(addr));
++        if (result && WSAGetLastError() != WSAEWOULDBLOCK && WSAGetLastError() != WSAEINPROGRESS) goto fail;
++        snprintf(hello, sizeof(hello), "EWLOCAL1 %s\n", sLink.capability);
++        Queue(hello);
++    }
++#else
++    {
++        struct sockaddr_un addr;
++        int flags;
++        sLink.fd = socket(AF_UNIX, SOCK_STREAM, 0);
++        if (!SocketOpen()) goto fail;
++        flags = fcntl(sLink.fd, F_GETFL, 0);
++        if (flags < 0 || fcntl(sLink.fd, F_SETFL, flags | O_NONBLOCK) < 0) goto fail;
++        memset(&addr, 0, sizeof(addr)); addr.sun_family = AF_UNIX;
++        if (strlen(sLink.path) >= sizeof(addr.sun_path)) goto fail;
++        strcpy(addr.sun_path, sLink.path);
++        result = connect(sLink.fd, (struct sockaddr *)&addr, sizeof(addr));
++        if (result && errno != EINPROGRESS) goto fail;
++    }
++#endif
++    sLink.connecting = result != 0;
++    sLink.handshakeStarted = MonotonicMilliseconds();
++    sLink.enabled = 1;
++    snprintf(hello, sizeof(hello), "HELLO 1 %s %s LINK\n", sLink.trainer, sLink.token);
++    Queue(hello);
++    return 1;
++fail:
++    RetryDisconnect();
++    return 0;
++}
++int LinkTransport_Init(const char *configPath)
++{
++    LinkTransport_Close();
++    if (!configPath) return 1;
++    memset(&sLink, 0, sizeof(sLink));
++    sLink.initialized = 1;
++#ifdef _WIN32
++    sLink.fd = INVALID_SOCKET;
++#else
++    sLink.fd = -1;
++#endif
++    if (!Config(configPath)) { LinkTransport_Close(); return 0; }
++#ifdef _WIN32
++    {
++        WSADATA data;
++        if (WSAStartup(MAKEWORD(2,2), &data)) { LinkTransport_Close(); return 0; }
++        sLink.winsock = 1;
++        if (data.wVersion != MAKEWORD(2,2)) { LinkTransport_Close(); return 0; }
++    }
++#endif
++    NativeLink_Init(Emit, NULL);
++    sLink.enabled = 1;
++    Connect();
++    return 1;
++}
++int LinkTransport_Ready(void) { return sLink.ready; }
++unsigned LinkTransport_Mode(void) { return sLink.session ? sLink.mode : 0; }
++int LinkTransport_CoopOwner(void) { return sLink.session && sLink.mode == 4 && sLink.coopOwner; }
++int LinkTransport_OfferPending(void) { return sLink.offered != 0; }
++int LinkTransport_TagOfferPending(void) { return sLink.tagOffered[0] != 0; }
++const LinkTransportInvitation *LinkTransport_PendingTag(void)
++{
++    return sLink.tagPending.id ? &sLink.tagPending : NULL;
++}
++const char *LinkTransport_TagPeer(void) { return sLink.tagPeer[0] ? sLink.tagPeer : NULL; }
++int LinkTransport_TagInRange(void) { return sLink.tagPeer[0] && sLink.tagRange; }
++int LinkTransport_TagOffer(const char *target)
++{
++    char line[64];
++    if (!sLink.ready || sLink.tag || sLink.tagOffered[0] || !Identifier(target)
++     || !strcmp(target, sLink.trainer)) return 0;
++    snprintf(line, sizeof(line), "T OFFER %s\n", target);
++    if (!Queue(line)) return 0;
++    strcpy(sLink.tagOffered, target);
++    return 1;
++}
++int LinkTransport_TagAccept(uint64_t id)
++{
++    char line[64];
++    if (!sLink.ready || !id || id != sLink.tagPending.id || sLink.tagAccepting) return 0;
++    snprintf(line, sizeof(line), "T ACCEPT %" PRIu64 "\n", id);
++    if (!Queue(line)) return 0;
++    sLink.tagAccepting = id;
++    return 1;
++}
++int LinkTransport_TagReject(uint64_t id)
++{
++    char line[64];
++    if (!sLink.ready || !id || id != sLink.tagPending.id || sLink.tagAccepting) return 0;
++    snprintf(line, sizeof(line), "T REJECT %" PRIu64 "\n", id);
++    if (!Queue(line)) return 0;
++    memset(&sLink.tagPending, 0, sizeof(sLink.tagPending));
++    return 1;
++}
++int LinkTransport_TagEnd(void)
++{
++    char line[64];
++    if (!sLink.ready || !sLink.tag) return 0;
++    snprintf(line, sizeof(line), "T END %" PRIu64 "\n", sLink.tag);
++    return Queue(line);
++}
++const struct LinkTransportInvitation *LinkTransport_PendingInvitation(void)
++{
++    /* Mode four already has tag consent, including across fragmented reads. */
++    return sLink.pending.id && sLink.pending.mode != 4 ? &sLink.pending : NULL;
++}
++int LinkTransport_Offer(const char *target, unsigned mode)
++{
++    char line[64];
++    if (!sLink.ready || sLink.session || sLink.pending.id || sLink.offered
++     || !Identifier(target) || !strcmp(target, sLink.trainer) || mode < 1 || mode > 4) return 0;
++    if (mode == 4 && (!sLink.tagPeer[0] || strcmp(target, sLink.tagPeer) || !sLink.tagRange)) return 0;
++    snprintf(line, sizeof(line), "L OFFER %u %s\n", mode, target);
++    if (!Queue(line)) return 0;
++    sLink.offered = mode;
++    return 1;
++}
++int LinkTransport_Accept(uint64_t session)
++{
++    char line[64];
++    if (!sLink.ready || !session || session != sLink.pending.id || sLink.accepting || sLink.session) return 0;
++    snprintf(line, sizeof(line), "L ACCEPT %" PRIu64 "\n", session);
++    if (!Queue(line)) return 0;
++    sLink.accepting = session;
++    return 1;
++}
++int LinkTransport_Reject(uint64_t session)
++{
++    char line[64];
++    if (!sLink.ready || !session || session != sLink.pending.id || sLink.accepting) return 0;
++    snprintf(line, sizeof(line), "L REJECT %" PRIu64 "\n", session);
++    if (!Queue(line)) return 0;
++    memset(&sLink.pending, 0, sizeof(sLink.pending));
++    return 1;
++}
++static int Words(const char *hex, uint16_t words[8])
++{
++    unsigned i;
++    if (strlen(hex) != 32) return 0;
++    memset(words, 0, 16);
++    for (i = 0; i < 16; i++) {
++        int hi = Hex(hex[2*i]), lo = Hex(hex[2*i+1]);
++        if (hi < 0 || lo < 0) return 0;
++        words[i/2] |= (uint16_t)((hi*16+lo) << ((i%2)*8));
++    }
++    return 1;
++}
++static int Line(char *line)
++{
++    char *t[10], *p = line;
++    unsigned n = 0;
++    uint64_t sid, a, b, c;
++    while (*p) {
++        if (n == 10 || *p == ' ') return 0;
++        t[n++] = p;
++        while (*p && *p != ' ') p++;
++        if (*p) { *p++ = 0; if (!*p) return 0; }
++    }
++    if (n == 2 && !strcmp(t[0], "ERROR") && !strcmp(t[1], "PRESENCE")) return 2;
++    if (!sLink.ready) {
++        if (n != 5 || strcmp(t[0], "WELCOME") || strcmp(t[1], "1")
++         || strcmp(t[2], sLink.trainer) || !Decimal(t[3], UINT32_MAX, &a) || strcmp(t[4], "LINK")) return 0;
++        sLink.ready = 1; return 1;
++    }
++    if (n < 3 || (strcmp(t[0], "L") && strcmp(t[0], "T"))) return 0;
++    if (!strcmp(t[1], "ERROR")) {
++        /* Fixed protocol codes, never arbitrary server-provided UI text. */
++        static const char *const codes[] = {
++            "busy", "capacity", "offline", "invalid", "denied", "not_found", "conflict", "expired", "unavailable", "rate_limited",
++            "clock_regressed", "conflicting_duplicate", "invalid_actor", "invalid_commands", "invalid_generation",
++            "invalid_kind", "invalid_link_generation", "invalid_link_type", "invalid_max_steps", "invalid_presence",
++            "invalid_session", "invalid_state", "invalid_step", "invalid_time", "invalid_timeout", "link_type_mismatch",
++            "not_adjacent", "not_host", "not_member", "not_ready", "not_target", "self_offer", "unknown_session",
++            "not_in_range", "malformed", "mode", "slot"
++        };
++        unsigned i;
++        char code[41];
++        size_t j;
++        if (n != 3 || strlen(t[2]) >= sizeof(code)) return 0;
++        for (j = 0; t[2][j]; j++) {
++            char ch = t[2][j];
++            code[j] = ch >= 'A' && ch <= 'Z' ? ch + ('a' - 'A') : ch;
++        }
++        code[j] = 0;
++        for (i = 0; i < sizeof(codes)/sizeof(codes[0]); i++) if (!strcmp(code, codes[i])) {
++            if (!strcmp(t[0], "T")) {
++                /* Crossed offers: the server reserved this incoming offer
++                 * first. BUSY rejects only our outgoing intent, not consent
++                 * the player has yet to give (or just explicitly gave). */
++                if (!strcmp(code, "busy") && sLink.tagOffered[0] && sLink.tag && !sLink.tagPeer[0]) {
++                    sLink.tagOffered[0] = 0;
++                    return 1;
++                }
++                if (!sLink.tagPeer[0]) ClearTag();
++                return 1;
++            }
++            if (sLink.session) return 0;
++            sLink.offered = 0;
++            sLink.accepting = 0;
++            memset(&sLink.pending, 0, sizeof(sLink.pending));
++            return 1;
++        }
++        return 0;
++    }
++    if (!strcmp(t[0], "T")) {
++        if (!Decimal(t[2], UINT64_MAX, &sid) || !sid) return 0;
++        /* A pending-consent keepalive never creates or accepts an invitation.
++         * It may already be in flight when the player declines locally. */
++        if (!strcmp(t[1], "WAIT")) return n == 3;
++        if (!strcmp(t[1], "OFFER")) {
++            if (n != 4 || !Identifier(t[3]) || !strcmp(t[3], sLink.trainer)
++             || sLink.tagPeer[0] || sLink.tag) return 0;
++            sLink.tag = sid;
++            sLink.tagPending.id = sid;
++            strcpy(sLink.tagPending.name, t[3]);
++            return 1;
++        }
++        if (!strcmp(t[1], "ACTIVE")) {
++            if (n != 5 || !Identifier(t[3]) || !strcmp(t[3], sLink.trainer)
++             || !Decimal(t[4], 1, &a)) return 0;
++            if (sLink.tagPeer[0])
++                return sid == sLink.tag && !strcmp(t[3], sLink.tagPeer) && a == (unsigned)sLink.tagRange;
++            if (!((sLink.tagAccepting == sid && sLink.tagPending.id == sid
++                   && !strcmp(t[3], sLink.tagPending.name))
++               || (!sLink.tag && sLink.tagOffered[0] && !strcmp(t[3], sLink.tagOffered)))) return 0;
++            sLink.tag = sid;
++            strcpy(sLink.tagPeer, t[3]);
++            sLink.tagRange = (int)a;
++            sLink.tagAccepting = 0; sLink.tagOffered[0] = 0;
++            memset(&sLink.tagPending, 0, sizeof(sLink.tagPending));
++            return 1;
++        }
++        if (!strcmp(t[1], "RANGE")) {
++            if (n != 4 || sid != sLink.tag || !sLink.tagPeer[0] || !Decimal(t[3], 1, &a)) return 0;
++            sLink.tagRange = (int)a;
++            return 1;
++        }
++        if (!strcmp(t[1], "END") && n == 3) {
++            if (sid != sLink.tag && !sLink.tagOffered[0]) return 0;
++            ClearTag();
++            return 1;
++        }
++        return 0;
++    }
++    if (!strcmp(t[1], "COMMIT")) {
++        uint16_t matrix[2][8];
++        if (n != 8 || !Decimal(t[2], 3, &a) || !a || !Decimal(t[3], UINT64_MAX, &sid) || !sid
++         || sid != sLink.session || !Decimal(t[4], UINT32_MAX, &b) || !Decimal(t[5], UINT32_MAX, &c)
++         || !Words(t[6], matrix[0]) || !Words(t[7], matrix[1])) return 0;
++        return NativeLink_Feed((unsigned)a, sid, (uint32_t)b, (uint32_t)c, matrix) >= 0;
++    }
++    if (!Decimal(t[2], UINT64_MAX, &sid) || !sid) return 0;
++    if (!strcmp(t[1], "OFFER")) {
++        if (n != 5 || !Decimal(t[3], 4, &a) || !a || !Identifier(t[4]) || !strcmp(t[4], sLink.trainer)
++         || sLink.session) return 0;
++        if (a == 4 && (!sLink.tagPeer[0] || strcmp(t[4], sLink.tagPeer))) return 0;
++        if (sLink.offered && !(a == 4 && sLink.offered == 4)) return 0;
++        if (sLink.pending.id && (sLink.pending.id != sid || sLink.pending.mode != a || strcmp(sLink.pending.name,t[4]))) return 0;
++        sLink.pending.id = sid; sLink.pending.mode = (unsigned)a; strcpy(sLink.pending.name,t[4]); return 1;
++    }
++    if (!strcmp(t[1], "ADMIT")) {
++        if (n != 5 || !Decimal(t[3], 4, &a) || !a || !Decimal(t[4], 1, &b)) return 0;
++        if (sLink.session) return sid == sLink.session && a == sLink.mode && b == sLink.slot;
++        if (a == 4 && !sLink.tagPeer[0]) return 0;
++        if (!((sLink.accepting == sid && sLink.pending.mode == a) || sLink.offered == a
++           || (a == 4 && sLink.tagPeer[0] && sLink.pending.id == sid
++               && sLink.pending.mode == 4 && !strcmp(sLink.pending.name, sLink.tagPeer)))) return 0;
++        sLink.coopOwner = a == 4 && sLink.pending.id != sid;
++        sLink.session = sid; sLink.mode = (unsigned)a; sLink.slot = (unsigned)b;
++        if (!NativeLink_Admit(sid, (unsigned)a, (unsigned)b)) return 0;
++        sLink.offered = 0; sLink.accepting = 0; memset(&sLink.pending, 0, sizeof(sLink.pending)); return 1;
++    }
++    if (!strcmp(t[1], "ABORT") && n == 3) {
++        /* An outgoing offer has no session ID yet. An unrelated terminal
++         * record must not cancel it before its own ADMIT or ERROR arrives. */
++        if (sid == sLink.pending.id && sLink.offered == 4) sLink.offered = 0;
++        if (sid == sLink.session) {
++            NativeLink_EndSession(sid);
++            sLink.session = 0; sLink.mode = sLink.slot = 0;
++            sLink.coopOwner = 0;
++        }
++        if (sid == sLink.pending.id) { sLink.accepting = 0; memset(&sLink.pending, 0, sizeof(sLink.pending)); }
++        return 1;
++    }
++    return 0;
++}
++void LinkTransport_Pump(void)
++{
++    unsigned budget;
++    if (!sLink.enabled) return;
++    if (!SocketOpen()) {
++        if (sLink.retry) { sLink.retry--; return; }
++        if (!Connect()) return;
++    }
++    /* Bound the whole unauthenticated attempt, not each incoming byte. A
++     * silent or trickling endpoint must not strand the native cable forever.
++     * Ready channels retain their existing session and inactivity semantics. */
++    if (!sLink.ready) {
++        /* SDL can pump far faster than frames without renderer vsync.
++         * Network admission is bounded by elapsed time, never poll count. */
++        uint64_t now = MonotonicMilliseconds();
++        if (now == UINT64_MAX || sLink.handshakeStarted == UINT64_MAX
++            || now < sLink.handshakeStarted
++            || now - sLink.handshakeStarted >= HANDSHAKE_MILLISECONDS)
++        { RetryDisconnect(); return; }
++    }
++    if (sLink.connecting) {
++        int error = 0;
++#ifdef _WIN32
++        fd_set writes, errors;
++        struct timeval timeout = {0,0};
++        int size = sizeof(error), result;
++        FD_ZERO(&writes); FD_ZERO(&errors); FD_SET(sLink.fd, &writes); FD_SET(sLink.fd, &errors);
++        result = select(0, NULL, &writes, &errors, &timeout);
++        if (result < 0) { Disconnect(); return; }
++        if (!result) return;
++        if (getsockopt(sLink.fd, SOL_SOCKET, SO_ERROR, (char *)&error, &size) || error) { RetryDisconnect(); return; }
++#else
++        struct pollfd fd = {sLink.fd, POLLOUT, 0};
++        socklen_t size = sizeof(error);
++        int result = poll(&fd, 1, 0);
++        if (result < 0) { if (errno != EINTR) Disconnect(); return; }
++        if (!result) return;
++        if (getsockopt(sLink.fd, SOL_SOCKET, SO_ERROR, &error, &size) || error) { RetryDisconnect(); return; }
++#endif
++        sLink.connecting = 0;
++    }
++    for (budget = 0; sLink.sent < sLink.queued && budget < 64; budget++) {
++        int count;
++#ifdef _WIN32
++        count = send(sLink.fd, sLink.output+sLink.sent, (int)(sLink.queued-sLink.sent), 0);
++#else
++        count = (int)send(sLink.fd, sLink.output+sLink.sent, sLink.queued-sLink.sent, MSG_NOSIGNAL);
++#endif
++        if (count < 0 && WouldBlock()) break;
++        if (count <= 0) { RetryDisconnect(); return; }
++        sLink.sent += (size_t)count;
++    }
++    if (sLink.sent == sLink.queued) sLink.sent = sLink.queued = 0;
++    for (budget = 0; budget < 8192; budget++) {
++        char ch;
++        int count = (int)recv(sLink.fd, &ch, 1, 0);
++        if (count < 0 && WouldBlock()) break;
++        if (count <= 0) { RetryDisconnect(); return; }
++        if (ch == '\n') {
++            int parsed;
++            sLink.input[sLink.used] = 0;
++            parsed = Line(sLink.input);
++            if (parsed == 2) { RetryDisconnect(); return; }
++            if (!parsed) { Disconnect(); return; }
++            sLink.used = 0;
++        } else {
++            if ((unsigned char)ch < 32 || (unsigned char)ch > 126 || sLink.used == 512) { Disconnect(); return; }
++            sLink.input[sLink.used++] = ch;
++        }
++    }
++    if (sLink.ready) NativeLink_Pump();
++}
++#endif
+diff --git a/src/platform/native_link.c b/src/platform/native_link.c
+new file mode 100644
+index 0000000..9506873
+--- /dev/null
++++ b/src/platform/native_link.c
+@@ -0,0 +1,289 @@
++#ifdef PORTABLE
++#include "platform/native_link.h"
++#include <string.h>
++#include <limits.h>
++
++#define COMMAND_CAPACITY 50
++/* Cover WAN latency without changing the engine's one-matrix-per-tick seam. */
++#define ROUND_CAPACITY 16
++static NativeLinkEmit sEmit;
++static void *sContext;
++static const uint16_t *sSource;
++static struct
++{
++    uint64_t session, nextRound;
++    unsigned mode, slot, open, paired, connected, advance;
++    uint32_t generation, round;
++    unsigned inTick, consumed, prepared, haveLast;
++    uint16_t last[2][8];
++    struct
++    {
++        unsigned sent, received;
++        uint16_t command[8], matrix[2][8];
++    } wire[ROUND_CAPACITY];
++    uint16_t commands[COMMAND_CAPACITY][8];
++    unsigned head, count;
++} s;
++static struct NativeLinkEvent sQueue[8];
++static unsigned sCount;
++
++static struct NativeLinkEvent Event(unsigned kind)
++{
++    struct NativeLinkEvent e;
++    memset(&e, 0, sizeof(e));
++    e.kind = kind; e.session = s.session; e.mode = s.mode; e.slot = s.slot;
++    e.generation = s.generation;
++    e.round = kind == NATIVE_LINK_COMMAND ? s.round : 0;
++    return e;
++}
++void NativeLink_Init(NativeLinkEmit emit, void *context)
++{
++    memset(&s, 0, sizeof(s)); sCount = 0; sSource = 0;
++    sEmit = emit; sContext = context;
++}
++void NativeLink_Reset(void)
++{
++    if (s.session) NativeLink_Abort();
++    memset(&s, 0, sizeof(s));
++}
++int NativeLink_Admit(uint64_t session, unsigned mode, unsigned slot)
++{
++    if (!session || mode < NATIVE_LINK_SINGLE || mode > NATIVE_LINK_COOP || slot > 1 || s.session || sCount || !sEmit)
++        return 0;
++    memset(&s, 0, sizeof(s));
++    s.session = session; s.mode = mode; s.slot = slot;
++    return 1;
++}
++int NativeLink_IsActive(void) { return s.session != 0; }
++int NativeLink_IsOpen(void) { return s.session && s.open; }
++int NativeLink_IsConnected(void) { return NativeLink_IsOpen() && s.connected; }
++unsigned NativeLink_LocalId(void) { return s.slot; }
++uint32_t NativeLink_Generation(void) { return s.generation; }
++static int Nonzero(const uint16_t *words, unsigned count)
++{
++    unsigned i;
++    for (i = 0; i < count; ++i) if (words[i]) return 1;
++    return 0;
++}
++unsigned NativeLink_RecvQueueCount(void)
++{
++    uint64_t round;
++    unsigned count = 0;
++    if (!s.open) return 0;
++    for (round = s.round; round < s.nextRound; ++round)
++    {
++        unsigned index = round % ROUND_CAPACITY;
++        if (round == s.round && s.consumed) continue;
++        if (s.wire[index].received
++            && (Nonzero(s.wire[index].matrix[0], 8) || Nonzero(s.wire[index].matrix[1], 8))) ++count;
++    }
++    return count;
++}
++unsigned NativeLink_SendQueueCount(void)
++{
++    uint64_t round;
++    unsigned count = s.count;
++    if (!s.open) return 0;
++    for (round = s.round; round < s.nextRound; ++round)
++    {
++        unsigned index = round % ROUND_CAPACITY;
++        if (!s.wire[index].received && Nonzero(s.wire[index].command, 8)) ++count;
++    }
++    return count;
++}
++void NativeLink_SetCommandSource(const uint16_t send[8]) { sSource = send; }
++void NativeLink_Pump(void)
++{
++    uint64_t round;
++    while (sCount && sEmit && sEmit(sContext, &sQueue[0]))
++    {
++        --sCount;
++        memmove(sQueue, sQueue + 1, sCount * sizeof(sQueue[0]));
++    }
++    if (sCount || !s.open || !sEmit) return;
++    for (round = s.round; round < s.nextRound; ++round)
++    {
++        unsigned index = round % ROUND_CAPACITY;
++        if (!s.wire[index].sent)
++        {
++            struct NativeLinkEvent e = Event(NATIVE_LINK_COMMAND);
++            e.round = (uint32_t)round;
++            memcpy(e.command, s.wire[index].command, sizeof(e.command));
++            if (!sEmit(sContext, &e)) break;
++            s.wire[index].sent = 1;
++        }
++    }
++}
++void NativeLink_EndSession(uint64_t session)
++{
++    unsigned i, kept = 0;
++    if (!session) return;
++    /* Only an authoritative remote end or lost channel invalidates undelivered
++     * events. Do not echo ABORT into a session the transport has already ended. */
++    if (s.session == session) memset(&s, 0, sizeof(s));
++    for (i = 0; i < sCount; ++i)
++        if (sQueue[i].session != session) sQueue[kept++] = sQueue[i];
++    sCount = kept;
++}
++void NativeLink_Abort(void)
++{
++    struct NativeLinkEvent e = Event(NATIVE_LINK_ABORT);
++    if (!e.session) return; /* Keep any previously queued terminal event. */
++    memset(&s, 0, sizeof(s));
++    sCount = 0;
++    if (e.session) { sQueue[sCount++] = e; NativeLink_Pump(); }
++}
++static int Fail(void) { NativeLink_Abort(); return -1; }
++static int Queue(struct NativeLinkEvent e)
++{
++    if (sCount == sizeof(sQueue) / sizeof(sQueue[0])) return Fail();
++    sQueue[sCount++] = e; NativeLink_Pump(); return 1;
++}
++void NativeLink_Open(uint16_t linkType)
++{
++    struct NativeLinkEvent e;
++    if (!s.session) return;
++    if (s.open || s.generation == UINT32_MAX) { NativeLink_Abort(); return; }
++    ++s.generation;
++    s.round = 0; s.nextRound = 0;
++    s.open = 1; s.paired = s.connected = s.advance = 0;
++    s.head = s.count = 0;
++    s.inTick = s.consumed = s.prepared = s.haveLast = 0;
++    memset(s.wire, 0, sizeof(s.wire));
++    e = Event(NATIVE_LINK_OPEN); e.linkType = linkType; Queue(e);
++}
++int NativeLink_TryClose(void)
++{
++    NativeLink_Pump();
++    if (sCount || NativeLink_SendQueueCount() || NativeLink_RecvQueueCount()) return 0;
++    NativeLink_Close();
++    return !sCount;
++}
++void NativeLink_Close(void)
++{
++    struct NativeLinkEvent e;
++    if (!NativeLink_IsOpen()) return;
++    e = Event(NATIVE_LINK_CLOSE);
++    s.open = s.paired = s.connected = 0;
++    s.head = s.count = 0;
++    s.inTick = s.consumed = s.prepared = 0;
++    /* Retain the bounded emitted window to validate late echoes. They cannot
++     * reach the engine after close or contaminate the next generation. */
++    Queue(e);
++}
++int NativeLink_Feed(unsigned kind, uint64_t session, uint32_t generation,
++                    uint32_t round, const uint16_t matrix[2][8])
++{
++    static const uint16_t zero[2][8] = {{0}};
++    unsigned index;
++    if (!s.session || session != s.session || generation < s.generation) return 0;
++    if (generation != s.generation || !matrix) return Fail();
++    if (kind == NATIVE_LINK_PAIR || kind == NATIVE_LINK_HANDSHAKE)
++    {
++        if (!s.open || round || memcmp(matrix, zero, sizeof(zero))) return Fail();
++        if (kind == NATIVE_LINK_PAIR) s.paired = 1;
++        else
++        {
++            if (!s.paired || (s.slot == 0 && !s.advance)) return Fail();
++            s.connected = 1;
++        }
++        return 1;
++    }
++    if (kind != NATIVE_LINK_ROUND) return Fail();
++    if (s.haveLast && s.round && round == s.round - 1)
++        return memcmp(matrix, s.last, sizeof(s.last)) ? Fail() : 1;
++    if (round < s.round || (uint64_t)round >= s.nextRound) return Fail();
++    index = round % ROUND_CAPACITY;
++    if (!s.wire[index].sent || memcmp(matrix[s.slot], s.wire[index].command, sizeof(s.wire[index].command))) return Fail();
++    if (s.wire[index].received)
++        return memcmp(matrix, s.wire[index].matrix, sizeof(s.wire[index].matrix)) ? Fail() : 1;
++    if (s.open && (!s.paired || (!s.connected && memcmp(matrix, zero, sizeof(zero))))) return Fail();
++    memcpy(s.wire[index].matrix, matrix, sizeof(s.wire[index].matrix));
++    s.wire[index].received = 1;
++    return s.open ? 1 : 0;
++}
++int NativeLink_FrameReady(void)
++{
++    if (s.session && s.open && s.paired && !s.prepared
++        && s.nextRound - s.round < ROUND_CAPACITY)
++    {
++        unsigned index;
++        if (s.nextRound > UINT32_MAX) { NativeLink_Abort(); return 1; }
++        index = s.nextRound % ROUND_CAPACITY;
++        memset(&s.wire[index], 0, sizeof(s.wire[index]));
++        if (s.nextRound && s.connected && s.count)
++        {
++            memcpy(s.wire[index].command, s.commands[s.head], sizeof(s.wire[index].command));
++            s.head = (s.head + 1) % COMMAND_CAPACITY;
++            --s.count;
++        }
++        ++s.nextRound;
++        s.prepared = 1;
++    }
++    NativeLink_Pump();
++    return 1;
++}
++int NativeLink_BeforeFrame(const uint16_t send[8])
++{
++    if (!sSource) sSource = send;
++    if (s.inTick) return 0;
++    if (s.open && s.paired)
++    {
++        unsigned i, sentinel = 1;
++        for (i = 0; i < 8; ++i) if (send[i] != 0xefff) sentinel = 0;
++        if (s.connected && !sentinel && Nonzero(send, 8))
++        {
++            if (NativeLink_SendQueueCount() >= COMMAND_CAPACITY)
++            {
++                NativeLink_Abort();
++                return 1;
++            }
++            memcpy(s.commands[(s.head + s.count) % COMMAND_CAPACITY], send,
++                   sizeof(s.commands[0]));
++            ++s.count;
++        }
++        s.inTick = 1; s.consumed = 0;
++    }
++    return NativeLink_FrameReady();
++}
++void NativeLink_AfterFrame(void)
++{
++    if (!s.inTick) return;
++    s.inTick = s.prepared = 0;
++    if (!s.consumed) return;
++    if (s.round == UINT32_MAX) { NativeLink_Abort(); return; }
++    memcpy(s.last, s.wire[s.round % ROUND_CAPACITY].matrix, sizeof(s.last));
++    s.haveLast = 1;
++    memset(&s.wire[s.round % ROUND_CAPACITY], 0, sizeof(s.wire[0]));
++    ++s.round;
++    s.consumed = 0;
++}
++uint32_t NativeLink_Main1(uint8_t *advance, const uint16_t send[8], uint16_t recv[5][8])
++{
++    uint32_t status;
++    (void)send;
++    memset(recv, 0, 5 * 8 * sizeof(uint16_t));
++    if (!NativeLink_IsOpen()) return 0;
++    if (*advance == 2)
++    {
++        *advance = 0;
++        NativeLink_Abort();
++        return 0;
++    }
++    status = s.slot | (s.slot == 0 ? 0x20u : 0);
++    if (s.paired) status |= 2u << 2;
++    if (*advance == 1 && s.paired && !s.slot && !s.advance)
++    {
++        s.advance = 1; Queue(Event(NATIVE_LINK_ADVANCE));
++    }
++    if (s.paired) *advance = 0;
++    if (s.connected) status |= 0x40u;
++    if (s.inTick && s.round < s.nextRound && s.wire[s.round % ROUND_CAPACITY].received && !s.consumed)
++    {
++        memcpy(recv, s.wire[s.round % ROUND_CAPACITY].matrix, sizeof(s.wire[0].matrix));
++        s.consumed = 1;
++    }
++    else if (s.paired) status |= 0x100u;
++    return status;
++}
++#endif
+diff --git a/src/platform/native_save.c b/src/platform/native_save.c
+new file mode 100644
+index 0000000..4aa1892
+--- /dev/null
++++ b/src/platform/native_save.c
+@@ -0,0 +1,100 @@
++#if defined(PORTABLE) && !defined(_WIN32)
++#include <errno.h>
++#include <fcntl.h>
++#include <limits.h>
++#include <sys/file.h>
++#include <sys/stat.h>
++#include <unistd.h>
++#include "platform/native_save.h"
++
++FILE *NativeSave_Open(const char *path)
++{
++    struct stat info;
++    FILE *stream;
++    int error;
++    /* Never retry a failed existing-file open with a truncating create. The
++     * nonblocking flag also makes a FIFO fail before the game starts. */
++    int fd = open(path, O_RDWR | O_CREAT | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC, 0600);
++    if (fd < 0)
++        return NULL;
++    if (fstat(fd, &info) != 0)
++        goto fail;
++    if (!S_ISREG(info.st_mode) || info.st_nlink != 1 || info.st_uid != geteuid()
++        || info.st_size > INT_MAX)
++    {
++        errno = EINVAL;
++        goto fail;
++    }
++    if (flock(fd, LOCK_EX | LOCK_NB) != 0)
++        goto fail;
++    stream = fdopen(fd, "r+b");
++    if (stream != NULL)
++        return stream;
++fail:
++    error = errno;
++    close(fd);
++    errno = error;
++    return NULL;
++}
++
++const char *NativeSave_OpenError(void)
++{
++    /* Fixed text only. Never include a save path or operating-system echo. */
++    switch (errno)
++    {
++    case EAGAIN:
++        return "This save is open in another game. Close that game before retrying.";
++    case ELOOP:
++    case EINVAL:
++        return "Choose your own regular save file without links.";
++    default:
++        return "Check that the save file and its folder exist and are writable.";
++    }
++}
++
++bool NativeSave_Read(FILE *stream, size_t offset, void *destination, size_t size)
++{
++    unsigned char *bytes = destination;
++    size_t done = 0;
++    if (stream == NULL || offset > LONG_MAX || size > (size_t)LONG_MAX - offset)
++        return false;
++    /* Flash reads use the lifetime-owned inode, not a path that may now name
++     * another file. pread does not disturb buffered save-write positioning. */
++    while (done < size)
++    {
++        ssize_t count = pread(fileno(stream), bytes + done, size - done, (off_t)(offset + done));
++        if (count < 0 && errno == EINTR)
++            continue;
++        if (count <= 0)
++            return false;
++        done += count;
++    }
++    return true;
++}
++
++bool NativeSave_Write(FILE *stream, const void *source, size_t size)
++{
++    struct stat info;
++    if (stream == NULL || fstat(fileno(stream), &info) != 0)
++        return false;
++    // Startup ownership can change while the game runs. An unlinked stream
++    // cannot persist a save, and a new alias must not receive private writes.
++    if (!S_ISREG(info.st_mode) || info.st_nlink != 1 || info.st_uid != geteuid())
++    {
++        errno = EINVAL;
++        return false;
++    }
++    // A later explicit retry may recover after space or permissions are fixed.
++    clearerr(stream);
++    if (fseek(stream, 0, SEEK_SET) != 0
++     || fwrite(source, 1, size, stream) != size
++     || fflush(stream) != 0)
++        return false;
++    // The game may acknowledge a save only after this owned file is durable.
++    // Keep its inode lock rather than replacing the file behind another owner.
++    while (fsync(fileno(stream)) != 0)
++        if (errno != EINTR)
++            return false;
++    return true;
++}
++#endif
+diff --git a/src/platform/party_autoheal.c b/src/platform/party_autoheal.c
+new file mode 100644
+index 0000000..d09b558
+--- /dev/null
++++ b/src/platform/party_autoheal.c
+@@ -0,0 +1,193 @@
++#ifdef PORTABLE
++#include "global.h"
++#include "battle.h"
++#include "battle_pike.h"
++#include "battle_pyramid.h"
++#include "event_data.h"
++#include "item.h"
++#include "link.h"
++#include "main.h"
++#include "overworld.h"
++#include "palette.h"
++#include "party_menu.h"
++#include "pokemon.h"
++#include "script.h"
++#include "field_specials.h"
++#include "platform/native_link.h"
++#include "platform/world_activity.h"
++#include "platform/world_coop.h"
++#include "platform/party_autoheal.h"
++#include "constants/battle_pyramid.h"
++#include "constants/flags.h"
++#include "constants/party_menu.h"
++#include "constants/vars.h"
++#include <string.h>
++
++/* Fixed stock HP/status consumables only. Excludes revives, Sacred Ash, PP/EV
++ * items, reusable flutes and the save-defined Enigma Berry effect. Berries are
++ * owned medicine too. Prices are stock purchase prices, not HP-per-money or a
++ * globally optimal shopping plan. Equal prices break by numeric item ID. */
++static const u16 sMedicines[] =
++{
++    ITEM_POTION, ITEM_ANTIDOTE, ITEM_BURN_HEAL, ITEM_ICE_HEAL,
++    ITEM_AWAKENING, ITEM_PARALYZE_HEAL, ITEM_FULL_RESTORE, ITEM_MAX_POTION,
++    ITEM_HYPER_POTION, ITEM_SUPER_POTION, ITEM_FULL_HEAL,
++    ITEM_FRESH_WATER, ITEM_SODA_POP, ITEM_LEMONADE, ITEM_MOOMOO_MILK,
++    ITEM_ENERGY_POWDER, ITEM_ENERGY_ROOT, ITEM_HEAL_POWDER,
++    ITEM_LAVA_COOKIE, ITEM_BERRY_JUICE,
++    ITEM_CHERI_BERRY, ITEM_CHESTO_BERRY, ITEM_PECHA_BERRY, ITEM_RAWST_BERRY,
++    ITEM_ASPEAR_BERRY, ITEM_ORAN_BERRY, ITEM_PERSIM_BERRY, ITEM_LUM_BERRY,
++    ITEM_SITRUS_BERRY
++};
++
++struct AutoHealPlan
++{
++    struct Pokemon before[PARTY_SIZE], after[PARTY_SIZE];
++    struct ItemSlot items[BAG_ITEMS_COUNT], berries[BAG_BERRIES_COUNT];
++    u16 owned[ARRAY_COUNT(sMedicines)], used[ARRAY_COUNT(sMedicines)];
++    u32 encryptionKey;
++    u8 count, changed;
++};
++
++bool8 WorldAutoHeal_Available(void)
++{
++    /* The ordinary Party menu itself pauses the field and locks its controls.
++     * Requiring unlocked controls or CB2_Overworld here would disable the real
++     * action. Its field-only return callback distinguishes it from scripted
++     * selections, trade and battle menus. The UI also checks its live callback.
++     * A local tag alone is not busy: only activity/encounter ownership blocks. */
++    return gSaveBlock1Ptr != NULL && gSaveBlock2Ptr != NULL
++        && gPartyMenu.menuType == PARTY_MENU_TYPE_FIELD
++        && gPartyMenu.action == PARTY_ACTION_CHOOSE_MON
++        && gPartyMenu.exitCallback == CB2_ReturnToFieldWithOpenMenu
++        && !gMain.inBattle && !gPaletteFade.active
++        && !ScriptContext_IsEnabled()
++        && !gWirelessCommType && !gReceivedRemoteLinkPlayers
++        && !IsOverworldLinkActive()
++        && !NativeLink_IsActive() && !WorldCoop_IsBattle()
++        && !WorldCoop_IsPrivateRewards()
++        && !WorldActivity_OwnsFieldInput() && !WorldActivity_IsEncounterPending()
++        && !InUnionRoom() && !InMultiPartnerRoom() && !InBattlePike()
++        && CurrentBattlePyramidLocation() == PYRAMID_LOCATION_NONE
++        && !FlagGet(FLAG_STORING_ITEMS_IN_PYRAMID_BAG)
++        && gPlayerPartyCount > 0 && gPlayerPartyCount <= PARTY_SIZE;
++}
++
++static bool8 TryMedicine(struct Pokemon *trial, u16 item, u8 slot)
++{
++    u16 hp = GetMonData(trial, MON_DATA_HP);
++    u32 status = GetMonData(trial, MON_DATA_STATUS);
++    u8 active = gActiveBattler, potential = gPotentialItemEffectBattler;
++    bool8 noEffect;
++
++    /* FALSE means applied. Even a TRUE/no-effect call can change friendship.
++     * All probes operate on a fresh local copy, never the private live party.
++     * These fixed effects out of battle only alter the copy and these globals. */
++    noEffect = PokemonUseItemEffects(trial, item, slot, 0, FALSE);
++    gActiveBattler = active;
++    gPotentialItemEffectBattler = potential;
++    return !noEffect && (GetMonData(trial, MON_DATA_HP) > hp
++        || GetMonData(trial, MON_DATA_STATUS) != status);
++}
++
++static void BuildPlan(struct AutoHealPlan *plan)
++{
++    unsigned i, slot;
++    memset(plan, 0, sizeof(*plan));
++    plan->count = gPlayerPartyCount;
++    plan->encryptionKey = gSaveBlock2Ptr->encryptionKey;
++    memcpy(plan->before, gPlayerParty, sizeof(plan->before));
++    memcpy(plan->after, plan->before, sizeof(plan->after));
++    memcpy(plan->items, gSaveBlock1Ptr->bagPocket_Items, sizeof(plan->items));
++    memcpy(plan->berries, gSaveBlock1Ptr->bagPocket_Berries, sizeof(plan->berries));
++    for (i = 0; i < ARRAY_COUNT(sMedicines); i++)
++        plan->owned[i] = CountTotalItemQuantityInBag(sMedicines[i]);
++
++    /* Party-slot order, repeatedly taking the cheapest currently applicable
++     * owned unit. Partial healing is useful even when stock cannot finish. */
++    for (slot = 0; slot < plan->count; slot++)
++    {
++        struct Pokemon *mon = &plan->after[slot];
++        if (!GetMonData(mon, MON_DATA_SPECIES) || GetMonData(mon, MON_DATA_IS_EGG)
++            || !GetMonData(mon, MON_DATA_HP))
++            continue;
++        for (;;)
++        {
++            unsigned best = ARRAY_COUNT(sMedicines);
++            struct Pokemon bestMon;
++            for (i = 0; i < ARRAY_COUNT(sMedicines); i++)
++            {
++                struct Pokemon trial;
++                if (plan->used[i] >= plan->owned[i])
++                    continue;
++                if (best != ARRAY_COUNT(sMedicines)
++                    && (GetItemPrice(sMedicines[i]) > GetItemPrice(sMedicines[best])
++                        || (GetItemPrice(sMedicines[i]) == GetItemPrice(sMedicines[best])
++                            && sMedicines[i] > sMedicines[best])))
++                    continue;
++                trial = *mon;
++                if (TryMedicine(&trial, sMedicines[i], slot))
++                {
++                    best = i;
++                    bestMon = trial;
++                }
++            }
++            if (best == ARRAY_COUNT(sMedicines))
++                break;
++            *mon = bestMon;
++            plan->used[best]++;
++            plan->changed |= 1 << slot;
++        }
++    }
++}
++
++static bool8 CommitPlan(const struct AutoHealPlan *plan)
++{
++    unsigned i;
++    u16 secretFlags, secretItem;
++    /* No callbacks, frames or network polling between validation and commit.
++     * Validate full encrypted identities/state, reserves, quantities and the
++     * bag encryption key. No detached plan may overwrite a newer private party. */
++    if (!WorldAutoHeal_Available() || plan->count != gPlayerPartyCount
++        || plan->encryptionKey != gSaveBlock2Ptr->encryptionKey
++        || memcmp(plan->before, gPlayerParty, sizeof(plan->before))
++        || memcmp(plan->items, gSaveBlock1Ptr->bagPocket_Items, sizeof(plan->items))
++        || memcmp(plan->berries, gSaveBlock1Ptr->bagPocket_Berries, sizeof(plan->berries)))
++        return FALSE;
++    for (i = 0; i < ARRAY_COUNT(sMedicines); i++)
++        if (CountTotalItemQuantityInBag(sMedicines[i]) != plan->owned[i]
++            || plan->used[i] > plan->owned[i])
++            return FALSE;
++
++    /* Stock removal also records Secret Base item use. Restore its bookkeeping
++     * along with encrypted pocket bytes if any removal unexpectedly refuses. */
++    secretFlags = VarGet(VAR_SECRET_BASE_LOW_TV_FLAGS);
++    secretItem = VarGet(VAR_SECRET_BASE_LAST_ITEM_USED);
++    for (i = 0; i < ARRAY_COUNT(sMedicines); i++)
++    {
++        if (plan->used[i] && !RemoveBagItem(sMedicines[i], plan->used[i]))
++        {
++            memcpy(gSaveBlock1Ptr->bagPocket_Items, plan->items, sizeof(plan->items));
++            memcpy(gSaveBlock1Ptr->bagPocket_Berries, plan->berries, sizeof(plan->berries));
++            VarSet(VAR_SECRET_BASE_LOW_TV_FLAGS, secretFlags);
++            VarSet(VAR_SECRET_BASE_LAST_ITEM_USED, secretItem);
++            return FALSE;
++        }
++    }
++    for (i = 0; i < plan->count; i++)
++        if (plan->changed & (1 << i))
++            gPlayerParty[i] = plan->after[i];
++    return TRUE;
++}
++
++enum AutoHealResult WorldAutoHeal_Run(void)
++{
++    struct AutoHealPlan plan;
++    if (!WorldAutoHeal_Available())
++        return AUTO_HEAL_REFUSED;
++    BuildPlan(&plan);
++    if (!plan.changed)
++        return AUTO_HEAL_NOTHING;
++    return CommitPlan(&plan) ? AUTO_HEAL_USED : AUTO_HEAL_REFUSED;
++}
++#endif

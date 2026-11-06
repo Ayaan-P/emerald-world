@@ -1,0 +1,1030 @@
+# Makefile.native: the native (x86, SDL2) build of pokeemerald-expansion.
+#
+#   make -f Makefile.native -j$(nproc) native  [BITS=32|64] [TEST=0|1] [SANITIZE=0|1]
+#                                       [O_LEVEL=2] [DINFO=1]
+#   make -f Makefile.native -j$(nproc) objects ...   # compile only
+#   make -f Makefile.native -j$(nproc) check [BITS=..] [SANITIZE=..] [TESTS=filter]
+#                                      # expansion's test suite through its hydra
+#   make -f Makefile.native clean      # removes build/native*/ and nothing else
+#                                      # (the platform library: make -C platform clean)
+#   make -f Makefile.native -j$(nproc) data-flat TARGET=macho-x86_64|coff-x86_64
+#                                      # the 64-bit data objects as listings for macOS or
+#                                      # Windows, in build/native64/flat/<target>/ (BITS=64)
+#   make -f Makefile.native -j$(nproc) check-flat TARGET=...
+#                                      # each listing assembled with clang and compared with
+#                                      # its ELF object ("The data converted for macOS and
+#                                      # Windows", at the end)
+#
+# Objects go to build/native<bits>/ (build/native<bits>-test/ with TEST=1,
+# and -san appended with SANITIZE=1), mirroring the source tree. `native`
+# links them with the platform layer into pokeemerald-native in that
+# directory (pokeemerald-native-test with TEST=1, the test runner build),
+# and its link writes the executable's function map beside it
+# (pokeemerald-native.symbols, which the replays name callbacks with).
+# HOST_OS (platform/host.mk) is the system that builds it, Linux; TARGET_OS
+# (platform/target.mk) the system it runs on, Linux unless `windows`, the
+# MinGW-w64 cross build ("The Windows cross-build", at the end).
+#
+# Expansion's Makefile and its rule fragments are not modified; this file
+# sits beside them and reuses them. See docs/ARCHITECTURE.md ("Build") and
+# docs/RESEARCH.md ("Build system"). What the link supplies and why:
+# platform/build_glue/LINK-NEEDS.md and the section "The link" below.
+#
+# --------------------------------------------------------------------------
+# How assets are generated
+#
+# Calling expansion's Makefile for the assets was investigated and
+# rejected: its only asset-only target is `generated`, its graphics have no
+# aggregate target at all, and running it pulls in the ARM toolchain
+# (arm-none-eabi-cpp for the trainer headers, arm-none-eabi-gcc probes at
+# parse time). Reusing its pieces needs neither.
+#
+# Expansion has no single "all assets" target. Its in-tree generated
+# headers and map includes are the `generated` target (AUTO_GEN_TARGETS);
+# graphics (.4bpp, .gbapal, .lz, .smol, ...) and songs are built only as
+# prerequisites of objects, discovered by tools/scaninc, whose .d output
+# lists every #include, INCBIN and INCGFX of a source file and also emits
+# the INCGFX conversion recipes. So this file does what expansion's
+# Makefile does, with the same pieces:
+#
+#   * Tools: `$(MAKE) -f make_tools.mk`, exactly as `make tools`, run at
+#     parse time like expansion's Makefile (scaninc must exist before the
+#     .d files are made).
+#   * Rules: the fragments graphics_file_rules.mk, map_data_rules.mk,
+#     spritesheet_rules.mk, json_data_rules.mk, audio_rules.mk and
+#     trainer_rules.mk are included unchanged. They only need the variable
+#     names expansion's Makefile defines (GFX, MAPJSON, C_BUILDDIR, ...),
+#     which are defined below with native values.
+#   * The few asset rules that live in expansion's Makefile itself rather
+#     than in a fragment (the generic %.4bpp/%.gbapal/%.lz/%.smol pattern
+#     rules, the learnset helpers, wild_encounters.h, script_commands.h)
+#     are repeated below in the section marked "Mirrored from Makefile".
+#     They must be kept in sync with Makefile when upgrading expansion.
+#   * Generated headers: `$(MAKE) -f Makefile.native generated` at parse
+#     time, before scaninc runs, exactly as expansion's Makefile runs its
+#     own `generated`.
+#   * Dependencies: scaninc .d files, exactly as expansion. -MMD was
+#     considered and rejected: it cannot see INCBIN/INCGFX, which preproc
+#     expands after cpp, so assets would never be (re)built.
+#
+# Assets are target-independent and land where the GBA build puts them:
+# next to their sources (graphics/**, sound/**, src/data/*.h, data/maps/**)
+# and, for INCGFX conversions, in build/assets-native/ (the GBA build uses build/assets/:
+# the palettes differ, see GFX). The sources-side assets are shared with the GBA
+# build, and `clean` here does not touch them. The one
+# asset made with the C preprocessor, the trainer headers (trainer_rules.mk,
+# `$(CPP) -traditional-cpp`), comes out byte-identical with the host cpp
+# and with arm-none-eabi-cpp (checked for every .party file, TEST=0 and 1).
+#
+# --------------------------------------------------------------------------
+# The C pipeline mirrors expansion's MODERN path:
+#
+#   gcc -E <CPPFLAGS> src.c | preproc -i -g build/assets src.c charmap.txt
+#     | sed -f platform/build_glue/c_filter.sed
+#     > obj.i
+#   gcc -c -x c <CFLAGS> -o obj obj.i
+#
+# Expansion pipes into cc1 without -fpreprocessed, so cc1 preprocesses the
+# already-preprocessed text a second time; `gcc -x c` does the same and
+# keeps the gcc driver (and so -m32/-m64). The text goes through a file
+# because ccache cannot cache a compile from standard input (see COMPILE_C).
+# `-x cpp-output` was tried and rejected: it changes which file gcc takes as
+# the main file, and with it the diagnostics (204 -Wunused-const-variable
+# warnings expansion's build does not show).
+# c_filter.sed rewrites the one ARM-assembler trick preproc puts into C
+# (the '@' that ends a COMPOUND_STRING section name, see the script).
+# Warnings: expansion's -Wall and its -W/-Wno- flags are kept, -Werror is
+# not: expansion's warnings on x86 are upstream's to fix, not ours.
+#
+# Assembly: src/*.s (crt0.s, m4a_1.s, libgcnmultiboot.s, decompress_asm.s,
+# rom_header.s) and libagbsyscall are ARM code and are not built; the
+# platform layer replaces them. data/*.s (through the same
+# `preproc | cpp | preproc` steps as on GBA) and the mid2agb songs (handed
+# to the assembler directly, as on GBA) are assembled by the host `as`
+# after platform/build_glue/asm_filter.py, which strips ARM '@' comments,
+# turns '.align' (ARM: power of two) into '.p2align' and '.word' (ARM: 4
+# bytes, x86: 2) into '.4byte'. The 32-bit objects come out with the same
+# section contents and relocations as the GBA build's. `AS` below is
+# that filter piped into the host assembler, so the fragments' own recipes
+# (map_data_rules.mk) work unchanged. With TEST=1 the event script macros
+# that tests use from inline assembly are prepared the same way (see
+# OVERWORLD_SCRIPT_MACROS).
+#
+# 64-bit: the C structs that read the data have 8-byte pointers (struct
+# MapHeader, struct ToneData, the script command tables, ...), and so do the
+# battle script commands, which C reads through packed structs (CMD_ARGS);
+# the event, animation, contest AI and song bytecode, read a byte at a time,
+# keeps 4-byte addresses. The 64-bit build assembles with
+# NATIVE_POINTER_SIZE_8 defined, which the guarded macros in asm/macros/ and
+# the table files test (docs/UPSTREAM_MODIFICATIONS.md), and passes
+# --pointer-size 8 to the filter for the raw words no macro writes (mapjson's
+# output, mid2agb's song headers, a few hand-written tables). The 64-bit link
+# then checks every address word against platform/build_glue/
+# data_address_words.txt and the battle script macros against the C
+# (DATA_LAYOUT_CHECKS, below).
+# --------------------------------------------------------------------------
+
+# 32 or 64. 32 is the first milestone; 64 must keep compiling. data-flat and
+# check-flat convert the 64-bit data, so 64 is their default.
+ifneq (,$(filter data-flat check-flat,$(MAKECMDGOALS)))
+  BITS ?= 64
+endif
+BITS ?= 32
+# 1 builds the test objects (test/**) and defines TESTING=1, as on GBA.
+TEST ?= 0
+# As expansion's Makefile: `check` is the test runner build.
+ifeq (check,$(MAKECMDGOALS))
+  TEST := 1
+endif
+GAME_VERSION ?= EMERALD
+MAP_VERSION ?= emerald
+
+ifeq (,$(filter 32 64,$(BITS)))
+  $(error BITS must be 32 or 64, not '$(BITS)')
+endif
+# The object formats data-flat and check-flat convert the data for (the end of this file).
+FLAT_TARGETS := macho-x86_64 coff-x86_64
+ifneq (,$(filter data-flat check-flat,$(MAKECMDGOALS)))
+  ifneq (64,$(BITS))
+    $(error data-flat and check-flat convert the 64-bit data objects: BITS=64, not '$(BITS)')
+  endif
+  ifeq (,$(filter $(FLAT_TARGETS),$(TARGET)))
+    $(error data-flat and check-flat need TARGET=macho-x86_64 or TARGET=coff-x86_64, not '$(TARGET)')
+  endif
+endif
+
+# 1 compiles expansion's objects with AddressSanitizer and
+# UndefinedBehaviorSanitizer and links the sanitized platform library; 0 (the
+# default) neither. The platform's unit tests are always sanitized
+# (platform/Makefile); this is for the game.
+SANITIZE ?= 0
+ifeq (,$(filter 0 1,$(SANITIZE)))
+  $(error SANITIZE must be 0 or 1, not '$(SANITIZE)')
+endif
+
+# The system the executable is built for and its toolchain (TARGET_OS, ...).
+include platform/host.mk
+
+# The Windows build compiles and links with MinGW-w64, which has no sanitizers.
+ifeq ($(TARGET_OS),windows)
+  ifneq ($(SANITIZE),0)
+    $(error TARGET_OS=windows has no sanitized build: MinGW-w64's GCC has no sanitizers)
+  endif
+endif
+
+BUILD_DIR := build
+ifeq ($(TEST),1)
+  OBJ_DIR := $(BUILD_DIR)/native$(BITS)-test
+else
+  OBJ_DIR := $(BUILD_DIR)/native$(BITS)
+endif
+ifeq ($(SANITIZE),1)
+  OBJ_DIR := $(OBJ_DIR)-san
+endif
+# The Windows objects, kept apart from the Linux ones whose data they are made from.
+ELF_OBJ_DIR := $(OBJ_DIR)
+ifeq ($(TARGET_OS),windows)
+  OBJ_DIR := $(OBJ_DIR)-windows
+endif
+# INCGFX outputs are not shared with the GBA build (see GFX: our palettes are padded).
+ASSETS_DIR_NAME := $(BUILD_DIR)/assets-native
+
+# Directory names as expansion's Makefile spells them; the fragments use them.
+C_SUBDIR = src
+DATA_SRC_SUBDIR = src/data
+DATA_ASM_SUBDIR = data
+MID_SUBDIR = sound/songs/midi
+TEST_SUBDIR = test
+
+C_BUILDDIR = $(OBJ_DIR)/$(C_SUBDIR)
+DATA_ASM_BUILDDIR = $(OBJ_DIR)/$(DATA_ASM_SUBDIR)
+MID_BUILDDIR = $(OBJ_DIR)/$(MID_SUBDIR)
+TEST_BUILDDIR = $(OBJ_DIR)/$(TEST_SUBDIR)
+
+SHELL := bash -o pipefail
+
+# --------------------------------------------------------------------------
+# Host toolchain
+
+TARGET_CC ?= gcc
+TARGET_AS ?= as
+PYTHON ?= python3
+
+# A newline, for recipes that run one command per word of a list:
+# $(foreach x,$(LIST),command $(x)$(NEWLINE)).
+define NEWLINE
+
+
+endef
+
+# -funsigned-char: plain char is unsigned on ARM, and the game was written
+# for that ABI. Passed to the preprocessing step too, so <limits.h> agrees.
+include platform/game_flags.mk
+ARCH_FLAGS := -m$(BITS) $(GAME_CHAR_FLAGS) $(TARGET_CFLAGS)
+
+CPP := $(TARGET_CC) -E $(ARCH_FLAGS)
+
+INCLUDE_DIRS := include
+# The repository root is also on the quote path: the guarded modifications of
+# expansion's files include the platform hooks by that path, for example
+# "platform/dma_hooks.h" from include/gba/macro.h.
+INCLUDE_CPP_ARGS := $(INCLUDE_DIRS:%=-iquote %) -iquote .
+INCLUDE_SCANINC_ARGS := $(INCLUDE_DIRS:%=-I %) -I .
+
+# PLATFORM_NATIVE is the single guard macro (docs/RESEARCH.md, "Guard macro").
+NATIVE_EXTRA_CPPFLAGS ?=
+NATIVE_EXTRA_ASFLAGS ?=
+CPPFLAGS := $(INCLUDE_CPP_ARGS) -Wno-trigraphs $(GAME_DEFINES) $(NATIVE_EXTRA_CPPFLAGS) -DTESTING=$(TEST) -D$(GAME_VERSION) -std=gnu17
+# World assembly uses .ifdef symbols; do not let CPP rewrite them to 1.
+ASM_CPPFLAGS = $(filter-out -DPORTABLE=1 -DVER_64BIT=1 -DUBFIX=1,$(CPPFLAGS))
+
+# As in expansion's Makefile: O_LEVEL and DINFO=1 (debug information) do
+# not change the object directory, so clean when switching them.
+O_LEVEL ?= 2
+
+# Expansion's warning set (Makefile, CFLAGS) without -Werror and without the
+# ARM code-generation flags. -fno-pie: the executable is linked non-PIE at a
+# fixed address (docs/ARCHITECTURE.md, "The memory model").
+CFLAGS := $(ARCH_FLAGS) -O$(O_LEVEL) -std=gnu17 -fno-pie \
+          -Wall -Wno-strict-aliasing -Wno-attribute-alias -Woverride-init \
+          -Wnonnull -Wenum-conversion -Wno-pointer-to-int-cast
+ifeq ($(DINFO),1)
+  CFLAGS += -g
+endif
+# The sanitized game build. -fno-sanitize=shift-base: expansion's DMA macros
+# and several files shift a signed int into the sign bit, as in
+# (DMA_ENABLE | ...) << 16; GNU C defines that (it is two's complement), but
+# UBSan's shift-base check reports every one, so that one check is off for
+# expansion's objects only; every other check stays, and platform/ keeps all.
+# Reports in expansion's code are recoverable, so that one run can list them
+# all: UBSan prints and carries on (no -fno-sanitize-recover), and with
+# -fsanitize-recover=address AddressSanitizer does too when run with
+# ASAN_OPTIONS=halt_on_error=0 (by default it still stops at its first
+# report). The platform library always stops at the first.
+#
+# AddressSanitizer's checks are calls, not inline code
+# (asan-instrumentation-with-call-threshold=0): inline, the TEST=1 build's
+# code is about 40 MB and reaches 0x42000000, which platform/script_tag.h's
+# tag bit forbids (gba_regions.ld's ASSERT on etext); as calls it is about
+# 28 MB (measured 2026-10-08), slower but the same checks.
+GAME_SANITIZER_FLAGS := -fsanitize=address,undefined -fno-sanitize=shift-base -fsanitize-recover=address \
+                        -fno-omit-frame-pointer --param=asan-instrumentation-with-call-threshold=0
+ifeq ($(SANITIZE),1)
+  CFLAGS += $(GAME_SANITIZER_FLAGS)
+endif
+# AddressSanitizer's use-after-return detection (on by default at run time)
+# moves address-taken locals to heap frames that are poisoned when the
+# function returns. The battle test runner relies on the opposite: a test
+# function's locals stay where they are after it returns, and the runner
+# writes results into them (test/test_runner_battle.c, InvokeTestFunction;
+# platform/game_hooks.h, PlatformCallWithStack). So the test objects are
+# compiled without that detection (GCC's parameter; GCC 13 has no
+# -fsanitize-address-use-after-return); everything else keeps it.
+GAME_TEST_SANITIZER_FLAGS := --param=asan-use-after-return=0
+
+# preproc's COMPOUND_STRING output relies on '@' being the ARM assembler's
+# comment character; this rewrites it for x86 (see the script's comment).
+C_FILTER_SCRIPT := platform/build_glue/c_filter.sed
+ifeq ($(TARGET_OS),windows)
+  C_FILTER_SCRIPT := platform/build_glue/c_filter_coff.sed
+endif
+C_FILTER := sed -f $(C_FILTER_SCRIPT)
+
+GLUE_DIR := platform/build_glue
+ASM_FILTER_SCRIPT := $(GLUE_DIR)/asm_filter.py
+ASM_FILTER := $(PYTHON) -I $(ASM_FILTER_SCRIPT)
+# The modules the filter imports. Every glue script is run with python3 -I,
+# which keeps the current directory off the import path, so each puts its own
+# directory on it (a comment in each says so).
+ASM_FILTER_MODULES := $(GLUE_DIR)/asm_syntax.py $(GLUE_DIR)/check_support.py
+# The filter and its modules run their self-tests once (per change) before
+# anything uses the filter.
+ASM_FILTER_CHECKED := $(OBJ_DIR)/asm_filter.checked
+# The assembler reads the filtered program on stdin, as every recipe that
+# uses $(AS) pipes into it (expansion's data rules and map_data_rules.mk).
+AS = $(ASM_FILTER) $(ASM_FILTER_POINTERS) | $(TARGET_AS)
+# --noexecstack: the data needs no executable stack (ld warns otherwise).
+ASFLAGS := --$(BITS) --noexecstack --defsym MODERN=1 --defsym $(GAME_VERSION)=1 --defsym PLATFORM_NATIVE=1 $(NATIVE_EXTRA_ASFLAGS)
+
+# The size of the pointers the data is laid out for: the C pointer size, 8
+# at BITS=64 (see the 64-bit note at the top). DATA_POINTER_SIZE=4 at
+# BITS=64 assembles the data with 4-byte pointers; only the relocation
+# check's reference objects are built that way, and the check fails a link
+# of them.
+ifeq ($(BITS),64)
+  DATA_POINTER_SIZE ?= 8
+else
+  DATA_POINTER_SIZE := 4
+endif
+ifeq (,$(filter 4 8,$(DATA_POINTER_SIZE)))
+  $(error DATA_POINTER_SIZE must be 4 or 8, not '$(DATA_POINTER_SIZE)')
+endif
+# Nothing records the pointer size in the objects, so 4-byte data must never
+# land where the 64-bit build keeps its own (the relocation check's reference
+# directory is the only place, see DATA_POINTER4_DIR).
+ifeq ($(BITS)/$(DATA_POINTER_SIZE),64/4)
+  ifeq (,$(filter %/pointer4,$(OBJ_DIR)))
+    $(error DATA_POINTER_SIZE=4 at BITS=64 builds only the relocation check's reference objects (OBJ_DIR .../pointer4), not $(OBJ_DIR))
+  endif
+endif
+# Which of the filter's 8-byte rules apply (asm_filter.py, --input): the
+# songs and the map data say so where their recipes are.
+ASM_FILTER_INPUT := data
+ifeq ($(DATA_POINTER_SIZE),8)
+  ASFLAGS += --defsym NATIVE_POINTER_SIZE_8=1
+  # --source: the file an error message names (the recipes' first prerequisite).
+  ASM_FILTER_POINTERS = --pointer-size 8 --input $(ASM_FILTER_INPUT) --source $<
+  # Made by the three checks of the 64-bit data (below); the link waits for them.
+  # The Windows build has no ELF data of its own: it links the Linux tree's,
+  # converted, after these checks passed there (data-flat waits for them).
+  ifneq ($(TARGET_OS),windows)
+    DATA_LAYOUT_CHECKS := $(OBJ_DIR)/data_relocations.checked $(OBJ_DIR)/data_layout.checked \
+                          $(OBJ_DIR)/battle_script_operands.checked
+  endif
+endif
+
+# --------------------------------------------------------------------------
+# Tools (TOOLS_DIR, the `tools` target) come from expansion's make_tools.mk.
+
+AUTO_GEN_TARGETS :=
+include make_tools.mk
+
+EXE :=
+SMOLTM       := $(TOOLS_DIR)/compresSmol/compresSmolTilemap$(EXE)
+SMOL         := $(TOOLS_DIR)/compresSmol/compresSmol$(EXE)
+# gbagfx behind a wrapper that pads palettes to whole banks (platform/build_glue/gbagfx_pad.sh);
+# the GBA build does not use it and has its own build/assets.
+GFX          := PAD_UNDER=$(ASSETS_DIR_NAME) platform/build_glue/gbagfx_pad.sh
+WAV2AGB      := $(TOOLS_DIR)/wav2agb/wav2agb$(EXE)
+MID          := $(TOOLS_DIR)/mid2agb/mid2agb$(EXE)
+SCANINC      := $(TOOLS_DIR)/scaninc/scaninc$(EXE)
+PREPROC      := $(TOOLS_DIR)/preproc/preproc$(EXE)
+MAPJSON      := $(TOOLS_DIR)/mapjson/mapjson$(EXE)
+JSONPROC     := $(TOOLS_DIR)/jsonproc/jsonproc$(EXE)
+TRAINERPROC  := $(TOOLS_DIR)/trainerproc/trainerproc$(EXE)
+
+MAKEFLAGS += --no-print-directory
+
+.SUFFIXES:
+.SECONDARY:
+.DELETE_ON_ERROR:
+
+RULES_NO_SCAN += clean generated
+.PHONY: objects native platform-lib check check-palette-padding seed-assets $(RULES_NO_SCAN)
+
+.DEFAULT_GOAL := objects
+
+NODEP ?= 0
+SETUP_PREREQS ?= 1
+ifneq (,$(MAKECMDGOALS))
+  ifeq (,$(filter-out $(RULES_NO_SCAN),$(MAKECMDGOALS)))
+    NODEP := 1
+    SETUP_PREREQS := 0
+  endif
+endif
+
+# The .SHELLSTATUS checks below need GNU make 4.2 or later; on an older
+# make the variable never changes and a failed tool build would go unseen.
+ifneq (,$(filter 3.% 4.0 4.0.% 4.1 4.1.%,$(MAKE_VERSION)))
+  $(error Makefile.native needs GNU make 4.2 or later, this is $(MAKE_VERSION))
+endif
+
+.SHELLSTATUS ?= 0
+
+ifeq ($(SETUP_PREREQS),1)
+  # As expansion's Makefile: tools first, then the generated sources scaninc
+  # must be able to see.
+  $(foreach line, $(shell $(MAKE) -f make_tools.mk | sed "s/ /__SPACE__/g"), $(info $(subst __SPACE__, ,$(line))))
+  ifneq ($(.SHELLSTATUS),0)
+    $(error Errors occurred while building tools. See error messages above for more details)
+  endif
+  $(foreach line, $(shell $(MAKE) -f Makefile.native BITS=$(BITS) TEST=$(TEST) MAP_VERSION=$(MAP_VERSION) generated | sed "s/ /__SPACE__/g"), $(info $(subst __SPACE__, ,$(line))))
+  ifneq ($(.SHELLSTATUS),0)
+    $(error Errors occurred while generating map-related sources. See error messages above for more details)
+  endif
+endif
+
+# --------------------------------------------------------------------------
+# Sources: the same wildcards as expansion's Makefile. src/*.s is excluded
+# (ARM code, replaced by the platform layer); asm/*.s does not exist.
+# src/siirtc.c is left out too: it bit-bangs the cartridge's GPIO port, which
+# the native build does not have, and platform/rtc_siirtc.c provides the
+# SiiRtc* API of include/siirtc.h from the platform's clock model instead.
+
+NATIVE_EXCLUDED_SRCS := $(C_SUBDIR)/siirtc.c $(C_SUBDIR)/platform/repeat_repel.c
+C_SRCS_IN := $(filter-out $(NATIVE_EXCLUDED_SRCS),$(wildcard $(C_SUBDIR)/*.c $(C_SUBDIR)/*/*.c $(C_SUBDIR)/*/*/*.c))
+C_SRCS := $(foreach src,$(C_SRCS_IN),$(if $(findstring .inc.c,$(src)),,$(src)))
+C_OBJS := $(patsubst $(C_SUBDIR)/%.c,$(C_BUILDDIR)/%.o,$(C_SRCS))
+
+TEST_SRCS_IN := $(wildcard $(TEST_SUBDIR)/*.c $(TEST_SUBDIR)/*/*.c $(TEST_SUBDIR)/*/*/*.c)
+TEST_SRCS := $(foreach src,$(TEST_SRCS_IN),$(if $(findstring .inc.c,$(src)),,$(src)))
+TEST_OBJS := $(patsubst $(TEST_SUBDIR)/%.c,$(TEST_BUILDDIR)/%.o,$(TEST_SRCS))
+
+DATA_ASM_SRCS := $(wildcard $(DATA_ASM_SUBDIR)/*.s)
+DATA_ASM_OBJS := $(patsubst $(DATA_ASM_SUBDIR)/%.s,$(DATA_ASM_BUILDDIR)/%.o,$(DATA_ASM_SRCS))
+
+MID_SRCS := $(wildcard $(MID_SUBDIR)/*.mid)
+MID_OBJS := $(patsubst $(MID_SUBDIR)/%.mid,$(MID_BUILDDIR)/%.o,$(MID_SRCS))
+
+OBJS := $(C_OBJS) $(DATA_ASM_OBJS) $(MID_OBJS)
+ifeq ($(TEST),1)
+  OBJS += $(TEST_OBJS)
+endif
+# The Windows build's data objects are the converted listings assembled, in
+# coff/ beside the C objects. Not at DATA_ASM_OBJS' paths: map_data_rules.mk
+# gives two of those a recipe that assembles the ELF text. (gba_game.pe.ld
+# finds the game's data by the objects' directories, which coff/ keeps.)
+ifeq ($(TARGET_OS),windows)
+  COFF_DATA_OBJS := $(patsubst $(OBJ_DIR)/%.o,$(OBJ_DIR)/coff/%.o,$(DATA_ASM_OBJS) $(MID_OBJS))
+  OBJS := $(C_OBJS) $(COFF_DATA_OBJS)
+  ifeq ($(TEST),1)
+    OBJS += $(TEST_OBJS)
+  endif
+endif
+
+ifeq ($(SETUP_PREREQS),1)
+  $(shell mkdir -p $(sort $(dir $(OBJS))))
+endif
+
+clean:
+	rm -rf $(BUILD_DIR)/native*/
+
+# --------------------------------------------------------------------------
+# The link
+#
+# Every object plus the platform library (platform/: the hardware modules,
+# the BIOS, the m4a engine, main), linked as the platform's tests are:
+# non-PIE with the executable at 0x40000000, clear of the GBA regions;
+# platform/gba_regions.ld places the regions, EWRAM_INIT and EWRAM_DATA and
+# the test runner's .persistent state at their GBA addresses;
+# platform/gba_game.ld defines what expansion's linker scripts define for
+# the game (gNumMusicPlayers, gMaxLines, __rom_end, __iwram_end, the tests
+# table) and brackets the game's own variables for a soft reset.
+# gInitialMainCB2 is the first main callback, as ld_script_modern.ld and
+# ld_script_test.ld set it; gba_game_objects_linked tells crt0 this is the
+# game, whose objects gba_game.ld must find (crt0.h). SDL2 from pkg-config,
+# libm for the platform.
+ifeq ($(TEST),1)
+  NATIVE_EXE_NAME := pokeemerald-native-test
+  INITIAL_MAIN_CB2 := CB2_TestRunner
+else
+  NATIVE_EXE_NAME := pokeemerald-native
+  INITIAL_MAIN_CB2 := CB2_InitCopyrightScreenAfterBootup
+endif
+NATIVE_EXE := $(OBJ_DIR)/$(NATIVE_EXE_NAME)$(TARGET_EXE_SUFFIX)
+
+# The platform library is built by platform/Makefile, sanitized or not to
+# match (NOSAN=1 puts it in its own directory). It lives under
+# platform/build/, not build/: `make -f Makefile.native clean` leaves it, and
+# `make -C platform clean` removes it (and the unit tests).
+ifeq ($(SANITIZE),1)
+  PLATFORM_LIB := platform/build/$(BITS)/libplatform.a
+  PLATFORM_LIB_ARGS := BITS=$(BITS) HOST_OS=$(HOST_OS) TARGET_OS=$(TARGET_OS)
+  NATIVE_LINK_SANITIZERS := -fsanitize=address,undefined
+else
+  PLATFORM_LIB := platform/build/$(BITS)-nosan/libplatform.a
+  ifeq ($(TARGET_OS),windows)
+    PLATFORM_LIB := platform/build/$(BITS)-windows/libplatform.a
+    # The filler between the regions (platform/gba_regions.pe.ld), made with the library.
+    PLATFORM_GAPS := platform/build/$(BITS)-windows/gba_gaps.o
+  endif
+  PLATFORM_LIB_ARGS := BITS=$(BITS) HOST_OS=$(HOST_OS) TARGET_OS=$(TARGET_OS) NOSAN=1
+  NATIVE_LINK_SANITIZERS :=
+endif
+
+# The version the executable reports (--version, --keys, the F1 overlay;
+# platform/version.h): `git describe` of this tree, matching only a release
+# tag of this project's own (v<number>...), since the history also carries
+# expansion's tags (expansion/1.10.0, 1.11.0), which would name the build
+# after an expansion release it is not; else the abbreviated commit, with
+# "-dirty" for changed files; "unknown" without git. Only the characters a tag
+# or a hash can have are kept, since the value becomes a C string. Passed to
+# platform/Makefile, which defines it for version.c alone, so that ccache
+# keeps hitting on every other object (the C pipeline's notes above); a
+# recursive variable, so git runs only when the library is built.
+NATIVE_VERSION = $(or $(shell git describe --always --dirty --match 'v[0-9]*' 2>/dev/null | tr -cd 'A-Za-z0-9._+-'),unknown)
+
+NATIVE_LINKER_SCRIPTS := platform/$(REGIONS_LD_NAME) platform/$(GAME_LD_NAME)
+NATIVE_LDFLAGS := -m$(BITS) $(GBA_LAYOUT_LDFLAGS) $(GUI_LDFLAGS) \
+                  $(NATIVE_LINKER_SCRIPTS:%=-Wl,-T,%) \
+                  -Wl,--defsym,gInitialMainCB2=$(INITIAL_MAIN_CB2) \
+                  -Wl,--defsym,gba_game_objects_linked=1 $(NATIVE_LINK_SANITIZERS)
+NATIVE_LDLIBS := $(SDL_LIBS) -lm
+# What the executable carries besides code and data (Windows: the UTF-8
+# application manifest, platform/target.mk).
+NATIVE_RESOURCES := $(call target_resources,$(OBJ_DIR))
+# Run on the finished executable; the Windows one cannot be run here, so its
+# layout is read from the file. Files that must sit beside it to run.
+NATIVE_EXE_CHECK :=
+NATIVE_RUNTIME_FILES :=
+ifeq ($(TARGET_OS),windows)
+  NATIVE_EXE_CHECK := $(PYTHON) -I $(GLUE_DIR)/check_pe_layout.py --gui $(NATIVE_EXE)
+  NATIVE_RUNTIME_FILES := $(OBJ_DIR)/SDL2.dll
+endif
+
+# The Windows build runs in two makes (WINDOWS_DATA_CHECKED, "The Windows
+# cross-build" at the end): the first makes the Linux data and converts it, the
+# second compiles and links. Everything else has one.
+ifeq ($(TARGET_OS)/$(WINDOWS_DATA_CHECKED),windows/)
+native objects: windows-data
+	+$(MAKE) -f Makefile.native $@ WINDOWS_DATA_CHECKED=1
+else
+objects: $(OBJS)
+native: $(NATIVE_EXE) $(NATIVE_RUNTIME_FILES)
+endif
+
+# Seeds $(ASSETS_DIR_NAME) from the GBA build's build/assets so that the first native build converts
+# only what differs: copies it (preserving times, so make sees the files as up to date) and deletes
+# every copied .gbapal that is not a whole number of 32-byte banks, which make then regenerates
+# padded (or, for platform/build_glue/unpadded_palettes.txt, as the GBA build has them).
+# Copies, not hard links: gbagfx rewrites a stale output in place, which would reach through a link
+# into the GBA build's file. Run it once, before the first `make ... native`; harmless to repeat.
+seed-assets:
+	@test -d $(BUILD_DIR)/assets || { echo "seed-assets: no $(BUILD_DIR)/assets: build the GBA target first (make)" >&2; exit 1; }
+	mkdir -p $(ASSETS_DIR_NAME)
+	cp -a --no-clobber $(BUILD_DIR)/assets/. $(ASSETS_DIR_NAME)/
+	find $(ASSETS_DIR_NAME) -name '*.gbapal' -type f -size +0 \
+	    | while read -r f; do [ $$(( $$(stat -c %s "$$f") % 32 )) -eq 0 ] || rm -f "$$f"; done
+	@echo "seeded $(ASSETS_DIR_NAME): $$(find $(ASSETS_DIR_NAME) -type f | wc -l) files"
+
+# The zero-padding of palettes (GFX) is right only where the game does not take a palette's
+# size; this fails the build if the list of exceptions and the code disagree (about 1 s).
+check-palette-padding:
+	$(PYTHON) -I platform/build_glue/check_palette_padding.py --self-test
+	$(PYTHON) -I platform/build_glue/check_palette_padding.py
+
+# Always asks platform/Makefile, which knows the library's own prerequisites
+# and leaves it untouched when it is up to date.
+platform-lib: $(if $(filter windows,$(TARGET_OS)),sdl2-mingw)
+	$(MAKE) -C platform lib $(PLATFORM_LIB_ARGS) PLATFORM_VERSION=$(NATIVE_VERSION)
+
+$(PLATFORM_LIB) $(PLATFORM_GAPS): platform-lib ;
+
+# The link also writes the function map platform/symbols.c reads to name the
+# game's callbacks in the replays (symbols.h), beside the executable: one
+# recipe, so that every way of building the executable writes its map, and a
+# map that cannot be written fails the link (.DELETE_ON_ERROR removes the
+# executable).
+$(NATIVE_EXE): $(OBJS) $(PLATFORM_GAPS) $(NATIVE_RESOURCES) $(PLATFORM_LIB) $(NATIVE_LINKER_SCRIPTS) | check-palette-padding $(DATA_LAYOUT_CHECKS)
+	@echo "$(TARGET_CC) <link> -o $@"
+	@$(TARGET_CC) $(NATIVE_LDFLAGS) -o $@ $(OBJS) $(PLATFORM_GAPS) $(NATIVE_RESOURCES) $(PLATFORM_LIB) $(NATIVE_LDLIBS)
+	@$(call write_symbol_map,$@,$@.symbols)
+	$(NATIVE_EXE_CHECK)
+
+# --------------------------------------------------------------------------
+# check: expansion's test suite against the native test runner, through
+# expansion's own hydra, mirroring expansion's `check` target (Makefile):
+# copy the test executable, patch gTestRunnerHeadless and
+# gTestRunnerSkipIsFail into the copy, run the hydra on it. Expansion
+# patches gTestRunnerArgv (TESTS) into the linked ELF; here it goes into the
+# copy too, so a new filter needs no relink. The hydra runs N copies
+# (-jN in MAKEFLAGS, at most 32), each with gTestRunnerN and gTestRunnerI
+# patched in by tools/patchelf (a path relative to the repository root, so
+# this runs from there), through platform/test_runner/native-rom-test in
+# place of mgba-rom-test; the native executable is an ELF whose .symtab
+# names those constants in .rodata, as patchelf needs. The objcopy argument
+# is only used by the hydra on macOS.
+ifeq (check,$(MAKECMDGOALS))
+  ifneq ($(TEST),1)
+    $(error check runs the test runner build; TEST must be 1)
+  endif
+  ifeq ($(TARGET_OS),windows)
+    $(error check runs the suite here; the Windows test runner build (native TEST=1 TARGET_OS=windows) runs on Windows: platform/test_runner/run_windows_suite.sh, docs/BUILDING.md)
+  endif
+endif
+
+PATCHELF := $(TOOLS_DIR)/patchelf/patchelf$(EXE)
+ROMTESTHYDRA := $(TOOLS_DIR)/mgba-rom-test-hydra/mgba-rom-test-hydra$(EXE)
+NATIVE_ROM_TEST := platform/test_runner/native-rom-test
+OBJCOPY ?= objcopy
+NATIVE_TEST_HEADLESS := $(OBJ_DIR)/$(NATIVE_EXE_NAME)-headless
+
+ifeq ($(GITHUB_REPOSITORY_OWNER),rh-hideout)
+TEST_SKIP_IS_FAIL := \x01
+else
+TEST_SKIP_IS_FAIL := \x00
+endif
+
+# With SANITIZE=1 the runners report and carry on (halt_on_error=0, for the
+# game's recoverable checks), and a report that does stop (the platform
+# library's, which never recover) aborts instead of exiting, so that
+# crash_reboot reboots the runner and the hydra counts that test as CRASH
+# rather than losing the rest of its partition (abort_on_error=1); UBSan
+# prints a stack for each report. The caller's ASAN_OPTIONS and
+# UBSAN_OPTIONS come last and win.
+ifeq ($(SANITIZE),1)
+  CHECK_ENV := ASAN_OPTIONS="halt_on_error=0:abort_on_error=1:$$ASAN_OPTIONS" \
+               UBSAN_OPTIONS="print_stacktrace=1:$$UBSAN_OPTIONS"
+else
+  CHECK_ENV :=
+endif
+
+# check-tools (tools/patchelf, tools/mgba-rom-test-hydra) is make_tools.mk's.
+check: $(NATIVE_EXE) check-tools
+	@cp $(NATIVE_EXE) $(NATIVE_TEST_HEADLESS)
+	$(PATCHELF) $(NATIVE_TEST_HEADLESS) gTestRunnerArgv "$(TESTS:%*=%)\0" gTestRunnerHeadless '\x01' gTestRunnerSkipIsFail "$(TEST_SKIP_IS_FAIL)"
+	$(CHECK_ENV) $(ROMTESTHYDRA) $(NATIVE_ROM_TEST) $(OBJCOPY) $(NATIVE_TEST_HEADLESS)
+
+# --------------------------------------------------------------------------
+# Expansion's rule fragments, unchanged.
+
+include graphics_file_rules.mk
+include map_data_rules.mk
+include spritesheet_rules.mk
+include json_data_rules.mk
+include audio_rules.mk
+include trainer_rules.mk
+
+# --------------------------------------------------------------------------
+# Mirrored from Makefile (asset rules that are not in a fragment). Keep in
+# sync with expansion's Makefile when upgrading.
+
+LEARNSET_HELPERS_DIR := $(TOOLS_DIR)/learnset_helpers
+LEARNSET_HELPERS_DATA_DIR := $(LEARNSET_HELPERS_DIR)/porymoves_files
+LEARNSET_HELPERS_BUILD_DIR := $(LEARNSET_HELPERS_DIR)/build
+ALL_LEARNABLES_JSON := $(DATA_SRC_SUBDIR)/pokemon/all_learnables.json
+ALL_TUTORS_JSON := $(LEARNSET_HELPERS_BUILD_DIR)/all_tutors.json
+ALL_TEACHING_TYPES_JSON := $(LEARNSET_HELPERS_BUILD_DIR)/all_teaching_types.json
+
+WILD_ENCOUNTERS_TOOL_DIR := $(TOOLS_DIR)/wild_encounters
+AUTO_GEN_TARGETS += $(DATA_SRC_SUBDIR)/wild_encounters.h
+
+MISC_TOOL_DIR := $(TOOLS_DIR)/misc
+AUTO_GEN_TARGETS += $(INCLUDE_DIRS)/constants/script_commands.h
+
+$(DATA_SRC_SUBDIR)/wild_encounters.h: $(DATA_SRC_SUBDIR)/wild_encounters.json $(WILD_ENCOUNTERS_TOOL_DIR)/wild_encounters_to_header.py $(INCLUDE_DIRS)/config/overworld.h $(INCLUDE_DIRS)/config/dexnav.h
+	python3 $(WILD_ENCOUNTERS_TOOL_DIR)/wild_encounters_to_header.py
+
+$(INCLUDE_DIRS)/constants/script_commands.h: $(MISC_TOOL_DIR)/make_scr_cmd_constants.py $(DATA_ASM_SUBDIR)/script_cmd_table.inc
+	python3  $(MISC_TOOL_DIR)/make_scr_cmd_constants.py
+
+generated: $(AUTO_GEN_TARGETS)
+	@:
+
+%.s:   ;
+%.png: ;
+%.pal: ;
+%.wav: ;
+
+%.1bpp:     %.png  ; $(GFX) $< $@
+%.4bpp:     %.png  ; $(GFX) $< $@
+%.8bpp:     %.png  ; $(GFX) $< $@
+%.gbapal:   %.pal  ; $(GFX) $< $@
+%.gbapal:   %.png  ; $(GFX) $< $@
+%.lz:       %      ; $(GFX) $< $@
+%.smolTM:   %      ; $(SMOLTM) $< $@
+%.fastSmol: %      ; $(SMOL) -w $< $@ false false false
+%.smol:     %      ; $(SMOL) -w $< $@
+%.rl:       %      ; $(GFX) $< $@
+
+TEACHABLE_DEPS := $(ALL_LEARNABLES_JSON) $(INCLUDE_DIRS)/constants/tms_hms.h $(INCLUDE_DIRS)/config/pokemon.h $(DATA_SRC_SUBDIR)/pokemon/special_movesets.json $(INCLUDE_DIRS)/config/pokedex_plus_hgss.h $(LEARNSET_HELPERS_DIR)/make_teachables.py
+
+$(LEARNSET_HELPERS_BUILD_DIR):
+	@mkdir -p $@
+
+$(ALL_LEARNABLES_JSON):
+	python3 $(LEARNSET_HELPERS_DIR)/make_learnables.py $(LEARNSET_HELPERS_DATA_DIR) $@
+
+$(ALL_TUTORS_JSON): $(shell find data/ -type f -name '*.inc')  $(LEARNSET_HELPERS_DIR)/make_tutors.py | $(LEARNSET_HELPERS_BUILD_DIR)
+	python3 $(LEARNSET_HELPERS_DIR)/make_tutors.py $@
+
+$(ALL_TEACHING_TYPES_JSON): $(wildcard $(DATA_SRC_SUBDIR)/pokemon/species_info/*_families.h)  $(LEARNSET_HELPERS_DIR)/make_teaching_types.py | $(LEARNSET_HELPERS_BUILD_DIR)
+	python3 $(LEARNSET_HELPERS_DIR)/make_teaching_types.py $@
+
+$(DATA_SRC_SUBDIR)/pokemon/teachable_learnsets.h: $(TEACHABLE_DEPS) | $(ALL_TUTORS_JSON) $(ALL_TEACHING_TYPES_JSON)
+	python3 $(LEARNSET_HELPERS_DIR)/make_teachables.py $(LEARNSET_HELPERS_BUILD_DIR)
+
+$(DATA_SRC_SUBDIR)/tutor_moves.h: $(DATA_SRC_SUBDIR)/pokemon/special_movesets.json | $(ALL_TUTORS_JSON)
+	python3 $(LEARNSET_HELPERS_DIR)/make_teachables.py  --tutors $(LEARNSET_HELPERS_BUILD_DIR)
+
+# Per-file flags, as expansion's Makefile sets them (the host-relevant part).
+$(C_BUILDDIR)/librfu_intr.o: CFLAGS += -fno-toplevel-reorder
+$(C_BUILDDIR)/agb_flash.o: CFLAGS += -fno-toplevel-reorder
+$(C_BUILDDIR)/berry_crush.o: CFLAGS += -Wno-address-of-packed-member
+$(C_BUILDDIR)/pokedex_plus_hgss.o: CFLAGS := $(filter-out -Wnonnull -Wenum-conversion,$(CFLAGS))
+$(C_BUILDDIR)/data.o: CFLAGS += -fno-show-column -fno-diagnostics-show-caret
+$(C_BUILDDIR)/graphics.o: CFLAGS += -Wno-missing-braces
+
+$(C_BUILDDIR)/move_relearner.o: $(C_SUBDIR)/move_relearner.c $(DATA_SRC_SUBDIR)/tutor_moves.h
+$(C_BUILDDIR)/pokemon.o: $(C_SUBDIR)/pokemon.c $(DATA_SRC_SUBDIR)/pokemon/teachable_learnsets.h
+
+# --------------------------------------------------------------------------
+# C
+
+# The recipes for src/ and test/ are the same; recursive variables, so that
+# $< and $@ are those of the rule that uses them. The filtered text goes to
+# a file beside the object (obj.i) and the compiler reads that file, because
+# ccache cannot cache a compile whose source is standard input. The compiler
+# puts the name of its input file into the object as the file symbol, so the
+# symbol is obj.i where the pipe gave <stdin> (and, with DINFO=1, so is the
+# debug information's name for it); nothing else in the object or the
+# executable changes. The file exists only for the compile: it is
+# removed whether the compile succeeds or not, and `&&` keeps a failed
+# preprocessing step from reaching the compiler.
+C_PREPROCESSED = $(@:.o=.i)
+COMPILE_C = $(CPP) $(CPPFLAGS) $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(C_FILTER) > $(C_PREPROCESSED) \
+            && $(TARGET_CC) $(CFLAGS) -c -x c -o $@ $(C_PREPROCESSED); status=$$?; rm -f $(C_PREPROCESSED); exit $$status
+SCAN_C = $(SCANINC) -M $@ -g $(ASSETS_DIR_NAME) $(INCLUDE_SCANINC_ARGS) $<
+
+$(C_BUILDDIR)/%.o: $(C_SUBDIR)/%.c $(C_FILTER_SCRIPT)
+	@echo "$(TARGET_CC) <flags> -o $@ $<"
+	@$(COMPILE_C)
+
+$(C_BUILDDIR)/%.d: $(C_SUBDIR)/%.c
+	$(SCAN_C)
+
+ifneq ($(NODEP),1)
+-include $(addprefix $(OBJ_DIR)/,$(C_SRCS:.c=.d))
+endif
+
+ifeq ($(TEST),1)
+# include/test/overworld_script.h gives inline assembly the event script
+# macros through `.include`. Its native branch includes this one file
+# instead: the same files flattened by preproc (which also drops the '@'
+# comments) and rewritten by the asm filter, found on the test objects'
+# assembler include path. The few macros named like x86 instructions
+# (call, nop, lock, inc) would replace those instructions in the rest of the
+# object, so overworld_macros.py purges them at the end of that file and
+# puts them in two more, which each OVERWORLD_SCRIPT block includes around
+# its script (see the script's comment).
+OVERWORLD_SCRIPT_FLAT := $(TEST_BUILDDIR)/overworld_script_flat.inc
+OVERWORLD_SCRIPT_MACROS := $(TEST_BUILDDIR)/overworld_script_macros.inc
+OVERWORLD_SCRIPT_X86_MACROS := $(TEST_BUILDDIR)/overworld_script_x86_macros.inc
+OVERWORLD_SCRIPT_X86_PURGE := $(TEST_BUILDDIR)/overworld_script_x86_purge.inc
+OVERWORLD_SCRIPT_MACRO_SRCS := constants/gba_constants.inc asm/macros/asm.inc asm/macros/event.inc
+OVERWORLD_MACROS_SCRIPT := platform/build_glue/overworld_macros.py
+
+$(OVERWORLD_SCRIPT_FLAT): $(OVERWORLD_SCRIPT_MACRO_SRCS) $(DATA_ASM_SUBDIR)/script_cmd_table.inc $(DATA_ASM_SUBDIR)/specials.inc $(ASM_FILTER_CHECKED)
+	printf '.include "%s"\n' $(OVERWORLD_SCRIPT_MACRO_SRCS) | $(PREPROC) -i $(@:.inc=.s) charmap.txt | $(ASM_FILTER) > $@
+
+$(OVERWORLD_SCRIPT_MACROS): $(OVERWORLD_SCRIPT_FLAT) $(OVERWORLD_MACROS_SCRIPT)
+	$(PYTHON) -I $(OVERWORLD_MACROS_SCRIPT) --self-test
+	$(PYTHON) -I $(OVERWORLD_MACROS_SCRIPT) --as "$(TARGET_AS) --$(BITS)" $< $@ $(OVERWORLD_SCRIPT_X86_MACROS) $(OVERWORLD_SCRIPT_X86_PURGE)
+
+# overworld_macros.py writes all three files in one run. GNU make before 4.3
+# (which Makefile.native still supports) has no grouped targets, and an empty
+# recipe here would let a deleted file count as made; this recipe only checks
+# the file is there, and says how to get it back if it is not.
+$(OVERWORLD_SCRIPT_X86_MACROS) $(OVERWORLD_SCRIPT_X86_PURGE): $(OVERWORLD_SCRIPT_MACROS)
+	@test -f $@ || { echo "$@ is missing: delete $(OVERWORLD_SCRIPT_MACROS) and build again" >&2; exit 1; }
+
+$(TEST_OBJS): $(OVERWORLD_SCRIPT_MACROS) $(OVERWORLD_SCRIPT_X86_MACROS) $(OVERWORLD_SCRIPT_X86_PURGE)
+$(TEST_OBJS): CFLAGS += -Wa,-I,$(TEST_BUILDDIR)
+# At 64 bits GCC raises the alignment of a global of 32 bytes or more to 32,
+# so the 40-byte struct Test entries of .tests (include/test/test.h) would sit
+# 64 bytes apart while test/test_runner.c walks __start_tests..__stop_tests as
+# an array. -malign-data=abi keeps the ABI's 8-byte alignment (40-byte
+# spacing). Only the objects that put data in .tests need it; crt0_init checks
+# the table (platform/crt0.c). BITS=32 is unchanged: the flag is not passed.
+ifeq ($(BITS),64)
+$(TEST_OBJS): CFLAGS += -malign-data=abi
+endif
+ifeq ($(SANITIZE),1)
+$(TEST_OBJS): CFLAGS += $(GAME_TEST_SANITIZER_FLAGS)
+endif
+
+$(TEST_BUILDDIR)/%.o: $(TEST_SUBDIR)/%.c $(C_FILTER_SCRIPT)
+	@echo "$(TARGET_CC) <flags> -o $@ $<"
+	@$(COMPILE_C)
+
+$(TEST_BUILDDIR)/%.d: $(TEST_SUBDIR)/%.c
+	$(SCAN_C)
+
+ifneq ($(NODEP),1)
+-include $(addprefix $(OBJ_DIR)/,$(TEST_SRCS:.c=.d))
+endif
+endif
+
+# --------------------------------------------------------------------------
+# Data assembly: expansion's recipe, with $(AS) being the filter plus the
+# host assembler. map_data_rules.mk supplies maps.o and map_events.o, which
+# are mapjson's output to the filter's 8-byte rules. The Windows build does
+# not assemble the data: it assembles the Linux tree's, converted ("The
+# Windows cross-build", at the end).
+ifneq ($(TARGET_OS),windows)
+
+$(DATA_ASM_BUILDDIR)/maps.o $(DATA_ASM_BUILDDIR)/map_events.o: private ASM_FILTER_INPUT := mapjson
+
+$(DATA_ASM_BUILDDIR)/%.o: $(DATA_ASM_SUBDIR)/%.s
+	$(PREPROC) -s $< charmap.txt | $(CPP) $(ASM_CPPFLAGS) $(INCLUDE_SCANINC_ARGS) - | $(PREPROC) -ie $< charmap.txt | $(AS) $(ASFLAGS) -o $@
+
+$(DATA_ASM_BUILDDIR)/%.d: $(DATA_ASM_SUBDIR)/%.s
+	$(SCANINC) -M $@ -g $(ASSETS_DIR_NAME) $(INCLUDE_SCANINC_ARGS) -I "" $<
+
+ifneq ($(NODEP),1)
+-include $(addprefix $(OBJ_DIR)/,$(DATA_ASM_SRCS:.s=.d))
+endif
+
+# Songs. The GBA recipe (audio_rules.mk) hands the file to `as` directly and
+# lets it `.include "MPlayDef.s"` from sound/; here the song is filtered on
+# its way in and MPlayDef.s is found as a filtered copy in $(OBJ_DIR)/sound.
+# Same target and prerequisite pattern as audio_rules.mk, so this replaces it.
+MPLAYDEF_NATIVE := $(OBJ_DIR)/sound/MPlayDef.s
+
+$(MID_BUILDDIR)/%.o: $(MID_ASM_DIR)/%.s
+	$(ASM_FILTER) $(ASM_FILTER_POINTERS) < $< | $(TARGET_AS) $(ASFLAGS) -I $(dir $(MPLAYDEF_NATIVE)) -o $@
+
+$(MID_OBJS): $(MPLAYDEF_NATIVE)
+$(MID_OBJS): private ASM_FILTER_INPUT := song
+
+$(MPLAYDEF_NATIVE): sound/MPlayDef.s $(ASM_FILTER_CHECKED)
+	@mkdir -p $(@D)
+	$(ASM_FILTER) < $< > $@
+
+# Every object assembled through the filter (map_data_rules.mk's maps.o and
+# map_events.o included) waits for its self-test.
+$(DATA_ASM_OBJS) $(MID_OBJS): $(ASM_FILTER_CHECKED)
+
+endif
+
+# Also the Windows test runner build's: its test objects' event scripts
+# (OVERWORLD_SCRIPT_FLAT) go through the filter.
+$(ASM_FILTER_CHECKED): $(ASM_FILTER_SCRIPT) $(ASM_FILTER_MODULES)
+	@mkdir -p $(@D)
+	$(ASM_FILTER) --self-test
+	$(foreach module,$(ASM_FILTER_MODULES),$(PYTHON) -I $(module) --self-test$(NEWLINE))
+	@touch $@
+
+# The 64-bit link checks the data it assembled against the C that reads it,
+# with three checks, each of which says what it checks in its own header:
+# the address words (check_relocations.py, against data_address_words.txt and
+# the same objects assembled with 4-byte pointers), the bytes of the structs
+# (check_data_layout.py, against the layouts data_layout_probe.c prints
+# compiled with the game's flags, and the same reference objects) and the
+# battle script macros against src/battle_script_commands.c
+# (check_battle_script_operands.py). The checkers and the modules they share
+# run their self-tests first, once per change.
+ifeq ($(DATA_POINTER_SIZE)/$(TARGET_OS),8/Linux)
+CHECK_RELOCATIONS_SCRIPT := $(GLUE_DIR)/check_relocations.py
+CHECK_DATA_LAYOUT_SCRIPT := $(GLUE_DIR)/check_data_layout.py
+CHECK_BATTLE_SCRIPTS_SCRIPT := $(GLUE_DIR)/check_battle_script_operands.py
+CHECKER_MODULES := $(addprefix $(GLUE_DIR)/,asm_syntax.py check_support.py elf_object.py preprocessor_conditions.py)
+CHECKER_SELF_TESTS := $(OBJ_DIR)/checkers.self-tested
+
+# The reference objects: the same sources assembled with 4-byte pointers by a
+# second make, under $(DATA_POINTER4_DIR) for this purpose only. The stamp is
+# older than the 64-bit objects when their sources or the filter changed, which
+# is when the reference is stale; the second make decides what to rebuild.
+DATA_POINTER4_DIR := $(OBJ_DIR)/pointer4
+CHECKED_DATA_OBJS := $(patsubst $(OBJ_DIR)/%,%,$(DATA_ASM_OBJS) $(MID_OBJS))
+DATA_POINTER4_BUILT := $(OBJ_DIR)/pointer4.built
+
+$(DATA_POINTER4_BUILT): $(DATA_ASM_OBJS) $(MID_OBJS)
+	@echo "$(MAKE) -f Makefile.native BITS=$(BITS) TEST=$(TEST) DATA_POINTER_SIZE=4 OBJ_DIR=$(DATA_POINTER4_DIR) <data objects>"
+	@+$(MAKE) -f Makefile.native BITS=$(BITS) TEST=$(TEST) DATA_POINTER_SIZE=4 OBJ_DIR=$(DATA_POINTER4_DIR) \
+	    $(addprefix $(DATA_POINTER4_DIR)/,$(CHECKED_DATA_OBJS))
+	@touch $@
+
+$(CHECKER_SELF_TESTS): $(CHECK_RELOCATIONS_SCRIPT) $(CHECK_DATA_LAYOUT_SCRIPT) $(CHECK_BATTLE_SCRIPTS_SCRIPT) \
+                       $(CHECKER_MODULES)
+	$(foreach script,$^,$(PYTHON) -I $(script) --self-test$(NEWLINE))
+	@touch $@
+
+DATA_ADDRESS_WORDS := $(GLUE_DIR)/data_address_words.txt
+CHECK_RELOCATIONS = $(PYTHON) -I $(CHECK_RELOCATIONS_SCRIPT) --list $(DATA_ADDRESS_WORDS) --objdir $(OBJ_DIR) \
+                    --reference $(DATA_POINTER4_DIR)
+
+$(OBJ_DIR)/data_relocations.checked: $(DATA_POINTER4_BUILT) $(CHECKER_SELF_TESTS) $(DATA_ADDRESS_WORDS)
+	@echo "$(CHECK_RELOCATIONS) <data objects>"
+	@$(CHECK_RELOCATIONS) $(CHECKED_DATA_OBJS)
+	@touch $@
+
+DATA_LAYOUT_PROBE := $(GLUE_DIR)/data_layout_probe.c
+DATA_LAYOUTS := $(OBJ_DIR)/data_layout32.txt $(OBJ_DIR)/data_layout64.txt
+
+$(OBJ_DIR)/data_layout%.txt: $(DATA_LAYOUT_PROBE)
+	@mkdir -p $(@D)
+	$(TARGET_CC) -m$* $(GAME_CHAR_FLAGS) $(CPPFLAGS) -MMD -MP -MT $@ -MF $(@:.txt=.d) -o $(@:.txt=.probe) $<
+	$(@:.txt=.probe) > $@
+
+ifneq ($(NODEP),1)
+-include $(DATA_LAYOUTS:.txt=.d)
+endif
+
+$(OBJ_DIR)/data_layout.checked: $(DATA_POINTER4_BUILT) $(CHECKER_SELF_TESTS) $(DATA_LAYOUTS)
+	$(PYTHON) -I $(CHECK_DATA_LAYOUT_SCRIPT) --layout32 $(OBJ_DIR)/data_layout32.txt \
+	    --layout64 $(OBJ_DIR)/data_layout64.txt --objdir $(OBJ_DIR) --reference $(DATA_POINTER4_DIR)
+	@touch $@
+
+BATTLE_SCRIPT_MACROS := asm/macros/battle_script.inc
+BATTLE_SCRIPT_COMMANDS := $(C_SUBDIR)/battle_script_commands.c
+BATTLE_SCRIPT_Z_MOVE := $(C_SUBDIR)/battle_z_move.c
+
+$(OBJ_DIR)/battle_script_operands.checked: $(CHECKER_SELF_TESTS) $(BATTLE_SCRIPT_MACROS) $(BATTLE_SCRIPT_COMMANDS) \
+                                           $(BATTLE_SCRIPT_Z_MOVE)
+	$(PYTHON) -I $(CHECK_BATTLE_SCRIPTS_SCRIPT) $(BATTLE_SCRIPT_MACROS) $(BATTLE_SCRIPT_COMMANDS) $(BATTLE_SCRIPT_Z_MOVE)
+	@touch $@
+endif
+
+# --------------------------------------------------------------------------
+# The data converted for macOS and Windows (docs/DECISIONS.md, "The data for
+# Windows and macOS is assembled on Linux and converted"); not part of the
+# Linux build. `data-flat TARGET=macho-x86_64|coff-x86_64` writes, for each
+# 64-bit data object (data/*.o and the songs), the listing
+# platform/build_glue/elf_to_flat.py makes of it, at the object's path under
+# $(OBJ_DIR)/flat/$(TARGET)/ with .s for .o. `check-flat TARGET=...`
+# assembles each listing with clang ($(FLAT_CLANG)) beside it and compares
+# the object with the ELF one (check_flat.py), which removes an object that
+# differs. Both start from the data the three 64-bit checks passed. The
+# 16-bit words take their values from one table over all the objects
+# (FLAT_SYMBOLS), rewritten only when it changes, so one changed object
+# remakes one listing.
+FLAT_CLANG ?= clang
+ELF_TO_FLAT_SCRIPT := $(GLUE_DIR)/elf_to_flat.py
+CHECK_FLAT_SCRIPT := $(GLUE_DIR)/check_flat.py
+FLAT_MODULES := $(addprefix $(GLUE_DIR)/,check_support.py elf_object.py macho_object.py coff_object.py)
+FLAT_DIR := $(OBJ_DIR)/flat
+FLAT_SELF_TESTS := $(FLAT_DIR)/converter.self-tested
+FLAT_SYMBOLS := $(FLAT_DIR)/absolute_symbols.txt
+FLAT_TARGET_DIR := $(FLAT_DIR)/$(TARGET)
+FLAT_SOURCES := $(DATA_ASM_OBJS) $(MID_OBJS)
+FLAT_LISTINGS := $(patsubst $(OBJ_DIR)/%.o,$(FLAT_TARGET_DIR)/%.s,$(FLAT_SOURCES))
+
+data-flat: $(FLAT_LISTINGS)
+check-flat: $(FLAT_LISTINGS:.s=.o)
+.PHONY: data-flat check-flat
+
+$(FLAT_SELF_TESTS): $(ELF_TO_FLAT_SCRIPT) $(CHECK_FLAT_SCRIPT) $(FLAT_MODULES)
+	@mkdir -p $(@D)
+	$(foreach script,$^,$(PYTHON) -I $(script) --self-test$(NEWLINE))
+	@touch $@
+
+$(FLAT_SYMBOLS): $(FLAT_SOURCES) $(FLAT_SELF_TESTS) $(DATA_LAYOUT_CHECKS)
+	@echo "$(PYTHON) -I $(ELF_TO_FLAT_SCRIPT) --symbols $@ <data objects>"
+	@$(PYTHON) -I $(ELF_TO_FLAT_SCRIPT) --symbols $@ $(FLAT_SOURCES)
+
+$(FLAT_TARGET_DIR)/%.s: $(OBJ_DIR)/%.o $(FLAT_SYMBOLS) $(FLAT_SELF_TESTS)
+	@mkdir -p $(@D)
+	$(PYTHON) -I $(ELF_TO_FLAT_SCRIPT) --target $(TARGET) --symbols $(FLAT_SYMBOLS) --output $@ $<
+
+$(FLAT_TARGET_DIR)/%.o: $(FLAT_TARGET_DIR)/%.s $(OBJ_DIR)/%.o $(FLAT_SYMBOLS) $(FLAT_SELF_TESTS)
+	$(PYTHON) -I $(CHECK_FLAT_SCRIPT) --target $(TARGET) --symbols $(FLAT_SYMBOLS) --listing $< --output $@ \
+	    --clang $(FLAT_CLANG) $(OBJ_DIR)/$*.o
+
+# --------------------------------------------------------------------------
+# The Windows cross-build (TARGET_OS=windows, docs/BUILDING.md, "Windows
+# (cross-build from Linux)"):
+#
+#   make -f Makefile.native -j32 native BITS=64 TARGET_OS=windows
+#
+# links build/native64-windows/pokeemerald-native.exe with MinGW-w64
+# (platform/target.mk has the toolchain and the flags); with TEST=1, the test
+# runner build, build/native64-test-windows/pokeemerald-native-test.exe, which
+# runs on Windows (platform/test_runner/run_windows_suite.sh). It is made in two
+# makes, because the data cannot be a prerequisite of the make that needs it:
+#   1. windows-data: the Linux tree's 64-bit data objects and their three
+#      checks, then the COFF listings of them (data-flat) compared with the ELF
+#      objects (check-flat, TARGET=coff-x86_64), by a make for the build
+#      machine's own target (TARGET_OS=$(HOST_OS)) into build/native64/
+#      (TEST=1: build/native64-test/);
+#   2. this make, again, with WINDOWS_DATA_CHECKED=1: the C objects, the data
+#      objects (the listings assembled by MinGW's as), the platform library,
+#      and the link. A listing that check-flat rejects stops the first make,
+#      so the second never starts.
+# Assets and generated headers do not depend on the target and are shared.
+
+SDL2_MINGW_VERSION := 2.30.12
+SDL2_MINGW_TARBALL := SDL2-devel-$(SDL2_MINGW_VERSION)-mingw.tar.gz
+SDL2_MINGW_URL := https://github.com/libsdl-org/SDL/releases/download/release-$(SDL2_MINGW_VERSION)/$(SDL2_MINGW_TARBALL)
+SDL2_MINGW_SHA256 := dddafbf0705a8cbe1f97c69680886ce147ed4d38f1d04e03523681298e081b0f
+SDL2_MINGW_ROOT := $(BUILD_DIR)/sdl2-mingw
+SDL2_MINGW_STAMP := $(SDL2_MINGW_ROOT)/$(SDL2_MINGW_TARBALL).unpacked
+
+.PHONY: sdl2-mingw windows-data
+sdl2-mingw: $(SDL2_MINGW_STAMP)
+
+# SDL2's development package for MinGW-w64 (headers, import library, SDL2.dll),
+# the newest 2.30 release, which is the series the Linux build uses. Fetched
+# here, not committed: the download is checked against the sha256 above before
+# anything is unpacked, and a mismatch removes it and stops. SDL is under the
+# zlib licence, which allows this and shipping SDL2.dll beside the executable
+# (https://www.libsdl.org/license.php). Only the x86_64 tree and the licence are
+# unpacked, into build/sdl2-mingw/x86_64-w64-mingw32/ (SDL2_MINGW_DIR).
+$(SDL2_MINGW_STAMP):
+	rm -rf $(SDL2_MINGW_ROOT)
+	mkdir -p $(SDL2_MINGW_ROOT)
+	curl --fail --location --silent --show-error --output $(SDL2_MINGW_ROOT)/$(SDL2_MINGW_TARBALL) $(SDL2_MINGW_URL)
+	echo "$(SDL2_MINGW_SHA256)  $(SDL2_MINGW_ROOT)/$(SDL2_MINGW_TARBALL)" | sha256sum --check --status \
+	    || { echo "sdl2-mingw: $(SDL2_MINGW_TARBALL) does not match its recorded sha256 $(SDL2_MINGW_SHA256)" >&2; \
+	         rm -f $(SDL2_MINGW_ROOT)/$(SDL2_MINGW_TARBALL); exit 1; }
+	tar -xzf $(SDL2_MINGW_ROOT)/$(SDL2_MINGW_TARBALL) -C $(SDL2_MINGW_ROOT) --strip-components=1 \
+	    SDL2-$(SDL2_MINGW_VERSION)/x86_64-w64-mingw32 SDL2-$(SDL2_MINGW_VERSION)/LICENSE.txt
+	touch $@
+
+ifeq ($(TARGET_OS),windows)
+
+# SDL2.dll, which the executable imports, next to it.
+$(OBJ_DIR)/SDL2.dll: $(SDL2_MINGW_STAMP)
+	cp $(SDL2_MINGW_ROOT)/x86_64-w64-mingw32/bin/SDL2.dll $@
+
+windows-data:
+	+$(MAKE) -f Makefile.native check-flat TARGET=coff-x86_64 BITS=64 TARGET_OS=$(HOST_OS) TEST=$(TEST) SANITIZE=0
+
+# The listings, in the Linux tree.
+WINDOWS_FLAT_DIR := $(ELF_OBJ_DIR)/flat/coff-x86_64
+
+$(COFF_DATA_OBJS): $(OBJ_DIR)/coff/%.o: $(WINDOWS_FLAT_DIR)/%.s
+	@mkdir -p $(@D)
+	$(TARGET_AS) -o $@ $<
+
+endif

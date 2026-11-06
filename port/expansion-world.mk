@@ -1,0 +1,17 @@
+# Whole-source World-on-Expansion candidate. Run from the patched donor root.
+# These flags must reach recursive pointer-width reference builds too.
+export NATIVE_EXTRA_CPPFLAGS := -DPORTABLE=1 -DVER_64BIT=1 -DUBFIX=1 -DCOOP_FULL_SIX_READY=1 -DGENERATED_MAP_READY=1 -DGENERATED_MAP_AUTOTILE=1 -DGENERATED_MAP_LARGE=1 -DGENERATED_MAP_WILDS=1 -DGENERATED_CAVE_PROFILES=1 -DGENERATED_CAVE_BIOMES=1 -DGENERATED_CAVE_WILDLIFE=1 -DWORLD_EXTENDED_OBJECTS=1 -DWORLD_EXTENDED_SPRITES=1 -DWORLD_NATIVE_OAM=1 -DWORLD_NATIVE_TILEBANK=1 -DWORLD_NATIVE_EWRAM=1 -DWORLD_MATCHED_TRAINERS=1 -DWORLD_SMOOTH_PRESENCE=1 -DGENERATED_WILDS_GUIDE=1 -DGENERATED_WILDS_CAST=1 -DGENERATED_WILDS_EVENTS=1 -DGENERATED_WORLD_XL=1 -DGENERATED_WILDS_SHARED_TERRAIN=1 -DGENERATED_WILDS_SHARED_GEOMETRY=1 -DGENERATED_WILDS_LARGE_TERRAIN=1
+export WORLD_NATIVE_CPPFLAGS := -DWORLD_NATIVE_OAM=1 -DWORLD_NATIVE_TILEBANK=1 -DWORLD_NATIVE_EWRAM=1
+export NATIVE_EXTRA_ASFLAGS := --defsym PORTABLE=1 --defsym VER_64BIT=1 --defsym UBFIX=1
+include Makefile.native
+NATIVE_LDFLAGS += -Wl,--defsym=gba_native_vram_size=0x20000 -Wl,--defsym=gba_native_ewram_size=0x80000 -Wl,-rpath-link,/usr/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu/pulseaudio
+
+# Optional test-only file relay. Never included in the normal game binary.
+ifneq ($(EW_TEST_RELAY_SOURCE),)
+EW_TEST_RELAY_OBJECT := $(OBJ_DIR)/test_coop_file_relay.o
+$(EW_TEST_RELAY_OBJECT): $(EW_TEST_RELAY_SOURCE)
+	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+$(NATIVE_EXE): $(EW_TEST_RELAY_OBJECT)
+NATIVE_LDLIBS += $(EW_TEST_RELAY_OBJECT)
+NATIVE_LDFLAGS += $(foreach f,WorldRuntime_BeforeFrame WorldActivity_Update LinkTransport_Init LinkTransport_Pump LinkTransport_Offer LinkTransport_Close,-Wl,--wrap=$(f))
+endif

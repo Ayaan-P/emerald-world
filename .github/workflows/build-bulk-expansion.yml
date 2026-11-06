@@ -1,0 +1,135 @@
+name: Build whole-source Expansion candidate
+on:
+  pull_request:
+    paths:
+      - 'port/**'
+      - 'scripts/apply_bulk_expansion_port.py'
+      - 'test/test_apply_bulk_expansion_port.py'
+      - 'test/test_initial_resolutions.py'
+      - 'test/test_movement_capacity.py'
+      - 'test/test_saved_object_bounds.py'
+      - 'test/test_expansion_battle_header.py'
+      - 'test/generated_area_replay.py'
+      - 'test/coop_relay/**'
+      - '.github/workflows/build-bulk-expansion.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Test port preparation
+        run: |
+          python3 -m unittest discover -s test -p test_apply_bulk_expansion_port.py -v
+          python3 -m unittest discover -s test -p test_initial_resolutions.py -v
+          python3 -m unittest discover -s test -p test_movement_capacity.py -v
+          python3 -m unittest discover -s test -p test_saved_object_bounds.py -v
+      - name: Apply candidate to clean pinned donor
+        run: python3 scripts/apply_bulk_expansion_port.py engines/expansion-native
+      - name: Test offline Expansion battle packet headers
+        run: python3 -m unittest discover -s test -p test_expansion_battle_header.py -v
+      - name: Install native build prerequisites
+        timeout-minutes: 30
+        run: |
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y build-essential gcc-multilib python3 pkg-config libpng-dev libsdl2-dev gdb
+      - name: Compile whole-source candidate
+        id: build_candidate
+        working-directory: engines/expansion-native
+        shell: bash
+        run: |
+          set -o pipefail
+          make -f "$GITHUB_WORKSPACE/port/expansion-world.mk" -k -j2 native BITS=64 2>&1 | tee "$RUNNER_TEMP/bulk-build.log"
+      - name: Replay offline opening and save round trip
+        working-directory: engines/expansion-native
+        timeout-minutes: 10
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: tests/smoke/run.sh build/native64/pokeemerald-native "$RUNNER_TEMP/bulk-smoke"
+      - name: Exercise two games with offline file relay
+        if: steps.build_candidate.outcome == 'success'
+        working-directory: engines/expansion-native
+        timeout-minutes: 10
+        run: |
+          if [ ! -f "$RUNNER_TEMP/bulk-smoke/work/pokeemerald.sav" ]; then
+            echo "The offline opening did not produce a disposable save." >&2
+            exit 1
+          fi
+          make -f "$GITHUB_WORKSPACE/port/expansion-world.mk" -j2 native BITS=64 \
+            NATIVE_EXE="$RUNNER_TEMP/coop-file-relay-game" \
+            EW_TEST_RELAY_SOURCE="$GITHUB_WORKSPACE/test/coop_relay/fake_link_files.c"
+          python3 "$GITHUB_WORKSPACE/test/coop_relay/run.py" "$RUNNER_TEMP/coop-file-relay-game" \
+            "$RUNNER_TEMP/bulk-smoke/work/pokeemerald.sav" "$RUNNER_TEMP/bulk-coop"
+      - name: Replay offline generated-area entry
+        if: steps.build_candidate.outcome == 'success'
+        working-directory: engines/expansion-native
+        timeout-minutes: 7
+        run: python3 "$GITHUB_WORKSPACE/test/generated_area_replay.py" build/native64/pokeemerald-native . "$RUNNER_TEMP/bulk-generated"
+      - name: Diagnose failed offline replay
+        if: failure()
+        working-directory: engines/expansion-native
+        timeout-minutes: 5
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          if [ -x build/native64/pokeemerald-native ] && [ ! -f "$RUNNER_TEMP/bulk-smoke/work/27_continued.txt" ]; then
+            mkdir -p "$RUNNER_TEMP/bulk-debug"
+            gdb -batch -ex run -ex 'x/12i $pc-16' -ex 'info registers' -ex 'thread apply all bt full' --args \
+              build/native64/pokeemerald-native --headless --silent --unthrottled \
+              --replay tests/smoke/opening.replay --out "$RUNNER_TEMP/bulk-debug" \
+              --save "$RUNNER_TEMP/bulk-debug/player.sav" \
+              --rtc-offset "$RUNNER_TEMP/bulk-debug/player.rtc" --rtc-fixed 1700000000 \
+              2>&1 | tee "$RUNNER_TEMP/bulk-gdb.log"
+          fi
+      - name: Diagnose failed generated-area replay
+        if: failure()
+        working-directory: engines/expansion-native
+        timeout-minutes: 7
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          if [ -x build/native64/pokeemerald-native ] && [ -f "$RUNNER_TEMP/bulk-generated/generated.replay" ]; then
+            mkdir -p "$RUNNER_TEMP/bulk-generated-debug"
+            EW_GENERATED_MAP="$RUNNER_TEMP/bulk-generated/cave.bin" \
+              gdb -batch -ex run -ex 'x/12i $pc-16' -ex 'info registers' -ex 'thread apply all bt full' --args \
+              build/native64/pokeemerald-native --headless --silent --unthrottled \
+              --replay "$RUNNER_TEMP/bulk-generated/generated.replay" --out "$RUNNER_TEMP/bulk-generated-debug" \
+              --save "$RUNNER_TEMP/bulk-generated-debug/player.sav" \
+              --rtc-offset "$RUNNER_TEMP/bulk-generated-debug/player.rtc" --rtc-fixed 1700000000 \
+              2>&1 | tee "$RUNNER_TEMP/bulk-generated-gdb.log"
+          fi
+      - name: Preserve failed replay and trace
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bulk-expansion-smoke-debug
+          path: |
+            ${{ runner.temp }}/bulk-smoke/work/*.log
+            ${{ runner.temp }}/bulk-smoke/work/*.txt
+            ${{ runner.temp }}/bulk-smoke/work/24_start_menu.ppm
+            ${{ runner.temp }}/bulk-gdb.log
+            ${{ runner.temp }}/bulk-generated-gdb.log
+            ${{ runner.temp }}/bulk-generated/*.log
+            ${{ runner.temp }}/bulk-generated/out/*.txt
+            ${{ runner.temp }}/bulk-coop/*/*.log
+            ${{ runner.temp }}/bulk-coop/*/events
+            ${{ runner.temp }}/bulk-coop/*/report
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Preserve candidate build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bulk-expansion-build-log
+          path: ${{ runner.temp }}/bulk-build.log
+          if-no-files-found: ignore
+          retention-days: 7
