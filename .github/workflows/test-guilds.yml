@@ -6,6 +6,7 @@ on:
       - 'world/server.py'
       - 'src/platform/world_chat.c'
       - 'test/test_guilds.py'
+      - 'test/test_guild_chat_gate.py'
       - '.github/workflows/test-guilds.yml'
   workflow_dispatch:
 permissions:
@@ -18,4 +19,4 @@ jobs:
         with:
           persist-credentials: false
       - name: Test guild membership and private chat without sockets
-        run: python3 -m unittest discover -s test -p test_guilds.py -v
+        run: python3 -m unittest discover -s test -p 'test_guild*.py' -v
