@@ -27,7 +27,8 @@ class SnapshotInterop(unittest.TestCase):
    def snapshot(self,conn):return []
   server.rally=Rally()
   alice={'id':'Alice','state':[0,9,4,6,1,7,1],'social':True,'field':True,'peer_limit':8}
-  bob={'id':'Bob','state':[0,9,5,6,2,7,1],'field':True,'closing':False}
+  # A social FIELD peer remains visible even when interaction-ready is false.
+  bob={'id':'Bob','state':[0,9,5,6,2,7,0],'field':True,'closing':False}
   server.peers={'Alice':alice,'Bob':bob}
   snapshot=server._snapshot(alice)
   with tempfile.TemporaryDirectory() as d:

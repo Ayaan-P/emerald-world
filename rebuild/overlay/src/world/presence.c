@@ -167,22 +167,22 @@ static void fingerprint(const void *data,size_t len,char out[17])
 }
 static void publish(void)
 {
-    char party[17],bag[17];unsigned group=0,map=0,x=0,y=0,face=1,gfx=7,ready=0;
+    char party[17],bag[17];unsigned group=0,map=0,x=0,y=0,face=1,gfx=7,ready=0,field=0;
     if (sPresence.fd<0 || sPresence.connecting || !sPresence.wire.welcomed || sPresence.outUsed || sPresence.seq==UINT_MAX) return;
     if (field_ready()) {
         const struct ObjectEvent *player=&gObjectEvents[gPlayerAvatar.objectEventId];
         int px=player->currentCoords.x-MAP_OFFSET,py=player->currentCoords.y-MAP_OFFSET;
         if (px>=0 && py>=0 && px<=1024 && py<=1024 && player->facingDirection>=1 && player->facingDirection<=4 && player->graphicsId<=255) {
             group=gSaveBlock1Ptr->location.mapGroup;map=gSaveBlock1Ptr->location.mapNum;x=px;y=py;
-            face=player->facingDirection;gfx=player->graphicsId;ready=!ScriptContext_IsEnabled();
+            face=player->facingDirection;gfx=player->graphicsId;field=1;ready=!ScriptContext_IsEnabled();
         }
     }
     fingerprint(gPlayerParty,sizeof(gPlayerParty),party);
     if (gSaveBlock1Ptr) fingerprint(&gSaveBlock1Ptr->bag,sizeof(gSaveBlock1Ptr->bag),bag);
     else fingerprint(NULL,0,bag);
-    if (!ready) {group=map=x=y=0;face=1;gfx=7;}
-    sPresence.outUsed=snprintf(sPresence.out,sizeof(sPresence.out),"STATE %u %u %u %u %u %u %u %u %s %s\n",
-        ++sPresence.seq,group,map,x,y,face,gfx,ready,party,bag);
+    if (!field) {group=map=x=y=0;face=1;gfx=7;}
+    sPresence.outUsed=snprintf(sPresence.out,sizeof(sPresence.out),"%s %u %u %u %u %u %u %u %u %s %s\n",
+        field ? "FIELD" : "STATE",++sPresence.seq,group,map,x,y,face,gfx,ready,party,bag);
     sPresence.outSent=0;
 }
 static u16 safe_graphics(unsigned gfx)
