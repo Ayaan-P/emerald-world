@@ -7,7 +7,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <errno.h>
-#define PAYLOAD_SIZE (1 + 4 * (6 + 1466 + 184 + 16129))
+#define PAYLOAD_SIZE (1 + 64 * (6 + 64))
 #define HEADER_SIZE 12
 #define SNAPSHOT_SIZE (HEADER_SIZE + PAYLOAD_SIZE)
 static FILE *sFile;
@@ -16,7 +16,7 @@ static unsigned sCurrent;
 static uint32_t get32(const unsigned char *p){return (uint32_t)p[0]|((uint32_t)p[1]<<8)|((uint32_t)p[2]<<16)|((uint32_t)p[3]<<24);}
 static void put32(unsigned char *p,uint32_t v){p[0]=v;p[1]=v>>8;p[2]=v>>16;p[3]=v>>24;}
 static uint32_t checksum(const unsigned char *p){uint32_t h=2166136261u;size_t i;for(i=0;i<SNAPSHOT_SIZE;i++)if(i<8||i>=12){h^=p[i];h*=16777619u;}return h;}
-static bool valid(const unsigned char *p){return !memcmp(p,"XLP1",4) && get32(p+8)==checksum(p);}
+static bool valid(const unsigned char *p){return !memcmp(p,"XLP2",4) && get32(p+8)==checksum(p);}
 void XLProgressStore_Close(void){if(sFile){fclose(sFile);sFile=NULL;}memset(sJournal,0,sizeof(sJournal));sCurrent=0;}
 bool XLProgressStore_Init(const char *savePath,bool enabled,void *payload,size_t size)
 {
@@ -52,7 +52,7 @@ bool XLProgressStore_Save(const void *payload,size_t size)
     if(!sFile || !payload || size!=PAYLOAD_SIZE)return false;
     if(fstat(fileno(sFile),&info)!=0 || (info.st_mode&077)!=0){XLProgressStore_Close();return false;}
     next=sCurrent^1;sequence=valid(sJournal[sCurrent])?get32(sJournal[sCurrent]+4)+1:1;
-    memset(sJournal[next],0,SNAPSHOT_SIZE);memcpy(sJournal[next],"XLP1",4);put32(sJournal[next]+4,sequence);memcpy(sJournal[next]+HEADER_SIZE,payload,size);put32(sJournal[next]+8,checksum(sJournal[next]));
+    memset(sJournal[next],0,SNAPSHOT_SIZE);memcpy(sJournal[next],"XLP2",4);put32(sJournal[next]+4,sequence);memcpy(sJournal[next]+HEADER_SIZE,payload,size);put32(sJournal[next]+8,checksum(sJournal[next]));
     if(!write_slot(next,sJournal[next])){XLProgressStore_Close();return false;}
     sCurrent=next;return true;
 }

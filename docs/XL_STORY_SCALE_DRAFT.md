@@ -1,0 +1,5 @@
+# Scalable offline XL story identity
+
+This draft replaces full-map copies in the opt-in offline story cache with the SHA-256 digest of the canonical XL event file, plus the trainer ID. It raises the bounded FIFO cache from four to 64 entries and reduces its two-snapshot sidecar from roughly 140 KB to under 10 KB. The digest covers every map, cast and graph byte; the native implementation is checked against Python's SHA-256. The existing journal still updates only the inactive slot and falls back to session-only if storage is unsafe or invalid.
+
+The new experimental sidecar uses XLP2 and deliberately does not migrate or overwrite XLP1 from the earlier draft. POSIX persistence is opt-in; Windows remains session-only. The 64-entry bound can still evict old entries. Native CI attempts an actual offline game restart with state restoration, but until CI passes it is unverified. No real model, visual or multiplayer test is implied. This stacks #220 and predecessors; integration remains separate.

@@ -12,6 +12,7 @@
 #include "platform/generated_map.h"
 #if GENERATED_WORLD_XL && GENERATED_WILDS_EVENTS
 #include "platform/xl_progress_store.h"
+#include "platform/world_cave_wire.h"
 #endif
 #if GENERATED_WILDS_EVENTS
 #include "field_camera.h"
@@ -90,26 +91,27 @@ static bool8 sXLCastStaged;
 #endif
 static struct WarpEvent sXLWarp;static struct MapEvents sXLEvents;
 #if GENERATED_WILDS_EVENTS
-#define XL_PROGRESS_SLOTS 4
-static struct {bool8 valid;u8 trainer[4],state,events[GENERATED_EVENT_BYTES],cast[GENERATED_CAST_BYTES],cells[XL_CELLS];} sXLProgress[XL_PROGRESS_SLOTS];
+#define XL_PROGRESS_SLOTS 64
+static struct {bool8 valid;u8 trainer[4],state,identity[64];} sXLProgress[XL_PROGRESS_SLOTS];
 static u8 sXLProgressCurrent=0xFF,sXLProgressNext;
-#define XL_PROGRESS_SLOT_BYTES (6 + GENERATED_EVENT_BYTES + GENERATED_CAST_BYTES + XL_CELLS)
+#define XL_PROGRESS_SLOT_BYTES (6 + 64)
 #define XL_PROGRESS_PAYLOAD_BYTES (1 + XL_PROGRESS_SLOTS * XL_PROGRESS_SLOT_BYTES)
 static u8 sXLProgressPayload[XL_PROGRESS_PAYLOAD_BYTES];static bool8 sXLProgressDurable;
 static void XLProgressPack(void)
 {
     unsigned i;u8 *p=sXLProgressPayload;*p++=sXLProgressNext;
     for(i=0;i<XL_PROGRESS_SLOTS;i++){*p++=sXLProgress[i].valid;memcpy(p,sXLProgress[i].trainer,4);p+=4;*p++=sXLProgress[i].state;
-        memcpy(p,sXLProgress[i].events,GENERATED_EVENT_BYTES);p+=GENERATED_EVENT_BYTES;memcpy(p,sXLProgress[i].cast,GENERATED_CAST_BYTES);p+=GENERATED_CAST_BYTES;memcpy(p,sXLProgress[i].cells,XL_CELLS);p+=XL_CELLS;}
+        memcpy(p,sXLProgress[i].identity,64);p+=64;}
 }
 static bool8 XLProgressUnpack(void)
 {
     unsigned i;const u8 *p=sXLProgressPayload;
     if(*p>=XL_PROGRESS_SLOTS)return FALSE;
-    for(i=0;i<XL_PROGRESS_SLOTS;i++){const u8 *r=p+1+i*XL_PROGRESS_SLOT_BYTES;if(r[0]>1 || r[5]>15)return FALSE;}
+    for(i=0;i<XL_PROGRESS_SLOTS;i++){const u8 *r=p+1+i*XL_PROGRESS_SLOT_BYTES;unsigned j;if(r[0]>1 || r[5]>15)return FALSE;
+        if(r[0])for(j=0;j<64;j++)if(!((r[6+j]>='0' && r[6+j]<='9') || (r[6+j]>='a' && r[6+j]<='f')))return FALSE;}
     sXLProgressNext=*p++;
     for(i=0;i<XL_PROGRESS_SLOTS;i++){sXLProgress[i].valid=*p++;memcpy(sXLProgress[i].trainer,p,4);p+=4;sXLProgress[i].state=*p++;
-        memcpy(sXLProgress[i].events,p,GENERATED_EVENT_BYTES);p+=GENERATED_EVENT_BYTES;memcpy(sXLProgress[i].cast,p,GENERATED_CAST_BYTES);p+=GENERATED_CAST_BYTES;memcpy(sXLProgress[i].cells,p,XL_CELLS);p+=XL_CELLS;}
+        memcpy(sXLProgress[i].identity,p,64);p+=64;}
     return TRUE;
 }
 bool8 GeneratedMap_InitXLProgress(const char *savePath,bool8 enabled)
@@ -125,16 +127,14 @@ static void XLProgressPersist(void)
 }
 static void XLRestoreEventProgress(void)
 {
-    unsigned i;const u8 *trainer;
+    unsigned i;const u8 *trainer;char identity[65];
     sXLProgressCurrent=0xFF;
     if(!sXLActive || !sEventActive || WorldBridge_Enabled() || !gSaveBlock2Ptr)return;
-    trainer=gSaveBlock2Ptr->playerTrainerId;
+    trainer=gSaveBlock2Ptr->playerTrainerId;WorldCaveWire_XLEventDigest(sEventData,sCastMetadata,sXLTemplate,identity);
     for(i=0;i<XL_PROGRESS_SLOTS;i++)if(sXLProgress[i].valid && !memcmp(sXLProgress[i].trainer,trainer,4)
-       && !memcmp(sXLProgress[i].events,sEventData,GENERATED_EVENT_BYTES) && !memcmp(sXLProgress[i].cast,sCastMetadata,GENERATED_CAST_BYTES)
-       && !memcmp(sXLProgress[i].cells,sXLTemplate,XL_CELLS)) {sXLProgressCurrent=i;sEventState=sXLProgress[i].state;return;}
+       && !memcmp(sXLProgress[i].identity,identity,64)) {sXLProgressCurrent=i;sEventState=sXLProgress[i].state;return;}
     i=sXLProgressNext;sXLProgressNext=(sXLProgressNext+1)%XL_PROGRESS_SLOTS;
-    memcpy(sXLProgress[i].trainer,trainer,4);memcpy(sXLProgress[i].events,sEventData,GENERATED_EVENT_BYTES);
-    memcpy(sXLProgress[i].cast,sCastMetadata,GENERATED_CAST_BYTES);memcpy(sXLProgress[i].cells,sXLTemplate,XL_CELLS);
+    memcpy(sXLProgress[i].trainer,trainer,4);memcpy(sXLProgress[i].identity,identity,64);
     sXLProgress[i].state=sEventState;sXLProgress[i].valid=TRUE;sXLProgressCurrent=i;
 }
 static void XLRememberEventProgress(void)

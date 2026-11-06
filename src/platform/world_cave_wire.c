@@ -36,16 +36,16 @@ static void Digest(const u8 *cells, u8 version, u8 profile, const u8 *wildlife, 
     static const u8 magic[8]={'E','W','G','M','A','P','0','1'};
     static const char alphabet[]="0123456789abcdef";
     u32 state[8]={0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
-    u8 block[64]; unsigned i,j,offset; const unsigned extra = version == 9 ? WORLD_CAVE_EVENT_BYTES + WORLD_CAVE_CAST_BYTES : version == 8 ? WORLD_CAVE_CAST_BYTES : version == 7 ? WORLD_CAVE_GUIDE_BYTES : (version == 3 || version == 5) ? 38 : version == 2 ? 1 : 0;
-    const unsigned count = version >= 4 ? WORLD_CAVE_LARGE_CELLS : WORLD_CAVE_CELLS;
+    u8 block[64]; unsigned i,j,offset; const unsigned extra = (version == 9 || version == 12) ? WORLD_CAVE_EVENT_BYTES + WORLD_CAVE_CAST_BYTES : version == 8 ? WORLD_CAVE_CAST_BYTES : version == 7 ? WORLD_CAVE_GUIDE_BYTES : (version == 3 || version == 5) ? 38 : version == 2 ? 1 : 0;
+    const unsigned count = version == 12 ? WORLD_CAVE_XL_CELLS : version >= 4 ? WORLD_CAVE_LARGE_CELLS : WORLD_CAVE_CELLS;
     const unsigned length=8+extra+count, padded=((length+9+63)/64)*64;
     for(offset=0;offset<padded;offset+=64) {
         memset(block,0,sizeof(block));
         for(i=0;i<64;i++) {
             unsigned p=offset+i;
-            if(p<8) block[i]=(p==7 && version>=2) ? ('0' + version) : magic[p];
-            else if(version==9 && p<8+WORLD_CAVE_EVENT_BYTES) block[i]=events[p-8];
-            else if(version==9 && p<8+WORLD_CAVE_EVENT_BYTES+WORLD_CAVE_CAST_BYTES) block[i]=cast[p-8-WORLD_CAVE_EVENT_BYTES];
+            if(p<8) block[i]=(p==7 && version>=2) ? (version==12 ? 'C' : '0' + version) : magic[p];
+            else if((version==9 || version==12) && p<8+WORLD_CAVE_EVENT_BYTES) block[i]=events[p-8];
+            else if((version==9 || version==12) && p<8+WORLD_CAVE_EVENT_BYTES+WORLD_CAVE_CAST_BYTES) block[i]=cast[p-8-WORLD_CAVE_EVENT_BYTES];
             else if(version==8 && p<8+WORLD_CAVE_CAST_BYTES) block[i]=cast[p-8];
             else if(version==7 && p<8+WORLD_CAVE_GUIDE_BYTES) block[i]=guide[p-8];
             else if(extra && p==8) block[i]=profile;
@@ -64,6 +64,10 @@ static void Digest(const u8 *cells, u8 version, u8 profile, const u8 *wildlife, 
         hex[(i*4+j)*2]=alphabet[byte>>4];hex[(i*4+j)*2+1]=alphabet[byte&15];
     }
     hex[64]=0;
+}
+void WorldCaveWire_XLEventDigest(const u8 *events,const u8 *cast,const u8 *cells,char hex[65])
+{
+    Digest(cells,12,0,NULL,NULL,cast,events,hex);
 }
 bool8 WorldCaveWire_ValidId(const char *id)
 {

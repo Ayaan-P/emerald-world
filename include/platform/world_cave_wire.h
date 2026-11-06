@@ -36,6 +36,7 @@
 #define WORLD_CAVE_EVENT_BYTES 1466
 #define WORLD_CAVE_GUIDE_BYTES 59
 #define WORLD_CAVE_CAST_BYTES 184
+#define WORLD_CAVE_XL_CELLS (127 * 127)
 #define WORLD_CAVE_LARGE_SIDE 63
 #define WORLD_CAVE_LARGE_CELLS (WORLD_CAVE_LARGE_SIDE * WORLD_CAVE_LARGE_SIDE)
 #define WORLD_CAVE_SIDE 31
@@ -75,5 +76,6 @@ struct WorldCaveWire
 int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned count, const char *const *tokens);
 void WorldCaveWire_Reset(struct WorldCaveWire *wire);
 bool8 WorldCaveWire_ValidId(const char *id);
+void WorldCaveWire_XLEventDigest(const u8 *events,const u8 *cast,const u8 *cells,char hex[65]);
 #endif
 #endif
