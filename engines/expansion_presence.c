@@ -22,6 +22,7 @@ void ExpansionPeers_Update(int overworld);
 void ExpansionActivity_Update(void);
 void ExpansionCave_Update(void);
 void ExpansionDexNav_Update(void);
+bool8 ExpansionDexNav_Unlocked(void);
 int ExpansionActivity_PresenceReady(void);
 int ExpansionTrade_PairValid(const void *data, size_t size);
 unsigned ExpansionPeers_Count(void);
@@ -84,6 +85,8 @@ enum frame_result __wrap_frame_run(void)
                           frame_count(), field ? "true" : "false", group, num, x, y, ExpansionPeers_Count(), facing, gfx, link_state == 1 && LinkTransport_Ready() ? "true" : "false",
                           field && ExpansionActivity_PresenceReady() ? "true" : "false",
                           trade_valid < 0 ? "null" : trade_valid ? "true" : "false");
+        if (getenv("EW_EXPANSION_DEXNAV_AUDIT"))
+            fprintf(out, ",\"dexnav_unlocked\":%s", ExpansionDexNav_Unlocked() ? "true" : "false");
         if (getenv("EW_EXPANSION_BATTLE_AUDIT")) {
             if (!strcmp(battle, "1")) fprintf(out, ",\"battle_turn\":%u", (unsigned)gBattleResults.battleTurnCounter);
             else fputs(",\"battle_turn\":null", out);

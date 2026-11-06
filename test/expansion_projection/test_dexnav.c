@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdlib.h>
 static int unlocked;
+int FlagGet(int id){assert(id==0x4007);return unlocked;}
 void FlagSet(int id){assert(id==0x4007);unlocked=1;}
 void FlagClear(int id){assert(id==0x4007);unlocked=0;}
 int ExpansionDexNav_Enabled(void);void ExpansionDexNav_Update(void);

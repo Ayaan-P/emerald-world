@@ -15,3 +15,8 @@ void ExpansionDexNav_Update(void)
     if (ExpansionDexNav_Enabled()) FlagSet(DN_FLAG_DEXNAV_GET);
     else FlagClear(DN_FLAG_DEXNAV_GET);
 }
+
+bool8 ExpansionDexNav_Unlocked(void)
+{
+    return FlagGet(DN_FLAG_DEXNAV_GET);
+}
