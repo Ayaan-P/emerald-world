@@ -63,7 +63,7 @@ def run(binary,seed,out):
             game.tap('START',gap=30);game.tap('UP');game.tap('A',gap=60);game.tap('UP');game.tap('A',gap=90)
             driver.wait_until(game,lambda s:tuple(s.map)==origin[0] and s.free)
             if game.state.pos!=origin[1]:raise RuntimeError('guided wilds returned to wrong position')
-            game.tap('START',gap=30);game.tap('DOWN',times=5);game.tap('A',gap=60);game.tap('DOWN',times=2);game.tap('A',gap=90)
+            game.tap('START',gap=30);game.tap('DOWN');game.tap('A',gap=60);game.tap('DOWN',times=2);game.tap('A',gap=90)
             driver.wait_until(game,lambda s:s.map_name=='GeneratedWorld_Wilds' and s.free)
             if game.state.event_state!=3:raise RuntimeError(f'event progress did not survive re-entry: {game.state.event_state}')
             game.tap('START',gap=30);game.tap('UP');game.tap('A',gap=60);game.tap('UP');game.tap('A',gap=90)
