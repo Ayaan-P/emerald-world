@@ -33,3 +33,11 @@ with the existing world's virtual-cable command validation and frame hooks.
 The donor checkout is not modified and generation fails if expected source
 anchors change. This is a work-in-progress engine port, not a claim that battle,
 trade, consent flows or co-op work; no real LINK session has been tested.
+
+Experimental LINK channels identify the Expansion ABI as `LINKEXP1`. A new
+server rejects battle/trade/tag offers between that label and legacy vanilla
+LINK channels before consent or command handling. This is a compatibility
+label supplied by the client, not authentication or proof of executable
+integrity. Incompatible Expansion ABI revisions must use a new label. Older
+servers do not recognize the label, so experimental LINK remains unavailable
+there rather than silently negotiating a potentially incompatible session.

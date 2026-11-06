@@ -22,7 +22,7 @@ $(EW_PEERS): ../expansion_peers.c
 # cable state machine. PORTABLE is defined only for these two isolated objects.
 $(EW_LINK): ../../src/platform/link_transport.c
 	@mkdir -p $(@D)
-	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -DPORTABLE -iquote ../../include -c $< -o $@
+	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -DPORTABLE -DEMERALD_WORLD_EXPANSION_LINK -iquote ../../include -c $< -o $@
 $(EW_CABLE): ../../src/platform/native_link.c
 	@mkdir -p $(@D)
 	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -DPORTABLE -iquote ../../include -c $< -o $@

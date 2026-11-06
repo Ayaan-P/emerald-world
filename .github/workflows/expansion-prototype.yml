@@ -32,6 +32,8 @@ jobs:
       - name: Build pinned Expansion donor and adapter
         working-directory: engines/expansion-native
         run: make -f ../expansion.mk -j2 native BITS=64
+      - name: Check Expansion LINK compatibility role
+        run: strings engines/expansion-native/build/native64/pokeemerald-native | grep -F 'HELLO 1 %s %s LINKEXP1'
       - name: Run donor opening and save smoke test
         working-directory: engines/expansion-native
         run: tests/smoke/run.sh build/native64/pokeemerald-native /tmp/expansion-smoke
