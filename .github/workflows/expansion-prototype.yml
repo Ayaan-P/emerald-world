@@ -1,0 +1,33 @@
+name: Expansion prototype build
+on:
+  pull_request:
+    paths:
+      - 'engines/**'
+      - 'world/expansion.py'
+      - 'test/expansion_projection/**'
+      - '.github/workflows/expansion-prototype.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Install build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y build-essential gcc-multilib python3 pkg-config libpng-dev libsdl2-dev
+      - name: Check isolated projection tests
+        run: |
+          python3 -m unittest discover -s test/expansion_projection -v
+          gcc -D_POSIX_C_SOURCE=200809L -std=c11 -Wall -Wextra -Werror -Itest/expansion_projection/stubs engines/expansion_peers.c test/expansion_projection/test_projection.c -o /tmp/expansion-projection-test
+          /tmp/expansion-projection-test
+      - name: Build pinned Expansion donor and adapter
+        working-directory: engines/expansion-native
+        run: make -f ../expansion.mk -j2 native BITS=64
+      - name: Run donor opening and save smoke test
+        working-directory: engines/expansion-native
+        run: tests/smoke/run.sh build/native64/pokeemerald-native /tmp/expansion-smoke
