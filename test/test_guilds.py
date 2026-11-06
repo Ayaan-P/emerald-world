@@ -108,6 +108,14 @@ class GuildTests(unittest.TestCase):
             count=db.execute('SELECT COUNT(*) FROM guild_posts').fetchone()[0]
             self.assertEqual(count,20);self.assertEqual(len(g.command('Bob','board')),8)
             g.command('Alice','clear');self.assertEqual(g.command('Bob','board'),['Guild board is empty.']);db.close()
+    def test_meetup_requires_simultaneous_current_members_and_finishes_once(self):
+        self.g.command('Alice','create Rockets');self.g.command('Alice','invite Bob');self.g.command('Bob','accept Rockets')
+        self.g.command('Alice','meet start Route101 2')
+        self.assertIsNone(self.g.complete_meet('Alice','Route101',['Alice','Eve']))
+        self.assertIsNone(self.g.complete_meet('Alice','Other',['Alice','Bob']))
+        self.assertEqual(self.g.complete_meet('Bob','Route101',['Alice','Bob']),('Rockets','Route101',2,['Alice','Bob']))
+        self.assertIsNone(self.g.complete_meet('Bob','Route101',['Alice','Bob']))
+        self.assertIn('complete',self.g.command('Alice','meet')[0])
     def test_expedition_survives_restart_with_member_progress(self):
         with tempfile.TemporaryDirectory() as d:
             path=str(Path(d)/'world.db');db=database(path);catalog={(0,9):{'name':'Route101'}};g=guilds.Guilds(db,catalog)
@@ -223,6 +231,21 @@ class ChatIntegrationTests(unittest.TestCase):
         visit('Bob')
         self.assertTrue(any('expedition complete' in x for x in self.lines('Alice')))
         self.assertTrue(any('expedition complete' in x for x in self.lines('Bob')))
+        self.assertEqual(self.lines('Eve'),[])
+    def test_meetup_requires_fresh_ready_reports_at_same_time(self):
+        self.send('Alice','/guild create Rockets');self.send('Alice','/guild invite Bob');self.send('Bob','/guild accept Rockets')
+        def report(name,ready=1):
+            conn=self.s.peers[name];kind='STATE' if ready else 'FIELD'
+            raw=f"{kind} {conn['seq']+1} 0 9 5 6 1 7 {ready} {'0'*16} {'0'*16}".encode()
+            self.s._line(conn,raw)
+        report('Alice');self.send('Alice','/guild meet start here 2');report('Alice')
+        self.s.peers['Alice']['state_time']=time.monotonic()-10
+        self.s.peers['Alice']['guild_last_ready_time']=time.monotonic()-10
+        report('Bob')
+        self.assertFalse(any('meetup complete' in x for x in self.lines('Bob')))
+        report('Alice',1)
+        self.assertTrue(any('meetup complete' in x for x in self.lines('Alice')))
+        self.assertTrue(any('meetup complete' in x for x in self.lines('Bob')))
         self.assertEqual(self.lines('Eve'),[])
     def test_ordinary_public_chat_unchanged(self):
         self.send('Alice','hello everyone')

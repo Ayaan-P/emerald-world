@@ -32,6 +32,9 @@ class Guilds:
                 id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id INTEGER NOT NULL,
                 trainer TEXT NOT NULL, body TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS guild_posts_guild ON guild_posts(guild_id,id);
+            CREATE TABLE IF NOT EXISTS guild_meetups (
+                guild_id INTEGER PRIMARY KEY, map_name TEXT NOT NULL,
+                goal INTEGER NOT NULL, complete INTEGER NOT NULL DEFAULT 0);
             CREATE TABLE IF NOT EXISTS guild_expeditions (
                 guild_id INTEGER PRIMARY KEY, map_name TEXT NOT NULL,
                 goal INTEGER NOT NULL, complete INTEGER NOT NULL DEFAULT 0);
@@ -65,10 +68,12 @@ class Guilds:
             raise GuildError('Invalid guild command.')
         words = command.split()
         if not words or words == ['help']:
-            return ['protocol 1', '/guild create NAME | /guild invite TRAINER', '/guild list | /guild apply NAME | /guild invites | /guild accept NAME', '/guild applications | /guild approve TRAINER | /guild reject TRAINER', '/guild info | /guild roster | /guild online | /guild leave', '/guild expedition shows your current expedition.', '/guild post MESSAGE | /guild board | /guild clear', '/guild kick TRAINER | /guild transfer TRAINER | /guild disband', '/g MESSAGE sends guild-only chat.']
+            return ['protocol 1', '/guild create NAME | /guild invite TRAINER', '/guild list | /guild apply NAME | /guild invites | /guild accept NAME', '/guild applications | /guild approve TRAINER | /guild reject TRAINER', '/guild info | /guild roster | /guild online | /guild leave', '/guild expedition and /guild meet show group goals.', '/guild post MESSAGE | /guild board | /guild clear', '/guild kick TRAINER | /guild transfer TRAINER | /guild disband', '/g MESSAGE sends guild-only chat.']
         op, args = words[0].lower(), words[1:]
         if op in ('list','apply','applications','approve','reject'):
             return self.recruit(trainer, op, args)
+        if op == 'meet':
+            return self.meet(trainer, args)
         if op == 'expedition':
             return self.expedition(trainer, args)
         if op in ('post','board','clear'):
@@ -135,6 +140,7 @@ class Guilds:
             self.db.execute('DELETE FROM guild_applications WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_expedition_visits WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_expeditions WHERE guild_id=?',(guild[0],))
+            self.db.execute('DELETE FROM guild_meetups WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_posts WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_members WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guilds WHERE id=?',(guild[0],))
@@ -198,6 +204,47 @@ class Guilds:
                 return ['Guild board cleared.']
             rows=self.db.execute('SELECT trainer,body FROM guild_posts WHERE guild_id=? ORDER BY id DESC LIMIT 8',(guild[0],)).fetchall()
             return [f'{name}: {text}' for name,text in reversed(rows)] or ['Guild board is empty.']
+
+    def meet(self, trainer, args):
+        """A shared goal requiring members to be present together."""
+        with self.db:
+            guild=self._require(trainer)
+            if not args:
+                row=self.db.execute('SELECT map_name,goal,complete FROM guild_meetups WHERE guild_id=?',(guild[0],)).fetchone()
+                if not row: return ['No meetup. Leader: /guild meet start here COUNT']
+                return [f'Meetup: {row[1]} trainers together at {row[0]} ({"complete" if row[2] else "active"}).']
+            self._require(trainer,leader=True)
+            if args == ['cancel']:
+                removed=self.db.execute('DELETE FROM guild_meetups WHERE guild_id=?',(guild[0],)).rowcount
+                return ['Meetup cancelled.' if removed else 'No meetup to cancel.']
+            if len(args)!=3 or args[0].lower()!='start' or not args[2].isascii() or not args[2].isdecimal() or len(args[2])>2:
+                raise GuildError('Use /guild meet start MAP COUNT or cancel.')
+            name=self.maps.get(args[1].lower())
+            if not name: raise GuildError('Unknown map. Use a canonical World map name, e.g. Route101.')
+            goal=int(args[2]);count=self.db.execute('SELECT COUNT(*) FROM guild_members WHERE guild_id=?',(guild[0],)).fetchone()[0]
+            if not 2<=goal<=min(count,MAX_MEMBERS): raise GuildError('COUNT must be 2 through your current guild size.')
+            current=self.db.execute('SELECT complete FROM guild_meetups WHERE guild_id=?',(guild[0],)).fetchone()
+            if current and not current[0]: raise GuildError('Finish or cancel the active meetup first.')
+            self.db.execute('INSERT OR REPLACE INTO guild_meetups VALUES(?,?,?,0)',(guild[0],name,goal))
+            return [f'Meetup started: {goal} trainers together at {name}.']
+
+    def active_meet(self, trainer, map_name):
+        guild=self._member(trainer)
+        if not guild:return False
+        row=self.db.execute('SELECT 1 FROM guild_meetups WHERE guild_id=? AND map_name=? AND complete=0',(guild[0],map_name)).fetchone()
+        return row is not None
+
+    def complete_meet(self, trainer, map_name, ready_members):
+        """Complete once when enough current guildmates are simultaneously present."""
+        with self.db:
+            guild=self._member(trainer)
+            if not guild:return None
+            row=self.db.execute('SELECT map_name,goal,complete FROM guild_meetups WHERE guild_id=?',(guild[0],)).fetchone()
+            if not row or row[2] or row[0]!=map_name:return None
+            _,members=self.members(trainer)
+            if len(set(ready_members).intersection(members))<row[1]:return None
+            self.db.execute('UPDATE guild_meetups SET complete=1 WHERE guild_id=?',(guild[0],))
+            return guild[1],row[0],row[1],members
 
     def expedition(self, trainer, args):
         """A cooperative visit objective. Arrival is client-reported, not anti-cheat."""
