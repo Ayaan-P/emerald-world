@@ -1,8 +1,7 @@
-"""Opt-in native Expansion sessions and a read-only world presence adapter.
+"""Opt-in native Expansion sessions and experimental world adapters.
 
-Expansion worlds use a separate authority and identity database as well as saves.
-Presence is always busy: no native link, ownership payload or world mutation ABI
-is claimed. The donor's scalar inspect facts are the only engine state we read.
+Expansion uses a separate authority, identity database and save namespace.
+Multiplayer and control features remain opt-in and incomplete.
 """
 import json
 import re
@@ -13,7 +12,7 @@ import tempfile
 import os
 import time
 
-from .launcher import REPO, ProfileLock, engine_state, game_command, profile_paths, _prepare_profile
+from .launcher import REPO, ProfileLock, engine_state, game_command, profile_paths, _prepare_profile, check_player_endpoint
 
 ENGINE = 'expansion-native'
 BINARY = REPO / 'build/expansion-native/pokeemerald-native'
@@ -198,7 +197,9 @@ class ExpansionSession:
         except (OSError, ValueError, KeyError) as exc:
             self.error = str(exc)
 
-    def run(self, binary=BINARY, display=None, *, replay=None, frames=None, print_command=False, prepared_remote=False):
+    def run(self, binary=BINARY, display=None, *, replay=None, frames=None, print_command=False, prepared_remote=False, agent_control=False):
+        if agent_control and replay:
+            raise ValueError('Expansion agent control and replay are mutually exclusive')
         if self.state.resolve() != self.state:
             raise ValueError('Expansion state cannot contain symlinks')
         self.state.mkdir(parents=True, mode=0o700, exist_ok=True)
@@ -217,7 +218,7 @@ class ExpansionSession:
                     _prepare_profile(self.state, self.trainer, None, self.paths)
             else:
                 self.paths['profile'].mkdir(parents=True, mode=0o700, exist_ok=True)
-            command = game_command(binary, self.base, self.paths, display, online=self.online, engine=ENGINE)
+            command = game_command(binary, self.base, self.paths, display, agent_control=agent_control, online=self.online, engine=ENGINE)
             boundary = command.index('--')
             extra = []
             symbols = Path(str(Path(binary).resolve()) + '.symbols')
@@ -239,6 +240,8 @@ class ExpansionSession:
                 if path.is_symlink():
                     raise ValueError('Expansion telemetry cannot be a symlink')
                 path.unlink(missing_ok=True)
+            if agent_control:
+                check_player_endpoint(self.paths)
             process = subprocess.Popen(command)
             worker = None
             try:
@@ -268,10 +271,10 @@ class ExpansionSession:
 
 def run(args):
     if any(getattr(args, name, None) for name in
-           ('seed_save', 'copy_online', 'agent_control', 'test_input', 'bootstrap')):
+           ('seed_save', 'copy_online', 'test_input', 'bootstrap')):
         raise ValueError('Expansion does not accept vanilla saves, controls or input scripts. Use --replay for donor replays.')
     session = ExpansionSession(args.state_dir, args.trainer, online=args.command == 'join')
-    options = dict(replay=args.replay, frames=args.frames, print_command=args.print_command)
+    options = dict(replay=args.replay, frames=args.frames, print_command=args.print_command, agent_control=getattr(args, 'agent_control', False))
     remote = tuple(getattr(args, name, None) for name in ('remote', 'invitation', 'pin'))
     if not any(remote):
         return session.run(args.binary or BINARY, args.display, **options)

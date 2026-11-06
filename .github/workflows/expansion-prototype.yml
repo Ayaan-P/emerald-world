@@ -36,6 +36,8 @@ jobs:
           /tmp/expansion-trade-test
           gcc -std=c11 -Wall -Wextra -Werror -Itest/expansion_projection/save_stubs engines/expansion_trade_save.c test/expansion_projection/test_trade_save.c -o /tmp/expansion-trade-save-test
           /tmp/expansion-trade-save-test
+          gcc -DPORTABLE -D_POSIX_C_SOURCE=200809L -std=c11 -Wall -Wextra -Werror -Itest/expansion_projection/control_stubs engines/expansion_control.c test/expansion_projection/test_control.c -o /tmp/expansion-control-test
+          /tmp/expansion-control-test
       - name: Build pinned Expansion donor and adapter
         working-directory: engines/expansion-native
         run: make -f ../expansion.mk -j2 native BITS=64

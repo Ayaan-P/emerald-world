@@ -1,5 +1,7 @@
 # Run in the pinned donor directory. Keep its source and ABI unchanged.
 include Makefile.native
+EW_CONTROL := ../../build/expansion-control.o
+EW_CONTROL_TRANSPORT := ../../build/expansion-control-transport.o
 EW_ADAPTER := ../../build/expansion-presence.o
 EW_PEERS := ../../build/expansion-peers.o
 EW_LINK := ../../build/expansion-link.o
@@ -7,11 +9,11 @@ EW_CABLE := ../../build/expansion-cable.o
 EW_ACTIVITY := ../../build/expansion-activity.o
 EW_TRADE_VALIDATE := ../../build/expansion-trade-validate.o
 EW_TRADE_SAVE := ../../build/expansion-trade-save.o
-OBJS += $(EW_ADAPTER) $(EW_PEERS) $(EW_LINK) $(EW_CABLE) $(EW_ACTIVITY) $(EW_TRADE_VALIDATE) $(EW_TRADE_SAVE)
+OBJS += $(EW_CONTROL) $(EW_CONTROL_TRANSPORT) $(EW_ADAPTER) $(EW_PEERS) $(EW_LINK) $(EW_CABLE) $(EW_ACTIVITY) $(EW_TRADE_VALIDATE) $(EW_TRADE_SAVE)
 # A relocated multilib sysroot does not contain the host's SDL dependencies.
 # Resolve those at link time only; do not bake a private runtime search path.
 NATIVE_LDFLAGS += -Wl,--wrap=frame_run -Wl,--wrap=SaveObjectEvents -Wl,--wrap=CopyPartyAndObjectsToSave -Wl,--wrap=GetObjectEventIdByPosition -Wl,--wrap=FieldGetPlayerInput -Wl,--wrap=LinkFullSave_SetLastSectorSignature -Wl,-rpath-link,/usr/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu/pulseaudio
-$(NATIVE_EXE): $(EW_ADAPTER) $(EW_PEERS) $(EW_LINK) $(EW_CABLE) $(EW_ACTIVITY) $(EW_TRADE_VALIDATE) $(EW_TRADE_SAVE)
+$(NATIVE_EXE): $(EW_CONTROL) $(EW_CONTROL_TRANSPORT) $(EW_ADAPTER) $(EW_PEERS) $(EW_LINK) $(EW_CABLE) $(EW_ACTIVITY) $(EW_TRADE_VALIDATE) $(EW_TRADE_SAVE)
 $(EW_ADAPTER): ../expansion_presence.c
 	@mkdir -p $(@D)
 	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
@@ -71,3 +73,11 @@ $(C_BUILDDIR)/trade.o: $(EW_PATCHED_TRADE) $(C_FILTER_SCRIPT) ../../include/plat
 $(EW_TRADE_SAVE): ../expansion_trade_save.c
 	@mkdir -p $(@D)
 	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -iquote ../../include -c $< -o $@
+
+# Reuse the bounded player protocol; its endpoint is never opened unless opted in.
+$(EW_CONTROL): ../expansion_control.c
+	@mkdir -p $(@D)
+	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -DPORTABLE -iquote ../../include -c $< -o $@
+$(EW_CONTROL_TRANSPORT): ../../src/platform/player_control.c
+	@mkdir -p $(@D)
+	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -DPORTABLE -iquote ../../include -c $< -o $@

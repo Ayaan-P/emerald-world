@@ -23,10 +23,16 @@ void ExpansionActivity_Update(void);
 int ExpansionActivity_PresenceReady(void);
 int ExpansionTrade_PairValid(const void *data, size_t size);
 unsigned ExpansionPeers_Count(void);
+bool ExpansionControl_BeforeFrame(void);
+void ExpansionControl_AfterFrame(void);
 enum frame_result __real_frame_run(void);
 enum frame_result __wrap_frame_run(void)
 {
     static int link_state;
+    if (!ExpansionControl_BeforeFrame()) {
+        fputs("Expansion player control could not initialize.\n", stderr);
+        exit(EXIT_FAILURE);
+    }
     const char *config = getenv("EW_EXPANSION_LINK_CONFIG");
     if (config && link_state == 0)
         link_state = LinkTransport_Init(config) ? 1 : -1;
@@ -37,6 +43,7 @@ enum frame_result __wrap_frame_run(void)
         ExpansionActivity_Update();
     }
     enum frame_result result = __real_frame_run();
+    ExpansionControl_AfterFrame();
     const char *path = getenv("EW_EXPANSION_PRESENCE");
     if (path == NULL || frame_count() % 6 != 0)
         return result;

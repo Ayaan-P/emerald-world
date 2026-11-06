@@ -14,6 +14,10 @@ The switches are deliberately nested and all default off:
   switches and exposes explicit single/double battle invitations.
 - `EW_EXPERIMENTAL_EXPANSION_TRADE=1` additionally requires all three switches
   and exposes party-only trade. It is not ready for user testing.
+- `EW_EXPERIMENTAL_EXPANSION_CONTROL=1` with `--agent-control` opts into
+  a separate player-control endpoint. It reports frame, map, position, battle
+  flag and screenshots using an explicitly limited Expansion schema; it is not
+  the full vanilla observation ABI and is not yet ready for use.
 
 Expansion LINK channels use the `LINKEXP1` compatibility label. A new server
 rejects invitations between that label and vanilla LINK before consent. This
@@ -35,3 +39,7 @@ battle, trade, disconnection and save behavior remain unverified. Generated
 worlds, co-op, complete launcher integration, map catalog and save migration
 are not yet ported. Expansion maps whose IDs collide with vanilla generated
 worlds are intentionally not advertised as presence.
+
+Control frame scheduling, output and launcher scoping have only been tested with
+fakes. No live player-control socket has been exercised. Replay and control are
+mutually exclusive; vanilla world and battle observations still require porting.

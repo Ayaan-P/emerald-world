@@ -207,8 +207,8 @@ def game_command(binary, state_dir, paths, display=None, agent_control=False, *,
     engine_state(state_dir, engine)
     expanded = engine == 'expansion-native'
     if expanded:
-        if agent_control:
-            raise ValueError('Expansion does not implement the vanilla player-control ABI')
+        if agent_control and os.environ.get('EW_EXPERIMENTAL_EXPANSION_CONTROL') != '1':
+            raise ValueError('Expansion player control is experimental; set EW_EXPERIMENTAL_EXPANSION_CONTROL=1')
         if paths != profile_paths(state_dir, paths['profile'].name, engine=engine):
             raise ValueError('Expansion requires its own separate profile')
     binary = Path(binary).resolve()
@@ -248,6 +248,9 @@ def game_command(binary, state_dir, paths, display=None, agent_control=False, *,
     if expanded:
         env['EW_EXPANSION_PRESENCE'] = str(paths['profile'] / 'presence.json')
         env['EW_EXPANSION_PEERS'] = str(paths['profile'] / 'peers.txt')
+        if agent_control:
+            env['EW_EXPANSION_CONTROL'] = str(player_endpoint(paths))
+            env['EW_EXPANSION_SAVE'] = str(paths['save'])
         if expansion_link:
             env['EW_EXPANSION_LINK_CONFIG'] = str(paths['config'])
         if os.environ.get('EW_EXPERIMENTAL_EXPANSION_PEERS') == '1':
