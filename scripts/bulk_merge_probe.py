@@ -57,7 +57,10 @@ def main():
     a=p.parse_args(); repo=a.repo.resolve(strict=True);donor=a.donor.resolve(strict=True)
     out=a.output.resolve();out.mkdir(parents=True,exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='bulk-port-') as d:
-        work=Path(d);git(work,'init','-q');export(repo,a.base,work)
+        work=Path(d);git(work,'init','-q')
+        # Avoid a background maintenance process racing temporary-directory cleanup.
+        git(work,'config','maintenance.auto','false');git(work,'config','gc.auto','0')
+        export(repo,a.base,work)
         base=commit_tree(work,'Synthetic baseline')
         git(work,'checkout','-q','-b','world');clear(work);export(repo,a.world,work)
         world=commit_tree(work,'Emerald World source snapshot')
