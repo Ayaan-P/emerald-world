@@ -14,7 +14,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
+          persist-credentials: false
+      - name: Check out pinned native Expansion
+        uses: actions/checkout@v4
+        with:
+          repository: uehlbran/pokeemerald-expansion-native
+          ref: bb3fd057061cdd7e6a9e79b76abb41924ee44ecc
+          path: engines/expansion-native
           persist-credentials: false
       - name: Test presence protocol without sockets
         run: |
