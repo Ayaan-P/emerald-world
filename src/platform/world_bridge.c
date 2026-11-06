@@ -112,6 +112,9 @@ static struct {
     bool8 caveV9Probe, caveV9Legacy;
 #if GENERATED_WILDS_SHARED_TERRAIN
     bool8 caveV9TProbe, caveV9TLegacy, terrainPending, terrainReportPending, terrainReportedApplied;
+#if GENERATED_WILDS_SHARED_GEOMETRY
+    bool8 caveV9GProbe, caveV9GLegacy;
+#endif
     u32 terrainRevision;u8 terrainSize, terrainData[193];
 #endif
     u8 eventHead, eventCount; unsigned eventSetSeq;
@@ -443,7 +446,11 @@ static void Disconnect(void)
 #if GENERATED_WILDS_EVENTS
     sWorld.caveV9Probe = FALSE;
 #if GENERATED_WILDS_SHARED_TERRAIN
-    sWorld.caveV9TProbe=FALSE;sWorld.terrainPending=FALSE;sWorld.terrainReportPending=FALSE;sWorld.terrainReportedApplied=FALSE;sWorld.terrainRevision=0;
+    sWorld.caveV9TProbe=FALSE;
+#if GENERATED_WILDS_SHARED_GEOMETRY
+    sWorld.caveV9GProbe=FALSE;
+#endif
+    sWorld.terrainPending=FALSE;sWorld.terrainReportPending=FALSE;sWorld.terrainReportedApplied=FALSE;sWorld.terrainRevision=0;
 #endif
     sWorld.eventHead = sWorld.eventCount = 0; sWorld.eventSetSeq = 0;
 #endif
@@ -671,6 +678,9 @@ invalid:
 static bool8 CaveProbeRejected(unsigned n, char **tokens)
 {
     if (sWorld.caveProbe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
+#if GENERATED_WILDS_SHARED_GEOMETRY && GENERATED_CAVE_WILDLIFE
+        if(sWorld.caveV9GProbe){sWorld.caveV9GLegacy=TRUE;return TRUE;}
+#endif
 #if GENERATED_WILDS_SHARED_TERRAIN && GENERATED_CAVE_WILDLIFE
         if(sWorld.caveV9TProbe){sWorld.caveV9TLegacy=TRUE;return TRUE;}
 #endif
@@ -732,6 +742,9 @@ static bool8 CaveLine(unsigned n, char **tokens)
         for(i=0;i<length;i++){char c=tokens[4][i];unsigned v;if(c>='0'&&c<='9')v=c-'0';else if(c>='a'&&c<='f')v=c-'a'+10;else return FALSE;
             if(!(i&1))patch[i/2]=v<<4;else patch[i/2]|=v;}
         if(patch[0]>64 || length!=2*(1+3*(unsigned)patch[0]) || ((revision==0)!=(patch[0]==0)) || !GeneratedMap_ValidateSharedTerrain(patch,length/2))return FALSE;
+#if GENERATED_WILDS_SHARED_GEOMETRY
+        if(!sWorld.caveV9GProbe && GeneratedMap_SharedTerrainNeedsGeometry(patch,length/2))return FALSE;
+#endif
         if(revision<=sWorld.terrainRevision)return TRUE;
         memcpy(sWorld.terrainData,patch,length/2);sWorld.terrainSize=length/2;sWorld.terrainRevision=revision;sWorld.terrainReportPending=FALSE;sWorld.terrainReportedApplied=FALSE;sWorld.terrainPending=TRUE;return TRUE;
     }
@@ -907,6 +920,9 @@ static bool8 CaveLine(unsigned n, char **tokens)
 #if GENERATED_WILDS_SHARED_TERRAIN
                 if(sWorld.caveV9TProbe) {
                     if(!GeneratedMap_ValidateSharedTerrain(sWorld.caveWire.terrain,sWorld.caveWire.terrainSize))return FALSE;
+#if GENERATED_WILDS_SHARED_GEOMETRY
+                    if(!sWorld.caveV9GProbe && GeneratedMap_SharedTerrainNeedsGeometry(sWorld.caveWire.terrain,sWorld.caveWire.terrainSize))return FALSE;
+#endif
                     sWorld.terrainRevision=sWorld.caveWire.terrainRevision;
                     sWorld.terrainReportPending=FALSE;sWorld.terrainReportedApplied=FALSE;
                     if(GeneratedMap_IsInside() || GeneratedMap_EntryPending()) {
@@ -1282,6 +1298,10 @@ static void QueueHello(bool8 headless)
 #if GENERATED_WILDS_SHARED_TERRAIN
         sWorld.caveV9TProbe=sWorld.caveV9Probe && !sWorld.caveV9TLegacy;
         if(sWorld.caveV9TProbe)suffix="CAVE9T";
+#if GENERATED_WILDS_SHARED_GEOMETRY
+        sWorld.caveV9GProbe=sWorld.caveV9TProbe && !sWorld.caveV9GLegacy;
+        if(sWorld.caveV9GProbe)suffix="CAVE9G";
+#endif
 #endif
 #endif
 #endif
@@ -1588,7 +1608,11 @@ static void CavePump(void)
                 if (!GeneratedMap_StageSharedEventWilds(sWorld.caveWire.events, WORLD_CAVE_EVENT_BYTES, sWorld.caveWire.cast, WORLD_CAVE_CAST_BYTES, sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS)) { Disconnect(); return; }
 #if GENERATED_WILDS_SHARED_TERRAIN
                 if(sWorld.caveV9TProbe) {
-                    if(!sWorld.caveWire.terrainSeen || !GeneratedMap_StageSharedTerrain(sWorld.caveWire.terrain,sWorld.caveWire.terrainSize)) { Disconnect();return; }
+                    if(!sWorld.caveWire.terrainSeen) { Disconnect();return; }
+#if GENERATED_WILDS_SHARED_GEOMETRY
+                    if(!sWorld.caveV9GProbe && GeneratedMap_SharedTerrainNeedsGeometry(sWorld.caveWire.terrain,sWorld.caveWire.terrainSize)) { Disconnect();return; }
+#endif
+                    if(!GeneratedMap_StageSharedTerrain(sWorld.caveWire.terrain,sWorld.caveWire.terrainSize)) { Disconnect();return; }
                     sWorld.terrainRevision=sWorld.caveWire.terrainRevision;sWorld.terrainPending=FALSE;sWorld.terrainReportPending=TRUE;sWorld.terrainReportedApplied=FALSE;
                 }
 #endif

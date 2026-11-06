@@ -65,6 +65,9 @@ static bool8 sEventStaged, sEventActive;
 static u8 sEventState, sEventData[GENERATED_EVENT_BYTES], sEventRuntime[GENERATED_EVENT_BYTES];
 #if GENERATED_WILDS_SHARED_TERRAIN
 static u8 sSharedTerrain[193], sSharedTerrainSize;
+#if GENERATED_WILDS_SHARED_GEOMETRY
+static u8 sSharedWalk[LARGE_CELLS];
+#endif
 #endif
 extern const u8 GeneratedWorld_Wilds_EventScript_Graph[];
 #endif
@@ -598,9 +601,36 @@ bool8 GeneratedMap_SetSharedEventTiles(const u8 *patch, u32 size)
     (void)patch;(void)size;return FALSE;
 #endif
 }
+#if GENERATED_MAP_READY && GENERATED_WILDS_SHARED_GEOMETRY
+static bool8 BuildSharedWalk(const u8 *patch, u32 size, u8 *walk)
+{
+    u8 seen[LARGE_CELLS]={0};u16 queue[LARGE_CELLS],head=0,tail=0,i;unsigned n,j,lastX=0,lastY=0,d;
+    if(!patch || !size || !walk || (n=patch[0])>64 || size!=1+3*n || !sLargeStaged || !sLargeShared || !sLargeWilds || !sEventStaged)return FALSE;
+    for(i=0;i<LARGE_CELLS;i++)walk[i]=sLargeTemplate[i]=='.';
+    walk[LARGE_SIDE+2]=FALSE;if(sCastMetadata[0]>=2)walk[20*LARGE_SIDE+20]=FALSE;if(sCastMetadata[0]>=3)walk[40*LARGE_SIDE+40]=FALSE;
+    for(j=0;j<n;j++){unsigned x=patch[1+3*j],y=patch[2+3*j],kind=patch[3+3*j];
+        if(kind>2 || !x || x>=62 || !y || y>=62 || (x==1 && y==1) || (x==61 && (y==60 || y==61))
+         || (x==2 && y==1) || (sCastMetadata[0]>=2 && x==20 && y==20) || (sCastMetadata[0]>=3 && x==40 && y==40)
+         || (j && (x<lastX || (x==lastX && y<=lastY))))return FALSE;
+        walk[y*LARGE_SIDE+x]=kind!=2;lastX=x;lastY=y;
+    }
+    if(!walk[LARGE_SIDE+1] || !walk[60*LARGE_SIDE+61] || !walk[61*LARGE_SIDE+61])return FALSE;
+    for(j=0;j<sCastMetadata[0];j++){unsigned x=sCastMetadata[2+j*61],y=sCastMetadata[3+j*61],pos=y*LARGE_SIDE+x;
+        if(!walk[pos-LARGE_SIDE] && !walk[pos+1] && !walk[pos+LARGE_SIDE] && !walk[pos-1])return FALSE;
+    }
+    queue[tail++]=LARGE_SIDE+1;seen[LARGE_SIDE+1]=TRUE;
+    while(head<tail){s16 pos=queue[head++],neighbors[4]={pos-LARGE_SIDE,pos+1,pos+LARGE_SIDE,pos-1};
+        for(d=0;d<4;d++){s16 next=neighbors[d];if(next>=0 && next<LARGE_CELLS && walk[next] && !seen[next]){seen[next]=TRUE;queue[tail++]=next;}}
+    }
+    for(i=0;i<LARGE_CELLS;i++)if(walk[i] && !seen[i])return FALSE;
+    return TRUE;
+}
+#endif
 bool8 GeneratedMap_ValidateSharedTerrain(const u8 *patch, u32 size)
 {
-#if GENERATED_MAP_READY && GENERATED_WILDS_SHARED_TERRAIN
+#if GENERATED_MAP_READY && GENERATED_WILDS_SHARED_GEOMETRY
+    u8 walk[LARGE_CELLS];return BuildSharedWalk(patch,size,walk);
+#elif GENERATED_MAP_READY && GENERATED_WILDS_SHARED_TERRAIN
     unsigned n,i,lastX=0,lastY=0;
     if(!patch || !size || (n=patch[0])>64 || size!=1+3*n || !sLargeStaged || !sLargeShared || !sLargeWilds || !sEventStaged)return FALSE;
     for(i=0;i<n;i++){unsigned x=patch[1+3*i],y=patch[2+3*i],kind=patch[3+3*i];
@@ -613,10 +643,23 @@ bool8 GeneratedMap_ValidateSharedTerrain(const u8 *patch, u32 size)
     (void)patch;(void)size;return FALSE;
 #endif
 }
+bool8 GeneratedMap_SharedTerrainNeedsGeometry(const u8 *patch, u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_WILDS_SHARED_GEOMETRY
+    unsigned i;if(!GeneratedMap_ValidateSharedTerrain(patch,size))return TRUE;
+    for(i=0;i<patch[0];i++){unsigned x=patch[1+3*i],y=patch[2+3*i];if(patch[3+3*i]==2 || sLargeTemplate[y*LARGE_SIDE+x]!='.')return TRUE;}
+    return FALSE;
+#else
+    (void)patch;(void)size;return FALSE;
+#endif
+}
 bool8 GeneratedMap_StageSharedTerrain(const u8 *patch, u32 size)
 {
 #if GENERATED_MAP_READY && GENERATED_WILDS_SHARED_TERRAIN
-    if(GeneratedMap_IsInside() || !GeneratedMap_ValidateSharedTerrain(patch,size))return FALSE;
+    if(GeneratedMap_IsInside() || GeneratedMap_EntryPending() || !GeneratedMap_ValidateSharedTerrain(patch,size))return FALSE;
+#if GENERATED_WILDS_SHARED_GEOMETRY
+    if(!BuildSharedWalk(patch,size,sSharedWalk))return FALSE;
+#endif
     memcpy(sSharedTerrain,patch,size);sSharedTerrainSize=size;return TRUE;
 #else
     (void)patch;(void)size;return FALSE;
@@ -624,7 +667,12 @@ bool8 GeneratedMap_StageSharedTerrain(const u8 *patch, u32 size)
 }
 bool8 GeneratedMap_ApplySharedTerrain(const u8 *patch, u32 size)
 {
-#if GENERATED_MAP_READY && GENERATED_WILDS_SHARED_TERRAIN
+#if GENERATED_MAP_READY && GENERATED_WILDS_SHARED_GEOMETRY
+    u8 walk[LARGE_CELLS];unsigned i;
+    if(!GeneratedMap_IsInside() || !BuildSharedWalk(patch,size,walk) || memcmp(walk,sSharedWalk,LARGE_CELLS))return FALSE;
+    for(i=0;i<patch[0];i++)if(patch[3+3*i]!=2 && !GeneratedMap_SetSharedEventTile(patch[1+3*i],patch[2+3*i],patch[3+3*i]))return FALSE;
+    memcpy(sSharedTerrain,patch,size);sSharedTerrainSize=size;return TRUE;
+#elif GENERATED_MAP_READY && GENERATED_WILDS_SHARED_TERRAIN
     if(!GeneratedMap_IsInside() || !GeneratedMap_ValidateSharedTerrain(patch,size))return FALSE;
     if(patch[0] && !GeneratedMap_SetSharedEventTiles(patch,size))return FALSE;
     memcpy(sSharedTerrain,patch,size);sSharedTerrainSize=size;return TRUE;
@@ -942,7 +990,11 @@ bool8 GeneratedMap_SharedCoordValid(unsigned x, unsigned y)
             && !(sCastStaged && ((x==2 && y==1) || (sCastMetadata[0]>=2 && x==20 && y==20) || (sCastMetadata[0]>=3 && x==40 && y==40)))
 #endif
 #endif
+#if GENERATED_WILDS_SHARED_GEOMETRY
+            && (sSharedTerrainSize ? sSharedWalk[y*LARGE_SIDE+x] : sLargeTemplate[y*LARGE_SIDE+x]=='.');
+#else
             && sLargeTemplate[y * LARGE_SIDE + x] == '.';
+#endif
 #endif
     return sHasTemplate && x < GEN_SIDE && y < GEN_SIDE && sTemplate[y * GEN_SIDE + x] == '.';
 #else
@@ -1012,7 +1064,7 @@ bool8 GeneratedMap_Enter(void)
 #if GENERATED_WILDS_SHARED_TERRAIN
             if(sSharedTerrainSize) {unsigned j;for(j=0;j<sSharedTerrain[0];j++) {
                 unsigned x=sSharedTerrain[1+3*j],y=sSharedTerrain[2+3*j],kind=sSharedTerrain[3+3*j];
-                sLargeTiles[y*LARGE_SIDE+x]=kind ? 0x300d : 0x3001;
+                sLargeTiles[y*LARGE_SIDE+x]=kind==2 ? 0x0487 : kind ? 0x300d : 0x3001;
             }}
 #endif
         } else
