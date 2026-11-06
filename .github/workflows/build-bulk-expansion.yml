@@ -9,6 +9,7 @@ on:
       - 'test/test_movement_capacity.py'
       - 'test/test_expansion_battle_header.py'
       - 'test/generated_area_replay.py'
+      - 'test/coop_relay/**'
       - '.github/workflows/build-bulk-expansion.yml'
   workflow_dispatch:
 permissions:
@@ -37,6 +38,7 @@ jobs:
           sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
           sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y build-essential gcc-multilib python3 pkg-config libpng-dev libsdl2-dev gdb
       - name: Compile whole-source candidate
+        id: build_candidate
         working-directory: engines/expansion-native
         shell: bash
         run: |
@@ -49,7 +51,22 @@ jobs:
           SDL_VIDEODRIVER: dummy
           SDL_AUDIODRIVER: dummy
         run: tests/smoke/run.sh build/native64/pokeemerald-native "$RUNNER_TEMP/bulk-smoke"
+      - name: Exercise two games with offline file relay
+        if: steps.build_candidate.outcome == 'success'
+        working-directory: engines/expansion-native
+        timeout-minutes: 10
+        run: |
+          if [ ! -f "$RUNNER_TEMP/bulk-smoke/work/pokeemerald.sav" ]; then
+            echo "The offline opening did not produce a disposable save." >&2
+            exit 1
+          fi
+          make -f "$GITHUB_WORKSPACE/port/expansion-world.mk" -j2 native BITS=64 \
+            NATIVE_EXE="$RUNNER_TEMP/coop-file-relay-game" \
+            EW_TEST_RELAY_SOURCE="$GITHUB_WORKSPACE/test/coop_relay/fake_link_files.c"
+          python3 "$GITHUB_WORKSPACE/test/coop_relay/run.py" "$RUNNER_TEMP/coop-file-relay-game" \
+            "$RUNNER_TEMP/bulk-smoke/work/pokeemerald.sav" "$RUNNER_TEMP/bulk-coop"
       - name: Replay offline generated-area entry
+        if: steps.build_candidate.outcome == 'success'
         working-directory: engines/expansion-native
         timeout-minutes: 7
         run: python3 "$GITHUB_WORKSPACE/test/generated_area_replay.py" build/native64/pokeemerald-native . "$RUNNER_TEMP/bulk-generated"
@@ -101,6 +118,9 @@ jobs:
             ${{ runner.temp }}/bulk-generated-gdb.log
             ${{ runner.temp }}/bulk-generated/*.log
             ${{ runner.temp }}/bulk-generated/out/*.txt
+            ${{ runner.temp }}/bulk-coop/*/*.log
+            ${{ runner.temp }}/bulk-coop/*/events
+            ${{ runner.temp }}/bulk-coop/*/report
           if-no-files-found: ignore
           retention-days: 7
       - name: Preserve candidate build log
