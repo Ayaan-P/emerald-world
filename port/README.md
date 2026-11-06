@@ -75,7 +75,8 @@ storage holds 16 completion bits, while World configures 48 object events.
 The candidate now stores native movement IDs and 64-bit completion state
 separately. This is a suspected fix and requires the replay to pass.
 
-The offline opening replay completed through save and cold restart. The only
-screenshot difference was the start menu; the actual image was reviewed and
-shows the added WORLD entry without obvious clipping. Only that expected hash
-has been updated; other donor screenshot and state expectations stay intact.
+The offline opening replay at 255703f completed through the first battle, save,
+and cold restart with state checks matching. The only screenshot difference
+was the start menu; the image was reviewed and shows the added WORLD entry
+without obvious clipping. Only that expected hash was updated. The later
+experimental co-op controller merge still needs a fresh build and replay.
