@@ -112,3 +112,8 @@ class InitialResolutions(unittest.TestCase):
   self.assertIn('WorldCoop_BeginRosterAction(battler',s)
   self.assertIn('WorldCoop_AdvanceRosterAction(battler)',s)
   self.assertIn('|| WorldCoop_IsBattle()',s)
+
+ def test_coop_escape_uses_wild_battle_path(self):
+  s=self.read('src/battle_util.c');m=self.read('src/battle_main.c')
+  self.assertIn('&& !WorldCoop_IsBattle()',s)
+  self.assertIn('&& !WorldCoop_IsBattle()',m)
