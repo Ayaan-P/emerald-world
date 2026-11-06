@@ -72,6 +72,7 @@ class WorldServer:
             raise ValueError('generated area archive requires persistent generated caves')
         self.archive_generated_areas = archive_generated_areas
         self.shared_cave = SharedCave(cave_template) if cave_template is not None else None
+        self._terrain_walk_cache = None
         if self.shared_cave and (self.wilds_map if self.shared_cave.version in (6, 7, 8, 9) else self.cave_map) is None:
             raise ValueError('generated map missing from catalog')
         if type(max_players) is not int or not 1 <= max_players <= 64:
@@ -461,7 +462,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
-                cave_terrain = role.endswith('CAVE9T')
+                cave_geometry = role.endswith('CAVE9G')
+                cave_terrain = cave_geometry or role.endswith('CAVE9T')
                 cave_events = cave_terrain or role.endswith('CAVE9')
                 cave_cast = cave_events or role.endswith('CAVE8')
                 cave_guide = cave_cast or role.endswith('CAVE7')
@@ -540,6 +542,7 @@ class WorldServer:
                 conn['cave_cast'] = cave_cast
                 conn['cave_events'] = cave_events
                 conn['cave_terrain'] = cave_terrain
+                conn['cave_geometry'] = cave_geometry
                 conn['event_command_seq'] = 0
                 conn['event_commands'] = {}
                 conn['event_command_session'] = secrets.token_hex(8)
@@ -590,6 +593,7 @@ class WorldServer:
                         if (self.shared_cave is None
                                 or (self.shared_cave.version == 9 and not conn.get('cave_events'))
                                 or (self.shared_cave.version == 9 and self._active_terrain()[1]!=b'\0' and not conn.get('cave_terrain'))
+                                or (self.shared_cave.version == 9 and self._terrain_requires_geometry() and not conn.get('cave_geometry'))
                                 or (self.shared_cave.version == 8 and not conn.get('cave_cast'))
                                 or (self.shared_cave.version == 7 and not conn.get('cave_guide'))
                                 or (self.shared_cave.version == 6 and not conn.get('cave_wilds'))
@@ -683,7 +687,7 @@ class WorldServer:
                         return
                     if (self.shared_cave is None or conn.get('cave_ack') != self.shared_cave.identity
                             or self.rally.current(conn) is not None
-                            or not self.shared_cave.walkable(state[2], state[3])):
+                            or not self._active_walkable(state[2], state[3])):
                         raise ValueError('unadmitted cave state')
                 else:
                     validate_coords(*state[:4])
@@ -962,6 +966,7 @@ class WorldServer:
             old_id = self.shared_cave.identity if self.shared_cave else None
             self._persist_cave(blob, label=label)
             self.shared_cave = candidate
+            self._terrain_walk_cache = None
             for peer in recipients:
                 if old_id:
                     peer['cave_revoked'] = (peer.get('cave_revoked', []) + [old_id])[-4:]
@@ -997,6 +1002,20 @@ class WorldServer:
         if type(revision) is not int or not 1<=revision<=2147483647:raise ValueError('invalid stored terrain revision')
         validate(self.shared_cave,payload);return revision,payload
 
+    def _terrain_requires_geometry(self):
+        from .shared_terrain import needs_geometry
+        if not self.shared_cave or self.shared_cave.version!=9:return False
+        return needs_geometry(self.shared_cave,self._active_terrain()[1])
+
+    def _active_walkable(self, x, y):
+        cave=self.shared_cave
+        if not cave:return False
+        if cave.version!=9 or not self.archive_generated_areas:return cave.walkable(x,y)
+        if self._terrain_walk_cache is None or self._terrain_walk_cache[0]!=cave.identity:
+            from .shared_terrain import project
+            revision,payload=self._active_terrain();self._terrain_walk_cache=(cave.identity,revision,project(cave,payload))
+        return (x,y) in self._terrain_walk_cache[2]
+
     def set_shared_terrain(self, identity, tiles):
         """Persist and broadcast a bounded shared walkable overlay snapshot."""
         from .shared_terrain import validate,encode
@@ -1012,7 +1031,9 @@ class WorldServer:
             if not self.archive_generated_areas or not cave or cave.version!=9 or cave.identity!=identity:raise ValueError('durable active event area required')
             stored=self.db.execute('SELECT template FROM generated_cave WHERE singleton=1').fetchone()
             if stored is None or type(stored[0]) is not bytes or hashlib.sha256(stored[0]).hexdigest()!=identity:raise ValueError('publish the active event area before editing terrain')
-            revision,old=self._active_terrain();merged=validate(cave,old);merged.update(changes);payload=encode(cave,merged)
+            revision,old=self._active_terrain();merged=validate(cave,old)
+            if any(not self._active_walkable(x,y) for x,y in changes):raise ValueError('tile is not currently walkable')
+            merged.update(changes);payload=encode(cave,merged)
             if payload==old:return {'ok':True,'identity':identity,'revision':revision,'tiles':len(merged),'changed':False}
             if revision>=2147483647:raise ValueError('terrain revision exhausted')
             peers=[p for p in self.peers.values() if not p.get('closing') and p.get('cave_capable')]
@@ -1025,6 +1046,8 @@ class WorldServer:
                 with self.db:self.db.execute('INSERT OR REPLACE INTO generated_area_terrain(identity,revision,payload) VALUES(?,?,?)',(identity,revision,payload))
             except sqlite3.Error:
                 raise ValueError('shared terrain could not be persisted') from None
+            from .shared_terrain import project
+            self._terrain_walk_cache=(identity,revision,project(cave,payload))
             queued=0;delivery_failed=0
             for peer in targets:
                 try:
@@ -1046,6 +1069,45 @@ class WorldServer:
                     except Exception:peer['closing']=True
             return {'ok':True,'identity':identity,'revision':revision,'tiles':len(merged),'changed':True,'queued':queued,'delivery_failed':delivery_failed}
 
+    def set_shared_geometry(self, identity, tiles):
+        """Commit connected terrain geometry only while the generated area is empty."""
+        from .shared_terrain import validate,encode,project
+        if type(identity) is not str or not re.fullmatch(r'[0-9a-f]{64}',identity) or type(tiles) is not list or not 1<=len(tiles)<=64:raise ValueError('invalid shared geometry request')
+        changes={}
+        for tile in tiles:
+            if type(tile) is not dict or set(tile)!={'x','y','terrain'}:raise ValueError('invalid shared geometry request')
+            x,y,terrain=tile['x'],tile['y'],tile['terrain']
+            if type(x) is not int or type(y) is not int or not 0<=x<63 or not 0<=y<63 or type(terrain) is not str or terrain not in ('grass','tall_grass','water') or (x,y) in changes:raise ValueError('invalid shared geometry request')
+            changes[(x,y)]={'grass':0,'tall_grass':1,'water':2}[terrain]
+        with self.lock:
+            cave=self.shared_cave
+            if not self.archive_generated_areas or not cave or cave.version!=9 or cave.identity!=identity:raise ValueError('durable active event area required')
+            stored=self.db.execute('SELECT template FROM generated_cave WHERE singleton=1').fetchone()
+            if stored is None or type(stored[0]) is not bytes or hashlib.sha256(stored[0]).hexdigest()!=identity:raise ValueError('publish the active event area before editing geometry')
+            peers=[p for p in self.peers.values() if not p.get('closing') and p.get('cave_capable')]
+            if any(p.get('in_generated_cave') or (p.get('state') is not None and tuple(p['state'][:2]) in (self.cave_map,self.wilds_map)) for p in peers):raise ValueError('all trainers must leave the generated area')
+            revision,old=self._active_terrain();merged=validate(cave,old);merged.update(changes);payload=encode(cave,merged)
+            if payload==old:return {'ok':True,'identity':identity,'revision':revision,'tiles':len(merged),'changed':False}
+            if revision>=2147483647:raise ValueError('terrain revision exhausted')
+            reset=f'CAVE RESET {identity}\n';recipients=[p for p in peers if p.get('cave_ack')==identity or p.get('cave_offer')==identity]
+            if any(len(p['out'])+len(reset)>MAX_QUEUE for p in recipients):raise ValueError('trainer connection is busy')
+            revision+=1
+            try:
+                with self.db:self.db.execute('INSERT OR REPLACE INTO generated_area_terrain(identity,revision,payload) VALUES(?,?,?)',(identity,revision,payload))
+            except sqlite3.Error:raise ValueError('shared geometry could not be persisted') from None
+            self._terrain_walk_cache=(identity,revision,project(cave,payload));queued=0;delivery_failed=0
+            for peer in recipients:
+                peer['cave_revoked']=(peer.get('cave_revoked',[])+[identity])[-4:];peer['cave_offer']=peer['cave_ack']=None;peer['cave_transfer_pending']=False
+                try:
+                    self._queue(peer,reset)
+                    if peer.get('closing'):delivery_failed+=1
+                    else:queued+=1
+                except Exception:
+                    delivery_failed+=1
+                    try:self._drop(peer)
+                    except Exception:peer['closing']=True
+            return {'ok':True,'identity':identity,'revision':revision,'tiles':len(merged),'changed':True,'reset_queued':queued,'delivery_failed':delivery_failed}
+
     def inspect_shared_terrain(self, identity):
         """Owner-only world geometry, authoritative overlay and client reports."""
         from .shared_terrain import validate
@@ -1054,15 +1116,16 @@ class WorldServer:
             cave=self.shared_cave
             if not self.archive_generated_areas or not cave or cave.version!=9 or cave.identity!=identity:raise ValueError('active durable event area required')
             revision,payload=self._active_terrain();overlay=validate(cave,payload)
-            tiles=[{'x':x,'y':y,'terrain':'grass' if kind==0 else 'tall_grass'} for (x,y),kind in sorted(overlay.items())]
+            tiles=[{'x':x,'y':y,'terrain':('grass','tall_grass','water')[kind]} for (x,y),kind in sorted(overlay.items())]
             cast=[{'npc':i+1,'x':cave.cast[2+i*61], 'y':cave.cast[3+i*61]} for i in range(cave.cast[0])]
             players=[]
             for name,peer in sorted(self.peers.items()):
                 if peer.get('closing') or peer.get('cave_ack')!=identity:continue
                 report=peer.get('terrain_report');current=report if report and report['identity']==identity and report['revision']==revision else None
-                players.append({'trainer':name,'compatible':bool(peer.get('cave_terrain')),'inside':bool(peer.get('in_generated_cave')),
+                players.append({'trainer':name,'compatible':bool(peer.get('cave_terrain')),'geometry_capable':bool(peer.get('cave_geometry')),'inside':bool(peer.get('in_generated_cave')),
                                 'reported_phase':current['phase'] if current else 'pending'})
             return {'ok':True,'identity':identity,'revision':revision,'rows':[row.decode('ascii') for row in cave._rows],
+                    'effective_rows':[''.join('.' if self._active_walkable(x,y) else '#' for x in range(63)) for y in range(63)],
                     'characters':cast,'tiles':tiles,'players':players}
 
     def _queue_event_command(self, trainer, identity, verb, args, npc=None, tile=None, tiles=None):
@@ -1077,7 +1140,7 @@ class WorldServer:
                 raise ValueError('trainer is not in the requested event area')
             if npc is not None and npc>cave.cast[0]:raise ValueError('character not in area')
             for x,y in ([tile] if tile is not None else []) + (tiles or []):
-                if not cave.walkable(x,y) or (x,y) in ((1,1),(61,60),(61,61)):raise ValueError('tile cannot be painted')
+                if not self._active_walkable(x,y) or (x,y) in ((1,1),(61,60),(61,61)):raise ValueError('tile cannot be painted')
             seq=peer.get('event_command_seq',0)+1
             if seq>2147483647:raise ValueError('event command sequence exhausted')
             message=f'CAVE {verb} {identity} {seq} {args}\n'
@@ -1155,6 +1218,12 @@ class WorldServer:
                 try:
                     if set(request)!={'command','trainer','identity','x','y','terrain'}:raise ValueError('invalid event tile command')
                     result=self.set_event_tile(request['trainer'],request['identity'],request['x'],request['y'],request['terrain'])
+                except ValueError as exc:
+                    result=dict(ok=False,error=str(exc))
+            elif request.get('command') == 'set_shared_geometry':
+                try:
+                    if set(request)!={'command','identity','tiles'}:raise ValueError('invalid shared geometry request')
+                    result=self.set_shared_geometry(request['identity'],request['tiles'])
                 except ValueError as exc:
                     result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'inspect_shared_terrain':
