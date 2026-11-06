@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 from test_large_generated_cave import DOC
 from test_shared_generated_cave import MemoryAuthority
-from world import wilds_events,shared_terrain_control
+from world import wilds_events,shared_terrain,shared_terrain_control
 from world.shared_cave import SharedCave
 ROOT=Path(__file__).resolve().parents[2]
 
@@ -65,15 +65,19 @@ class SharedTerrainWorld(unittest.TestCase):
     self.assertEqual(bytes(players[0]['out']),expected);self.assertEqual(bytes(players[1]['out']),expected)
    finally:server.close()
  def test_shared_overlay_capacity_is_atomic(self):
-  blob=self.blob();area=SharedCave(blob);identity=area.identity
+  rows=['#'*63]+['#'+'.'*61+'#']*61+['#'*63]
+  blob=wilds_events.encode({'rows':rows,'spawn':[1,1],'exit':[61,61]},[{'gfx':7,'text':'Hi!'}],{'initial':0,'rules':[{'state':0,'npc':1,'next':1,'text':'Hi!'}]})
+  area=SharedCave(blob);identity=area.identity
   coords=[(x,y) for x in range(63) for y in range(63) if area.walkable(x,y) and (x,y) not in ((1,1),(61,60),(61,61))]
-  self.assertGreaterEqual(len(coords),65)
+  self.assertGreaterEqual(len(coords),513)
   with tempfile.TemporaryDirectory() as t:
    p=Path(t);server=MemoryAuthority(p/'socket',p/'world',persist_generated_cave=True,archive_generated_areas=True,cave_template=blob)
    try:
-    server._replace_cave(blob);patch=[{'x':x,'y':y,'terrain':'grass'} for x,y in coords[:64]]
-    self.assertEqual(server.set_shared_terrain(identity,patch)['tiles'],64);before=server._active_terrain()
-    x,y=coords[64]
+    server._replace_cave(blob)
+    for i in range(0,512,64):
+     patch=[{'x':x,'y':y,'terrain':'grass'} for x,y in coords[i:i+64]];server.set_shared_terrain(identity,patch)
+    before=server._active_terrain();self.assertEqual(len(shared_terrain.validate(area,before[1])),512);self.assertEqual(before[1][0],255)
+    x,y=coords[512]
     with self.assertRaises(ValueError):server.set_shared_terrain(identity,[{'x':x,'y':y,'terrain':'grass'}])
     self.assertEqual(server._active_terrain(),before)
    finally:server.close()
@@ -173,7 +177,7 @@ for(p=strtok_r(line," ",&save);p&&n<5;p=strtok_r(NULL," ",&save))t[n++]=p;
 r=WorldCaveWire_Feed(&w,n,(const char *const*)t);if(r<0)return 2;}
 return r==1 && w.version==9 && w.terrainSeen && ((w.terrainRevision==1 && w.terrainSize==4 && w.terrain[0]==1) || (w.terrainRevision==0 && w.terrainSize==1 && w.terrain[0]==0)) ? 0:3;}'''
   with tempfile.TemporaryDirectory() as t:
-   p=Path(t);(p/'global.h').write_text('#include <stdint.h>\ntypedef uint8_t u8;typedef uint32_t u32;typedef int bool8;\n#define TRUE 1\n#define FALSE 0\n');(p/'test.c').write_text(code)
+   p=Path(t);(p/'global.h').write_text('#include <stdint.h>\ntypedef uint8_t u8;typedef uint16_t u16;typedef uint32_t u32;typedef int bool8;\n#define TRUE 1\n#define FALSE 0\n');(p/'test.c').write_text(code)
    root=Path(__file__).resolve().parents[2]
    cmd=['cc','-std=gnu99','-Wall','-Wextra','-Werror','-DPORTABLE','-DGENERATED_CAVE_PROFILES=1','-DGENERATED_CAVE_WILDLIFE=1','-DGENERATED_MAP_LARGE=1','-DGENERATED_MAP_WILDS=1','-DGENERATED_WILDS_GUIDE=1','-DGENERATED_WILDS_CAST=1','-DGENERATED_WILDS_EVENTS=1','-DGENERATED_WILDS_SHARED_TERRAIN=1','-iquote',str(p),'-iquote',str(root/'include'),str(root/'src/platform/world_cave_wire.c'),str(p/'test.c'),'-o',str(p/'test')]
    build=subprocess.run(cmd,capture_output=True,text=True);self.assertEqual(build.returncode,0,build.stderr)

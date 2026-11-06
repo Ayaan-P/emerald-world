@@ -77,7 +77,7 @@ int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned n, const char *const
 {
     unsigned i, index=0;
     char digest[65];
-    if (!wire || !t || n<2 || n>5) return -1;
+    if (!wire || !t || n<2 || n>7) return -1;
     for(i=0;i<n;i++) if (!t[i]) return -1;
     if (strcmp(t[0],"CAVE")) return -1;
     if (n==3 && !strcmp(t[1],"BEGIN")) {
@@ -90,6 +90,9 @@ int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned n, const char *const
         memcpy(wire->id,t[2],65);wire->nextRow=0;wire->version=9;wire->profile=0;wire->castSeen=FALSE;wire->nextEventChunk=0;wire->active=TRUE;
 #if GENERATED_WILDS_SHARED_TERRAIN
         wire->terrainSeen=FALSE;
+#if GENERATED_WILDS_LARGE_TERRAIN
+        wire->terrainChunkNext=wire->terrainChunkTotal=0;wire->terrainLargeFraming=FALSE;wire->terrainSize=0;
+#endif
 #endif
         return 0;
     }
@@ -181,6 +184,29 @@ int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned n, const char *const
         if(revision>0 && wire->terrain[0]==0)return -1;
 #endif
         wire->terrainSize=length/2;wire->terrainRevision=revision;wire->terrainSeen=TRUE;return 0;
+    }
+#endif
+#if GENERATED_WILDS_LARGE_TERRAIN
+    if(n==7 && !strcmp(t[1],"TERRAINH")) {
+        const char *p=t[3];unsigned revision=0,chunk,total,length=strlen(t[6]),bytes,i,offset,count;
+        if(wire->version!=9 || !wire->castSeen || wire->nextEventChunk!=6 || wire->terrainSeen || wire->nextRow || !*p || (p[0]=='0' && p[1]))return -1;
+        while(*p){if(*p<'0'||*p>'9'||revision>(2147483647U-(unsigned)(*p-'0'))/10)return -1;revision=revision*10+(*p++-'0');}
+        if(strlen(t[4])!=1 || t[4][0]<'0' || t[4][0]>'7' || strlen(t[5])!=1 || t[5][0]<'1' || t[5][0]>'8')return -1;
+        chunk=t[4][0]-'0';total=t[5][0]-'0';
+        if(chunk!=wire->terrainChunkNext || chunk>=total || !length || length>400 || (length&1) || (chunk+1<total && length!=400))return -1;
+        if(!chunk){wire->terrainRevision=revision;wire->terrainChunkTotal=total;wire->terrainSize=0;wire->terrainLargeFraming=TRUE;}
+        else if(wire->terrainRevision!=revision || wire->terrainChunkTotal!=total)return -1;
+        bytes=length/2;offset=wire->terrainSize;if(offset+bytes>WORLD_CAVE_TERRAIN_MAX_BYTES)return -1;
+        for(i=0;i<length;i++){char c=t[6][i];unsigned v;if(c>='0'&&c<='9')v=c-'0';else if(c>='a'&&c<='f')v=c-'a'+10;else return -1;
+            if(!(i&1))wire->terrain[offset+i/2]=v<<4;else wire->terrain[offset+i/2]|=v;}
+        wire->terrainSize+=bytes;wire->terrainChunkNext++;
+        if(wire->terrainChunkNext==total){
+            if(wire->terrain[0]==255){if(wire->terrainSize<3)return -1;count=wire->terrain[1]|((unsigned)wire->terrain[2]<<8);offset=3;if(count<=64||count>512)return -1;}
+            else {count=wire->terrain[0];offset=1;if(count>64)return -1;}
+            if(wire->terrainSize!=offset+3*count || (revision==0 && count!=0))return -1;
+            wire->terrainSeen=TRUE;
+        }
+        return 0;
     }
 #endif
 #if GENERATED_WILDS_GUIDE

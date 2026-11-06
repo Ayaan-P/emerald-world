@@ -29,6 +29,10 @@
 #ifndef GENERATED_WILDS_SHARED_GEOMETRY
 #define GENERATED_WILDS_SHARED_GEOMETRY 0
 #endif
+#ifndef GENERATED_WILDS_LARGE_TERRAIN
+#define GENERATED_WILDS_LARGE_TERRAIN 0
+#endif
+#define WORLD_CAVE_TERRAIN_MAX_BYTES (GENERATED_WILDS_LARGE_TERRAIN ? 1539 : 193)
 #define WORLD_CAVE_EVENT_BYTES 1466
 #define WORLD_CAVE_GUIDE_BYTES 59
 #define WORLD_CAVE_CAST_BYTES 184
@@ -60,7 +64,10 @@ struct WorldCaveWire
     u8 nextEventChunk;
 #endif
 #if GENERATED_WILDS_SHARED_TERRAIN
-    u8 terrain[193], terrainSize;u32 terrainRevision;bool8 terrainSeen;
+    u8 terrain[WORLD_CAVE_TERRAIN_MAX_BYTES];u16 terrainSize;u32 terrainRevision;bool8 terrainSeen;
+#if GENERATED_WILDS_LARGE_TERRAIN
+    u8 terrainChunkNext, terrainChunkTotal;bool8 terrainLargeFraming;
+#endif
 #endif
     bool8 active;
 };
