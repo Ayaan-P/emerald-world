@@ -82,6 +82,10 @@ enum frame_result __wrap_frame_run(void)
                           frame_count(), field ? "true" : "false", group, num, x, y, ExpansionPeers_Count(), facing, gfx, link_state == 1 && LinkTransport_Ready() ? "true" : "false",
                           field && ExpansionActivity_PresenceReady() ? "true" : "false",
                           trade_valid < 0 ? "null" : trade_valid ? "true" : "false");
+        if (getenv("EW_EXPANSION_BATTLE_AUDIT")) {
+            if (!strcmp(battle, "1")) fprintf(out, ",\"battle_turn\":%u", (unsigned)gBattleResults.battleTurnCounter);
+            else fputs(",\"battle_turn\":null", out);
+        }
         if (getenv("EW_EXPANSION_CONTROL_AUDIT")) {
             fputs(",\"control_audit\":", out);
             ExpansionControl_WriteObservation(out, frame_count());
