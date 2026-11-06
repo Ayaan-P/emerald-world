@@ -31,7 +31,9 @@ jobs:
           python3 -m unittest discover -s test -p test_movement_capacity.py -v
           python3 -m unittest discover -s test -p test_saved_object_bounds.py -v
       - name: Apply candidate to clean pinned donor
-        run: python3 scripts/apply_bulk_expansion_port.py engines/expansion-native
+        run: |
+          python3 scripts/apply_bulk_expansion_port.py engines/expansion-native
+          python3 test/coop_relay/instrument.py engines/expansion-native
       - name: Test offline Expansion battle packet headers
         run: python3 -m unittest discover -s test -p test_expansion_battle_header.py -v
       - name: Install native build prerequisites
