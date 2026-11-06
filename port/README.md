@@ -26,14 +26,14 @@ not playable or safe to release. See `conflicts.txt` for the original list.
 
 The `src/link.c` conflict resolution reuses the prior donor virtual-cable port
 and exposes the World block-size API. It is not a validated co-op or trade
-integration. Cross-engine offers are now rejected by the server compatibility tag; this
-has only been checked with in-memory protocol tests, not real network sessions.
-LINK compatibility and session recovery still require end-to-end verification.
+integration. The existing server protocol is retained unchanged. It does not distinguish
+Expansion from older clients, so mixed-engine pairing is unsafe. Client-side
+isolation and end-to-end LINK compatibility are unresolved.
 
 Initial field-input and link conflict resolutions carry the existing World
 hooks into the donor's field and virtual-cable code. The save conflict uses the
 Expansion platform's `frame_flush_save` instead of the old native save writer.
-Save failure/retry semantics and real-network LINK isolation are still
+Save failure/retry semantics and cross-engine LINK isolation are still
 unverified; these source merges must not be interpreted as safe gameplay.
 
 The 17 existing World implementation modules and 20 matching headers were

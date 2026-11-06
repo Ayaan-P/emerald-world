@@ -304,7 +304,7 @@ static int Connect(void)
     sLink.connecting = result != 0;
     sLink.handshakeStarted = MonotonicMilliseconds();
     sLink.enabled = 1;
-    snprintf(hello, sizeof(hello), "HELLO 1 %s %s LINKEXP1\n", sLink.trainer, sLink.token);
+    snprintf(hello, sizeof(hello), "HELLO 1 %s %s LINK\n", sLink.trainer, sLink.token);
     Queue(hello);
     return 1;
 fail:
