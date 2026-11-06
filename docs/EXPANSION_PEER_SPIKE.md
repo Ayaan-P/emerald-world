@@ -53,3 +53,8 @@ activities, including trade and tagged encounters, remain
 disabled. This new flow has not been exercised between real clients and must
 not be used with valuable saves. Engine labels prevent accidental mixed-engine
 pairing but are not protection against a malicious peer.
+
+Trade remains disabled. An Expansion-specific pair validator is being added to
+check the actual 100-byte donor ABI, checksums, species, moves, items, modern
+form attributes and names before any received Pokémon enters game state. This
+alone is not a complete trade-safety or consent implementation.

@@ -21,6 +21,7 @@ class OverlayTests(unittest.TestCase):
         self.assertIn('NativeLink_Main1(shouldAdvanceLinkState, sendCmd, recvCmds)', result)
         self.assertIn('sNativePlayerExchangeRequested', result)
         self.assertIn('NativeLink_SetCommandSource(gSendCmd)', result)
+        self.assertIn('ExpansionLink_GetBlockReceivedSize', result)
         self.assertIn('gRecvCmds[i][1] >= ARRAY_COUNT(sBlockRequests)', result)
         self.assertNotIn('gDecompressionBuffer', result)
     def test_changed_donor_fails_closed(self):

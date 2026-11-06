@@ -97,6 +97,17 @@ static bool8 sNativeCableOpen;''')
     donor = replace_one(donor, 'static bool8 IsSioMultiMaster(void)\n{', '''static bool8 IsSioMultiMaster(void)
 {
     if (NativeLink_IsActive()) return NativeLink_LocalId() == 0;''')
+    donor = replace_one(donor, 'void ResetBlockReceivedFlag(u8 who)\n{', '''/* Completed size is read before the flag is reset by trade/battle consumers. */
+u16 ExpansionLink_GetBlockReceivedSize(u8 who)
+{
+    if (who >= MAX_LINK_PLAYERS || gWirelessCommType || !gBlockReceivedStatus[who]
+        || sBlockRecv[who].active || !sBlockRecv[who].size
+        || sBlockRecv[who].size > BLOCK_BUFFER_SIZE || sBlockRecv[who].pos < sBlockRecv[who].size)
+        return 0;
+    return sBlockRecv[who].size;
+}
+void ResetBlockReceivedFlag(u8 who)
+{''')
     donor = replace_one(donor, 'u32 GetLinkRecvQueueLength(void)\n{', '''u32 GetLinkRecvQueueLength(void)
 {
     if (NativeLink_IsActive()) return NativeLink_RecvQueueCount();''')

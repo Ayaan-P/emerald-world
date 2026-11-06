@@ -5,11 +5,12 @@ EW_PEERS := ../../build/expansion-peers.o
 EW_LINK := ../../build/expansion-link.o
 EW_CABLE := ../../build/expansion-cable.o
 EW_ACTIVITY := ../../build/expansion-activity.o
-OBJS += $(EW_ADAPTER) $(EW_PEERS) $(EW_LINK) $(EW_CABLE) $(EW_ACTIVITY)
+EW_TRADE_VALIDATE := ../../build/expansion-trade-validate.o
+OBJS += $(EW_ADAPTER) $(EW_PEERS) $(EW_LINK) $(EW_CABLE) $(EW_ACTIVITY) $(EW_TRADE_VALIDATE)
 # A relocated multilib sysroot does not contain the host's SDL dependencies.
 # Resolve those at link time only; do not bake a private runtime search path.
 NATIVE_LDFLAGS += -Wl,--wrap=frame_run -Wl,--wrap=SaveObjectEvents -Wl,--wrap=CopyPartyAndObjectsToSave -Wl,--wrap=GetObjectEventIdByPosition -Wl,--wrap=FieldGetPlayerInput -Wl,-rpath-link,/usr/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu/pulseaudio
-$(NATIVE_EXE): $(EW_ADAPTER) $(EW_PEERS) $(EW_LINK) $(EW_CABLE) $(EW_ACTIVITY)
+$(NATIVE_EXE): $(EW_ADAPTER) $(EW_PEERS) $(EW_LINK) $(EW_CABLE) $(EW_ACTIVITY) $(EW_TRADE_VALIDATE)
 $(EW_ADAPTER): ../expansion_presence.c
 	@mkdir -p $(@D)
 	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
@@ -51,3 +52,7 @@ $(EW_PATCHED_CABLE): src/cable_club.c ../../scripts/patch_expansion_cable.py
 $(C_BUILDDIR)/cable_club.o: $(EW_PATCHED_CABLE) $(C_FILTER_SCRIPT)
 	@echo "$(TARGET_CC) <Expansion cable battle overlay> -o $@"
 	@$(CPP) $(CPPFLAGS) $(EW_PATCHED_CABLE) | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $(EW_PATCHED_CABLE) charmap.txt | $(C_FILTER) > $(C_PREPROCESSED) && $(TARGET_CC) $(CFLAGS) -c -x c -o $@ $(C_PREPROCESSED); status=$$?; rm -f $(C_PREPROCESSED); exit $$status
+
+$(EW_TRADE_VALIDATE): ../expansion_trade_validate.c
+	@mkdir -p $(@D)
+	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@

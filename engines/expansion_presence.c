@@ -6,6 +6,8 @@
 #include <string.h>
 #include "global.h"
 #include "global.fieldmap.h"
+#include "battle.h"
+#include "pokemon.h"
 #include "constants/event_objects.h"
 #include "platform/frame.h"
 #include "platform/inspect.h"
@@ -19,6 +21,7 @@ extern u16 gSendCmd[8];
 void ExpansionPeers_Update(int overworld);
 void ExpansionActivity_Update(void);
 int ExpansionActivity_PresenceReady(void);
+int ExpansionTrade_PairValid(const void *data, size_t size);
 unsigned ExpansionPeers_Count(void);
 enum frame_result __real_frame_run(void);
 enum frame_result __wrap_frame_run(void)
@@ -56,15 +59,19 @@ enum frame_result __wrap_frame_run(void)
     }
     if (getenv("EW_EXPERIMENTAL_EXPANSION_PEERS") != NULL)
         ExpansionPeers_Update(field);
+    int trade_valid = -1;
+    if (getenv("EW_EXPANSION_TRADE_AUDIT") && gPartiesCount[B_TRAINER_PLAYER] >= 2)
+        trade_valid = ExpansionTrade_PairValid(&gParties[B_TRAINER_PLAYER][0], 2 * sizeof(struct Pokemon));
     char temporary[4096];
     if (snprintf(temporary, sizeof temporary, "%s.tmp", path) >= (int)sizeof temporary)
         return result;
     FILE *out = fopen(temporary, "w");
     if (out != NULL) {
         int written = fprintf(out, "{\"schema\":1,\"engine\":\"expansion-native\",\"frame\":%u,"
-                          "\"field\":%s,\"group\":%u,\"num\":%u,\"x\":%u,\"y\":%u,\"peers\":%u,\"facing\":%u,\"gfx\":%u,\"link_ready\":%s,\"ready\":%s}\n",
+                          "\"field\":%s,\"group\":%u,\"num\":%u,\"x\":%u,\"y\":%u,\"peers\":%u,\"facing\":%u,\"gfx\":%u,\"link_ready\":%s,\"ready\":%s,\"trade_pair_valid\":%s}\n",
                           frame_count(), field ? "true" : "false", group, num, x, y, ExpansionPeers_Count(), facing, gfx, link_state == 1 && LinkTransport_Ready() ? "true" : "false",
-                          field && ExpansionActivity_PresenceReady() ? "true" : "false");
+                          field && ExpansionActivity_PresenceReady() ? "true" : "false",
+                          trade_valid < 0 ? "null" : trade_valid ? "true" : "false");
         int closed = fclose(out);
         if (written > 0 && closed == 0)
             (void)rename(temporary, path);

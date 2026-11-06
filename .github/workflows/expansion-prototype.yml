@@ -31,6 +31,8 @@ jobs:
           /tmp/expansion-projection-test
           gcc -D_POSIX_C_SOURCE=200809L -std=c11 -Wall -Wextra -Werror -Itest/expansion_projection/activity_stubs engines/expansion_activity.c test/expansion_projection/test_activity.c -o /tmp/expansion-activity-test
           /tmp/expansion-activity-test
+          gcc -std=c11 -Wall -Wextra -Werror -Itest/expansion_projection/trade_stubs engines/expansion_trade_validate.c test/expansion_projection/test_trade_validate.c -o /tmp/expansion-trade-test
+          /tmp/expansion-trade-test
       - name: Build pinned Expansion donor and adapter
         working-directory: engines/expansion-native
         run: make -f ../expansion.mk -j2 native BITS=64
@@ -47,7 +49,9 @@ jobs:
 
       - name: Exercise modern species, forms and items
         working-directory: engines/expansion-native
-        run: tests/smoke/run_debug_menu.sh build/native64/pokeemerald-native /tmp/expansion-dex-smoke
+        run: |
+          EW_EXPANSION_PRESENCE=/tmp/expansion-trade-audit.json EW_EXPANSION_TRADE_AUDIT=1 tests/smoke/run_debug_menu.sh build/native64/pokeemerald-native /tmp/expansion-dex-smoke
+          python3 -c "import json; assert json.load(open('/tmp/expansion-trade-audit.json'))['trade_pair_valid'] is True"
 
       - name: Exercise two isolated Expansion engines
         run: python3 test/expansion_projection/dual_engine_smoke.py engines/expansion-native/build/native64/pokeemerald-native engines/expansion-native
