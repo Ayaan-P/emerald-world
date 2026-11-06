@@ -42,12 +42,21 @@ STUBS = r'''
 #define MON_DATA_MOVE1 6
 #define MON_DATA_PP1 10
 #define MON_DATA_IS_EGG 14
+#define MON_DATA_EXP 15
+#define BATTLE_TYPE_IS_MASTER 0x80000000
 typedef uint8_t u8;
 typedef int8_t s8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef int bool32;
-struct Pokemon { u32 data[15]; };
+struct Pokemon { u32 data[16]; };
+struct WorldCoopPublicMon { u16 species,hp,maxHP; u32 status; u8 level; };
+static int WorldCoop_IsBattle(void) { return 0; }
+static u8 WorldCoop_GetOwnPartyCount(void) { abort(); }
+static const struct Pokemon *WorldCoop_GetOwnMon(u8 slot) { (void)slot; abort(); }
+static int WorldCoop_GetPublicMon(u8 battler,struct WorldCoopPublicMon *mon) { (void)battler; (void)mon; abort(); }
+static const char *LinkTransport_TagPeer(void) { return NULL; }
+static int LinkTransport_TagInRange(void) { return 0; }
 struct BattlePokemon {
     u16 species, hp, maxHP; u8 level; u32 status1;
     u16 moves[4]; u8 pp[4];
@@ -107,7 +116,7 @@ static void WorldBridge_WriteJSON(FILE *file, u32 frame) {
 static u32 __attribute__((unused)) GetMonData(struct Pokemon *mon, int field) {
     if (!gSaveBlock1Ptr || !gSaveBlock2Ptr) abort();
     if (mon < gPlayerParty || mon >= gPlayerParty + PARTY_SIZE) abort();
-    if (field < MON_DATA_SPECIES || field > MON_DATA_IS_EGG) abort();
+    if (field < MON_DATA_SPECIES || field > MON_DATA_EXP) abort();
     return mon->data[field];
 }
 '''
@@ -238,7 +247,8 @@ class BattleObservationTests(unittest.TestCase):
     def test_activity_observation_is_allowlisted_local_state(self):
         self.assertEqual(self.observe()["activity"], {
             "phase": "menu", "mode": 0, "status": "peer menu",
-            "link_connected": True, "generation": 17, "trade_phase": "inactive"})
+            "link_connected": True, "generation": 17, "trade_phase": "inactive",
+            "tag_peer": "", "tag_in_range": False, "coop": False})
 
     def test_trade_phase_getter_reaches_actual_serializer(self):
         for mode, phase in enumerate(
@@ -254,7 +264,7 @@ class BattleObservationTests(unittest.TestCase):
         self.assertEqual(state["party"], [
             {"slot": i, "species": 252 + i, "level": 5 + i,
              "hp": 0 if i else 17, "max_hp": 20 + i,
-             "status": 128 if i else 0,
+             "status": 128 if i else 0, "exp": 0,
              "moves": [{"id": 33 + j, "pp": 35 - j} for j in range(4)]}
             for i in range(2)])
 

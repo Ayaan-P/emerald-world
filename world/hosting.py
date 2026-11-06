@@ -256,6 +256,18 @@ class HostedWorldManager:
             row = self._owned(token, world_id)
             return self._result(row, row['trainer'])
 
+    def world_rules(self, token, world_id, rules=None):
+        with self.lock:
+            row = self._owned(token, world_id)
+            server = self._start_world(row)
+            from .client import admin_request
+            request = (dict(command='inspect') if rules is None else
+                       dict(command='set_world_rules', rules=rules))
+            result = admin_request(server.socket_path, request, admin_path=server.admin_path)
+            if not result.get('ok'):
+                raise HostingError(409, 'conflict')
+            return dict(world_rules=result['world_rules'])
+
     def invite(self, token, world_id, request_id):
         """Owner issues one private, single-identity bearer. Retry by request_id."""
         with self.lock, self.db:
@@ -431,12 +443,14 @@ class HostingService:
                     elif self.command == 'POST' and path == '/v1/join' and set(body) == {'trainer'}:
                         result = manager.join(token, body['trainer'])
                     else:
-                        match = re.fullmatch('/v1/worlds/([0-9a-f]{16})/(resume|invites)', path)
+                        match = re.fullmatch('/v1/worlds/([0-9a-f]{16})/(resume|invites|rules)', path)
                         if self.command != 'POST' or match is None:
                             raise HostingError()
                         world_id, action = match.groups()
                         if action == 'resume' and not body:
                             result = manager.resume(token, world_id)
+                        elif action == 'rules' and (not body or set(body) == {'rules'}):
+                            result = manager.world_rules(token, world_id, body.get('rules'))
                         elif action == 'invites' and set(body) == {'request_id'}:
                             result = dict(manager.invite(token, world_id, body['request_id']),
                                           endpoint=service.endpoint, pin=manager.pin)

@@ -99,8 +99,9 @@ int main(void) {
         link = (ROOT/'src/link.c').read_text()
         stub = (ROOT/'src/stub.c').read_text()
         self.assertNotIn('STUB_FUNC_QUIET_BLOCK(bool8 HandleLinkConnection()', stub)
-        for hook in ['NativeLink_Open(gLinkType)', 'NativeLink_Close()', 'NativeLink_Main1(', 'NativeLink_IsActive()', 'NativeLink_LocalId()', 'NativeLink_Abort()']:
+        for hook in ['NativeLink_Open(wireLinkType)', 'NativeLink_Close()', 'NativeLink_Main1(', 'NativeLink_IsActive()', 'NativeLink_LocalId()', 'NativeLink_Abort()']:
             self.assertIn(hook, link)
+        self.assertIn('BattleRules_LinkType(gLinkType, WorldRules_Enabled(WORLD_RULE_MODERN_SPLIT)', link)
         self.assertIn('gRecvCmds[i][1] >= ARRAY_COUNT(sBlockRequests)', link)
         self.assertIn('sBlockRecv[i].pos + 14 > BLOCK_BUFFER_SIZE', link)
 

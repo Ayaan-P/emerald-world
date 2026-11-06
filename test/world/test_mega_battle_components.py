@@ -71,7 +71,7 @@ int main(void) {
                 shutil.copy(ROOT/'include/platform'/name,root/'platform'/name)
             (root/'main.c').write_text(main)
             exe=root/'test'
-            cmd=['cc','-std=c99','-DPORTABLE','-Wall','-Wextra','-Werror','-I',str(root),str(ROOT/'src/platform/mega_forms.c'),str(ROOT/'src/platform/mega_battle.c'),str(root/'main.c'),'-o',str(exe)]
+            cmd=['cc','-std=c99','-DPORTABLE','-Wall','-Wextra','-Werror','-iquote',str(root),'-iquote',str(ROOT/'include/constants'),str(ROOT/'src/platform/mega_forms.c'),str(ROOT/'src/platform/mega_battle.c'),str(root/'main.c'),'-o',str(exe)]
             result=subprocess.run(cmd,capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
             result=subprocess.run([str(exe)],capture_output=True,text=True)

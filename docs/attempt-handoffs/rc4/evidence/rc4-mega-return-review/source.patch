@@ -1,0 +1,21 @@
+diff --git a/src/platform/world_activity.c b/src/platform/world_activity.c
+index 6df9eac..9a9ad69 100644
+--- a/src/platform/world_activity.c
++++ b/src/platform/world_activity.c
+@@ -24,6 +24,7 @@
+ #include "platform/world_activity.h"
+ #include "platform/world_coop.h"
+ #include "platform/dexnav_native.h"
++#include "platform/mega_game.h"
+ #include <string.h>
+ 
+ enum { IDLE, MENU, INVITATION, WAIT_ADMIT, CONNECTING, NATIVE, RETURNING, WAIT_TAG };
+@@ -338,6 +339,8 @@ int WorldActivity_TakeTalkRequest(char peer[25])
+ 
+ void WorldActivity_ReturnToField(void)
+ {
++    /* Receiving controllers bypass BattleMain's normal Mega cleanup. */
++    MegaGame_Reset();
+     DexNavNative_AbandonBattle();
+     /* An incomplete exchange is neither a victory nor a defeat. Discard the
+      * suspended trainer script, rather than invoking its ordinary result

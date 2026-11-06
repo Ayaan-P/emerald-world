@@ -1,0 +1,467 @@
+{
+  "source_commit": "bb3fd057061cdd7e6a9e79b76abb41924ee44ecc",
+  "assets": [
+    {
+      "path": "graphics/expanded/gimmighoul_roaming/front.png",
+      "donor_path": "graphics/pokemon/gimmighoul/roaming/front.png",
+      "source_sha256": "95bfc3d8aa337dd21db739848267eaf4dc7005fceb4ed42be4005938ed4925da",
+      "sha256": "95bfc3d8aa337dd21db739848267eaf4dc7005fceb4ed42be4005938ed4925da",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/gimmighoul_roaming/back.png",
+      "donor_path": "graphics/pokemon/gimmighoul/roaming/back.png",
+      "source_sha256": "9370a1c064430aeb9b9f1bf2c3faa5fc8392f3f41d8d563b7dd3d1ccf150c63e",
+      "sha256": "9370a1c064430aeb9b9f1bf2c3faa5fc8392f3f41d8d563b7dd3d1ccf150c63e",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/gimmighoul_roaming/normal.pal",
+      "donor_path": "graphics/pokemon/gimmighoul/roaming/normal.pal",
+      "source_sha256": "cef2c5317a1c3707a26568912a9c9f28f6d97953666573573a6e19c526b02981",
+      "sha256": "cef2c5317a1c3707a26568912a9c9f28f6d97953666573573a6e19c526b02981",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/gimmighoul_roaming/shiny.pal",
+      "donor_path": "graphics/pokemon/gimmighoul/roaming/shiny.pal",
+      "source_sha256": "af567d99827637883fc9e0082adec680afe2dbad1e035fba55a7c07784f3f5f8",
+      "sha256": "af567d99827637883fc9e0082adec680afe2dbad1e035fba55a7c07784f3f5f8",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/gimmighoul_roaming/icon.png",
+      "donor_path": "graphics/pokemon/gimmighoul/roaming/icon.png",
+      "source_sha256": "8d89781c99b66c147dcf3f73ed9e13bb38c2712a608c40794947ec9e5850ec22",
+      "sha256": "8d89781c99b66c147dcf3f73ed9e13bb38c2712a608c40794947ec9e5850ec22",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/gimmighoul_roaming/footprint.png",
+      "donor_path": "graphics/pokemon/gimmighoul/roaming/footprint.png",
+      "source_sha256": "115f0e5216227c72a5c3befb0b96a50aa74643452c8d27a46c3a5b5fcc2293a0",
+      "sha256": "115f0e5216227c72a5c3befb0b96a50aa74643452c8d27a46c3a5b5fcc2293a0",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/meltan/front.png",
+      "donor_path": "graphics/pokemon/meltan/anim_front.png",
+      "source_sha256": "62fead3e88df4dd232d61e157c728cc5d2b1b89cb94d11f162bf88f2d5bbeaf7",
+      "sha256": "171344577b03afb7ecb2be45f96cdb79c3881289f5f72a489949511d639b0064",
+      "transform": "first_64x64_frame; static animation explicitly selected"
+    },
+    {
+      "path": "graphics/expanded/meltan/back.png",
+      "donor_path": "graphics/pokemon/meltan/back.png",
+      "source_sha256": "6669ff113f90ea52594a14f329fba3b4cf850720120ede6977bb01ea82ab1adb",
+      "sha256": "6669ff113f90ea52594a14f329fba3b4cf850720120ede6977bb01ea82ab1adb",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/meltan/normal.pal",
+      "donor_path": "graphics/pokemon/meltan/normal.pal",
+      "source_sha256": "98f76c97767299813bd34f12e8fa7ec975e7106a4e9461879a5fc354abf21f7b",
+      "sha256": "98f76c97767299813bd34f12e8fa7ec975e7106a4e9461879a5fc354abf21f7b",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/meltan/shiny.pal",
+      "donor_path": "graphics/pokemon/meltan/shiny.pal",
+      "source_sha256": "8adefb8594af85400c4d6f6b45c698cc4ed39433526750be999f9a6e7072fb8f",
+      "sha256": "8adefb8594af85400c4d6f6b45c698cc4ed39433526750be999f9a6e7072fb8f",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/meltan/icon.png",
+      "donor_path": "graphics/pokemon/meltan/icon.png",
+      "source_sha256": "f1cf735c97916c7adc810128ea9f2ea1ae578494829311bf8c6b7519909aa1fd",
+      "sha256": "f1cf735c97916c7adc810128ea9f2ea1ae578494829311bf8c6b7519909aa1fd",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/meltan/footprint.png",
+      "donor_path": "graphics/pokemon/meltan/footprint.png",
+      "source_sha256": "67e4130876b4162cf746d88d0ce2e867133c440f9faece7a950b78802adee135",
+      "sha256": "67e4130876b4162cf746d88d0ce2e867133c440f9faece7a950b78802adee135",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/cosmoem/front.png",
+      "donor_path": "graphics/pokemon/cosmoem/anim_front.png",
+      "source_sha256": "fcbf901d9abc6cac118fd8c187ed9ba27885fd63a6811935245706ca70341742",
+      "sha256": "9e7a3577b97de11b37bed3dc0c9255a67546180c09e254d2c3f37aecb35a16a3",
+      "transform": "first_64x64_frame; static animation explicitly selected"
+    },
+    {
+      "path": "graphics/expanded/cosmoem/back.png",
+      "donor_path": "graphics/pokemon/cosmoem/back.png",
+      "source_sha256": "fc86c19561b852f91df494f50d538232b388454be7e6f8aea55dfaa9f4a0918c",
+      "sha256": "fc86c19561b852f91df494f50d538232b388454be7e6f8aea55dfaa9f4a0918c",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/cosmoem/normal.pal",
+      "donor_path": "graphics/pokemon/cosmoem/normal.pal",
+      "source_sha256": "444540c71cab4b17cbc22bff6330bd1ffb2b5346125b6f33e28ac5424a00cc28",
+      "sha256": "444540c71cab4b17cbc22bff6330bd1ffb2b5346125b6f33e28ac5424a00cc28",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/cosmoem/shiny.pal",
+      "donor_path": "graphics/pokemon/cosmoem/shiny.pal",
+      "source_sha256": "74a55ae468f051c8522114e3a4a4719b98dccfd94885fdf463890d86a97207bc",
+      "sha256": "74a55ae468f051c8522114e3a4a4719b98dccfd94885fdf463890d86a97207bc",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/cosmoem/icon.png",
+      "donor_path": "graphics/pokemon/cosmoem/icon.png",
+      "source_sha256": "ab85e53fae2545cabb0d6204fb8a59442ae373291139126b4f46425057e847ca",
+      "sha256": "ab85e53fae2545cabb0d6204fb8a59442ae373291139126b4f46425057e847ca",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/cosmoem/footprint.png",
+      "donor_path": "graphics/pokemon/cosmoem/footprint.png",
+      "source_sha256": "67e4130876b4162cf746d88d0ce2e867133c440f9faece7a950b78802adee135",
+      "sha256": "67e4130876b4162cf746d88d0ce2e867133c440f9faece7a950b78802adee135",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/type_null/front.png",
+      "donor_path": "graphics/pokemon/type_null/anim_front.png",
+      "source_sha256": "5e96121d012da40d1a6c71e02efec03d939f2a25afaf339c27eaab93d189c551",
+      "sha256": "5183c30101baaa35bd3bee927e22dfdae5002d960a3655953b5558e66f41027d",
+      "transform": "first_64x64_frame; static animation explicitly selected"
+    },
+    {
+      "path": "graphics/expanded/type_null/back.png",
+      "donor_path": "graphics/pokemon/type_null/back.png",
+      "source_sha256": "c265367f137d48db79588ff653e7ca4d71e40dd9e626c6941842ac394e764923",
+      "sha256": "c265367f137d48db79588ff653e7ca4d71e40dd9e626c6941842ac394e764923",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/type_null/normal.pal",
+      "donor_path": "graphics/pokemon/type_null/normal.pal",
+      "source_sha256": "15e70e45316e394e3fa6de5d32da6b920cc8596e1c73665d6859c290deb0580b",
+      "sha256": "15e70e45316e394e3fa6de5d32da6b920cc8596e1c73665d6859c290deb0580b",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/type_null/shiny.pal",
+      "donor_path": "graphics/pokemon/type_null/shiny.pal",
+      "source_sha256": "ad9411dff9a28a5453e64ac5e3cacce6c598de3ae181907c96e1e2c4341bf3e0",
+      "sha256": "ad9411dff9a28a5453e64ac5e3cacce6c598de3ae181907c96e1e2c4341bf3e0",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/type_null/icon.png",
+      "donor_path": "graphics/pokemon/type_null/icon.png",
+      "source_sha256": "462f286e029dbb1622ac6d4bdfb03290f7747eb9c1fd5cc7687da6e939901141",
+      "sha256": "462f286e029dbb1622ac6d4bdfb03290f7747eb9c1fd5cc7687da6e939901141",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/type_null/footprint.png",
+      "donor_path": "graphics/pokemon/type_null/footprint.png",
+      "source_sha256": "8e28e1a098f0e0e21ed839618ab8eac86d695d58f0046f6f2aa959f5a4cfa365",
+      "sha256": "8e28e1a098f0e0e21ed839618ab8eac86d695d58f0046f6f2aa959f5a4cfa365",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/turtwig/front.png",
+      "donor_path": "graphics/pokemon/turtwig/anim_front.png",
+      "source_sha256": "208b847ba0aea629573a6bddc5c76474e7b6f6d328fde1425b2eea9bc9989ac0",
+      "sha256": "499e0252e0330393f24e5333cf1c2b67a41acb9c08890fef8ff62a90eea73ca1",
+      "transform": "first_64x64_frame; static animation explicitly selected"
+    },
+    {
+      "path": "graphics/expanded/turtwig/back.png",
+      "donor_path": "graphics/pokemon/turtwig/back.png",
+      "source_sha256": "3d0f24db50f52f7328343bf2247a9f47b434eec8e656e8ddd03418729deb6c3f",
+      "sha256": "3d0f24db50f52f7328343bf2247a9f47b434eec8e656e8ddd03418729deb6c3f",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/turtwig/normal.pal",
+      "donor_path": "graphics/pokemon/turtwig/normal.pal",
+      "source_sha256": "4cf129bfbd45f975d2908f82693dc113f23c0162247e00fef6abaa3d81c36934",
+      "sha256": "4cf129bfbd45f975d2908f82693dc113f23c0162247e00fef6abaa3d81c36934",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/turtwig/shiny.pal",
+      "donor_path": "graphics/pokemon/turtwig/shiny.pal",
+      "source_sha256": "8e9bbc0a698d2ea25e4862baf7e04841b198abb61ad7cb4b9bf06a2a453e94df",
+      "sha256": "8e9bbc0a698d2ea25e4862baf7e04841b198abb61ad7cb4b9bf06a2a453e94df",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/turtwig/icon.png",
+      "donor_path": "graphics/pokemon/turtwig/icon.png",
+      "source_sha256": "90d5b3f8c7fb80df6de0d12265760950db8313de657e1c6893b63f99f1c1ed6e",
+      "sha256": "90d5b3f8c7fb80df6de0d12265760950db8313de657e1c6893b63f99f1c1ed6e",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/turtwig/footprint.png",
+      "donor_path": "graphics/pokemon/turtwig/footprint.png",
+      "source_sha256": "7a352f720202cf4c5cc639a7b8e67896bb5b9bd70667011c351b3ca7b956fe63",
+      "sha256": "7a352f720202cf4c5cc639a7b8e67896bb5b9bd70667011c351b3ca7b956fe63",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/chespin/front.png",
+      "donor_path": "graphics/pokemon/chespin/anim_front.png",
+      "source_sha256": "e7264eb093a9a4ff4355595d75b6b0ed3de853b5da31a862bbc0b5f19a52b8e8",
+      "sha256": "a78d28a31c5e24fd89a18db14c3112639add89557c28ef7e154c684991dab215",
+      "transform": "first_64x64_frame; static animation explicitly selected"
+    },
+    {
+      "path": "graphics/expanded/chespin/back.png",
+      "donor_path": "graphics/pokemon/chespin/back.png",
+      "source_sha256": "5a017c708daf22139609c6d71f756fcc032cb7ada1059c5f163e1aabfd629d72",
+      "sha256": "5a017c708daf22139609c6d71f756fcc032cb7ada1059c5f163e1aabfd629d72",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/chespin/normal.pal",
+      "donor_path": "graphics/pokemon/chespin/normal.pal",
+      "source_sha256": "8869a774086fbc618310a5f312985ee4a9045ffab28a760a401a348dd2d84312",
+      "sha256": "8869a774086fbc618310a5f312985ee4a9045ffab28a760a401a348dd2d84312",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/chespin/shiny.pal",
+      "donor_path": "graphics/pokemon/chespin/shiny.pal",
+      "source_sha256": "dcf87ec184e3480716fd297e382653be47a6304934d3ca0a6565cd7db08e1d46",
+      "sha256": "dcf87ec184e3480716fd297e382653be47a6304934d3ca0a6565cd7db08e1d46",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/chespin/icon.png",
+      "donor_path": "graphics/pokemon/chespin/icon.png",
+      "source_sha256": "2417d273fad8978c99dfcbdbe5f1e307b15294d9dd5bc4a4acc2cc4dfb66ef7c",
+      "sha256": "2417d273fad8978c99dfcbdbe5f1e307b15294d9dd5bc4a4acc2cc4dfb66ef7c",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/chespin/footprint.png",
+      "donor_path": "graphics/pokemon/chespin/footprint.png",
+      "source_sha256": "6c71be609eb63b6dc4b934daf38e09bda592586fcdba0731d1240114f0f312f2",
+      "sha256": "6c71be609eb63b6dc4b934daf38e09bda592586fcdba0731d1240114f0f312f2",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/arrokuda/front.png",
+      "donor_path": "graphics/pokemon/arrokuda/front.png",
+      "source_sha256": "6cc02ac492d5b76d39cbc31abe8c4f5003e40d060d940dfec6009c9c3d5ba267",
+      "sha256": "6cc02ac492d5b76d39cbc31abe8c4f5003e40d060d940dfec6009c9c3d5ba267",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/arrokuda/back.png",
+      "donor_path": "graphics/pokemon/arrokuda/back.png",
+      "source_sha256": "f051d83998aa102fd5777e290b783b72f4a5736fe6fa2bea3937f08215731942",
+      "sha256": "f051d83998aa102fd5777e290b783b72f4a5736fe6fa2bea3937f08215731942",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/arrokuda/normal.pal",
+      "donor_path": "graphics/pokemon/arrokuda/normal.pal",
+      "source_sha256": "9e2a92b9bd3215e8b094f9a81c00807bf1681243cbc754c7648f741e2be48200",
+      "sha256": "9e2a92b9bd3215e8b094f9a81c00807bf1681243cbc754c7648f741e2be48200",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/arrokuda/shiny.pal",
+      "donor_path": "graphics/pokemon/arrokuda/shiny.pal",
+      "source_sha256": "5524bf59da5dc6bb2b33976b2f938b121f69a85ee5d97ed2d9c3829a6011b169",
+      "sha256": "5524bf59da5dc6bb2b33976b2f938b121f69a85ee5d97ed2d9c3829a6011b169",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/arrokuda/icon.png",
+      "donor_path": "graphics/pokemon/arrokuda/icon.png",
+      "source_sha256": "08adcec83c95e7b8f2f7b9c8aeb6872964e516315919f6ff72b17477960427fb",
+      "sha256": "08adcec83c95e7b8f2f7b9c8aeb6872964e516315919f6ff72b17477960427fb",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/arrokuda/footprint.png",
+      "donor_path": "graphics/pokemon/arrokuda/footprint.png",
+      "source_sha256": "67e4130876b4162cf746d88d0ce2e867133c440f9faece7a950b78802adee135",
+      "sha256": "67e4130876b4162cf746d88d0ce2e867133c440f9faece7a950b78802adee135",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/grotle/front.png",
+      "donor_path": "graphics/pokemon/grotle/anim_front.png",
+      "source_sha256": "c8eccd1da60365a8731d1e5d270305a2d4f37ed142f8e19a6040875918fd7ad1",
+      "sha256": "8bb39437b6302272a844041edc3af7a24908fa55557f90c7308653249d171160",
+      "transform": "first_64x64_frame; static animation explicitly selected"
+    },
+    {
+      "path": "graphics/expanded/grotle/back.png",
+      "donor_path": "graphics/pokemon/grotle/back.png",
+      "source_sha256": "e01da820f502d305506e389fd7a8050489a7903571031b1c1e53962f0519b86d",
+      "sha256": "e01da820f502d305506e389fd7a8050489a7903571031b1c1e53962f0519b86d",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/grotle/normal.pal",
+      "donor_path": "graphics/pokemon/grotle/normal.pal",
+      "source_sha256": "dabf534e4a10482a138905dd681d8f39ea0141ab598b9f07c363502502002031",
+      "sha256": "dabf534e4a10482a138905dd681d8f39ea0141ab598b9f07c363502502002031",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/grotle/shiny.pal",
+      "donor_path": "graphics/pokemon/grotle/shiny.pal",
+      "source_sha256": "1bf3e62eb5d5edbdaa5e960ad1ac6f464ad3505001b73656d3154347ee067c1e",
+      "sha256": "1bf3e62eb5d5edbdaa5e960ad1ac6f464ad3505001b73656d3154347ee067c1e",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/grotle/icon.png",
+      "donor_path": "graphics/pokemon/grotle/icon.png",
+      "source_sha256": "c466fe853c6c824be6b900900cb2d5b049c67955758ff339f1d2687426dc0582",
+      "sha256": "c466fe853c6c824be6b900900cb2d5b049c67955758ff339f1d2687426dc0582",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/grotle/footprint.png",
+      "donor_path": "graphics/pokemon/grotle/footprint.png",
+      "source_sha256": "c0316ccc2501bffe90fa20e65ddbb8ef1b44430112416196091feb0ba43edb92",
+      "sha256": "c0316ccc2501bffe90fa20e65ddbb8ef1b44430112416196091feb0ba43edb92",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/torterra/front.png",
+      "donor_path": "graphics/pokemon/torterra/anim_front.png",
+      "source_sha256": "1eb75c73e696e162802b2e9ce7e9207db2415735b8c1d2ba6265462468bb94c7",
+      "sha256": "480e112f6713a7a7202113b7c8d0441d324e9ba628e47988badb96197db453f3",
+      "transform": "first_64x64_frame; static animation explicitly selected"
+    },
+    {
+      "path": "graphics/expanded/torterra/back.png",
+      "donor_path": "graphics/pokemon/torterra/back.png",
+      "source_sha256": "f87662ae3fd0a9f9d0c811890920f368776d193908ebdc60a28bb8225a4a826c",
+      "sha256": "f87662ae3fd0a9f9d0c811890920f368776d193908ebdc60a28bb8225a4a826c",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/torterra/normal.pal",
+      "donor_path": "graphics/pokemon/torterra/normal.pal",
+      "source_sha256": "36ba2e356bb4b191baf02c1e3f514e54e034f988fb755adca236bc7f5f8294e3",
+      "sha256": "36ba2e356bb4b191baf02c1e3f514e54e034f988fb755adca236bc7f5f8294e3",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/torterra/shiny.pal",
+      "donor_path": "graphics/pokemon/torterra/shiny.pal",
+      "source_sha256": "888c7512e71841c1461410e42518aebc40f262bb930973e080ceb322fc2b4ac9",
+      "sha256": "888c7512e71841c1461410e42518aebc40f262bb930973e080ceb322fc2b4ac9",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/torterra/icon.png",
+      "donor_path": "graphics/pokemon/torterra/icon.png",
+      "source_sha256": "c51e13e68c69d48cbe1187766693450521efbb979a912cbcb5a4d41695a9629f",
+      "sha256": "c51e13e68c69d48cbe1187766693450521efbb979a912cbcb5a4d41695a9629f",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/torterra/footprint.png",
+      "donor_path": "graphics/pokemon/torterra/footprint.png",
+      "source_sha256": "20d9dc6b8cea0af69fe4e43c2ec8dc7f34bb7d673b146bb18c601ab1f6751373",
+      "sha256": "20d9dc6b8cea0af69fe4e43c2ec8dc7f34bb7d673b146bb18c601ab1f6751373",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/quilladin/front.png",
+      "donor_path": "graphics/pokemon/quilladin/anim_front.png",
+      "source_sha256": "90136f1d2d7c29b6ce456cf25d10ed163103469d0237119477a4c6b67ad2a8ab",
+      "sha256": "a7300559c46865b383cc87843c7e8a42db48f3ad0a0d9e02f3ecb1203b287cc6",
+      "transform": "first_64x64_frame; static animation explicitly selected"
+    },
+    {
+      "path": "graphics/expanded/quilladin/back.png",
+      "donor_path": "graphics/pokemon/quilladin/back.png",
+      "source_sha256": "eaeb97d4fe27ae23cecda52fe60e53ce34ad14fbd5a930aa46a1af7e2ba8f652",
+      "sha256": "eaeb97d4fe27ae23cecda52fe60e53ce34ad14fbd5a930aa46a1af7e2ba8f652",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/quilladin/normal.pal",
+      "donor_path": "graphics/pokemon/quilladin/normal.pal",
+      "source_sha256": "e4b34db96b104e8b999eb232d383b5549e01604206ea5268b055b4bef5969ee2",
+      "sha256": "e4b34db96b104e8b999eb232d383b5549e01604206ea5268b055b4bef5969ee2",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/quilladin/shiny.pal",
+      "donor_path": "graphics/pokemon/quilladin/shiny.pal",
+      "source_sha256": "c7d5aa1753fbe208d7ac734f4ededfc10cd0ca439ca3b30f693b130c51695d3e",
+      "sha256": "c7d5aa1753fbe208d7ac734f4ededfc10cd0ca439ca3b30f693b130c51695d3e",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/quilladin/icon.png",
+      "donor_path": "graphics/pokemon/quilladin/icon.png",
+      "source_sha256": "7b543e7c7d31a055459439deebaa42b6349484ef4b6870fb00b36b23b9cb32eb",
+      "sha256": "7b543e7c7d31a055459439deebaa42b6349484ef4b6870fb00b36b23b9cb32eb",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/quilladin/footprint.png",
+      "donor_path": "graphics/pokemon/quilladin/footprint.png",
+      "source_sha256": "97f56c4644efe8ce07f33a3f3f04dd9a5abb8845d7befe70af09c7e876606a03",
+      "sha256": "97f56c4644efe8ce07f33a3f3f04dd9a5abb8845d7befe70af09c7e876606a03",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/kubfu/front.png",
+      "donor_path": "graphics/pokemon/kubfu/front.png",
+      "source_sha256": "dfa51737616c005d8421ff3fcd7c200e0aa621a497321b50d5a3a5f9d671bc21",
+      "sha256": "dfa51737616c005d8421ff3fcd7c200e0aa621a497321b50d5a3a5f9d671bc21",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/kubfu/back.png",
+      "donor_path": "graphics/pokemon/kubfu/back.png",
+      "source_sha256": "585d3096436dc61c17573d7767ac8748efcb7d7aae958d407ed2082997819bc8",
+      "sha256": "585d3096436dc61c17573d7767ac8748efcb7d7aae958d407ed2082997819bc8",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/kubfu/normal.pal",
+      "donor_path": "graphics/pokemon/kubfu/normal.pal",
+      "source_sha256": "0b90ce316a72e83530fc6a91591cccb307a34c74e804173cd33d7e27807ecceb",
+      "sha256": "0b90ce316a72e83530fc6a91591cccb307a34c74e804173cd33d7e27807ecceb",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/kubfu/shiny.pal",
+      "donor_path": "graphics/pokemon/kubfu/shiny.pal",
+      "source_sha256": "894a0cdfafa1900d134b556ee06c121a2a979ceba21a53c715066bdf59a5b34a",
+      "sha256": "894a0cdfafa1900d134b556ee06c121a2a979ceba21a53c715066bdf59a5b34a",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/kubfu/icon.png",
+      "donor_path": "graphics/pokemon/kubfu/icon.png",
+      "source_sha256": "007518d819f781ffd3911a7d2e1767eee1e99c5f387e760d42ca1e188df985b7",
+      "sha256": "007518d819f781ffd3911a7d2e1767eee1e99c5f387e760d42ca1e188df985b7",
+      "transform": "identity"
+    },
+    {
+      "path": "graphics/expanded/kubfu/footprint.png",
+      "donor_path": "graphics/pokemon/kubfu/footprint.png",
+      "source_sha256": "53d51e855dcc3e618c25bff483db007df3f64809a409a1bad82286e2afbaf15e",
+      "sha256": "53d51e855dcc3e618c25bff483db007df3f64809a409a1bad82286e2afbaf15e",
+      "transform": "identity"
+    }
+  ]
+}

@@ -344,3 +344,27 @@ u32 RtcGetLocalDayCount(void)
 {
     return RtcGetDayCount(&sRtc);
 }
+
+/* Expansion battle/evolution clock queries use the existing PC local clock.
+ * Palette blending and follower/world rendering remain with the PC overworld. */
+bool8 IsBetweenHours(s32 hours, s32 begin, s32 end)
+{
+    if (end < begin)
+        return hours >= begin || hours < end;
+    else
+        return hours >= begin && hours < end;
+}
+
+enum TimeOfDay GetTimeOfDay(void)
+{
+    s32 hours;
+    RtcCalcLocalTime();
+    hours = gLocalTime.hours;
+    if (IsBetweenHours(hours, MORNING_HOUR_BEGIN, MORNING_HOUR_END))
+        return TIME_MORNING;
+    else if (IsBetweenHours(hours, EVENING_HOUR_BEGIN, EVENING_HOUR_END))
+        return TIME_EVENING;
+    else if (IsBetweenHours(hours, NIGHT_HOUR_BEGIN, NIGHT_HOUR_END))
+        return TIME_NIGHT;
+    return TIME_DAY;
+}

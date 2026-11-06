@@ -9,7 +9,7 @@ class DexNavResources(unittest.TestCase):
     def test_one_free_slot_and_foreign_collision_rollback(self):
         source = (ROOT / 'src/platform/dexnav_native.c').read_text()
         state = source[source.index('static u16 sBgPalette'):source.index('static u8 sIconCount')]
-        names = ['PaletteInUse', 'UsedColors', 'PackFieldHud', 'AcquireFieldPalette', 'DexNavNative_AcquireFieldResources', 'DexNavNative_ReleaseFieldResources', 'UseEffectPalette', 'DexNavNative_CanUseHudWindow']
+        names = ['PaletteInUse', 'UsedColors', 'PackFieldHud', 'AcquireFieldPalette', 'DexNavNative_AcquireFieldResources', 'DexNavNative_ReleaseFieldResources', 'DexNavNative_CanUseHudWindow', 'UseEffectPalette']
         bodies = '\n'.join(function(source, n) for n in names)
         def asset(name, path, kind='u8'):
             raw = (ROOT/'build/assets/graphics'/path).read_bytes()
@@ -24,6 +24,7 @@ class DexNavResources(unittest.TestCase):
         assets += asset('sHudStar', 'dexnav/star.png.4bpp')
         assets += asset('sHudOwned', 'dexnav/owned_icon.png.4bpp')
         assets += asset('nativeEffect', 'field_effects/palettes/general_1.pal.gbapal', 'u16')
+        assets += asset('caveDustPalette', 'field_effects/palettes/cave_dust.pal.gbapal', 'u16')
         c = r'''
 #include <assert.h>
 #include <stdint.h>
@@ -43,6 +44,7 @@ static struct {struct WindowTemplate window;}gWindows[WINDOWS_MAX];
 #define TAG_NONE 0xFFFF
 #define SPECIES_NONE 0
 #define NUM_SPECIES 412
+#define SPECIES_TABLE_COUNT NUM_SPECIES
 #define ARRAY_COUNT(a) (sizeof(a)/sizeof((a)[0]))
 #define BG_PLTT_ID(n) ((n)*16)
 #define OBJ_PLTT_ID(n) (256+(n)*16)
@@ -101,9 +103,11 @@ int main(void){
  assert(UseEffectPalette(0x1005,nativeEffect));
  DexNavNative_ReleaseFieldResources();
  assert(!memcmp(before,gPlttBufferUnfaded,sizeof before));assert(!memcmp(faded,gPlttBufferFaded,sizeof faded));
- // A native-tag collision with wrong colors must fail, not recolor foreign art.
+ // Foreign native tag with wrong colors is never borrowed or overwritten.
  assert(DexNavNative_AcquireFieldResources(1, TRUE, FALSE));
- assert(!UseEffectPalette(0x1200,nativeEffect));DexNavNative_ReleaseFieldResources();
+ assert(UseEffectPalette(0x1200,nativeEffect));
+ assert(sEffectTemplate.paletteTag==EFFECT_PALETTE_TAG && tags[12]==0x1200);
+ DexNavNative_ReleaseFieldResources();
  assert(!memcmp(before,gPlttBufferUnfaded,sizeof before));
  // TAG_NONE may resolve to a free bank with matching stale colors, never borrow it.
  tags[13]=0xFFFF;LoadPalette(nativeEffect,OBJ_PLTT_ID(13),32);
@@ -114,7 +118,33 @@ int main(void){
  tags[13]=0x1201;LoadPalette(before+OBJ_PLTT_ID(13),OBJ_PLTT_ID(13),32);
  memcpy(gPlttBufferFaded,faded,sizeof faded);
  assert(DexNavNative_AcquireFieldResources(1, TRUE, FALSE));
- assert(!UseEffectPalette(TAG_NONE,nativeEffect));DexNavNative_ReleaseFieldResources();
+ // Cave dust has no borrowable native palette. With only bank 15 free,
+ // move the HUD to its owned text window and give that bank to the effect.
+ assert(UseEffectPalette(TAG_NONE,caveDustPalette));
+ assert(!memcmp(gPlttBufferUnfaded+OBJ_PLTT_ID(15),caveDustPalette,32));
+ assert(sTextBadges && sTextOnlyHud && sFieldPaletteSlots[0]==0xFF && sFieldPaletteSlots[2]==15);
+ assert(!memcmp(before,gPlttBufferUnfaded,OBJ_PLTT_ID(15)*2));
+ // Loading the owned BG14 HUD must also restore its unfaded/faded colors.
+ sBgPaletteWritten=TRUE;
+ LoadPalette(nativeEffect,BG_PLTT_ID(14),32);
+ DexNavNative_ReleaseFieldResources();
+ assert(!memcmp(before,gPlttBufferUnfaded,sizeof before));
+ assert(!memcmp(faded,gPlttBufferFaded,sizeof faded));
+ // The hidden detector also works without demanding two HUD OBJ palettes.
+ assert(DexNavNative_AcquireFieldResources(1,FALSE,TRUE));
+ assert(UseEffectPalette(TAG_NONE,nativeEffect));
+ assert(sTextBadges && sFieldPaletteSlots[2]==15);
+ DexNavNative_ReleaseFieldResources();
+ // Never evict a live icon, or switch to BG text without window ownership.
+ assert(DexNavNative_AcquireFieldResources(1,TRUE,FALSE));
+ gSprites[0].inUse=TRUE;gSprites[0].oam.paletteNum=15;
+ assert(!UseEffectPalette(TAG_NONE,nativeEffect));
+ gSprites[0].inUse=FALSE;DexNavNative_ReleaseFieldResources();
+ assert(DexNavNative_AcquireFieldResources(1,TRUE,FALSE));
+ gWindows[1].window=(struct WindowTemplate){.bg=0,.width=1,.height=1,.paletteNum=14,.baseBlock=300};
+ assert(!UseEffectPalette(TAG_NONE,nativeEffect));
+ gWindows[1].window.bg=0xFF;DexNavNative_ReleaseFieldResources();
+ assert(!memcmp(before,gPlttBufferUnfaded,sizeof before));
  // Palette ownership lost on a reset: do not restore over or free its new owner.
  assert(DexNavNative_AcquireFieldResources(1, TRUE, FALSE));
  tags[15]=0x7777;gPlttBufferUnfaded[OBJ_PLTT_ID(15)]=1234;

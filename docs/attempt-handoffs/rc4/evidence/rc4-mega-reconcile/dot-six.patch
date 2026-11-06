@@ -1,0 +1,920 @@
+diff --git a/docs/MEGA_EVOLUTION_WORK.md b/docs/MEGA_EVOLUTION_WORK.md
+index b2d5bc0..11d965c 100644
+--- a/docs/MEGA_EVOLUTION_WORK.md
++++ b/docs/MEGA_EVOLUTION_WORK.md
+@@ -1,9 +1,13 @@
+ # Mega Evolution work in progress
+ 
+-This branch is an unfinished implementation, not playable Mega Evolution. It currently contains a battle-only form catalog and ownership/stat calculations for the native species whose listed form abilities and types already exist in the current game. Form stats, types, abilities and stone names come from pokeemerald-expansion-native bb3fd057061cdd7e6a9e79b76abb41924ee44ecc; this is not a wholesale Expansion port. The internal form and stone identifiers are not species or item IDs and must not be written to trainer saves.
++This draft is disabled and not playable. `MEGA_FEATURE_READY` defaults to 0. Do not merge, enable it for valuable saves, or treat its focused tests as a native build or gameplay verification.
+ 
+-The state tracks one use per trainer and a trainer-local slot for an in-battle form, and computes transformed stats from level, IVs, EVs and nature while leaving HP and the underlying party untouched. It is not yet connected to move selection, actual held items or Key Stone acquisition, turn order, ability activation, sprites, switching, private reward restoration, link negotiation, or battle cleanup. Some existing Gen 3 abilities have different modern behavior. These gaps mean no Mega claim or release is appropriate.
++The battle-only form catalog covers 16 native species with types and abilities already present in the current game. Stats, types, abilities and stone names are adapted from pokeemerald-expansion-native bb3fd057061cdd7e6a9e79b76abb41924ee44ecc; this is not a wholesale Expansion port. Logical form identifiers are never written as party species. Existing Gen 3 abilities may differ from modern behavior.
+ 
+-The actual next work is to connect selection and battle execution with owner validation and negotiated multiplayer compatibility; add real item/data and licensed or otherwise authorized art; maintain form across switching and revert at battle end/abort without mutating private party species; and expand the catalog alongside the actual newer ability/type implementation. Component tests exercise ownership and stat calculations only, not a native build, co-op runtime, persistence, or gameplay.
++The experimental path includes per-trainer selection and once-per-battle state, stat calculation from the party's level, IVs, EVs and nature, guarded move-choice transport and a matching native-link rule bit. When explicitly compiled with the gate enabled, a preliminary turn hook applies queued stats before moves, and the World menu has a settings toggle and a temporary stone-and-ring acquisition menu. These hooks are incomplete and must not be enabled: Form visuals and battle cleanup are not implemented or verified. A preliminary native controller event carries form identity and party slot to both players and waits for acknowledgements. The owning client gets move-selection eligibility from the master and checks its own Ring, with the master revalidating the choice. Actual multiplayer synchronization remains unverified. A preliminary ability sequence invokes existing switch-in ability effects and waits for their scripts, but it needs native gameplay verification and modern-mechanics review. A preliminary switch-in hook restores a form by trainer and battle-party slot without altering the underlying party; real switching and co-op ownership still need verification. The preliminary ordering also needs gameplay validation.
+ 
+-The current working code also experiments with appending native-only item IDs 377–393 for stones and a Mega Ring, adds guarded move-choice transport and validates matching battle-rule capabilities. These IDs require a compatibility and migration decision before any real save uses them: older builds and Expansion have different item registries. Placeholder existing item icons are not final art. `MEGA_FEATURE_READY` defaults to 0; move selection cannot activate the unfinished feature. No native game build or real co-op test has been run.
++The working branch appends native-only item IDs 377–393 for stones and a Mega Ring. A save compatibility and migration strategy is required before real saves use them: older builds and Expansion have different item registries. Existing item icons are placeholders. Donor art has not been committed; its provenance and redistribution permissions need resolution.
++
++World > Gameplay settings contains the existing Party EXP, reusable TM and move-category toggles. All remain opt-in. Mega options are hidden while the feature gate is off.
++
++Component tests cover form calculations, trainer ownership, the game adapter and link rule matching with stubs. They do not establish native build success, actual co-op behavior, persistence, visuals or gameplay. The combined native candidate must be built and tested before release.
+diff --git a/include/platform/mega_forms.h b/include/platform/mega_forms.h
+index 3b5d0d3..7fc971e 100644
+--- a/include/platform/mega_forms.h
++++ b/include/platform/mega_forms.h
+@@ -47,6 +47,7 @@ struct MegaFormData {
+ };
+ const struct MegaFormData *MegaForm_Get(u8 form);
+ u8 MegaForm_Find(u16 species, u8 stone);
++u8 MegaForm_FirstStone(u16 species);
+ u8 MegaStone_FromItem(u16 item);
+ u16 MegaStone_Item(u8 stone);
+ #endif
+diff --git a/include/platform/mega_game.h b/include/platform/mega_game.h
+index af5a725..3e74d64 100644
+--- a/include/platform/mega_game.h
++++ b/include/platform/mega_game.h
+@@ -7,8 +7,10 @@
+ #define MEGA_FEATURE_READY 0
+ #endif
+ #define MEGA_MOVE_CHOICE_BIT 0x80
++#define MEGA_MOVE_CAN_SELECT_BIT 0x01
+ void MegaGame_Reset(void);
+ bool8 MegaGame_CanSelect(u8 battler);
++bool8 MegaGame_ReplyAllowed(u8 battler, u8 announced);
+ bool8 MegaGame_CanQueue(u8 battler);
+ bool8 MegaGame_ToggleSelection(u8 battler);
+ u8 MegaGame_ChoiceBit(u8 battler);
+@@ -16,6 +18,9 @@ void MegaGame_ClearSelection(u8 battler);
+ bool8 MegaGame_Queue(u8 battler);
+ void MegaGame_CancelQueue(u8 battler);
+ bool8 MegaGame_Apply(u8 battler);
++bool8 MegaGame_OnSwitchIn(u8 battler);
++bool8 MegaGame_PublishForm(u8 battler, u8 kind);
++bool8 MegaGame_ObserveForm(u8 battler, u8 form, u8 partyIndex);
+ u8 MegaGame_ActiveForm(u8 battler);
+ #endif
+ #endif
+diff --git a/include/platform/mega_wire.h b/include/platform/mega_wire.h
+new file mode 100644
+index 0000000..951d4ad
+--- /dev/null
++++ b/include/platform/mega_wire.h
+@@ -0,0 +1,33 @@
++#ifndef GUARD_PLATFORM_MEGA_WIRE_H
++#define GUARD_PLATFORM_MEGA_WIRE_H
++#ifdef PORTABLE
++/* Transport uses an otherwise unused controller command. A full packet is
++ * twelve bytes and native link appends four zero alignment bytes. */
++#define MEGA_WIRE_MAGIC 0x4D
++#define MEGA_WIRE_VERSION 1
++#define MEGA_WIRE_ACTIVATE 1
++#define MEGA_WIRE_REENTER 2
++#define MEGA_WIRE_BYTES 12
++#define MEGA_WIRE_PADDED_BYTES 16
++static inline void MegaWire_Encode(u8 *p, u8 command, u8 form, u8 kind, u8 slot, u32 generation)
++{
++    p[0] = command; p[1] = 9; p[2] = 0;
++    p[3] = MEGA_WIRE_MAGIC; p[4] = MEGA_WIRE_VERSION; p[5] = form; p[6] = kind;
++    p[7] = slot; p[8] = generation; p[9] = generation >> 8; p[10] = generation >> 16; p[11] = generation >> 24;
++}
++static inline bool8 MegaWire_IsCandidate(const u8 *p, u16 size, u8 command)
++{
++    return size >= 4 && p[0] == command && p[3] == MEGA_WIRE_MAGIC;
++}
++static inline bool8 MegaWire_Valid(const u8 *p, u16 size, u8 command, u8 formCount, u32 generation)
++{
++    u32 packetGeneration;
++    if (size != MEGA_WIRE_PADDED_BYTES || p[0] != command || p[1] != 9 || p[2]
++     || p[3] != MEGA_WIRE_MAGIC || p[4] != MEGA_WIRE_VERSION
++     || !p[5] || p[5] >= formCount || (p[6] != MEGA_WIRE_ACTIVATE && p[6] != MEGA_WIRE_REENTER)
++     || p[7] >= 6 || p[12] || p[13] || p[14] || p[15]) return FALSE;
++    packetGeneration = (u32)p[8] | ((u32)p[9] << 8) | ((u32)p[10] << 16) | ((u32)p[11] << 24);
++    return generation && packetGeneration == generation;
++}
++#endif
++#endif
+diff --git a/src/battle_controllers.c b/src/battle_controllers.c
+index 1f35876..a1b7855 100644
+--- a/src/battle_controllers.c
++++ b/src/battle_controllers.c
+@@ -16,6 +16,10 @@
+ #include "platform/native_link.h"
+ #include "platform/world_coop.h"
+ #include "platform/mega_game.h"
++#include "platform/mega_forms.h"
++#include "platform/mega_wire.h"
++#include "event_data.h"
++#include "constants/flags.h"
+ #include "constants/moves.h"
+ #include "constants/items.h"
+ #endif
+@@ -875,6 +879,9 @@ static bool8 NativeBattleCommandValid(const u8 *data, u16 size, u8 bufferId)
+         needed = 4 + sizeof(struct BattleMsgData);
+         break;
+     case CONTROLLER_CHOOSEMOVE:
++        if ((data[3] & ~MEGA_MOVE_CAN_SELECT_BIT)
++         || (data[3] && (!MEGA_FEATURE_READY || !FlagGet(FLAG_MEGA_EVOLUTION))))
++            return FALSE;
+         needed = 4 + sizeof(struct ChooseMoveStruct);
+         break;
+     case CONTROLLER_CHOOSEPOKEMON:
+@@ -898,6 +905,10 @@ static bool8 NativeBattleCommandValid(const u8 *data, u16 size, u8 bufferId)
+         needed = 2 + data[1] * 3;
+         break;
+     case CONTROLLER_32:
++        if (MegaWire_IsCandidate(data, size, CONTROLLER_32))
++            return MEGA_FEATURE_READY && bufferId == B_COMM_TO_CONTROLLER
++                && FlagGet(FLAG_MEGA_EVOLUTION)
++                && MegaWire_Valid(data, size, CONTROLLER_32, MEGA_FORM_COUNT, NativeLink_Generation());
+         needed = 3 + (data[1] | (data[2] << 8));
+         if (needed < 3)
+             return FALSE;
+@@ -1037,7 +1048,7 @@ static bool8 NativeBattleReplyValid(u8 battler, const u8 *data)
+             return data[1] == B_ACTION_EXEC_SCRIPT
+                 && ((data[2] == 0xFF && data[3] == 0xFF)
+                     || ((data[2] & ~MEGA_MOVE_CHOICE_BIT) < MAX_MON_MOVES
+-                        && (!(data[2] & MEGA_MOVE_CHOICE_BIT) || MegaGame_CanQueue(battler))
++                        && (!(data[2] & MEGA_MOVE_CHOICE_BIT) || MegaGame_ReplyAllowed(battler, request[3]))
+                         && data[3] < MAX_BATTLERS_COUNT));
+         return request[0] == CONTROLLER_CHOOSEACTION
+             || request[0] == CONTROLLER_EXPUPDATE || request[0] == CONTROLLER_DRAWPARTYSTATUSSUMMARY;
+@@ -1051,6 +1062,24 @@ static bool8 NativeBattleReplyValid(u8 battler, const u8 *data)
+     return FALSE;
+ }
+ 
++/* The existing controller link distributes a command to both views and
++ * waits for both acknowledgements. This only publishes transient form state. */
++bool8 MegaGame_PublishForm(u8 battler, u8 kind)
++{
++    u8 packet[MEGA_WIRE_BYTES], previous, form;
++    if (!MEGA_FEATURE_READY || !(gBattleTypeFlags & BATTLE_TYPE_LINK)
++     || !NativeLink_IsActive() || !NativeLink_Generation()) return FALSE;
++    form = MegaGame_ActiveForm(battler);
++    if (!form || (kind != MEGA_WIRE_ACTIVATE && kind != MEGA_WIRE_REENTER)) return FALSE;
++    MegaWire_Encode(packet, CONTROLLER_32, form, kind, gBattlerPartyIndexes[battler], NativeLink_Generation());
++    previous = gActiveBattler;
++    gActiveBattler = battler;
++    PrepareBufferDataTransferLink(B_COMM_TO_CONTROLLER, sizeof(packet), packet);
++    MarkBattlerForControllerExec(battler);
++    gActiveBattler = previous;
++    return TRUE;
++}
++
+ static bool8 NativeBattleRingStateValid(u8 taskId)
+ {
+     return gTasks[taskId].tCurrentBlock_Start >= 0
+@@ -1111,7 +1140,8 @@ void PrepareBufferDataTransferLink(u8 bufferId, u16 size, u8 *data)
+         BYTE_TO_SEND(LINK_BUFF_DATA + i) = data[i];
+ 
+ #ifdef PORTABLE
+-    if (WorldCoop_IsBattle())
++    if (WorldCoop_IsBattle() || (bufferId == B_COMM_TO_CONTROLLER
++     && size == MEGA_WIRE_BYTES && MegaWire_IsCandidate(data, size, CONTROLLER_32)))
+         for (; i < alignedSize; i++)
+             BYTE_TO_SEND(LINK_BUFF_DATA + i) = 0;
+ #endif
+@@ -1432,6 +1462,14 @@ static void Task_HandleCopyReceivedLinkBuffersData(u8 taskId)
+                 memcpy(sNativeBattleRequest[battler], &BYTE_TO_RECEIVE(LINK_BUFF_DATA),
+                     sizeof(sNativeBattleRequest[battler]));
+             }
++#endif
++#ifdef PORTABLE
++            if (NativeLink_IsActive() && MegaWire_IsCandidate(&BYTE_TO_RECEIVE(LINK_BUFF_DATA), blockSize, CONTROLLER_32)
++             && !MegaGame_ObserveForm(battler, BYTE_TO_RECEIVE(LINK_BUFF_DATA + 5), BYTE_TO_RECEIVE(LINK_BUFF_DATA + 7)))
++            {
++                AbortNativeBattlePayload();
++                return;
++            }
+ #endif
+             memcpy(gBattleBufferA[battler], &BYTE_TO_RECEIVE(LINK_BUFF_DATA), blockSize);
+             MarkBattlerReceivedLinkData(battler);
+@@ -1756,7 +1794,11 @@ void BtlController_EmitChooseMove(u8 bufferId, bool8 isDoubleBattle, bool8 noPPN
+     sBattleBuffersTransferData[0] = CONTROLLER_CHOOSEMOVE;
+     sBattleBuffersTransferData[1] = isDoubleBattle;
+     sBattleBuffersTransferData[2] = noPPNumber;
++#ifdef PORTABLE
++    sBattleBuffersTransferData[3] = MegaGame_CanQueue(gActiveBattler) ? MEGA_MOVE_CAN_SELECT_BIT : 0;
++#else
+     sBattleBuffersTransferData[3] = 0;
++#endif
+     for (i = 0; i < sizeof(*movePPData); i++)
+         sBattleBuffersTransferData[4 + i] = *((u8 *)(movePPData) + i);
+     PrepareBufferDataTransfer(bufferId, sBattleBuffersTransferData, sizeof(*movePPData) + 4);
+diff --git a/src/battle_main.c b/src/battle_main.c
+index c7091c5..70930fe 100644
+--- a/src/battle_main.c
++++ b/src/battle_main.c
+@@ -4,6 +4,7 @@
+ #include "platform/native_link.h"
+ #include "platform/world_activity.h"
+ #include "platform/mega_game.h"
++#include "platform/mega_wire.h"
+ #endif
+ #include "battle.h"
+ #include "battle_move_split.h"
+@@ -155,6 +156,12 @@ EWRAM_DATA u8 gBattleTextBuff3[TEXT_BUFF_ARRAY_COUNT] = {0};
+ // for gDisplayedStringBattle and overflows into this array. If it
+ // is removed (and none of the buffers above are increased in size)
+ // it will instead overflow into useful data.
++#ifdef PORTABLE
++EWRAM_DATA static bool8 sMegaTurnHandled = FALSE;
++EWRAM_DATA static u8 sMegaTurnIndex = 0;
++EWRAM_DATA static u8 sMegaAbilityPhase = 0;
++EWRAM_DATA static bool8 sMegaAbilityChanged = FALSE;
++#endif
+ EWRAM_DATA static u32 sFlickerArray[25] = {0};
+ EWRAM_DATA u32 gBattleTypeFlags = 0;
+ EWRAM_DATA u8 gBattleEnvironment = 0;
+@@ -5066,6 +5073,11 @@ static void CheckFocusPunch_ClearVarsBeforeTurnStarts(void)
+     }
+ 
+     TryClearRageStatuses();
++#ifdef PORTABLE
++    sMegaTurnHandled = FALSE;
++    sMegaTurnIndex = sMegaAbilityPhase = 0;
++    sMegaAbilityChanged = FALSE;
++#endif
+     gCurrentTurnActionNumber = 0;
+     gCurrentActionFuncId = gActionsByTurnOrder[gCurrentTurnActionNumber];
+     gDynamicBasePower = 0;
+@@ -5081,6 +5093,66 @@ static void RunTurnActionsFunctions(void)
+ {
+     if (gBattleOutcome != 0)
+         gCurrentActionFuncId = B_ACTION_FINISHED;
++#ifdef PORTABLE
++    if (MEGA_FEATURE_READY && !sMegaTurnHandled && gCurrentActionFuncId == B_ACTION_USE_MOVE)
++    {
++        /* Ability scripts run asynchronously and return here through the
++         * normal callback stack. Do not start a second event over a pending
++         * animation/script or proceed to a move until the sequence drains. */
++        while (sMegaTurnIndex < gBattlersCount)
++        {
++            u8 battler = gBattlerByTurnOrder[sMegaTurnIndex];
++            if (sMegaAbilityPhase == 0)
++            {
++                u8 oldAbility = gBattleMons[battler].ability;
++                bool8 applied = FALSE;
++                if (gChosenActionByBattler[battler] == B_ACTION_USE_MOVE
++                 && !gProtectStructs[battler].noValidMoves)
++                    applied = MegaGame_Apply(battler);
++                else
++                    MegaGame_CancelQueue(battler);
++                if (!applied)
++                {
++                    sMegaTurnIndex++;
++                    continue;
++                }
++                sMegaAbilityChanged = oldAbility != gBattleMons[battler].ability;
++                sMegaAbilityPhase = 3;
++                if (MegaGame_PublishForm(battler, MEGA_WIRE_ACTIVATE))
++                    return;
++            }
++            if (sMegaAbilityPhase == 3)
++            {
++                /* In link battles both controllers must see and ACK the form
++                 * before an ability script or move can be dispatched. */
++                if (gBattleControllerExecFlags) return;
++                if (!sMegaAbilityChanged)
++                {
++                    sMegaAbilityPhase = 0;
++                    sMegaTurnIndex++;
++                    continue;
++                }
++                sMegaAbilityPhase = 1;
++                if (AbilityBattleEffects(ABILITYEFFECT_ON_SWITCHIN, battler, 0, 0, 0))
++                    return;
++            }
++            if (sMegaAbilityPhase == 1)
++            {
++                if (AbilityBattleEffects(ABILITYEFFECT_INTIMIDATE1, 0, 0, 0, 0))
++                    return;
++                sMegaAbilityPhase = 2;
++            }
++            if (sMegaAbilityPhase == 2)
++            {
++                if (AbilityBattleEffects(ABILITYEFFECT_TRACE, 0, 0, 0, 0))
++                    return;
++                sMegaAbilityPhase = 0;
++                sMegaTurnIndex++;
++            }
++        }
++        sMegaTurnHandled = TRUE;
++    }
++#endif
+ 
+     *(&gBattleStruct->savedTurnActionNumber) = gCurrentTurnActionNumber;
+     sTurnActionsFuncsTable[gCurrentActionFuncId]();
+diff --git a/src/battle_script_commands.c b/src/battle_script_commands.c
+index 640a6a0..dd14981 100644
+--- a/src/battle_script_commands.c
++++ b/src/battle_script_commands.c
+@@ -2,6 +2,8 @@
+ #ifdef PORTABLE
+ #include "platform/world_coop.h"
+ #include "platform/native_link.h"
++#include "platform/mega_game.h"
++#include "platform/mega_wire.h"
+ #endif
+ #include "battle.h"
+ #include "battle_move_split.h"
+@@ -4714,6 +4716,10 @@ static void Cmd_switchindataupdate(void)
+     }
+ 
+     SwitchInClearSetData();
++#ifdef PORTABLE
++    if (MegaGame_OnSwitchIn(gActiveBattler))
++        MegaGame_PublishForm(gActiveBattler, MEGA_WIRE_REENTER);
++#endif
+ 
+     if (gBattleTypeFlags & BATTLE_TYPE_PALACE
+         && gBattleMons[gActiveBattler].maxHP / 2 >= gBattleMons[gActiveBattler].hp
+diff --git a/src/platform/mega_forms.c b/src/platform/mega_forms.c
+index c70e627..049f778 100644
+--- a/src/platform/mega_forms.c
++++ b/src/platform/mega_forms.c
+@@ -40,6 +40,15 @@ u8 MegaForm_Find(u16 species, u8 stone)
+     return MEGA_FORM_NONE;
+ }
+ 
++u8 MegaForm_FirstStone(u16 species)
++{
++    u8 i;
++    if (!species) return MEGA_STONE_NONE;
++    for (i = 1; i < MEGA_FORM_COUNT; i++)
++        if (sMegaForms[i].baseSpecies == species) return sMegaForms[i].stone;
++    return MEGA_STONE_NONE;
++}
++
+ u8 MegaStone_FromItem(u16 item)
+ {
+     switch (item)
+diff --git a/src/platform/mega_game.c b/src/platform/mega_game.c
+index c6ef4ed..63c0072 100644
+--- a/src/platform/mega_game.c
++++ b/src/platform/mega_game.c
+@@ -2,6 +2,7 @@
+ #include "global.h"
+ #include "battle.h"
+ #include "battle_anim.h"
++#include "battle_controllers.h"
+ #include "pokemon.h"
+ #include "item.h"
+ #include "event_data.h"
+@@ -16,6 +17,7 @@ static struct MegaBattleState sMega;
+ static u8 sQueued[MAX_BATTLERS_COUNT];
+ static u8 sSelected[MAX_BATTLERS_COUNT];
+ static u8 sActiveForm[MAX_BATTLERS_COUNT];
++static u8 sActiveOwner[MAX_BATTLERS_COUNT], sActiveSlot[MAX_BATTLERS_COUNT];
+ 
+ void MegaGame_Reset(void)
+ {
+@@ -23,6 +25,8 @@ void MegaGame_Reset(void)
+     memset(sQueued, 0, sizeof(sQueued));
+     memset(sSelected, 0, sizeof(sSelected));
+     memset(sActiveForm, 0, sizeof(sActiveForm));
++    memset(sActiveOwner, 0, sizeof(sActiveOwner));
++    memset(sActiveSlot, 0, sizeof(sActiveSlot));
+ }
+ 
+ static bool8 MegaGame_Identity(u8 battler, u8 *owner, u8 *slot, struct Pokemon **mon)
+@@ -63,10 +67,29 @@ bool8 MegaGame_CanQueue(u8 battler)
+ 
+ bool8 MegaGame_CanSelect(u8 battler)
+ {
+-    return MegaGame_CanQueue(battler) && GetBattlerSide(battler) == B_SIDE_PLAYER
++    /* Only the master owns authoritative gBattleMons in link battles. The
++     * CHOOSEMOVE controller request carries its eligibility decision to the
++     * owning client; that client checks its private Ring locally. The master
++     * validates the chosen Mega bit again when the reply arrives. */
++    return MEGA_FEATURE_READY && battler < gBattlersCount && battler < MAX_BATTLERS_COUNT
++        && FlagGet(FLAG_MEGA_EVOLUTION) && GetBattlerSide(battler) == B_SIDE_PLAYER
++        && gBattleBufferA[battler][0] == CONTROLLER_CHOOSEMOVE
++        && (gBattleBufferA[battler][3] & MEGA_MOVE_CAN_SELECT_BIT)
+         && CheckBagHasItem(ITEM_MEGA_RING, 1);
+ }
+ 
++bool8 MegaGame_ReplyAllowed(u8 battler, u8 announced)
++{
++    /* Both link processes receive controller replies, but only the master has
++     * authoritative battle state. The follower validates against the exact
++     * eligibility advertised in that outstanding controller request. */
++    if (!MEGA_FEATURE_READY || !(announced & MEGA_MOVE_CAN_SELECT_BIT)
++     || !FlagGet(FLAG_MEGA_EVOLUTION)) return FALSE;
++    if ((gBattleTypeFlags & BATTLE_TYPE_LINK) && !(gBattleTypeFlags & BATTLE_TYPE_IS_MASTER))
++        return TRUE;
++    return MegaGame_CanQueue(battler);
++}
++
+ bool8 MegaGame_ToggleSelection(u8 battler)
+ {
+     u8 owner, slot, i; struct Pokemon *mon;
+@@ -106,14 +129,48 @@ void MegaGame_CancelQueue(u8 battler)
+     if (battler < MAX_BATTLERS_COUNT) sQueued[battler] = FALSE;
+ }
+ 
+-bool8 MegaGame_Apply(u8 battler)
++/* Battle-party indices refer to stable underlying party slots; menu order is
++ * a separate permutation. Never identify a form by nickname or personality. */
++static bool8 MegaGame_CalculateStats(u8 battler, struct Pokemon *mon, u8 form,
++                                    struct MegaBattleStats *stats)
+ {
+     static const u8 ivFields[MEGA_STAT_COUNT] = {MON_DATA_ATK_IV, MON_DATA_DEF_IV, MON_DATA_SPEED_IV, MON_DATA_SPATK_IV, MON_DATA_SPDEF_IV};
+     static const u8 evFields[MEGA_STAT_COUNT] = {MON_DATA_ATK_EV, MON_DATA_DEF_EV, MON_DATA_SPEED_EV, MON_DATA_SPATK_EV, MON_DATA_SPDEF_EV};
+     struct MegaStatInput input = {0};
++    u8 i;
++    input.level = gBattleMons[battler].level;
++    input.nature = GetNature(mon);
++    for (i = 0; i < MEGA_STAT_COUNT; i++)
++    {
++        input.iv[i] = GetMonData(mon, ivFields[i]);
++        input.ev[i] = GetMonData(mon, evFields[i]);
++    }
++    return MegaForm_Calculate(form, &input, ModifyStatByNature, stats);
++}
++
++static void MegaGame_SetStats(u8 battler, const struct MegaBattleStats *stats, u8 form)
++{
++    /* Never write a Mega species or altered stats into either trainer's party. */
++    gBattleMons[battler].attack = stats->attack; gBattleMons[battler].defense = stats->defense;
++    gBattleMons[battler].speed = stats->speed; gBattleMons[battler].spAttack = stats->spAttack;
++    gBattleMons[battler].spDefense = stats->spDefense; gBattleMons[battler].types[0] = stats->type1;
++    gBattleMons[battler].types[1] = stats->type2; gBattleMons[battler].ability = stats->ability;
++    sActiveForm[battler] = form;
++    {
++        u8 owner, slot; struct Pokemon *mon;
++        if (MegaGame_Identity(battler, &owner, &slot, &mon))
++        { sActiveOwner[battler] = owner; sActiveSlot[battler] = slot; }
++    }
++}
++
++bool8 MegaGame_Apply(u8 battler)
++{
+     struct MegaBattleStats stats;
++    struct MegaStatInput input = {0};
+     struct Pokemon *mon;
+     u8 owner, slot, stone, form, i;
++    static const u8 ivFields[MEGA_STAT_COUNT] = {MON_DATA_ATK_IV, MON_DATA_DEF_IV, MON_DATA_SPEED_IV, MON_DATA_SPATK_IV, MON_DATA_SPDEF_IV};
++    static const u8 evFields[MEGA_STAT_COUNT] = {MON_DATA_ATK_EV, MON_DATA_DEF_EV, MON_DATA_SPEED_EV, MON_DATA_SPATK_EV, MON_DATA_SPDEF_EV};
+     if (battler >= MAX_BATTLERS_COUNT || !sQueued[battler]) return FALSE;
+     sQueued[battler] = FALSE;
+     if (!MegaGame_CanQueue(battler) || !MegaGame_Identity(battler, &owner, &slot, &mon)) return FALSE;
+@@ -128,17 +185,60 @@ bool8 MegaGame_Apply(u8 battler)
+     form = MegaBattle_Transform(&sMega, owner, slot, gBattleMons[battler].species,
+         stone, TRUE, gBattleMons[battler].hp != 0, &input, ModifyStatByNature, &stats);
+     if (!form) return FALSE;
+-    /* Never write a Mega species or altered stats into either trainer's party. */
+-    gBattleMons[battler].attack = stats.attack; gBattleMons[battler].defense = stats.defense;
+-    gBattleMons[battler].speed = stats.speed; gBattleMons[battler].spAttack = stats.spAttack;
+-    gBattleMons[battler].spDefense = stats.spDefense; gBattleMons[battler].types[0] = stats.type1;
+-    gBattleMons[battler].types[1] = stats.type2; gBattleMons[battler].ability = stats.ability;
+-    sActiveForm[battler] = form;
++    MegaGame_SetStats(battler, &stats, form);
++    return TRUE;
++}
++
++/* Called after new switch-in data has replaced the outgoing battle mon. */
++bool8 MegaGame_OnSwitchIn(u8 battler)
++{
++    struct Pokemon *mon;
++    struct MegaBattleStats stats;
++    const struct MegaFormData *data;
++    u8 owner, slot, form;
++    if (battler >= MAX_BATTLERS_COUNT) return FALSE;
++    sQueued[battler] = sSelected[battler] = sActiveForm[battler] = 0;
++    if (!MEGA_FEATURE_READY || !MegaGame_Identity(battler, &owner, &slot, &mon)) return FALSE;
++    form = MegaBattle_GetForm(&sMega, owner, slot);
++    data = MegaForm_Get(form);
++    if (!data || data->baseSpecies != gBattleMons[battler].species
++     || data->baseSpecies != GetMonData(mon, MON_DATA_SPECIES)
++     || !MegaGame_CalculateStats(battler, mon, form, &stats)) return FALSE;
++    MegaGame_SetStats(battler, &stats, form);
++    return TRUE;
++}
++
++/* Accept only an authoritative event matching the currently staged party
++ * slot. This changes transient form identity, never the underlying party. */
++bool8 MegaGame_ObserveForm(u8 battler, u8 form, u8 partyIndex)
++{
++    struct Pokemon *mon;
++    const struct MegaFormData *data;
++    u8 owner, slot;
++    if (!MEGA_FEATURE_READY || battler >= gBattlersCount || battler >= MAX_BATTLERS_COUNT
++     || partyIndex >= PARTY_SIZE) return FALSE;
++    owner = (gBattleTypeFlags & BATTLE_TYPE_MULTI) ? GetBattlerPosition(battler) : GetBattlerSide(battler);
++    if (owner >= MEGA_TRAINERS) return FALSE;
++    if ((gBattleTypeFlags & BATTLE_TYPE_MULTI)
++     && partyIndex / MULTI_PARTY_SIZE != (GetBattlerPosition(battler) >> 1)) return FALSE;
++    slot = (gBattleTypeFlags & BATTLE_TYPE_MULTI) ? partyIndex % MULTI_PARTY_SIZE : partyIndex;
++    mon = GetBattlerSide(battler) == B_SIDE_PLAYER ? &gPlayerParty[partyIndex] : &gEnemyParty[partyIndex];
++    data = MegaForm_Get(form);
++    if (!data || GetMonData(mon, MON_DATA_SPECIES) != data->baseSpecies) return FALSE;
++    if (sMega.used[owner] && sMega.forms[owner][slot] != form) return FALSE;
++    sMega.used[owner] = TRUE;
++    sMega.forms[owner][slot] = form;
++    sActiveForm[battler] = form; sActiveOwner[battler] = owner; sActiveSlot[battler] = slot;
+     return TRUE;
+ }
+ 
+ u8 MegaGame_ActiveForm(u8 battler)
+ {
+-    return battler < MAX_BATTLERS_COUNT ? sActiveForm[battler] : MEGA_FORM_NONE;
++    struct Pokemon *mon;
++    u8 owner, slot;
++    if (battler >= MAX_BATTLERS_COUNT || !sActiveForm[battler]
++     || !MegaGame_Identity(battler, &owner, &slot, &mon)
++     || owner != sActiveOwner[battler] || slot != sActiveSlot[battler]) return MEGA_FORM_NONE;
++    return sActiveForm[battler];
+ }
+ #endif
+diff --git a/src/platform/world_menu.c b/src/platform/world_menu.c
+index a54700a..e79acd9 100644
+--- a/src/platform/world_menu.c
++++ b/src/platform/world_menu.c
+@@ -20,6 +20,10 @@
+ #include "platform/world_activity.h"
+ #include "platform/world_bridge.h"
+ #include "platform/world_menu.h"
++#include "platform/mega_game.h"
++#include "platform/mega_forms.h"
++#include "item.h"
++#include "constants/items.h"
+ #include "platform/world_rally.h"
+ #include "platform/world_travel.h"
+ #include "constants/characters.h"
+@@ -31,8 +35,8 @@
+ 
+ /* One field window, not another Start-menu row or another input consumer.
+  * Lists are rebuilt from live state, but focus is an action identity. */
+-enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, RALLY, DISPATCH };
+-enum Action { FRIENDS, STORY, DEXNAV, PARTY_EXP, REUSABLE_TMS, MOVE_SPLIT, BACK, MODE, SCOPE, REQUEST, READY,
++enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, SETTINGS, MEGA_KIT_MENU, RALLY, DISPATCH };
++enum Action { FRIENDS, STORY, DEXNAV, GAMEPLAY, MEGA_KIT, MEGA_RULE, MEGA_SLOT0, MEGA_SLOT1, MEGA_SLOT2, MEGA_SLOT3, MEGA_SLOT4, MEGA_SLOT5, PARTY_EXP, REUSABLE_TMS, MOVE_SPLIT, BACK, MODE, SCOPE, REQUEST, READY,
+     LATER, CANCEL, GO, FINISH, RETURN, STAY, ACTION_COUNT };
+ enum Page { CONTROLS, ROSTER, STATUS, PAGE_COUNT };
+ enum { WORLD_MENU_WIDTH = 28, WORLD_MENU_HEIGHT = 18, LINE_HEIGHT = 12,
+@@ -156,12 +160,40 @@ static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 onlin
+         AddRow(rows, &n, STORY, "Story rally", NULL);
+         AddRow(rows, &n, DEXNAV, "DexNav", DexNavNative_Available() ? NULL :
+             "DexNav needs a Pokedex and conscious party outside restricted or link areas.");
++        AddRow(rows, &n, GAMEPLAY, "Gameplay settings", NULL);
++#if MEGA_FEATURE_READY
++        AddRow(rows, &n, MEGA_KIT, "Mega stones", NULL);
++#endif
++        AddRow(rows, &n, BACK, "Back", NULL);
++        return n;
++    }
++    if (sMenu.state == SETTINGS)
++    {
+         AddRow(rows, &n, PARTY_EXP, FlagGet(FLAG_PARTY_EXP_SHARE) ? "Party EXP: ON" : "Party EXP: OFF", NULL);
+         AddRow(rows, &n, REUSABLE_TMS, FlagGet(FLAG_REUSABLE_TMS) ? "Reusable TMs: ON" : "Reusable TMs: OFF", NULL);
+         AddRow(rows, &n, MOVE_SPLIT, FlagGet(FLAG_MODERN_MOVE_SPLIT) ? "Move split: ON" : "Move split: OFF", NULL);
++#if MEGA_FEATURE_READY
++        AddRow(rows, &n, MEGA_RULE, FlagGet(FLAG_MEGA_EVOLUTION) ? "Mega Evolution: ON" : "Mega Evolution: OFF", NULL);
++#endif
+         AddRow(rows, &n, BACK, "Back", NULL);
+         return n;
+     }
++#if MEGA_FEATURE_READY
++    if (sMenu.state == MEGA_KIT_MENU)
++    {
++        static const char *const labels[PARTY_SIZE] = {"Party slot 1", "Party slot 2", "Party slot 3", "Party slot 4", "Party slot 5", "Party slot 6"};
++        unsigned i;
++        for (i = 0; i < gPlayerPartyCount && i < PARTY_SIZE; i++)
++        {
++            u16 species = GetMonData(&gPlayerParty[i], MON_DATA_SPECIES);
++            const char *reason = GetMonData(&gPlayerParty[i], MON_DATA_IS_EGG) ? "Eggs cannot Mega Evolve." :
++                !MegaForm_FirstStone(species) ? "No supported Mega form for this Pokemon yet." : NULL;
++            AddRow(rows, &n, MEGA_SLOT0 + i, labels[i], reason);
++        }
++        AddRow(rows, &n, BACK, "Back", NULL);
++        return n;
++    }
++#endif
+     AddRow(rows, &n, MODE, WorldRally_GetAutoJoin() ? "Mode AUTO-JOIN" : "Mode ASK", NULL);
+     AddRow(rows, &n, SCOPE, sMenu.scope ? "Scope World" : "Scope Nearby", r->id ?
+         "Scope applies to your next request. It cannot change a running rally." : NULL);
+@@ -262,9 +294,9 @@ static void Draw(const struct Row *rows, unsigned count, unsigned selected,
+     char text[TEXT_BYTES];
+     u8 encoded[TEXT_BYTES];
+     unsigned i;
+-    if (sMenu.state == FEATURES)
++    if (sMenu.state == FEATURES || sMenu.state == SETTINGS || sMenu.state == MEGA_KIT_MENU)
+     {
+-        Line(&screen, 0, "WORLD");
++        Line(&screen, 0, sMenu.state == SETTINGS ? "GAMEPLAY" : sMenu.state == MEGA_KIT_MENU ? "MEGA STONES" : "WORLD");
+         Line(&screen, 1, "Up/Down choose. A open. B close.");
+     }
+     else
+@@ -273,7 +305,7 @@ static void Draw(const struct Row *rows, unsigned count, unsigned selected,
+         Line(&screen, 0, text);
+         Line(&screen, 1, "Left/Right controls roster status");
+     }
+-    if (sMenu.state == FEATURES || sMenu.page == CONTROLS)
++    if (sMenu.state == FEATURES || sMenu.state == SETTINGS || sMenu.state == MEGA_KIT_MENU || sMenu.page == CONTROLS)
+     {
+         for (i = 0; i < count; i++)
+         {
+@@ -291,6 +323,8 @@ static void Draw(const struct Row *rows, unsigned count, unsigned selected,
+             sMenu.focus == PARTY_EXP ? "Participants split EXP. Healthy bench gets half each. Save to keep this setting. NPC partner battles use vanilla rules." :
+             sMenu.focus == REUSABLE_TMS ? "Teach with owned TMs without consuming them. Save to keep this setting." :
+             sMenu.focus == MOVE_SPLIT ? "Modern categories. Both players must match. Battle recording unavailable. Save to keep." :
++            sMenu.focus == MEGA_RULE ? "Enable Mega Evolution. Both players must match. Save to keep this setting." :
++            sMenu.focus == MEGA_KIT ? "Choose a party slot for a compatible stone and Mega Ring." :
+             "A choose. B back. Check status for local requirements.");
+     }
+     else if (sMenu.page == ROSTER)
+@@ -465,7 +499,7 @@ void WorldMenu_Update(void)
+         sMenu.page = (sMenu.page + (JOY_NEW(DPAD_LEFT) ? PAGE_COUNT - 1 : 1)) % PAGE_COUNT;
+         sMenu.dirty = TRUE;
+     }
+-    if (sMenu.state == FEATURES || sMenu.page == CONTROLS)
++    if (sMenu.state == FEATURES || sMenu.state == SETTINGS || sMenu.state == MEGA_KIT_MENU || sMenu.page == CONTROLS)
+     {
+         if (JOY_REPEAT(DPAD_UP) && selected) selected--;
+         if (JOY_REPEAT(DPAD_DOWN) && selected + 1 < count) selected++;
+@@ -481,6 +515,50 @@ void WorldMenu_Update(void)
+                 sMenu.dirty = TRUE;
+                 return;
+             }
++            else if (sMenu.focus == GAMEPLAY)
++            {
++                sMenu.state = SETTINGS;
++                sMenu.page = CONTROLS;
++                sMenu.focus = PARTY_EXP;
++                sMenu.dirty = TRUE;
++                return;
++            }
++#if MEGA_FEATURE_READY
++            else if (sMenu.focus == MEGA_KIT)
++            {
++                sMenu.state = MEGA_KIT_MENU;
++                sMenu.page = CONTROLS;
++                sMenu.focus = MEGA_SLOT0;
++                sMenu.dirty = TRUE;
++                return;
++            }
++            else if (sMenu.focus >= MEGA_SLOT0 && sMenu.focus <= MEGA_SLOT5)
++            {
++                unsigned slot = sMenu.focus - MEGA_SLOT0;
++                u8 stone = MegaForm_FirstStone(GetMonData(&gPlayerParty[slot], MON_DATA_SPECIES));
++                u16 item = MegaStone_Item(stone);
++                bool8 addedRing = FALSE;
++                if (!CheckBagHasItem(ITEM_MEGA_RING, 1))
++                {
++                    if (!AddBagItem(ITEM_MEGA_RING, 1))
++                    { sMenu.notice = "No room for the Mega Ring."; return; }
++                    addedRing = TRUE;
++                }
++                if (!item || !AddBagItem(item, 1))
++                {
++                    if (addedRing && !RemoveBagItem(ITEM_MEGA_RING, 1))
++                        sMenu.notice = "Stone not added. Ring remains; save only if wanted.";
++                    else sMenu.notice = "No room for the stone. No kit was added.";
++                }
++                else sMenu.notice = "Mega Ring and stone ready. Save to keep them.";
++            }
++            else if (sMenu.focus == MEGA_RULE)
++            {
++                if (FlagGet(FLAG_MEGA_EVOLUTION)) FlagClear(FLAG_MEGA_EVOLUTION);
++                else FlagSet(FLAG_MEGA_EVOLUTION);
++                sMenu.notice = "Mega setting changed. Save the game to keep it.";
++            }
++#endif
+             else if (sMenu.focus == STORY)
+             {
+                 sMenu.state = RALLY;
+diff --git a/test/world/test_mega_game_adapter.py b/test/world/test_mega_game_adapter.py
+index bfec964..e305438 100644
+--- a/test/world/test_mega_game_adapter.py
++++ b/test/world/test_mega_game_adapter.py
+@@ -7,6 +7,7 @@ class GameAdapterTests(unittest.TestCase):
+   main=r'''
+ #include "global.h"
+ #include "battle.h"
++#include "battle_controllers.h"
+ #include "pokemon.h"
+ #include "constants/species.h"
+ #include "constants/items.h"
+@@ -17,7 +18,7 @@ class GameAdapterTests(unittest.TestCase):
+ #include <assert.h>
+ #include <string.h>
+ struct Pokemon gPlayerParty[6],gEnemyParty[6];struct BattlePokemon gBattleMons[4];
+-u8 gBattlersCount=4,gBattlerPartyIndexes[4];u32 gBattleTypeFlags;int hasKey=1;
++u8 gBattlersCount=4,gBattlerPartyIndexes[4],gBattleBufferA[4][32];u32 gBattleTypeFlags;int hasKey=1;
+ int FlagGet(int x){(void)x;return 1;}int NativeLink_IsActive(void){return 1;}
+ int CheckBagHasItem(u16 x,u16 y){(void)x;(void)y;return hasKey;}
+ u8 GetBattlerPosition(u8 x){return x;}u8 GetBattlerSide(u8 x){return x&1;}
+@@ -36,6 +37,8 @@ int main(void){
+  gBattlerPartyIndexes[0]=0;gBattlerPartyIndexes[2]=3;
+  gBattleMons[0].species=SPECIES_VENUSAUR;gBattleMons[0].item=ITEM_VENUSAURITE;gBattleMons[0].hp=30;gBattleMons[0].level=50;
+  gBattleMons[2].species=SPECIES_GENGAR;gBattleMons[2].item=ITEM_GENGARITE;gBattleMons[2].hp=30;gBattleMons[2].level=50;
++ gBattleBufferA[0][0]=gBattleBufferA[2][0]=CONTROLLER_CHOOSEMOVE;
++ gBattleBufferA[0][3]=gBattleBufferA[2][3]=MEGA_MOVE_CAN_SELECT_BIT;
+  MegaGame_Reset();hasKey=0;assert(!MegaGame_CanSelect(0));hasKey=1;
+  assert(MegaGame_CanSelect(0));assert(MegaGame_ToggleSelection(0));
+  assert(MegaGame_ChoiceBit(0)==MEGA_MOVE_CHOICE_BIT);
+@@ -45,21 +48,52 @@ int main(void){
+  assert(!MegaGame_CanQueue(2)); /* ordinary doubles share one trainer */
+  assert(MegaGame_Apply(0));assert(gBattleMons[0].attack==152 && gBattleMons[0].ability==ABILITY_THICK_FAT);
+  assert(!memcmp(before,gPlayerParty,sizeof(before)));assert(!MegaGame_CanQueue(0));
++ /* Another slot does not inherit the form; switching the original back in
++  * restores it without spending a second use or writing party data. */
++ gPlayerParty[1].species=SPECIES_GENGAR;before[1]=gPlayerParty[1];
++ gBattlerPartyIndexes[0]=1;gBattleMons[0].species=SPECIES_GENGAR;gBattleMons[0].attack=1;
++ MegaGame_OnSwitchIn(0);assert(!MegaGame_ActiveForm(0));assert(gBattleMons[0].attack==1);
++ gBattlerPartyIndexes[0]=0;gBattleMons[0].species=SPECIES_VENUSAUR;gBattleMons[0].attack=1;
++ MegaGame_OnSwitchIn(0);assert(MegaGame_ActiveForm(0)==MEGA_FORM_VENUSAUR_MEGA);
++ assert(gBattleMons[0].attack==152 && !MegaGame_CanQueue(0));
++ assert(!memcmp(before,gPlayerParty,sizeof(before)));
+  MegaGame_Reset();gBattleTypeFlags=BATTLE_TYPE_MULTI;
+  assert(MegaGame_Queue(0));assert(MegaGame_Queue(2));
+  assert(MegaGame_Apply(0));assert(MegaGame_Apply(2));
+  assert(!memcmp(before,gPlayerParty,sizeof(before)));
+  assert(MegaGame_ActiveForm(0)==MEGA_FORM_VENUSAUR_MEGA);
+  assert(MegaGame_ActiveForm(2)==MEGA_FORM_GENGAR_MEGA);
++ MegaGame_Reset();
++ assert(!MegaGame_ObserveForm(0,MEGA_FORM_GENGAR_MEGA,0));
++ assert(MegaGame_ObserveForm(0,MEGA_FORM_VENUSAUR_MEGA,0));
++ assert(MegaGame_ObserveForm(0,MEGA_FORM_VENUSAUR_MEGA,0)); /* repeat for re-entry */
++ gBattlerPartyIndexes[0]=1;assert(!MegaGame_ActiveForm(0));
++ assert(MegaGame_ObserveForm(0,MEGA_FORM_VENUSAUR_MEGA,0)); /* event precedes switch animation */
++ assert(!MegaGame_ActiveForm(0));
++ assert(!MegaGame_ObserveForm(0,MEGA_FORM_GENGAR_MEGA,3)); /* other trainer slot */
++ assert(!MegaGame_ObserveForm(0,MEGA_FORM_GENGAR_MEGA,1)); /* one form per owner */
++ gBattlerPartyIndexes[0]=0;assert(MegaGame_ActiveForm(0)==MEGA_FORM_VENUSAUR_MEGA);
++ assert(!memcmp(before,gPlayerParty,sizeof(before)));
+  MegaGame_Reset();gBattleMons[0].status2=STATUS2_TRANSFORMED;assert(!MegaGame_CanQueue(0));
++ /* The owning remote client may have no populated gBattleMons; the master's
++  * CHOOSEMOVE permission plus its own Ring still enables the input. */
++ memset(&gBattleMons[0],0,sizeof(gBattleMons[0]));
++ assert(MegaGame_CanSelect(0));assert(!MegaGame_CanQueue(0));
++ gBattleTypeFlags=BATTLE_TYPE_LINK;
++ assert(MegaGame_ReplyAllowed(0,MEGA_MOVE_CAN_SELECT_BIT));
++ assert(!MegaGame_ReplyAllowed(0,0));
++ gBattleTypeFlags=BATTLE_TYPE_LINK | BATTLE_TYPE_IS_MASTER;
++ assert(!MegaGame_ReplyAllowed(0,MEGA_MOVE_CAN_SELECT_BIT));
++ gBattleBufferA[0][3]=0;assert(!MegaGame_CanSelect(0));
+  return 0;
+ }'''
+   globalh='''#include <stdint.h>\n#include <stddef.h>\ntypedef uint8_t u8;typedef uint16_t u16;typedef uint32_t u32;typedef uint8_t bool8;\n#define TRUE 1\n#define FALSE 0\n#define PARTY_SIZE 6\n#define MULTI_PARTY_SIZE 3\n#define MAX_BATTLERS_COUNT 4\n'''
+-  battleh='''#include "global.h"\n#define BATTLE_TYPE_MULTI 1\n#define BATTLE_TYPE_LINK 2\n#define BATTLE_TYPE_RECORDED 4\n#define BATTLE_TYPE_RECORDED_LINK 8\n#define B_SIDE_PLAYER 0\n#define STATUS2_TRANSFORMED 1\nstruct BattlePokemon {u16 species,item,hp,level,attack,defense,speed,spAttack,spDefense;u8 types[2],ability;u32 status2;};\nextern struct BattlePokemon gBattleMons[4];extern u8 gBattlersCount,gBattlerPartyIndexes[4];extern u32 gBattleTypeFlags;u8 GetBattlerPosition(u8);u8 GetBattlerSide(u8);\n'''
++  battleh='''#include "global.h"\n#define BATTLE_TYPE_MULTI 1\n#define BATTLE_TYPE_LINK 2\n#define BATTLE_TYPE_RECORDED 4\n#define BATTLE_TYPE_RECORDED_LINK 8\n#define BATTLE_TYPE_IS_MASTER 16\n#define B_SIDE_PLAYER 0\n#define STATUS2_TRANSFORMED 1\nstruct BattlePokemon {u16 species,item,hp,level,attack,defense,speed,spAttack,spDefense;u8 types[2],ability;u32 status2;};\nextern struct BattlePokemon gBattleMons[4];extern u8 gBattlersCount,gBattlerPartyIndexes[4];extern u32 gBattleTypeFlags;u8 GetBattlerPosition(u8);u8 GetBattlerSide(u8);\n'''
+   pokemonh='''#include "global.h"\nstruct Pokemon {u16 species;};extern struct Pokemon gPlayerParty[6],gEnemyParty[6];\nenum {MON_DATA_SPECIES,MON_DATA_ATK_IV,MON_DATA_DEF_IV,MON_DATA_SPEED_IV,MON_DATA_SPATK_IV,MON_DATA_SPDEF_IV,MON_DATA_ATK_EV,MON_DATA_DEF_EV,MON_DATA_SPEED_EV,MON_DATA_SPATK_EV,MON_DATA_SPDEF_EV};\nu32 GetMonData(struct Pokemon *,int);u8 GetNature(struct Pokemon *);u16 ModifyStatByNature(u8,u16,u8);\n'''
+   with tempfile.TemporaryDirectory() as d:
+    root=Path(d);(root/'constants').mkdir();(root/'platform').mkdir()
+    (root/'global.h').write_text('#ifndef GLOB\n#define GLOB\n'+globalh+'#endif\n')
++   (root/'battle_controllers.h').write_text('#include \"global.h\"\n#define CONTROLLER_CHOOSEMOVE 10\nextern u8 gBattleBufferA[4][32];\n');
+    (root/'battle.h').write_text(battleh);(root/'battle_anim.h').write_text('');(root/'pokemon.h').write_text(pokemonh)
+    (root/'item.h').write_text('int CheckBagHasItem(u16,u16);\n');(root/'event_data.h').write_text('int FlagGet(int);\n')
+    (root/'constants/flags.h').write_text('#define FLAG_MEGA_EVOLUTION 1\n')
+diff --git a/test/world/test_mega_move_request.py b/test/world/test_mega_move_request.py
+new file mode 100644
+index 0000000..630c3e3
+--- /dev/null
++++ b/test/world/test_mega_move_request.py
+@@ -0,0 +1,37 @@
++"""Compile the actual move-request emitter with a minimal controller stub."""
++from pathlib import Path
++import subprocess, tempfile, unittest
++ROOT=Path(__file__).resolve().parents[2]
++class MoveRequestTest(unittest.TestCase):
++ def test_master_announces_eligibility_without_changing_existing_fields(self):
++  src=(ROOT/'src/battle_controllers.c').read_text()
++  start=src.index('void BtlController_EmitChooseMove(')
++  brace=src.index('{',start);depth=1;i=brace+1
++  while depth:
++   depth += (src[i]=='{')-(src[i]=='}');i+=1
++  body=src[start:i]
++  c=r'''
++#include <stdint.h>
++#include <assert.h>
++typedef uint8_t u8;typedef int32_t s32;typedef uint8_t bool8;
++#define CONTROLLER_CHOOSEMOVE 10
++#define MEGA_MOVE_CAN_SELECT_BIT 1
++struct ChooseMoveStruct {u8 bytes[20];};
++u8 gActiveBattler, sBattleBuffersTransferData[64], captured[64];
++int eligible,capturedSize;
++int MegaGame_CanQueue(u8 b){(void)b;return eligible;}
++void PrepareBufferDataTransfer(u8 id,u8 *p,int n){(void)id;capturedSize=n;for(int i=0;i<n;i++)captured[i]=p[i];}
++''' + body + r'''
++int main(void){struct ChooseMoveStruct m={{0}};m.bytes[3]=42;
++ eligible=1;BtlController_EmitChooseMove(0,1,0,&m);
++ assert(capturedSize==24 && captured[0]==10 && captured[1]==1 && captured[2]==0 && captured[3]==1 && captured[7]==42);
++ eligible=0;BtlController_EmitChooseMove(0,0,1,&m);
++ assert(captured[1]==0 && captured[2]==1 && captured[3]==0 && captured[7]==42);
++ return 0;}
++'''
++  with tempfile.TemporaryDirectory() as d:
++   p=Path(d);(p/'test.c').write_text(c)
++   result=subprocess.run(['cc','-std=c99','-DPORTABLE','-Wall','-Wextra','-Werror','-Wno-sign-compare',str(p/'test.c'),'-o',str(p/'test')],capture_output=True,text=True)
++   self.assertEqual(result.returncode,0,result.stderr)
++   result=subprocess.run([str(p/'test')],capture_output=True,text=True);self.assertEqual(result.returncode,0,result.stderr)
++if __name__=='__main__':unittest.main()
+diff --git a/test/world/test_mega_turn_sequence.py b/test/world/test_mega_turn_sequence.py
+new file mode 100644
+index 0000000..3931a18
+--- /dev/null
++++ b/test/world/test_mega_turn_sequence.py
+@@ -0,0 +1,62 @@
++"""Run the actual guarded turn-loop body with asynchronous ability stubs."""
++from pathlib import Path
++import subprocess, tempfile, unittest
++ROOT = Path(__file__).resolve().parents[2]
++
++class MegaTurnSequence(unittest.TestCase):
++ def test_ability_scripts_pause_and_resume_without_repeating_transform(self):
++  source = (ROOT / 'src/battle_main.c').read_text()
++  start = source.index('        /* Ability scripts run asynchronously')
++  end = source.index('        sMegaTurnHandled = TRUE;', start) + len('        sMegaTurnHandled = TRUE;')
++  body = source[start:end]
++  program = r'''
++#include <assert.h>
++#include <stdbool.h>
++typedef unsigned char u8; typedef bool bool8;
++#define FALSE false
++#define TRUE true
++#define B_ACTION_USE_MOVE 1
++#define ABILITYEFFECT_ON_SWITCHIN 10
++#define ABILITYEFFECT_INTIMIDATE1 11
++#define ABILITYEFFECT_TRACE 12
++#define MEGA_WIRE_ACTIVATE 1
++struct Mon {u8 ability;} gBattleMons[4];
++struct Protect {int noValidMoves;} protect[4], *gProtectStructs=protect;
++u8 gBattlersCount=3, gBattlerByTurnOrder[4]={0,1,2},gChosenActionByBattler[4]={1,1,0};
++u8 sMegaTurnIndex=0,sMegaAbilityPhase=0;bool8 sMegaTurnHandled=false;
++int applyCalls[4],cancelCalls[4],onCalls[4],intimidateCalls,traceCalls,publishCalls;
++int gBattleControllerExecFlags;bool8 sMegaAbilityChanged;
++int MegaGame_PublishForm(u8 b,u8 kind) { (void)b;(void)kind;publishCalls++;gBattleControllerExecFlags=1;return 1; }
++int MegaGame_Apply(u8 b) { applyCalls[b]++; if (b==0) {gBattleMons[b].ability=7;return 1;} return 1; }
++void MegaGame_CancelQueue(u8 b) { cancelCalls[b]++; }
++int AbilityBattleEffects(int type,u8 b,int a,int c,int d) {
++ (void)a;(void)c;(void)d;
++ if(type==ABILITYEFFECT_ON_SWITCHIN) {onCalls[b]++;return onCalls[b]==1;}
++ if(type==ABILITYEFFECT_INTIMIDATE1) return ++intimidateCalls==1;
++ if(type==ABILITYEFFECT_TRACE) return ++traceCalls==1;
++ assert(0);return 0;
++}
++void run(void) {
++''' + body + r'''
++}
++int main(void) {
++ gBattleMons[0].ability=1; gBattleMons[1].ability=2;
++ run(); assert(!sMegaTurnHandled && applyCalls[0]==1 && publishCalls==1 && onCalls[0]==0);
++ run(); assert(!sMegaTurnHandled && applyCalls[0]==1 && onCalls[0]==0); /* waits for ACK */
++ gBattleControllerExecFlags=0;run(); assert(!sMegaTurnHandled && onCalls[0]==1);
++ run(); assert(!sMegaTurnHandled && applyCalls[0]==1 && intimidateCalls==1);
++ run(); assert(!sMegaTurnHandled && traceCalls==1 && applyCalls[1]==0);
++ run(); assert(!sMegaTurnHandled && applyCalls[1]==1 && publishCalls==2);
++ gBattleControllerExecFlags=0;run();
++ assert(sMegaTurnHandled && applyCalls[0]==1 && applyCalls[1]==1 && cancelCalls[2]==1);
++ assert(onCalls[0]==1 && onCalls[1]==0 && intimidateCalls==2 && traceCalls==2);
++ return 0;
++}
++'''
++  with tempfile.TemporaryDirectory() as d:
++   p=Path(d); (p/'test.c').write_text(program)
++   c=subprocess.run(['cc','-std=c99','-Wall','-Wextra','-Werror',str(p/'test.c'),'-o',str(p/'test')],capture_output=True,text=True)
++   self.assertEqual(c.returncode,0,c.stderr)
++   c=subprocess.run([str(p/'test')],capture_output=True,text=True)
++   self.assertEqual(c.returncode,0,c.stderr)
++if __name__=='__main__':unittest.main()
+diff --git a/test/world/test_mega_wire.py b/test/world/test_mega_wire.py
+new file mode 100644
+index 0000000..753ae96
+--- /dev/null
++++ b/test/world/test_mega_wire.py
+@@ -0,0 +1,31 @@
++"""Exercise the source packet codec; no socket or native runtime involved."""
++from pathlib import Path
++import subprocess, tempfile, unittest
++ROOT=Path(__file__).resolve().parents[2]
++class MegaWireTest(unittest.TestCase):
++ def test_roundtrip_and_reject_bad_headers_or_stale_generation(self):
++  source=r'''
++#include <stdint.h>
++typedef uint8_t u8;typedef uint16_t u16;typedef uint32_t u32;typedef uint8_t bool8;
++#define FALSE 0
++#define TRUE 1
++#include "platform/mega_wire.h"
++#include <assert.h>
++int main(void){
++ u8 p[16]={0},q[16];MegaWire_Encode(p,32,4,MEGA_WIRE_ACTIVATE,3,0x12345678);
++ assert(MegaWire_IsCandidate(p,16,32));assert(MegaWire_Valid(p,16,32,17,0x12345678));
++ assert(!MegaWire_Valid(p,12,32,17,0x12345678));assert(!MegaWire_Valid(p,16,32,17,0x12345679));
++ for(int i=0;i<16;i++){for(int j=0;j<16;j++)q[j]=p[j];q[i]^=0x80;
++   if(i!=5 && i!=6 && i!=7)assert(!MegaWire_Valid(q,16,32,17,0x12345678));}
++ p[5]=0;assert(!MegaWire_Valid(p,16,32,17,0x12345678));
++ p[5]=17;assert(!MegaWire_Valid(p,16,32,17,0x12345678));
++ p[5]=4;p[7]=6;assert(!MegaWire_Valid(p,16,32,17,0x12345678));
++ p[7]=3;p[6]=3;assert(!MegaWire_Valid(p,16,32,17,0x12345678));
++ return 0;
++}'''
++  with tempfile.TemporaryDirectory() as d:
++   path=Path(d);(path/'test.c').write_text(source)
++   p=subprocess.run(['cc','-std=c99','-DPORTABLE','-Wall','-Wextra','-Werror','-I',str(ROOT/'include'),str(path/'test.c'),'-o',str(path/'test')],capture_output=True,text=True)
++   self.assertEqual(p.returncode,0,p.stderr)
++   p=subprocess.run([str(path/'test')],capture_output=True,text=True);self.assertEqual(p.returncode,0,p.stderr)
++if __name__=='__main__':unittest.main()

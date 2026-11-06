@@ -228,6 +228,25 @@ class WindowsGuestSession:
                     raise ValueError('unsupported telemetry path')
                 self.gateway = LoopbackGateway(self.remote, fingerprint=self.pin,
                                                local_token=secrets.token_hex(32)).start()
+                # Use the same capability-gated, pinned-TLS gateway as native.
+                # This control connection cannot occupy gameplay presence.
+                with socket.create_connection(self.gateway.address, timeout=5) as control:
+                    control.sendall((f'EWLOCAL1 {self.gateway.local_token}\n'
+                                     f'HELLO 1 {self.trainer} {self._token} CONTROL\n').encode('ascii'))
+                    with control.makefile('rb') as stream:
+                        welcome = stream.readline(1025).decode('ascii').split()
+                        if (len(welcome) != 5 or welcome[:3] != ['WELCOME','1',self.trainer]
+                                or welcome[4] != 'CONTROL'):
+                            raise ValueError('world authentication failed')
+                        control.sendall(b'{"command":"world_rules"}\n')
+                        raw = stream.readline(4097)
+                        if not raw.endswith(b'\n') or len(raw) > 4096:
+                            raise ValueError('invalid world rules response')
+                        response = json.loads(raw)
+                        if not response.get('ok'):
+                            raise ValueError('host does not support world rules')
+                        from .rules import validate
+                        self.world_rules = validate(response['world_rules'])
                 text = (f'loopback_port {self.gateway.address[1]}\n'
                         f'loopback_token {self.gateway.local_token}\n'
                         f'trainer {self.trainer}\ntoken {self._token}\n'
@@ -251,8 +270,10 @@ class WindowsGuestSession:
         binary = self.binary if self.binary is not None else locate_game()
         if not binary.is_file():
             raise ValueError('packaged game is missing')
+        from .rules import wire
         return [str(binary), '--save', str(self.paths['save']),
-                '--config', str(self.paths['settings']), '--world-config', str(self.paths['config'])]
+                '--config', str(self.paths['settings']), '--world-config', str(self.paths['config']),
+                '--world-rules', wire(self.world_rules)]
 
     def start(self):
         with self._guard:

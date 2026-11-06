@@ -2,6 +2,7 @@
 #define GUARD_RTC_UTIL_H
 
 #include "siirtc.h"
+#include "constants/rtc.h"
 
 #define RTC_INIT_ERROR         0x0001
 #define RTC_INIT_WARNING       0x0002
@@ -41,4 +42,6 @@ void CalcTimeDifference(struct Time *result, struct Time *t1, struct Time *t2);
 u32 RtcGetMinuteCount(void);
 u32 RtcGetLocalDayCount(void);
 
+bool8 IsBetweenHours(s32 hours, s32 begin, s32 end);
+enum TimeOfDay GetTimeOfDay(void);
 #endif // GUARD_RTC_UTIL_H

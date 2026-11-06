@@ -22,8 +22,11 @@ class LinuxPackageTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.binary = self.root / 'fixture'
+        content_id = json.loads((REPO / 'world/content_compat.json').read_text())['content_id']
         subprocess.run(['cc', '-x', 'c', '-', '-o', str(self.binary)],
-                       input='int main(void) { return 0; }\n', text=True, check=True)
+                       input='const char fixture_content_id[] = "' + content_id + '";\n'
+                             'int main(void) { return fixture_content_id[0] == 0; }\n',
+                       text=True, check=True)
         self.dist = self.root / 'dist'
         (self.dist / 'assets').mkdir(parents=True)
         (self.dist / 'index.html').write_text('<html><script src="/assets/main.js"></script></html>')
@@ -36,6 +39,38 @@ class LinuxPackageTests(unittest.TestCase):
             capture_output=True, text=True)
         self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
         return output / ('EmeraldWorld-' + version + '-linux-x86_64.tar.gz')
+
+    def test_native_binary_must_match_packaged_content_id(self):
+        subprocess.run(['cc', '-x', 'c', '-', '-o', str(self.binary)],
+                       input='int main(void) { return 0; }\n', text=True, check=True)
+        self.package(success=False)
+
+    def test_archive_includes_native_content_compatibility_manifest(self):
+        bundle = self.extract(self.package())
+        packaged = bundle / 'world/content_compat.json'
+        self.assertTrue(packaged.is_file(), 'native content compatibility manifest missing from archive')
+        self.assertEqual(packaged.read_bytes(), (REPO / 'world/content_compat.json').read_bytes())
+
+    def test_archive_includes_exact_rc4_player_scope(self):
+        bundle = self.extract(self.package())
+        scope = bundle / 'RC4_SCOPE.md'
+        self.assertTrue(scope.is_file(), 'RC4 player scope missing from archive root')
+        expected = (REPO / 'docs/RC4_PLAYER_SCOPE.md').read_bytes()
+        self.assertEqual(scope.read_bytes(), expected)
+        manifest = json.loads((bundle / 'manifest.json').read_text())
+        self.assertEqual(manifest['files']['RC4_SCOPE.md'],
+                         {'sha256': hashlib.sha256(expected).hexdigest(), 'mode': 0o644})
+        self.assertFalse((bundle / 'docs').exists(), 'scope packaging must not recurse through docs')
+
+    def test_archive_includes_exact_expanded_coverage_and_attribution(self):
+        bundle = self.extract(self.package())
+        for source, packaged in [
+            ('tools/expanded/coverage.json', 'credits/expanded/catalog.json'),
+            ('tools/expanded/assets.json', 'credits/expanded/assets.json'),
+            ('tools/expanded_moves/coverage.json', 'credits/expanded/moves.json'),
+        ]:
+            self.assertTrue((bundle / packaged).is_file(), packaged + ' missing')
+            self.assertEqual((bundle / packaged).read_bytes(), (REPO / source).read_bytes())
 
     def test_relative_vite_index_asset_paths_are_supported(self):
         (self.dist / 'index.html').write_text('<html><script src="./assets/main.js"></script></html>')

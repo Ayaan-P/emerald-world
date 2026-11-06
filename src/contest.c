@@ -1,4 +1,5 @@
 #include "global.h"
+#include "move.h"
 #include "gpu_regs.h"
 #include "bg.h"
 #include "malloc.h"
@@ -1542,7 +1543,7 @@ static void Task_ShowMoveSelectScreen(u8 taskId)
             // Gray the text because it's a repeated move
             moveNameBuffer = StringCopy(moveName, gText_ColorBlue);
         }
-        moveNameBuffer = StringCopy(moveNameBuffer, gMoveNames[move]);
+        moveNameBuffer = StringCopy(moveNameBuffer, gMovesInfo[move].name);
 
         FillWindowPixelBuffer(i + MOVE_WINDOWS_START, PIXEL_FILL(0));
         Contest_PrintTextToBg0WindowAt(i + MOVE_WINDOWS_START, moveName, 5, 1, FONT_NARROW);
@@ -1812,7 +1813,7 @@ static void Task_DoAppeals(u8 taskId)
             ContestClearGeneralTextWindow();
             StringCopy(gStringVar1, gContestMons[contestant].nickname);
             if (eContestantStatus[contestant].currMove < MOVES_COUNT)
-                StringCopy(gStringVar2, gMoveNames[eContestantStatus[contestant].currMove]);
+                StringCopy(gStringVar2, gMovesInfo[eContestantStatus[contestant].currMove].name);
             else
                 StringCopy(gStringVar2, sInvalidContestMoveNames[eContestantStatus[contestant].moveCategory]);
             StringExpandPlaceholders(gStringVar4, gText_MonAppealedWithMove);
@@ -2206,7 +2207,7 @@ static void Task_DoAppeals(u8 taskId)
             if (eContestantStatus[contestant].overrideCategoryExcitementMod)
             {
                 r3 = 1;
-                StringCopy(gStringVar3, gMoveNames[eContestantStatus[contestant].currMove]);
+                StringCopy(gStringVar3, gMovesInfo[eContestantStatus[contestant].currMove].name);
             }
             else
             {
@@ -2341,7 +2342,7 @@ static void Task_DoAppeals(u8 taskId)
         ContestClearGeneralTextWindow();
         StringCopy(gStringVar3, gContestMons[eContestExcitement.freezer].nickname);
         StringCopy(gStringVar1, gContestMons[contestant].nickname);
-        StringCopy(gStringVar2, gMoveNames[eContestantStatus[contestant].currMove]);
+        StringCopy(gStringVar2, gMovesInfo[eContestantStatus[contestant].currMove].name);
         StringExpandPlaceholders(gStringVar4, gText_CrowdContinuesToWatchMon);
         Contest_StartTextPrinter(gStringVar4, TRUE);
         gTasks[taskId].tState = APPEALSTATE_PRINT_MON_MOVE_IGNORED_MSG;
@@ -2367,7 +2368,7 @@ static void Task_DoAppeals(u8 taskId)
             eContestantStatus[contestant].hasJudgesAttention = FALSE;
         StartStopFlashJudgeAttentionEye(contestant);
         StringCopy(gStringVar1, gContestMons[contestant].nickname);
-        StringCopy(gStringVar2, gMoveNames[eContestantStatus[contestant].currMove]);
+        StringCopy(gStringVar2, gMovesInfo[eContestantStatus[contestant].currMove].name);
         StringExpandPlaceholders(gStringVar4, gText_MonWasTooNervousToMove);
         Contest_StartTextPrinter(gStringVar4, TRUE);
         gTasks[taskId].tState = APPEALSTATE_WAIT_TOO_NERVOUS_MSG;
@@ -4570,7 +4571,7 @@ void SetStartledString(u8 contestant, u8 jam)
 static void PrintAppealMoveResultText(u8 contestant, u8 stringId)
 {
     StringCopy(gStringVar1, gContestMons[contestant].nickname);
-    StringCopy(gStringVar2, gMoveNames[eContestantStatus[contestant].currMove]);
+    StringCopy(gStringVar2, gMovesInfo[eContestantStatus[contestant].currMove].name);
     if      (gContestMoves[eContestantStatus[eContestAppealResults.contestant].currMove].contestCategory == CONTEST_CATEGORY_COOL)
         StringCopy(gStringVar3, gText_Contest_Shyness);
     else if (gContestMoves[eContestantStatus[eContestAppealResults.contestant].currMove].contestCategory == CONTEST_CATEGORY_BEAUTY)

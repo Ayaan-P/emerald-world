@@ -1,0 +1,226 @@
+--- a/include/battle_move_split.h
++++ b/include/battle_move_split.h
+@@ -7,6 +7,7 @@
+ #ifdef PORTABLE
+ #include "platform/native_link.h"
+ #include "platform/world_rules.h"
++#include "platform/expanded_moves.h"
+ /* Move categories sourced from pokeemerald-expansion-native bb3fd057.
+  * The four Gen 3 spelling aliases map to their renamed donor equivalents. */
+ enum { MOVE_SPLIT_PHYSICAL, MOVE_SPLIT_SPECIAL, MOVE_SPLIT_STATUS };
+@@ -386,7 +387,7 @@
+ {
+ #ifdef PORTABLE
+     if (BattleRules_UseModernSplit())
+-        return type != TYPE_MYSTERY && move < MOVES_COUNT && sModernMoveCategory[move] == MOVE_SPLIT_PHYSICAL;
++        return type != TYPE_MYSTERY && move < MOVES_COUNT && (move >= EXPANDED_MOVES_START ? ExpandedMoves_Category(move) : sModernMoveCategory[move]) == MOVE_SPLIT_PHYSICAL;
+ #else
+     (void)move;
+ #endif
+@@ -397,7 +398,7 @@
+ {
+ #ifdef PORTABLE
+     if (BattleRules_UseModernSplit())
+-        return type != TYPE_MYSTERY && move < MOVES_COUNT && sModernMoveCategory[move] == MOVE_SPLIT_SPECIAL;
++        return type != TYPE_MYSTERY && move < MOVES_COUNT && (move >= EXPANDED_MOVES_START ? ExpandedMoves_Category(move) : sModernMoveCategory[move]) == MOVE_SPLIT_SPECIAL;
+ #else
+     (void)move;
+ #endif
+--- a/src/battle_script_commands.c
++++ b/src/battle_script_commands.c
+@@ -8031,7 +8031,11 @@
+         // picks in this range it retries. If MOVES_COUNT exceeds 511 we
+         // instead use a simpler solution.
+         gCurrentMove = (Random() & 0x1FF) + 1;
++        #ifdef PORTABLE
++        if (gCurrentMove >= ExpandedMoves_PlayableCount())
++#else
+         if (gCurrentMove >= MOVES_COUNT)
++#endif
+             continue;
+     #else
+         // Just pick a valid move value (between 1 and MOVES_COUNT-1)
+@@ -8226,6 +8230,13 @@
+ 
+         for (rands = 0; rands < 1000; rands++)
+         {
++            #ifdef PORTABLE
++            if (ExpandedMoves_UseModernTypes())
++            {
++                do { i = Random() % 128; } while (i >= ExpandedMoves_TypeTableSize() / 3);
++            }
++            else
++#endif
+             while (((i = Random() % 128) > sizeof(gTypeEffectiveness) / 3));
+ 
+             i *= 3;
+@@ -8242,7 +8253,11 @@
+             }
+         }
+ 
++        #ifdef PORTABLE
++        for (j = 0, rands = 0; rands < ExpandedMoves_TypeTableSize(); j += 3, rands += 3)
++#else
+         for (j = 0, rands = 0; rands < sizeof(gTypeEffectiveness); j += 3, rands += 3)
++#endif
+         {
+             switch (TYPE_EFFECT_ATK_TYPE(j))
+             {
+@@ -8252,7 +8267,11 @@
+             default:
+                 if (TYPE_EFFECT_ATK_TYPE(j) == gLastHitByType[gBattlerAttacker]
+                  && TYPE_EFFECT_MULTIPLIER(j) <= 5
+-                 && !IS_BATTLER_OF_TYPE(gBattlerAttacker, TYPE_EFFECT_DEF_TYPE(i)))
++                 && !IS_BATTLER_OF_TYPE(gBattlerAttacker, TYPE_EFFECT_DEF_TYPE(
++#ifdef PORTABLE
++                    ExpandedMoves_UseModernTypes() ? j :
++#endif
++                    i)))
+                 {
+                     SET_BATTLER_TYPE(gBattlerAttacker, TYPE_EFFECT_DEF_TYPE(rands));
+                     PREPARE_TYPE_BUFFER(gBattleTextBuff1, TYPE_EFFECT_DEF_TYPE(rands))
+@@ -9043,7 +9062,7 @@
+ 
+     // Subtract 3 instead of 1 below because 2 types are excluded (TYPE_NORMAL and TYPE_MYSTERY)
+     // The final + 1 skips past Normal, and the following conditional skips TYPE_MYSTERY
+-    gBattleStruct->dynamicMoveType = ((NUMBER_OF_MON_TYPES - 3) * typeBits) / 63 + 1;
++    gBattleStruct->dynamicMoveType = ((TYPE_DARK - 2) * typeBits) / 63 + 1;
+     if (gBattleStruct->dynamicMoveType >= TYPE_MYSTERY)
+         gBattleStruct->dynamicMoveType++;
+     gBattleStruct->dynamicMoveType |= F_DYNAMIC_TYPE_IGNORE_PHYSICALITY | F_DYNAMIC_TYPE_SET;
+--- a/src/battle_main.c
++++ b/src/battle_main.c
+@@ -483,6 +483,9 @@
+     [TYPE_ICE] = _("ICE"),
+     [TYPE_DRAGON] = _("DRAGON"),
+     [TYPE_DARK] = _("DARK"),
++#ifdef PORTABLE
++    [TYPE_FAIRY] = _("FAIRY"),
++#endif
+ };
+ 
+ // This is a factor in how much money you get for beating a trainer.
+--- a/src/graphics.c
++++ b/src/graphics.c
+@@ -1119,7 +1119,11 @@
+ const u32 gStatusGfx_Icons[] = INCGFX_U32("graphics/interface/status_icons.png", ".4bpp.lz");
+ const u32 gStatusPal_Icons[] = INCGFX_U32("graphics/interface/status_icons.png", ".gbapal.lz");
+ 
++#ifdef PORTABLE
++const u32 gMoveTypes_Gfx[] = INCGFX_U32("graphics/types/move_types_expanded.4bpp", ".lz");
++#else
+ const u32 gMoveTypes_Gfx[] = INCGFX_U32("graphics/types/move_types.4bpp", ".lz");
++#endif
+ const u32 gMoveTypes_Pal[] = INCGFX_U32("graphics/types/move_types.gbapal", ".lz");
+ 
+ const u32 gSummaryMoveSelect_Gfx[] = INCGFX_U32("graphics/summary_screen/move_select.png", ".4bpp.lz");
+--- a/src/pokemon_summary_screen.c
++++ b/src/pokemon_summary_screen.c
+@@ -858,6 +858,12 @@
+     ANIMCMD_FRAME(TYPE_DARK * 8, 0, FALSE, FALSE),
+     ANIMCMD_END
+ };
++#ifdef PORTABLE
++static const union AnimCmd sSpriteAnim_TypeFairy[] = {
++    ANIMCMD_FRAME(TYPE_FAIRY * 8, 0, FALSE, FALSE),
++    ANIMCMD_END
++};
++#endif
+ static const union AnimCmd sSpriteAnim_CategoryCool[] = {
+     ANIMCMD_FRAME((CONTEST_CATEGORY_COOL + NUMBER_OF_MON_TYPES) * 8, 0, FALSE, FALSE),
+     ANIMCMD_END
+@@ -897,6 +903,9 @@
+     sSpriteAnim_TypeIce,
+     sSpriteAnim_TypeDragon,
+     sSpriteAnim_TypeDark,
++#ifdef PORTABLE
++    sSpriteAnim_TypeFairy,
++#endif
+     sSpriteAnim_CategoryCool,
+     sSpriteAnim_CategoryBeauty,
+     sSpriteAnim_CategoryCute,
+@@ -940,6 +949,9 @@
+     [TYPE_ICE] = 14,
+     [TYPE_DRAGON] = 15,
+     [TYPE_DARK] = 13,
++#ifdef PORTABLE
++    [TYPE_FAIRY] = 14,
++#endif
+     [NUMBER_OF_MON_TYPES + CONTEST_CATEGORY_COOL] = 13,
+     [NUMBER_OF_MON_TYPES + CONTEST_CATEGORY_BEAUTY] = 14,
+     [NUMBER_OF_MON_TYPES + CONTEST_CATEGORY_CUTE] = 14,
+--- a/src/dexnav.c
++++ b/src/dexnav.c
+@@ -2170,6 +2170,9 @@
+     [TYPE_ICE] = TYPE_ICON_PAL_NUM_1,
+     [TYPE_DRAGON] = TYPE_ICON_PAL_NUM_2,
+     [TYPE_DARK] = TYPE_ICON_PAL_NUM_0,
++#ifdef PORTABLE
++    [TYPE_FAIRY] = TYPE_ICON_PAL_NUM_1,
++#endif
+ };
+ static void SetTypeIconPosAndPal(u8 typeId, u8 x, u8 y, u8 spriteArrayId)
+ {
+--- a/src/platform/dexnav_native.c
++++ b/src/platform/dexnav_native.c
+@@ -787,10 +787,10 @@
+ #define TYPE_ANIM(n) static const union AnimCmd sType##n[] = {ANIMCMD_FRAME((n) * 8, 0), ANIMCMD_END}
+ TYPE_ANIM(0); TYPE_ANIM(1); TYPE_ANIM(2); TYPE_ANIM(3); TYPE_ANIM(4); TYPE_ANIM(5);
+ TYPE_ANIM(6); TYPE_ANIM(7); TYPE_ANIM(8); TYPE_ANIM(9); TYPE_ANIM(10); TYPE_ANIM(11);
+-TYPE_ANIM(12); TYPE_ANIM(13); TYPE_ANIM(14); TYPE_ANIM(15); TYPE_ANIM(16); TYPE_ANIM(17);
++TYPE_ANIM(12); TYPE_ANIM(13); TYPE_ANIM(14); TYPE_ANIM(15); TYPE_ANIM(16); TYPE_ANIM(17); TYPE_ANIM(18);
+ static const union AnimCmd *const sTypeAnims[] = {
+     sType0, sType1, sType2, sType3, sType4, sType5, sType6, sType7, sType8,
+-    sType9, sType10, sType11, sType12, sType13, sType14, sType15, sType16, sType17,
++    sType9, sType10, sType11, sType12, sType13, sType14, sType15, sType16, sType17, sType18,
+ };
+ const struct CompressedSpriteSheet gDexNavNative_MoveTypesSheet = {gMoveTypes_Gfx, (NUMBER_OF_MON_TYPES + 5) * 0x100, TYPE_TAG};
+ const struct SpriteTemplate gDexNavNative_MoveTypesTemplate = {
+--- a/src/pokedex.c
++++ b/src/pokedex.c
+@@ -1396,6 +1396,9 @@
+     {gText_DexEmptyString, gTypeNames[TYPE_ICE]},
+     {gText_DexEmptyString, gTypeNames[TYPE_DRAGON]},
+     {gText_DexEmptyString, gTypeNames[TYPE_DARK]},
++#ifdef PORTABLE
++    {gText_DexEmptyString, gTypeNames[TYPE_FAIRY]},
++#endif
+     {},
+ };
+ 
+@@ -1430,6 +1433,9 @@
+     TYPE_ICE,
+     TYPE_DRAGON,
+     TYPE_DARK,
++#ifdef PORTABLE
++    TYPE_FAIRY,
++#endif
+ };
+ 
+ // Number pairs are the task data for tracking the cursor pos and scroll offset of each option list
+--- a/src/data/union_room.h
++++ b/src/data/union_room.h
+@@ -885,6 +885,9 @@
+     { gTypeNames[TYPE_DRAGON],   TYPE_DRAGON         },
+     { gTypeNames[TYPE_STEEL],    TYPE_STEEL          },
+     { gTypeNames[TYPE_DARK],     TYPE_DARK           },
++#ifdef PORTABLE
++    { gTypeNames[TYPE_FAIRY],    TYPE_FAIRY          },
++#endif
+     { sText_Exit,                NUMBER_OF_MON_TYPES }
+ };
+ 
+--- a/src/battle_message.c
++++ b/src/battle_message.c
+@@ -1347,7 +1347,10 @@
+     [TYPE_PSYCHIC]  = _("a PSYCHIC move"),
+     [TYPE_ICE]      = _("an ICE move"),
+     [TYPE_DRAGON]   = _("a DRAGON move"),
+-    [TYPE_DARK]     = _("a DARK move")
++    [TYPE_DARK]     = _("a DARK move"),
++#ifdef PORTABLE
++    [TYPE_FAIRY]    = _("a FAIRY move"),
++#endif
+ };
+ 
+ const u8 gText_BattleTourney[] = _("BATTLE TOURNEY");

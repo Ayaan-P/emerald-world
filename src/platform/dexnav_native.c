@@ -1,6 +1,8 @@
 /* Native boundary for the RHH DexNav module. No Expansion save, party or ID ABI. */
 #ifdef PORTABLE
 #include "global.h"
+#include "move.h"
+#include "pokemon.h"
 #include "platform/dexnav_native.h"
 #include "dexnav.h"
 #include "battle.h"
@@ -35,6 +37,7 @@
 #include "constants/rgb.h"
 #include "platform/native_link.h"
 #include "platform/native_save.h"
+#include "platform/expanded_species.h"
 #include <stdio.h>
 #include <string.h>
 #ifndef _WIN32
@@ -42,7 +45,7 @@
 #endif
 
 /* Existing native species table; preserve its IDs and layout. */
-extern const struct Evolution gEvolutionTable[NUM_SPECIES][EVOS_PER_MON];
+extern const struct Evolution gEvolutionTable[SPECIES_TABLE_COUNT][EVOS_PER_MON];
 STATIC_ASSERT(sizeof(struct Pokemon) == 100, DexNavNativePokemonMustRemain100Bytes);
 struct DexNavNativeState gDexNavNativeState;
 static bool8 sCreeping, sGui, sFailed;
@@ -58,13 +61,20 @@ static bool8 sTrainerBound;
 static u8 sDiskProgress[PROGRESS_SIZE];
 static u8 sProgressJournal[2][PROGRESS_SIZE];
 static u8 sProgressSlot;
+/* Separate, versioned supplement. DNV2 and its two 428-byte slots stay RC3 ABI.
+ * DNX1 stores only IDs >= NUM_SPECIES. Its count permits later table growth. */
+#define EXPANDED_PROGRESS_SIZE (16 + SPECIES_TABLE_COUNT - NUM_SPECIES)
+static u8 sExpandedDisk[EXPANDED_PROGRESS_SIZE];
+static u8 sExpandedJournal[2][EXPANDED_PROGRESS_SIZE];
+static u8 sExpandedSlot;
 #ifndef _WIN32
+static FILE *sExpandedFile;
 static FILE *sProgressFile;
 #endif
 static u16 sBgPalette[16], sObjPalettes[3][16];
 static u16 sBgPaletteFaded[16], sObjPalettesFaded[3][16];
 static u8 sFieldPaletteSlots[3] = {0xFF, 0xFF, 0xFF};
-static bool8 sFieldResources, sSharedHud, sBgPaletteWritten, sTextBadges;
+static bool8 sFieldResources, sSharedHud, sBgPaletteWritten, sTextBadges, sTextOnlyHud;
 static u8 sFieldIcon[0x200];
 static u16 sFieldSpecies;
 static u16 sEffectTileStart = 0xFFFF;
@@ -112,6 +122,107 @@ static u8 NewestProgressSlot(const u8 journal[2][PROGRESS_SIZE])
 }
 #endif
 
+static u32 ExpandedProgressSize(const u8 *bytes)
+{
+    u16 count = bytes[8] | bytes[9] << 8;
+    if (count < NUM_SPECIES || count > SPECIES_TABLE_COUNT)
+        return 0;
+    return 16 + count - NUM_SPECIES;
+}
+
+static u16 ExpandedProgressChecksum(const u8 *bytes, u32 size)
+{
+    u16 sum = 0x6D31;
+    u32 i;
+    for (i = 0; i < size - 2; ++i)
+        sum = (sum << 5 | sum >> 11) ^ bytes[i];
+    return sum;
+}
+
+static bool8 ValidExpandedProgress(const u8 *bytes)
+{
+    u32 size = ExpandedProgressSize(bytes);
+    u16 registered = bytes[10] | bytes[11] << 8;
+    return size != 0 && memcmp(bytes, "DNX1", 4) == 0
+        && (registered & DEXNAV_MASK_SPECIES) < (bytes[8] | bytes[9] << 8)
+        && (registered >> 14) <= ENCOUNTER_TYPE_WATER
+        && (bytes[size - 2] | bytes[size - 1] << 8) == ExpandedProgressChecksum(bytes, size);
+}
+
+#ifndef _WIN32
+static void LoadExpandedProgress(const char *savePath)
+{
+    char path[4096];
+    struct stat info;
+    u32 slotSize;
+    u8 i;
+    if (snprintf(path, sizeof(path), "%s.dexnavx", savePath) >= (int)sizeof(path))
+        return;
+    sExpandedFile = NativeSave_Open(path);
+    if (sExpandedFile == NULL)
+        return;
+    if (fstat(fileno(sExpandedFile), &info) != 0 || (info.st_mode & 077) != 0)
+    {
+        fclose(sExpandedFile);
+        sExpandedFile = NULL;
+        return;
+    }
+    /* Older, smaller catalogs are read slot by slot into zeroed larger buffers.
+     * Reject short/oversized journals before reading untrusted record counts. */
+    if (info.st_size < 32 || info.st_size > (off_t)sizeof(sExpandedJournal) || info.st_size % 2 != 0)
+        return;
+    slotSize = info.st_size / 2;
+    for (i = 0; i < 2; ++i)
+    {
+        if (!NativeSave_Read(sExpandedFile, i * slotSize, sExpandedJournal[i], slotSize)
+            || ExpandedProgressSize(sExpandedJournal[i]) > slotSize
+            || !ValidExpandedProgress(sExpandedJournal[i]))
+            memset(sExpandedJournal[i], 0, sizeof(sExpandedJournal[i]));
+    }
+    if (!ValidExpandedProgress(sExpandedJournal[0]) && !ValidExpandedProgress(sExpandedJournal[1]))
+        return;
+    sExpandedSlot = ValidExpandedProgress(sExpandedJournal[1])
+        && (!ValidExpandedProgress(sExpandedJournal[0])
+            || (s16)(ProgressSequence(sExpandedJournal[1]) - ProgressSequence(sExpandedJournal[0])) > 0);
+    memcpy(sExpandedDisk, sExpandedJournal[sExpandedSlot], sizeof(sExpandedDisk));
+}
+#endif
+
+static void PersistExpandedProgress(u16 sequence)
+{
+    u16 checksum;
+    u16 registered = gDexNavNativeState.registeredSpecies;
+    memset(sExpandedDisk, 0, sizeof(sExpandedDisk));
+    memcpy(sExpandedDisk, "DNX1", 4);
+    memcpy(sExpandedDisk + 4, sTrainer, 4);
+    sExpandedDisk[8] = SPECIES_TABLE_COUNT & 0xFF;
+    sExpandedDisk[9] = SPECIES_TABLE_COUNT >> 8;
+    sExpandedDisk[10] = registered & 0xFF;
+    sExpandedDisk[11] = registered >> 8;
+    sExpandedDisk[12] = sequence & 0xFF;
+    sExpandedDisk[13] = sequence >> 8;
+    memcpy(sExpandedDisk + 14, gDexNavNativeState.dexNavSearchLevels + NUM_SPECIES,
+        SPECIES_TABLE_COUNT - NUM_SPECIES);
+    checksum = ExpandedProgressChecksum(sExpandedDisk, sizeof(sExpandedDisk));
+    sExpandedDisk[EXPANDED_PROGRESS_SIZE - 2] = checksum & 0xFF;
+    sExpandedDisk[EXPANDED_PROGRESS_SIZE - 1] = checksum >> 8;
+    sExpandedSlot ^= 1;
+    memcpy(sExpandedJournal[sExpandedSlot], sExpandedDisk, sizeof(sExpandedDisk));
+#ifndef _WIN32
+    if (sExpandedFile != NULL)
+    {
+        struct stat info;
+        if (fstat(fileno(sExpandedFile), &info) != 0 || (info.st_mode & 077) != 0
+            || !NativeSave_Write(sExpandedFile, sExpandedJournal, sizeof(sExpandedJournal)))
+        {
+            fprintf(stderr, "DexNav expanded progression could not be persisted. Trainer save is unchanged.\n");
+            fclose(sExpandedFile);
+            sExpandedFile = NULL;
+        }
+    }
+#endif
+}
+
 static void BindTrainer(void)
 {
     if (sTrainerBound && memcmp(sTrainer, gSaveBlock2Ptr->playerTrainerId, 4) == 0)
@@ -125,6 +236,16 @@ static void BindTrainer(void)
     {
         gDexNavNativeState.registeredSpecies = sDiskProgress[10] | sDiskProgress[11] << 8;
         memcpy(gDexNavNativeState.dexNavSearchLevels, sDiskProgress + 14, NUM_SPECIES);
+    }
+    if (ValidExpandedProgress(sExpandedDisk) && memcmp(sTrainer, sExpandedDisk + 4, 4) == 0)
+    {
+        memcpy(gDexNavNativeState.dexNavSearchLevels + NUM_SPECIES, sExpandedDisk + 14,
+            ExpandedProgressSize(sExpandedDisk) - 16);
+        /* A torn write or an intervening RC3 session must not resurrect a stale
+         * expanded quick-search registration. Added levels remain independent. */
+        if (ValidProgress(sDiskProgress) && memcmp(sTrainer, sDiskProgress + 4, 4) == 0
+            && ProgressSequence(sExpandedDisk) == ProgressSequence(sDiskProgress))
+            gDexNavNativeState.registeredSpecies = sExpandedDisk[10] | sExpandedDisk[11] << 8;
     }
 }
 
@@ -163,6 +284,7 @@ void DexNavNative_Init(const char *savePath, bool8 allowPersistence)
             memcpy(sDiskProgress, sProgressJournal[sProgressSlot], sizeof(sDiskProgress));
         }
     }
+    LoadExpandedProgress(savePath);
 #else
     (void)savePath;
     (void)allowPersistence;
@@ -175,6 +297,10 @@ void DexNavNative_Persist(void)
     u16 sequence = ProgressSequence(sDiskProgress) + 1;
     BindTrainer();
     registered = gDexNavNativeState.registeredSpecies;
+    /* RC3 readers must still validate both legacy slots. Expanded registration
+     * lives only in DNX1, never in DNV2's 14-bit legacy species field. */
+    if ((registered & DEXNAV_MASK_SPECIES) >= NUM_SPECIES)
+        registered = SPECIES_NONE;
     memset(sDiskProgress, 0, sizeof(sDiskProgress));
     memcpy(sDiskProgress, "DNV2", 4);
     memcpy(sDiskProgress + 4, sTrainer, 4);
@@ -205,6 +331,7 @@ void DexNavNative_Persist(void)
         }
     }
 #endif
+    PersistExpandedProgress(sequence);
 }
 
 bool8 DexNavNative_Available(void)
@@ -318,7 +445,7 @@ void DexNavNative_BattleFinished(u8 outcome)
     bool8 identity = DexNavNative_OwnsWildMon();
     sBattleOwner = SPECIES_NONE;  /* Consume before any return callback or whiteout. */
     sBattlePersonality = 0;
-    if (!identity || species == SPECIES_NONE || species >= NUM_SPECIES)
+    if (!identity || species == SPECIES_NONE || species >= SPECIES_TABLE_COUNT)
     {
         if (species != SPECIES_NONE)
             gDexNavNativeState.dexNavChain = 0;
@@ -337,6 +464,50 @@ void DexNavNative_BattleFinished(u8 outcome)
     gDexNavSpecies = SPECIES_NONE;
 }
 
+u16 DexNavNative_ResolveSpecies(u16 species)
+{
+    return ExpandedSpecies_ResolveEncounter(species,
+        gSaveBlock1Ptr->location.mapGroup, gSaveBlock1Ptr->location.mapNum);
+}
+
+bool8 DexNavNative_CollectSpecies(const struct WildPokemonInfo *info, u8 slots, u16 *out, u8 capacity)
+{
+    u8 pass, i, j, count = 0;
+    u16 species;
+
+    memset(out, 0, capacity * sizeof(*out));
+    if (info == NULL)
+        return TRUE;
+    /* Native entries first, in their original order. Append unique stable
+     * extras in a second pass so MORE cannot displace a base entry. */
+    for (pass = 0; pass < 2; ++pass)
+    {
+        for (i = 0; i < slots; ++i)
+        {
+            species = info->wildPokemon[i].species;
+            if (pass != 0)
+                species = DexNavNative_ResolveSpecies(species);
+            if (species == SPECIES_NONE)
+                continue;
+            for (j = 0; j < count; ++j)
+                if (SpeciesToNationalPokedexNum(out[j]) == SpeciesToNationalPokedexNum(species))
+                    break;
+            if (j != count)
+                continue;
+            if (count == capacity)
+            {
+                /* Never present a truncated pool as the complete route. The
+                 * GUI's existing resource-failure exit handles this case. */
+                sFailed = TRUE;
+                fprintf(stderr, "DexNav encounter pool exceeds %u slots\n", (unsigned)capacity);
+                return FALSE;
+            }
+            out[count++] = species;
+        }
+    }
+    return TRUE;
+}
+
 u16 DexNavNative_GetHeader(void) { return WildEncounter_GetDexNavHeader(); }
 const struct WildPokemonInfo *DexNavNative_GetHiddenInfo(u16 headerId)
 {
@@ -346,14 +517,14 @@ const struct WildPokemonInfo *DexNavNative_GetHiddenInfo(u16 headerId)
 }
 u8 DexNavNative_Ability(u16 species, u8 abilityNum)
 {
-    return species < NUM_SPECIES && abilityNum < 2 ? gSpeciesInfo[species].abilities[abilityNum] : ABILITY_NONE;
+    return species < SPECIES_TABLE_COUNT && abilityNum < 2 ? gSpeciesInfo[species].abilities[abilityNum] : ABILITY_NONE;
 }
 u8 DexNavNative_Type(u16 species, u8 typeNum)
 {
-    return species < NUM_SPECIES && typeNum < 2 ? gSpeciesInfo[species].types[typeNum] : TYPE_MYSTERY;
+    return species < SPECIES_TABLE_COUNT && typeNum < 2 ? gSpeciesInfo[species].types[typeNum] : TYPE_MYSTERY;
 }
-const u8 *DexNavNative_SpeciesName(u16 species) { return gSpeciesNames[species < NUM_SPECIES ? species : SPECIES_NONE]; }
-const u8 *DexNavNative_MoveName(u16 move) { return gMoveNames[move < MOVES_COUNT ? move : MOVE_NONE]; }
+const u8 *DexNavNative_SpeciesName(u16 species) { return gSpeciesInfo[species < SPECIES_TABLE_COUNT ? species : SPECIES_NONE].speciesName; }
+const u8 *DexNavNative_MoveName(u16 move) { return gMovesInfo[move < MOVES_COUNT ? move : MOVE_NONE].name; }
 
 extern const u16 gEggMoves[];
 u16 DexNavNative_RandomEggMove(u16 species)
@@ -364,7 +535,7 @@ u16 DexNavNative_RandomEggMove(u16 species)
     for (k = 0; k < 5; ++k)
     {
         bool8 found = FALSE;
-        for (i = 1; i < NUM_SPECIES && !found; ++i)
+        for (i = 1; i < SPECIES_TABLE_COUNT && !found; ++i)
             for (j = 0; j < EVOS_PER_MON; ++j)
                 if (gEvolutionTable[i][j].targetSpecies == species)
                 {
@@ -513,7 +684,7 @@ bool8 DexNavNative_AcquireFieldResources(u16 species, bool8 owned, bool8 hidden)
     u32 i, freeSprites = 0;
     const u16 tags[] = {HELD_ITEM_TAG, OWNED_ICON_TAG, HIDDEN_SEARCH_TAG,
         HIDDEN_MON_ICON_TAG, LIT_STAR_TILE_TAG, EFFECT_TILE_TAG};
-    if (sFieldResources || species == SPECIES_NONE || species >= NUM_SPECIES) return FALSE;
+    if (sFieldResources || species == SPECIES_NONE || species >= SPECIES_TABLE_COUNT) return FALSE;
     sFailed = FALSE;
     for (i = 0; i < MAX_SPRITES; ++i)
         if (!gSprites[i].inUse) ++freeSprites;
@@ -531,8 +702,7 @@ bool8 DexNavNative_AcquireFieldResources(u16 species, bool8 owned, bool8 hidden)
     /* An exact 15-color pack is not always possible (e.g. caught Wurmple).
      * Keep the original icon palette and render badge information using the
      * already-owned HUD window palette, rather than demand another OBJ bank. */
-    sTextBadges = !hidden && !sSharedHud;
-    if (!sSharedHud && !sTextBadges && !AcquireFieldPalette(1, gDexNavNative_HeldItemPalette)) goto fail;
+    sTextBadges = !sSharedHud;
     return TRUE;
 fail:
     DexNavNative_ReleaseFieldResources();
@@ -542,8 +712,10 @@ fail:
 void DexNavNative_ReleaseFieldResources(void)
 {
     u32 i;
-    bool8 ownsHud = IndexOfSpritePaletteTag(ICON_PALETTE_TAG) == sFieldPaletteSlots[0]
-        && sFieldPaletteSlots[0] != 0xFF;
+    bool8 ownsHud = (IndexOfSpritePaletteTag(ICON_PALETTE_TAG) == sFieldPaletteSlots[0]
+        && sFieldPaletteSlots[0] != 0xFF)
+        || (sTextOnlyHud && sFieldPaletteSlots[2] != 0xFF
+            && IndexOfSpritePaletteTag(EFFECT_PALETTE_TAG) == sFieldPaletteSlots[2]);
     if (!sFieldResources) return;
     DexNavNative_FreeIcons();
     for (i = 0; i < ARRAY_COUNT(sFieldTags); ++i)
@@ -568,10 +740,12 @@ void DexNavNative_ReleaseFieldResources(void)
     sBgPaletteWritten = FALSE;
     sSharedHud = FALSE;
     sTextBadges = FALSE;
+    sTextOnlyHud = FALSE;
     sFieldResources = FALSE;
 }
 u8 DexNavNative_ItemPalette(void) { return sFieldPaletteSlots[sSharedHud ? 0 : 1]; }
 bool8 DexNavNative_TextBadges(void) { return sTextBadges; }
+bool8 DexNavNative_TextOnlyHud(void) { return sTextOnlyHud; }
 
 /* Field tilesets use BG palettes 0..12 (NUM_PALS_TOTAL). BG14 and the
  * frame tiles at 0x214 are the standard window resources from menu.c,
@@ -602,7 +776,7 @@ u8 DexNavNative_CreateMonIcon(u16 species, s16 x, s16 y, u8 priority)
         .callback = SpriteCallbackDummy,
     };
     struct SpriteSheet sheet;
-    if (sIconCount >= ARRAY_COUNT(sIconTags) || species >= NUM_SPECIES)
+    if (sIconCount >= ARRAY_COUNT(sIconTags) || species >= SPECIES_TABLE_COUNT)
     { sFailed = TRUE; return MAX_SPRITES; }
     template.tileTag = ICON_TAG_BASE + sIconCount;
     if (GetSpriteTileStartByTag(template.tileTag) != 0xFFFF)
@@ -688,7 +862,26 @@ static bool8 UseEffectPalette(u16 nativeTag, const u16 *palette)
     }
     if (sFieldPaletteSlots[2] == 0xFF)
     {
-        if (!AcquireFieldPalette(2, palette)) return FALSE;
+        if (!AcquireFieldPalette(2, palette))
+        {
+            u8 slot = sFieldPaletteSlots[0];
+            /* Decide before HUD sprites/windows exist. The standard BG14
+             * window owns its text tiles/palette (same collision preflight as
+             * AddSearchWindow). Keep all search information there and reserve
+             * the sole free OBJ bank for the actual signal. Never evict a
+             * live icon or borrow a map/NPC palette to make room. */
+            if (slot == 0xFF || IndexOfSpritePaletteTag(ICON_PALETTE_TAG) != slot
+                || PaletteInUse(slot) || !DexNavNative_CanUseHudWindow(28, 5))
+                return FALSE;
+            LoadPalette(sObjPalettes[0], OBJ_PLTT_ID(slot), PLTT_SIZE_4BPP);
+            CpuCopy16(sObjPalettesFaded[0], &gPlttBufferFaded[OBJ_PLTT_ID(slot)], PLTT_SIZE_4BPP);
+            FreeSpritePaletteByTag(ICON_PALETTE_TAG);
+            sFieldPaletteSlots[0] = 0xFF;
+            sSharedHud = FALSE;
+            sTextBadges = TRUE;
+            sTextOnlyHud = TRUE;
+            if (!AcquireFieldPalette(2, palette)) return FALSE;
+        }
     }
     else
     {
@@ -765,10 +958,10 @@ static const struct OamData sTypeOam = {.shape = SPRITE_SHAPE(32x16), .size = SP
 #define TYPE_ANIM(n) static const union AnimCmd sType##n[] = {ANIMCMD_FRAME((n) * 8, 0), ANIMCMD_END}
 TYPE_ANIM(0); TYPE_ANIM(1); TYPE_ANIM(2); TYPE_ANIM(3); TYPE_ANIM(4); TYPE_ANIM(5);
 TYPE_ANIM(6); TYPE_ANIM(7); TYPE_ANIM(8); TYPE_ANIM(9); TYPE_ANIM(10); TYPE_ANIM(11);
-TYPE_ANIM(12); TYPE_ANIM(13); TYPE_ANIM(14); TYPE_ANIM(15); TYPE_ANIM(16); TYPE_ANIM(17);
+TYPE_ANIM(12); TYPE_ANIM(13); TYPE_ANIM(14); TYPE_ANIM(15); TYPE_ANIM(16); TYPE_ANIM(17); TYPE_ANIM(18);
 static const union AnimCmd *const sTypeAnims[] = {
     sType0, sType1, sType2, sType3, sType4, sType5, sType6, sType7, sType8,
-    sType9, sType10, sType11, sType12, sType13, sType14, sType15, sType16, sType17,
+    sType9, sType10, sType11, sType12, sType13, sType14, sType15, sType16, sType17, sType18,
 };
 const struct CompressedSpriteSheet gDexNavNative_MoveTypesSheet = {gMoveTypes_Gfx, (NUMBER_OF_MON_TYPES + 5) * 0x100, TYPE_TAG};
 const struct SpriteTemplate gDexNavNative_MoveTypesTemplate = {

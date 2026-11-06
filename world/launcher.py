@@ -231,8 +231,12 @@ def game_command(binary, state_dir, paths, display=None, agent_control=False, *,
         env['SDL_VIDEODRIVER'] = 'dummy'
     for key, value in env.items():
         args += ['--setenv', key, value]
+    from .rules import read, wire
+    policy = read(state_dir.parent if not online and state_dir.name == '.offline' else state_dir)
     command = args + ['--', str(binary), '--save', str(paths['save']),
                       '--config', str(paths['settings'])]
+    if policy is not None:
+        command += ['--world-rules', wire(policy)]
     if online:
         command += ['--world-config', str(paths['config'])]
     if agent_control:

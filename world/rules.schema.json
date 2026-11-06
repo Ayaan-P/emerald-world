@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Emerald world gameplay rules",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "world_id", "version", "rules", "mask", "digest"],
+  "properties": {
+    "schema": {"const": 1},
+    "world_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "version": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "mask": {"type": "integer", "enum": [0, 1, 2, 3, 4, 5, 6, 7, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 28, 29, 30, 31]},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "rules": {
+      "type": "object", "additionalProperties": false,
+      "required": ["partyEXP", "reusableTMs", "modernSplit", "megaEvolution", "expandedRoster"],
+      "properties": {
+        "partyEXP": {"type": "boolean"},
+        "reusableTMs": {"type": "boolean"},
+        "modernSplit": {"type": "boolean"},
+        "megaEvolution": {"type": "boolean"},
+        "expandedRoster": {"type": "boolean"}
+      },
+      "if": {"properties": {"megaEvolution": {"const": true}}, "required": ["megaEvolution"]},
+      "then": {"properties": {"modernSplit": {"const": true}}, "required": ["modernSplit"]}
+    }
+  }
+}

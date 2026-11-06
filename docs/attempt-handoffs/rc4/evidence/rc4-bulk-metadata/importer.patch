@@ -1,0 +1,567 @@
+--- a/tools/expanded/import_species.py
++++ b/tools/expanded/import_species.py
+@@ -12,6 +12,9 @@
+ import re
+ import shutil
+ import subprocess
++from domain import Domain, fields as domain_fields
++
++DOMAIN = None
+ 
+ ROOT = Path(__file__).resolve().parents[2]
+ PIN = 'bb3fd057061cdd7e6a9e79b76abb41924ee44ecc'
+@@ -32,68 +35,15 @@
+     ))
+ 
+ 
+-# Explicit importer profile, not guessed values for arbitrary donor configuration.
+-GEN9_PROFILE = {name: 9 for name in (
+-    'P_UPDATED_STATS', 'P_UPDATED_EXP_YIELDS', 'P_UPDATED_ABILITIES',
+-    'P_UPDATED_EGG_GROUPS', 'P_UPDATED_EVS', 'P_UPDATED_TYPES')}
+-
+-
+-def gen9_condition(expr):
+-    match = re.fullmatch(r'\s*(P_UPDATED_\w+)\s*>=\s*GEN_(\d+)\s*', expr)
+-    if match and match[1] in GEN9_PROFILE:
+-        return GEN9_PROFILE[match[1]] >= int(match[2])
+-    return None
+-
+-
+-def resolve_gen9(source):
+-    """Resolve only direct proven comparisons; unknown/malformed trees stay intact."""
+-    stack = []
+-    output = []
+-    active = True
+-    for line in source.splitlines(keepends=True):
+-        directive = re.match(r'^\s*#\s*(\w+)(.*)', line)
+-        if not directive:
+-            if active:
+-                output.append(line)
+-            continue
+-        value = None
+-        kind, expr = directive.groups()
+-        expr = expr.split('//', 1)[0].strip()
+-        if kind in ('if', 'elif'):
+-            value = gen9_condition(expr)
+-            if value is None:
+-                return source
+-        if kind == 'if':
+-            stack.append([active, value, False])
+-            active = active and value
+-        elif kind == 'elif' and stack and not stack[-1][2]:
+-            parent, taken, _ = stack[-1]
+-            active = parent and not taken and value
+-            stack[-1][1] = taken or value
+-        elif kind == 'else' and not expr and stack and not stack[-1][2]:
+-            parent, taken, _ = stack[-1]
+-            active = parent and not taken
+-            stack[-1][2] = True
+-        elif kind == 'endif' and not expr and stack:
+-            active = stack.pop()[0]
+-        else:
+-            return source
+-    if stack:
+-        return source
+-    resolved = ''.join(output)
+-    # A whole simple numeric ternary only. No nested/composed expressions.
+-    def numeric_field(match):
+-        prefix, condition, yes, no, suffix = match.groups()
+-        value = gen9_condition(condition)
+-        return match[0] if value is None else prefix + (yes if value else no) + suffix
+-    return re.sub(r'^(\s*(?:\.\w+\s*=\s*)?)\((P_UPDATED_\w+\s*>=\s*GEN_\d+)\)\s*\?\s*(\d+)\s*:\s*(\d+)([ \t]*,?[ \t]*)$',
+-                  numeric_field, resolved, flags=re.M)
+-
+-
+ def import_blockers(row, donor, supported_tokens):
+     """Fail closed on unresolved donor macros, branches and battle dependencies."""
+     reasons = []
+     source = row['resolved_species_source']
++    try:
++        source_fields = domain_fields(source)
++    except ValueError:
++        source_fields = {}
++        reasons.append('unresolved_species_fields')
+     if row.get('alias_of'):
+         reasons.append('alias')
+     if not row['level_up_moves'] or 'LEVEL_UP_END' not in row['donor_level_up_source']:
+@@ -122,7 +72,7 @@
+                       'pokemonScale', 'pokemonOffset', 'trainerScale', 'trainerOffset',
+                       'frontPicYOffset', 'backPicYOffset', 'enemyMonElevation', 'iconPalIndex')
+     patterns = {key: r'-?\d+' for key in numeric_fields}
+-    patterns.update(genderRatio=r'(?:MON_GENDERLESS|MON_MALE|MON_FEMALE|PERCENT_FEMALE\(\d+(?:\.\d+)?\))',
++    patterns.update(genderRatio=r'(?:\d+|MON_GENDERLESS|MON_MALE|MON_FEMALE|PERCENT_FEMALE\(\d+(?:\.\d+)?\))',
+                     friendship=r'(?:\d+|STANDARD_FRIENDSHIP)',
+                     itemCommon=r'(?:0|ITEM_\w+)', itemRare=r'(?:0|ITEM_\w+)',
+                     growthRate=r'GROWTH_\w+', bodyColor=r'BODY_COLOR_\w+',
+@@ -133,7 +83,7 @@
+                     speciesName=r'_\("[^"\n]+"\)', categoryName=r'_\("[^"\n]+"\)',
+                     natDexNum=r'NATIONAL_DEX_\w+')
+     for key, pattern in patterns.items():
+-        values = re.findall(r'^\s*\.' + key + r'\s*=\s*([^\n]+)', source, re.M)
++        values = [source_fields[key]] if key in source_fields else []
+         if len(values) > 1 or any(not re.fullmatch(pattern, value.strip().removesuffix(',').strip()) for value in values):
+             reasons.append('unresolved_serialized_field:' + key)
+     # The existing serializer supports these direct fields. Macro-composed
+@@ -145,7 +95,7 @@
+                 'categoryName', 'height', 'weight', 'pokemonScale', 'pokemonOffset',
+                 'trainerScale', 'trainerOffset', 'frontPicSize', 'frontPicYOffset',
+                 'backPicSize', 'backPicYOffset', 'iconPalIndex')
+-    if any(not re.search(r'\.' + key + r'\s*=', source) for key in required):
++    if any(key not in source_fields for key in required):
+         reasons.append('unresolved_species_fields')
+     # Held items and stat macros must exist in the target namespace too.
+     for token in set(re.findall(r'\b(?:ITEM|TYPE|GROWTH|EGG_GROUP|BODY_COLOR)_\w+', source)):
+@@ -158,12 +108,15 @@
+     display = re.search(r'\.speciesName\s*=\s*_\("([^"]+)"\)', source)
+     if not display or len(display[1]) > 10:
+         reasons.append('legacy_name_slot')
+-    short = row['name'].removeprefix('SPECIES_').lower()
+-    directory = donor / 'graphics/pokemon' / ('gimmighoul/roaming' if short == 'gimmighoul_roaming' else short)
+-    if any(not (directory / filename).is_file() for filename in
+-           ('back.png', 'normal.pal', 'shiny.pal', 'icon.png', 'footprint.png')) or not any(
+-               (directory / filename).is_file() for filename in ('front.png', 'anim_front.png')):
++    try:
++        field_values = domain_fields(source)
++        row['resolved_graphics'] = DOMAIN.asset_records(field_values)
++        row['icon_palette_resolution'] = DOMAIN.native_icon_palette(int(field_values['iconPalIndex']))
++        if not row['icon_palette_resolution']['compatible']:
++            reasons.append('unsupported_native_icon_palette')
++    except ValueError as exc:
+         reasons.append('unresolved_graphics')
++        row['graphics_resolution_error'] = str(exc)
+     return sorted(set(reasons))
+ 
+ 
+@@ -318,20 +271,23 @@
+ 
+ 
+ def generate(donor, out):
++    global DOMAIN
++    DOMAIN = Domain(out / 'metadata_evidence')
++    resolved = DOMAIN.catalog()
+     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=donor, text=True).strip()
+     if commit != PIN:
+         raise ValueError('donor source pin mismatch: ' + commit)
+     # The committed legacy header is the immutable save-ID baseline, not a generated header.
+     legacy_text = subprocess.check_output(['git', 'show', 'HEAD:include/constants/species.h'], cwd=ROOT, text=True)
+     legacy = read_defines(legacy_text)
++    legacy_dex_source = subprocess.check_output(['git','show','HEAD:include/constants/pokedex.h'],cwd=ROOT,text=True)
++    legacy_dex_tokens = set(re.findall(r'\bNATIONAL_DEX_\w+\b',legacy_dex_source))
+     donor_ids = donor_enum((donor / 'include/constants/species.h').read_text())
+     info = {}
+     for path in sorted((donor / 'src/data/pokemon/species_info').glob('*.h')):
+         info.update(blocks(path.read_text()))
+-    learnsets = {}
+-    for path in sorted((donor / 'src/data/pokemon/level_up_learnsets').glob('*.h')):
+-        learnsets.update(dict(re.findall(r'(s\w+LevelUpLearnset)\[\] = \{(.*?)\};', path.read_text(), re.S)))
+-    teachable = dict(re.findall(r'(s\w+TeachableLearnset)\[\] = \{(.*?)\};', (donor / 'src/data/pokemon/teachable_learnsets.h').read_text(), re.S))
++    learnsets = resolved['learnsets']
++    teachable = dict(re.findall(r'(s\w+TeachableLearnset)\[\] = \{(.*?)\};', resolved['teachable'], re.S))
+     moves = defined_symbols((ROOT / 'include/constants/moves.h').read_text(), 'MOVE_') - {'MOVE_NONE'}
+     abilities = defined_symbols((ROOT / 'include/constants/abilities.h').read_text(), 'ABILITY_')
+     mapping = {}
+@@ -355,11 +311,11 @@
+     rows = []
+     for name, donor_id in donor_ids.items():
+         original_source = info.get(name, info.get(canonical[donor_id], ''))
+-        source = resolve_gen9(original_source)
++        source = resolved['species'].get(name, resolved['species'].get(canonical[donor_id], ''))
+         lm = re.search(r'\.levelUpLearnset\s*=\s*(\w+)', source)
+         tm = re.search(r'\.teachableLearnset\s*=\s*(\w+)', source)
+         original_level_source = learnsets.get(lm[1], '') if lm else ''
+-        level_source = resolve_gen9(original_level_source)
++        level_source = original_level_source
+         level = [[int(l), m] for l, m in re.findall(r'LEVEL_UP_MOVE\(\s*(\d+),\s*(MOVE_\w+)\)', level_source)]
+         teach_source = teachable.get(tm[1], '') if tm else ''
+         abs_match = re.search(r'\.abilities\s*=\s*\{([^}]+)', source)
+@@ -382,6 +338,11 @@
+                    resolved_species_source=source, resolved_level_up_source=level_source,
+                    donor_teachable_source=teach_source,
+                    missing_teachable_moves=sorted(set(re.findall(r'MOVE_\w+', teach_source)) - moves - {'MOVE_UNAVAILABLE'}))
++        source_name = name if name in resolved['species'] else canonical[donor_id]
++        row['compiled_metadata_source_species'] = source_name if source_name in resolved['compiled'] else None
++        row['compiled_scalar_fields'] = resolved['compiled'].get(source_name)
++        row['implicit_zero_fields'] = resolved['implicit_zero_fields'].get(source_name, [])
++        row['metadata_resolution'] = 'GCC real pinned config, template expansion and real SpeciesInfo scalar projection; no extern stubs'
+         if canonical[donor_id] != name:
+             row['alias_of'] = canonical[donor_id]
+         rows.append(row)
+@@ -391,6 +352,10 @@
+     selected = []
+     for row in rows:
+         row['import_blockers'] = import_blockers(row, donor, supported_tokens)
++        if row['engine_id'] >= 440:
++            dex_match = re.search(r'\.natDexNum\s*=\s*(NATIONAL_DEX_\w+)',row['resolved_species_source'])
++            if dex_match and dex_match[1] in legacy_dex_tokens:
++                row['import_blockers'] = sorted(set(row['import_blockers'] + ['legacy_dex_slot_conflict']))
+         if row['engine_id'] >= 440 and not row['import_blockers']:
+             selected.append(row['name'])
+         row['battle_supported'] = row['name'] in selected
+@@ -420,7 +385,7 @@
+     for row in rows:
+         row['obtainable'] = row['name'] in paths
+         row['acquisition_path'] = paths.get(row['name'])
+-    manifest = dict(schema_version=5, gen9_profile=GEN9_PROFILE, source_commit=commit, legacy_last_graphics_id=439,
++    manifest = dict(schema_version=5, gen9_profile=resolved['profile'], source_commit=commit, legacy_last_graphics_id=439,
+                     playable_selection=selected, obtainable_selection=list(paths),
+                     implemented_acquisition_roots=list(IMPLEMENTED_ACQUISITION_ROOTS),
+                     acquisition_scope='Implemented opt-in encounter roots plus transitive supported emitted evolution edges, not native gameplay proof. All matching staged dependencies must be integrated together.',
+@@ -454,19 +419,19 @@
+     dex_source = (donor / 'include/constants/pokedex.h').read_text().split('};', 1)[0]
+     dex_ids = {name: n for n, name in enumerate(re.findall(r'^\s*(NATIONAL_DEX_\w+)\s*,', dex_source, re.M))}
+     assets = []
++    dex_signatures = {}
+     for name in selected:
+         row = next(r for r in rows if r['name'] == name)
+         source = row['resolved_species_source']
++        serialized_fields = domain_fields(source)
+         short = name.removeprefix('SPECIES_').lower()
+         symbol = ''.join(word.title() for word in short.split('_'))
+         def field(key, default=None):
+-            value = re.search(r'\.' + key + r'\s*=\s*([^\n]+)', source)
+-            if not value:
++            if key not in serialized_fields:
+                 if default is not None:
+                     return default
+                 raise ValueError('missing selected field: ' + name + '.' + key)
+-            expr = value[1].strip().removesuffix(',').strip()
+-            return expr
++            return serialized_fields[key]
+         normal_abilities = re.findall(r'ABILITY_\w+', re.search(r'\.abilities\s*=\s*\{([^}]+)', source)[1])
+         stats = []
+         for key in ['baseHP', 'baseAttack', 'baseDefense', 'baseSpeed', 'baseSpAttack', 'baseSpDefense', 'catchRate', 'expYield', 'genderRatio', 'eggCycles', 'friendship', 'growthRate', 'bodyColor']:
+@@ -505,7 +470,13 @@
+         text = re.search(r'\.description\s*=\s*COMPOUND_STRING\((.*?)\),', source, re.S)[1]
+         outputs['dex_text'].append('const u8 gExpanded' + symbol + 'PokedexText[] = _(' + text + ');')
+         dex_fields = ['categoryName', 'height', 'weight', 'pokemonScale', 'pokemonOffset', 'trainerScale', 'trainerOffset']
+-        outputs['dex_entries'].append('[' + dex_name + '] = {\n' + '\n'.join('    .' + key + ' = ' + field(key) + ',' for key in dex_fields) + '\n    .description = gExpanded' + symbol + 'PokedexText,\n},')
++        dex_signature = tuple(field(key) for key in dex_fields) + (re.sub(r'\s+(?=(?:[^"]*"[^"]*")*[^"]*$)', '', text),)
++        if dex_name in dex_signatures:
++            if dex_signatures[dex_name] != dex_signature:
++                raise ValueError('conflicting donor Dex form metadata: ' + dex_name)
++        else:
++            dex_signatures[dex_name] = dex_signature
++            outputs['dex_entries'].append('[' + dex_name + '] = {\n' + '\n'.join('    .' + key + ' = ' + field(key) + ',' for key in dex_fields) + '\n    .description = gExpanded' + symbol + 'PokedexText,\n},')
+         for outkey, ctype, kind, filename, suffix in [('front_table','u32','Front','front.png','.4bpp.lz'),('back_table','u32','Back','back.png','.4bpp.lz'),('palette_table','u32','Palette','normal.pal','.gbapal.lz'),('shiny_table','u32','ShinyPalette','shiny.pal','.gbapal.lz'),('icon_table','u8','Icon','icon.png','.4bpp'),('footprints','u8','Footprint','footprint.png','.1bpp')]:
+             ident = 'gExpanded' + kind + '_' + symbol
+             outputs['graphics'].append('const ' + ctype + ' ' + ident + '[] = INCGFX_' + ctype.upper() + '("graphics/expanded/' + short + '/' + filename + '", "' + suffix + '");')
+@@ -527,18 +498,20 @@
+             outputs['animations'].append('/* Match the legacy idle/entrance slots while using only the imported frame 0. */')
+         outputs['animations'].append('static const union AnimCmd sExpanded' + symbol + 'Frame[] = { ANIMCMD_FRAME(0, 1), ANIMCMD_END };\nstatic const union AnimCmd *const sExpanded' + symbol + 'Anims[] = { sExpanded' + symbol + 'Frame, sExpanded' + symbol + 'Frame };')
+         outputs['animation_pointers'].append('[' + name + '] = sExpanded' + symbol + 'Anims,')
+-        donor_dir = donor / 'graphics/pokemon' / ('gimmighoul/roaming' if short == 'gimmighoul_roaming' else short)
++        donor_assets = DOMAIN.assets(domain_fields(source))
+         for filename in ['front.png', 'back.png', 'normal.pal', 'shiny.pal', 'icon.png', 'footprint.png']:
+-            source_asset = donor_dir / filename
++            source_asset = donor_assets[filename]
+             dest = out / 'graphics/expanded' / short / filename
+             dest.parent.mkdir(parents=True, exist_ok=True)
+             transform = 'identity'
+-            if filename == 'front.png' and not source_asset.exists():
++            if filename.endswith('.png'):
+                 from PIL import Image
+-                source_asset = donor_dir / 'anim_front.png'
+                 with Image.open(source_asset) as image:
+-                    image.crop((0, 0, 64, 64)).save(dest)
+-                transform = 'first_64x64_frame; static animation explicitly selected'
++                    if filename in ('front.png', 'back.png') and image.size != (64, 64):
++                        image.crop((0, 0, 64, 64)).save(dest, bits=4)
++                        transform = 'first_64x64_frame; static animation explicitly selected'
++                    else:
++                        shutil.copyfile(source_asset, dest)
+             else:
+                 shutil.copyfile(source_asset, dest)
+             assets.append(dict(path=str(dest.relative_to(out)), donor_path=str(source_asset.relative_to(donor)), source_sha256=hashlib.sha256(source_asset.read_bytes()).hexdigest(), sha256=hashlib.sha256(dest.read_bytes()).hexdigest(), transform=transform))
+--- /dev/null
++++ b/tools/expanded/domain.py
+@@ -0,0 +1,290 @@
++"""Read-only pinned Gen9 preprocessing. No fabricated externs or fallback data."""
++import hashlib
++import json
++from pathlib import Path
++import re
++import subprocess
++import tempfile
++
++HERE=Path(__file__).resolve().parent
++ROOT=HERE.parents[1]
++DONOR=ROOT.parent/'expansion-foundation/engines/expansion-native'
++PIN='bb3fd057061cdd7e6a9e79b76abb41924ee44ecc'
++NUMERIC=('baseHP baseAttack baseDefense baseSpeed baseSpAttack baseSpDefense catchRate expYield eggCycles evYield_HP evYield_Attack evYield_Defense evYield_Speed evYield_SpAttack evYield_SpDefense height weight pokemonScale pokemonOffset trainerScale trainerOffset frontPicYOffset backPicYOffset enemyMonElevation iconPalIndex').split()
++
++def split_top(text, separator=','):
++    result=[]; start=0; stack=[]; quote=None; escape=False
++    for i,c in enumerate(text):
++        if quote:
++            if escape: escape=False
++            elif c=='\\': escape=True
++            elif c==quote: quote=None
++        elif c in '\"\'': quote=c
++        elif c in '({[': stack.append(c)
++        elif c in ')}]':
++            if not stack or '({['[')}]'.index(c)]!=stack.pop(): raise ValueError('unbalanced initializer')
++        elif c==separator and not stack: result.append(text[start:i].strip()); start=i+1
++    if stack or quote: raise ValueError('unterminated initializer')
++    result.append(text[start:].strip())
++    return [s for s in result if s]
++
++def fields(block):
++    if not block.startswith('{') or not block.endswith('}'): raise ValueError('initializer expected')
++    result={}
++    for entry in split_top(block[1:-1]):
++        m=re.fullmatch(r'\.(\w+)\s*=\s*(.*)',entry,re.S)
++        if not m: raise ValueError('unresolved initializer: '+entry[:150])
++        if m[1] in result: raise ValueError('duplicate field '+m[1])
++        result[m[1]]=m[2].strip()
++    return result
++
++def extract_blocks(text):
++    result={}
++    for m in re.finditer(r'\[(SPECIES_\w+)\]\s*=\s*\{',text):
++        start=m.end()-1; depth=0; quote=None; escape=False
++        for i in range(start,len(text)):
++            c=text[i]
++            if quote:
++                if escape: escape=False
++                elif c=='\\': escape=True
++                elif c==quote: quote=None
++            elif c in '\"\'': quote=c
++            elif c=='{': depth+=1
++            elif c=='}':
++                depth-=1
++                if depth==0:
++                    if m[1] in result: raise ValueError('duplicate species '+m[1])
++                    result[m[1]]=text[start:i+1]; break
++        else: raise ValueError('unterminated species')
++    return result
++
++def syntax_positions(text):
++    quote=None; escape=False
++    for i,c in enumerate(text):
++        if quote:
++            if escape: escape=False
++            elif c=='\\': escape=True
++            elif c==quote: quote=None
++        elif c in '\"\'': quote=c
++        else: yield i,c
++    if quote: raise ValueError('unterminated C string')
++
++class Domain:
++    def __init__(self, artifacts=None):
++        self.artifacts=Path(artifacts) if artifacts is not None else HERE
++        self.artifacts.mkdir(parents=True,exist_ok=True)
++        if subprocess.check_output(['git','rev-parse','HEAD'],cwd=DONOR,text=True).strip()!=PIN: raise ValueError('pin mismatch')
++        self.base='#include "global.h"\n#include "config/pokemon.h"\n#include "config/species_enabled.h"\n#include "constants/abilities.h"\n'
++        # Real pinned config first, one explicit generation profile everywhere.
++        macros=self.cpp(self.base,['-dM'])
++        configs=re.findall(r'^#define ((?:P_UPDATED_\w+|P_LVL_UP_LEARNSETS))\b',macros,re.M)
++        self.profile={k:9 for k in configs}
++        self.base+=''.join('#undef '+k+'\n#define '+k+' 9\n' for k in configs)
++        self.cache={}
++    def cpp(self,text,extra=()):
++        p=subprocess.run(['gcc','-E','-P','-iquote',str(DONOR/'include'),'-iquote',str(DONOR/'src'),'-iquote',str(DONOR/'src/data/pokemon'),*extra,'-x','c','-'],input=text,text=True,capture_output=True)
++        if p.returncode: raise ValueError(p.stderr[:5000])
++        return p.stdout
++    def preprocess(self,text):
++        macros = self.cpp(self.base, ['-dM'])
++        return self.cpp(macros+'\nBULK_DOMAIN_START\n'+text, ['-Werror=undef']).split('BULK_DOMAIN_START',1)[1]
++    def scalar(self,expr):
++        if expr not in self.cache:
++            self.evaluate([expr])
++        return self.cache[expr]
++    def evaluate(self,expressions):
++        expressions=list(dict.fromkeys(e for e in expressions if e not in self.cache))
++        if not expressions: return
++        # Restrict input to side-effect-free C integer expressions. Unknown symbols
++        # fail at compile time; no Python eval, guessed enum IDs or zero defaults.
++        for e in expressions:
++            if not re.fullmatch(r'[\w\s()+*/%?:<>=!&|~^.,-]+',e): raise ValueError('unsafe C expression '+e)
++        source=self.base+'\n#include <stdio.h>\nint main(void){\n'+''.join('printf("%lld\\n", (long long)('+e+'));\n' for e in expressions)+'return 0;}\n'
++        with tempfile.TemporaryDirectory(dir=self.artifacts) as tmp:
++            exe=Path(tmp)/'values'
++            p=subprocess.run(['gcc','-Werror','-Wno-error=overflow','-iquote',str(DONOR/'include'),'-x','c','-','-o',str(exe)],input=source,text=True,capture_output=True)
++            if p.returncode: raise ValueError(p.stderr[:5000])
++            p=subprocess.run([str(exe)],capture_output=True,text=True)
++            if p.returncode: raise ValueError('scalar execution failed')
++            values=[int(v) for v in p.stdout.splitlines()]
++            if len(values)!=len(expressions): raise ValueError('scalar result count')
++            self.cache.update(zip(expressions,values))
++    def choose(self,expr):
++        """Select C conditional arms using compiled actual configuration/enums."""
++        expr=expr.strip()
++        while expr.startswith('('):
++            depth=0; end=None
++            for i,c in syntax_positions(expr):
++                depth+=(c=='(')-(c==')')
++                if depth==0: end=i; break
++            if end!=len(expr)-1: break
++            expr=expr[1:-1].strip()
++        depth=0; question=None; nested=0
++        for i,c in syntax_positions(expr):
++            if c in '({[': depth+=1
++            elif c in ')}]': depth-=1
++            elif depth==0 and c=='?':
++                if question is None: question=i
++                else: nested+=1
++            elif depth==0 and c==':' and question is not None:
++                if nested: nested-=1
++                else:
++                    arm=expr[question+1:i] if self.scalar(expr[:question]) else expr[i+1:]
++                    return self.choose(arm)
++        if question is not None: raise ValueError('malformed conditional '+expr)
++        return expr
++    def catalog(self):
++        # Keep evolution descriptors textual for the existing strict serializer.
++        # All other donor templates/macros are expanded by GCC without stubs.
++        header=(DONOR/'src/data/pokemon/species_info.h').read_text()
++        marker='const struct SpeciesInfo gSpeciesInfo[]'
++        header=header.replace(marker,'#undef EVOLUTION\n#undef CONDITIONS\n'+marker)
++        text=self.preprocess(header)
++        (self.artifacts/'preprocessed-species.c').write_text(text)
++        raw=extract_blocks(text)
++        parsed={n:fields(b) for n,b in raw.items()}
++        descriptions=dict(re.findall(r'const u8 (g\w+)\[\]\s*=\s*_\((.*?)\);',text,re.S))
++        for f in parsed.values():
++            if 'description' in f: f['description']=self.choose(f['description'])
++            if f.get('description') in descriptions:
++                f['description']='COMPOUND_STRING('+descriptions[f['description']]+')'
++        expressions=[f[k] for f in parsed.values() for k in NUMERIC+['genderRatio','friendship'] if k in f]
++        self.evaluate(expressions)
++        normalized={}
++        for name,f in parsed.items():
++            for k in NUMERIC+['genderRatio','friendship']:
++                if k in f: f[k]=str(self.scalar(f[k]))
++            for k in ('types','eggGroups','abilities'):
++                if k not in f: continue
++                val=self.choose(f[k])
++                if not (val.startswith('{') and val.endswith('}')): raise ValueError('expected array '+name+'.'+k)
++                parts=[self.choose(p) for p in split_top(val[1:-1])]
++                f[k]='{'+', '.join(parts)+'}' if k=='abilities' else ('MON_TYPES' if k=='types' else 'MON_EGG_GROUPS')+'('+', '.join(parts)+')'
++            for k in ('frontPicSize','backPicSize','frontPic','backPic','palette','shinyPalette','iconSprite','footprint','levelUpLearnset','teachableLearnset','itemCommon','itemRare','growthRate','bodyColor'):
++                if k in f: f[k]=self.choose(f[k])
++            normalized[name]=f
++        compiled=self.compile_projection(normalized)
++        implicit={}
++        for name,f in normalized.items():
++            implicit[name]=[]
++            # These Dex presentation members are genuinely omitted by the pin's
++            # ZA declarations. Use the real struct's verified C zero initializer,
++            # not guessed scale defaults. Other missing required fields still block.
++            for key in ('pokemonScale','pokemonOffset','trainerScale','trainerOffset'):
++                if key not in f:
++                    assert compiled[name][key]==0
++                    f[key]='0';implicit[name].append(key)
++            normalized[name]='{\n'+''.join('    .'+k+' = '+v+',\n' for k,v in f.items())+'}'
++        # Gen9 header recursively supplies fallback generations and all aliases.
++        learn=self.preprocess('#include "data/pokemon/level_up_learnsets/gen_9.h"\n')
++        learnsets={}
++        for m in re.finditer(r'(s\w+LevelUpLearnset)\[\]\s*=\s*\{(.*?)\};',learn,re.S):
++            entries=[]
++            for entry in split_top(m[2]):
++                values=fields(entry)
++                if values=={'move':'0xFFFF','level':'0'} or values=={'move':'65535','level':'0'}: entries.append('LEVEL_UP_END'); continue
++                if set(values)!={'move','level'}: raise ValueError('malformed learnset')
++                if values['move']=='LEVEL_UP_MOVE_END': entries.append('LEVEL_UP_END'); continue
++                entries.append('LEVEL_UP_MOVE('+str(self.scalar(values['level']))+', '+values['move']+')')
++            learnsets[m[1]]= ',\n'.join(entries)+'\n'
++        teach=self.preprocess('#include "data/pokemon/teachable_learnsets.h"\n')
++        graphics=self.preprocess('#include "data/graphics/pokemon.h"\n')
++        self.graphics={n:path for n,path in re.findall(r'\b(g\w+)\[\]\s*=\s*INCGFX_\w+\(\s*"([^"]+)"',graphics)}
++        self.result={'species':normalized,'learnsets':learnsets,'teachable':teach,'profile':self.profile,'compiled':compiled,'implicit_zero_fields':implicit}
++        return self.result
++    def compile_projection(self, rows):
++        keys=NUMERIC+['genderRatio','friendship','growthRate','bodyColor','itemCommon','itemRare','frontPicSize','backPicSize']
++        members=keys+['types[0]','types[1]','eggGroups[0]','eggGroups[1]','abilities[0]','abilities[1]','abilities[2]']
++        source=self.base+'\n#include "pokemon.h"\n#include "data.h"\n#include <stdio.h>\n'
++        source+='static const struct SpeciesInfo bulk[] = {\n'
++        for name, f in rows.items():
++            entries=[]
++            for k in keys+['types','eggGroups','abilities']:
++                if k not in f: continue
++                val=f[k]
++                if k in ('types','eggGroups'):
++                    val='{'+val[val.index('(')+1:-1]+'}'
++                entries.append('.'+k+' = '+val)
++            source+='{'+', '.join(entries)+'},\n'
++        source+='};\nint main(void){\n'
++        fmt=','.join(['%lld']*len(members))+'\\n'
++        source+='for(unsigned i=0;i<sizeof(bulk)/sizeof(bulk[0]);++i) printf("'+fmt+'", '+','.join('(long long)bulk[i].'+k for k in members)+');\nreturn 0;}\n'
++        (self.artifacts/'compiled_metadata.c').write_text(source)
++        exe=self.artifacts/'compiled_metadata'
++        p=subprocess.run(['gcc','-std=gnu99','-Werror','-iquote',str(DONOR/'include'),str(self.artifacts/'compiled_metadata.c'),'-o',str(exe)],text=True,capture_output=True)
++        if p.returncode: raise ValueError(p.stderr[:6000])
++        output=subprocess.check_output([str(exe)],text=True)
++        lines=output.splitlines()
++        if len(lines)!=len(rows): raise ValueError('compiled row count')
++        compiled={name:dict(zip(members,map(int,line.split(',')))) for name,line in zip(rows,lines)}
++        self.scalar_conversions=[]
++        for name,f in rows.items():
++            for k in NUMERIC+['genderRatio','friendship']:
++                if k in f and int(f[k])!=compiled[name][k]:
++                    self.scalar_conversions.append({'name':name,'field':k,'expression_value':int(f[k]),'actual_struct_value':compiled[name][k]})
++                    f[k]=str(compiled[name][k])
++        (self.artifacts/'compiled_metadata.json').write_text(json.dumps(compiled,indent=2,sort_keys=True)+'\n')
++        return compiled
++    def assets(self,f):
++        result={}
++        for key,filename in [('frontPic','front.png'),('backPic','back.png'),('palette','normal.pal'),('shinyPalette','shiny.pal'),('iconSprite','icon.png'),('footprint','footprint.png')]:
++            symbol=self.choose(f.get(key,''))
++            rel=self.graphics.get(symbol)
++            if not rel: raise ValueError('unresolved graphics symbol '+key+':'+symbol)
++            p=(DONOR/rel).resolve()
++            if not p.is_relative_to(DONOR.resolve()) or not p.is_file(): raise ValueError('missing pinned asset '+str(p))
++            result[filename]=p
++        return result
++    def inspect_asset(self,path,kind):
++        from PIL import Image
++        if not hasattr(self,'asset_cache'): self.asset_cache={}
++        key=(path,kind)
++        if key in self.asset_cache: return self.asset_cache[key]
++        data=path.read_bytes()
++        result={'donor_path':str(path.relative_to(DONOR)) if path.is_relative_to(DONOR) else str(path), 'source_sha256':hashlib.sha256(data).hexdigest()}
++        if kind.endswith('.png'):
++            if data[:8]!=b'\x89PNG\r\n\x1a\n': raise ValueError('not PNG '+str(path))
++            try:
++                with Image.open(path) as im:
++                    im.load()
++                    if im.mode!='P': raise ValueError('indexed PNG required '+str(path))
++                    dimensions={'front.png':(64,(64,128)),'back.png':(64,(64,)),'icon.png':(32,(64,)),'footprint.png':(16,(16,))}
++                    width,heights=dimensions[kind]
++                    if im.width!=width or im.height not in heights: raise ValueError('asset dimensions '+str(path))
++                    maximum=max(im.tobytes())
++                    if maximum>(1 if kind=='footprint.png' else 15): raise ValueError('asset index overflow '+str(path))
++                    result.update(width=im.width,height=im.height,mode=im.mode,bit_depth=data[24],color_type=data[25],pixel_sha256=hashlib.sha256(im.tobytes()).hexdigest(),maximum_index=maximum,
++                                  first_frame_pixel_sha256=hashlib.sha256(im.crop((0,0,64,64)).tobytes()).hexdigest() if kind in ('front.png','back.png') else None,
++                                  indexed_palette_sha256=hashlib.sha256(bytes((im.getpalette() or [])[:48])).hexdigest())
++            except (OSError,IndexError) as exc: raise ValueError('invalid PNG '+str(path)) from exc
++        else:
++            lines=data.decode('ascii').splitlines()
++            if len(lines)<4 or lines[:2]!=['JASC-PAL','0100'] or not lines[2].isdigit(): raise ValueError('invalid JASC palette '+str(path))
++            color_count=int(lines[2])
++            if not 1<=color_count<=16 or len(lines)!=color_count+3: raise ValueError('invalid palette color count '+str(path))
++            colors=[list(map(int,line.split())) for line in lines[3:]]
++            if any(len(c)!=3 or any(v<0 or v>255 for v in c) for c in colors): raise ValueError('invalid palette RGB')
++            result['colors']=colors
++        self.asset_cache[key]=result
++        return result
++    def asset_records(self,f):
++        records={k:self.inspect_asset(p,k) for k,p in self.assets(f).items()}
++        available=min(len(records['normal.pal']['colors']),len(records['shiny.pal']['colors']))
++        if any(records[k]['maximum_index']>=available for k in ('front.png','back.png')):
++            raise ValueError('sprite uses undeclared palette color')
++        return records
++    def native_icon_palette(self,index):
++        if not hasattr(self,'icon_cache'): self.icon_cache={}
++        if index in self.icon_cache: return self.icon_cache[index]
++        def paths(root):
++            text=(root/'src/graphics.c').read_text().split('gMonIconPalettes[][16] =',1)[1].split('};',1)[0]
++            return [root/p for p in re.findall(r'INCGFX_U16\("([^"]+)"',text)]
++        donor_paths=paths(DONOR);native_paths=paths(ROOT)
++        if not 0<=index<len(donor_paths): raise ValueError('donor icon palette index')
++        record={'donor':self.inspect_asset(donor_paths[index],'normal.pal'),'index':index,'compatible':False}
++        if index<len(native_paths):
++            native=self.inspect_asset(native_paths[index],'normal.pal')
++            record['native']=native
++            record['compatible']=record['donor']['colors']==native['colors']
++        self.icon_cache[index]=record
++        return record

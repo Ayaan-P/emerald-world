@@ -22,7 +22,9 @@ class GatewayTests(unittest.TestCase):
         source = (Path(__file__).resolve().parents[2]/'src/platform/world_bridge.c').read_text()
         for key in ('loopback_port', 'loopback_token', 'trainer', 'token', 'telemetry'):
             self.assertIn('"' + key + '"', source)
-        self.assertIn('"EWLOCAL1 %s\\nHELLO 1 %s %s SOCIAL\\n"', source)
+        self.assertIn('"EWLOCAL1 %s\\nHELLO 1 %s %s %s\\n"', source)
+        self.assertIn('"SOCIALTRAVELRALLY"', source)
+        self.assertIn('" DATA %s\\n"', source)
         self.assertIn('htonl(INADDR_LOOPBACK)', source)
         code = ("import sys, subprocess; sys.modules.pop('fcntl', None); import world.windows_client; "
                 "assert not any(m in sys.modules for m in "
@@ -74,7 +76,7 @@ class GatewayTests(unittest.TestCase):
         wait_for(lambda: gateway.active_clients == 0)
         self.assertLess(time.monotonic() - start, .7)
         with self.assertRaises(ValueError):
-            LoopbackGateway(('localhost', 1), fingerprint='a'*64, local_token='b'*64, max_clients=9)
+            LoopbackGateway(('localhost', 1), fingerprint='a'*64, local_token='b'*64, max_clients=1025)
         with self.assertRaises(ValueError):
             LoopbackGateway(('localhost', 1), fingerprint='a'*64, local_token='b'*64, auth_timeout=6)
 
@@ -346,6 +348,28 @@ class ProfileTests(unittest.TestCase):
         self.exe = self.root / 'game/pokeemerald64.exe'
         self.exe.parent.mkdir()
         self.exe.write_bytes(b'fixture, never executed')
+        # Profile/lock tests have no remote authority. Model only its new
+        # authenticated CONTROL policy response; TLS is exercised by TLSTests.
+        import io
+        from unittest.mock import patch
+        from world.rules import make
+        class PolicyControl:
+            trainer = None
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def sendall(self, data):
+                if data.startswith(b'EWLOCAL1 '):
+                    self.trainer = data.splitlines()[1].split()[2].decode('ascii')
+                else:
+                    assert json.loads(data) == {'command': 'world_rules'}
+            def makefile(self, mode):
+                assert mode == 'rb' and self.trainer is not None
+                return io.BytesIO(('WELCOME 1 ' + self.trainer + ' 0 CONTROL\n' +
+                                   json.dumps({'ok': True, 'world_rules': make('0' * 32)}) + '\n').encode())
+        control = patch('world.windows_client.socket.create_connection',
+                        side_effect=lambda *args, **kwargs: PolicyControl())
+        control.start()
+        self.addCleanup(control.stop)
 
     def session(self, **kwargs):
         from world.windows_client import WindowsGuestSession
@@ -494,9 +518,11 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(paths['profile'].parts[-2:], (namespace, trainer_dir))
         self.assertFalse(paths['save'].exists())
         command = session.game_args()
+        from world.rules import wire
         self.assertEqual(command, [str(self.exe), '--save', str(paths['save']),
                                   '--config', str(paths['settings']),
-                                  '--world-config', str(paths['config'])])
+                                  '--world-config', str(paths['config']),
+                                  '--world-rules', wire(session.world_rules)])
         config = paths['config'].read_text()
         self.assertIn('token ' + 'd'*64 + '\n', config)
         self.assertIn('loopback_port ', config)

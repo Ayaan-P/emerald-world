@@ -1,0 +1,75 @@
+diff --git a/data/battle_scripts_1.s b/data/battle_scripts_1.s
+index c490f49..af875fd 100644
+--- a/data/battle_scripts_1.s
++++ b/data/battle_scripts_1.s
+@@ -4015,6 +4015,13 @@ BattleScript_DoCastformChange::
+ 	waitmessage B_WAIT_TIME_LONG
+ 	return
+ 
++.ifdef PORTABLE
++BattleScript_MegaEvolved::
++	printstring STRINGID_MEGA_EVOLVED
++	waitmessage B_WAIT_TIME_LONG
++	end3
++.endif
++
+ BattleScript_IntimidateActivatesEnd3::
+ 	call BattleScript_PauseIntimidateActivates
+ 	end3
+diff --git a/include/battle_scripts.h b/include/battle_scripts.h
+index 8b6cfcc..794d484
+--- a/include/battle_scripts.h
++++ b/include/battle_scripts.h
+@@ -148,6 +148,9 @@ extern const u8 BattleScript_WeatherFormChanges[];
+ extern const u8 BattleScript_WeatherFormChangesLoop[];
+ extern const u8 BattleScript_CastformChange[];
+ extern const u8 BattleScript_IntimidateActivatesEnd3[];
++#ifdef PORTABLE
++extern const u8 BattleScript_MegaEvolved[];
++#endif
+ extern const u8 BattleScript_IntimidateActivates[];
+ extern const u8 BattleScript_DroughtActivates[];
+ extern const u8 BattleScript_TookAttack[];
+diff --git a/include/constants/battle_string_ids.h b/include/constants/battle_string_ids.h
+index b34cf6c..6c7851a
+--- a/include/constants/battle_string_ids.h
++++ b/include/constants/battle_string_ids.h
+@@ -379,7 +379,13 @@
+ #define STRINGID_TRAINER1WINTEXT            379
+ #define STRINGID_TRAINER2WINTEXT            380
+ 
++#define STRINGID_MEGA_EVOLVED               381
++
++#ifdef PORTABLE
++#define BATTLESTRINGS_COUNT                 382
++#else
+ #define BATTLESTRINGS_COUNT                 381
++#endif
+ 
+ // This is the string id that gBattleStringsTable starts with.
+ // String ids before this (e.g. STRINGID_INTROMSG) are not in the table,
+diff --git a/src/battle_message.c b/src/battle_message.c
+index d22cf45..f97e840 100644
+--- a/src/battle_message.c
++++ b/src/battle_message.c
+@@ -517,6 +517,10 @@ static const u8 sText_Trainer2WinText[];
+ static const u8 sText_TwoInGameTrainersDefeated[];
+ static const u8 sText_Trainer2LoseText[];
+ 
++#ifdef PORTABLE
++static const u8 sText_MegaEvolved[] = _("{B_SCR_ACTIVE_NAME_WITH_PREFIX}\nMega Evolved!");
++#endif
++
+ const u8 *const gBattleStringsTable[BATTLESTRINGS_COUNT - BATTLESTRINGS_TABLE_START] =
+ {
+     [STRINGID_TRAINER1LOSETEXT - BATTLESTRINGS_TABLE_START] = sText_Trainer1LoseText,
+@@ -888,6 +892,9 @@ const u8 *const gBattleStringsTable[BATTLESTRINGS_COUNT - BATTLESTRINGS_TABLE_ST
+     [STRINGID_PKMNBOXLANETTESPCFULL - BATTLESTRINGS_TABLE_START] = gText_PkmnTransferredLanettesPCBoxFull,
+     [STRINGID_TRAINER1WINTEXT - BATTLESTRINGS_TABLE_START] = sText_Trainer1WinText,
+     [STRINGID_TRAINER2WINTEXT - BATTLESTRINGS_TABLE_START] = sText_Trainer2WinText,
++#ifdef PORTABLE
++    [STRINGID_MEGA_EVOLVED - BATTLESTRINGS_TABLE_START] = sText_MegaEvolved,
++#endif
+ };
+ 
+ const u16 gMissStringIds[] =

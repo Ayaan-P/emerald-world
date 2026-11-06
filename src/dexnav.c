@@ -31,6 +31,7 @@
 #include "menu_helpers.h"
 #include "metatile_behavior.h"
 #include "platform/dexnav_native.h"
+#include "platform/expanded_species.h"
 #include "constants/map_types.h"
 #include "constants/game_stat.h"
 #include "constants/moves.h"
@@ -77,7 +78,8 @@ extern const u8 EventScript_TooDark[];
 /* Native getter has no zero guard and can mutate mirrored flags on a read. */
 static bool8 DexNavGetPokedexFlag(u16 nationalDexNo, u8 mode)
 {
-    if (nationalDexNo == 0 || nationalDexNo > NATIONAL_DEX_COUNT)
+    if (nationalDexNo == 0 || (nationalDexNo > NATIONAL_DEX_COUNT
+        && ExpandedSpecies_FromNationalDexNumber(nationalDexNo) == SPECIES_NONE))
         return FALSE;
     return GetSetPokedexFlag(nationalDexNo, mode);
 }
@@ -431,6 +433,11 @@ static void DrawDexNavSearchMonIcon(u16 species, u8 *dst, bool8 owned)
 {
     u8 spriteId;
 
+    if (DexNavNative_TextOnlyHud())
+    {
+        *dst = MAX_SPRITES;
+        return;
+    }
     /* Field icon palette is acquired without touching native icon tags. */
     spriteId = DexNavNative_CreateMonIcon(species, SPECIES_ICON_X - 6, GetSearchWindowY() + 8, 0);
     if (spriteId != MAX_SPRITES)
@@ -841,7 +848,7 @@ static u8 GetSearchLevel(u16 species)
 {
     u8 searchLevel;
 #if USE_DEXNAV_SEARCH_LEVELS == TRUE
-    searchLevel = gDexNavNativeState.dexNavSearchLevels[species];
+    searchLevel = species < SPECIES_TABLE_COUNT ? gDexNavNativeState.dexNavSearchLevels[species] : 0;
 #else
     searchLevel = 0;
 #endif
@@ -898,7 +905,7 @@ static void DexNavSearchBail(const u8 *script)
 
 static bool8 InitDexNavSearch(u16 species, u32 environment)
 {
-    if (species == SPECIES_NONE || species >= NUM_SPECIES || sDexNavSearchDataPtr != NULL)
+    if (species == SPECIES_NONE || species >= SPECIES_TABLE_COUNT || sDexNavSearchDataPtr != NULL)
         return FALSE;
     if ((environment == ENCOUNTER_TYPE_WATER && !TestPlayerAvatarFlags(PLAYER_AVATAR_FLAG_SURFING))
         || (environment == ENCOUNTER_TYPE_LAND && TestPlayerAvatarFlags(PLAYER_AVATAR_FLAG_SURFING)))
@@ -1114,10 +1121,13 @@ static void RevealHiddenMon(void)
         DrawSearchWindow(species, sDexNavSearchDataPtr->potential, TRUE);
         DrawDexNavSearchMonIcon(species, &sDexNavSearchDataPtr->iconSpriteId, FALSE);
         // whiteout icon
-        index = IndexOfSpritePaletteTag(gSprites[sDexNavSearchDataPtr->iconSpriteId].template->paletteTag);
-        CpuCopy16(&gPlttBufferUnfaded[OBJ_PLTT_ID(index)], sDexNavSearchDataPtr->palBuffer, 32);
-        TintPalette_CustomTone(sDexNavSearchDataPtr->palBuffer, 16, 510, 510, 510);
-        LoadPalette(sDexNavSearchDataPtr->palBuffer, OBJ_PLTT_ID(index), PLTT_SIZE_4BPP);
+        if (sDexNavSearchDataPtr->iconSpriteId != MAX_SPRITES)
+        {
+            index = IndexOfSpritePaletteTag(gSprites[sDexNavSearchDataPtr->iconSpriteId].template->paletteTag);
+            CpuCopy16(&gPlttBufferUnfaded[OBJ_PLTT_ID(index)], sDexNavSearchDataPtr->palBuffer, 32);
+            TintPalette_CustomTone(sDexNavSearchDataPtr->palBuffer, 16, 510, 510, 510);
+            LoadPalette(sDexNavSearchDataPtr->palBuffer, OBJ_PLTT_ID(index), PLTT_SIZE_4BPP);
+        }
     }
     else
     {
@@ -1587,7 +1597,8 @@ static u8 GetEncounterLevelFromMapData(u16 species, enum EncounterType environme
 
         for (i = 0; i < NUM_LAND_MONS_ENCOUNTER_SLOTS; i++)
         {
-            if (landMonsInfo->wildPokemon[i].species == species)
+            if (landMonsInfo->wildPokemon[i].species == species
+                || DexNavNative_ResolveSpecies(landMonsInfo->wildPokemon[i].species) == species)
             {
                 min = (min < landMonsInfo->wildPokemon[i].minLevel) ? min : landMonsInfo->wildPokemon[i].minLevel;
                 max = (max > landMonsInfo->wildPokemon[i].maxLevel) ? max : landMonsInfo->wildPokemon[i].maxLevel;
@@ -1603,7 +1614,8 @@ static u8 GetEncounterLevelFromMapData(u16 species, enum EncounterType environme
 
         for (i = 0; i < NUM_WATER_MONS_ENCOUNTER_SLOTS; i++)
         {
-            if (waterMonsInfo->wildPokemon[i].species == species)
+            if (waterMonsInfo->wildPokemon[i].species == species
+                || DexNavNative_ResolveSpecies(waterMonsInfo->wildPokemon[i].species) == species)
             {
                 min = (min < waterMonsInfo->wildPokemon[i].minLevel) ? min : waterMonsInfo->wildPokemon[i].minLevel;
                 max = (max > waterMonsInfo->wildPokemon[i].maxLevel) ? max : waterMonsInfo->wildPokemon[i].maxLevel;
@@ -1619,7 +1631,8 @@ static u8 GetEncounterLevelFromMapData(u16 species, enum EncounterType environme
 
         for (i = 0; i < NUM_HIDDEN_MONS_ENCOUNTER_SLOTS; i++)
         {
-            if (hiddenMonsInfo->wildPokemon[i].species == species)
+            if (hiddenMonsInfo->wildPokemon[i].species == species
+                || DexNavNative_ResolveSpecies(hiddenMonsInfo->wildPokemon[i].species) == species)
             {
                 min = (min < hiddenMonsInfo->wildPokemon[i].minLevel) ? min : hiddenMonsInfo->wildPokemon[i].minLevel;
                 max = (max > hiddenMonsInfo->wildPokemon[i].maxLevel) ? max : hiddenMonsInfo->wildPokemon[i].maxLevel;
@@ -1799,9 +1812,12 @@ static bool8 CapturedAllLandMons(u32 headerId)
     {
         for (i = 0; i < NUM_LAND_MONS_ENCOUNTER_SLOTS; ++i)
         {
-            species = landMonsInfo->wildPokemon[i].species;
+            species = DexNavNative_ResolveSpecies(landMonsInfo->wildPokemon[i].species);
             if (species != SPECIES_NONE)
             {
+                if (landMonsInfo->wildPokemon[i].species != species
+                    && !DexNavGetPokedexFlag(SpeciesToNationalPokedexNum(landMonsInfo->wildPokemon[i].species), FLAG_GET_CAUGHT))
+                    break;
                 if (!DexNavGetPokedexFlag(SpeciesToNationalPokedexNum(species), FLAG_GET_CAUGHT))
                     break;
 
@@ -1832,9 +1848,12 @@ static bool8 CapturedAllWaterMons(u32 headerId)
     {
         for (i = 0; i < NUM_WATER_MONS_ENCOUNTER_SLOTS; ++i)
         {
-            species = waterMonsInfo->wildPokemon[i].species;
+            species = DexNavNative_ResolveSpecies(waterMonsInfo->wildPokemon[i].species);
             if (species != SPECIES_NONE)
             {
+                if (waterMonsInfo->wildPokemon[i].species != species
+                    && !DexNavGetPokedexFlag(SpeciesToNationalPokedexNum(waterMonsInfo->wildPokemon[i].species), FLAG_GET_CAUGHT))
+                    break;
                 count++;
                 if (!DexNavGetPokedexFlag(SpeciesToNationalPokedexNum(species), FLAG_GET_CAUGHT))
                     break;
@@ -1863,9 +1882,12 @@ static bool8 CapturedAllHiddenMons(u32 headerId)
     {
         for (i = 0; i < NUM_HIDDEN_MONS_ENCOUNTER_SLOTS; ++i)
         {
-            species = hiddenMonsInfo->wildPokemon[i].species;
+            species = DexNavNative_ResolveSpecies(hiddenMonsInfo->wildPokemon[i].species);
             if (species != SPECIES_NONE)
             {
+                if (hiddenMonsInfo->wildPokemon[i].species != species
+                    && !DexNavGetPokedexFlag(SpeciesToNationalPokedexNum(hiddenMonsInfo->wildPokemon[i].species), FLAG_GET_CAUGHT))
+                    break;
                 count++;
                 if (!DexNavGetPokedexFlag(SpeciesToNationalPokedexNum(species), FLAG_GET_CAUGHT))
                     break;
@@ -1960,103 +1982,37 @@ static void DexNavFadeAndExit(void)
     SetMainCallback2(DexNav_MainCB);
 }
 
-static bool8 SpeciesInArray(u16 species, u8 section)
-{
-    u32 i;
-    u16 dexNum = SpeciesToNationalPokedexNum(species);
-
-    switch (section)
-    {
-    case 0: //land
-        for (i = 0; i < NUM_LAND_MONS_ENCOUNTER_SLOTS; i++)
-        {
-            if (SpeciesToNationalPokedexNum(sDexNavUiDataPtr->landSpecies[i]) == dexNum)
-                return TRUE;
-        }
-        break;
-    case 1: //water
-        for (i = 0; i < NUM_WATER_MONS_ENCOUNTER_SLOTS; i++)
-        {
-            if (SpeciesToNationalPokedexNum(sDexNavUiDataPtr->waterSpecies[i]) == dexNum)
-                return TRUE;
-        }
-        break;
-    case 2: //hidden
-        for (i = 0; i < NUM_HIDDEN_MONS_ENCOUNTER_SLOTS; i++)
-        {
-            if (SpeciesToNationalPokedexNum(sDexNavUiDataPtr->hiddenSpecies[i]) == dexNum)
-                return TRUE;
-        }
-        break;
-    default:
-        break;
-    }
-
-    return FALSE;
-}
-
 // get unique wild encounters on current map
 static void DexNavLoadEncounterData(void)
 {
-    u8 grassIndex = 0;
-    u8 waterIndex = 0;
-    u8 hiddenIndex = 0;
-    u16 species;
-    u32 i;
     u32 headerId = DexNavNative_GetHeader();
+    const struct WildPokemonInfo *landMonsInfo;
+    const struct WildPokemonInfo *waterMonsInfo;
 
-
-    if (headerId == DEXNAV_HEADER_NONE)
-        return;
-
-    const struct WildPokemonInfo *landMonsInfo = gWildMonHeaders[headerId].landMonsInfo;
-
-    const struct WildPokemonInfo *waterMonsInfo = gWildMonHeaders[headerId].waterMonsInfo;
-
-    const struct WildPokemonInfo *hiddenMonsInfo = DexNavNative_GetHiddenInfo(headerId);
-
-    // nop struct data
     memset(sDexNavUiDataPtr->landSpecies, 0, sizeof(sDexNavUiDataPtr->landSpecies));
     memset(sDexNavUiDataPtr->waterSpecies, 0, sizeof(sDexNavUiDataPtr->waterSpecies));
     memset(sDexNavUiDataPtr->hiddenSpecies, 0, sizeof(sDexNavUiDataPtr->hiddenSpecies));
+    if (headerId == DEXNAV_HEADER_NONE)
+        return;
 
-    // land mons
+    landMonsInfo = gWildMonHeaders[headerId].landMonsInfo;
+    waterMonsInfo = gWildMonHeaders[headerId].waterMonsInfo;
     if (landMonsInfo != NULL && landMonsInfo->encounterRate != 0)
-    {
-        for (i = 0; i < NUM_LAND_MONS_ENCOUNTER_SLOTS; i++)
-        {
-            species = landMonsInfo->wildPokemon[i].species;
-            if (species != SPECIES_NONE && !SpeciesInArray(species, 0))
-                sDexNavUiDataPtr->landSpecies[grassIndex++] = landMonsInfo->wildPokemon[i].species;
-        }
-    }
-
-    // water mons
+        if (!DexNavNative_CollectSpecies(landMonsInfo, NUM_LAND_MONS_ENCOUNTER_SLOTS,
+                sDexNavUiDataPtr->landSpecies, ARRAY_COUNT(sDexNavUiDataPtr->landSpecies)))
+            return;
     if (waterMonsInfo != NULL && waterMonsInfo->encounterRate != 0)
-    {
-        for (i = 0; i < NUM_WATER_MONS_ENCOUNTER_SLOTS; i++)
-        {
-            species = waterMonsInfo->wildPokemon[i].species;
-            if (species != SPECIES_NONE && !SpeciesInArray(species, 1))
-                sDexNavUiDataPtr->waterSpecies[waterIndex++] = waterMonsInfo->wildPokemon[i].species;
-        }
-    }
-
-    // hidden mons
-    if (hiddenMonsInfo != NULL) // no encounter rate check since 0 means land, 1 means water encounters
-    {
-        for (i = 0; i < NUM_HIDDEN_MONS_ENCOUNTER_SLOTS; i++)
-        {
-            species = hiddenMonsInfo->wildPokemon[i].species;
-            if (species != SPECIES_NONE && !SpeciesInArray(species, 2))
-                sDexNavUiDataPtr->hiddenSpecies[hiddenIndex++] = hiddenMonsInfo->wildPokemon[i].species;
-        }
-    }
+        if (!DexNavNative_CollectSpecies(waterMonsInfo, NUM_WATER_MONS_ENCOUNTER_SLOTS,
+                sDexNavUiDataPtr->waterSpecies, ARRAY_COUNT(sDexNavUiDataPtr->waterSpecies)))
+            return;
+    /* Hidden-table encounterRate encodes the environment, not availability. */
+    DexNavNative_CollectSpecies(DexNavNative_GetHiddenInfo(headerId), NUM_HIDDEN_MONS_ENCOUNTER_SLOTS,
+        sDexNavUiDataPtr->hiddenSpecies, ARRAY_COUNT(sDexNavUiDataPtr->hiddenSpecies));
 }
 
 static void TryDrawIconInSlot(u16 species, s16 x, s16 y)
 {
-    if (species == SPECIES_NONE || species >= NUM_SPECIES)
+    if (species == SPECIES_NONE || species >= SPECIES_TABLE_COUNT)
         CreateNoDataIcon(x, y);   //'X' in slot
     else if (!DexNavGetPokedexFlag(SpeciesToNationalPokedexNum(species), FLAG_GET_SEEN))
         DexNavNative_CreateMonIcon(SPECIES_NONE, x, y, 0); //question mark
@@ -2094,7 +2050,7 @@ static void DrawSpeciesIcons(void)
         y = ROW_HIDDEN_ICON_Y;
         if (FALSE /* native has no hidden-only encounter tables */)
             TryDrawIconInSlot(species, x, y);
-       else if (species == SPECIES_NONE || species > NUM_SPECIES)
+       else if (species == SPECIES_NONE || species >= SPECIES_TABLE_COUNT)
             CreateNoDataIcon(x, y);
         else
             DexNavNative_CreateMonIcon(SPECIES_NONE, x, y, 0); //question mark if detector mode inactive
@@ -2162,6 +2118,9 @@ static const u8 sMoveTypeToOamPaletteNum[NUMBER_OF_MON_TYPES] =
     [TYPE_ICE] = TYPE_ICON_PAL_NUM_1,
     [TYPE_DRAGON] = TYPE_ICON_PAL_NUM_2,
     [TYPE_DARK] = TYPE_ICON_PAL_NUM_0,
+#ifdef PORTABLE
+    [TYPE_FAIRY] = TYPE_ICON_PAL_NUM_1,
+#endif
 };
 static void SetTypeIconPosAndPal(u8 typeId, u8 x, u8 y, u8 spriteArrayId)
 {
@@ -2750,6 +2709,17 @@ static void DexNavDrawHiddenIcons(void)
     DrawHiddenSearchWindow(12);
     if (sDexNavSearchDataPtr->windowId == WINDOW_NONE)
         return;
+    if (DexNavNative_TextBadges())
+    {
+        static const u8 caught[] = _("Caught");
+        static const u8 hidden[] = _("Hidden");
+        if (DexNavGetPokedexFlag(SpeciesToNationalPokedexNum(species), FLAG_GET_CAUGHT))
+            AddTextPrinterParameterized3(sDexNavSearchDataPtr->windowId, FONT_SMALL, 0, 26, sSearchFontColor, TEXT_SKIP_DRAW, caught);
+        if (sDexNavSearchDataPtr->isHiddenMon)
+            AddTextPrinterParameterized3(sDexNavSearchDataPtr->windowId, FONT_SMALL, 48, 26, sSearchFontColor, TEXT_SKIP_DRAW, hidden);
+        CopyWindowToVram(sDexNavSearchDataPtr->windowId, 2);
+        return;
+    }
     DrawSearchIcon();
 
     if (DexNavGetPokedexFlag(SpeciesToNationalPokedexNum(species), FLAG_GET_CAUGHT))

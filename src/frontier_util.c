@@ -1,4 +1,5 @@
 #include "global.h"
+#include "pokemon.h"
 #include "frontier_util.h"
 #include "event_data.h"
 #include "battle_setup.h"
@@ -1965,7 +1966,7 @@ static u8 AppendCaughtBannedMonSpeciesName(u16 species, u8 count, s32 numBannedM
             StringAppend(gStringVar1, gText_LineBreak);
             break;
         }
-        StringAppend(gStringVar1, gSpeciesNames[species]);
+        StringAppend(gStringVar1, gSpeciesInfo[species].speciesName);
     }
 
     return count;

@@ -145,6 +145,16 @@ class HostingClient:
     def resume(self, world_id):
         return self._request(self.profile, 'POST', '/v1/worlds/' + self._world_id(world_id) + '/resume', {})
 
+    def world_rules(self, world_id):
+        from .rules import validate
+        return validate(self._request(self.profile, 'POST', '/v1/worlds/' + self._world_id(world_id) + '/rules', {})['world_rules'])
+
+    def set_world_rules(self, world_id, rules):
+        from .rules import settings
+        self._request(self.profile, 'POST', '/v1/worlds/' + self._world_id(world_id) + '/rules', dict(rules=settings(rules)))
+        # Read back the authority rather than trusting the mutation response.
+        return self.world_rules(world_id)
+
     def invite_account(self, invitation_out, *, request_id=None):
         """Bootstrap sponsor issues a private HOST ACCESS file for another owner."""
         value = self._request(self.profile, 'POST', '/v1/accounts/invites',

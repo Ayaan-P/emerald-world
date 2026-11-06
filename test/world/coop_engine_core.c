@@ -1,6 +1,10 @@
 /* Isolated behavioral tests of the production co-op state machine. Link IO
  * and Pokemon accessors are explicit fixtures, not a simulated game result. */
 #include "../../src/platform/world_coop.c"
+/* Use the production roster policy and generated cases, not a permissive
+ * species stub. Encounter remapping is unrelated to this co-op fixture. */
+#include "src/platform/expanded_species.c"
+bool8 WorldRules_Enabled(u32 rule) { (void)rule; return FALSE; }
 /* The game config defines NDEBUG. This test must execute assertions. */
 #undef NDEBUG
 #include <assert.h>
@@ -77,7 +81,11 @@ u32 GetMonData(struct Pokemon *mon, s32 field, u8 *unused)
     }
 }
 u32 GetMonData2(struct Pokemon *mon, s32 field) { return GetMonData3(mon, field, NULL); }
-const struct SpeciesInfo gSpeciesInfo[NUM_SPECIES] = {0};
+const struct SpeciesInfo gSpeciesInfo[SPECIES_TABLE_COUNT] = {0};
+/* This co-op fixture keeps legacy type policy. Execute the real type adapter
+ * used by private reward projection, rather than omitting its new dependency. */
+bool8 ExpandedMoves_UseModernTypes(void) { return FALSE; }
+#include "src/platform/modern_species_types.c"
 u8 GetMonAbility(struct Pokemon *mon) { return 1; }
 u8 CalculatePPWithBonus(u16 move, u8 bonuses, u8 index) { return 40; }
 u8 BattleSetup_GetEnvironmentId(void) { return BATTLE_ENVIRONMENT_GRASS; }

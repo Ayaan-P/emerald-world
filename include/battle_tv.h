@@ -1,5 +1,7 @@
 #ifndef GUARD_BATTLE_TV_H
 #define GUARD_BATTLE_TV_H
+struct DisableStruct;
+struct DisableStruct;
 
 void BattleTv_SetDataBasedOnString(u16 stringId);
 void BattleTv_SetDataBasedOnMove(u16 move, u16 weatherFlags, struct DisableStruct *disableStructPtr);

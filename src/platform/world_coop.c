@@ -24,8 +24,10 @@
 #include "constants/weather.h"
 #include "constants/opponents.h"
 #include "platform/native_link.h"
+#include "platform/expanded_species.h"
 #include "platform/world_activity.h"
 #include "platform/world_coop.h"
+#include "platform/modern_species_types.h"
 #include <string.h>
 
 /* No saved data or pointers cross this boundary. The native Pokemon layout is
@@ -100,6 +102,14 @@ static struct
 extern u16 GetBlockReceivedSize(u8 player);
 extern void WorldActivity_ReturnFromCoopWildBattle(void);
 
+/* Wire/save IDs keep their legacy bound. Only explicitly playable native
+ * additions may cross the multiplayer boundary; reserved table slots may not. */
+static bool8 NativeSpeciesValid(u16 species)
+{
+    return (species > SPECIES_NONE && species < NUM_SPECIES)
+        || ExpandedSpecies_IsPlayable(species);
+}
+
 /* Same checksum boundary as the native trade receiver. Never call GetMonData
  * before checking the encrypted checksum: it mutates a malformed box. */
 static bool8 MonValid(struct Pokemon *mon, bool8 allowEmpty)
@@ -120,7 +130,7 @@ static bool8 MonValid(struct Pokemon *mon, bool8 allowEmpty)
     species = GetMonData(mon, MON_DATA_SPECIES);
     if (species == SPECIES_NONE)
         return allowEmpty && memcmp(mon, &empty, sizeof(empty)) == 0;
-    if (species >= NUM_SPECIES || !mon->box.hasSpecies || mon->box.isBadEgg
+    if (!NativeSpeciesValid(species) || !mon->box.hasSpecies || mon->box.isBadEgg
      || GetMonData(mon, MON_DATA_IS_EGG)
      || mon->box.language < LANGUAGE_JAPANESE || mon->box.language > LANGUAGE_SPANISH
      || mon->box.language == 6 || mon->level == 0 || mon->level > MAX_LEVEL
@@ -512,7 +522,7 @@ void WorldCoop_ObserveMonData(u8 battler, u8 partySlot, const struct BattlePokem
     struct WorldCoopPublicMon *view;
     if (sCoop.state != COOP_BATTLE || sCoop.generation != NativeLink_Generation()
      || battler >= MAX_BATTLERS_COUNT || (gAbsentBattlerFlags & (1u << battler))
-     || mon == NULL || !mon->species || mon->species >= NUM_SPECIES
+     || mon == NULL || !NativeSpeciesValid(mon->species)
      || !mon->level || mon->level > MAX_LEVEL || partySlot >= PARTY_SIZE)
         return;
     if ((battler & BIT_SIDE) ? partySlot >= sCoop.enemyCount : partySlot / MULTI_PARTY_SIZE != battler / 2)
@@ -942,8 +952,8 @@ static void LoadPrivateBattleMon(void)
     battle->speedIV = GetMonData(mon, MON_DATA_SPEED_IV);
     battle->spAttackIV = GetMonData(mon, MON_DATA_SPATK_IV);
     battle->spDefenseIV = GetMonData(mon, MON_DATA_SPDEF_IV);
-    battle->types[0] = gSpeciesInfo[battle->species].types[0];
-    battle->types[1] = gSpeciesInfo[battle->species].types[1];
+    battle->types[0] = ModernSpeciesTypes_GetType(battle->species, 0);
+    battle->types[1] = ModernSpeciesTypes_GetType(battle->species, 1);
     GetMonData(mon, MON_DATA_NICKNAME, battle->nickname);
     GetMonData(mon, MON_DATA_OT_NAME, battle->otName);
     for (i = 0; i < MAX_MON_MOVES; i++)

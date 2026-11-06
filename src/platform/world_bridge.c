@@ -1,4 +1,6 @@
 #ifdef PORTABLE
+#include "platform/world_rules.h"
+#include "platform/content_compat.h"
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -85,6 +87,7 @@ static struct {
     bool8 enabled, connected, connecting, staging, chatProbe, chatLegacy, chatAvailable;
     bool8 travelProbe, travelLegacy, travelAvailable;
     bool8 rallyProbe, rallyLegacy, rallyAvailable;
+    bool8 contentRejected; /* Retained until Init. Retrying cannot update game data. */
 #ifdef _WIN32
     SOCKET fd;
     bool8 winsockStarted;
@@ -223,7 +226,7 @@ static void UpdateFieldPresence(void)
     const char *phase = WorldActivity_Phase();
     bool8 native = activity && (!strcmp(phase, "native") || !strcmp(phase, "connecting")
         || !strcmp(phase, "returning") || WorldActivity_IsEncounterPending());
-    if (!gSaveBlock1Ptr || (!native && gMain.callback1 != CB1_Overworld)
+    if (!gSaveBlock1Ptr || (!native && (gMain.inBattle || gMain.callback1 != CB1_Overworld))
      || (sWorld.fieldKnown
       && (sWorld.field.group != (unsigned)gSaveBlock1Ptr->location.mapGroup
        || sWorld.field.num != (unsigned)gSaveBlock1Ptr->location.mapNum))) {
@@ -380,7 +383,9 @@ bool8 WorldBridge_GetPeer(unsigned index, struct WorldBridgePeer *peer)
 bool8 WorldBridge_TravelTileClear(unsigned group, unsigned num, unsigned x, unsigned y)
 {
     unsigned i;
-    if (!sWorld.connected || sWorld.snapshotAge > 180 || !MapCoords(group, num, x, y)) return FALSE;
+    /* A render-only snapshot does not include every destination occupant. */
+    if (!sWorld.connected || !sWorld.live.travel || sWorld.snapshotAge > 180
+        || !MapCoords(group, num, x, y)) return FALSE;
     for (i = 0; i < sWorld.live.travelCount; i++) {
         const struct TravelPeer *f = &sWorld.live.friends[i];
         const struct Peer *p = &f->peer;
@@ -557,6 +562,11 @@ static bool8 Line(char *line)
     }
     if (!n) return FALSE;
     if (!sWorld.connected) {
+        if (n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "CONTENT")) {
+            sWorld.contentRejected = TRUE;
+            fprintf(stderr, "game content differs from host; update game\n");
+            return FALSE;
+        }
         if (sWorld.rallyProbe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
             sWorld.rallyLegacy = TRUE;
             return FALSE;
@@ -791,6 +801,20 @@ static void QueueHello(bool8 headless)
             : sWorld.travelProbe ? (sWorld.chatProbe ? "SOCIALTRAVELCHAT" : "SOCIALTRAVEL")
             : (sWorld.chatProbe ? "SOCIALCHAT" : "SOCIAL"));
 #endif
+    if (WorldRules_Wire()[0]) {
+        unsigned n = sWorld.outputSize;
+        if (n && sWorld.output[n - 1] == '\n') {
+            sWorld.outputSize = n - 1 + snprintf(sWorld.output + n - 1, sizeof(sWorld.output) - n + 1,
+                " RULES %s\n", WorldRules_Wire());
+        }
+    }
+    {
+        unsigned n = sWorld.outputSize;
+        if (n && sWorld.output[n - 1] == '\n') {
+            sWorld.outputSize = n - 1 + snprintf(sWorld.output + n - 1, sizeof(sWorld.output) - n + 1,
+                " DATA %s\n", ContentCompat_Id());
+        }
+    }
 }
 
 static void Flush(void)
@@ -1378,7 +1402,8 @@ void WorldBridge_WriteJSON(FILE *file, u32 frame)
 {
     unsigned i, count = 0;
     const struct ObjectEvent *p = Overworld() ? &gObjectEvents[gPlayerAvatar.objectEventId] : NULL;
-    fprintf(file, "{\"chat_count\":%u,\"in_battle\":%s,\"trainer\":\"%s\",\"frame\":%u,\"connected\":%s,\"revision\":%u,\"ready\":%s,\"map\":[%d,%d],\"pos\":[%d,%d],\"peers\":[",
+    fprintf(file, "{\"error\":\"%s\",\"chat_count\":%u,\"in_battle\":%s,\"trainer\":\"%s\",\"frame\":%u,\"connected\":%s,\"revision\":%u,\"ready\":%s,\"map\":[%d,%d],\"pos\":[%d,%d],\"peers\":[",
+        sWorld.contentRejected ? "game content differs from host; update game" : "",
         sWorld.live.chatCount, gMain.inBattle ? "true" : "false",
         sWorld.trainer, frame, sWorld.connected ? "true" : "false", sWorld.live.revision, Ready() ? "true" : "false",
         gSaveBlock1Ptr ? gSaveBlock1Ptr->location.mapGroup : -1, gSaveBlock1Ptr ? gSaveBlock1Ptr->location.mapNum : -1,
@@ -1459,7 +1484,7 @@ void WorldBridge_WriteJSON(FILE *file, u32 frame)
 
 void WorldBridge_Poll(bool8 headless)
 {
-    if (!sWorld.enabled) return;
+    if (!sWorld.enabled || sWorld.contentRejected) return;
     if (!SocketOpen()) {
         if (sWorld.retry) sWorld.retry--;
         else Connect(headless);

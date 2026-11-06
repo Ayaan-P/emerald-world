@@ -1,0 +1,386 @@
+--- a/data/battle_scripts_1.s
++++ b/data/battle_scripts_1.s
+@@ -2357,6 +2357,9 @@
+ 	waitanimation
+ 	printstring STRINGID_PKMNCOPIEDFOE
+ 	waitmessage B_WAIT_TIME_LONG
++.ifdef PORTABLE
++	various BS_ATTACKER, VARIOUS_FRISK_GAINED
++.endif
+ 	goto BattleScript_MoveEnd
+ 
+ BattleScript_EffectWish::
+@@ -2518,6 +2521,10 @@
+ 	waitanimation
+ 	printstring STRINGID_PKMNSWAPPEDABILITIES
+ 	waitmessage B_WAIT_TIME_LONG
++.ifdef PORTABLE
++	various BS_ATTACKER, VARIOUS_FRISK_GAINED
++	various BS_TARGET, VARIOUS_FRISK_GAINED
++.endif
+ 	goto BattleScript_MoveEnd
+ 
+ BattleScript_EffectImprison::
+@@ -4015,10 +4022,31 @@
+ 	waitmessage B_WAIT_TIME_LONG
+ 	end3
+ 
++.ifdef PORTABLE
++BattleScript_FriskActivates::
++	pause B_WAIT_TIME_SHORT
++BattleScript_FriskPrint:
++	printstring STRINGID_FRISK_REVEALED
++	waitmessage B_WAIT_TIME_LONG
++	various BS_SCRIPTING, VARIOUS_FRISK_NEXT
++	jumpifbyte CMP_EQUAL, gBattleCommunication, TRUE, BattleScript_FriskPrint
++	end3
++BattleScript_FriskGained::
++	pause B_WAIT_TIME_SHORT
++BattleScript_FriskGainedPrint:
++	printstring STRINGID_FRISK_REVEALED
++	waitmessage B_WAIT_TIME_LONG
++	various BS_SCRIPTING, VARIOUS_FRISK_NEXT
++	jumpifbyte CMP_EQUAL, gBattleCommunication, TRUE, BattleScript_FriskGainedPrint
++	return
++.endif
+ BattleScript_TraceActivates::
+ 	pause B_WAIT_TIME_SHORT
+ 	printstring STRINGID_PKMNTRACED
+ 	waitmessage B_WAIT_TIME_LONG
++.ifdef PORTABLE
++	various BS_SCRIPTING, VARIOUS_FRISK_GAINED
++.endif
+ 	end3
+ 
+ BattleScript_RainDishActivates::
+--- a/include/battle_scripts.h
++++ b/include/battle_scripts.h
+@@ -1,5 +1,9 @@
+ #ifndef GUARD_BATTLE_SCRIPTS_H
+ #define GUARD_BATTLE_SCRIPTS_H
++#ifdef PORTABLE
++extern const u8 BattleScript_FriskActivates[];
++extern const u8 BattleScript_FriskGained[];
++#endif
+ #ifdef PORTABLE
+ extern const u8 BattleScript_DefSpDefDown[];
+ extern const u8 BattleScript_SelfSpeedDown[];
+--- a/include/constants/abilities.h
++++ b/include/constants/abilities.h
+@@ -85,7 +85,10 @@
+ #define ABILITY_TECHNICIAN 78
+ #define ABILITY_ADAPTABILITY 79
+ #define ABILITY_TOUGH_CLAWS 80
+-#define ABILITIES_COUNT 81
++#define ABILITY_FRISK 81
++#define ABILITY_GLUTTONY 82
++#define ABILITY_SNOW_CLOAK 83
++#define ABILITIES_COUNT 84
+ #else
+ #define ABILITIES_COUNT 78
+ #endif
+--- a/include/constants/battle_script_commands.h
++++ b/include/constants/battle_script_commands.h
+@@ -358,6 +358,10 @@
+ #define VARIOUS_PALACE_TRY_ESCAPE_STATUS        24
+ #define VARIOUS_SET_TELEPORT_OUTCOME            25
+ #define VARIOUS_PLAY_TRAINER_DEFEATED_MUSIC     26
++#ifdef PORTABLE
++#define VARIOUS_FRISK_NEXT                      27
++#define VARIOUS_FRISK_GAINED                    28
++#endif
+ 
+ // Cmd_manipulatedmg
+ #define DMG_CHANGE_SIGN            0
+--- a/include/constants/battle_string_ids.h
++++ b/include/constants/battle_string_ids.h
+@@ -382,7 +382,8 @@
+ #define STRINGID_MEGA_EVOLVED               381
+ 
+ #ifdef PORTABLE
+-#define BATTLESTRINGS_COUNT                 382
++#define STRINGID_FRISK_REVEALED             382
++#define BATTLESTRINGS_COUNT                 383
+ #else
+ #define BATTLESTRINGS_COUNT                 381
+ #endif
+--- /dev/null
++++ b/include/platform/normal_abilities.h
+@@ -0,0 +1,11 @@
++#ifndef GUARD_PLATFORM_NORMAL_ABILITIES_H
++#define GUARD_PLATFORM_NORMAL_ABILITIES_H
++#ifdef PORTABLE
++#include "gba/types.h"
++/* Ordinary abilities are independent of the physical/special split toggle.
++ * This domain adds no saved or BattlePokemon fields. */
++bool8 NormalAbilities_BeginFrisk(u8 battler);
++bool8 NormalAbilities_NextFrisk(void);
++u16 NormalAbilities_BerryThreshold(u8 battler, u16 item, u8 divisor);
++#endif
++#endif
+--- a/src/battle_message.c
++++ b/src/battle_message.c
+@@ -1,4 +1,7 @@
+ #include "global.h"
++#ifdef PORTABLE
++static const u8 sText_FriskRevealed[] = _("{B_SCR_ACTIVE_NAME_WITH_PREFIX}'s {B_SCR_ACTIVE_ABILITY}\nfound {B_EFF_NAME_WITH_PREFIX}'s {B_LAST_ITEM}!");
++#endif
+ #ifdef PORTABLE
+ #include "platform/world_coop.h"
+ #endif
+@@ -894,6 +897,7 @@
+     [STRINGID_TRAINER2WINTEXT - BATTLESTRINGS_TABLE_START] = sText_Trainer2WinText,
+ #ifdef PORTABLE
+     [STRINGID_MEGA_EVOLVED - BATTLESTRINGS_TABLE_START] = sText_MegaEvolved,
++    [STRINGID_FRISK_REVEALED - BATTLESTRINGS_TABLE_START] = sText_FriskRevealed,
+ #endif
+ };
+ 
+--- a/src/battle_script_commands.c
++++ b/src/battle_script_commands.c
+@@ -1,4 +1,7 @@
+ #include "global.h"
++#ifdef PORTABLE
++#include "platform/normal_abilities.h"
++#endif
+ #ifdef PORTABLE
+ #include "platform/expanded_abilities.h"
+ #include "platform/modern_species_types.h"
+@@ -1167,6 +1170,10 @@
+             calc = (calc * 130) / 100; // 1.3 compound eyes boost
+         if (WEATHER_HAS_EFFECT && gBattleMons[gBattlerTarget].ability == ABILITY_SAND_VEIL && gBattleWeather & B_WEATHER_SANDSTORM)
+             calc = (calc * 80) / 100; // 1.2 sand veil loss
++#ifdef PORTABLE
++        if (WEATHER_HAS_EFFECT && gBattleMons[gBattlerTarget].ability == ABILITY_SNOW_CLOAK && (gBattleWeather & B_WEATHER_HAIL))
++            calc = (calc * 80) / 100;
++#endif
+         if (gBattleMons[gBattlerAttacker].ability == ABILITY_HUSTLE && BattleMove_IsPhysical(move, type))
+             calc = (calc * 80) / 100; // 1.2 hustle loss
+ 
+@@ -6443,11 +6450,30 @@
+ {
+     u8 side;
+     s32 i;
++#ifdef PORTABLE
++    u8 originalActiveBattler = gActiveBattler;
++#endif
+ 
+     gActiveBattler = GetBattlerForBattleScript(gBattlescriptCurrInstr[1]);
+ 
+     switch (gBattlescriptCurrInstr[2])
+     {
++#ifdef PORTABLE
++    case VARIOUS_FRISK_NEXT:
++        gBattleCommunication[0] = NormalAbilities_NextFrisk();
++        break;
++    case VARIOUS_FRISK_GAINED:
++        if (NormalAbilities_BeginFrisk(gActiveBattler))
++        {
++            RecordAbilityBattle(gActiveBattler, ABILITY_FRISK);
++            gActiveBattler = originalActiveBattler;
++            BattleScriptPush(gBattlescriptCurrInstr + 3);
++            gBattlescriptCurrInstr = BattleScript_FriskGained;
++            return;
++        }
++        gActiveBattler = originalActiveBattler;
++        break;
++#endif
+     case VARIOUS_CANCEL_MULTI_TURN_MOVES:
+         CancelMultiTurnMoves(gActiveBattler);
+         break;
+@@ -7811,6 +7837,9 @@
+         if (gBattleWeather & B_WEATHER_HAIL)
+         {
+             if (!IS_BATTLER_OF_TYPE(gBattlerAttacker, TYPE_ICE)
++#ifdef PORTABLE
++                && gBattleMons[gBattlerAttacker].ability != ABILITY_SNOW_CLOAK
++#endif
+                 && !(gStatuses3[gBattlerAttacker] & STATUS3_UNDERGROUND)
+                 && !(gStatuses3[gBattlerAttacker] & STATUS3_UNDERWATER))
+             {
+--- a/src/battle_util.c
++++ b/src/battle_util.c
+@@ -1,4 +1,7 @@
+ #include "global.h"
++#ifdef PORTABLE
++#include "platform/normal_abilities.h"
++#endif
+ #ifdef PORTABLE
+ #include "platform/world_coop.h"
+ #endif
+@@ -2553,6 +2556,15 @@
+                 gBattlerAttacker = battler;
+             switch (gLastUsedAbility)
+             {
++#ifdef PORTABLE
++            case ABILITY_FRISK:
++                if (NormalAbilities_BeginFrisk(battler))
++                {
++                    BattleScriptPushCursorAndCallback(BattleScript_FriskActivates);
++                    effect++;
++                }
++                break;
++#endif
+             case ABILITYEFFECT_SWITCH_IN_WEATHER:
+                 if (!(gBattleTypeFlags & BATTLE_TYPE_RECORDED))
+                 {
+@@ -3298,6 +3310,12 @@
+     ITEM_STATS_CHANGE,
+ };
+ 
++#ifdef PORTABLE
++#define PINCH_BERRY_THRESHOLD(battler, item, divisor) NormalAbilities_BerryThreshold(battler, item, divisor)
++#else
++#define PINCH_BERRY_THRESHOLD(battler, item, divisor) (gBattleMons[battler].maxHP / (divisor))
++#endif
++
+ #define TRY_EAT_CONFUSE_BERRY(flavor)                                                       \
+     if (gBattleMons[battler].hp <= gBattleMons[battler].maxHP / 2 && !moveTurn)         \
+     {                                                                                       \
+@@ -3316,7 +3334,7 @@
+     }
+ 
+ #define TRY_EAT_STAT_UP_BERRY(stat)                                                         \
+-    if (gBattleMons[battler].hp <= gBattleMons[battler].maxHP / battlerHoldEffectParam  \
++    if (gBattleMons[battler].hp <= PINCH_BERRY_THRESHOLD(battler, gLastUsedItem, battlerHoldEffectParam)  \
+     && !moveTurn && gBattleMons[battler].statStages[stat] < MAX_STAT_STAGE)               \
+     {                                                                                       \
+         PREPARE_STAT_BUFFER(gBattleTextBuff1, stat);                                        \
+@@ -3505,7 +3523,7 @@
+                 TRY_EAT_CONFUSE_BERRY(FLAVOR_SOUR);
+                 break;
+             case HOLD_EFFECT_ATTACK_UP:
+-                if (gBattleMons[battler].hp <= gBattleMons[battler].maxHP / battlerHoldEffectParam
++                if (gBattleMons[battler].hp <= PINCH_BERRY_THRESHOLD(battler, gLastUsedItem, battlerHoldEffectParam)
+                 && !moveTurn && gBattleMons[battler].statStages[STAT_ATK] < MAX_STAT_STAGE)
+                 {
+                     PREPARE_STAT_BUFFER(gBattleTextBuff1, STAT_ATK);
+@@ -3531,7 +3549,7 @@
+                 TRY_EAT_STAT_UP_BERRY(STAT_SPDEF);
+                 break;
+             case HOLD_EFFECT_CRITICAL_UP:
+-                if (gBattleMons[battler].hp <= gBattleMons[battler].maxHP / battlerHoldEffectParam && !moveTurn
++                if (gBattleMons[battler].hp <= PINCH_BERRY_THRESHOLD(battler, gLastUsedItem, battlerHoldEffectParam) && !moveTurn
+                     && !(gBattleMons[battler].status2 & STATUS2_FOCUS_ENERGY))
+                 {
+                     gBattleMons[battler].status2 |= STATUS2_FOCUS_ENERGY;
+@@ -3540,7 +3558,7 @@
+                 }
+                 break;
+             case HOLD_EFFECT_RANDOM_STAT_UP:
+-                if (!moveTurn && gBattleMons[battler].hp <= gBattleMons[battler].maxHP / battlerHoldEffectParam)
++                if (!moveTurn && gBattleMons[battler].hp <= PINCH_BERRY_THRESHOLD(battler, gLastUsedItem, battlerHoldEffectParam))
+                 {
+                     for (i = 0; i < NUM_STATS - 1; i++)
+                     {
+--- a/src/data/text/abilities.h
++++ b/src/data/text/abilities.h
+@@ -81,6 +81,9 @@
+ static const u8 sTechnicianDescription[] = _("Powers up weak moves.");
+ static const u8 sAdaptabilityDescription[] = _("Powers up same-type moves.");
+ static const u8 sToughClawsDescription[] = _("Powers up contact moves.");
++static const u8 sFriskDescription[] = _("Reveals the foe's held item.");
++static const u8 sGluttonyDescription[] = _("Eats pinch BERRIES earlier.");
++static const u8 sSnowCloakDescription[] = _("Ups evasion in hail.");
+ #endif
+ 
+ const u8 gAbilityNames[ABILITIES_COUNT][ABILITY_NAME_LENGTH + 1] =
+@@ -167,6 +170,9 @@
+     [ABILITY_TECHNICIAN] = _("TECHNICIAN"),
+     [ABILITY_ADAPTABILITY] = _("ADAPTABILITY"),
+     [ABILITY_TOUGH_CLAWS] = _("TOUGH CLAWS"),
++    [ABILITY_FRISK] = _("FRISK"),
++    [ABILITY_GLUTTONY] = _("GLUTTONY"),
++    [ABILITY_SNOW_CLOAK] = _("SNOW CLOAK"),
+ #endif
+ };
+ 
+@@ -254,5 +260,8 @@
+     [ABILITY_TECHNICIAN] = sTechnicianDescription,
+     [ABILITY_ADAPTABILITY] = sAdaptabilityDescription,
+     [ABILITY_TOUGH_CLAWS] = sToughClawsDescription,
++    [ABILITY_FRISK] = sFriskDescription,
++    [ABILITY_GLUTTONY] = sGluttonyDescription,
++    [ABILITY_SNOW_CLOAK] = sSnowCloakDescription,
+ #endif
+ };
+--- a/src/platform/expanded_abilities.c
++++ b/src/platform/expanded_abilities.c
+@@ -77,6 +77,9 @@
+         case 101: result = ABILITY_TECHNICIAN; break;
+         case 91: result = ABILITY_ADAPTABILITY; break;
+         case 181: result = ABILITY_TOUGH_CLAWS; break;
++        case 119: result = ABILITY_FRISK; break;
++        case 82: result = ABILITY_GLUTTONY; break;
++        case 81: result = ABILITY_SNOW_CLOAK; break;
+         default: return FALSE;
+         }
+     }
+--- /dev/null
++++ b/src/platform/normal_abilities.c
+@@ -0,0 +1,52 @@
++#ifdef PORTABLE
++#include "global.h"
++#include "battle.h"
++#include "battle_main.h"
++#include "battle_anim.h"
++#include "item.h"
++#include "constants/abilities.h"
++#include "constants/item.h"
++#include "platform/normal_abilities.h"
++
++/* Frisk's switch-in callback runs to completion before another ability starts.
++ * Keep the iteration in transient script state, never in save/party structs. */
++static u8 sFriskNext;
++
++bool8 NormalAbilities_NextFrisk(void)
++{
++    u8 owner = gBattleScripting.battler;
++    while (sFriskNext < gBattlersCount)
++    {
++        u8 target = sFriskNext++;
++        if (GetBattlerSide(target) == GetBattlerSide(owner)
++         || (gAbsentBattlerFlags & (1 << target)) || !gBattleMons[target].hp
++         || !gBattleMons[target].item)
++            continue;
++        gEffectBattler = target;
++        gPotentialItemEffectBattler = target;
++        gLastUsedItem = gBattleMons[target].item;
++        return TRUE;
++    }
++    return FALSE;
++}
++
++bool8 NormalAbilities_BeginFrisk(u8 battler)
++{
++    if (gBattleMons[battler].ability != ABILITY_FRISK || !gBattleMons[battler].hp
++     || (gAbsentBattlerFlags & (1 << battler)))
++        return FALSE;
++    sFriskNext = 0;
++    gBattleScripting.battler = battler;
++    return NormalAbilities_NextFrisk();
++}
++
++u16 NormalAbilities_BerryThreshold(u8 battler, u16 item, u8 divisor)
++{
++    /* Donor bb3fd057 ShouldApplyPinchBerry: only pinch berries, not healing
++     * amounts, PP, or non-berry held effects. Preserve all stock divisors. */
++    if (divisor > 2 && divisor <= 4 && GetItemPocket(item) == POCKET_BERRIES
++     && gBattleMons[battler].ability == ABILITY_GLUTTONY)
++        divisor = 2;
++    return gBattleMons[battler].maxHP / divisor;
++}
++#endif
+--- a/src/wild_encounter.c
++++ b/src/wild_encounter.c
+@@ -567,6 +567,10 @@
+             encounterRate *= 2;
+         else if (ability == ABILITY_SAND_VEIL && gSaveBlock1Ptr->weather == WEATHER_SANDSTORM)
+             encounterRate /= 2;
++#ifdef PORTABLE
++        else if (ability == ABILITY_SNOW_CLOAK && gSaveBlock1Ptr->weather == WEATHER_SNOW)
++            encounterRate /= 2;
++#endif
+     }
+     if (encounterRate > MAX_ENCOUNTER_RATE)
+         encounterRate = MAX_ENCOUNTER_RATE;

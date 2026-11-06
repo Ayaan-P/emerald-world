@@ -12,12 +12,12 @@ class WorldTravelTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             source = pathlib.Path(directory) / 'travel.c'
             binary = pathlib.Path(directory) / 'travel'
-            source.write_text('#include <assert.h>\n#include <stdlib.h>\n#include "src/platform/' + unit + '.c"\n' + body)
+            source.write_text('#include <assert.h>\n#include <stdlib.h>\n#include "src/platform/' + unit + '.c"\n#include "src/platform/world_rules.c"\n' + body)
             result = subprocess.run([
                 'gcc', '-std=gnu99', '-DPORTABLE', '-DMODERN=1', '-DNONMATCHING',
                 '-DUBFIX', '-DVER_64BIT', '-Wall', '-Wextra', '-Werror', '-Wno-unused-function', '-Wno-ignored-qualifiers',
                 '-ffunction-sections', '-fdata-sections', '-iquote', '.', '-iquote', 'include',
-                str(source), '-Wl,--gc-sections', '-o', str(binary),
+                str(source), 'src/platform/content_compat.c', '-Wl,--gc-sections', '-o', str(binary),
             ], cwd=ROOT, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             subprocess.run([str(binary)], check=True)
@@ -104,16 +104,16 @@ static int line(const char *text) { char copy[128]; strcpy(copy, text); return L
 int main(void) {
     strcpy(sWorld.trainer, "viewer"); strcpy(sWorld.token, "secret");
     QueueHello(0);
-    assert(strstr(sWorld.output, " SOCIALTRAVELCHATRALLY\n"));
+    assert(strstr(sWorld.output, " SOCIALTRAVELCHATRALLY DATA "));
     assert(!line("ERROR AUTH") && sWorld.rallyLegacy && !sWorld.travelLegacy);
     QueueHello(0);
-    assert(strstr(sWorld.output, " SOCIALTRAVELCHAT\n"));
+    assert(strstr(sWorld.output, " SOCIALTRAVELCHAT DATA "));
     assert(!line("ERROR AUTH") && sWorld.travelLegacy && !sWorld.chatLegacy);
     QueueHello(0);
-    assert(strstr(sWorld.output, " SOCIALCHAT\n"));
+    assert(strstr(sWorld.output, " SOCIALCHAT DATA "));
     assert(!line("ERROR AUTH") && sWorld.chatLegacy);
     QueueHello(0);
-    assert(strstr(sWorld.output, " SOCIAL\n"));
+    assert(strstr(sWorld.output, " SOCIAL DATA "));
     assert(line("WELCOME 1 viewer 1"));
     assert(!sWorld.chatAvailable);
     return 0;
@@ -440,6 +440,7 @@ int main(void) {
     unsigned group = MAP_GROUP(MAP_LITTLEROOT_TOWN), num = MAP_NUM(MAP_LITTLEROOT_TOWN);
     for (unsigned i = 0; i < 25; i++) blocks[i] = PACK_ELEVATION(ELEVATION_DEFAULT);
     sWorld.connected = 1;
+    sWorld.live.travel = 1;
     sWorld.live.peerCount = 1;
     strcpy(sWorld.live.peers[0].id, "friend");
     sWorld.live.peers[0].group = group; sWorld.live.peers[0].num = num;
@@ -478,6 +479,8 @@ int main(void) {
     assert(!WorldBridge_GetPeer(1, &peer));
     assert(!WorldBridge_GetTravelPeer(0, &peer)); /* Render slots cannot substitute for a travel roster. */
     assert(!WorldBridge_TravelTileClear(0, 9, 5, 6));
+    assert(!WorldBridge_TravelTileClear(0, 9, 4, 6)); /* Incomplete render-only occupancy. */
+    sWorld.live.travel = 1;
     assert(WorldBridge_TravelTileClear(0, 9, 4, 6));
     sWorld.live.tileCount = 1;
     sWorld.live.tiles[0] = (struct Tile){0, 9, 4, 6, 0, 0};

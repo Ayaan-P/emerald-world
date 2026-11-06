@@ -1,0 +1,203 @@
+--- a/src/platform/world_menu.c
++++ b/src/platform/world_menu.c
+@@ -20,6 +20,7 @@
+ #include "platform/world_activity.h"
+ #include "platform/world_bridge.h"
+ #include "platform/world_menu.h"
++#include "platform/world_unstuck.h"
+ #include "platform/world_rules.h"
+ #include "platform/world_rally.h"
+ #include "platform/world_travel.h"
+@@ -32,9 +33,9 @@
+ 
+ /* One field window, not another Start-menu row or another input consumer.
+  * Lists are rebuilt from live state, but focus is an action identity. */
+-enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, RALLY, DISPATCH };
++enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, RECOVERY, RALLY, DISPATCH };
+ enum Action { FRIENDS, STORY, DEXNAV, PARTY_EXP, REUSABLE_TMS, MOVE_SPLIT, MEGA_RULE, ROSTER_RULE, BACK, MODE, SCOPE, REQUEST, READY,
+-    LATER, CANCEL, GO, FINISH, RETURN, STAY, ACTION_COUNT };
++    LATER, CANCEL, GO, FINISH, RETURN, STAY, UNSTUCK, UNSTUCK_YES, UNSTUCK_NO, ACTION_COUNT };
+ enum Page { CONTROLS, ROSTER, STATUS, PAGE_COUNT };
+ enum { WORLD_MENU_WIDTH = 28, WORLD_MENU_HEIGHT = 18, LINE_HEIGHT = 12,
+     SCREEN_LINES = WORLD_MENU_HEIGHT * 8 / LINE_HEIGHT, TEXT_BYTES = 96 };
+@@ -59,7 +60,11 @@
+         && !ScriptContext_IsEnabled() && !gPlayerAvatar.tileTransitionState
+         && !gWirelessCommType && !IsOverworldLinkActive() && !NativeLink_IsActive()
+         && !WorldActivity_OwnsFieldInput() && !WorldTravel_OwnsFieldInput()
+-        && !WorldTravel_NativeFlyRunning();
++        && !WorldTravel_NativeFlyRunning()
++#if !defined(_WIN32)
++        && !WorldUnstuck_OwnsFieldInput()
++#endif
++        ;
+ }
+ 
+ static bool8 FreeField(void)
+@@ -151,6 +156,12 @@
+     const char *network = online ? NULL : "No fresh rally snapshot. Connect to a rally-enabled world.";
+     const char *eligible = network ? network : personal;
+     const char *approach = eligible ? eligible : ApproachReason();
++    if (sMenu.state == RECOVERY)
++    {
++        AddRow(rows, &n, UNSTUCK_YES, "Yes, return to safety", NULL);
++        AddRow(rows, &n, UNSTUCK_NO, "No", NULL);
++        return n;
++    }
+     if (sMenu.state == FEATURES)
+     {
+         AddRow(rows, &n, FRIENDS, "Friends", WorldBridge_Enabled() ? NULL : "Connect to a world to visit friends.");
+@@ -162,6 +173,10 @@
+         AddRow(rows, &n, MOVE_SPLIT, WorldRules_Enabled(WORLD_RULE_MODERN_SPLIT) ? "Move split: ON" : "Move split: OFF", NULL);
+         AddRow(rows, &n, ROSTER_RULE, WorldRules_Enabled(WORLD_RULE_EXPANDED_ROSTER) ? "Expanded roster: ON" : "Expanded roster: OFF", "World owner setting. Change it in launcher settings.");
+         AddRow(rows, &n, MEGA_RULE, WorldRules_Enabled(WORLD_RULE_MEGA_EVOLUTION) ? "Mega: ON" : "Mega: OFF", "World owner setting. Mega is unavailable in this build.");
++#if !defined(_WIN32)
++        AddRow(rows, &n, UNSTUCK, "Unstuck", sMenu.offerPending ?
++            "Cancel your pending rally request before using Unstuck." : NULL);
++#endif
+         AddRow(rows, &n, BACK, "Back", NULL);
+         return n;
+     }
+@@ -265,9 +280,9 @@
+     char text[TEXT_BYTES];
+     u8 encoded[TEXT_BYTES];
+     unsigned i;
+-    if (sMenu.state == FEATURES)
+-    {
+-        Line(&screen, 0, "WORLD");
++    if (sMenu.state == FEATURES || sMenu.state == RECOVERY)
++    {
++        Line(&screen, 0, sMenu.state == RECOVERY ? "Return to your last safe place?" : "WORLD");
+         Line(&screen, 1, "Up/Down choose. A open. B close.");
+     }
+     else
+@@ -276,15 +291,17 @@
+         Line(&screen, 0, text);
+         Line(&screen, 1, "Left/Right controls roster status");
+     }
+-    if (sMenu.state == FEATURES || sMenu.page == CONTROLS)
+-    {
+-        for (i = 0; i < count; i++)
++    if (sMenu.state == FEATURES || sMenu.state == RECOVERY || sMenu.page == CONTROLS)
++    {
++        unsigned first = selected >= 7 ? selected - 6 : 0;
++        for (i = first; i < count && i < first + 7; i++)
+         {
+             snprintf(text, sizeof(text), "%s%s%s", i == selected ? "> " : "  ",
+                 rows[i].reason ? "X " : "", rows[i].label);
+-            Line(&screen, 2 + i, text);
++            Line(&screen, 2 + i - first, text);
+         }
+         Wrap(&screen, 9, SCREEN_LINES, rows[selected].reason ? rows[selected].reason :
++            sMenu.state == RECOVERY ? "Five-minute wait unless boxed in. Your party, items and story are not rolled back." :
+             sMenu.notice ? sMenu.notice : sMenu.focus == GO ?
+             "Go on leaves invited, not-yet and busy guests behind." :
+             sMenu.focus == MODE ? "AUTO-JOIN still checks your own save and free field. ASK never auto-accepts." :
+@@ -363,6 +380,20 @@
+      * backend's fresh report queue and normal STATE publication intervals. */
+     if (++sMenu.freeFrames < 2) return;
+     sMenu.state = CLOSED;
++#if !defined(_WIN32)
++    if (sMenu.pending == UNSTUCK_YES)
++    {
++        enum WorldUnstuckUseResult result = WorldUnstuck_Begin();
++        if (result != UNSTUCK_USE_STARTED)
++        {
++            sMenu.notice = result == UNSTUCK_USE_COOLDOWN ? "Please wait before using Unstuck again." :
++                result == UNSTUCK_USE_STORAGE_ERROR ? "Could not safely check the cooldown." :
++                "Unstuck is unavailable here. No recovery was started.";
++            sMenu.state = OPEN_REQUEST;
++        }
++        return;
++    }
++#endif
+     if (sMenu.pending == FRIENDS) { WorldTravel_RequestMenu(); return; }
+     if (sMenu.pending == DEXNAV)
+     {
+@@ -458,8 +489,8 @@
+     if (JOY_NEW(B_BUTTON))
+     {
+         if (sMenu.state == FEATURES) { Close(); return; }
++        sMenu.focus = sMenu.state == RECOVERY ? UNSTUCK : STORY;
+         sMenu.state = FEATURES;
+-        sMenu.focus = STORY;
+         sMenu.dirty = TRUE;
+         return;
+     }
+@@ -468,7 +499,7 @@
+         sMenu.page = (sMenu.page + (JOY_NEW(DPAD_LEFT) ? PAGE_COUNT - 1 : 1)) % PAGE_COUNT;
+         sMenu.dirty = TRUE;
+     }
+-    if (sMenu.state == FEATURES || sMenu.page == CONTROLS)
++    if (sMenu.state == FEATURES || sMenu.state == RECOVERY || sMenu.page == CONTROLS)
+     {
+         if (JOY_REPEAT(DPAD_UP) && selected) selected--;
+         if (JOY_REPEAT(DPAD_DOWN) && selected + 1 < count) selected++;
+@@ -492,6 +523,24 @@
+                 sMenu.dirty = TRUE;
+                 return;
+             }
++#if !defined(_WIN32)
++            else if (sMenu.focus == UNSTUCK)
++            {
++                sMenu.state = RECOVERY;
++                sMenu.page = CONTROLS;
++                sMenu.focus = UNSTUCK_NO;
++                sMenu.notice = NULL;
++                sMenu.dirty = TRUE;
++                return;
++            }
++            else if (sMenu.focus == UNSTUCK_NO)
++            {
++                sMenu.state = FEATURES;
++                sMenu.focus = UNSTUCK;
++                sMenu.dirty = TRUE;
++                return;
++            }
++#endif
+             else if (sMenu.focus == PARTY_EXP)
+             {
+                 /* World policy is immutable for the lifetime of this game. */
+--- a/src/platform/sdl2.c
++++ b/src/platform/sdl2.c
+@@ -14,6 +14,7 @@
+ #include "platform/native_file.h"
+ #ifndef _WIN32
+ #include "platform/native_save.h"
++#include "platform/world_unstuck.h"
+ #endif
+ #include "global.h"
+ #include "platform.h"
+@@ -190,6 +191,10 @@
+         return 1;
+     }
+     DexNavNative_Init(sSavePath, !sTestMode);
++#ifndef _WIN32
++    WorldUnstuck_SetSavePath(sSavePath);
++    WorldUnstuck_Reset();
++#endif
+     // Before AgbMain, whose RtcInit reads it
+     InitInternalClock();
+ 
+@@ -316,6 +321,9 @@
+                 if (!RunMainLoop())
+                 {
+                     NativeLink_Reset();
++#ifndef _WIN32
++                    WorldUnstuck_Reset();
++#endif
+                     // Soft reset: drop the old sound, and start the next frame with MainLoop
+                     WorldActivity_Update();
+                     WorldBridge_AfterFrame(sWorldFrame++);
+@@ -1043,7 +1051,12 @@
+             NativeLink_AfterFrame();
+         }
+         else
++        {
+             NativeLink_Reset();
++#ifndef _WIN32
++            WorldUnstuck_Reset();
++#endif
++        }
+ 
+         if (sTestHashes != NULL)
+             fprintf(sTestHashes, "%u %016llx %016llx\n", sTestFrame,

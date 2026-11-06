@@ -4,6 +4,9 @@
 #include "gym_leader_rematch.h"
 
 #define REMATCHES_COUNT 5
+struct NativeTrainerBattleParams { u16 opponentA, opponentB; bool8 earlyRival; };
+struct NativeTrainerBattleParams NativeBattle_GetTrainerParams(void);
+#define TRAINER_BATTLE_PARAM NativeBattle_GetTrainerParams()
 
 struct RematchTrainer
 {

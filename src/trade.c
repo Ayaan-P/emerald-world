@@ -1,4 +1,6 @@
 #include "global.h"
+#include "move.h"
+#include "pokemon.h"
 #include "malloc.h"
 #include "battle_anim.h"
 #include "battle_interface.h"
@@ -52,6 +54,7 @@
 #include "constants/union_room.h"
 #ifdef PORTABLE
 #include "platform/native_link.h"
+#include "platform/expanded_species.h"
 #include "easy_chat.h"
 #endif
 
@@ -1104,7 +1107,8 @@ static bool8 NativeTradeMonValid(struct Pokemon *mon)
     if (checksum != mon->box.checksum)
         return FALSE;
     species = GetMonData(mon, MON_DATA_SPECIES);
-    if (species >= NUM_SPECIES)
+    // Saved legacy IDs stay fixed; only explicitly playable additions are valid.
+    if (species >= NUM_SPECIES && (species > 0xFFFFu || !ExpandedSpecies_IsPlayable(species)))
         return FALSE;
     // Unused party slots are zeroed and have no language, level, or mail.
     if (species == SPECIES_NONE)
@@ -1167,7 +1171,9 @@ static bool8 NativeTradeAuxBlockValid(u8 peer, bool8 isMail)
             if (mails[i].itemId == ITEM_NONE)
                 continue;
             species = MailSpeciesToSpecies(mails[i].species, &letter);
-            if (!ItemIsMail(mails[i].itemId) || species == SPECIES_NONE || species >= NUM_SPECIES)
+            // Mail preserves selected IDs verbatim; only 30000..30027 encode Unown.
+            if (!ItemIsMail(mails[i].itemId) || species == SPECIES_NONE
+             || (species >= NUM_SPECIES && !ExpandedSpecies_IsPlayable(species)))
                 return NativeTradeReject();
             for (j = 0; j < (int)ARRAY_COUNT(mails[i].words); j++)
                 if (mails[i].words[j] != EC_EMPTY_WORD && IsBardWordInvalid(mails[i].words[j]))
@@ -1330,7 +1336,7 @@ static bool8 BufferTradeParties(void)
                     GetMonData(mon, MON_DATA_NICKNAME, name);
 
                     if (!StringCompareWithoutExtCtrlCodes(name, sText_ShedinjaJP))
-                        SetMonData(mon, MON_DATA_NICKNAME, gSpeciesNames[SPECIES_SHEDINJA]);
+                        SetMonData(mon, MON_DATA_NICKNAME, gSpeciesInfo[SPECIES_SHEDINJA].speciesName);
                 }
             }
         }
@@ -2258,7 +2264,7 @@ static void BufferMovesString(u8 *str, u8 whichParty, u8 partyIdx)
         for (i = 0; i < MAX_MON_MOVES; i++)
         {
             if (moves[i] != MOVE_NONE)
-                StringAppend(str, gMoveNames[moves[i]]);
+                StringAppend(str, gMovesInfo[moves[i]].name);
 
             StringAppend(str, sText_NewLine);
         }
@@ -4840,8 +4846,8 @@ static void SpriteCB_BouncingPokeballArrive(struct Sprite *sprite)
 u16 GetInGameTradeSpeciesInfo(void)
 {
     const struct InGameTrade *inGameTrade = &sIngameTrades[gSpecialVar_0x8004];
-    StringCopy(gStringVar1, gSpeciesNames[inGameTrade->requestedSpecies]);
-    StringCopy(gStringVar2, gSpeciesNames[inGameTrade->species]);
+    StringCopy(gStringVar1, gSpeciesInfo[inGameTrade->requestedSpecies].speciesName);
+    StringCopy(gStringVar2, gSpeciesInfo[inGameTrade->species].speciesName);
     return inGameTrade->requestedSpecies;
 }
 
@@ -4851,7 +4857,7 @@ static void BufferInGameTradeMonName(void)
     const struct InGameTrade *inGameTrade = &sIngameTrades[gSpecialVar_0x8004];
     GetMonData(&gPlayerParty[gSpecialVar_0x8005], MON_DATA_NICKNAME, nickname);
     StringCopy_Nickname(gStringVar1, nickname);
-    StringCopy(gStringVar2, gSpeciesNames[inGameTrade->species]);
+    StringCopy(gStringVar2, gSpeciesInfo[inGameTrade->species].speciesName);
 }
 
 static void CreateInGameTradePokemonInternal(u8 whichPlayerMon, u8 whichInGameTrade)

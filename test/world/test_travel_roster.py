@@ -11,6 +11,8 @@ from world.rally import RallyCoordinator
 class TravelRosterTests(unittest.TestCase):
     def setUp(self):
         self.server = WorldServer.__new__(WorldServer)
+        from world.rules import make
+        self.server.world_rules = make('0' * 32)
         self.server.revision = 1
         self.server.tiles = []
         self.server.objects = []

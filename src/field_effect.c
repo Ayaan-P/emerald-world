@@ -1,4 +1,7 @@
 #include "global.h"
+#if defined(PORTABLE) && !defined(_WIN32)
+#include "platform/world_unstuck.h"
+#endif
 #include "decompress.h"
 #include "event_object_movement.h"
 #include "field_camera.h"
@@ -2501,7 +2504,10 @@ static void TeleportWarpOutFieldEffect_End(struct Task *task)
 
         if (BGMusicStopped() == TRUE)
         {
-            SetWarpDestinationToLastHealLocation();
+#if defined(PORTABLE) && !defined(_WIN32)
+            if (!WorldUnstuck_SetPlannedWarp())
+#endif
+                SetWarpDestinationToLastHealLocation();
             WarpIntoMap();
             SetMainCallback2(CB2_LoadMap);
             gFieldCallback = FieldCallback_TeleportWarpIn;
@@ -2600,8 +2606,32 @@ static void TeleportWarpInFieldEffect_SpinGround(struct Task *task)
     {
         ObjectEventTurn(objectEvent, spinDirections[objectEvent->facingDirection]);
         task->data[1] = 8;
-        if ((++task->data[2]) > 4 && task->data[14] == objectEvent->facingDirection)
+        if ((++task->data[2]) > 4 &&
+#if defined(PORTABLE) && !defined(_WIN32)
+            /* Slot 14 is subspriteMode, not a direction. Keep stock Teleport
+             * unchanged and use the saved facing slot for owned recovery. */
+            (WorldUnstuck_OwnsFieldInput() ? task->data[15] : task->data[14])
+#else
+            task->data[14]
+#endif
+            == objectEvent->facingDirection)
         {
+#if defined(PORTABLE) && !defined(_WIN32)
+            enum WorldUnstuckArrival result = WorldUnstuck_CompleteArrival();
+            if (result == UNSTUCK_ARRIVAL_HOLD)
+            {
+                task->data[2] = 5;
+                return;
+            }
+            if (result == UNSTUCK_ARRIVAL_RETURN)
+            {
+                WarpIntoMap();
+                SetMainCallback2(CB2_LoadMap);
+                gFieldCallback = FieldCallback_TeleportWarpIn;
+                DestroyTask(FindTaskIdByFunc(Task_TeleportWarpIn));
+                return;
+            }
+#endif
             UnlockPlayerFieldControls();
             CameraObjectReset();
             UnfreezeObjectEvents();

@@ -1,0 +1,11 @@
+--- a/src/platform/world_bridge.c
++++ b/src/platform/world_bridge.c
+@@ -226,7 +226,7 @@
+     const char *phase = WorldActivity_Phase();
+     bool8 native = activity && (!strcmp(phase, "native") || !strcmp(phase, "connecting")
+         || !strcmp(phase, "returning") || WorldActivity_IsEncounterPending());
+-    if (!gSaveBlock1Ptr || (!native && gMain.callback1 != CB1_Overworld)
++    if (!gSaveBlock1Ptr || (!native && (gMain.inBattle || gMain.callback1 != CB1_Overworld))
+      || (sWorld.fieldKnown
+       && (sWorld.field.group != (unsigned)gSaveBlock1Ptr->location.mapGroup
+        || sWorld.field.num != (unsigned)gSaveBlock1Ptr->location.mapNum))) {

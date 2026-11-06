@@ -1,4 +1,6 @@
 #include "global.h"
+#include "move.h"
+#include "pokemon.h"
 #include "malloc.h"
 #include "bard_music.h"
 #include "bg.h"
@@ -5208,10 +5210,10 @@ static const u8 *GetEasyChatWord(u8 groupId, u16 index)
     {
     case EC_GROUP_POKEMON:
     case EC_GROUP_POKEMON_NATIONAL:
-        return gSpeciesNames[index];
+        return gSpeciesInfo[index].speciesName;
     case EC_GROUP_MOVE_1:
     case EC_GROUP_MOVE_2:
-        return gMoveNames[index];
+        return gMovesInfo[index].name;
     default:
         return gEasyChatGroups[groupId].wordData.words[index].text;
     }

@@ -4,6 +4,18 @@ from pathlib import Path
 import socket
 
 
+def installed_content_id():
+    """Read the manifest packaged beside this library, never the world directory."""
+    import re
+    value = json.loads(Path(__file__).with_name('content_compat.json').read_text('ascii'))
+    if (type(value) is not dict or set(value) != {'schema', 'content_id'}
+            or type(value['schema']) is not int or value['schema'] != 1
+            or not isinstance(value['content_id'], str)
+            or not re.fullmatch(r'[0-9a-f]{64}', value['content_id'])):
+        raise ValueError('invalid installed content manifest')
+    return value['content_id']
+
+
 def admin_request(socket_path, request, timeout=5, admin_path=None):
     if admin_path is None:
         path = Path(socket_path)
@@ -20,9 +32,16 @@ def admin_request(socket_path, request, timeout=5, admin_path=None):
             return json.loads(raw)
 
 
+_INSTALLED_CONTENT = object()
+
+
 class WorldClient:
-    """A single authenticated session. Each snapshot replaces the previous one."""
-    def __init__(self, socket_path, trainer_id, token, timeout=5, *, control=False, social=False):
+    """A single authenticated session. Each snapshot replaces the previous one.
+
+    content_id=None explicitly emulates a legacy native client without DATA.
+    """
+    def __init__(self, socket_path, trainer_id, token, timeout=5, *, control=False, social=False,
+                 rules=None, content_id=_INSTALLED_CONTENT):
         from .server import ID, HEX
         if not ID.fullmatch(trainer_id) or not HEX.fullmatch(token):
             raise ValueError('invalid credentials')
@@ -32,10 +51,22 @@ class WorldClient:
         self.control = control
         self.social = social
         self.trainer_id = trainer_id
+        self.rules = rules
         try:
             self.sock.connect(str(socket_path))
             self.stream = self.sock.makefile('rb')
             suffix = ' CONTROL' if control else (' SOCIAL' if social else '')
+            if rules is not None and not control:
+                from .rules import wire
+                suffix += ' RULES ' + wire(rules)
+            if not control:
+                import re
+                if content_id is _INSTALLED_CONTENT:
+                    content_id = installed_content_id()
+                if content_id is not None:
+                    if not isinstance(content_id, str) or not re.fullmatch(r'[0-9a-f]{64}', content_id):
+                        raise ValueError('invalid content ID')
+                    suffix += ' DATA ' + content_id
             self.sock.sendall(f'HELLO 1 {trainer_id} {token}{suffix}\n'.encode('ascii'))
             welcome = self._line().split()
             if (len(welcome) != (5 if control else 4) or welcome[:3] != ['WELCOME', '1', trainer_id]

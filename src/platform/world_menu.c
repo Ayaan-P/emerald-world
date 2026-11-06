@@ -20,6 +20,9 @@
 #include "platform/world_activity.h"
 #include "platform/world_bridge.h"
 #include "platform/world_menu.h"
+#include "platform/world_unstuck.h"
+#include "platform/world_rules.h"
+#include "platform/mega_game.h"
 #include "platform/world_rally.h"
 #include "platform/world_travel.h"
 #include "constants/characters.h"
@@ -31,9 +34,9 @@
 
 /* One field window, not another Start-menu row or another input consumer.
  * Lists are rebuilt from live state, but focus is an action identity. */
-enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, RALLY, DISPATCH };
-enum Action { FRIENDS, STORY, DEXNAV, PARTY_EXP, REUSABLE_TMS, MOVE_SPLIT, BACK, MODE, SCOPE, REQUEST, READY,
-    LATER, CANCEL, GO, FINISH, RETURN, STAY, ACTION_COUNT };
+enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, RECOVERY, RALLY, DISPATCH };
+enum Action { FRIENDS, STORY, DEXNAV, PARTY_EXP, REUSABLE_TMS, MOVE_SPLIT, MEGA_RULE, ROSTER_RULE, BACK, MODE, SCOPE, REQUEST, READY,
+    LATER, CANCEL, GO, FINISH, RETURN, STAY, UNSTUCK, UNSTUCK_YES, UNSTUCK_NO, ACTION_COUNT };
 enum Page { CONTROLS, ROSTER, STATUS, PAGE_COUNT };
 enum { WORLD_MENU_WIDTH = 28, WORLD_MENU_HEIGHT = 18, LINE_HEIGHT = 12,
     SCREEN_LINES = WORLD_MENU_HEIGHT * 8 / LINE_HEIGHT, TEXT_BYTES = 96 };
@@ -58,7 +61,11 @@ static bool8 FieldContext(void)
         && !ScriptContext_IsEnabled() && !gPlayerAvatar.tileTransitionState
         && !gWirelessCommType && !IsOverworldLinkActive() && !NativeLink_IsActive()
         && !WorldActivity_OwnsFieldInput() && !WorldTravel_OwnsFieldInput()
-        && !WorldTravel_NativeFlyRunning();
+        && !WorldTravel_NativeFlyRunning()
+#if !defined(_WIN32)
+        && !WorldUnstuck_OwnsFieldInput()
+#endif
+        ;
 }
 
 static bool8 FreeField(void)
@@ -141,6 +148,15 @@ static void AddRow(struct Row *rows, unsigned *count, enum Action action,
     rows[(*count)++] = (struct Row){action, label, reason};
 }
 
+static const char *MegaReason(void)
+{
+#if MEGA_FEATURE_READY
+    return "World owner setting. Some forms need modern host settings. Use owner launcher settings.";
+#else
+    return "World owner setting. Mega is unavailable in this build.";
+#endif
+}
+
 static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 online)
 {
     unsigned n = 0, member = MemberState(r);
@@ -150,15 +166,27 @@ static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 onlin
     const char *network = online ? NULL : "No fresh rally snapshot. Connect to a rally-enabled world.";
     const char *eligible = network ? network : personal;
     const char *approach = eligible ? eligible : ApproachReason();
+    if (sMenu.state == RECOVERY)
+    {
+        AddRow(rows, &n, UNSTUCK_YES, "Yes, return to safety", NULL);
+        AddRow(rows, &n, UNSTUCK_NO, "No", NULL);
+        return n;
+    }
     if (sMenu.state == FEATURES)
     {
         AddRow(rows, &n, FRIENDS, "Friends", WorldBridge_Enabled() ? NULL : "Connect to a world to visit friends.");
         AddRow(rows, &n, STORY, "Story rally", NULL);
         AddRow(rows, &n, DEXNAV, "DexNav", DexNavNative_Available() ? NULL :
             "DexNav needs a Pokedex and conscious party outside restricted or link areas.");
-        AddRow(rows, &n, PARTY_EXP, FlagGet(FLAG_PARTY_EXP_SHARE) ? "Party EXP: ON" : "Party EXP: OFF", NULL);
-        AddRow(rows, &n, REUSABLE_TMS, FlagGet(FLAG_REUSABLE_TMS) ? "Reusable TMs: ON" : "Reusable TMs: OFF", NULL);
-        AddRow(rows, &n, MOVE_SPLIT, FlagGet(FLAG_MODERN_MOVE_SPLIT) ? "Move split: ON" : "Move split: OFF", NULL);
+        AddRow(rows, &n, PARTY_EXP, WorldRules_Enabled(WORLD_RULE_PARTY_EXP) ? "Party EXP: ON" : "Party EXP: OFF", NULL);
+        AddRow(rows, &n, REUSABLE_TMS, WorldRules_Enabled(WORLD_RULE_REUSABLE_TMS) ? "Reusable TMs: ON" : "Reusable TMs: OFF", NULL);
+        AddRow(rows, &n, MOVE_SPLIT, WorldRules_Enabled(WORLD_RULE_MODERN_SPLIT) ? "Move split: ON" : "Move split: OFF", NULL);
+        AddRow(rows, &n, ROSTER_RULE, WorldRules_Enabled(WORLD_RULE_EXPANDED_ROSTER) ? "Expanded roster: ON" : "Expanded roster: OFF", "World owner setting. Change it in launcher settings.");
+        AddRow(rows, &n, MEGA_RULE, WorldRules_Enabled(WORLD_RULE_MEGA_EVOLUTION) ? "Mega: ON" : "Mega: OFF", MegaReason());
+#if !defined(_WIN32)
+        AddRow(rows, &n, UNSTUCK, "Unstuck", sMenu.offerPending ?
+            "Cancel your pending rally request before using Unstuck." : NULL);
+#endif
         AddRow(rows, &n, BACK, "Back", NULL);
         return n;
     }
@@ -262,9 +290,9 @@ static void Draw(const struct Row *rows, unsigned count, unsigned selected,
     char text[TEXT_BYTES];
     u8 encoded[TEXT_BYTES];
     unsigned i;
-    if (sMenu.state == FEATURES)
+    if (sMenu.state == FEATURES || sMenu.state == RECOVERY)
     {
-        Line(&screen, 0, "WORLD");
+        Line(&screen, 0, sMenu.state == RECOVERY ? "Return to your last safe place?" : "WORLD");
         Line(&screen, 1, "Up/Down choose. A open. B close.");
     }
     else
@@ -273,15 +301,17 @@ static void Draw(const struct Row *rows, unsigned count, unsigned selected,
         Line(&screen, 0, text);
         Line(&screen, 1, "Left/Right controls roster status");
     }
-    if (sMenu.state == FEATURES || sMenu.page == CONTROLS)
+    if (sMenu.state == FEATURES || sMenu.state == RECOVERY || sMenu.page == CONTROLS)
     {
-        for (i = 0; i < count; i++)
+        unsigned first = selected >= 7 ? selected - 6 : 0;
+        for (i = first; i < count && i < first + 7; i++)
         {
             snprintf(text, sizeof(text), "%s%s%s", i == selected ? "> " : "  ",
                 rows[i].reason ? "X " : "", rows[i].label);
-            Line(&screen, 2 + i, text);
+            Line(&screen, 2 + i - first, text);
         }
         Wrap(&screen, 9, SCREEN_LINES, rows[selected].reason ? rows[selected].reason :
+            sMenu.state == RECOVERY ? "Five-minute wait unless boxed in. Your party, items and story are not rolled back." :
             sMenu.notice ? sMenu.notice : sMenu.focus == GO ?
             "Go on leaves invited, not-yet and busy guests behind." :
             sMenu.focus == MODE ? "AUTO-JOIN still checks your own save and free field. ASK never auto-accepts." :
@@ -360,6 +390,20 @@ static void Dispatch(void)
      * backend's fresh report queue and normal STATE publication intervals. */
     if (++sMenu.freeFrames < 2) return;
     sMenu.state = CLOSED;
+#if !defined(_WIN32)
+    if (sMenu.pending == UNSTUCK_YES)
+    {
+        enum WorldUnstuckUseResult result = WorldUnstuck_Begin();
+        if (result != UNSTUCK_USE_STARTED)
+        {
+            sMenu.notice = result == UNSTUCK_USE_COOLDOWN ? "Please wait before using Unstuck again." :
+                result == UNSTUCK_USE_STORAGE_ERROR ? "Could not safely check the cooldown." :
+                "Unstuck is unavailable here. No recovery was started.";
+            sMenu.state = OPEN_REQUEST;
+        }
+        return;
+    }
+#endif
     if (sMenu.pending == FRIENDS) { WorldTravel_RequestMenu(); return; }
     if (sMenu.pending == DEXNAV)
     {
@@ -455,8 +499,8 @@ void WorldMenu_Update(void)
     if (JOY_NEW(B_BUTTON))
     {
         if (sMenu.state == FEATURES) { Close(); return; }
+        sMenu.focus = sMenu.state == RECOVERY ? UNSTUCK : STORY;
         sMenu.state = FEATURES;
-        sMenu.focus = STORY;
         sMenu.dirty = TRUE;
         return;
     }
@@ -465,7 +509,7 @@ void WorldMenu_Update(void)
         sMenu.page = (sMenu.page + (JOY_NEW(DPAD_LEFT) ? PAGE_COUNT - 1 : 1)) % PAGE_COUNT;
         sMenu.dirty = TRUE;
     }
-    if (sMenu.state == FEATURES || sMenu.page == CONTROLS)
+    if (sMenu.state == FEATURES || sMenu.state == RECOVERY || sMenu.page == CONTROLS)
     {
         if (JOY_REPEAT(DPAD_UP) && selected) selected--;
         if (JOY_REPEAT(DPAD_DOWN) && selected + 1 < count) selected++;
@@ -489,24 +533,43 @@ void WorldMenu_Update(void)
                 sMenu.dirty = TRUE;
                 return;
             }
+#if !defined(_WIN32)
+            else if (sMenu.focus == UNSTUCK)
+            {
+                sMenu.state = RECOVERY;
+                sMenu.page = CONTROLS;
+                sMenu.focus = UNSTUCK_NO;
+                sMenu.notice = NULL;
+                sMenu.dirty = TRUE;
+                return;
+            }
+            else if (sMenu.focus == UNSTUCK_NO)
+            {
+                sMenu.state = FEATURES;
+                sMenu.focus = UNSTUCK;
+                sMenu.dirty = TRUE;
+                return;
+            }
+#endif
             else if (sMenu.focus == PARTY_EXP)
             {
-                if (FlagGet(FLAG_PARTY_EXP_SHARE)) FlagClear(FLAG_PARTY_EXP_SHARE);
-                else FlagSet(FLAG_PARTY_EXP_SHARE);
-                sMenu.notice = "Party EXP changed. Save the game to keep this setting.";
+                /* World policy is immutable for the lifetime of this game. */
+                sMenu.notice = "World rules are read-only. Use owner launcher settings.";
             }
             else if (sMenu.focus == REUSABLE_TMS)
             {
-                if (FlagGet(FLAG_REUSABLE_TMS)) FlagClear(FLAG_REUSABLE_TMS);
-                else FlagSet(FLAG_REUSABLE_TMS);
-                sMenu.notice = "Reusable TMs changed. Save the game to keep this setting.";
+                /* World policy is immutable for the lifetime of this game. */
+                sMenu.notice = "World rules are read-only. Use owner launcher settings.";
             }
             else if (sMenu.focus == MOVE_SPLIT)
             {
-                if (FlagGet(FLAG_MODERN_MOVE_SPLIT)) FlagClear(FLAG_MODERN_MOVE_SPLIT);
-                else FlagSet(FLAG_MODERN_MOVE_SPLIT);
-                sMenu.notice = "Move split changed. Save the game to keep this setting.";
+                /* World policy is immutable for the lifetime of this game. */
+                sMenu.notice = "World rules are read-only. Use owner launcher settings.";
             }
+            else if (sMenu.focus == ROSTER_RULE)
+                sMenu.notice = "World rules are read-only. Use owner launcher settings.";
+            else if (sMenu.focus == MEGA_RULE)
+                sMenu.notice = MegaReason();
             else if (sMenu.focus == MODE) WorldRally_SetAutoJoin(!WorldRally_GetAutoJoin());
             else if (sMenu.focus == SCOPE) sMenu.scope ^= 1;
             else { Queue(sMenu.focus, r.id); return; }

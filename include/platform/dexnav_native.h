@@ -15,7 +15,7 @@ struct DexNavNativeState
     u16 registeredSpecies;
     u16 detectorSteps;
     u8 dexNavChain;
-    u8 dexNavSearchLevels[NUM_SPECIES];
+    u8 dexNavSearchLevels[SPECIES_TABLE_COUNT];
     bool8 searching;
 };
 extern struct DexNavNativeState gDexNavNativeState;
@@ -37,6 +37,10 @@ void DexNavNative_SetBattleOwner(u16 species);
 bool8 DexNavNative_OwnsWildMon(void);
 
 u16 DexNavNative_GetHeader(void);
+/* Pure extra-variant lookup for a map slot, never a chosen hunt. */
+u16 DexNavNative_ResolveSpecies(u16 species);
+/* Base entries first, then deduplicated extras. Overflow fails GUI resources. */
+bool8 DexNavNative_CollectSpecies(const struct WildPokemonInfo *info, u8 slots, u16 *out, u8 capacity);
 const struct WildPokemonInfo *DexNavNative_GetHiddenInfo(u16 headerId);
 u8 DexNavNative_Ability(u16 species, u8 abilityNum);
 u8 DexNavNative_Type(u16 species, u8 typeNum);
@@ -52,6 +56,7 @@ bool8 DexNavNative_AcquireFieldResources(u16 species, bool8 owned, bool8 hidden)
 void DexNavNative_ReleaseFieldResources(void);
 u8 DexNavNative_ItemPalette(void);
 bool8 DexNavNative_TextBadges(void);
+bool8 DexNavNative_TextOnlyHud(void);
 bool8 DexNavNative_CanUseHudWindow(u8 width, u8 height);
 u8 DexNavNative_CreateMonIcon(u16 species, s16 x, s16 y, u8 priority);
 void DexNavNative_FreeIcons(void);

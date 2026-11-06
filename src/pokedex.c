@@ -1,4 +1,8 @@
 #include "global.h"
+#include "pokemon.h"
+#ifdef PORTABLE
+#include "platform/expanded_species.h"
+#endif
 #include "battle_main.h"
 #include "bg.h"
 #include "data.h"
@@ -1396,6 +1400,9 @@ static const struct SearchOptionText sDexSearchTypeOptions[NUMBER_OF_MON_TYPES +
     {gText_DexEmptyString, gTypeNames[TYPE_ICE]},
     {gText_DexEmptyString, gTypeNames[TYPE_DRAGON]},
     {gText_DexEmptyString, gTypeNames[TYPE_DARK]},
+#ifdef PORTABLE
+    {gText_DexEmptyString, gTypeNames[TYPE_FAIRY]},
+#endif
     {},
 };
 
@@ -1430,6 +1437,9 @@ static const u8 sDexSearchTypeIds[NUMBER_OF_MON_TYPES] =
     TYPE_ICE,
     TYPE_DRAGON,
     TYPE_DARK,
+#ifdef PORTABLE
+    TYPE_FAIRY,
+#endif
 };
 
 // Number pairs are the task data for tracking the cursor pos and scroll offset of each option list
@@ -2449,7 +2459,7 @@ static u8 CreateMonName(u16 num, u8 left, u8 top)
 
     num = NationalPokedexNumToSpecies(num);
     if (num)
-        str = gSpeciesNames[num];
+        str = gSpeciesInfo[num].speciesName;
     else
         str = sText_TenDashes;
     PrintMonDexNumAndName(0, FONT_NARROW, str, left, top);
@@ -4114,15 +4124,25 @@ static void PrintMonInfo(u32 num, u32 value, u32 owned, u32 newEntry)
 
     if (newEntry)
         PrintInfoScreenText(gText_PokedexRegistration, GetStringCenterAlignXOffset(FONT_NORMAL, gText_PokedexRegistration, DISPLAY_WIDTH), 0);
+#ifdef PORTABLE
+    /* Added species have no Hoenn number. Their registration retains the
+     * National number without changing the trainer's selected Dex mode. */
+    if (ExpandedSpecies_FromNationalDexNumber(num) != SPECIES_NONE)
+        value = TRUE;
+#endif
     if (value == 0)
         value = NationalToHoennOrder(num);
     else
         value = num;
+#ifdef PORTABLE
+    ConvertIntToDecimalStringN(StringCopy(str, gText_NumberClear01), value, STR_CONV_MODE_LEADING_ZEROS, value > 999 ? 4 : 3);
+#else
     ConvertIntToDecimalStringN(StringCopy(str, gText_NumberClear01), value, STR_CONV_MODE_LEADING_ZEROS, 3);
+#endif
     PrintInfoScreenText(str, 0x60, 0x19);
     natNum = NationalPokedexNumToSpecies(num);
     if (natNum)
-        name = gSpeciesNames[natNum];
+        name = gSpeciesInfo[natNum].speciesName;
     else
         name = sText_TenDashes2;
     PrintInfoScreenText(name, 0x84, 0x19);
@@ -4271,6 +4291,13 @@ s8 GetSetPokedexFlag(u16 nationalDexNo, u8 caseID)
     u8 mask;
     s8 retVal;
 
+#ifdef PORTABLE
+    /* Supplemental IDs must never reach the legacy saved bitsets. */
+    if (ExpandedSpecies_FromNationalDexNumber(nationalDexNo) != SPECIES_NONE)
+        return ExpandedDex_GetSetFlag(nationalDexNo, caseID);
+    if (nationalDexNo == 0 || nationalDexNo > NATIONAL_DEX_COUNT)
+        return FALSE;
+#endif
     nationalDexNo--;
     index = nationalDexNo / 8;
     bit = nationalDexNo % 8;
@@ -4341,6 +4368,14 @@ u16 GetNationalPokedexCount(u8 caseID)
             break;
         }
     }
+#ifdef PORTABLE
+    /* Only the three selected runtime entries supplement the legacy total. */
+    if (caseID == FLAG_GET_SEEN || caseID == FLAG_GET_CAUGHT)
+        for (i = NUM_SPECIES; i < SPECIES_TABLE_COUNT; ++i)
+            if (ExpandedSpecies_IsPlayable(i)
+                && GetSetPokedexFlag(ExpandedSpecies_NationalDexNumber(i), caseID))
+                ++count;
+#endif
     return count;
 }
 
@@ -4512,8 +4547,8 @@ static u8 PrintCryScreenSpeciesName(u8 windowId, u16 num, u8 left, u8 top)
     switch (num)
     {
     default:
-        for (i = 0; gSpeciesNames[num][i] != EOS && i < POKEMON_NAME_LENGTH; i++)
-            str[i] = gSpeciesNames[num][i];
+        for (i = 0; gSpeciesInfo[num].speciesName[i] != EOS && i < POKEMON_NAME_LENGTH; i++)
+            str[i] = gSpeciesInfo[num].speciesName[i];
         break;
     case 0:
         for (i = 0; i < 5; i++)
@@ -4708,7 +4743,7 @@ static int DoPokedexSearch(u8 dexMode, u8 order, u8 abcGroup, u8 bodyColor, u8 t
             u8 firstLetter;
 
             species = NationalPokedexNumToSpecies(sPokedexView->pokedexList[i].dexNum);
-            firstLetter = gSpeciesNames[species][0];
+            firstLetter = gSpeciesInfo[species].speciesName[0];
             if (LETTER_IN_RANGE_UPPER(firstLetter, abcGroup) || LETTER_IN_RANGE_LOWER(firstLetter, abcGroup))
             {
                 sPokedexView->pokedexList[resultsCount] = sPokedexView->pokedexList[i];

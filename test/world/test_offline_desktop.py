@@ -17,7 +17,8 @@ class OfflineDesktopTests(unittest.TestCase):
             root = Path(tmp)
             session = DesktopSession(root)
             calls = []
-            def command(binary, state, paths, display, *, online):
+            def command(binary, state, paths, display, *, online, agent_control=False):
+                self.assertFalse(agent_control)
                 calls.append((state, paths, online))
                 return ['/usr/bin/sleep', '30']
             try:

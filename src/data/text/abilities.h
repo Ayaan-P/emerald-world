@@ -76,6 +76,12 @@ static const u8 sPurePowerDescription[] = _("Raises ATTACK.");
 static const u8 sShellArmorDescription[] = _("Blocks critical hits.");
 static const u8 sCacophonyDescription[] = _("Avoids sound-based moves.");
 static const u8 sAirLockDescription[] = _("Negates weather effects.");
+#ifdef PORTABLE
+/* Descriptions from Expansion bb3fd057, with native uppercase name styling. */
+static const u8 sTechnicianDescription[] = _("Powers up weak moves.");
+static const u8 sAdaptabilityDescription[] = _("Powers up same-type moves.");
+static const u8 sToughClawsDescription[] = _("Powers up contact moves.");
+#endif
 
 const u8 gAbilityNames[ABILITIES_COUNT][ABILITY_NAME_LENGTH + 1] =
 {
@@ -157,6 +163,11 @@ const u8 gAbilityNames[ABILITIES_COUNT][ABILITY_NAME_LENGTH + 1] =
     [ABILITY_SHELL_ARMOR] = _("SHELL ARMOR"),
     [ABILITY_CACOPHONY] = _("CACOPHONY"),
     [ABILITY_AIR_LOCK] = _("AIR LOCK"),
+#ifdef PORTABLE
+    [ABILITY_TECHNICIAN] = _("TECHNICIAN"),
+    [ABILITY_ADAPTABILITY] = _("ADAPTABILITY"),
+    [ABILITY_TOUGH_CLAWS] = _("TOUGH CLAWS"),
+#endif
 };
 
 const u8 *const gAbilityDescriptionPointers[ABILITIES_COUNT] =
@@ -239,4 +250,9 @@ const u8 *const gAbilityDescriptionPointers[ABILITIES_COUNT] =
     [ABILITY_SHELL_ARMOR] = sShellArmorDescription,
     [ABILITY_CACOPHONY] = sCacophonyDescription,
     [ABILITY_AIR_LOCK] = sAirLockDescription,
+#ifdef PORTABLE
+    [ABILITY_TECHNICIAN] = sTechnicianDescription,
+    [ABILITY_ADAPTABILITY] = sAdaptabilityDescription,
+    [ABILITY_TOUGH_CLAWS] = sToughClawsDescription,
+#endif
 };

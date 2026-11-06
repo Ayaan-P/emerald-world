@@ -35,7 +35,7 @@ def checksum(data, size):
 
 
 def decode_text(data):
-    """Decodes Gen 3 text (letters, digits and spaces only)."""
+    """Decodes Gen 3 letters, digits, spaces and the native name colon."""
     out = []
     for byte in data:
         if byte == 0xFF:
@@ -48,6 +48,8 @@ def decode_text(data):
             out.append(chr(ord("0") + byte - 0xA1))
         elif byte == 0x00:
             out.append(" ")
+        elif byte == 0xF0:
+            out.append(":")
         else:
             out.append("?")
     return "".join(out)

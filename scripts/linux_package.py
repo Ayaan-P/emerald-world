@@ -64,7 +64,16 @@ def assemble(binary, web_dist, version, output):
     if output.exists() or output.is_relative_to(web_dist):
         raise ValueError('Output must be fresh and outside the web distribution')
     runtime = elf_requirements(binary)
-    frozen = {'build/pokeemerald64': (binary.read_bytes(), 0o755)}
+    binary_payload = binary.read_bytes()
+    content_payload = plain(REPO / 'world/content_compat.json').read_bytes()
+    content = json.loads(content_payload)
+    if (type(content) is not dict or set(content) != {'schema', 'content_id'}
+            or type(content['schema']) is not int or content['schema'] != 1
+            or type(content['content_id']) is not str
+            or re.fullmatch(r'[0-9a-f]{64}', content['content_id']) is None
+            or content['content_id'].encode('ascii') not in binary_payload):
+        raise ValueError('Native binary does not match the packaged content compatibility manifest; rebuild together')
+    frozen = {'build/pokeemerald64': (binary_payload, 0o755)}
     # Only Git-tracked top-level world Python modules. Never recurse over a
     # checkout, private state, build tree, dependency sysroot or developer venv.
     tracked = subprocess.run(['git', '-C', str(REPO), 'ls-files', '-z', 'world/*.py'],
@@ -78,11 +87,16 @@ def assemble(binary, web_dist, version, output):
         ('vendor/expansion-dexnav/README.md', 'credits/expansion/README.md'),
         ('vendor/expansion-dexnav/upstream/CREDITS.md', 'credits/expansion/CREDITS.md'),
         ('vendor/expansion-dexnav/provenance.json', 'credits/expansion/provenance.json'),
+        ('tools/expanded/coverage.json', 'credits/expanded/catalog.json'),
+        ('tools/expanded/assets.json', 'credits/expanded/assets.json'),
+        ('tools/expanded_moves/coverage.json', 'credits/expanded/moves.json'),
     ]:
         frozen[name] = (plain(REPO / source).read_bytes(), 0o644)
-    # Generated safety catalog is the only non-Python world runtime asset.
-    # Runtime catalog reads do not require source data/maps or build tools.
+    # One reviewed player-facing scope document, never the whole docs tree.
+    frozen['RC4_SCOPE.md'] = (plain(REPO / 'docs/RC4_PLAYER_SCOPE.md').read_bytes(), 0o644)
+    # Fixed non-Python runtime manifests; never recurse into private state.
     frozen['world/map_catalog.json'] = (plain(REPO / 'world/map_catalog.json').read_bytes(), 0o644)
+    frozen['world/content_compat.json'] = (content_payload, 0o644)
     frozen['scripts/__init__.py'] = (b'', 0o644)  # Prevent an installed scripts package shadowing this helper.
     for source, name in [('linux_client.py', 'scripts/linux_client.py'),
                          ('linux_bundle_entry.py', 'entry.py'),

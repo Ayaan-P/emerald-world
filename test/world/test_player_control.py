@@ -302,7 +302,7 @@ int main(int argc, char **argv) {
     def test_sdl_hooks_and_bad_config(self):
         source = (ROOT / 'src/platform/sdl2.c').read_text()
         self.assertIn('"--player-control"', source)
-        self.assertLess(source.index('PlayerControl_Init('), source.index('ReadSaveFile(sSavePath);'))
+        self.assertLess(source.index('PlayerControl_Init('), source.index('if (!ReadSaveFile(sSavePath))'))
         self.assertIn('PlayerControl_BeforeFrame();', source)
         self.assertIn('PlayerControl_AfterFrame(', source)
 

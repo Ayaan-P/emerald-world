@@ -28,6 +28,7 @@ PREAMBLE = r'''
 #include <assert.h>
 #include "constants/pokemon.h"
 #include "constants/species.h"
+#include "constants/expanded_species.h"
 #include "constants/global.h"
 #include "constants/moves.h"
 #include "constants/items.h"
@@ -44,6 +45,19 @@ typedef int16_t s16; typedef int32_t s32; typedef u8 bool8;
 #define PARTY_SIZE 6
 #define MAX_MON_MOVES 4
 #define BLOCK_BUFFER_SIZE 256
+#include "platform/mega_game.h"
+#include "platform/mega_wire.h"
+#include "platform/mega_forms.h"
+#include "platform/world_rules.h"
+/* These transport cases run with Mega disabled by world policy. Dedicated
+ * Mega controller tests exercise the enabled adapter and actual form data. */
+bool8 WorldRules_Enabled(u32 rule) { (void)rule; return FALSE; }
+u32 NativeLink_Generation(void) { return 17; }
+bool8 MegaGame_ReplyAllowed(u8 b, u8 a) { (void)b; (void)a; return FALSE; }
+bool8 MegaGame_CanQueue(u8 b) { (void)b; return FALSE; }
+bool8 MegaGame_ValidateMoveChoice(u8 b, u8 c, u8 t) { (void)b; (void)t; return !(c & MEGA_MOVE_CHOICE_BIT); }
+bool8 MegaGame_ObserveForm(u8 b, u8 f, u8 p) { (void)b; (void)f; (void)p; return FALSE; }
+void MegaGame_RefreshSprite(u8 b) { (void)b; }
 #define BATTLE_BUFFER_LINK_SIZE 4096
 #define ARRAY_COUNT(a) (sizeof(a)/sizeof((a)[0]))
 struct Task { s16 data[16]; };
@@ -105,6 +119,9 @@ class LinkBattlePayloadTests(unittest.TestCase):
         helpers = ''
         if '/* Native battle payload boundary. */' in source:
             helpers = source.split('/* Native battle payload boundary. */', 1)[1].split('/* End native battle payload boundary. */', 1)[0]
+            # Publishing is an unrelated outgoing engine service, not part of
+            # the incoming validation/queue seam exercised by this fixture.
+            helpers = helpers.replace(function(source, 'MegaGame_PublishForm'), '')
         structs = ''
         for filename, names in [('include/battle.h', ['DisableStruct']), ('include/pokemon.h', ['BattlePokemon']), ('include/battle_message.h', ['BattleMsgData']), ('include/battle_controllers.h', ['HpAndStatus', 'ChooseMoveStruct'])]:
             text = (ROOT / filename).read_text()
@@ -115,7 +132,13 @@ class LinkBattlePayloadTests(unittest.TestCase):
         actions = '\n'.join(line for line in battle.splitlines() if line.startswith('#define B_ACTION_')) + '\n'
         state_start = source.index('static bool8 sNativeBattlePayloadFailed;')
         state = source[state_start:source.index('#endif', state_start)]
-        code = PREAMBLE + state + actions + structs + enums + flags + macros + offsets + helpers
+        # Extract the current production switch and resolve its generated cases
+        # against the real source tree, just like the native roster fixture.
+        expanded = function((ROOT / 'src/platform/expanded_species.c').read_text(),
+                            'ExpandedSpecies_IsPlayable')
+        expanded = expanded.replace('"../data/pokemon/expanded/playable_cases.inc"',
+                                    '"' + str(ROOT / 'src/data/pokemon/expanded/playable_cases.inc') + '"')
+        code = PREAMBLE + expanded + '\n' + state + actions + structs + enums + flags + macros + offsets + helpers
         code += '''
 static void WorldCoop_ObserveMonData(u8 battler, u8 slot, const struct BattlePokemon *mon) {
     (void)mon; observedMon++; observedBattler=battler; observedSlot=slot;
@@ -681,9 +704,10 @@ static void WorldCoop_ObserveController(u8 battler, const u8 *data) {
  u8 *p=(u8 *)gBlockRecvBuffer[source]; p[0]=B_COMM_TO_CONTROLLER; p[4]=244;
  p[8]=CONTROLLER_32; p[9]=236; receivedSize=252;
  for (unsigned i=0; i<100; i++) {
-   p[11]=(u8)i;
+   /* Avoid the reserved Mega-wire magic while exercising 100 legal wraps. */
+   p[11]=(u8)(i+128);
    TryReceiveLinkBattleData(); Task_HandleCopyReceivedLinkBuffersData(0);
-   assert(!aborted && !gLinkErrorOccurred && gBattleBufferA[0][3]==(u8)i);
+   assert(!aborted && !gLinkErrorOccurred && gBattleBufferA[0][3]==(u8)(i+128));
    assert(gTasks[0].tCurrentBlock_Start==gTasks[0].tCurrentBlock_End);
  }
  ''')

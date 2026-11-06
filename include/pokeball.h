@@ -1,22 +1,7 @@
 #ifndef GUARD_POKEBALL_H
 #define GUARD_POKEBALL_H
 
-enum
-{
-    BALL_POKE,
-    BALL_GREAT,
-    BALL_SAFARI,
-    BALL_ULTRA,
-    BALL_MASTER,
-    BALL_NET,
-    BALL_DIVE,
-    BALL_NEST,
-    BALL_REPEAT,
-    BALL_TIMER,
-    BALL_LUXURY,
-    BALL_PREMIER,
-    POKEBALL_COUNT
-};
+#include "constants/pokeball.h"
 
 enum {
     BALL_AFFINE_ANIM_0,

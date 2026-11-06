@@ -14,6 +14,55 @@
 #include "config.h" // we need to define config before gba headers as print stuff needs the functions nulled before defines.
 #include "gba/gba.h"
 #include "gametypes.h"
+#define TESTING 0
+#define IS_FRLG 0
+#define ENABLED_ON_RELEASE FALSE
+#define DISABLED_ON_RELEASE TRUE
+#define TESTING 0
+#define IS_FRLG 0
+#define ENABLED_ON_RELEASE FALSE
+#define DISABLED_ON_RELEASE TRUE
+#define GEN_1 0
+#define GEN_2 1
+#define GEN_3 2
+#define GEN_4 3
+#define GEN_5 4
+#define GEN_6 5
+#define GEN_7 6
+#define GEN_8 7
+#define GEN_9 8
+#define GEN_CHAMPIONS (GEN_9 + 1)
+#define GEN_COUNT (GEN_CHAMPIONS + 1)
+/* Vanilla remains the default rule set on the expansion implementation. */
+#define GEN_LATEST GEN_3
+#include "fpmath.h"
+#include "metaprogram.h"
+#include "assertf.h"
+#include "constants/items.h"
+#include "constants/moves.h"
+#include "constants/pokemon.h"
+#include "constants/battle.h"
+#include "config/contest.h"
+#include "config/item.h"
+#include "config/debug.h"
+#include "config/caps.h"
+#include "config/debug.h"
+#include "config/caps.h"
+#include "config/battle.h"
+#include "config/pokemon.h"
+#include "config/wild_encounter.h"
+#include "config/overworld.h"
+#define ARM_FUNC
+#define PACKED __attribute__((packed))
+#define ALWAYS_INLINE inline __attribute__((always_inline))
+#define TRANSPARENT __attribute__((__transparent_union__))
+#define NONNULL __attribute__((__nonnull__))
+#define DEPRECATED(msg)
+#include "constants/pokeball.h"
+#include "constants/difficulty.h"
+struct TrainerMon;
+struct ExpansionTrainer;
+struct ScriptContext;
 #include "constants/global.h"
 #include "constants/flags.h"
 #include "constants/vars.h"
@@ -68,24 +117,6 @@ int strcmp(const char *, const char*);
 
 // useful math macros
 
-// Converts a number to Q8.8 fixed-point format
-#define Q_8_8(n) ((s16)((n) * 256))
-
-// Converts a number to Q4.12 fixed-point format
-#define Q_4_12(n)  ((s16)((n) * 4096))
-
-// Converts a number to Q24.8 fixed-point format
-#define Q_24_8(n)  ((s32)((n) << 8))
-
-// Converts a Q8.8 fixed-point format number to a regular integer
-#define Q_8_8_TO_INT(n) ((int)((n) / 256))
-
-// Converts a Q4.12 fixed-point format number to a regular integer
-#define Q_4_12_TO_INT(n)  ((int)((n) / 4096))
-
-// Converts a Q24.8 fixed-point format number to a regular integer
-#define Q_24_8_TO_INT(n) ((int)((n) >> 8))
-
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) >= (b) ? (a) : (b))
 
@@ -120,6 +151,8 @@ int strcmp(const char *, const char*);
 
 // Extracts the lower 16 bits of a 32-bit number
 #define LOHALF(n) ((n) & 0xFFFF)
+
+#define READ_OTID_FROM_SAVE T1_READ_32(gSaveBlock2Ptr->playerTrainerId)
 
 // There are many quirks in the source code which have overarching behavioral differences from
 // a number of other files. For example, diploma.c seems to declare rodata before each use while
@@ -197,7 +230,7 @@ static inline u64 ReadUnalignedU64(const void *ptr)
 
 // NUM_DEX_FLAG_BYTES allocates more flags than it needs to, as NUM_SPECIES includes the "old unown"
 // values that don't appear in the Pokédex. NATIONAL_DEX_COUNT does not include these values.
-#define NUM_DEX_FLAG_BYTES ROUND_BITS_TO_BYTES(NUM_SPECIES)
+#define NUM_DEX_FLAG_BYTES ROUND_BITS_TO_BYTES(412)
 #define NUM_FLAG_BYTES ROUND_BITS_TO_BYTES(FLAGS_COUNT)
 #define NUM_TRENDY_SAYING_BYTES ROUND_BITS_TO_BYTES(NUM_TRENDY_SAYINGS)
 
@@ -211,6 +244,7 @@ static inline u64 ReadUnalignedU64(const void *ptr)
 // This produces an error at compile-time if expr is zero.
 // It looks like file.c:line: size of array `id' is negative
 #define STATIC_ASSERT(expr, id) typedef char id[(expr) ? 1 : -1];
+#define FEATURE_FLAG_ASSERT(flag, id) STATIC_ASSERT((flag) > TEMP_FLAGS_END || (flag) == 0, id)
 
 struct Coords8
 {

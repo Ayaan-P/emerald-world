@@ -1,4 +1,7 @@
 #include "global.h"
+#ifdef PORTABLE
+#include "platform/expanded_abilities.h"
+#endif
 #include "battle.h"
 #include "battle_anim.h"
 #include "battle_ai_script_commands.h"
@@ -1492,6 +1495,12 @@ static void Cmd_get_highest_type_effectiveness(void)
             TypeCalc(gCurrentMove, sBattler_AI, gBattlerTarget);
 #endif
 
+            #ifdef PORTABLE
+            gBattleMoveDamage = ExpandedAbilities_NormalizeAiEffectiveness(gBattleMoveDamage,
+                gBattleMons[sBattler_AI].ability, gCurrentMove, gBattleMoves[gCurrentMove].type,
+                gBattleMons[sBattler_AI].types[0], gBattleMons[sBattler_AI].types[1]);
+            #endif
+
             if (gBattleMoveDamage == 120) // Super effective STAB.
                 gBattleMoveDamage = AI_EFFECTIVENESS_x2;
             if (gBattleMoveDamage == 240)
@@ -1535,6 +1544,12 @@ static void Cmd_if_type_effectiveness(void)
 #else
     TypeCalc(gCurrentMove, sBattler_AI, gBattlerTarget);
 #endif
+
+    #ifdef PORTABLE
+    gBattleMoveDamage = ExpandedAbilities_NormalizeAiEffectiveness(gBattleMoveDamage,
+        gBattleMons[sBattler_AI].ability, gCurrentMove, gBattleMoves[gCurrentMove].type,
+        gBattleMons[sBattler_AI].types[0], gBattleMons[sBattler_AI].types[1]);
+    #endif
 
     if (gBattleMoveDamage == 120) // Super effective STAB.
         gBattleMoveDamage = AI_EFFECTIVENESS_x2;

@@ -413,4 +413,7 @@ const u8 *const gMonFootprintTable[] =
     [SPECIES_DEOXYS] = gMonFootprint_Deoxys,
     [SPECIES_CHIMECHO] = gMonFootprint_Chimecho,
     [SPECIES_EGG] = gMonFootprint_Bulbasaur,
+#ifdef PORTABLE
+#include "../pokemon/expanded/footprints.inc"
+#endif
 };

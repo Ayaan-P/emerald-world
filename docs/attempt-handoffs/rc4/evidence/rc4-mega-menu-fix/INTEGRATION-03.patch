@@ -1,0 +1,180 @@
+--- a/src/platform/world_menu.c
++++ b/src/platform/world_menu.c
+@@ -22,6 +22,7 @@
+ #include "platform/world_menu.h"
+ #include "platform/world_unstuck.h"
+ #include "platform/world_rules.h"
++#include "platform/mega_game.h"
+ #include "platform/world_rally.h"
+ #include "platform/world_travel.h"
+ #include "constants/characters.h"
+@@ -147,6 +148,15 @@
+     rows[(*count)++] = (struct Row){action, label, reason};
+ }
+ 
++static const char *MegaReason(void)
++{
++#if MEGA_FEATURE_READY
++    return "World owner setting. Some forms need modern host settings. Use owner launcher settings.";
++#else
++    return "World owner setting. Mega is unavailable in this build.";
++#endif
++}
++
+ static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 online)
+ {
+     unsigned n = 0, member = MemberState(r);
+@@ -172,7 +182,7 @@
+         AddRow(rows, &n, REUSABLE_TMS, WorldRules_Enabled(WORLD_RULE_REUSABLE_TMS) ? "Reusable TMs: ON" : "Reusable TMs: OFF", NULL);
+         AddRow(rows, &n, MOVE_SPLIT, WorldRules_Enabled(WORLD_RULE_MODERN_SPLIT) ? "Move split: ON" : "Move split: OFF", NULL);
+         AddRow(rows, &n, ROSTER_RULE, WorldRules_Enabled(WORLD_RULE_EXPANDED_ROSTER) ? "Expanded roster: ON" : "Expanded roster: OFF", "World owner setting. Change it in launcher settings.");
+-        AddRow(rows, &n, MEGA_RULE, WorldRules_Enabled(WORLD_RULE_MEGA_EVOLUTION) ? "Mega: ON" : "Mega: OFF", "World owner setting. Mega is unavailable in this build.");
++        AddRow(rows, &n, MEGA_RULE, WorldRules_Enabled(WORLD_RULE_MEGA_EVOLUTION) ? "Mega: ON" : "Mega: OFF", MegaReason());
+ #if !defined(_WIN32)
+         AddRow(rows, &n, UNSTUCK, "Unstuck", sMenu.offerPending ?
+             "Cancel your pending rally request before using Unstuck." : NULL);
+@@ -559,7 +569,7 @@
+             else if (sMenu.focus == ROSTER_RULE)
+                 sMenu.notice = "World rules are read-only. Use owner launcher settings.";
+             else if (sMenu.focus == MEGA_RULE)
+-                sMenu.notice = "Mega is unavailable in this build.";
++                sMenu.notice = MegaReason();
+             else if (sMenu.focus == MODE) WorldRally_SetAutoJoin(!WorldRally_GetAutoJoin());
+             else if (sMenu.focus == SCOPE) sMenu.scope ^= 1;
+             else { Queue(sMenu.focus, r.id); return; }
+--- /dev/null
++++ b/test/world/test_native_world_menu_mega.py
+@@ -0,0 +1,133 @@
++"""Compile and execute production Rows and A-button selection, without the engine.
++
++Run from a repository checkout with WORLD_MENU_SOURCE pointing to a staged copy.
++Only engine dependencies are stubbed. The tested functions/selection block are
++copied verbatim from the supplied C source, including its preprocessor branches.
++"""
++from pathlib import Path
++import os
++import subprocess
++import tempfile
++import unittest
++
++ROOT = Path(os.environ.get('WORLD_MENU_ROOT', Path(__file__).resolve().parents[2]))
++SOURCE = Path(os.environ.get('WORLD_MENU_SOURCE', ROOT / 'src/platform/world_menu.c'))
++
++
++def function(source, signature):
++    start = source.index(signature)
++    opening = source.index('{', start)
++    depth = 1
++    end = opening + 1
++    while depth:
++        depth += (source[end] == '{') - (source[end] == '}')
++        end += 1
++    return source[start:end]
++
++
++def harness(source):
++    declarations = source[source.index('enum MenuState'):source.index('static const struct WindowTemplate')]
++    helpers = '\n'.join(function(source, sig) for sig in (
++        'static unsigned MemberState(', 'static void AddRow(', 'static unsigned Rows('))
++    if 'static const char *MegaReason(' in source:
++        helpers = function(source, 'static const char *MegaReason(') + '\n' + helpers
++    update = function(source, 'void WorldMenu_Update(')
++    selection = update[update.index('    if (sMenu.state == FEATURES || sMenu.state == RECOVERY || sMenu.page == CONTROLS)'):]
++    capability_include = '#include "platform/mega_game.h"\n' if '#include "platform/mega_game.h"' in source else ''
++    return r'''
++#include "gba/types.h"
++#include "platform/world_rules.h"
++#include "platform/world_rally.h"
++#include "gba/defines.h"
++#include "gba/io_reg.h"
++#include <stdio.h>
++#include <string.h>
++#include <stdlib.h>
++''' + capability_include + declarations + r'''
++static struct { enum MenuState state; enum Page page; enum Action focus;
++    unsigned scope; bool8 dirty, offerPending; const char *notice; } sMenu;
++static u32 rules;
++static unsigned mutationCalls;
++static const char *drawnReason;
++static const char *drawnNotice;
++static unsigned keys;
++#define JOY_NEW(mask) (keys & (mask))
++#define JOY_REPEAT(mask) 0
++static const char *WorldBridge_TrainerName(void) { return "trainer"; }
++static bool8 WorldBridge_Enabled(void) { return TRUE; }
++static bool8 DexNavNative_Available(void) { return TRUE; }
++static const char *PersonalReason(void) { return NULL; }
++static const char *ApproachReason(void) { return NULL; }
++static bool8 WorldRally_HasReturn(void) { return FALSE; }
++static bool8 WorldRally_GetAutoJoin(void) { return FALSE; }
++static bool8 WorldRules_Enabled(u32 rule) { return (rules & rule) != 0; }
++static void WorldRally_SetAutoJoin(bool8 enabled) { (void)enabled; mutationCalls++; }
++static void Close(void) { mutationCalls++; }
++static void Queue(enum Action action, unsigned id) { (void)action; (void)id; mutationCalls++; }
++static void Draw(const struct Row *rows, unsigned count, unsigned selected,
++                 const struct WorldRallySnapshot *r, bool8 online)
++{ (void)count; (void)r; (void)online; drawnReason = rows[selected].reason; drawnNotice = sMenu.notice; }
++''' .replace('static bool8 WorldRally_', 'bool8 WorldRally_').replace('static bool8 WorldRules_', 'bool8 WorldRules_').replace('static void WorldRally_', 'void WorldRally_') + helpers + r'''
++static void ChooseMega(void)
++{
++    struct WorldRallySnapshot r = {0};
++    struct Row rows[ACTION_COUNT];
++    bool8 online = TRUE;
++    unsigned count = Rows(rows, &r, online), selected;
++    for (selected = 0; selected < count && rows[selected].action != MEGA_RULE; selected++);
++    if (selected == count) { fprintf(stderr, "missing Mega row\n"); exit(2); }
++''' + selection + r'''
++#define CHECK(condition, message) do { if (!(condition)) { fprintf(stderr, "%s\n", message); failed = 1; } } while (0)
++int main(void)
++{
++    unsigned mega, modern;
++    int failed = 0;
++    for (mega = 0; mega < 2; mega++) for (modern = 0; modern < 2; modern++)
++    {
++        struct WorldRallySnapshot r = {0};
++        struct Row rows[ACTION_COUNT];
++        unsigned count, i;
++        rules = (mega ? WORLD_RULE_MEGA_EVOLUTION : 0) | (modern ? WORLD_RULE_MODERN_SPLIT : 0);
++        sMenu.state = FEATURES; sMenu.focus = MEGA_RULE; sMenu.notice = NULL;
++        count = Rows(rows, &r, TRUE);
++        for (i = 0; i < count && rows[i].action != MEGA_RULE; i++);
++        CHECK(i < count, "missing Mega row");
++        if (i == count) continue;
++        CHECK(!strcmp(rows[i].label, mega ? "Mega: ON" : "Mega: OFF"), "Mega label must reflect world policy");
++        CHECK(rows[i].reason != NULL, "Mega must remain read-only");
++        keys = A_BUTTON;
++        ChooseMega();
++        CHECK(drawnReason && drawnNotice && !strcmp(drawnReason, drawnNotice), "A must display the read-only row reason");
++        CHECK(mutationCalls == 0 && rules == ((mega ? WORLD_RULE_MEGA_EVOLUTION : 0) | (modern ? WORLD_RULE_MODERN_SPLIT : 0)), "selection must not mutate policy or dispatch");
++#if EXPECT_READY
++        CHECK(!strstr(rows[i].reason, "unavailable"), "production Mega must not claim unavailable");
++        CHECK(strstr(rows[i].reason, "World owner") && strstr(rows[i].reason, "launcher settings"), "production must direct to owner settings");
++        CHECK(strstr(rows[i].reason, "Some forms need modern host settings"), "production must explain modern host requirement without disabling compatible forms");
++#else
++        CHECK(strstr(rows[i].reason, "unavailable in this build"), "explicit capability 0 must report unavailable");
++#endif
++        printf("mega=%u modern=%u label=%s reason=%s notice=%s mutations=%u\n", mega, modern, rows[i].label, rows[i].reason, drawnNotice, mutationCalls);
++    }
++    return failed;
++}
++'''
++
++
++class MegaMenuSelection(unittest.TestCase):
++    def test_production_and_explicit_native_capability(self):
++        with tempfile.TemporaryDirectory(prefix='mega-menu-', dir=os.environ.get('WORLD_MENU_TEST_TMPDIR')) as tmp:
++            tmp = Path(tmp)
++            c = tmp / 'selection.c'
++            c.write_text(harness(SOURCE.read_text()))
++            for name, flags, expected in [('default', [], 1), ('enabled', ['-DMEGA_FEATURE_READY=1'], 1), ('disabled', ['-DMEGA_FEATURE_READY=0'], 0)]:
++                with self.subTest(capability=name):
++                    binary = tmp / name
++                    command = ['cc', '-std=gnu99', '-Wall', '-Wextra', '-Werror', '-DPORTABLE', f'-DEXPECT_READY={expected}', '-iquote', str(ROOT / 'include'), *flags, str(c), '-o', str(binary)]
++                    subprocess.run(command, check=True)
++                    result = subprocess.run([str(binary)], text=True, capture_output=True)
++                    print(f'[{name}]\n{result.stdout}{result.stderr}', flush=True)
++                    self.assertEqual(result.returncode, 0)
++
++
++if __name__ == '__main__':
++    unittest.main(verbosity=2)

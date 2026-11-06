@@ -1,0 +1,166 @@
+diff --git a/data/battle_scripts_1.s b/data/battle_scripts_1.s
+index c490f49..af875fd 100644
+--- a/data/battle_scripts_1.s
++++ b/data/battle_scripts_1.s
+@@ -4015,6 +4015,13 @@ BattleScript_DoCastformChange::
+ 	waitmessage B_WAIT_TIME_LONG
+ 	return
+ 
++.ifdef PORTABLE
++BattleScript_MegaEvolved::
++	printstring STRINGID_MEGA_EVOLVED
++	waitmessage B_WAIT_TIME_LONG
++	end3
++.endif
++
+ BattleScript_IntimidateActivatesEnd3::
+ 	call BattleScript_PauseIntimidateActivates
+ 	end3
+diff --git a/docs/MEGA_EVOLUTION_WORK.md b/docs/MEGA_EVOLUTION_WORK.md
+index 11d965c..c685551 100644
+--- a/docs/MEGA_EVOLUTION_WORK.md
++++ b/docs/MEGA_EVOLUTION_WORK.md
+@@ -4,7 +4,7 @@ This draft is disabled and not playable. `MEGA_FEATURE_READY` defaults to 0. Do
+ 
+ The battle-only form catalog covers 16 native species with types and abilities already present in the current game. Stats, types, abilities and stone names are adapted from pokeemerald-expansion-native bb3fd057061cdd7e6a9e79b76abb41924ee44ecc; this is not a wholesale Expansion port. Logical form identifiers are never written as party species. Existing Gen 3 abilities may differ from modern behavior.
+ 
+-The experimental path includes per-trainer selection and once-per-battle state, stat calculation from the party's level, IVs, EVs and nature, guarded move-choice transport and a matching native-link rule bit. When explicitly compiled with the gate enabled, a preliminary turn hook applies queued stats before moves, and the World menu has a settings toggle and a temporary stone-and-ring acquisition menu. These hooks are incomplete and must not be enabled: Form visuals and battle cleanup are not implemented or verified. A preliminary native controller event carries form identity and party slot to both players and waits for acknowledgements. The owning client gets move-selection eligibility from the master and checks its own Ring, with the master revalidating the choice. Actual multiplayer synchronization remains unverified. A preliminary ability sequence invokes existing switch-in ability effects and waits for their scripts, but it needs native gameplay verification and modern-mechanics review. A preliminary switch-in hook restores a form by trainer and battle-party slot without altering the underlying party; real switching and co-op ownership still need verification. The preliminary ordering also needs gameplay validation.
++The experimental path includes a native-only battle announcement, per-trainer selection and once-per-battle state, stat calculation from the party's level, IVs, EVs and nature, guarded move-choice transport and a matching native-link rule bit. When explicitly compiled with the gate enabled, a preliminary turn hook applies queued stats before moves, and the World menu has a settings toggle and a temporary stone-and-ring acquisition menu. These hooks are incomplete and must not be enabled: Form visuals and battle cleanup are not implemented or verified. A preliminary native controller event carries form identity and party slot to both players and waits for acknowledgements. The owning client gets move-selection eligibility from the master and checks its own Ring, with the master revalidating the choice. Actual multiplayer synchronization remains unverified. A preliminary ability sequence invokes existing switch-in ability effects and waits for their scripts, but it needs native gameplay verification and modern-mechanics review. A preliminary switch-in hook restores a form by trainer and battle-party slot without altering the underlying party; real switching and co-op ownership still need verification. The preliminary ordering also needs gameplay validation.
+ 
+ The working branch appends native-only item IDs 377–393 for stones and a Mega Ring. A save compatibility and migration strategy is required before real saves use them: older builds and Expansion have different item registries. Existing item icons are placeholders. Donor art has not been committed; its provenance and redistribution permissions need resolution.
+ 
+diff --git a/include/battle_scripts.h b/include/battle_scripts.h
+old mode 100755
+new mode 100644
+index 8b6cfcc..794d484
+--- a/include/battle_scripts.h
++++ b/include/battle_scripts.h
+@@ -148,6 +148,9 @@ extern const u8 BattleScript_WeatherFormChanges[];
+ extern const u8 BattleScript_WeatherFormChangesLoop[];
+ extern const u8 BattleScript_CastformChange[];
+ extern const u8 BattleScript_IntimidateActivatesEnd3[];
++#ifdef PORTABLE
++extern const u8 BattleScript_MegaEvolved[];
++#endif
+ extern const u8 BattleScript_IntimidateActivates[];
+ extern const u8 BattleScript_DroughtActivates[];
+ extern const u8 BattleScript_TookAttack[];
+diff --git a/include/constants/battle_string_ids.h b/include/constants/battle_string_ids.h
+old mode 100755
+new mode 100644
+index b34cf6c..6c7851a
+--- a/include/constants/battle_string_ids.h
++++ b/include/constants/battle_string_ids.h
+@@ -379,7 +379,13 @@
+ #define STRINGID_TRAINER1WINTEXT            379
+ #define STRINGID_TRAINER2WINTEXT            380
+ 
++#define STRINGID_MEGA_EVOLVED               381
++
++#ifdef PORTABLE
++#define BATTLESTRINGS_COUNT                 382
++#else
+ #define BATTLESTRINGS_COUNT                 381
++#endif
+ 
+ // This is the string id that gBattleStringsTable starts with.
+ // String ids before this (e.g. STRINGID_INTROMSG) are not in the table,
+diff --git a/src/battle_main.c b/src/battle_main.c
+index 70930fe..5a8aca7 100644
+--- a/src/battle_main.c
++++ b/src/battle_main.c
+@@ -5126,6 +5126,13 @@ static void RunTurnActionsFunctions(void)
+                 /* In link battles both controllers must see and ACK the form
+                  * before an ability script or move can be dispatched. */
+                 if (gBattleControllerExecFlags) return;
++                sMegaAbilityPhase = 4;
++                gBattleScripting.battler = battler;
++                BattleScriptPushCursorAndCallback(BattleScript_MegaEvolved);
++                return;
++            }
++            if (sMegaAbilityPhase == 4)
++            {
+                 if (!sMegaAbilityChanged)
+                 {
+                     sMegaAbilityPhase = 0;
+diff --git a/src/battle_message.c b/src/battle_message.c
+index d22cf45..f97e840 100644
+--- a/src/battle_message.c
++++ b/src/battle_message.c
+@@ -517,6 +517,10 @@ static const u8 sText_Trainer2WinText[];
+ static const u8 sText_TwoInGameTrainersDefeated[];
+ static const u8 sText_Trainer2LoseText[];
+ 
++#ifdef PORTABLE
++static const u8 sText_MegaEvolved[] = _("{B_SCR_ACTIVE_NAME_WITH_PREFIX}\nMega Evolved!");
++#endif
++
+ const u8 *const gBattleStringsTable[BATTLESTRINGS_COUNT - BATTLESTRINGS_TABLE_START] =
+ {
+     [STRINGID_TRAINER1LOSETEXT - BATTLESTRINGS_TABLE_START] = sText_Trainer1LoseText,
+@@ -888,6 +892,9 @@ const u8 *const gBattleStringsTable[BATTLESTRINGS_COUNT - BATTLESTRINGS_TABLE_ST
+     [STRINGID_PKMNBOXLANETTESPCFULL - BATTLESTRINGS_TABLE_START] = gText_PkmnTransferredLanettesPCBoxFull,
+     [STRINGID_TRAINER1WINTEXT - BATTLESTRINGS_TABLE_START] = sText_Trainer1WinText,
+     [STRINGID_TRAINER2WINTEXT - BATTLESTRINGS_TABLE_START] = sText_Trainer2WinText,
++#ifdef PORTABLE
++    [STRINGID_MEGA_EVOLVED - BATTLESTRINGS_TABLE_START] = sText_MegaEvolved,
++#endif
+ };
+ 
+ const u16 gMissStringIds[] =
+diff --git a/test/world/test_mega_battle_message.py b/test/world/test_mega_battle_message.py
+new file mode 100644
+index 0000000..c6aef68
+--- /dev/null
++++ b/test/world/test_mega_battle_message.py
+@@ -0,0 +1,19 @@
++"""Check the native-only battle announcement is registered without moving old IDs."""
++from pathlib import Path
++import subprocess,unittest
++ROOT=Path(__file__).resolve().parents[2]
++class MegaMessageTest(unittest.TestCase):
++ def test_script_and_string_registration(self):
++  ids=(ROOT/'include/constants/battle_string_ids.h').read_text()
++  msg=(ROOT/'src/battle_message.c').read_text()
++  script=(ROOT/'data/battle_scripts_1.s').read_text()
++  self.assertIn('#define STRINGID_TRAINER2WINTEXT            380',ids)
++  self.assertIn('#define STRINGID_MEGA_EVOLVED               381',ids)
++  self.assertIn('[STRINGID_MEGA_EVOLVED - BATTLESTRINGS_TABLE_START] = sText_MegaEvolved',msg)
++  self.assertIn('{B_SCR_ACTIVE_NAME_WITH_PREFIX}\\nMega Evolved!',msg)
++  self.assertIn('.ifdef PORTABLE\nBattleScript_MegaEvolved::\n\tprintstring STRINGID_MEGA_EVOLVED\n\twaitmessage B_WAIT_TIME_LONG\n\tend3\n.endif',script)
++  # C-preprocessing should resolve the new ID before the assembler runs.
++  p=subprocess.run(['cpp','-I',str(ROOT/'include'),'-I',str(ROOT),str(ROOT/'data/battle_scripts_1.s')],capture_output=True,text=True)
++  self.assertEqual(p.returncode,0,p.stderr)
++  self.assertIn('BattleScript_MegaEvolved::\n printstring 381',p.stdout)
++if __name__=='__main__':unittest.main()
+diff --git a/test/world/test_mega_turn_sequence.py b/test/world/test_mega_turn_sequence.py
+index 3931a18..972c144 100644
+--- a/test/world/test_mega_turn_sequence.py
++++ b/test/world/test_mega_turn_sequence.py
+@@ -26,6 +26,9 @@ u8 gBattlersCount=3, gBattlerByTurnOrder[4]={0,1,2},gChosenActionByBattler[4]={1
+ u8 sMegaTurnIndex=0,sMegaAbilityPhase=0;bool8 sMegaTurnHandled=false;
+ int applyCalls[4],cancelCalls[4],onCalls[4],intimidateCalls,traceCalls,publishCalls;
+ int gBattleControllerExecFlags;bool8 sMegaAbilityChanged;
++struct {u8 battler;} gBattleScripting;
++const u8 BattleScript_MegaEvolved[1]={0};int messageCalls;
++void BattleScriptPushCursorAndCallback(const u8 *p) {assert(p==BattleScript_MegaEvolved);messageCalls++;}
+ int MegaGame_PublishForm(u8 b,u8 kind) { (void)b;(void)kind;publishCalls++;gBattleControllerExecFlags=1;return 1; }
+ int MegaGame_Apply(u8 b) { applyCalls[b]++; if (b==0) {gBattleMons[b].ability=7;return 1;} return 1; }
+ void MegaGame_CancelQueue(u8 b) { cancelCalls[b]++; }
+@@ -43,12 +46,13 @@ int main(void) {
+  gBattleMons[0].ability=1; gBattleMons[1].ability=2;
+  run(); assert(!sMegaTurnHandled && applyCalls[0]==1 && publishCalls==1 && onCalls[0]==0);
+  run(); assert(!sMegaTurnHandled && applyCalls[0]==1 && onCalls[0]==0); /* waits for ACK */
+- gBattleControllerExecFlags=0;run(); assert(!sMegaTurnHandled && onCalls[0]==1);
++ gBattleControllerExecFlags=0;run(); assert(!sMegaTurnHandled && messageCalls==1 && onCalls[0]==0);
++ run(); assert(!sMegaTurnHandled && onCalls[0]==1);
+  run(); assert(!sMegaTurnHandled && applyCalls[0]==1 && intimidateCalls==1);
+  run(); assert(!sMegaTurnHandled && traceCalls==1 && applyCalls[1]==0);
+  run(); assert(!sMegaTurnHandled && applyCalls[1]==1 && publishCalls==2);
+- gBattleControllerExecFlags=0;run();
+- assert(sMegaTurnHandled && applyCalls[0]==1 && applyCalls[1]==1 && cancelCalls[2]==1);
++ gBattleControllerExecFlags=0;run();assert(messageCalls==2 && !sMegaTurnHandled);
++ run();assert(sMegaTurnHandled && applyCalls[0]==1 && applyCalls[1]==1 && cancelCalls[2]==1);
+  assert(onCalls[0]==1 && onCalls[1]==0 && intimidateCalls==2 && traceCalls==2);
+  return 0;
+ }

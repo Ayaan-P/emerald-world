@@ -13,6 +13,8 @@ class ChatRoutingTests(unittest.TestCase):
     def setUp(self):
         self.server = WorldServer.__new__(WorldServer)
         self.server.chat_serial = 0
+        from world.rules import make
+        self.server.world_rules = make('0' * 32)
         self.server.peers = {name: peer(name, name != 'legacy') for name in ('alice', 'bob', 'carol', 'legacy')}
         self.server.rally = RallyCoordinator(self.server.peers)
         self.server._broadcast = Mock()

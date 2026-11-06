@@ -7,7 +7,7 @@ ROOT=Path(__file__).resolve().parents[2]
 
 class LauncherTests(unittest.TestCase):
     def load(self):
-        spec=importlib.util.spec_from_file_location('world_launcher',ROOT/'world/launcher.py')
+        spec=importlib.util.spec_from_file_location('world.fixture_launcher',ROOT/'world/launcher.py')
         self.assertIsNotNone(spec)
         self.assertTrue(Path(spec.origin).exists(),'local host/join launcher must exist')
         mod=importlib.util.module_from_spec(spec); spec.loader.exec_module(mod); return mod

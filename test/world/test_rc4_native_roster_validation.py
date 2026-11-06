@@ -1,0 +1,288 @@
+"""Production C seams, not full-game or WAN acceptance.
+
+RC4_NATIVE_SOURCE_ROOT selects staged source copies. Headers/generated data always
+come from the actual repository root, found independently of this test's depth.
+Only unrelated engine/transport IO uses existing explicit test fixtures.
+"""
+import os
+from pathlib import Path
+import re
+import subprocess
+import tempfile
+import unittest
+
+ROOT = next(p for p in Path(__file__).resolve().parents if (p / 'include/global.h').is_file())
+SOURCE = Path(os.environ.get('RC4_NATIVE_SOURCE_ROOT', ROOT))
+ARTIFACTS = Path(os.environ.get('RC4_NATIVE_TEST_ARTIFACTS', ROOT / 'build/rc4-native-roster-fix'))
+
+
+def function(source, name):
+    match = re.search(r'^(?:static )?[\w *]+\b' + re.escape(name) + r'\([^;]*?\)\n\{', source, re.M)
+    if not match:
+        raise AssertionError('Missing production function ' + name)
+    return source[match.start():source.index('\n}', match.end()) + 2] + '\n'
+
+
+def expanded():
+    code = function((ROOT / 'src/platform/expanded_species.c').read_text(), 'ExpandedSpecies_IsPlayable')
+    return code.replace('"../data/pokemon/expanded/playable_cases.inc"', '"' + str(ROOT / 'src/data/pokemon/expanded/playable_cases.inc') + '"')
+
+
+def helpers(source):
+    # Only include a helper if production declares it; no replacement validator.
+    return function(source, 'NativeSpeciesValid') if re.search(r'static bool8 NativeSpeciesValid\(', source) else ''
+
+
+ROSTER = r'''
+static const u16 roster[] = {
+ SPECIES_TREECKO,
+#define RC4_CASE(s) s,
+''' + ''.join(' ' + name + ',\n' for name in re.findall(r'case\s+(SPECIES_\w+)\s*:', (ROOT / 'src/data/pokemon/expanded/playable_cases.inc').read_text())) + r'''
+};
+static const u16 invalid[] = {0, NUM_SPECIES, SPECIES_EGG, 441, 445, 705+2, 947, 1025, 65535};
+'''
+
+
+class NativeRosterValidation(unittest.TestCase):
+    def run_c(self, code, files=None):
+        ARTIFACTS.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='seam-', dir=ARTIFACTS) as tmp:
+            tmp = Path(tmp)
+            for name, content in (files or {}).items():
+                (tmp / name).write_text(content)
+            (tmp / 'test.c').write_text(code)
+            result = subprocess.run([os.environ.get('CC', 'gcc'), '-std=gnu99', '-g',
+                '-Werror', '-fsanitize=address,undefined', '-fno-sanitize=shift-base',
+                '-fno-sanitize-recover=all', '-fno-pie', '-no-pie',
+                '-ffunction-sections', '-fdata-sections', '-Wl,--gc-sections',
+                '-DPORTABLE', '-DUBFIX', '-DVER_64BIT', '-DNONMATCHING', '-DMODERN=1',
+                '-iquote', str(ROOT / 'include'), '-iquote', str(ROOT), '-I', str(tmp),
+                str(tmp / 'test.c'), '-o', str(tmp / 'test')], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            result = subprocess.run([str(tmp / 'test')], cwd=tmp, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            print(result.stdout.strip())
+
+    def test_actual_headers_and_playable_data(self):
+        names = re.findall(r'case\s+(SPECIES_\w+)\s*:', (ROOT / 'src/data/pokemon/expanded/playable_cases.inc').read_text())
+        self.assertEqual(len(names), 11)
+        self.run_c('#include "global.h"\n#include "constants/expanded_species.h"\n#undef NDEBUG\n#include <assert.h>\n#include <stdio.h>\n' + expanded() + ROSTER + r'''
+int main(void) {
+ assert(NUM_SPECIES==412 && SPECIES_TABLE_COUNT==947);
+ assert(ARRAY_COUNT(roster)==12);
+ for (unsigned i=1;i<ARRAY_COUNT(roster);i++) assert(ExpandedSpecies_IsPlayable(roster[i]));
+ for (unsigned i=0;i<ARRAY_COUNT(invalid);i++) assert(!ExpandedSpecies_IsPlayable(invalid[i]));
+ puts("actual root headers: legacy=412 table=947 selected=11; 0/441 reserved");
+}
+''')
+
+    def test_native_battle_mon_and_solicited_reply(self):
+        source = (SOURCE / 'src/battle_controllers.c').read_text()
+        code = r'''
+#include "global.h"
+#include "pokemon.h"
+#include "battle.h"
+#include "battle_controllers.h"
+#include "platform/mega_game.h"
+#include "constants/moves.h"
+#include "constants/items.h"
+#include "constants/expanded_species.h"
+#include <string.h>
+#undef NDEBUG
+#include <assert.h>
+#include <stdio.h>
+static u8 sNativeBattleRequest[4][4];
+static bool8 sNativeBattleRequestPending[4], sNativeBattleReplyUsed[4];
+static bool8 coopMode;
+int WorldCoop_IsBattle(void) { return coopMode; }
+static u8 NativeBattleOwner(u8 b) { return b/2; }
+bool8 WorldCoop_BallReplyValid(u16 item) { return FALSE; }
+bool8 MegaGame_ReplyAllowed(u8 b, u8 action) { return FALSE; }
+'''
+        code += expanded() + helpers(source) + function(source, 'NativeBattleMonValid') + function(source, 'NativeBattleReplyValid') + ROSTER
+        code += r'''
+static struct BattlePokemon Fixture(u16 species) {
+ struct BattlePokemon m={0}; m.species=species; m.level=5;
+ m.hp=m.maxHP=20; m.attack=m.defense=m.speed=m.spAttack=m.spDefense=10;
+ return m;
+}
+int main(void) {
+ u8 reply[4+2*sizeof(struct BattlePokemon)]={CONTROLLER_DATATRANSFER};
+ sNativeBattleRequest[0][0]=CONTROLLER_GETMONDATA;
+ sNativeBattleRequest[0][1]=REQUEST_ALL_BATTLE;
+ sNativeBattleRequestPending[0]=TRUE;
+ for (unsigned i=0;i<ARRAY_COUNT(roster);i++) {
+  struct BattlePokemon m=Fixture(roster[i]);
+  assert(NativeBattleMonValid((u8 *)&m));
+  for (int multi=0;multi<2;multi++) {
+   unsigned size=(multi+1)*sizeof(m);
+   sNativeBattleRequest[0][2]=multi?3:0;
+   reply[2]=size;reply[3]=size>>8;
+   memcpy(reply+4,&m,sizeof(m));memcpy(reply+4+sizeof(m),&m,sizeof(m));
+   assert(NativeBattleReplyValid(0,reply));
+   sNativeBattleReplyUsed[0]=TRUE;assert(!NativeBattleReplyValid(0,reply));sNativeBattleReplyUsed[0]=FALSE;
+   sNativeBattleRequestPending[0]=FALSE;assert(!NativeBattleReplyValid(0,reply));sNativeBattleRequestPending[0]=TRUE;
+   reply[2]--;assert(!NativeBattleReplyValid(0,reply));reply[2]++;
+  }
+#define BAD(field,value) {struct BattlePokemon bad=m;bad.field=value;assert(!NativeBattleMonValid((u8 *)&bad));}
+  BAD(item,ITEMS_COUNT);BAD(level,0);BAD(level,101);BAD(experience,1640001);
+  BAD(maxHP,0);BAD(hp,21);BAD(attack,0);BAD(defense,1000);BAD(speed,0);
+  BAD(spAttack,0);BAD(spDefense,0);BAD(status1,0x1000);BAD(isEgg,1);
+  BAD(moves[0],MOVES_COUNT);BAD(pp[0],65);
+#undef BAD
+ }
+ for (unsigned i=0;i<ARRAY_COUNT(invalid);i++) {
+  struct BattlePokemon m=Fixture(invalid[i]);
+  assert(!NativeBattleMonValid((u8 *)&m));
+  sNativeBattleRequest[0][2]=0;reply[2]=sizeof(m);reply[3]=sizeof(m)>>8;
+  memcpy(reply+4,&m,sizeof(m));assert(!NativeBattleReplyValid(0,reply));
+ }
+ coopMode=TRUE;sNativeBattleRequest[0][0]=CONTROLLER_CHOOSEPOKEMON;
+ {u8 choice[]={CONTROLLER_CHOSENMONRETURNVALUE,0,0x10,0x32,0x54};
+  assert(NativeBattleReplyValid(0,choice));choice[1]=3;assert(!NativeBattleReplyValid(0,choice));
+  choice[1]=0;choice[2]=0;assert(!NativeBattleReplyValid(0,choice));}
+ puts("battle mon/reply: all 11 + Treecko, invalid IDs, pending/replay/length, stats/moves/item and slot ownership passed");
+}
+'''
+        self.run_c(code)
+
+    def test_coop_selection_exchange_and_public_projection(self):
+        fixture = (ROOT / 'test/world/coop_engine_core.c').read_text()
+        fixture = fixture.replace('#include "../../src/platform/world_coop.c"', '#include "' + str(SOURCE / 'src/platform/world_coop.c') + '"')
+        code = '#include "constants/expanded_species.h"\n' + '#define main OldCoreMain\n' + fixture + '\n#undef main\n' + ROSTER + r'''
+int main(void) {
+ for (unsigned i=0;i<ARRAY_COUNT(roster);i++) {
+  struct WorldCoopPublicMon view;
+  struct BattlePokemon m={0};
+  Reset(0,TRUE);
+  gPlayerParty[0]=FixtureMon(roster[i],123);
+  gEnemyParty[0]=FixtureMon(roster[i],125);
+  sCoop.state=COOP_IDLE;WorldCoop_CaptureWild();assert(sCoop.captured);
+  assert(WorldCoop_StartBattle(TRUE));assert(sCoop.selected[0].box.hasSpecies);
+  for (int j=0;j<3;j++) remoteParty[j]=FixtureMon(roster[i],130+j);
+  Exchange();WorldCoop_InitControllers();
+  m.species=roster[i];m.level=5;m.hp=20;m.maxHP=25;m.status1=8;
+  WorldCoop_ObserveMonData(0,0,&m);assert(WorldCoop_GetPublicMon(0,&view));
+  assert(view.species==roster[i] && view.hp==20 && view.maxHP==25 && view.status==8);
+  WorldCoop_ObserveMonData(1,0,&m);assert(WorldCoop_GetPublicMon(1,&view));
+  assert(view.species==roster[i] && !view.hp && !view.maxHP && !view.status);
+  sCoop.publicValid[2]=FALSE;WorldCoop_ObserveMonData(2,0,&m);assert(!sCoop.publicValid[2]);
+  WorldCoop_ObserveMonData(2,PARTY_SIZE,&m);assert(!sCoop.publicValid[2]);
+  gAbsentBattlerFlags|=4;WorldCoop_ObserveMonData(2,3,&m);assert(!sCoop.publicValid[2]);gAbsentBattlerFlags&=~4;
+  testGeneration++;WorldCoop_ObserveMonData(2,3,&m);assert(!sCoop.publicValid[2]);testGeneration--;
+  WorldCoop_ObserveMonData(2,3,NULL);assert(!sCoop.publicValid[2]);
+  gPlayerParty[0]=FixtureMon(roster[i],123);gBattlerPartyIndexes[0]=0;
+  LoadPrivateBattleMon();assert(gBattleMons[0].species==roster[i] && gBattleMons[0].hp==30);
+  sCoop.enemyCount=1;sCoop.enemies[0]=FixtureMon(roster[i],125);sCoop.reward=1;sCoop.rewardRead=0;
+  assert(WorldCoop_NextReward());assert(gBattleMons[1].species==roster[i]);
+ }
+ for (unsigned i=0;i<ARRAY_COUNT(invalid);i++) {
+  struct BattlePokemon m={0};m.species=invalid[i];m.level=5;
+  Reset(0,TRUE);sCoop.state=COOP_BATTLE;sCoop.generation=testGeneration;
+  WorldCoop_ObserveMonData(0,0,&m);assert(!sCoop.publicValid[0]);
+  memset(gPlayerParty,0,sizeof(gPlayerParty));gPlayerParty[0]=FixtureMon(invalid[i],123);
+  sCoop.state=COOP_IDLE;assert(!WorldCoop_StartBattle(FALSE));
+ }
+ puts("co-op actual state machine: 11 + Treecko selection/exchange/capture/public projection; invalid IDs, ownership/slots/generation/absent guards passed (explicit accessor fixture)");
+}
+'''
+        self.run_c(code)
+
+    def test_public_projection_independently_of_private_mon_validation(self):
+        fixture = (ROOT / 'test/world/coop_engine_core.c').read_text()
+        fixture = fixture.replace('#include "../../src/platform/world_coop.c"', '#include "' + str(SOURCE / 'src/platform/world_coop.c') + '"')
+        code = '#include "constants/expanded_species.h"\n#define main OldCoreMain\n' + fixture + '\n#undef main\n' + ROSTER + r'''
+int main(void) {
+ for (unsigned i=0;i<ARRAY_COUNT(roster);i++) {
+  struct BattlePokemon m={0};struct WorldCoopPublicMon view;
+  Reset(0,TRUE);sCoop.state=COOP_BATTLE;sCoop.generation=testGeneration;
+  gAbsentBattlerFlags=0;gBattlerPartyIndexes[0]=0;
+  m.species=roster[i];m.level=5;m.hp=20;m.maxHP=25;
+  WorldCoop_ObserveMonData(0,0,&m);assert(WorldCoop_GetPublicMon(0,&view));assert(view.species==roster[i]);
+ }
+ puts("independent public projection: all 11 + Treecko passed");
+}
+'''
+        self.run_c(code)
+
+    def test_selection_independently_of_wild_capture(self):
+        fixture = (ROOT / 'test/world/coop_engine_core.c').read_text()
+        fixture = fixture.replace('#include "../../src/platform/world_coop.c"', '#include "' + str(SOURCE / 'src/platform/world_coop.c') + '"')
+        code = '#include "constants/expanded_species.h"\n#define main OldCoreMain\n' + fixture + '\n#undef main\n' + ROSTER + r'''
+int main(void) {
+ for (unsigned i=0;i<ARRAY_COUNT(roster);i++) {
+  Reset(0,FALSE);sCoop.state=COOP_IDLE;gPlayerParty[0]=FixtureMon(roster[i],123);
+  assert(WorldCoop_StartBattle(FALSE));
+  assert(GetMonData(&sCoop.selected[0],MON_DATA_SPECIES)==roster[i]);
+ }
+ puts("independent party selection: all 11 + Treecko passed");
+}
+'''
+        self.run_c(code)
+
+    def test_stock_encrypted_mon_capture_and_catch_ownership(self):
+        pokemon = (ROOT / 'src/pokemon.c').read_text()
+        stock = pokemon[pokemon.index('#define SUBSTRUCT_CASE'):pokemon.index('/* GameFreak called GetMonData')]
+        stock += pokemon[pokemon.index('#define SET8(lhs)'):pokemon.index('void SetMonData(')]
+        for name in ('EncryptBoxMon','DecryptBoxMon','CalculateBoxMonChecksum','GetMonData3','GetMonData2','GetBoxMonData3','GetBoxMonData2','SetMonData','SetBoxMonData','CopyMon','GiveMonToPlayer'):
+            stock += function(pokemon,name)
+        e = (ROOT / 'src/platform/expanded_species.c').read_text()
+        stock = expanded() + function(e,'ExpandedSpecies_Clamp') + stock
+        fixture = (ROOT / 'test/world/coop_catching_core.c').read_text().replace('#include "../../src/platform/world_coop.c"', '#include "' + str(SOURCE / 'src/platform/world_coop.c') + '"')
+        code = '#include "constants/expanded_species.h"\n#define main OldCatchMain\n' + fixture + '\n#undef main\n' + ROSTER + r'''
+u32 gRngValue;
+u8 gAbsentBattlerFlags;
+u8 BattleSetup_GetEnvironmentId(void) { return BATTLE_ENVIRONMENT_GRASS; }
+u8 GetCurrentWeather(void) { return WEATHER_RAIN; }
+int main(void) {
+ struct Pokemon empty={0};assert(MonValid(&empty,TRUE));assert(!MonValid(&empty,FALSE));
+ empty.level=1;assert(!MonValid(&empty,TRUE));
+ for (unsigned i=0;i<ARRAY_COUNT(roster);i++) for (int permutation=0;permutation<24;permutation++) {
+  struct Pokemon m, bad, before;
+  struct CoopCatchPacket packet={0};u8 wire[112]={0};
+  Reset();m=sCoop.enemies[0];m.box.personality=240+permutation;Seal(&m,roster[i],ITEM_POKE_BALL);
+  assert(MonValid(&m,FALSE));
+  bad=m;bad.box.checksum++;before=bad;assert(!MonValid(&bad,FALSE));assert(!memcmp(&bad,&before,sizeof(bad)));
+  gEnemyParty[0]=m;sCoop.state=COOP_IDLE;WorldCoop_CaptureWild();assert(sCoop.captured);
+  gEnemyParty[0]=bad;WorldCoop_CaptureWild();assert(!sCoop.captured);
+  gEnemyParty[0]=m;gEnemyParty[0].hp=0;WorldCoop_CaptureWild();assert(!sCoop.captured);
+  sCoop.state=COOP_BATTLE;sCoop.enemies[0]=m;
+  packet.command=CONTROLLER_EXPUPDATE;packet.tag=COOP_CATCH;packet.owner=1;packet.generation=generation;packet.mon=m;
+  memcpy(wire,&packet,sizeof(packet));assert(WorldCoop_CatchPacketValid(wire,sizeof(wire)));
+  packet.mon.box.checksum++;memcpy(wire,&packet,sizeof(packet));assert(!WorldCoop_CatchPacketValid(wire,sizeof(wire)));
+  packet.mon=m;packet.mon.box.otId++;Seal(&packet.mon,roster[i],ITEM_POKE_BALL);
+  assert(MonValid(&packet.mon,FALSE));memcpy(wire,&packet,sizeof(packet));assert(!WorldCoop_CatchPacketValid(wire,sizeof(wire)));
+  packet.mon=m;packet.mon.box.personality+=24;Seal(&packet.mon,roster[i],ITEM_POKE_BALL);
+  assert(MonValid(&packet.mon,FALSE));memcpy(wire,&packet,sizeof(packet));assert(!WorldCoop_CatchPacketValid(wire,sizeof(wire)));
+  for (int owner=0;owner<2;owner++) {
+   struct Pokemon merged[PARTY_SIZE];
+   sCoop.local=owner;sCoop.count=1;sCoop.slots[0]=0;sCoop.original[0]=m;
+   gPlayerParty[owner*MULTI_PARTY_SIZE]=m;assert(BuildPrivateParty(merged));
+   assert(!memcmp(&merged[0],&m,sizeof(m)));
+   gPlayerParty[owner*MULTI_PARTY_SIZE]=packet.mon;assert(!BuildPrivateParty(merged));
+   bad=m;bad.box.otId++;Seal(&bad,roster[i],ITEM_POKE_BALL);
+   assert(MonValid(&bad,FALSE));gPlayerParty[owner*MULTI_PARTY_SIZE]=bad;assert(!BuildPrivateParty(merged));
+   bad=m;bad.box.checksum++;gPlayerParty[owner*MULTI_PARTY_SIZE]=bad;assert(!BuildPrivateParty(merged));
+  }
+#define BAD(field,value) {bad=m;bad.field=value;assert(!MonValid(&bad,FALSE));}
+  BAD(box.hasSpecies,FALSE);BAD(box.isBadEgg,TRUE);BAD(box.language,6);
+  BAD(level,0);BAD(maxHP,0);BAD(hp,31);BAD(status,0x1000);BAD(attack,0);BAD(defense,1000);BAD(mail,PARTY_SIZE);
+#undef BAD
+  {u16 item=ITEMS_COUNT,move=MOVES_COUNT;bad=m;SetMonData(&bad,MON_DATA_HELD_ITEM,&item);assert(!MonValid(&bad,FALSE));
+   bad=m;SetMonData(&bad,MON_DATA_MOVE1,&move);assert(!MonValid(&bad,FALSE));}
+ }
+ for(unsigned i=0;i<ARRAY_COUNT(invalid);i++) {
+  struct Pokemon m;Reset();m=sCoop.enemies[0];Seal(&m,invalid[i],ITEM_POKE_BALL);
+  assert(!MonValid(&m,FALSE));sCoop.state=COOP_IDLE;gEnemyParty[0]=m;WorldCoop_CaptureWild();assert(!sCoop.captured);
+ }
+ Reset();sCoop.originalCount=PARTY_SIZE;storageFull=TRUE;assert(!WorldCoop_CanSelectBall(ITEM_POKE_BALL));
+ storageFull=FALSE;assert(WorldCoop_CanSelectBall(ITEM_POKE_BALL));
+ assert(!WorldCoop_CanSelectBall(ITEM_SAFARI_BALL));sCoop.kind=1;assert(!WorldCoop_CanSelectBall(ITEM_POKE_BALL));
+ puts("stock encrypted co-op: 12 species x 24 permutations; MonValid/wild capture/catch checksum and resealed ownership rejection; invalid IDs and capacity passed");
+}
+'''
+        self.run_c(code, {'stock_pokemon.inc':stock})
+
+
+if __name__ == '__main__':
+    unittest.main(verbosity=2)

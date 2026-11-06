@@ -1,0 +1,955 @@
+--- a/include/platform/mega_game.h
++++ b/include/platform/mega_game.h
+@@ -1,21 +1,31 @@
+ #ifndef GUARD_PLATFORM_MEGA_GAME_H
+ #define GUARD_PLATFORM_MEGA_GAME_H
+ #ifdef PORTABLE
+-/* Locked until graphics, switching, abilities and private-save integration
+- * have been verified together. Component tests may explicitly enable it. */
++/* Native pair and return-to-field proofs passed. Unsupported builds can
++ * explicitly disable the capability without changing world defaults. */
+ #ifndef MEGA_FEATURE_READY
+-#define MEGA_FEATURE_READY 0
++#define MEGA_FEATURE_READY 1
+ #endif
+ #define MEGA_MOVE_CHOICE_BIT 0x80
++#define MEGA_MOVE_CAN_SELECT_BIT 0x01
+ void MegaGame_Reset(void);
++void MegaGame_CheckAcquisition(void);
+ bool8 MegaGame_CanSelect(u8 battler);
++bool8 MegaGame_ReplyAllowed(u8 battler, u8 announced);
+ bool8 MegaGame_CanQueue(u8 battler);
++bool8 MegaGame_ValidateMoveChoice(u8 battler, u8 choice, u8 target);
+ bool8 MegaGame_ToggleSelection(u8 battler);
+ u8 MegaGame_ChoiceBit(u8 battler);
+ void MegaGame_ClearSelection(u8 battler);
+ bool8 MegaGame_Queue(u8 battler);
+ void MegaGame_CancelQueue(u8 battler);
++void MegaGame_Restore(u8 battler);
++void MegaGame_RecalculateStats(u8 battler);
++void MegaGame_RefreshSprite(u8 battler);
+ bool8 MegaGame_Apply(u8 battler);
++bool8 MegaGame_OnSwitchIn(u8 battler);
++bool8 MegaGame_PublishForm(u8 battler, u8 kind);
++bool8 MegaGame_ObserveForm(u8 battler, u8 form, u8 partyIndex);
+ u8 MegaGame_ActiveForm(u8 battler);
+ #endif
+ #endif
+--- /dev/null
++++ b/world/rules.py
+@@ -0,0 +1,113 @@
++"""Versioned world gameplay policy, separate from all trainer saves."""
++import hashlib
++import json
++import os
++from pathlib import Path
++import re
++import stat
++import tempfile
++import uuid
++
++NAMES = ('partyEXP', 'reusableTMs', 'modernSplit', 'megaEvolution', 'expandedRoster')
++MANIFEST = 'world-rules.json'
++
++
++def settings(value):
++    if type(value) is dict and set(value) == set(NAMES[:-1]):
++        value = dict(value, expandedRoster=False)
++    if type(value) is not dict or set(value) != set(NAMES) or any(type(v) is not bool for v in value.values()):
++        raise ValueError('world rules require boolean settings with no unknown fields')
++    if value['megaEvolution'] and not value['modernSplit']:
++        raise ValueError('Mega Evolution requires modernSplit (modern physical/special split)')
++    return dict(value)
++
++
++def make(world_id=None, version=1, rules=None):
++    rules = settings(dict.fromkeys(NAMES, False) if rules is None else rules)
++    payload = dict(schema=1, world_id=world_id or uuid.uuid4().hex, version=version,
++                   rules=rules, mask=sum(1 << i for i, k in enumerate(NAMES) if rules[k]))
++    payload['digest'] = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(',', ':')).encode('ascii')).hexdigest()
++    return payload
++
++
++def validate(value):
++    if (type(value) is not dict or set(value) != {'schema','world_id','version','rules','mask','digest'}
++            or type(value['schema']) is not int or value['schema'] != 1
++            or type(value['version']) is not int or not 1 <= value['version'] <= 2147483647
++            or type(value['world_id']) is not str or not re.fullmatch('[0-9a-f]{32}', value['world_id'])
++            or type(value['mask']) is not int):
++        raise ValueError('invalid world rules manifest')
++    expected = make(value['world_id'], value['version'], value['rules'])
++    if value != expected:
++        raise ValueError('world rules digest or mask mismatch')
++    return expected
++
++
++def publish(root, value):
++    value = validate(value)
++    root = Path(root)
++    if root.resolve() != root:
++        raise ValueError('world rules directory cannot contain symlinks')
++    root.mkdir(parents=True, mode=0o700, exist_ok=True)
++    target = root / MANIFEST
++    if target.is_symlink():
++        raise ValueError('world rules manifest cannot be a symlink')
++    fd, temporary = tempfile.mkstemp(prefix='.rules-', dir=root)
++    try:
++        with os.fdopen(fd, 'w') as output:
++            json.dump(value, output, sort_keys=True, separators=(',', ':'))
++            output.write('\n')
++            output.flush()
++            os.fsync(output.fileno())
++        os.replace(temporary, target)
++        directory = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
++        try:
++            os.fsync(directory)
++        finally:
++            os.close(directory)
++    finally:
++        Path(temporary).unlink(missing_ok=True)
++    return value
++
++
++def read(root, *, create=False):
++    target = Path(root) / MANIFEST
++    try:
++        fd = os.open(target, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
++    except FileNotFoundError:
++        if not create:
++            return None
++        # Constructors may race before the single running authority acquires
++        # its socket lock. Serialize migration so they all load one identity.
++        import fcntl
++        root = Path(root)
++        if root.resolve() != root:
++            raise ValueError('world rules directory cannot contain symlinks')
++        root.mkdir(parents=True, mode=0o700, exist_ok=True)
++        lock = os.open(root / '.world-rules.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
++        try:
++            info = os.fstat(lock)
++            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
++                raise ValueError('invalid world rules lock')
++            fcntl.flock(lock, fcntl.LOCK_EX)
++            existing = read(root)
++            return existing if existing is not None else publish(root, make())
++        finally:
++            os.close(lock)
++    with os.fdopen(fd) as stream:
++        info = os.fstat(stream.fileno())
++        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 4096:
++            raise ValueError('invalid world rules file')
++        def unique(pairs):
++            result = {}
++            for key, value in pairs:
++                if key in result:
++                    raise ValueError('duplicate world rules field')
++                result[key] = value
++            return result
++        return validate(json.loads(stream.read(4097), object_pairs_hook=unique))
++
++
++def wire(value):
++    value = validate(value)
++    return f"{value['version']}:{value['mask']}:{value['digest']}"
+--- /dev/null
++++ b/world/rules.schema.json
+@@ -0,0 +1,27 @@
++{
++  "$schema": "https://json-schema.org/draft/2020-12/schema",
++  "title": "Emerald world gameplay rules",
++  "type": "object",
++  "additionalProperties": false,
++  "required": ["schema", "world_id", "version", "rules", "mask", "digest"],
++  "properties": {
++    "schema": {"const": 1},
++    "world_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
++    "version": {"type": "integer", "minimum": 1, "maximum": 2147483647},
++    "mask": {"type": "integer", "enum": [0, 1, 2, 3, 4, 5, 6, 7, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 28, 29, 30, 31]},
++    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
++    "rules": {
++      "type": "object", "additionalProperties": false,
++      "required": ["partyEXP", "reusableTMs", "modernSplit", "megaEvolution", "expandedRoster"],
++      "properties": {
++        "partyEXP": {"type": "boolean"},
++        "reusableTMs": {"type": "boolean"},
++        "modernSplit": {"type": "boolean"},
++        "megaEvolution": {"type": "boolean"},
++        "expandedRoster": {"type": "boolean"}
++      },
++      "if": {"properties": {"megaEvolution": {"const": true}}, "required": ["megaEvolution"]},
++      "then": {"properties": {"modernSplit": {"const": true}}, "required": ["modernSplit"]}
++    }
++  }
++}
+--- /dev/null
++++ b/launcher-web/src/WorldRules.jsx
+@@ -0,0 +1,58 @@
++import React, { useState } from 'react';
++import { perform } from './api';
++
++const labels = { partyEXP: 'Party EXP', reusableTMs: 'Reusable TMs', modernSplit: 'Modern physical/special split', megaEvolution: 'Mega Evolution', expandedRoster: 'Expanded roster' };
++
++export default function WorldRules({ state }) {
++  const [world, setWorld] = useState('');
++  const [policy, setPolicy] = useState(null);
++  const [draft, setDraft] = useState(null);
++  const [busy, setBusy] = useState(false);
++  const [message, setMessage] = useState('');
++  const hosted = state.hosting?.worlds || [];
++  const editable = Boolean(world || state.world_rules_owner);
++  const action = world ? 'host_rules_' : 'world_rules_';
++  const payload = world ? { world } : {};
++  async function load() {
++    setBusy(true); setMessage('');
++    try {
++      const value = await perform(action + 'get', payload);
++      setPolicy(value.world_rules); setDraft(value.world_rules?.rules || null);
++      if (!value.world_rules) setMessage('Connect to a world to view its rules.');
++    } catch (error) { setMessage(error.message); setPolicy(null); setDraft(null); }
++    finally { setBusy(false); }
++  }
++  async function save() {
++    setBusy(true); setMessage('');
++    try {
++      await perform(action + 'set', { ...payload, rules: { ...draft } });
++      const value = await perform(action + 'get', payload);
++      setPolicy(value.world_rules); setDraft(value.world_rules.rules);
++      setMessage('World rules saved. Reconnect clients before playing.');
++    } catch (error) { setMessage(error.message); }
++    finally { setBusy(false); }
++  }
++  function changeRule(key, checked) {
++    if (key === 'modernSplit' && !checked && draft.megaEvolution) {
++      setMessage('Turn off Mega Evolution first to disable the modern physical/special split.');
++      return;
++    }
++    setMessage('');
++    setDraft({ ...draft, [key]: checked, ...(key === 'megaEvolution' && checked ? { modernSplit: true } : {}) });
++  }
++  return <section className="settings-card" aria-label="World gameplay rules"><div>
++    <h3>World gameplay rules</h3>
++    <p>Everyone in a world uses the same gameplay rules. Trainer saves stay private. Close every game before the owner changes these settings. Display and controls stay local.</p>
++    <label>World <select aria-label="World rules target" value={world} disabled={busy} onChange={event => { setWorld(event.target.value); setPolicy(null); setDraft(null); setMessage(''); }}>
++      <option value="">Connected world</option>
++      {hosted.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
++    </select></label>{' '}
++    <button className="button small ghost" disabled={busy || (!world && !state.connected)} onClick={load}>Load world rules</button>
++    {draft && <fieldset disabled={busy || !editable}><legend>{editable ? 'Owner settings' : 'Read-only world settings'}</legend>
++      {Object.entries(labels).map(([key, label]) => <label key={key} style={{ display: 'block' }}><input type="checkbox" checked={draft[key]} disabled={busy || !editable} onChange={event => changeRule(key, event.target.checked)} /> {label}</label>)}
++    </fieldset>}
++    {policy && <p>Rules version {policy.version}. Mega Evolution requires the modern physical/special split. Checking Mega Evolution also enables that setting.</p>}
++    {policy && editable && <button className="button small primary" disabled={busy} onClick={save}>Save world rules</button>}
++    {message && <p role="status">{message}</p>}
++  </div></section>;
++}
+--- /dev/null
++++ b/launcher-web/src/WorldRules.spec.jsx
+@@ -0,0 +1,74 @@
++// @vitest-environment jsdom
++import React from 'react';
++import { afterEach, expect, it, vi } from 'vitest';
++import { cleanup, fireEvent, render, screen } from '@testing-library/react';
++import WorldRules from './WorldRules';
++import { perform } from './api';
++vi.mock('./api', () => ({ perform: vi.fn() }));
++afterEach(() => { cleanup(); vi.resetAllMocks(); });
++const rules = { version: 2, digest: 'a'.repeat(64), rules: { partyEXP: true, reusableTMs: false, modernSplit: true, megaEvolution: false, expandedRoster: false } };
++it('shows current world policy read-only for a joining trainer', async () => {
++  perform.mockResolvedValue({ world_rules: rules, editable: false });
++  render(<WorldRules state={{ connected: true, world_rules_owner: false, hosting: { worlds: [] } }} />);
++  fireEvent.click(screen.getByRole('button', { name: /load world rules/i }));
++  const input = await screen.findByLabelText('Party EXP');
++  expect(input.checked).toBe(true);
++  expect(input.disabled).toBe(true);
++  expect(screen.queryByRole('button', { name: /save world rules/i })).toBeNull();
++});
++it('owner saves all explicit rule values and reads policy back', async () => {
++  perform.mockResolvedValue({ world_rules: rules });
++  render(<WorldRules state={{ connected: true, world_rules_owner: true, hosting: { worlds: [] } }} />);
++  fireEvent.click(screen.getByRole('button', { name: /load world rules/i }));
++  const input = await screen.findByLabelText('Reusable TMs');
++  fireEvent.click(input);
++  expect(screen.getByLabelText('Mega Evolution').disabled).toBe(false);
++  fireEvent.click(screen.getByRole('button', { name: /save world rules/i }));
++  await screen.findByText('World rules saved. Reconnect clients before playing.');
++  expect(perform).toHaveBeenCalledWith('world_rules_set', { rules: { partyEXP: true, reusableTMs: true, modernSplit: true, megaEvolution: false, expandedRoster: false } });
++  expect(perform).toHaveBeenLastCalledWith('world_rules_get', {});
++});
++it('checking Mega visibly enables its dependency and saves the selection unchanged', async () => {
++  const vanilla = { ...rules, rules: { partyEXP: false, reusableTMs: false, modernSplit: false, megaEvolution: false, expandedRoster: false } };
++  const enabled = { ...vanilla, rules: { ...vanilla.rules, modernSplit: true, megaEvolution: true } };
++  perform.mockResolvedValueOnce({ world_rules: vanilla }).mockResolvedValueOnce({}).mockResolvedValueOnce({ world_rules: enabled });
++  render(<WorldRules state={{ connected: true, world_rules_owner: true }} />);
++  fireEvent.click(screen.getByRole('button', { name: /load world rules/i }));
++  const mega = await screen.findByLabelText('Mega Evolution');
++  expect(mega.disabled).toBe(false);
++  expect(screen.getByText(/Mega Evolution requires the modern physical\/special split/i)).toBeTruthy();
++  fireEvent.click(mega);
++  expect(mega.checked).toBe(true);
++  expect(screen.getByLabelText('Modern physical/special split').checked).toBe(true);
++  fireEvent.click(screen.getByRole('button', { name: /save world rules/i }));
++  await screen.findByText('World rules saved. Reconnect clients before playing.');
++  expect(perform).toHaveBeenCalledWith('world_rules_set', { rules: enabled.rules });
++  expect(screen.getByLabelText('Mega Evolution').checked).toBe(true);
++});
++it('keeps Mega selected when its dependency is unchecked and explains how to proceed', async () => {
++  const enabled = { ...rules, rules: { ...rules.rules, megaEvolution: true } };
++  perform.mockResolvedValue({ world_rules: enabled });
++  render(<WorldRules state={{ connected: true, world_rules_owner: true }} />);
++  fireEvent.click(screen.getByRole('button', { name: /load world rules/i }));
++  const modern = await screen.findByLabelText('Modern physical/special split');
++  fireEvent.click(modern);
++  expect(modern.checked).toBe(true);
++  expect(screen.getByLabelText('Mega Evolution').checked).toBe(true);
++  expect(screen.getByRole('status').textContent).toMatch(/turn off Mega Evolution first/i);
++  fireEvent.click(screen.getByLabelText('Mega Evolution'));
++  fireEvent.click(modern);
++  expect(modern.checked).toBe(false);
++  expect(screen.getByLabelText('Mega Evolution').checked).toBe(false);
++});
++it('hosted world uses the same explicit Mega policy without changing trainer settings', async () => {
++  const enabled = { ...rules, rules: { ...rules.rules, megaEvolution: true } };
++  perform.mockResolvedValue({ world_rules: enabled });
++  render(<WorldRules state={{ connected: false, hosting: { worlds: [{ id: 'hosted', name: 'Hosted' }] } }} />);
++  fireEvent.change(screen.getByLabelText('World rules target'), { target: { value: 'hosted' } });
++  fireEvent.click(screen.getByRole('button', { name: /load world rules/i }));
++  expect((await screen.findByLabelText('Mega Evolution')).checked).toBe(true);
++  fireEvent.click(screen.getByRole('button', { name: /save world rules/i }));
++  await screen.findByText('World rules saved. Reconnect clients before playing.');
++  expect(perform).toHaveBeenCalledWith('host_rules_set', { world: 'hosted', rules: enabled.rules });
++  expect(perform).toHaveBeenLastCalledWith('host_rules_get', { world: 'hosted' });
++});
+--- /dev/null
++++ b/test/world/test_world_rules.py
+@@ -0,0 +1,360 @@
++"""World-owned rule contracts through the real authority and desktop session."""
++import json
++from pathlib import Path
++import socket
++import tempfile
++import unittest
++from world.server import WorldServer
++from world.client import WorldClient, IntentClient, admin_request
++from world.session import DesktopSession
++
++
++class WorldRulesTest(unittest.TestCase):
++    def test_legacy_world_persists_vanilla_identity(self):
++        with tempfile.TemporaryDirectory(prefix='wr-') as directory:
++            root = Path(directory)
++            server = WorldServer(root/'transport/world.sock', root)
++            try:
++                rules = server.inspect()['world_rules']
++                self.assertEqual(rules['mask'], 0)
++                self.assertEqual(rules['version'], 1)
++            finally:
++                server.close()
++            server = WorldServer(root/'transport/world.sock', root)
++            try:
++                self.assertEqual(server.inspect()['world_rules'], rules)
++            finally:
++                server.close()
++
++    def test_expanded_roster_is_separate_world_opt_in(self):
++        from world.rules import make
++        with tempfile.TemporaryDirectory(prefix='wr-') as directory:
++            root=Path(directory)
++            server=WorldServer(root/'world.sock',root)
++            try:
++                self.assertFalse(server.world_rules['rules']['expandedRoster'])
++                value=server.set_world_rules(dict(partyEXP=False,reusableTMs=False,modernSplit=False,
++                                                 megaEvolution=False,expandedRoster=True))
++                self.assertEqual(value['mask'],16)
++                self.assertFalse(value['rules']['modernSplit'])
++                identity=server.create_identity('alice')
++                server.start()
++                with self.assertRaisesRegex(ValueError,'RULES'):
++                    WorldClient(server.socket_path,'alice',identity['token'])
++                with WorldClient(server.socket_path,'alice',identity['token'],rules=value):
++                    self.assertEqual(server.world_rules['mask'],16)
++            finally:
++                server.close()
++
++    def test_nonvanilla_version_identity_and_digest_survive_restart(self):
++        from world.rules import read
++        with tempfile.TemporaryDirectory(prefix='wr-') as directory:
++            root=Path(directory)
++            server=WorldServer(root/'world.sock',root)
++            before=server.world_rules
++            value=server.set_world_rules(dict(partyEXP=True,reusableTMs=False,modernSplit=True,megaEvolution=False))
++            self.assertEqual(value['version'],before['version']+1)
++            self.assertEqual(value['world_id'],before['world_id'])
++            self.assertNotEqual(value['digest'],before['digest'])
++            server.close()
++            server=WorldServer(root/'world.sock',root)
++            try:
++                self.assertEqual(server.inspect()['world_rules'],value)
++                self.assertEqual(read(root),value)
++            finally:
++                server.close()
++
++    def test_concurrent_legacy_initialization_publishes_one_world_identity(self):
++        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
++        from unittest.mock import patch
++        import os
++        import threading
++        from world.rules import read
++        with tempfile.TemporaryDirectory(prefix='wr-') as directory:
++            root=Path(directory)
++            entered,release=threading.Event(),threading.Event()
++            replace=os.replace
++            def delayed(source,target):
++                if not entered.is_set():
++                    entered.set()
++                    self.assertTrue(release.wait(3))
++                return replace(source,target)
++            with patch('world.rules.os.replace',side_effect=delayed), ThreadPoolExecutor(2) as pool:
++                first=pool.submit(read,root,create=True)
++                self.assertTrue(entered.wait(2))
++                second=pool.submit(read,root,create=True)
++                try:
++                    with self.assertRaises(FutureTimeout):
++                        second.result(timeout=.1)
++                finally:
++                    release.set()
++                self.assertEqual(first.result(),second.result())
++                self.assertEqual(read(root),first.result())
++
++    def test_invalid_schema_and_atomic_publication_preserve_last_policy(self):
++        from unittest.mock import patch
++        from world.rules import read, make, publish, MANIFEST
++        with tempfile.TemporaryDirectory(prefix='wr-') as directory:
++            root=Path(directory)
++            original=publish(root,make())
++            for invalid in [dict(original,mask=True),dict(original,schema=2),dict(original,digest='0'*64),
++                            dict(original,version=0),dict(original,unknown=1)]:
++                with self.assertRaises(ValueError):
++                    publish(root,invalid)
++                self.assertEqual(read(root),original)
++            next_policy=make(original['world_id'],2,dict(partyEXP=True,reusableTMs=False,modernSplit=False,megaEvolution=False))
++            with patch('world.rules.os.replace',side_effect=OSError('publication failed')):
++                with self.assertRaises(OSError):
++                    publish(root,next_policy)
++            self.assertEqual(read(root),original)
++            self.assertEqual(list(root.glob('.rules-*')),[])
++            (root/MANIFEST).unlink()
++            (root/MANIFEST).symlink_to(root/'outside')
++            with self.assertRaises((OSError,ValueError)):
++                read(root,create=True)
++            self.assertFalse((root/'outside').exists())
++
++    def test_owner_cannot_change_rules_while_disconnected_profile_is_running(self):
++        from world.launcher import ProfileLock
++        with tempfile.TemporaryDirectory(prefix='wr-') as directory:
++            root=Path(directory)
++            server=WorldServer(root/'world.sock',root)
++            try:
++                server.create_identity('alice')
++                with ProfileLock(root,'alice'):
++                    with self.assertRaises(ValueError):
++                        server.set_world_rules(dict(partyEXP=True,reusableTMs=False,modernSplit=False,megaEvolution=False))
++                self.assertEqual(server.world_rules['mask'],0)
++            finally:
++                server.close()
++
++    def test_host_authority_and_two_client_admission(self):
++        with tempfile.TemporaryDirectory(prefix='wr-') as directory:
++            session = DesktopSession(Path(directory))
++            session.create_world('shared')
++            session.host('shared')
++            server = session.server
++            try:
++                rules = session.set_world_rules(dict(partyEXP=True, reusableTMs=True,
++                    modernSplit=True, megaEvolution=False))
++                self.assertEqual(rules['mask'], 7)
++                a, b = server.create_identity('alice'), server.create_identity('bob')
++                with IntentClient(server.socket_path, 'alice', a['token']) as control:
++                    self.assertEqual(control._request({'command':'world_rules'})['world_rules'], rules)
++                    self.assertFalse(control._request({'command':'set_world_rules','rules':{}})['ok'])
++                with self.assertRaisesRegex(ValueError, 'RULES'):
++                    WorldClient(server.socket_path, 'alice', a['token'])
++                from world.rules import make
++                wrong = make(rules['world_id'], rules['version'] + 1, rules['rules'])
++                with self.assertRaisesRegex(ValueError, 'RULES'):
++                    WorldClient(server.socket_path, 'alice', a['token'], rules=wrong)
++                # Trainer save flags are deliberately not part of admission or state.
++                with WorldClient(server.socket_path, 'alice', a['token'], rules=rules) as one:
++                    with WorldClient(server.socket_path, 'bob', b['token'], rules=rules) as two:
++                        self.assertEqual(one.rules, two.rules)
++                        result = admin_request(server.socket_path, {'command':'set_world_rules',
++                            'rules':dict(partyEXP=False, reusableTMs=False, modernSplit=False, megaEvolution=False)})
++                        self.assertFalse(result['ok'])
++                        self.assertEqual(server.inspect()['world_rules'], rules)
++            finally:
++                session.close()
++
++    def test_agreeing_clients_cannot_override_world_battle_rules(self):
++        from contextlib import ExitStack
++        from world.rules import wire
++        with tempfile.TemporaryDirectory(prefix='wr-') as directory, ExitStack() as stack:
++            root = Path(directory)
++            server = WorldServer(root/'world.sock',root)
++            stack.callback(server.close)
++            rules = server.set_world_rules(dict(partyEXP=False,reusableTMs=False,modernSplit=True,megaEvolution=False))
++            identities = {n:server.create_identity(n) for n in ('alice','bob')}
++            server.start()
++            def connect(name,role,claim=True):
++                sock=stack.enter_context(socket.socket(socket.AF_UNIX))
++                sock.settimeout(2)
++                sock.connect(server.socket_path)
++                stream=stack.enter_context(sock.makefile('rb'))
++                from world.client import installed_content_id
++                suffix = ' RULES '+wire(rules)+' DATA '+installed_content_id() if claim else ''
++                sock.sendall(f"HELLO 1 {name} {identities[name]['token']} {role}{suffix}\n".encode())
++                self.assertTrue(stream.readline().startswith(b'WELCOME'))
++                return sock,stream
++            a,ar=connect('alice','SOCIAL')
++            b,br=connect('bob','SOCIAL')
++            a.sendall(b'STATE 1 1 4 5 5 4 7 1 aaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbb\n')
++            b.sendall(b'STATE 1 1 4 6 5 3 7 1 cccccccccccccccc dddddddddddddddd\n')
++            while not ar.readline().startswith(b'PEER bob '):
++                pass
++            la,lar=connect('alice','LINK',False)
++            lb,lbr=connect('bob','LINK',False)
++            la.sendall(b'L OFFER 1 bob\n')
++            sid=lbr.readline().decode().split()[2]
++            lb.sendall(f'L ACCEPT {sid}\n'.encode())
++            self.assertIn(b'ADMIT',lar.readline())
++            self.assertIn(b'ADMIT',lbr.readline())
++            la.sendall(f"L EVENT 1 {sid} 1 0 1 0 8755 {'0'*32}\n".encode())
++            self.assertEqual(lar.readline(),b'L ERROR WORLD_RULES_MISMATCH\n')
++            self.assertIn(b'ABORT',lbr.readline())
++
++class HostedRulesTest(unittest.TestCase):
++    def test_owner_only_https_rules_and_remote_session_propagation(self):
++        from test.world.test_hosting import HostingTests
++        from world.hosting import HostingService, HostingError
++        from world.hosting_client import HostingClient, write_private
++        from world.rules import read
++        fixture = HostingTests()
++        fixture.setUp()
++        self.addCleanup(fixture.doCleanups)
++        manager = fixture.manager()
++        self.addCleanup(manager.close)
++        service = HostingService(manager, ('127.0.0.1',0)).start()
++        self.addCleanup(service.close)
++        endpoint = dict(host='localhost',port=service.address[1])
++        access = dict(manager.create_account(),endpoint=endpoint,pin=fixture.pin)
++        write_private(fixture.root/'access.json',access)
++        owner = HostingClient.enroll(fixture.root/'access.json',fixture.root/'owner.json')
++        created=owner.create('Rules','Owner',request_id='rules')
++        world=created['world']['id']
++        rules=owner.set_world_rules(world,dict(partyEXP=True,reusableTMs=True,modernSplit=True,megaEvolution=True))
++        self.assertEqual(owner.world_rules(world),rules)
++        access2=dict(manager.create_account(),endpoint=endpoint,pin=fixture.pin)
++        write_private(fixture.root/'other-access.json',access2)
++        outsider=HostingClient.enroll(fixture.root/'other-access.json',fixture.root/'other.json')
++        with self.assertRaises(HostingError):
++            outsider.set_world_rules(world,dict.fromkeys(rules['rules'],False))
++        owner.save_invitation(created,fixture.root/'native.json')
++        client_root=fixture.root/'client'
++        client_root.mkdir()
++        session=DesktopSession(client_root)
++        self.addCleanup(session.close)
++        session.connect_remote('remote',fixture.root/'native.json',('localhost',fixture.port),fixture.pin)
++        self.assertEqual(read(client_root/'remote'),rules)
++        self.assertEqual(read(client_root/'remote')['mask'],15)
++        newer=owner.set_world_rules(world,dict(partyEXP=False,reusableTMs=True,modernSplit=True,megaEvolution=False,expandedRoster=True))
++        self.assertEqual(session.refresh_world_rules('Owner'),newer)
++        self.assertEqual(read(client_root/'remote'),newer)
++        rules=newer
++        from world.windows_client import WindowsGuestSession
++        from world.rules import wire
++        windows = WindowsGuestSession('localhost',fixture.port,fixture.pin,fixture.root/'native.json',
++                                      data_root=fixture.root/'windows',binary='/bin/true')
++        self.addCleanup(windows.close)
++        windows.prepare()
++        command=windows.game_args()
++        self.assertEqual(command[command.index('--world-rules')+1],wire(rules))
++
++class NativeRulesTest(unittest.TestCase):
++    def test_immutable_native_rules_and_gameplay_getters(self):
++        import subprocess
++        root = Path(__file__).resolve().parents[2]
++        artifact = root / 'build/rc4-mega-production/world-rules'
++        artifact.mkdir(parents=True, exist_ok=True)
++        source = artifact / 'rules_fixture.c'
++        source.write_text(r'''#include <assert.h>
++#include "gba/types.h"
++#include "platform/world_rules.h"
++int main(void) {
++    assert(WorldRules_Mask() == 0);
++    assert(!WorldRules_Init("0:7:bad"));
++    assert(WorldRules_Init("2:7:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
++    assert(WorldRules_Enabled(WORLD_RULE_PARTY_EXP));
++    assert(WorldRules_Enabled(WORLD_RULE_REUSABLE_TMS));
++    assert(WorldRules_Enabled(WORLD_RULE_MODERN_SPLIT));
++    assert(!WorldRules_Enabled(WORLD_RULE_MEGA_EVOLUTION));
++    assert(!WorldRules_Init("3:0:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
++    assert(WorldRules_Mask() == 7);
++    return 0;
++}
++''')
++        subprocess.run(['gcc','-std=gnu99','-DPORTABLE','-DMODERN=1','-DNONMATCHING',
++            '-DUBFIX','-DVER_64BIT','-Werror','-iquote','include',str(source),
++            'src/platform/world_rules.c','-o',str(artifact/'rules_fixture')],cwd=root,check=True)
++        subprocess.run([str(artifact/'rules_fixture')],check=True)
++        for name, rule in [('src/battle_script_commands.c','PARTY_EXP'),
++                           ('src/party_menu.c','REUSABLE_TMS'),
++                           ('include/battle_move_split.h','MODERN_SPLIT')]:
++            self.assertIn('WorldRules_Enabled(WORLD_RULE_'+rule+')', (root/name).read_text())
++        menu = (root/'src/platform/world_menu.c').read_text()
++        self.assertNotIn('FlagSet(FLAG_PARTY_EXP_SHARE)', menu)
++        self.assertNotIn('FlagSet(FLAG_REUSABLE_TMS)', menu)
++        self.assertNotIn('FlagSet(FLAG_MODERN_MOVE_SPLIT)', menu)
++
++    def test_actual_native_hello_is_admitted_by_world_authority(self):
++        import subprocess
++        from contextlib import ExitStack
++        from world.rules import wire
++        root=Path(__file__).resolve().parents[2]
++        generated=root/'include'
++        if not (generated/'constants/map_groups.h').exists():
++            generated=root.parent/'rc3/include'
++        if not (generated/'constants/map_groups.h').exists():
++            self.skipTest('Generate native engine headers before bridge fixture compilation.')
++        artifact=root/'build/rc4-mega-production/world-rules'
++        artifact.mkdir(parents=True,exist_ok=True)
++        source=artifact/'hello_fixture.c'
++        source.write_text(r'''#include "src/platform/world_bridge.c"
++int main(int argc, char **argv) {
++    if (argc != 4 || !WorldRules_Init(argv[1])) return 2;
++    strcpy(sWorld.trainer,argv[2]);
++    strcpy(sWorld.token,argv[3]);
++    QueueHello(TRUE);
++    return fwrite(sWorld.output,1,sWorld.outputSize,stdout) != sWorld.outputSize;
++}
++''')
++        binary=artifact/'hello_fixture'
++        result=subprocess.run(['gcc','-std=gnu99','-DPORTABLE','-DMODERN=1','-DNONMATCHING',
++            '-DUBFIX','-DVER_64BIT','-Werror','-ffunction-sections','-fdata-sections',
++            '-iquote',str(root),'-iquote',str(root/'include'),'-iquote',str(generated),
++            '-iquote',str(generated/'constants'),str(source),str(root/'src/platform/world_rules.c'),
++            str(root/'src/platform/content_compat.c'),
++            '-Wl,--gc-sections','-o',str(binary)],capture_output=True,text=True)
++        self.assertEqual(result.returncode,0,result.stderr)
++        with tempfile.TemporaryDirectory(prefix='wr-') as directory, ExitStack() as stack:
++            state=Path(directory)
++            server=WorldServer(state/'world.sock',state)
++            stack.callback(server.close)
++            value=server.set_world_rules(dict(partyEXP=True,reusableTMs=True,modernSplit=True,megaEvolution=True))
++            identities=[server.create_identity(name) for name in ('alice','bob')]
++            server.start()
++            for identity in identities:
++                hello=subprocess.check_output([str(binary),wire(value),identity['id'],identity['token']])
++                sock=stack.enter_context(socket.socket(socket.AF_UNIX))
++                sock.settimeout(2)
++                sock.connect(server.socket_path)
++                stream=stack.enter_context(sock.makefile('rb'))
++                sock.sendall(hello)
++                self.assertTrue(stream.readline().startswith(b'WELCOME'))
++            with server.lock:
++                self.assertEqual(set(server.peers),{'alice','bob'})
++                self.assertTrue(all(peer['rules_validated'] for peer in server.peers.values()))
++                self.assertEqual(server.world_rules,value)
++
++    def test_new_offline_world_persists_vanilla_policy(self):
++        from world.rules import read
++        from world.offline import offline_profile
++        with tempfile.TemporaryDirectory(prefix='wr-') as directory:
++            state=Path(directory)
++            with offline_profile(state,'alice'):
++                value=read(state)
++                self.assertIsNotNone(value)
++                self.assertEqual(value['mask'],0)
++            with offline_profile(state,'alice'):
++                self.assertEqual(read(state),value)
++
++    def test_launcher_passes_world_policy_outside_private_save(self):
++        from world.rules import make, publish, wire
++        from world.launcher import game_command, profile_paths
++        from world.offline import offline_profile
++        with tempfile.TemporaryDirectory(prefix='wr-') as directory:
++            state = Path(directory)
++            value = make(rules=dict(partyEXP=True,reusableTMs=True,modernSplit=False,megaEvolution=False))
++            publish(state,value)
++            paths = profile_paths(state,'alice')
++            command = game_command('/bin/true',state,paths)
++            self.assertEqual(command[command.index('--world-rules')+1],wire(value))
++            with offline_profile(state,'alice') as paths:
++                command = game_command('/bin/true',state/'.offline',paths,online=False)
++                self.assertEqual(command[command.index('--world-rules')+1],wire(value))
++
++if __name__ == '__main__':
++    unittest.main()
+--- /dev/null
++++ b/test/world/test_mega_cross_rule_compatibility.py
+@@ -0,0 +1,146 @@
++"""Compile the production adapter with disposable modern form-table variants."""
++from pathlib import Path
++import subprocess
++import tempfile
++import unittest
++
++ROOT = Path(__file__).resolve().parents[2]
++
++
++class MegaCrossRuleTests(unittest.TestCase):
++    def test_actual_adapter_form_policy(self):
++        # Reuse only the existing adapter fixture's header declarations. No
++        # adapter logic is replaced, and variant tables live outside the tree.
++        import ast
++        fixture = ast.parse((ROOT / 'test/world/test_mega_game_adapter.py').read_text())
++        headers = {}
++        for node in ast.walk(fixture):
++            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant):
++                for target in node.targets:
++                    if isinstance(target, ast.Name) and target.id in ('globalh', 'battleh', 'pokemonh'):
++                        headers[target.id] = node.value.value
++        main = r'''
++#include "global.h"
++#include "battle.h"
++#include "pokemon.h"
++#include "battle_controllers.h"
++#include "constants/species.h"
++#include "constants/items.h"
++#include "platform/mega_game.h"
++#include "platform/mega_forms.h"
++#include <assert.h>
++struct Pokemon gPlayerParty[6], gEnemyParty[6];
++struct BattlePokemon gBattleMons[4];
++u8 gBattlersCount = 2, gBattleBufferA[4][32];
++u16 gBattlerPartyIndexes[4], gSpecialVar_Result;
++u32 gBattleTypeFlags, rules;
++int FlagGet(int x) { (void)x; return 1; }
++bool8 WorldRules_Enabled(u32 rule) { return (rules & rule) != 0; }
++int NativeLink_IsActive(void) { return 1; }
++int CheckBagHasItem(u16 x, u16 y) { (void)x; (void)y; return 1; }
++u8 GetBattlerPosition(u8 x) { return x; }
++u8 GetBattlerSide(u8 x) { return x & 1; }
++u8 GetNature(struct Pokemon *p) { (void)p; return 0; }
++u16 ModifyStatByNature(u8 n, u16 s, u8 i) { (void)n; (void)i; return s; }
++u32 GetMonData(struct Pokemon *p, int field) { return field == MON_DATA_SPECIES ? p->species : 0; }
++int main(void) {
++    gPlayerParty[0].species = gBattleMons[0].species = SPECIES_VENUSAUR;
++    gBattleMons[0].item = ITEM_VENUSAURITE;
++    gBattleMons[0].hp = 30;
++    gBattleMons[0].level = 50;
++    if (!MEGA_FEATURE_READY) {
++        rules = 12;
++        MegaGame_Reset();
++        gBattleBufferA[0][0] = CONTROLLER_CHOOSEMOVE;
++        gBattleBufferA[0][3] = MEGA_MOVE_CAN_SELECT_BIT;
++        assert(!MegaGame_CanQueue(0));
++        assert(!MegaGame_CanSelect(0));
++        assert(!MegaGame_ToggleSelection(0));
++        assert(!MegaGame_ChoiceBit(0));
++        assert(!MegaGame_ValidateMoveChoice(0, MEGA_MOVE_CHOICE_BIT, 1));
++        assert(!MegaGame_Queue(0));
++        assert(!MegaGame_Apply(0));
++        assert(!MegaGame_OnSwitchIn(0));
++        assert(!MegaGame_ObserveForm(0, MEGA_FORM_VENUSAUR_MEGA, 0));
++        assert(!MegaGame_ActiveForm(0));
++        return 0;
++    }
++    for (rules = 0; rules <= 12; rules += 4) {
++        int allowed = (rules & 8) && (!REQUIRES_MODERN || (rules & 4));
++        MegaGame_Reset();
++        assert(MegaGame_CanQueue(0) == allowed);
++        /* The owner controller consumes the authority's eligibility bit,
++         * not its potentially stale local battle-mon data. */
++        gBattleBufferA[0][0] = CONTROLLER_CHOOSEMOVE;
++        gBattleBufferA[0][3] = MegaGame_CanQueue(0) ? MEGA_MOVE_CAN_SELECT_BIT : 0;
++        assert(MegaGame_CanSelect(0) == allowed);
++        assert(MegaGame_ToggleSelection(0) == allowed);
++        assert(MegaGame_ChoiceBit(0) == (allowed ? MEGA_MOVE_CHOICE_BIT : 0));
++        assert(MegaGame_ValidateMoveChoice(0, MEGA_MOVE_CHOICE_BIT, 1) == allowed);
++        assert(MegaGame_Queue(0) == allowed);
++        assert(MegaGame_Apply(0) == allowed);
++        assert(MegaGame_OnSwitchIn(0) == allowed);
++        MegaGame_Reset();
++        assert(MegaGame_ObserveForm(0, MEGA_FORM_VENUSAUR_MEGA, 0) == allowed);
++        assert(MegaGame_ActiveForm(0) == (allowed ? MEGA_FORM_VENUSAUR_MEGA : 0));
++    }
++    /* Recheck at consumption: a previously eligible queued/observed form
++     * must not bypass the policy when restored under a different mask. */
++    MegaGame_Reset(); rules = 12;
++    assert(MegaGame_Queue(0)); rules = 8;
++    assert(MegaGame_Apply(0) == !REQUIRES_MODERN);
++    MegaGame_Reset(); rules = 12;
++    assert(MegaGame_ObserveForm(0, MEGA_FORM_VENUSAUR_MEGA, 0)); rules = 8;
++    gBattleMons[0].attack = 1;
++    assert(MegaGame_OnSwitchIn(0) == !REQUIRES_MODERN);
++    MegaGame_Restore(0);
++    assert((gBattleMons[0].attack == 1) == REQUIRES_MODERN);
++    return 0;
++}
++'''
++        with tempfile.TemporaryDirectory(prefix='mega-cross-rule-') as directory:
++            root = Path(directory)
++            (root / 'platform').mkdir()
++            (root / 'constants').mkdir()
++            (root / 'global.h').write_text('#ifndef GLOB\n#define GLOB\n' + headers['globalh'] + '#endif\n')
++            (root / 'battle.h').write_text(headers['battleh'] + '\n#define BATTLE_TYPE_IS_MASTER 256\n')
++            (root / 'pokemon.h').write_text(headers['pokemonh'])
++            (root / 'battle_controllers.h').write_text('#define CONTROLLER_CHOOSEMOVE 10\nextern u8 gBattleBufferA[4][32];\n')
++            (root / 'battle_anim.h').write_text('')
++            (root / 'item.h').write_text('int CheckBagHasItem(u16,u16);\n')
++            (root / 'event_data.h').write_text('int FlagGet(int);extern u16 gSpecialVar_Result;\n')
++            (root / 'constants/flags.h').write_text('#define FLAG_BADGE07_GET 1\n')
++            (root / 'platform/native_link.h').write_text('int NativeLink_IsActive(void);\n')
++            (root / 'main.c').write_text(main)
++            forms = (ROOT / 'src/platform/mega_forms.c').read_text()
++            for variant, replacement in (
++                ('legacy', 'TYPE_GRASS, TYPE_POISON, ABILITY_THICK_FAT'),
++                ('technician', 'TYPE_GRASS, TYPE_POISON, ABILITY_TECHNICIAN'),
++                ('adaptability', 'TYPE_GRASS, TYPE_POISON, ABILITY_ADAPTABILITY'),
++                ('tough_claws', 'TYPE_GRASS, TYPE_POISON, ABILITY_TOUGH_CLAWS'),
++                ('fairy_primary', 'TYPE_FAIRY, TYPE_POISON, ABILITY_THICK_FAT'),
++                ('fairy_secondary', 'TYPE_GRASS, TYPE_FAIRY, ABILITY_THICK_FAT'),
++            ):
++                with self.subTest(variant=variant):
++                    (root / 'forms.c').write_text(forms.replace('TYPE_GRASS, TYPE_POISON, ABILITY_THICK_FAT', replacement, 1))
++                    executable = root / variant
++                    command = ['cc', '-std=c99', '-DPORTABLE',
++                               f'-DREQUIRES_MODERN={int(variant != "legacy")}',
++                               '-Wall', '-Wextra', '-Werror', '-iquote', str(root),
++                               '-iquote', str(ROOT / 'include'), str(root / 'forms.c'),
++                               str(ROOT / 'src/platform/mega_battle.c'),
++                               str(ROOT / 'src/platform/mega_game.c'), str(root / 'main.c'),
++                               '-o', str(executable)]
++                    result = subprocess.run(command, capture_output=True, text=True)
++                    self.assertEqual(result.returncode, 0, result.stderr)
++                    result = subprocess.run([str(executable)], capture_output=True, text=True)
++                    self.assertEqual(result.returncode, 0, result.stderr)
++                    unsupported = command[:-2] + ['-DMEGA_FEATURE_READY=0', '-o', str(executable) + '-unsupported']
++                    result = subprocess.run(unsupported, capture_output=True, text=True)
++                    self.assertEqual(result.returncode, 0, result.stderr)
++                    result = subprocess.run([str(executable) + '-unsupported'], capture_output=True, text=True)
++                    self.assertEqual(result.returncode, 0, result.stderr)
++
++
++if __name__ == '__main__':
++    unittest.main()
+--- /dev/null
++++ b/test/world/test_rc4_mega_readiness.py
+@@ -0,0 +1,119 @@
++"""Production Mega readiness without private compile or policy overrides."""
++import itertools
++import json
++from pathlib import Path
++import subprocess
++import tempfile
++import unittest
++
++from world.rules import NAMES, make, publish, read, validate, wire
++
++ROOT = Path(__file__).resolve().parents[2]
++
++
++class MegaReadinessTests(unittest.TestCase):
++    def test_boolean_policy_matrix_and_vanilla_default(self):
++        self.assertEqual(make()['rules'], dict.fromkeys(NAMES, False))
++        for flags in itertools.product((False, True), repeat=len(NAMES)):
++            rules = dict(zip(NAMES, flags))
++            with self.subTest(rules=rules):
++                if rules['megaEvolution'] and not rules['modernSplit']:
++                    with self.assertRaisesRegex(ValueError, 'Mega Evolution requires modernSplit'):
++                        make(rules=rules)
++                else:
++                    value = make(rules=rules)
++                    self.assertEqual(validate(value)['rules'], rules)
++                    self.assertEqual(value['mask'], sum(1 << i for i, flag in enumerate(flags) if flag))
++        for bad in (0, 1, 'true', None):
++            with self.subTest(bad=bad), self.assertRaisesRegex(ValueError, 'boolean'):
++                make(rules=dict.fromkeys(NAMES, False) | {'megaEvolution': bad})
++
++    def test_schema_boolean_dependency_matches_policy_matrix(self):
++        from jsonschema import Draft202012Validator
++        schema = json.loads((ROOT/'world/rules.schema.json').read_text())
++        Draft202012Validator.check_schema(schema)
++        validator = Draft202012Validator(schema)
++        for flags in itertools.product((False, True), repeat=len(NAMES)):
++            rules = dict(zip(NAMES, flags))
++            value = dict(make(), rules=rules,
++                         mask=sum(1 << i for i, flag in enumerate(flags) if flag))
++            with self.subTest(rules=rules):
++                self.assertEqual(validator.is_valid(value),
++                                 not rules['megaEvolution'] or rules['modernSplit'])
++        for bad in (0, 1, 'true', None):
++            with self.subTest(bad=bad):
++                value = make(rules=dict.fromkeys(NAMES, False) | {'modernSplit': True})
++                value['rules']['megaEvolution'] = bad
++                self.assertFalse(validator.is_valid(value))
++
++    def test_native_default_support_and_explicit_unsupported_fail_closed(self):
++        source = r'''
++#include "platform/world_rules.h"
++#include "platform/mega_game.h"
++#include <assert.h>
++int main(void) {
++    assert(WorldRules_Mask() == 0);
++    assert(!WorldRules_Enabled(WORLD_RULE_MEGA_EVOLUTION));
++    assert(WorldRules_Init("1:12:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") == EXPECT_READY);
++    assert(WorldRules_Enabled(WORLD_RULE_MEGA_EVOLUTION) == EXPECT_READY);
++    assert(WorldRules_Mask() == (EXPECT_READY ? 12 : 0));
++    return 0;
++}
++'''
++        with tempfile.TemporaryDirectory(prefix='mega-readiness-c-') as directory:
++            root = Path(directory)
++            (root/'main.c').write_text(source)
++            for name, flags, expected in [('default', [], 1), ('unsupported', ['-DMEGA_FEATURE_READY=0'], 0)]:
++                with self.subTest(build=name):
++                    binary = root/name
++                    result = subprocess.run(['cc', '-std=c99', '-Wall', '-Wextra', '-Werror',
++                        '-DPORTABLE', '-DVER_64BIT', f'-DEXPECT_READY={expected}', *flags,
++                        '-Iinclude', str(root/'main.c'), 'src/platform/world_rules.c',
++                        '-o', str(binary)], cwd=ROOT, capture_output=True, text=True)
++                    self.assertEqual(result.returncode, 0, result.stderr)
++                    result = subprocess.run([str(binary)], capture_output=True, text=True)
++                    self.assertEqual(result.returncode, 0, result.stderr)
++
++    def test_invalid_private_offline_manifest_fails_before_profile_creation(self):
++        from world.offline import offline_profile
++        from world.rules import MANIFEST
++        with tempfile.TemporaryDirectory(prefix='mega-invalid-offline-') as directory:
++            root = Path(directory)
++            invalid = make()
++            invalid['rules']['megaEvolution'] = True
++            (root/MANIFEST).write_text(json.dumps(invalid))
++            with self.assertRaisesRegex(ValueError, 'Mega Evolution requires modernSplit'):
++                with offline_profile(root, 'alice'):
++                    self.fail('Invalid Mega policy admitted for offline play')
++            self.assertFalse((root/'.offline').exists())
++
++    def test_host_and_private_offline_policy_round_trip(self):
++        from world.server import WorldServer
++        from world.offline import offline_profile
++        from world.launcher import game_command
++        with tempfile.TemporaryDirectory(prefix='mega-ready-') as directory:
++            root = Path(directory)
++            server = WorldServer(root/'world.sock', root)
++            try:
++                value = server.set_world_rules(dict.fromkeys(NAMES, False) |
++                                               {'modernSplit': True, 'megaEvolution': True})
++                self.assertEqual(value['mask'], 12)
++                self.assertEqual(read(root), value)
++                with self.assertRaisesRegex(ValueError, 'Mega Evolution requires modernSplit'):
++                    server.set_world_rules(value['rules'] | {'modernSplit': False})
++                self.assertEqual(server.world_rules, value)
++                self.assertEqual(read(root), value)
++            finally:
++                server.close()
++            with offline_profile(root, 'alice') as paths:
++                command = game_command('/bin/true', root/'.offline', paths, online=False)
++                self.assertEqual(command[command.index('--world-rules') + 1], wire(value))
++                self.assertEqual(read(root), value)
++                self.assertFalse(paths['save'].exists())
++            with self.assertRaisesRegex(ValueError, 'Mega Evolution requires modernSplit'):
++                publish(root, dict(value, rules=value['rules'] | {'modernSplit': False}))
++            self.assertEqual(read(root), value)
++
++
++if __name__ == '__main__':
++    unittest.main()

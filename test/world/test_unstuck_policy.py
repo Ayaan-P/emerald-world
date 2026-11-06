@@ -1,0 +1,405 @@
+"""Execute real native unstuck destination policy with generated map data."""
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+
+ROOT = Path(__file__).resolve().parents[2]
+
+class WorldUnstuckTests(unittest.TestCase):
+    def test_plan_checks_the_real_policy_without_mutating_game_state(self):
+        source = r'''
+#include <assert.h>
+#include <string.h>
+#include "src/heal_location.c"
+#include "src/platform/unstuck_landing.c"
+#include "src/platform/world_unstuck.c"
+struct SaveBlock1 *gSaveBlock1Ptr;
+struct SaveBlock2 *gSaveBlock2Ptr;
+struct Main gMain;
+struct PaletteFadeControl gPaletteFade;
+struct PlayerAvatar gPlayerAvatar;
+struct ObjectEvent gObjectEvents[OBJECT_EVENTS_COUNT];
+struct MapHeader gMapHeader;
+struct BackupMapLayout gBackupMapLayout;
+u8 gWirelessCommType;
+static int blockedX=-1,blockedY=-1, fieldLocked, teleports, reserved, reserveResult=NATIVE_UNSTUCK_ALLOWED;
+static u8 loadedBehavior=MB_NORMAL;
+struct Task gTasks[NUM_TASKS];
+bool8 ArePlayerFieldControlsLocked(void) { return fieldLocked; }
+void LockPlayerFieldControls(void) { fieldLocked=1; }
+void FreezeObjectEvents(void) {}
+void ResetInitialPlayerAvatarState(void) {}
+void StoreInitialPlayerAvatarState(void) {}
+u8 GetPlayerFacingDirection(void) { return DIR_SOUTH; }
+void SetPlayerAvatarTransitionFlags(u16 flags) { gPlayerAvatar.flags=flags; }
+void ObjectEventTurn(struct ObjectEvent *object,u8 dir) { object->facingDirection=dir; }
+void FldEff_TeleportWarpOut(void) { teleports++; }
+void MoveCoords(u8 d,s16 *x,s16 *y) { (void)d;(*x)++;(*y)++; }
+u8 GetCollisionAtCoords(struct ObjectEvent *o,s16 x,s16 y,u32 d) { (void)o;(void)x;(void)y;(void)d;return COLLISION_NONE; }
+u8 GetLedgeJumpDirection(s16 x,s16 y,u8 d) { (void)x;(void)y;(void)d;return DIR_NONE; }
+bool8 MetatileBehavior_IsSurfableFishableWater(u8 b) { return b==MB_POND_WATER; }
+bool8 MetatileBehavior_IsWarpDoor(u8 b) { (void)b;return FALSE; }
+bool8 MetatileBehavior_IsNonAnimDoor(u8 b) { (void)b;return FALSE; }
+void SetWarpDestination(s8 group,s8 num,s8 warp,s8 x,s8 y) { (void)group;(void)num;(void)warp;(void)x;(void)y; }
+enum NativeUnstuckResult NativeUnstuck_ReserveCurrent(uint32_t trainer,uint64_t now,bool boxed,unsigned *left) {
+ (void)trainer;(void)now;(void)boxed;(void)left;reserved++;return reserveResult;
+}
+u8 MapGridGetCollisionAt(s32 x,s32 y) { return x==blockedX && y==blockedY; }
+u8 MapGridGetElevationAt(s32 x,s32 y) { (void)x;(void)y;return ELEVATION_DEFAULT; }
+s32 MapGridGetMetatileBehaviorAt(s32 x,s32 y) { (void)x;(void)y;return loadedBehavior; }
+static struct MapHeader destination;
+void CB1_Overworld(void) {}
+void CB2_Overworld(void) {}
+int NativeLink_IsActive(void) { return 0; }
+int LinkTransport_OfferPending(void) { return 0; }
+int LinkTransport_TagOfferPending(void) { return 0; }
+const struct LinkTransportInvitation *LinkTransport_PendingInvitation(void) { return NULL; }
+const LinkTransportInvitation *LinkTransport_PendingTag(void) { return NULL; }
+int WorldActivity_OwnsFieldInput(void) { return 0; }
+bool8 ScriptContext_IsEnabled(void) { return FALSE; }
+bool32 GetSafariZoneFlag(void) { return FALSE; }
+bool8 InBattlePike(void) { return FALSE; }
+u8 CurrentBattlePyramidLocation(void) { return PYRAMID_LOCATION_NONE; }
+bool8 InMultiPartnerRoom(void) { return FALSE; }
+bool8 Overworld_MapTypeAllowsTeleportAndFly(u8 t) { return t==MAP_TYPE_ROUTE || t==MAP_TYPE_TOWN; }
+bool8 FlagGet(u16 flag) { return flag==FLAG_SYS_POKEMON_GET; }
+u16 VarGet(u16 var) { (void)var;return 0; }
+struct MapHeader const *const Overworld_GetMapHeaderByGroupAndId(u16 group,u16 num) {
+ return group==MAP_GROUP(MAP_OLDALE_TOWN) && num==MAP_NUM(MAP_OLDALE_TOWN) ? &destination : NULL;
+}
+int main(void) {
+ static struct SaveBlock1 save, before; static struct SaveBlock2 save2;
+ static u16 map[8192], attributes[512];
+ struct Tileset tiles={.metatileAttributes=attributes};
+ const struct WorldCatalogMap *catalog=WorldCatalog_Find(MAP_GROUP(MAP_OLDALE_TOWN),MAP_NUM(MAP_OLDALE_TOWN));
+ struct MapLayout layout={.width=catalog->width,.height=catalog->height,.map=map,.primaryTileset=&tiles,.secondaryTileset=&tiles};
+ struct MapEvents events={0}; const struct HealLocation *heal=GetHealLocation(HEAL_LOCATION_OLDALE_TOWN);
+ struct WorldUnstuckPlan plan, untouched;
+ assert(catalog && catalog->width*catalog->height<=8192);
+ for(unsigned i=0;i<catalog->width*catalog->height;i++) map[i]=PACK_ELEVATION(ELEVATION_DEFAULT);
+ destination.mapLayout=&layout; destination.events=&events; destination.mapType=MAP_TYPE_TOWN;
+ gSaveBlock1Ptr=&save; gSaveBlock2Ptr=&save2; save2.playerGender=MALE;
+ save.location.mapGroup=MAP_GROUP(MAP_ROUTE101);save.location.mapNum=MAP_NUM(MAP_ROUTE101);
+ save.lastHealLocation=(struct WarpData){heal->mapGroup,heal->mapNum,WARP_ID_NONE,heal->x,heal->y};
+ gMain.callback1=CB1_Overworld;gMain.callback2=CB2_Overworld;gMapHeader.mapType=MAP_TYPE_ROUTE;
+ gPlayerAvatar.objectEventId=0;gObjectEvents[0].active=1;gObjectEvents[0].isPlayer=1;
+ gObjectEvents[0].currentElevation=ELEVATION_DEFAULT;
+ gObjectEvents[0].currentCoords.x=4+MAP_OFFSET;gObjectEvents[0].currentCoords.y=5+MAP_OFFSET;
+ before=save; memset(&plan,0x55,sizeof(plan)); untouched=plan;
+ assert(WorldUnstuck_Plan(&plan)==UNSTUCK_PLAN_OK);
+ assert(plan.originX==4 && plan.originY==5 && plan.landingX==heal->x && plan.landingY==heal->y);
+ assert(!memcmp(&save,&before,sizeof(save)));
+ testTravel=1;assert(WorldUnstuck_Begin()==UNSTUCK_USE_BLOCKED);testTravel=0;
+ testRally=1;assert(WorldUnstuck_Begin()==UNSTUCK_USE_BLOCKED);testRally=0;
+ testMenu=1;assert(WorldUnstuck_Begin()==UNSTUCK_USE_BLOCKED);testMenu=0;
+ fieldLocked=1;assert(WorldUnstuck_Begin()==UNSTUCK_USE_BLOCKED);fieldLocked=0;
+ testOnline=1;testRemoteClear=0;assert(WorldUnstuck_Begin()==UNSTUCK_USE_BLOCKED);testRemoteClear=1;
+ assert(reserved==0 && teleports==0);
+ reserveResult=NATIVE_UNSTUCK_COOLDOWN;assert(WorldUnstuck_Begin()==UNSTUCK_USE_COOLDOWN);
+ assert(!WorldUnstuck_OwnsFieldInput() && !fieldLocked && teleports==0);
+ reserveResult=NATIVE_UNSTUCK_ALLOWED;gPlayerAvatar.flags=PLAYER_AVATAR_FLAG_MACH_BIKE;
+ assert(WorldUnstuck_Begin()==UNSTUCK_USE_STARTED && fieldLocked && teleports==1);
+ assert(WorldUnstuck_OwnsFieldInput() && sOriginAvatar==PLAYER_AVATAR_FLAG_MACH_BIKE);
+ assert(!memcmp(&save,&before,sizeof(save)));
+ assert(WorldUnstuck_Begin()==UNSTUCK_USE_BLOCKED);
+ gMain.inBattle=1;plan=untouched;assert(WorldUnstuck_Plan(&plan)==UNSTUCK_PLAN_BLOCKED);
+ assert(!memcmp(&plan,&untouched,sizeof(plan)));gMain.inBattle=0;
+ unsigned x=heal->x,y=heal->y,w=layout.width;
+ map[x+y*w] |= PACK_COLLISION(1);
+ plan=untouched;assert(WorldUnstuck_Plan(&plan)==UNSTUCK_PLAN_NO_LANDING);
+ assert(!memcmp(&plan,&untouched,sizeof(plan)) && !memcmp(&save,&before,sizeof(save)));
+ map[x+y*w] &= ~PACK_COLLISION(1);
+ assert(WorldUnstuck_Plan(&plan)==UNSTUCK_PLAN_OK);
+ save.location.mapGroup=heal->mapGroup;save.location.mapNum=heal->mapNum;
+ gObjectEvents[0].currentCoords.x=plan.landingX+MAP_OFFSET;gObjectEvents[0].currentCoords.y=plan.landingY+MAP_OFFSET;
+ gMapHeader=destination;gBackupMapLayout.map=map;
+ gBackupMapLayout.width=layout.width+MAP_OFFSET_W;gBackupMapLayout.height=layout.height+MAP_OFFSET_H;
+ assert(!WorldUnstuck_RevalidateArrival(&plan,FALSE)); /* no freshness proof */
+ assert(WorldUnstuck_RevalidateArrival(&plan,TRUE));
+ assert(WorldUnstuck_CompleteArrival()==UNSTUCK_ARRIVAL_RELEASE && !WorldUnstuck_OwnsFieldInput());
+ /* A stale/occupied connected arrival must retain ownership through rollback. */
+ plan.originGroup=heal->mapGroup;plan.originNum=heal->mapNum;
+ sUnstuckPlan=plan;sUnstuckActive=TRUE;testRemoteClear=0;
+ assert(WorldUnstuck_CompleteArrival()==UNSTUCK_ARRIVAL_HOLD && WorldUnstuck_OwnsFieldInput());
+ testRemoteClear=1;blockedX=plan.landingX+MAP_OFFSET;blockedY=plan.landingY+MAP_OFFSET;
+ gMain.inBattle=1;assert(WorldUnstuck_CompleteArrival()==UNSTUCK_ARRIVAL_HOLD);gMain.inBattle=0;
+ map[plan.originX+plan.originY*layout.width] |= PACK_COLLISION(1);
+ assert(WorldUnstuck_CompleteArrival()==UNSTUCK_ARRIVAL_HOLD && !sReturning);
+ map[plan.originX+plan.originY*layout.width] &= ~PACK_COLLISION(1);
+ assert(WorldUnstuck_CompleteArrival()==UNSTUCK_ARRIVAL_RETURN && WorldUnstuck_OwnsFieldInput());
+ assert(WorldUnstuck_CompleteArrival()==UNSTUCK_ARRIVAL_HOLD && WorldUnstuck_OwnsFieldInput());
+ blockedX=blockedY=-1;
+ save.location.mapGroup=plan.originGroup;save.location.mapNum=plan.originNum;
+ gObjectEvents[0].currentCoords.x=plan.originX+MAP_OFFSET;gObjectEvents[0].currentCoords.y=plan.originY+MAP_OFFSET;
+ blockedX=gObjectEvents[0].currentCoords.x;blockedY=gObjectEvents[0].currentCoords.y;
+ assert(WorldUnstuck_CompleteArrival()==UNSTUCK_ARRIVAL_HOLD);blockedX=blockedY=-1;
+ assert(WorldUnstuck_CompleteArrival()==UNSTUCK_ARRIVAL_RELEASE && !WorldUnstuck_OwnsFieldInput());
+ assert(gPlayerAvatar.flags==PLAYER_AVATAR_FLAG_MACH_BIKE);
+ /* No on-foot water fallback, even when the saved departure was surfing. */
+ sUnstuckActive=TRUE;sReturning=TRUE;sOriginAvatar=PLAYER_AVATAR_FLAG_SURFING;
+ assert(WorldUnstuck_CompleteArrival()==UNSTUCK_ARRIVAL_HOLD);
+ loadedBehavior=MB_POND_WATER;gPlayerAvatar.flags=PLAYER_AVATAR_FLAG_ON_FOOT;
+ assert(WorldUnstuck_CompleteArrival()==UNSTUCK_ARRIVAL_HOLD);
+ gPlayerAvatar.flags=PLAYER_AVATAR_FLAG_SURFING;
+ assert(WorldUnstuck_CompleteArrival()==UNSTUCK_ARRIVAL_RELEASE);
+ assert(gPlayerAvatar.flags==PLAYER_AVATAR_FLAG_SURFING);loadedBehavior=MB_NORMAL;
+ save.location.mapGroup=heal->mapGroup;save.location.mapNum=heal->mapNum;
+ gObjectEvents[0].currentCoords.x=plan.landingX+MAP_OFFSET;gObjectEvents[0].currentCoords.y=plan.landingY+MAP_OFFSET;
+ /* Arrival can legitimately be inside the player's home, even though
+  * departure from that map is forbidden. */
+ gMapHeader.mapType=MAP_TYPE_INDOOR; assert(!WorldUnstuck_AllowedDeparture());
+ assert(WorldUnstuck_RevalidateArrival(&plan,TRUE));
+ gObjectEvents[1].active=1;gObjectEvents[1].currentCoords=gObjectEvents[0].currentCoords;
+ assert(!WorldUnstuck_RevalidateArrival(&plan,TRUE));gObjectEvents[1].active=0;
+ blockedX=plan.landingX+MAP_OFFSET;blockedY=plan.landingY+MAP_OFFSET;
+ assert(!WorldUnstuck_RevalidateArrival(&plan,TRUE));blockedX=blockedY=-1;
+ plan.spawnX++;assert(!WorldUnstuck_RevalidateArrival(&plan,TRUE));
+ return 0;
+}
+'''
+        self.compile_and_run(source)
+
+    def test_landing_search_rejects_blocked_or_isolated_tiles_without_mutation(self):
+        source = r'''
+#include <assert.h>
+#include <string.h>
+#include "src/platform/unstuck_landing.c"
+int main(void) {
+ u8 plain[25], clear[25], before[25]; s16 x=-1,y=-1;
+ memset(plain,1,sizeof(plain)); memset(clear,1,sizeof(clear));
+ memcpy(before,clear,sizeof(clear));
+ assert(Unstuck_SelectLanding(plain,clear,5,5,2,2,&x,&y) && x==2 && y==2);
+ assert(!memcmp(before,clear,sizeof(clear)));
+ assert(Unstuck_IsPlannedLandingStillSafe(plain,clear,5,5,2,2,2,2));
+ clear[12]=0;
+ assert(!Unstuck_IsPlannedLandingStillSafe(plain,clear,5,5,2,2,2,2));
+ x=y=-1;
+ assert(Unstuck_SelectLanding(plain,clear,5,5,2,2,&x,&y));
+ assert(!(x==2 && y==2) && clear[x+y*5]);
+ assert(Unstuck_IsPlannedLandingStillSafe(plain,clear,5,5,2,2,x,y));
+ clear[x+y*5]=0; assert(!Unstuck_IsPlannedLandingStillSafe(plain,clear,5,5,2,2,x,y));
+ memset(clear,0,sizeof(clear)); clear[0]=1; clear[1]=1; x=y=-1;
+ assert(!Unstuck_SelectLanding(plain,clear,5,5,2,2,&x,&y) && x==-1 && y==-1);
+ memset(clear,1,sizeof(clear)); plain[12]=0;
+ assert(!Unstuck_SelectLanding(plain,clear,5,5,2,2,&x,&y));
+ assert(!Unstuck_SelectLanding(plain,clear,129,1,0,0,&x,&y));
+ assert(!Unstuck_SelectLanding(plain,clear,5,5,2,2,NULL,&y));
+ return 0;
+}
+'''
+        self.compile_and_run(source)
+
+    def test_static_grid_checks_catalog_geometry_and_event_hazards(self):
+        source = r'''
+#include <assert.h>
+#include <string.h>
+#include "src/platform/world_unstuck.c"
+static struct MapHeader destination;
+struct MapHeader const *const Overworld_GetMapHeaderByGroupAndId(u16 group,u16 num) { return group==0 && num==0 ? &destination : NULL; }
+bool8 FlagGet(u16 flag) { (void)flag;return FALSE; }
+int main(void) {
+ static u16 map[900], attrs[512]; u8 grid[900];
+ struct Tileset tiles={.metatileAttributes=attrs};
+ struct MapLayout layout={.width=30,.height=30,.map=map,.primaryTileset=&tiles,.secondaryTileset=&tiles};
+ struct WarpEvent warp={.x=1,.y=1};
+ struct ObjectEventTemplate npc={.x=3,.y=1,.movementRangeX=1,.movementRangeY=0};
+ struct MapEvents events={.warpCount=1,.warps=&warp,.objectEventCount=1,.objectEvents=&npc};
+ destination.mapLayout=&layout; destination.events=&events;
+ for(unsigned i=0;i<900;i++) map[i]=PACK_ELEVATION(ELEVATION_DEFAULT);
+ map[0] |= PACK_COLLISION(1); attrs[1]=1; map[1] |= 1;
+ memset(grid,77,sizeof(grid));
+ assert(!WorldUnstuck_BuildStaticGrid(0,0,&destination,grid,899)); assert(grid[0]==77);
+ assert(WorldUnstuck_BuildStaticGrid(0,0,&destination,grid,900));
+ assert(!grid[0] && !grid[1]); /* collision and non-normal */
+ assert(!grid[1+30] && !grid[2+30] && !grid[3+30]); /* warp and NPC range */
+ assert(grid[2+2*30]);
+ layout.width=29; assert(!WorldUnstuck_BuildStaticGrid(0,0,&destination,grid,900));
+ assert(!WorldUnstuck_BuildStaticGrid(99,99,&destination,grid,900));
+ return 0;
+}
+'''
+        self.compile_and_run(source)
+
+    def test_loaded_grid_rejects_hazards_and_actual_occupied_tiles(self):
+        source = r'''
+#include <assert.h>
+#include <string.h>
+#include "src/platform/world_unstuck.c"
+struct MapHeader gMapHeader;
+struct BackupMapLayout gBackupMapLayout;
+struct ObjectEvent gObjectEvents[OBJECT_EVENTS_COUNT];
+struct SaveBlock1 *gSaveBlock1Ptr;
+struct Main gMain;
+void CB2_Overworld(void) {}
+static int blockedX=-1, blockedY=-1, specialX=-1, specialY=-1;
+u8 MapGridGetCollisionAt(s32 x,s32 y) { return x==blockedX && y==blockedY; }
+u8 MapGridGetElevationAt(s32 x,s32 y) { (void)x;(void)y;return ELEVATION_DEFAULT; }
+s32 MapGridGetMetatileBehaviorAt(s32 x,s32 y) { return x==specialX && y==specialY ? 1 : MB_NORMAL; }
+bool8 FlagGet(u16 flag) { (void)flag;return FALSE; }
+int main(void) {
+ static u16 map[400]; static struct SaveBlock1 save; u8 plain[25], clear[25];
+ gSaveBlock1Ptr=&save; gMain.callback2=CB2_Overworld;
+ struct MapLayout layout={.width=5,.height=5};
+ struct WarpEvent warp={.x=1,.y=1};
+ struct CoordEvent coord={.x=2,.y=1};
+ struct ObjectEventTemplate npc={.x=3,.y=1,.movementRangeX=1,.movementRangeY=0};
+ struct MapEvents events={.warpCount=1,.warps=&warp,.coordEventCount=1,.coordEvents=&coord,.objectEventCount=1,.objectEvents=&npc};
+ gMapHeader.mapLayout=&layout; gMapHeader.events=&events;
+ gBackupMapLayout.width=20; gBackupMapLayout.height=19; gBackupMapLayout.map=map;
+ memset(plain,77,sizeof(plain)); memset(clear,77,sizeof(clear));
+ gMain.callback2=NULL; assert(!WorldUnstuck_BuildLoadedGrid(plain,clear,25));
+ assert(plain[0]==77 && clear[0]==77); gMain.callback2=CB2_Overworld;
+ assert(!WorldUnstuck_BuildLoadedGrid(plain,clear,24)); assert(plain[0]==77 && clear[0]==77);
+ blockedX=7;blockedY=7;specialX=8;specialY=7;
+ gObjectEvents[0].active=1; gObjectEvents[0].isPlayer=1; gObjectEvents[0].currentCoords.x=9;gObjectEvents[0].currentCoords.y=9;
+ gObjectEvents[1].active=1; gObjectEvents[1].currentCoords.x=10;gObjectEvents[1].currentCoords.y=9;
+ assert(WorldUnstuck_BuildLoadedGrid(plain,clear,25));
+ assert(!plain[0] && !plain[1]); /* collision, non-normal */
+ assert(!plain[1+1*5] && !plain[2+1*5] && !plain[3+1*5]); /* events and NPC range */
+ assert(plain[2+2*5] && clear[2+2*5]); /* own player excluded */
+ assert(plain[3+2*5] && !clear[3+2*5]); /* other live object */
+ assert(!WorldUnstuck_BuildLoadedGrid(plain,plain,25));
+ return 0;
+}
+'''
+        self.compile_and_run(source)
+
+    def test_departure_and_story_gates_fail_closed(self):
+        source = r'''
+#include <assert.h>
+#include "src/platform/world_unstuck.c"
+struct SaveBlock1 *gSaveBlock1Ptr;
+struct Main gMain;
+struct PaletteFadeControl gPaletteFade;
+struct PlayerAvatar gPlayerAvatar;
+struct MapHeader gMapHeader;
+u8 gWirelessCommType;
+static int havePokemon=1, nativeActive, activityOwns, scriptActive, specialArea, flyAllowed=1, league, cleared, pendingOffer, pendingTag, incomingOffer, incomingTag;
+static struct LinkTransportInvitation invitation;
+static u16 city, sky;
+void CB1_Overworld(void) {}
+void CB2_Overworld(void) {}
+int NativeLink_IsActive(void) { return nativeActive; }
+int LinkTransport_OfferPending(void) { return pendingOffer; }
+int LinkTransport_TagOfferPending(void) { return pendingTag; }
+const struct LinkTransportInvitation *LinkTransport_PendingInvitation(void) { return incomingOffer ? &invitation : NULL; }
+const LinkTransportInvitation *LinkTransport_PendingTag(void) { return incomingTag ? &invitation : NULL; }
+int WorldActivity_OwnsFieldInput(void) { return activityOwns; }
+bool8 ScriptContext_IsEnabled(void) { return scriptActive; }
+bool32 GetSafariZoneFlag(void) { return specialArea; }
+bool8 InBattlePike(void) { return specialArea; }
+u8 CurrentBattlePyramidLocation(void) { return specialArea ? 1 : PYRAMID_LOCATION_NONE; }
+bool8 InMultiPartnerRoom(void) { return specialArea; }
+bool8 Overworld_MapTypeAllowsTeleportAndFly(u8 t) { (void)t;return flyAllowed; }
+bool8 FlagGet(u16 flag) { if (flag==FLAG_SYS_POKEMON_GET) return havePokemon; if (flag==FLAG_LANDMARK_POKEMON_LEAGUE) return league; if (flag==FLAG_SYS_GAME_CLEAR) return cleared; return 0; }
+u16 VarGet(u16 var) { return var==VAR_SOOTOPOLIS_CITY_STATE ? city : sky; }
+int main(void) {
+ static struct SaveBlock1 save;
+ gSaveBlock1Ptr=&save; gMain.callback1=CB1_Overworld; gMain.callback2=CB2_Overworld;
+ gMapHeader.mapType=MAP_TYPE_ROUTE; assert(WorldUnstuck_AllowedDeparture());
+ havePokemon=0; assert(!WorldUnstuck_AllowedDeparture()); havePokemon=1;
+ nativeActive=1; assert(!WorldUnstuck_AllowedDeparture()); nativeActive=0;
+ activityOwns=1; assert(!WorldUnstuck_AllowedDeparture()); activityOwns=0;
+ pendingOffer=1; assert(!WorldUnstuck_AllowedDeparture()); pendingOffer=0;
+ pendingTag=1; assert(!WorldUnstuck_AllowedDeparture()); pendingTag=0;
+ incomingOffer=1; assert(!WorldUnstuck_AllowedDeparture()); incomingOffer=0;
+ incomingTag=1; assert(!WorldUnstuck_AllowedDeparture()); incomingTag=0;
+ scriptActive=1; assert(!WorldUnstuck_AllowedDeparture()); scriptActive=0;
+ gMain.inBattle=1; assert(!WorldUnstuck_AllowedDeparture()); gMain.inBattle=0;
+ gPaletteFade.active=1; assert(!WorldUnstuck_AllowedDeparture()); gPaletteFade.active=0;
+ gWirelessCommType=1; assert(!WorldUnstuck_AllowedDeparture()); gWirelessCommType=0;
+ specialArea=1; assert(!WorldUnstuck_AllowedDeparture()); specialArea=0;
+ gMapHeader.mapType=MAP_TYPE_UNDERWATER; assert(!WorldUnstuck_AllowedDeparture());
+ gMapHeader.mapType=MAP_TYPE_INDOOR; flyAllowed=0; assert(!WorldUnstuck_AllowedDeparture());
+ gMapHeader.allowEscaping=1; assert(WorldUnstuck_AllowedDeparture());
+ assert(!WorldUnstuck_StoryAllowsDestination(0));
+ assert(!WorldUnstuck_StoryAllowsDestination(HEAL_LOCATION_SOUTHERN_ISLAND_EXTERIOR));
+ assert(WorldUnstuck_StoryAllowsDestination(HEAL_LOCATION_SOOTOPOLIS_CITY));
+ city=1; assert(!WorldUnstuck_StoryAllowsDestination(HEAL_LOCATION_SOOTOPOLIS_CITY)); city=6;
+ sky=1; assert(!WorldUnstuck_StoryAllowsDestination(HEAL_LOCATION_SOOTOPOLIS_CITY)); sky=3;
+ assert(WorldUnstuck_StoryAllowsDestination(HEAL_LOCATION_SOOTOPOLIS_CITY));
+ assert(!WorldUnstuck_StoryAllowsDestination(HEAL_LOCATION_EVER_GRANDE_CITY_POKEMON_LEAGUE)); league=1;
+ assert(WorldUnstuck_StoryAllowsDestination(HEAL_LOCATION_EVER_GRANDE_CITY_POKEMON_LEAGUE));
+ assert(!WorldUnstuck_StoryAllowsDestination(HEAL_LOCATION_BATTLE_FRONTIER_OUTSIDE_EAST)); cleared=1;
+ assert(WorldUnstuck_StoryAllowsDestination(HEAL_LOCATION_BATTLE_FRONTIER_OUTSIDE_EAST));
+ return 0;
+}
+'''
+        self.compile_and_run(source)
+
+    def test_boxed_check_is_conservative_and_has_no_movement_side_effects(self):
+        source = r'''
+#include <assert.h>
+#include "src/platform/world_unstuck.c"
+struct PlayerAvatar gPlayerAvatar;
+struct ObjectEvent gObjectEvents[OBJECT_EVENTS_COUNT];
+static u8 collision=COLLISION_IMPASSABLE, ledge, behavior;
+void MoveCoords(u8 d,s16 *x,s16 *y) { if(d==DIR_SOUTH)(*y)++; if(d==DIR_NORTH)(*y)--; if(d==DIR_WEST)(*x)--; if(d==DIR_EAST)(*x)++; }
+u8 GetCollisionAtCoords(struct ObjectEvent *o,s16 x,s16 y,u32 d) { (void)o;(void)x;(void)y;(void)d;return collision; }
+u8 GetLedgeJumpDirection(s16 x,s16 y,u8 d) { (void)x;(void)y;(void)d;return ledge; }
+s32 MapGridGetMetatileBehaviorAt(s32 x,s32 y) { (void)x;(void)y;return behavior; }
+bool8 MetatileBehavior_IsSurfableFishableWater(u8 b) { return b==1; }
+bool8 MetatileBehavior_IsWarpDoor(u8 b) { return b==2; }
+bool8 MetatileBehavior_IsNonAnimDoor(u8 b) { return b==3; }
+int main(void) {
+ gPlayerAvatar.objectEventId=0; gObjectEvents[0].active=1; gObjectEvents[0].isPlayer=1;
+ assert(WorldUnstuck_ConservativelyBoxed());
+ collision=COLLISION_NONE; assert(!WorldUnstuck_ConservativelyBoxed());
+ collision=COLLISION_OBJECT_EVENT; assert(!WorldUnstuck_ConservativelyBoxed());
+ collision=COLLISION_IMPASSABLE; ledge=DIR_SOUTH; assert(!WorldUnstuck_ConservativelyBoxed()); ledge=0;
+ for(behavior=1;behavior<=3;behavior++) assert(!WorldUnstuck_ConservativelyBoxed());
+ behavior=0; gObjectEvents[0].active=0; assert(!WorldUnstuck_ConservativelyBoxed());
+ return 0;
+}
+'''
+        self.compile_and_run(source)
+
+    def compile_and_run(self, source):
+        with tempfile.TemporaryDirectory(prefix='unstuck-policy-') as d:
+            source = 'static int testOnline, testRemoteClear=1, testTravel, testRally, testMenu;\n' + source
+            source += '''
+#include "global.h"
+#include "platform/world_bridge.h"
+#include "platform/world_travel.h"
+#include "platform/world_menu.h"
+bool8 WorldBridge_Enabled(void) { return testOnline; }
+bool8 WorldBridge_TravelTileClear(unsigned g,unsigned n,unsigned x,unsigned y) { (void)g;(void)n;(void)x;(void)y;return testRemoteClear; }
+bool8 WorldTravel_OwnsFieldInput(void) { return testTravel; }
+bool8 WorldTravel_NativeFlyRunning(void) { return testTravel; }
+bool8 WorldMenu_OwnsFieldInput(void) { return testMenu; }
+bool8 WorldRally_HasReturn(void) { return testRally; }
+bool8 WorldRally_GetSnapshot(struct WorldRallySnapshot *out) { (void)out;return FALSE; }
+'''
+            c, exe = Path(d)/'test.c', Path(d)/'test'; c.write_text(source)
+            p = subprocess.run(['cc','-std=gnu99','-DPORTABLE','-DMODERN=1','-DVER_64BIT','-Wall','-Wextra','-Werror','-Wno-ignored-qualifiers','-ffunction-sections','-fdata-sections','-iquote',str(ROOT),'-iquote',str(ROOT/'include'),'-iquote',str(ROOT/'build/rc4-unstuck/generated/include'),str(c),'-Wl,--gc-sections','-o',str(exe)],capture_output=True,text=True)
+            self.assertEqual(p.returncode,0,p.stderr)
+            subprocess.run([str(exe)],check=True,capture_output=True)
+
+    def test_whitelist_checks_exact_last_heal_location_and_never_mutates_it(self):
+        source = r'''
+#include <assert.h>
+#include <string.h>
+#include "src/heal_location.c"
+#include "src/platform/world_unstuck.c"
+int main(void) {
+    const struct HealLocation *center = GetHealLocation(HEAL_LOCATION_OLDALE_TOWN);
+    struct WarpData warp = { center->mapGroup, center->mapNum, WARP_ID_NONE, center->x, center->y }, before = warp;
+    assert(WorldUnstuck_HealDestination(&warp, MALE) == HEAL_LOCATION_OLDALE_TOWN);
+    assert(!memcmp(&warp, &before, sizeof(warp)));
+    warp.x++; assert(!WorldUnstuck_HealDestination(&warp, MALE)); warp.x--;
+    warp.warpId=0; assert(!WorldUnstuck_HealDestination(&warp, MALE)); warp.warpId=WARP_ID_NONE;
+    warp.mapGroup=-1; assert(!WorldUnstuck_HealDestination(&warp, MALE));
+    const struct HealLocation *island = GetHealLocation(HEAL_LOCATION_SOUTHERN_ISLAND_EXTERIOR);
+    warp = (struct WarpData){island->mapGroup,island->mapNum,WARP_ID_NONE,island->x,island->y};
+    assert(!WorldUnstuck_HealDestination(&warp, MALE));
+    const struct HealLocation *home = GetHealLocation(HEAL_LOCATION_LITTLEROOT_TOWN_MAYS_HOUSE_2F);
+    warp = (struct WarpData){home->mapGroup,home->mapNum,WARP_ID_NONE,home->x,home->y};
+    assert(!WorldUnstuck_HealDestination(&warp, MALE));
+    assert(WorldUnstuck_HealDestination(&warp, FEMALE) == HEAL_LOCATION_LITTLEROOT_TOWN_MAYS_HOUSE_2F);
+    assert(!WorldUnstuck_HealDestination(&warp, 99));
+    assert(!WorldUnstuck_HealDestination(NULL, MALE));
+    return 0;
+}
+'''
+        self.compile_and_run(source)

@@ -1,3 +1,7 @@
+#ifdef PORTABLE
+#include "../expanded_moves/descriptions.h"
+#endif
+
 static const u8 sNullDescription[] = _(
     "");
 
@@ -1774,4 +1778,7 @@ const u8 *const gMoveDescriptionPointers[MOVES_COUNT - 1] =
     [MOVE_WATER_PULSE - 1] = sWaterPulseDescription,
     [MOVE_DOOM_DESIRE - 1] = sDoomDesireDescription,
     [MOVE_PSYCHO_BOOST - 1] = sPsychoBoostDescription,
+#ifdef PORTABLE
+#include "../expanded_moves/description_pointers.h"
+#endif
 };

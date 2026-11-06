@@ -128,6 +128,28 @@ class DesktopSession:
             server.close()
             return path
 
+    def set_world_rules(self, rules):
+        if self.server is None:
+            raise SessionError('Only the local world owner can change gameplay rules.')
+        from .client import admin_request
+        result = admin_request(self.server.socket_path, dict(command='set_world_rules', rules=rules))
+        if not result.get('ok'):
+            raise SessionError(result.get('error', 'World settings were not saved.'))
+        return result['world_rules']
+
+    def refresh_world_rules(self, trainer):
+        if self.state is None:
+            raise SessionError('Connect to a world before loading its rules.')
+        from .rules import validate, publish
+        with self._intent_client(trainer) as control:
+            response = control._request({'command': 'world_rules'})
+        if not response.get('ok'):
+            raise SessionError('The host does not support world rules.')
+        policy = validate(response['world_rules'])
+        if self.server is None and self.broker is not None:
+            publish(self.state, policy)
+        return policy
+
     def host(self, name):
         from .server import WorldServer
         if self.state is not None:
@@ -309,8 +331,13 @@ class DesktopSession:
                                            'Do not delete socket or lock files.') from None
                     # Control role checks credentials without occupying native presence.
                     from .client import IntentClient
-                    with IntentClient(broker.socket_path, identity['trainer'], identity['token'], timeout=4):
-                        pass
+                    with IntentClient(broker.socket_path, identity['trainer'], identity['token'], timeout=4) as control:
+                        response = control._request({'command': 'world_rules'})
+                        if not response.get('ok'):
+                            raise SessionError('The host does not support world rules. Update the host before joining.')
+                        from .rules import validate, publish
+                        policy = validate(response['world_rules'])
+                        publish(path, policy)
                     paths['profile'].parent.mkdir(mode=0o700, exist_ok=True)
                     paths['profile'].mkdir(mode=0o700, exist_ok=True)
                     config = (f'socket {transport}/world.sock\ntrainer {identity["trainer"]}\n'
@@ -381,9 +408,6 @@ class DesktopSession:
             self.game_locks.pop(key).close()
         import os
         import shutil
-        command = (game_command(binary, state, paths, display, online=False) if offline else
-                   game_command(binary, state, paths, display, agent_control=True) if agent_control else
-                   game_command(binary, state, paths, display))
         if not shutil.which('bwrap'):
             raise SessionError('Bubblewrap is required to isolate the native game.')
         if not Path(binary).is_file() or not os.access(binary, os.X_OK):
@@ -396,6 +420,9 @@ class DesktopSession:
         else:
             lock = ProfileLock(state, trainer)
         try:
+            if not offline:
+                self.refresh_world_rules(trainer)
+            command = game_command(binary, state, paths, display, agent_control=agent_control, online=not offline)
             if agent_control:
                 from .launcher import check_player_endpoint
                 check_player_endpoint(paths)

@@ -1,0 +1,74 @@
+// @vitest-environment jsdom
+import React from 'react';
+import { afterEach, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import WorldRules from './WorldRules';
+import { perform } from './api';
+vi.mock('./api', () => ({ perform: vi.fn() }));
+afterEach(() => { cleanup(); vi.resetAllMocks(); });
+const rules = { version: 2, digest: 'a'.repeat(64), rules: { partyEXP: true, reusableTMs: false, modernSplit: true, megaEvolution: false, expandedRoster: false } };
+it('shows current world policy read-only for a joining trainer', async () => {
+  perform.mockResolvedValue({ world_rules: rules, editable: false });
+  render(<WorldRules state={{ connected: true, world_rules_owner: false, hosting: { worlds: [] } }} />);
+  fireEvent.click(screen.getByRole('button', { name: /load world rules/i }));
+  const input = await screen.findByLabelText('Party EXP');
+  expect(input.checked).toBe(true);
+  expect(input.disabled).toBe(true);
+  expect(screen.queryByRole('button', { name: /save world rules/i })).toBeNull();
+});
+it('owner saves all explicit rule values and reads policy back', async () => {
+  perform.mockResolvedValue({ world_rules: rules });
+  render(<WorldRules state={{ connected: true, world_rules_owner: true, hosting: { worlds: [] } }} />);
+  fireEvent.click(screen.getByRole('button', { name: /load world rules/i }));
+  const input = await screen.findByLabelText('Reusable TMs');
+  fireEvent.click(input);
+  expect(screen.getByLabelText('Mega Evolution').disabled).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: /save world rules/i }));
+  await screen.findByText('World rules saved. Reconnect clients before playing.');
+  expect(perform).toHaveBeenCalledWith('world_rules_set', { rules: { partyEXP: true, reusableTMs: true, modernSplit: true, megaEvolution: false, expandedRoster: false } });
+  expect(perform).toHaveBeenLastCalledWith('world_rules_get', {});
+});
+it('checking Mega visibly enables its dependency and saves the selection unchanged', async () => {
+  const vanilla = { ...rules, rules: { partyEXP: false, reusableTMs: false, modernSplit: false, megaEvolution: false, expandedRoster: false } };
+  const enabled = { ...vanilla, rules: { ...vanilla.rules, modernSplit: true, megaEvolution: true } };
+  perform.mockResolvedValueOnce({ world_rules: vanilla }).mockResolvedValueOnce({}).mockResolvedValueOnce({ world_rules: enabled });
+  render(<WorldRules state={{ connected: true, world_rules_owner: true }} />);
+  fireEvent.click(screen.getByRole('button', { name: /load world rules/i }));
+  const mega = await screen.findByLabelText('Mega Evolution');
+  expect(mega.disabled).toBe(false);
+  expect(screen.getByText(/Mega Evolution requires the modern physical\/special split/i)).toBeTruthy();
+  fireEvent.click(mega);
+  expect(mega.checked).toBe(true);
+  expect(screen.getByLabelText('Modern physical/special split').checked).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: /save world rules/i }));
+  await screen.findByText('World rules saved. Reconnect clients before playing.');
+  expect(perform).toHaveBeenCalledWith('world_rules_set', { rules: enabled.rules });
+  expect(screen.getByLabelText('Mega Evolution').checked).toBe(true);
+});
+it('keeps Mega selected when its dependency is unchecked and explains how to proceed', async () => {
+  const enabled = { ...rules, rules: { ...rules.rules, megaEvolution: true } };
+  perform.mockResolvedValue({ world_rules: enabled });
+  render(<WorldRules state={{ connected: true, world_rules_owner: true }} />);
+  fireEvent.click(screen.getByRole('button', { name: /load world rules/i }));
+  const modern = await screen.findByLabelText('Modern physical/special split');
+  fireEvent.click(modern);
+  expect(modern.checked).toBe(true);
+  expect(screen.getByLabelText('Mega Evolution').checked).toBe(true);
+  expect(screen.getByRole('status').textContent).toMatch(/turn off Mega Evolution first/i);
+  fireEvent.click(screen.getByLabelText('Mega Evolution'));
+  fireEvent.click(modern);
+  expect(modern.checked).toBe(false);
+  expect(screen.getByLabelText('Mega Evolution').checked).toBe(false);
+});
+it('hosted world uses the same explicit Mega policy without changing trainer settings', async () => {
+  const enabled = { ...rules, rules: { ...rules.rules, megaEvolution: true } };
+  perform.mockResolvedValue({ world_rules: enabled });
+  render(<WorldRules state={{ connected: false, hosting: { worlds: [{ id: 'hosted', name: 'Hosted' }] } }} />);
+  fireEvent.change(screen.getByLabelText('World rules target'), { target: { value: 'hosted' } });
+  fireEvent.click(screen.getByRole('button', { name: /load world rules/i }));
+  expect((await screen.findByLabelText('Mega Evolution')).checked).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: /save world rules/i }));
+  await screen.findByText('World rules saved. Reconnect clients before playing.');
+  expect(perform).toHaveBeenCalledWith('host_rules_set', { world: 'hosted', rules: enabled.rules });
+  expect(perform).toHaveBeenLastCalledWith('host_rules_get', { world: 'hosted' });
+});

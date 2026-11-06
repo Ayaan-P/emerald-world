@@ -5,6 +5,36 @@
 // In Gen 4 only, migrated Pokémon with Diamond, Pearl, or Platinum's ID show as "----------".
 // Gen 5 and up read Diamond, Pearl, or Platinum's ID as "Sinnoh".
 // In Gen 4 and up, migrated Pokémon with HeartGold or SoulSilver's ID show the otherwise unused "Johto" string.
+enum __attribute__((packed)) GameVersion
+{
+    VERSION_SAPPHIRE = 1,
+    VERSION_RUBY = 2,
+    VERSION_EMERALD = 3,
+    VERSION_FIRE_RED = 4,
+    VERSION_LEAF_GREEN = 5,
+    VERSION_HEART_GOLD = 7,
+    VERSION_SOUL_SILVER = 8,
+    VERSION_DIAMOND = 10,
+    VERSION_PEARL = 11,
+    VERSION_PLATINUM = 12,
+    VERSION_GAMECUBE = 15,
+    NUM_VERSIONS = VERSION_GAMECUBE,
+};
+
+enum Language
+{
+    LANGUAGE_JAPANESE = 1,
+    LANGUAGE_ENGLISH = 2,
+    LANGUAGE_FRENCH = 3,
+    LANGUAGE_ITALIAN = 4,
+    LANGUAGE_GERMAN = 5,
+    LANGUAGE_KOREAN = 6, // 6 goes unused but the theory is it was meant to be Korean,
+    LANGUAGE_SPANISH = 7,
+    NUM_LANGUAGES = LANGUAGE_SPANISH,
+};
+
+
+/* Retain numeric macros for the surrounding game’s preprocessor branches. */
 #define VERSION_SAPPHIRE 1
 #define VERSION_RUBY 2
 #define VERSION_EMERALD 3
@@ -83,36 +113,28 @@
 #define ALL_MOVES_MASK ((1 << MAX_MON_MOVES) - 1)
 
 #define CONTESTANT_COUNT 4
-#define CONTEST_CATEGORY_COOL     0
-#define CONTEST_CATEGORY_BEAUTY   1
-#define CONTEST_CATEGORY_CUTE     2
-#define CONTEST_CATEGORY_SMART    3
-#define CONTEST_CATEGORY_TOUGH    4
-#define CONTEST_CATEGORIES_COUNT  5
 
 // string lengths
-#define ITEM_NAME_LENGTH 14
-#define POKEMON_NAME_LENGTH 10
+#define ITEM_NAME_LENGTH 20
+#define POKEMON_NAME_LENGTH 12
+#define VANILLA_POKEMON_NAME_LENGTH 10
 #define POKEMON_NAME_BUFFER_SIZE max(20, POKEMON_NAME_LENGTH + 1) // Frequently used buffer size. Larger than necessary
 #define PLAYER_NAME_LENGTH 7
 #define MAIL_WORDS_COUNT 9
 #define EASY_CHAT_BATTLE_WORDS_COUNT 6
-#define MOVE_NAME_LENGTH 12
+#define MOVE_NAME_LENGTH 16
 #define NUM_QUESTIONNAIRE_WORDS 4
 #define QUIZ_QUESTION_LEN 9
 #define WONDER_CARD_TEXT_LENGTH 40
 #define WONDER_NEWS_TEXT_LENGTH 40
 #define WONDER_CARD_BODY_TEXT_LINES 4
 #define WONDER_NEWS_BODY_TEXT_LINES 10
-#define TYPE_NAME_LENGTH 6
-#define ABILITY_NAME_LENGTH 12
+#define TYPE_NAME_LENGTH 8
+#define ABILITY_NAME_LENGTH 16
 #define TRAINER_NAME_LENGTH 10
 
 #define MAX_STAMP_CARD_STAMPS 7
 
-#define MALE 0
-#define FEMALE 1
-#define GENDER_COUNT 2
 
 #define NUM_BARD_SONG_WORDS    6
 #define NUM_STORYTELLER_TALES  4
@@ -134,15 +156,6 @@
 #define OPTIONS_BATTLE_STYLE_SHIFT 0
 #define OPTIONS_BATTLE_STYLE_SET 1
 
-#define DIR_NONE        0
-#define DIR_SOUTH       1
-#define DIR_NORTH       2
-#define DIR_WEST        3
-#define DIR_EAST        4
-#define DIR_SOUTHWEST   5
-#define DIR_SOUTHEAST   6
-#define DIR_NORTHWEST   7
-#define DIR_NORTHEAST   8
 
 #define CONNECTION_INVALID -1
 #define CONNECTION_NONE     0
@@ -153,4 +166,28 @@
 #define CONNECTION_DIVE     5
 #define CONNECTION_EMERGE   6
 
+enum Gender
+{
+    MALE,
+    FEMALE,
+    GENDER_COUNT,
+};
+
+enum __attribute__((packed)) Direction
+{
+    DIR_NONE,
+    DIR_SOUTH,
+    DIR_NORTH,
+    DIR_WEST,
+    DIR_EAST,
+    CARDINAL_DIRECTION_COUNT,
+    DIR_SOUTHWEST = CARDINAL_DIRECTION_COUNT,
+    DIR_SOUTHEAST,
+    DIR_NORTHWEST,
+    DIR_NORTHEAST,
+};
+
+enum ContestCategories { CONTEST_CATEGORY_COOL, CONTEST_CATEGORY_BEAUTY, CONTEST_CATEGORY_CUTE, CONTEST_CATEGORY_SMART, CONTEST_CATEGORY_TOUGH, CONTEST_CATEGORIES_COUNT };
+#define CONTEST_CATEGORY_BEAUTIFUL CONTEST_CATEGORY_BEAUTY
+#define CONTEST_CATEGORY_CLEVER CONTEST_CATEGORY_SMART
 #endif // GUARD_CONSTANTS_GLOBAL_H

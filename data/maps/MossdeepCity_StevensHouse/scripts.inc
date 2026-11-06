@@ -128,8 +128,62 @@ MossdeepCity_StevensHouse_EventScript_ReceivedBeldum::
 	end
 
 MossdeepCity_StevensHouse_EventScript_RockDisplay::
+	.ifdef PORTABLE
+	callnative MegaGame_CheckAcquisition
+	goto_if_eq VAR_RESULT, TRUE, MossdeepCity_StevensHouse_EventScript_MegaCollection
+	.endif
 	msgbox MossdeepCity_StevensHouse_Text_CollectionOfRareRocks, MSGBOX_SIGN
 	end
+
+	.ifdef PORTABLE
+MossdeepCity_StevensHouse_EventScript_MegaCollection:
+	lockall
+	checkitem ITEM_MEGA_RING
+	goto_if_eq VAR_RESULT, TRUE, MossdeepCity_StevensHouse_EventScript_MegaShop
+	msgbox MossdeepCity_StevensHouse_Text_MegaRing, MSGBOX_DEFAULT
+	giveitem ITEM_MEGA_RING
+	goto_if_eq VAR_RESULT, FALSE, MossdeepCity_StevensHouse_EventScript_MegaDone
+MossdeepCity_StevensHouse_EventScript_MegaShop:
+	msgbox MossdeepCity_StevensHouse_Text_MegaStones, MSGBOX_YESNO
+	goto_if_eq VAR_RESULT, NO, MossdeepCity_StevensHouse_EventScript_MegaDone
+	pokemart MossdeepCity_StevensHouse_MegaStones
+MossdeepCity_StevensHouse_EventScript_MegaDone:
+	releaseall
+	end
+
+MossdeepCity_StevensHouse_Text_MegaRing:
+	.string "A note from STEVEN reads,\n"
+	.string "Your MIND BADGE shows your bond.\p"
+	.string "Take this MEGA RING. Let a compatible\n"
+	.string "POKéMON hold its matching stone.\p"
+	.string "Press START while choosing a move\n"
+	.string "to Mega Evolve once per battle.$"
+
+MossdeepCity_StevensHouse_Text_MegaStones:
+	.string "Another note lists rare stones\n"
+	.string "for sale from STEVEN's collection.\p"
+	.string "Browse the stones?$"
+
+	.balign 2
+MossdeepCity_StevensHouse_MegaStones:
+	.2byte ITEM_VENUSAURITE
+	.2byte ITEM_CHARIZARDITE_Y
+	.2byte ITEM_ALAKAZITE
+	.2byte ITEM_SLOWBRONITE
+	.2byte ITEM_GENGARITE
+	.2byte ITEM_STARMINITE
+	.2byte ITEM_MEWTWONITE_Y
+	.2byte ITEM_TYRANITARITE
+	.2byte ITEM_SCEPTILITE
+	.2byte ITEM_BLAZIKENITE
+	.2byte ITEM_SWAMPERTITE
+	.2byte ITEM_MEDICHAMITE
+	.2byte ITEM_MANECTITE
+	.2byte ITEM_CHIMECHITE
+	.2byte ITEM_LATIASITE
+	.2byte ITEM_LATIOSITE
+	.2byte ITEM_NONE
+	.endif
 
 MossdeepCity_StevensHouse_EventScript_Steven::
 	msgbox MossdeepCity_StevensHouse_Text_UnderwateCavernBetweenMossdeepSootopolis, MSGBOX_NPC

@@ -2832,6 +2832,9 @@ const struct ContestMove gContestMoves[MOVES_COUNT] =
         .comboStarterId = 0,
         .comboMoves = {COMBO_STARTER_CALM_MIND},
     },
+#ifdef PORTABLE
+#include "expanded_moves/contest_moves.h"
+#endif
 };
 
 const struct ContestEffect gContestEffects[] =

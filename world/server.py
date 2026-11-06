@@ -95,6 +95,10 @@ class WorldServer:
                           else self.socket_path + '.admin')
         self.admin_path = str(admin_path)
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        from .rules import read
+        self.world_rules = read(self.root, create=True)
+        from .client import installed_content_id
+        self.content_id = installed_content_id()
         self.db = sqlite3.connect(self.root / 'world.sqlite3', check_same_thread=False)
         self.db.executescript('''
             CREATE TABLE IF NOT EXISTS identities (
@@ -149,7 +153,7 @@ class WorldServer:
         self.link_channels = {}
         self.sharing: dict | None = None
         self.sharing_listen = None
-        self.link_protocol = LinkProtocol(max_players=self.max_players)
+        self.link_protocol = LinkProtocol(max_players=self.max_players, world_mask=self.world_rules['mask'])
         self.tiles = []
         self.objects = []
         self.interaction_cursor = 0
@@ -402,6 +406,20 @@ class WorldServer:
         try:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
+                content_claim = None
+                if 'DATA' in fields[4:]:
+                    if (raw.decode('ascii') != ' '.join(fields)
+                            or len(fields) < 6 or fields[-2] != 'DATA'
+                            or fields[4:].count('DATA') != 1
+                            or not re.fullmatch(r'[0-9a-f]{64}', fields[-1])):
+                        self._error(conn, 'CONTENT')
+                        return
+                    content_claim = fields[-1]
+                    fields = fields[:-2]
+                rule_claim = None
+                if len(fields) >= 6 and fields[-2] == 'RULES':
+                    rule_claim = fields[-1]
+                    fields = fields[:-2]
                 control = len(fields) == 5 and fields[4] == 'CONTROL'
                 chat_capable = len(fields) == 5 and fields[4] in ('SOCIALCHAT', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELCHATRALLY')
                 travel = len(fields) == 5 and fields[4] in ('SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
@@ -418,10 +436,23 @@ class WorldServer:
                 if row is None or not secrets.compare_digest(row[0], token):
                     self._error(conn, 'AUTH')
                     return
+                from .rules import wire
+                if not control and not link and (rule_claim is not None or self.world_rules['mask']):
+                    if rule_claim != wire(self.world_rules):
+                        self._error(conn, 'RULES')
+                        return
+                if not control and not link and self.world_rules['mask']:
+                    if content_claim != self.content_id:
+                        self._error(conn, 'CONTENT')
+                        return
+                conn['rules_validated'] = rule_claim == wire(self.world_rules)
                 if link:
                     presence = self.peers.get(name)
                     if presence is None or presence.get('closing'):
                         self._error(conn, 'PRESENCE')
+                        return
+                    if content_claim is not None and content_claim != presence.get('content_id'):
+                        self._error(conn, 'CONTENT')
                         return
                     if name in self.link_channels:
                         self._error(conn, 'DUPLICATE')
@@ -429,6 +460,7 @@ class WorldServer:
                     # Bind the exact live presence object, not just its reusable
                     # trainer ID. Closing/replacing presence closes this channel.
                     conn['id'], conn['link'], conn['presence'] = name, True, presence
+                    conn['content_id'] = presence.get('content_id')
                     self.link_channels[name] = conn
                     self._queue(conn, f'WELCOME 1 {name} {self.revision} LINK\n')
                     return
@@ -451,6 +483,7 @@ class WorldServer:
                     self._error(conn, 'FULL')
                     return
                 conn['id'] = name
+                conn['content_id'] = content_claim
                 conn['social'] = social
                 conn['chat'] = chat_capable
                 conn['travel'] = travel
@@ -602,7 +635,10 @@ class WorldServer:
                 return
         presence = {name: peer['state'] for name, peer in self.peers.items()
                     if peer['state'] is not None and not peer.get('closing')}
-        self._deliver_links(self.link_protocol.process(conn['id'], bytes(raw), presence))
+        content_ids = {name: peer.get('content_id') for name, peer in self.peers.items()
+                       if not peer.get('closing')}
+        self._deliver_links(self.link_protocol.process(conn['id'], bytes(raw), presence,
+                                                       content_ids=content_ids))
 
     def _meet(self, conn, fields):
         """One fixed cooperative signal, authenticated and ordered like STATE.
@@ -669,6 +705,9 @@ class WorldServer:
             request = json.loads(raw)
             if type(request) is not dict:
                 raise ValueError('control request must be an object')
+            if request == {'command': 'world_rules'}:
+                self._queue(conn, json.dumps(dict(ok=True, world_rules=self.world_rules)) + '\n')
+                return
             if request.get('command') == 'intent':
                 if set(request) != {'command', 'request_id', 'text'}:
                     raise ValueError('invalid intent fields')
@@ -747,6 +786,13 @@ class WorldServer:
                     return
                 identity = self.create_identity(request['trainer'])
                 result = dict(ok=True, invitation=dict(self.sharing, trainer=identity['id'], token=identity['token']))
+            elif request.get('command') == 'set_world_rules':
+                try:
+                    if set(request) != {'command', 'rules'}:
+                        raise ValueError('invalid world settings request')
+                    result = dict(ok=True, world_rules=self.set_world_rules(request['rules']))
+                except ValueError as exc:
+                    result = dict(ok=False, error=str(exc))
             elif request.get('command') == 'inspect':
                 result = self.inspect()
             elif request.get('command') == 'host_controls':
@@ -779,6 +825,30 @@ class WorldServer:
             result = dict(ok=False, error=str(exc))
         self._queue(conn, json.dumps(result, ensure_ascii=True) + '\n')
 
+    def set_world_rules(self, rules):
+        from .rules import settings, make, publish
+        from .launcher import ProfileLock
+        from contextlib import ExitStack
+        with self.lock, ExitStack() as locks:
+            rules = settings(rules)
+            if self.peers or self.link_channels:
+                raise ValueError('Stop every native game before changing world rules.')
+            # Disconnected and offline games also retain profile locks.
+            for state in (self.root, self.root / '.offline'):
+                trainers = state / 'trainers'
+                if trainers.exists():
+                    for profile in trainers.iterdir():
+                        if profile.is_dir():
+                            locks.enter_context(ProfileLock(state, profile.name))
+            current = self.world_rules
+            if current['rules'] == rules:
+                return dict(current)
+            updated = make(current['world_id'], current['version'] + 1, rules)
+            publish(self.root, updated)
+            self.world_rules = updated
+            self.link_protocol.world_mask = updated['mask']
+            return dict(updated)
+
     def inspect(self):
         with self.lock:
             players = []
@@ -789,7 +859,7 @@ class WorldServer:
                     player.update(zip(('group','num','x','y','facing','gfx','ready'), conn['state']))
                 player['meeting'] = conn.get('meeting')
                 players.append(player)
-            return dict(ok=True, revision=self.revision, players=players,
+            return dict(ok=True, revision=self.revision, players=players, world_rules=dict(self.world_rules),
                         sharing=(dict(endpoint=self.sharing['endpoint'], listen=getattr(self, 'sharing_listen', None))
                                  if self.sharing else None),
                         capacity=dict(players=self.max_players, controls=self.max_controls,

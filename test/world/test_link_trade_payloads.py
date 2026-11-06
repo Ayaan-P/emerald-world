@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def function(source, name):
     import re
-    match = re.search(r"^(?:static )?(?:const char \*|void |bool8 )" + name + r"\([^;]*?\)\n\{", source, re.M)
+    match = re.search(r"^(?:static )?(?:const char \*|void |bool8 |u16 )" + name + r"\([^;]*?\)\n\{", source, re.M)
     if not match:
         raise AssertionError(f"missing actual function {name}")
     end = match.end()
@@ -26,13 +26,29 @@ class TradePayloads(unittest.TestCase):
         source = (ROOT / 'src/trade.c').read_text()
         if 'static bool8 NativeTradeBlockSizeValid(' in source and 'NativeTradeBlockSizeValid' not in names:
             names = ['NativeTradeBlockSizeValid'] + names
+        if 'NativeTradeMonValid' in names or 'NativeTradeAuxBlockValid' in names:
+            expanded = (ROOT / 'src/platform/expanded_species.c').read_text()
+            prelude += '\n#include "constants/expanded_species.h"\n' + function(expanded, 'ExpandedSpecies_IsPlayable')
+            import json
+            manifest = json.loads((ROOT / 'tools/expanded/coverage.json').read_text())
+            ids = [r['engine_id'] for r in manifest['species'] if r['name'] in manifest['playable_selection']]
+            self.assertEqual(len(ids), 11)
+            prelude += '\nstatic bool8 FixtureSelected(u32 species) { return ' + ' || '.join('species==' + str(i) for i in ids) + '; }\n'
+            main = main.replace('species==440 || species==845 || species==863', 'FixtureSelected(species)')
+            main = main.replace('selected[]={440,845,863}', 'selected[]={' + ','.join(map(str, ids)) + '}')
+        if 'NativeTradeAuxBlockValid' in names:
+            mail = (ROOT / 'src/mail_data.c').read_text()
+            prelude += '\n#define UNOWN_OFFSET 30000\n#define NUM_UNOWN_FORMS 28\n#define SPECIES_UNOWN 201\n'
+            prelude += function(mail, 'MailSpeciesToSpecies')
         with tempfile.TemporaryDirectory(prefix='trade-payload-') as tmp:
             c = Path(tmp) / 'test.c'
             c.write_text(prelude + '\n' + '\n'.join(function(source, n) for n in names) + '\n' + main)
             exe = Path(tmp) / 'test'
-            subprocess.run(['cc', '-std=gnu99', '-DPORTABLE', '-fsanitize=address,undefined',
+            compiled = subprocess.run(['cc', '-std=gnu99', '-DPORTABLE', '-fsanitize=address,undefined',
                             '-fno-omit-frame-pointer', '-fno-pie', '-no-pie', '-g',
-                            str(c), '-o', str(exe)], check=True, capture_output=True)
+                            '-iquote', str(ROOT / 'include'), '-iquote', str(ROOT / 'src/platform'),
+                            str(c), '-o', str(exe)], capture_output=True, text=True)
+            self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
             result = subprocess.run([str(exe)], capture_output=True, text=True,
                                     env={**os.environ, 'ASAN_OPTIONS': 'detect_leaks=0',
                                          'UBSAN_OPTIONS': 'halt_on_error=1'})
@@ -305,6 +321,20 @@ u32 GetMonData(struct Pokemon *p,int f) { return p->fields[f]; }
 int main(void) {
  struct Pokemon mon={0}; mon.fields[0]=1; mon.box.hasSpecies=1; mon.level=5; mon.mail=255; mon.box.language=2;
  assert(NativeTradeMonValid(&mon));
+ // The real selected-species helper is used, never the table's broad range.
+ const u32 selected[]={440,845,863};
+ for(unsigned n=0;n<ARRAY_COUNT(selected);n++) {
+  mon.fields[0]=selected[n]; assert(NativeTradeMonValid(&mon));
+  mon.box.secure.raw[0]=1; assert(!NativeTradeMonValid(&mon)); mon.box.secure.raw[0]=0;
+ }
+ for(u32 species=NUM_SPECIES;species<=65535;species++) {
+  mon.fields[0]=species;
+  assert(NativeTradeMonValid(&mon)==(species==440 || species==845 || species==863));
+ }
+ // No narrowing to the u16 helper may turn an oversized field into a playable ID.
+ mon.fields[0]=65536+440; assert(!NativeTradeMonValid(&mon));
+ mon.fields[0]=0xffffffff; assert(!NativeTradeMonValid(&mon));
+ mon.fields[0]=1;
  mon.box.personality=0x12345678; mon.box.otId=0xabcdef01;
  for(int i=0;i<12;i++) mon.box.secure.raw[i]=mon.box.personality ^ mon.box.otId;
  assert(NativeTradeMonValid(&mon));
@@ -338,12 +368,24 @@ u16 gBlockRecvBuffer[2][128];
 void Trade_Memcpy(void *d,const void *s,u32 n) { memcpy(d,s,n); }
 bool8 ItemIsMail(u16 n) { return n>=121 && n<=132; }
 bool8 IsBardWordInvalid(u16 n) { return n>500; }
-u16 MailSpeciesToSpecies(u16 n,u16 *letter) { return n>=30000 && n<30028 ? 201 : n; }
+
 ''', r'''
 int main(void) {
  struct Mail mails[6]={0}; mails[0].itemId=121; mails[0].species=1;
  receivedSizes[1]=220;
  memcpy(gBlockRecvBuffer[1],mails,sizeof(mails)); assert(NativeTradeAuxBlockValid(1,1));
+ // Real mail decoding preserves these IDs, outside its encoded Unown range.
+ const u16 selected[]={440,845,863};
+ for(unsigned n=0;n<ARRAY_COUNT(selected);n++) {
+  mails[0].species=selected[n];
+  memcpy(gBlockRecvBuffer[1],mails,sizeof(mails)); assert(NativeTradeAuxBlockValid(1,1));
+ }
+ for(unsigned species=NUM_SPECIES;species<=65535;species++) {
+  mails[0].species=species; aborted=0;
+  memcpy(gBlockRecvBuffer[1],mails,sizeof(mails));
+  bool8 valid=species==440 || species==845 || species==863 || (species>=30000 && species<30028);
+  assert(NativeTradeAuxBlockValid(1,1)==valid);
+ }
  mails[0].species=65535; memcpy(gBlockRecvBuffer[1],mails,sizeof(mails));
  assert(!NativeTradeAuxBlockValid(1,1) && aborted);
  mails[0].species=30027; mails[0].words[0]=65535;
@@ -391,9 +433,11 @@ struct Pokemon { struct { u32 personality, otId; u8 nickname[10], otName[7], lan
  u8 hasSpecies,isBadEgg; u16 checksum; struct { u32 raw[12]; } secure; } box;
  u32 status; u8 level,mail; u16 hp,maxHP; u32 fields[7]; };
 struct Mail { u16 words[9]; u8 playerName[8]; u16 species,itemId; };
-u32 GetMonData(struct Pokemon *p,int f,...) { return f<7 ? p->fields[f] : 0; }
+// Model the getter's in-place decrypt/re-encrypt side effects to prove validation
+// only touches the private pair, not the incoming wire bytes or published party.
+u32 GetMonData(struct Pokemon *p,int f,...) { p->box.secure.raw[11]^=1; return f<7 ? p->fields[f] : 0; }
 void SetMonData(struct Pokemon *p,int f,const void *v) {}
-u16 MailSpeciesToSpecies(u16 n,u16 *letter) { return n; }
+
 bool8 ItemIsMail(u16 n) { return n>=121 && n<=132; }
 bool8 IsBardWordInvalid(u16 n) { return n>500; }
 struct Pokemon gPlayerParty[6],gEnemyParty[6]; struct Mail gTradeMail[6];
@@ -433,15 +477,32 @@ int main(void) {
  }
  struct Pokemon pair[2]={0}; pair[0].fields[0]=1; pair[0].box.hasSpecies=1;
  pair[0].box.language=2; pair[0].level=5; pair[0].mail=255;
+ const u32 selected[]={1,440,845,863};
+ for(unsigned n=0;n<ARRAY_COUNT(selected);n++) {
+ pair[0].fields[0]=selected[n];
  for(int state=4;state<=12;state+=4) {
   receivedSizes[0]=receivedSizes[1]=200;
   memcpy(gBlockRecvBuffer[1],pair,sizeof(pair)); menu.bufferPartyState=state; aborted=0;
+  u8 wireBefore[sizeof(pair)]; memcpy(wireBefore,gBlockRecvBuffer[1],sizeof(pair));
   assert(!BufferTradeParties() && !aborted && menu.bufferPartyState==state+1);
+  assert(gEnemyParty[(state-4)/2].fields[0]==selected[n]);
+  assert(!memcmp(&gEnemyParty[(state-4)/2],pair,sizeof(pair)));
+  assert(!memcmp(wireBefore,gBlockRecvBuffer[1],sizeof(pair)));
   memset(gEnemyParty,0x5a,sizeof(gEnemyParty)); struct Pokemon before[6]; memcpy(before,gEnemyParty,sizeof(before));
-  receivedSizes[1]=200;
-  pair[0].fields[0]=65535; memcpy(gBlockRecvBuffer[1],pair,sizeof(pair)); menu.bufferPartyState=state;
+  const u32 invalid[]={412,439,441,844,846,862,864,65535};
+  for(unsigned bad=0;bad<ARRAY_COUNT(invalid);bad++) {
+   receivedSizes[1]=200; aborted=0;
+   pair[0].fields[0]=invalid[bad]; memcpy(gBlockRecvBuffer[1],pair,sizeof(pair)); menu.bufferPartyState=state;
+   assert(!BufferTradeParties() && aborted && menu.bufferPartyState==state);
+   assert(!memcmp(before,gEnemyParty,sizeof(before)));
+  }
+  pair[0].fields[0]=selected[n]; pair[0].box.secure.raw[0]=1;
+  receivedSizes[1]=200; aborted=0;
+  memcpy(gBlockRecvBuffer[1],pair,sizeof(pair)); menu.bufferPartyState=state;
   assert(!BufferTradeParties() && aborted && menu.bufferPartyState==state);
-  assert(!memcmp(before,gEnemyParty,sizeof(before))); pair[0].fields[0]=1;
+  assert(!memcmp(before,gEnemyParty,sizeof(before)));
+  pair[0].box.secure.raw[0]=0;
+ }
  }
  receivedSizes[1]=220;
  memset(gBlockRecvBuffer,0,sizeof(gBlockRecvBuffer)); menu.bufferPartyState=16; aborted=0;

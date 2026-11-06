@@ -22,8 +22,11 @@ typedef uint8_t u8;typedef uint16_t u16;typedef uint8_t bool8;
 #define IS_TYPE_PHYSICAL(t) ((t)<TYPE_MYSTERY)
 #define IS_TYPE_SPECIAL(t) ((t)>TYPE_MYSTERY)
 uint32_t gBattleTypeFlags;int flag,linked;
-int FlagGet(int id) {(void)id;return flag;}
+int FlagGet(int id) {(void)id;return !flag;}
+int WorldRules_Enabled(unsigned rule) {assert(rule==4);return flag;}
 int NativeLink_IsActive(void) {return linked;}
+/* Original-ID category fixture; expanded categories have a separate owner test. */
+u8 ExpandedMoves_Category(u16 move) {(void)move;return 255;}
 #include "battle_move_split.h"
 #include "battle_rules_wire.h"
 int main(void) {
@@ -61,6 +64,10 @@ int main(void) {
             # Real original move IDs, copied into the isolated test include tree.
             (root/'constants/moves.h').write_text((ROOT/'include/constants/moves.h').read_text())
             (root/'platform/native_link.h').write_text('int NativeLink_IsActive(void);\n')
+            (root/'platform/world_rules.h').write_text('#define WORLD_RULE_MODERN_SPLIT 4\nint WorldRules_Enabled(unsigned);\n')
+            (root/'gba').mkdir()
+            (root/'gba/types.h').write_text('/* Controlled fixture types precede includes. */\n')
+            (root/'platform/expanded_moves.h').write_text((ROOT/'include/platform/expanded_moves.h').read_text())
             (root/'battle_move_split.h').write_text((ROOT/'include/battle_move_split.h').read_text())
             (root/'battle_rules_wire.h').write_text((ROOT/'include/platform/battle_rules_wire.h').read_text())
             c=root/'t.c';exe=root/'t';c.write_text(source)
@@ -73,17 +80,20 @@ int main(void) {
         link=(ROOT/'src/link.c').read_text()
         scripts=(ROOT/'src/battle_script_commands.c').read_text()
         self.assertIn('disableRecordBattle = BattleRules_UseModernSplit()',battle)
-        self.assertIn('BattleRules_LinkType(gLinkType, FlagGet(FLAG_MODERN_MOVE_SPLIT),',link)
+        self.assertIn('BattleRules_LinkType(gLinkType, WorldRules_Enabled(WORLD_RULE_MODERN_SPLIT),',link)
         self.assertIn('BattleMove_IsPhysical(gCurrentMove, moveType)',scripts)
         self.assertIn('BattleRules_UseModernSplit() && gSpecialStatuses[gBattlerTarget].physicalDmg',scripts)
 
-    def test_all_native_move_ids_have_explicit_categories(self):
+    def test_original_move_ids_have_explicit_categories(self):
         import re
         ids=(ROOT/'include/constants/moves.h').read_text()
         header=(ROOT/'include/battle_move_split.h').read_text()
-        names={m.group(1) for m in re.finditer(r'^#define (MOVE_\w+) (\d+)$',ids,re.M) if int(m.group(2))<=354}
+        # The expanded-move owner tests the separate native category hook.
+        # This table remains the original catalog without pinning MOVES_COUNT.
+        original=ids.split('#ifdef PORTABLE',1)[0]
+        names={m.group(1) for m in re.finditer(r'^#define (MOVE_\w+) (\d+)$',original,re.M)}
         rows=re.findall(r'^\s*\[(MOVE_\w+)\]\s*=',header,re.M)
-        self.assertEqual(len(rows),355);self.assertEqual(len(set(rows)),355)
+        self.assertEqual(len(rows),len(names));self.assertEqual(len(set(rows)),len(names))
         self.assertEqual(set(rows),names)
 
 if __name__=='__main__':unittest.main()

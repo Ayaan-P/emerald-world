@@ -1,0 +1,23 @@
+/* Match the legacy idle/entrance slots while using only the imported frame 0. */
+static const union AnimCmd sExpandedGimmighoulRoamingFrame[] = { ANIMCMD_FRAME(0, 1), ANIMCMD_END };
+static const union AnimCmd *const sExpandedGimmighoulRoamingAnims[] = { sExpandedGimmighoulRoamingFrame, sExpandedGimmighoulRoamingFrame };
+static const union AnimCmd sExpandedMeltanFrame[] = { ANIMCMD_FRAME(0, 1), ANIMCMD_END };
+static const union AnimCmd *const sExpandedMeltanAnims[] = { sExpandedMeltanFrame, sExpandedMeltanFrame };
+static const union AnimCmd sExpandedCosmoemFrame[] = { ANIMCMD_FRAME(0, 1), ANIMCMD_END };
+static const union AnimCmd *const sExpandedCosmoemAnims[] = { sExpandedCosmoemFrame, sExpandedCosmoemFrame };
+static const union AnimCmd sExpandedTypeNullFrame[] = { ANIMCMD_FRAME(0, 1), ANIMCMD_END };
+static const union AnimCmd *const sExpandedTypeNullAnims[] = { sExpandedTypeNullFrame, sExpandedTypeNullFrame };
+static const union AnimCmd sExpandedTurtwigFrame[] = { ANIMCMD_FRAME(0, 1), ANIMCMD_END };
+static const union AnimCmd *const sExpandedTurtwigAnims[] = { sExpandedTurtwigFrame, sExpandedTurtwigFrame };
+static const union AnimCmd sExpandedChespinFrame[] = { ANIMCMD_FRAME(0, 1), ANIMCMD_END };
+static const union AnimCmd *const sExpandedChespinAnims[] = { sExpandedChespinFrame, sExpandedChespinFrame };
+static const union AnimCmd sExpandedArrokudaFrame[] = { ANIMCMD_FRAME(0, 1), ANIMCMD_END };
+static const union AnimCmd *const sExpandedArrokudaAnims[] = { sExpandedArrokudaFrame, sExpandedArrokudaFrame };
+static const union AnimCmd sExpandedGrotleFrame[] = { ANIMCMD_FRAME(0, 1), ANIMCMD_END };
+static const union AnimCmd *const sExpandedGrotleAnims[] = { sExpandedGrotleFrame, sExpandedGrotleFrame };
+static const union AnimCmd sExpandedTorterraFrame[] = { ANIMCMD_FRAME(0, 1), ANIMCMD_END };
+static const union AnimCmd *const sExpandedTorterraAnims[] = { sExpandedTorterraFrame, sExpandedTorterraFrame };
+static const union AnimCmd sExpandedQuilladinFrame[] = { ANIMCMD_FRAME(0, 1), ANIMCMD_END };
+static const union AnimCmd *const sExpandedQuilladinAnims[] = { sExpandedQuilladinFrame, sExpandedQuilladinFrame };
+static const union AnimCmd sExpandedKubfuFrame[] = { ANIMCMD_FRAME(0, 1), ANIMCMD_END };
+static const union AnimCmd *const sExpandedKubfuAnims[] = { sExpandedKubfuFrame, sExpandedKubfuFrame };

@@ -1,4 +1,4 @@
-const struct Evolution gEvolutionTable[NUM_SPECIES][EVOS_PER_MON] =
+const struct Evolution gEvolutionTable[SPECIES_TABLE_COUNT][EVOS_PER_MON] =
 {
     [SPECIES_BULBASAUR]  = {{EVO_LEVEL, 16, SPECIES_IVYSAUR}},
     [SPECIES_IVYSAUR]    = {{EVO_LEVEL, 32, SPECIES_VENUSAUR}},
@@ -184,4 +184,8 @@ const struct Evolution gEvolutionTable[NUM_SPECIES][EVOS_PER_MON] =
     [SPECIES_SHELGON]    = {{EVO_LEVEL, 50, SPECIES_SALAMENCE}},
     [SPECIES_BELDUM]     = {{EVO_LEVEL, 20, SPECIES_METANG}},
     [SPECIES_METANG]     = {{EVO_LEVEL, 45, SPECIES_METAGROSS}},
+#ifdef PORTABLE
+    /* Dependency-closed native imports. Legacy rows and save IDs stay intact. */
+#include "expanded/evolution.inc"
+#endif
 };

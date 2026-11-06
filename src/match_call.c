@@ -1784,7 +1784,7 @@ static void PopulateSpeciesFromTrainerLocation(int matchCallId, u8 *destStr)
 
             if (numSpecies)
             {
-                StringCopy(destStr, gSpeciesNames[species[Random() % numSpecies]]);
+                StringCopy(destStr, gSpeciesInfo[species[Random() % numSpecies]].speciesName);
                 return;
             }
         }
@@ -1808,16 +1808,16 @@ static void PopulateSpeciesFromTrainerParty(int matchCallId, u8 *destStr)
     {
     case 0:
     default:
-        speciesName = gSpeciesNames[party.NoItemDefaultMoves[monId].species];
+        speciesName = gSpeciesInfo[party.NoItemDefaultMoves[monId].species].speciesName;
         break;
     case F_TRAINER_PARTY_CUSTOM_MOVESET:
-        speciesName = gSpeciesNames[party.NoItemCustomMoves[monId].species];
+        speciesName = gSpeciesInfo[party.NoItemCustomMoves[monId].species].speciesName;
         break;
     case F_TRAINER_PARTY_HELD_ITEM:
-        speciesName = gSpeciesNames[party.ItemDefaultMoves[monId].species];
+        speciesName = gSpeciesInfo[party.ItemDefaultMoves[monId].species].speciesName;
         break;
     case F_TRAINER_PARTY_CUSTOM_MOVESET | F_TRAINER_PARTY_HELD_ITEM:
-        speciesName = gSpeciesNames[party.ItemCustomMoves[monId].species];
+        speciesName = gSpeciesInfo[party.ItemCustomMoves[monId].species].speciesName;
         break;
     }
 

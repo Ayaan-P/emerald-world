@@ -6,6 +6,8 @@
 #include "constants/moves.h"
 #ifdef PORTABLE
 #include "platform/native_link.h"
+#include "platform/world_rules.h"
+#include "platform/expanded_moves.h"
 /* Move categories sourced from pokeemerald-expansion-native bb3fd057.
  * The four Gen 3 spelling aliases map to their renamed donor equivalents. */
 enum { MOVE_SPLIT_PHYSICAL, MOVE_SPLIT_SPECIAL, MOVE_SPLIT_STATUS };
@@ -373,7 +375,7 @@ static inline bool8 BattleRules_UseModernSplit(void)
 #ifdef PORTABLE
     /* Native link OPEN negotiates this setting before either engine starts.
      * Legacy wireless/cable link has no such negotiation and stays vanilla. */
-    return FlagGet(FLAG_MODERN_MOVE_SPLIT)
+    return WorldRules_Enabled(WORLD_RULE_MODERN_SPLIT)
         && !(gBattleTypeFlags & (BATTLE_TYPE_RECORDED | BATTLE_TYPE_RECORDED_LINK))
         && (!(gBattleTypeFlags & BATTLE_TYPE_LINK) || NativeLink_IsActive());
 #else
@@ -385,7 +387,7 @@ static inline bool8 BattleMove_IsPhysical(u16 move, u8 type)
 {
 #ifdef PORTABLE
     if (BattleRules_UseModernSplit())
-        return type != TYPE_MYSTERY && move < MOVES_COUNT && sModernMoveCategory[move] == MOVE_SPLIT_PHYSICAL;
+        return type != TYPE_MYSTERY && move < MOVES_COUNT && (move >= EXPANDED_MOVES_START ? ExpandedMoves_Category(move) : sModernMoveCategory[move]) == MOVE_SPLIT_PHYSICAL;
 #else
     (void)move;
 #endif
@@ -396,7 +398,7 @@ static inline bool8 BattleMove_IsSpecial(u16 move, u8 type)
 {
 #ifdef PORTABLE
     if (BattleRules_UseModernSplit())
-        return type != TYPE_MYSTERY && move < MOVES_COUNT && sModernMoveCategory[move] == MOVE_SPLIT_SPECIAL;
+        return type != TYPE_MYSTERY && move < MOVES_COUNT && (move >= EXPANDED_MOVES_START ? ExpandedMoves_Category(move) : sModernMoveCategory[move]) == MOVE_SPLIT_SPECIAL;
 #else
     (void)move;
 #endif

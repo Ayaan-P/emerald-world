@@ -71,7 +71,8 @@ struct Flags flags;struct Resources resources={&flags},*gBattleResources=&resour
 u32 gBattleTypeFlags,gBattleWeather,gBattleMovePower;u8 gCritMultiplier=1;u16 gCurrentMove;
 static const u16 sHoldEffectToType[][2]={{0,0}};
 int flag,linked;
-int FlagGet(int id) {(void)id;return flag;}
+int FlagGet(int id) {(void)id;return !flag;}
+int WorldRules_Enabled(unsigned rule) {assert(rule==4);return flag;}
 int NativeLink_IsActive(void) {return linked;}
 #include "battle_move_split.h"
 int GetItemHoldEffect(int x) {(void)x;return 0;}
@@ -116,9 +117,15 @@ int main(void) {
             (root/'constants/flags.h').write_text('#define FLAG_MODERN_MOVE_SPLIT 1\n')
             (root/'constants/moves.h').write_text((ROOT/'include/constants/moves.h').read_text())
             (root/'platform/native_link.h').write_text('int NativeLink_IsActive(void);\n')
+            (root/'platform/world_rules.h').write_text('#define WORLD_RULE_MODERN_SPLIT 4\nint WorldRules_Enabled(unsigned);\n')
+            (root/'gba').mkdir()
+            (root/'gba/types.h').write_text('/* Controlled fixture types precede includes. */\n')
+            (root/'platform/expanded_moves.h').write_text((ROOT/'include/platform/expanded_moves.h').read_text())
             (root/'battle_move_split.h').write_text((ROOT/'include/battle_move_split.h').read_text())
             c=root/'t.c';exe=root/'t'
-            c.write_text(PRELUDE+'#include "constants/moves.h"\n'+defines+stubs+fn+main)
+            # Isolate original move damage; expanded modifier behavior is tested separately.
+            hooks='u8 ExpandedMoves_Category(u16 move) {(void)move;return 255;}\nu32 ExpandedAbilities_ModifyBasePower(u8 ability,u16 move,u32 power) {(void)ability;(void)move;return power;}\n'
+            c.write_text(PRELUDE+'#include "constants/moves.h"\n'+defines+hooks+stubs+fn+main)
             result=subprocess.run(['cc','-std=c99','-DPORTABLE','-I',str(root),str(c),'-o',str(exe)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
             result=subprocess.run([str(exe)],capture_output=True,text=True)

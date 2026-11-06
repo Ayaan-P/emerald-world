@@ -1,0 +1,6123 @@
+--- a/tools/expanded/import_species.py
++++ b/tools/expanded/import_species.py
+@@ -12,6 +12,9 @@
+ import re
+ import shutil
+ import subprocess
++import sys
++sys.path.insert(0, str(Path(__file__).resolve().parent))
++from acquisition import emit_acquisition
+ from domain import Domain, fields as domain_fields
+ 
+ DOMAIN = None
+@@ -404,6 +407,7 @@
+                     numeric_profile='Gen 9', level_up_profile='highest available donor generation per learnset (Gen 9 preferred)',
+                     policy='No unsupported move, ability or evolution edge is substituted. Reserved species are not playable. Only supported_evolutions are integrated; other evolution descriptors, form changing, cry audio and expanded Dex persistence remain explicit limitations.',
+                     species=rows)
++    emit_acquisition(manifest, ROOT, out)
+     emit(out, 'tools/expanded/coverage.json', json.dumps(manifest, indent=2) + '\n')
+     prefix = 'src/data/pokemon/expanded/'
+     outputs = {name: [] for name in ['evolution', 'species_info', 'learnsets', 'learnset_pointers', 'names', 'tmhm', 'tutors', 'graphics', 'graphics_externs', 'dex_entries', 'dex_text', 'front_table', 'back_table', 'palette_table', 'shiny_table', 'front_coords', 'back_coords', 'footprints', 'elevations', 'icon_table', 'icon_palettes', 'animations', 'animation_pointers', 'dex_map', 'species_constants', 'dex_constants', 'playable_cases']}
+--- /dev/null
++++ b/tools/expanded/acquisition.py
+@@ -0,0 +1,219 @@
++"""Generic append-only ordinary encounter bindings. No runtime RNG or level policy."""
++import copy
++
++import json
++import re
++
++
++FIELDS = {'land_mons': 12, 'water_mons': 5}
++TRANSIENT = re.compile(r'_(?:MEGA(?:_[XY])?|PRIMAL|GMAX|ETERNAMAX|ASH|BATTLE_BOND|HERO|HERO_OF_MANY_BATTLES_UNUSED)$')
++
++
++def eligible(coverage):
++    rows = {r['name']: r for r in coverage['species']}
++    selected = set(coverage['playable_selection'])
++    excluded = {}
++    for name in sorted(selected):
++        r = rows[name]
++        source = r.get('resolved_species_source', '')
++        if (TRANSIENT.search(name) or re.search(r'\.(?:isMegaEvolution|isPrimalReversion|isGigantamax|isBattleOnly)\s*=\s*TRUE', source)):
++            excluded[name] = 'transient battle-only form is not an ordinary acquisition root'
++            continue
++        if (not r.get('battle_supported') or r.get('import_blockers')
++                or r.get('alias_of') or len(r.get('normal_abilities', [])) != 2
++                or r['normal_abilities'][0] == 'ABILITY_NONE'
++                or r.get('missing_normal_abilities') or r.get('missing_level_up_moves')
++                or not source or not r.get('level_up_moves')
++                or TRANSIENT.search(name)
++                or re.search(r'\.(?:isMegaEvolution|isPrimalReversion|isGigantamax|isBattleOnly)\s*=\s*TRUE', source)):
++            raise ValueError('selected species not static dependency-closed playable: ' + name)
++    return rows, selected - excluded.keys(), excluded
++
++
++def closure(rows, selected, bindings):
++    paths = {b['species']: {'root': dict(b), 'evolutions': []} for b in bindings if b['species'] in selected}
++    pending = list(paths)
++    for name in pending:
++        for edge in rows[name].get('supported_evolutions', []):
++            if edge['method'] != 'EVO_LEVEL' or not 1 <= edge['param'] <= 100:
++                raise ValueError('unsupported edge advertised as supported: ' + name)
++            target = edge['target']
++            if target in selected and target not in paths:
++                paths[target] = {'root': paths[name]['root'], 'evolutions': paths[name]['evolutions'] + [dict(source=name, **edge)]}
++                pending.append(target)
++    return paths
++
++
++def geometry(root):
++    data = json.loads((root/'src/data/wild_encounters.json').read_text())
++    encounters = next(g['encounters'] for g in data['wild_encounter_groups'] if g['label'] == 'gWildMonHeaders' and g['for_maps'])
++    catalog = {r['id']: r for p in (root/'data/maps').glob('*/map.json') for r in [json.loads(p.read_text())]}
++    # A map file and encounter header alone do not establish a player route.
++    # Conservatively require directed real connection/warp reachability from
++    # the established campaign root. Script-only transport is not invented.
++    reachable = {'MAP_ROUTE101'}
++    pending = ['MAP_ROUTE101']
++    for map_ in pending:
++        row = catalog[map_]
++        neighbors = [c['map'] for c in (row.get('connections') or [])]
++        neighbors += [w['dest_map'] for w in row.get('warp_events', [])]
++        for neighbor in neighbors:
++            if neighbor in catalog and neighbor not in reachable:
++                reachable.add(neighbor); pending.append(neighbor)
++    headers = []
++    keys = set()
++    seen_maps = set()
++    for i, row in enumerate(encounters):
++        if row['map'] not in catalog:
++            raise ValueError('wild map absent from real map catalog: ' + row['map'])
++        for field in ('land_mons', 'water_mons', 'fishing_mons', 'rock_smash_mons'):
++            info = row.get(field)
++            if not info or not info['encounter_rate']:
++                continue
++            originals = list(dict.fromkeys(m['species'] for m in info['mons']))
++            # GetCurrentMapWildMonHeaderId selects the first matching header by
++            # default. Altering Cave's event variants are capacity-checked but
++            # cannot establish an ordinary acquisition claim by themselves.
++            if row['map'] not in seen_maps and row['map'] in reachable:
++                keys.update((row['map'], s) for s in originals)
++            headers.append(dict(header=i, label=row['base_label'], map=row['map'], field=field,
++                                originals=originals, capacity=FIELDS.get(field),
++                                native_count=len(originals), campaign_connected=row['map'] in reachable))
++        seen_maps.add(row['map'])
++    return headers, sorted(keys)
++
++
++def annotate(headers, bindings, dex=None):
++    dex = dex or {}
++    table = {(b['map'], b['original_species']): b['species'] for b in bindings}
++    result = []
++    for h in headers:
++        extras = list(dict.fromkeys(table[(h['map'], s)] for s in h['originals'] if (h['map'], s) in table))
++        extras = [s for s in extras if s not in h['originals']]
++        native_dex = list(dict.fromkeys(dex.get(s, 'NATIONAL_DEX_' + s[8:]) for s in h['originals']))
++        extra_dex = [dex.get(s, s) for s in extras]
++        if h['capacity'] is not None and (len(set(extra_dex)) != len(extra_dex) or set(native_dex) & set(extra_dex)):
++            raise ValueError('DexNav national-number dedup would hide target on ' + h['map'] + ':' + h['field'])
++        row = dict(h, extras=extras, native_dex=native_dex, extra_dex=extra_dex,
++                   total=len(native_dex) + len(extras),
++                   dexnav_supported=h['field'] in FIELDS)
++        if row['capacity'] is not None and row['total'] > row['capacity']:
++            raise ValueError('DexNav capacity overflow: ' + json.dumps(row, sort_keys=True))
++        result.append(row)
++    return result
++
++
++def generate(coverage, root, previous=None):
++    rows, selected, excluded = eligible(coverage)
++    dex = {}
++    for n, row in rows.items():
++        match = re.search(r'\.natDexNum\s*=\s*(NATIONAL_DEX_\w+)', row.get('resolved_species_source', ''))
++        if match:
++            dex[n] = match[1]
++    headers, keys = geometry(root)
++    seed = copy.deepcopy(coverage['implemented_acquisition_roots'][:7])
++    if len(seed) != 7:
++        raise ValueError('expected seven established bindings')
++    bindings = copy.deepcopy(previous['bindings'] if previous else seed)
++    if bindings[:7] != seed:
++        raise ValueError('established binding changed')
++    used = set()
++    targets = set()
++    for b in bindings:
++        key = b['map'], b['original_species']
++        if key not in keys or key in used or b['species'] not in selected or b['species'] in targets:
++            raise ValueError('invalid persisted binding, never silently reassign: ' + str(b))
++        used.add(key); targets.add(b['species'])
++    annotate(headers, bindings, dex)
++    paths = closure(rows, selected, bindings)
++    # A selected child emitted via EVO_LEVEL needs no duplicate wild root.
++    # Prefer sources before their descendants; a strongly connected component
++    # without a predecessor gets exactly one deterministic root.
++    while selected - paths.keys():
++        missing = selected - paths.keys()
++        incoming = {e['target'] for n in missing for e in rows[n].get('supported_evolutions', []) if e['target'] in missing}
++        name = min(missing - incoming or missing, key=lambda n: (rows[n]['engine_id'], n))
++        candidates = []
++        for key in keys:
++            if key in used:
++                continue
++            matching = [h for h in headers if h['map'] == key[0] and key[1] in h['originals']]
++            # Prefer existing searchable land, then surf, then ordinary-only
++            # fishing/rock keys. No synthetic Surf/DexNav pool is constructed.
++            rank = min((0 if h['field'] == 'land_mons' else 1 if h['field'] == 'water_mons' else 2) for h in matching)
++            candidates.append((rank, key))
++        found = None
++        for _, (map_, original) in sorted(candidates):
++            b = dict(map=map_, original_species=original, species=name,
++                     rule='WORLD_RULE_EXPANDED_ROSTER',
++                     resolver='src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter')
++            try:
++                annotate(headers, bindings + [b], dex)
++            except ValueError:
++                continue
++            found = b
++            break
++        if found is None:
++            raise ValueError('existing-key/DexNav geometry exhausted: ' + json.dumps(dict(
++                selected=len(selected), remaining=len(missing), roots_bound=len(bindings),
++                native_keys=len(keys), headers=len(headers), used_keys=len(used),
++                coverage=annotate(headers, bindings, dex)), sort_keys=True))
++        bindings.append(found); used.add((found['map'], found['original_species']))
++        paths = closure(rows, selected, bindings)
++    header_coverage = annotate(headers, bindings, dex)
++    return dict(schema_version=1, bindings=bindings,
++                playable_selection=coverage['playable_selection'], excluded_selection=excluded,
++                obtainable_selection=[n for n in coverage['playable_selection'] if n in paths],
++                acquisition_paths=paths, header_coverage=header_coverage,
++                geometry=dict(native_keys=len(keys), native_headers=len({h['header'] for h in headers}),
++                              field_headers=len(headers), bound_keys=len(bindings),
++                              searchable_field_headers=sum(h['capacity'] is not None for h in headers)),
++                support_limits={'proof':'Generated bindings and compiled seams, not actual gameplay proof.',
++                    'levels':'Existing source-slot natural rolls, unchanged.',
++                    'fishing_rock':'Ordinary acquisition only unless the same key really occurs in land/water. No synthetic DexNav environments.',
++                    'capacity':'All real alternate headers checked, land 12 and water 5. No truncation, base entries preserved.',
++                    'assignment':'Append-only persisted bindings; removed/invalid old entries fail closed instead of reshuffling.',
++                    'map_reachability':'Conservative directed real warp/connection closure from Route101; unused and script-only destinations are not allocated. All alternate headers are still capacity-checked.',
++                    'evolution':'Only selected targets via emitted EVO_LEVEL edges. Other selected forms may be ordinary roots.'})
++
++
++def resolver(bindings):
++    lines = ['u16 ExpandedSpecies_ResolveEncounter(u16 species, u8 mapGroup, u8 mapNum)', '{',
++             '    /* Pure generated lookup. Natural levels and MORE RNG remain in the caller. */',
++             '    if (!WorldRules_Enabled(WORLD_RULE_EXPANDED_ROSTER))', '        return species;']
++    for b in bindings:
++        lines += ['#ifdef ' + b['species'],
++                  '    if (mapGroup == MAP_GROUP(' + b['map'] + ') && mapNum == MAP_NUM(' + b['map'] + ')',
++                  '        && species == ' + b['original_species'] + ' && ExpandedSpecies_IsPlayable(' + b['species'] + '))',
++                  '        return ' + b['species'] + ';', '#endif']
++    return '\n'.join(lines + ['    return species;', '}']) + '\n'
++
++
++def emit_acquisition(coverage, root, out):
++    """Importer hook: advertise acquisition only after emitting actual policy."""
++    relative = 'tools/expanded/acquisition_manifest.json'
++    prior = next((p for p in (out/relative, root/relative) if p.is_file()), None)
++    result = generate(coverage, root, json.loads(prior.read_text()) if prior else None)
++    runtime = (root/'src/platform/expanded_species.c').read_text()
++    start = runtime.index('u16 ExpandedSpecies_ResolveEncounter(')
++    brace = runtime.index('{', start)
++    depth = 1
++    end = brace + 1
++    while depth:
++        depth += (runtime[end] == '{') - (runtime[end] == '}')
++        end += 1
++    generated_runtime = runtime[:start] + resolver(result['bindings']).rstrip() + runtime[end:]
++    files = {relative: json.dumps(result, indent=2) + '\n',
++             'src/platform/expanded_species.c': generated_runtime}
++    for relative, text in files.items():
++        path = out/relative
++        path.parent.mkdir(parents=True, exist_ok=True)
++        path.write_text(text)
++    coverage['obtainable_selection'] = result['obtainable_selection']
++    coverage['implemented_acquisition_roots'] = result['bindings']
++    coverage['acquisition_excluded_selection'] = result['excluded_selection']
++    coverage['support_limits']['acquisition'] = 'Generated append-only native map/original-species bindings plus emitted EVO_LEVEL closure. Ordinary MORE retains native species. Fishing/rock-only keys are not Surf DexNav pools. Compiled seams are not native gameplay proof.'
++    for row in coverage['species']:
++        row['obtainable'] = row['name'] in result['acquisition_paths']
++        row['acquisition_path'] = result['acquisition_paths'].get(row['name'])
++    return result
+--- /dev/null
++++ b/tools/expanded/acquisition_manifest.json
+@@ -0,0 +1,5679 @@
++{
++  "schema_version": 1,
++  "bindings": [
++    {
++      "map": "MAP_ROUTE101",
++      "original_species": "SPECIES_ZIGZAGOON",
++      "species": "SPECIES_GIMMIGHOUL_ROAMING",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_ROUTE101",
++      "original_species": "SPECIES_WURMPLE",
++      "species": "SPECIES_MELTAN",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_ROUTE101",
++      "original_species": "SPECIES_POOCHYENA",
++      "species": "SPECIES_COSMOEM",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_ROUTE102",
++      "original_species": "SPECIES_RALTS",
++      "species": "SPECIES_TYPE_NULL",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_ROUTE103",
++      "original_species": "SPECIES_ZIGZAGOON",
++      "species": "SPECIES_TURTWIG",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_ROUTE103",
++      "original_species": "SPECIES_POOCHYENA",
++      "species": "SPECIES_CHESPIN",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_ROUTE103",
++      "original_species": "SPECIES_MAGIKARP",
++      "species": "SPECIES_ARROKUDA",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_ALTERING_CAVE",
++      "original_species": "SPECIES_ZUBAT",
++      "species": "SPECIES_BLIPBUG",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_DESERT_UNDERPASS",
++      "original_species": "SPECIES_DITTO",
++      "species": "SPECIES_KUBFU",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_DESERT_UNDERPASS",
++      "original_species": "SPECIES_LOUDRED",
++      "species": "SPECIES_CAPSAKID",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_DESERT_UNDERPASS",
++      "original_species": "SPECIES_WHISMUR",
++      "species": "SPECIES_HIPPOPOTAS",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_FIERY_PATH",
++      "original_species": "SPECIES_GRIMER",
++      "species": "SPECIES_SPEWPA_ICY_SNOW",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_GRANITE_CAVE_1F",
++      "original_species": "SPECIES_ABRA",
++      "species": "SPECIES_SPEWPA_POLAR",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_GRANITE_CAVE_B1F",
++      "original_species": "SPECIES_ABRA",
++      "species": "SPECIES_SPEWPA_TUNDRA",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_GRANITE_CAVE_B2F",
++      "original_species": "SPECIES_ABRA",
++      "species": "SPECIES_SPEWPA_CONTINENTAL",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_GRANITE_CAVE_STEVENS_ROOM",
++      "original_species": "SPECIES_ABRA",
++      "species": "SPECIES_SPEWPA_GARDEN",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_JAGGED_PASS",
++      "original_species": "SPECIES_MACHOP",
++      "species": "SPECIES_SPEWPA_ELEGANT",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_MAGMA_HIDEOUT_1F",
++      "original_species": "SPECIES_GEODUDE",
++      "species": "SPECIES_SPEWPA_MEADOW",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_MAGMA_HIDEOUT_2F_1R",
++      "original_species": "SPECIES_GEODUDE",
++      "species": "SPECIES_SPEWPA_MODERN",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_MAGMA_HIDEOUT_2F_2R",
++      "original_species": "SPECIES_GEODUDE",
++      "species": "SPECIES_SPEWPA_MARINE",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_MAGMA_HIDEOUT_2F_3R",
++      "original_species": "SPECIES_GEODUDE",
++      "species": "SPECIES_SPEWPA_ARCHIPELAGO",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_MAGMA_HIDEOUT_3F_1R",
++      "original_species": "SPECIES_GEODUDE",
++      "species": "SPECIES_SPEWPA_HIGH_PLAINS",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_MAGMA_HIDEOUT_3F_2R",
++      "original_species": "SPECIES_GEODUDE",
++      "species": "SPECIES_SPEWPA_SANDSTORM",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_MAGMA_HIDEOUT_3F_3R",
++      "original_species": "SPECIES_GEODUDE",
++      "species": "SPECIES_SPEWPA_RIVER",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_MAGMA_HIDEOUT_4F",
++      "original_species": "SPECIES_GEODUDE",
++      "species": "SPECIES_SPEWPA_MONSOON",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_METEOR_FALLS_1F_1R",
++      "original_species": "SPECIES_SOLROCK",
++      "species": "SPECIES_SPEWPA_SAVANNA",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_METEOR_FALLS_1F_2R",
++      "original_species": "SPECIES_GOLBAT",
++      "species": "SPECIES_SPEWPA_SUN",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_METEOR_FALLS_B1F_1R",
++      "original_species": "SPECIES_GOLBAT",
++      "species": "SPECIES_SPEWPA_OCEAN",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_METEOR_FALLS_B1F_2R",
++      "original_species": "SPECIES_BAGON",
++      "species": "SPECIES_SPEWPA_JUNGLE",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_METEOR_FALLS_STEVENS_CAVE",
++      "original_species": "SPECIES_GOLBAT",
++      "species": "SPECIES_SPEWPA_FANCY",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    },
++    {
++      "map": "MAP_MIRAGE_TOWER_1F",
++      "original_species": "SPECIES_SANDSHREW",
++      "species": "SPECIES_SPEWPA_POKEBALL",
++      "rule": "WORLD_RULE_EXPANDED_ROSTER",
++      "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++    }
++  ],
++  "playable_selection": [
++    "SPECIES_GIMMIGHOUL_ROAMING",
++    "SPECIES_MELTAN",
++    "SPECIES_COSMOEM",
++    "SPECIES_TYPE_NULL",
++    "SPECIES_TURTWIG",
++    "SPECIES_CHESPIN",
++    "SPECIES_ARROKUDA",
++    "SPECIES_GROTLE",
++    "SPECIES_TORTERRA",
++    "SPECIES_HIPPOPOTAS",
++    "SPECIES_QUILLADIN",
++    "SPECIES_SPEWPA_ICY_SNOW",
++    "SPECIES_BLIPBUG",
++    "SPECIES_KUBFU",
++    "SPECIES_CAPSAKID",
++    "SPECIES_SPEWPA_POLAR",
++    "SPECIES_SPEWPA_TUNDRA",
++    "SPECIES_SPEWPA_CONTINENTAL",
++    "SPECIES_SPEWPA_GARDEN",
++    "SPECIES_SPEWPA_ELEGANT",
++    "SPECIES_SPEWPA_MEADOW",
++    "SPECIES_SPEWPA_MODERN",
++    "SPECIES_SPEWPA_MARINE",
++    "SPECIES_SPEWPA_ARCHIPELAGO",
++    "SPECIES_SPEWPA_HIGH_PLAINS",
++    "SPECIES_SPEWPA_SANDSTORM",
++    "SPECIES_SPEWPA_RIVER",
++    "SPECIES_SPEWPA_MONSOON",
++    "SPECIES_SPEWPA_SAVANNA",
++    "SPECIES_SPEWPA_SUN",
++    "SPECIES_SPEWPA_OCEAN",
++    "SPECIES_SPEWPA_JUNGLE",
++    "SPECIES_SPEWPA_FANCY",
++    "SPECIES_SPEWPA_POKEBALL"
++  ],
++  "excluded_selection": {},
++  "obtainable_selection": [
++    "SPECIES_GIMMIGHOUL_ROAMING",
++    "SPECIES_MELTAN",
++    "SPECIES_COSMOEM",
++    "SPECIES_TYPE_NULL",
++    "SPECIES_TURTWIG",
++    "SPECIES_CHESPIN",
++    "SPECIES_ARROKUDA",
++    "SPECIES_GROTLE",
++    "SPECIES_TORTERRA",
++    "SPECIES_HIPPOPOTAS",
++    "SPECIES_QUILLADIN",
++    "SPECIES_SPEWPA_ICY_SNOW",
++    "SPECIES_BLIPBUG",
++    "SPECIES_KUBFU",
++    "SPECIES_CAPSAKID",
++    "SPECIES_SPEWPA_POLAR",
++    "SPECIES_SPEWPA_TUNDRA",
++    "SPECIES_SPEWPA_CONTINENTAL",
++    "SPECIES_SPEWPA_GARDEN",
++    "SPECIES_SPEWPA_ELEGANT",
++    "SPECIES_SPEWPA_MEADOW",
++    "SPECIES_SPEWPA_MODERN",
++    "SPECIES_SPEWPA_MARINE",
++    "SPECIES_SPEWPA_ARCHIPELAGO",
++    "SPECIES_SPEWPA_HIGH_PLAINS",
++    "SPECIES_SPEWPA_SANDSTORM",
++    "SPECIES_SPEWPA_RIVER",
++    "SPECIES_SPEWPA_MONSOON",
++    "SPECIES_SPEWPA_SAVANNA",
++    "SPECIES_SPEWPA_SUN",
++    "SPECIES_SPEWPA_OCEAN",
++    "SPECIES_SPEWPA_JUNGLE",
++    "SPECIES_SPEWPA_FANCY",
++    "SPECIES_SPEWPA_POKEBALL"
++  ],
++  "acquisition_paths": {
++    "SPECIES_GIMMIGHOUL_ROAMING": {
++      "root": {
++        "map": "MAP_ROUTE101",
++        "original_species": "SPECIES_ZIGZAGOON",
++        "species": "SPECIES_GIMMIGHOUL_ROAMING",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_MELTAN": {
++      "root": {
++        "map": "MAP_ROUTE101",
++        "original_species": "SPECIES_WURMPLE",
++        "species": "SPECIES_MELTAN",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_COSMOEM": {
++      "root": {
++        "map": "MAP_ROUTE101",
++        "original_species": "SPECIES_POOCHYENA",
++        "species": "SPECIES_COSMOEM",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_TYPE_NULL": {
++      "root": {
++        "map": "MAP_ROUTE102",
++        "original_species": "SPECIES_RALTS",
++        "species": "SPECIES_TYPE_NULL",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_TURTWIG": {
++      "root": {
++        "map": "MAP_ROUTE103",
++        "original_species": "SPECIES_ZIGZAGOON",
++        "species": "SPECIES_TURTWIG",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_CHESPIN": {
++      "root": {
++        "map": "MAP_ROUTE103",
++        "original_species": "SPECIES_POOCHYENA",
++        "species": "SPECIES_CHESPIN",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_ARROKUDA": {
++      "root": {
++        "map": "MAP_ROUTE103",
++        "original_species": "SPECIES_MAGIKARP",
++        "species": "SPECIES_ARROKUDA",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_BLIPBUG": {
++      "root": {
++        "map": "MAP_ALTERING_CAVE",
++        "original_species": "SPECIES_ZUBAT",
++        "species": "SPECIES_BLIPBUG",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_KUBFU": {
++      "root": {
++        "map": "MAP_DESERT_UNDERPASS",
++        "original_species": "SPECIES_DITTO",
++        "species": "SPECIES_KUBFU",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_CAPSAKID": {
++      "root": {
++        "map": "MAP_DESERT_UNDERPASS",
++        "original_species": "SPECIES_LOUDRED",
++        "species": "SPECIES_CAPSAKID",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_HIPPOPOTAS": {
++      "root": {
++        "map": "MAP_DESERT_UNDERPASS",
++        "original_species": "SPECIES_WHISMUR",
++        "species": "SPECIES_HIPPOPOTAS",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_SPEWPA_ICY_SNOW": {
++      "root": {
++        "map": "MAP_FIERY_PATH",
++        "original_species": "SPECIES_GRIMER",
++        "species": "SPECIES_SPEWPA_ICY_SNOW",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_SPEWPA_POLAR": {
++      "root": {
++        "map": "MAP_GRANITE_CAVE_1F",
++        "original_species": "SPECIES_ABRA",
++        "species": "SPECIES_SPEWPA_POLAR",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_SPEWPA_TUNDRA": {
++      "root": {
++        "map": "MAP_GRANITE_CAVE_B1F",
++        "original_species": "SPECIES_ABRA",
++        "species": "SPECIES_SPEWPA_TUNDRA",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_SPEWPA_CONTINENTAL": {
++      "root": {
++        "map": "MAP_GRANITE_CAVE_B2F",
++        "original_species": "SPECIES_ABRA",
++        "species": "SPECIES_SPEWPA_CONTINENTAL",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_SPEWPA_GARDEN": {
++      "root": {
++        "map": "MAP_GRANITE_CAVE_STEVENS_ROOM",
++        "original_species": "SPECIES_ABRA",
++        "species": "SPECIES_SPEWPA_GARDEN",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_SPEWPA_ELEGANT": {
++      "root": {
++        "map": "MAP_JAGGED_PASS",
++        "original_species": "SPECIES_MACHOP",
++        "species": "SPECIES_SPEWPA_ELEGANT",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_SPEWPA_MEADOW": {
++      "root": {
++        "map": "MAP_MAGMA_HIDEOUT_1F",
++        "original_species": "SPECIES_GEODUDE",
++        "species": "SPECIES_SPEWPA_MEADOW",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_SPEWPA_MODERN": {
++      "root": {
++        "map": "MAP_MAGMA_HIDEOUT_2F_1R",
++        "original_species": "SPECIES_GEODUDE",
++        "species": "SPECIES_SPEWPA_MODERN",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_SPEWPA_MARINE": {
++      "root": {
++        "map": "MAP_MAGMA_HIDEOUT_2F_2R",
++        "original_species": "SPECIES_GEODUDE",
++        "species": "SPECIES_SPEWPA_MARINE",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_SPEWPA_ARCHIPELAGO": {
++      "root": {
++        "map": "MAP_MAGMA_HIDEOUT_2F_3R",
++        "original_species": "SPECIES_GEODUDE",
++        "species": "SPECIES_SPEWPA_ARCHIPELAGO",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_SPEWPA_HIGH_PLAINS": {
++      "root": {
++        "map": "MAP_MAGMA_HIDEOUT_3F_1R",
++        "original_species": "SPECIES_GEODUDE",
++        "species": "SPECIES_SPEWPA_HIGH_PLAINS",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_SPEWPA_SANDSTORM": {
++      "root": {
++        "map": "MAP_MAGMA_HIDEOUT_3F_2R",
++        "original_species": "SPECIES_GEODUDE",
++        "species": "SPECIES_SPEWPA_SANDSTORM",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_SPEWPA_RIVER": {
++      "root": {
++        "map": "MAP_MAGMA_HIDEOUT_3F_3R",
++        "original_species": "SPECIES_GEODUDE",
++        "species": "SPECIES_SPEWPA_RIVER",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_SPEWPA_MONSOON": {
++      "root": {
++        "map": "MAP_MAGMA_HIDEOUT_4F",
++        "original_species": "SPECIES_GEODUDE",
++        "species": "SPECIES_SPEWPA_MONSOON",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_SPEWPA_SAVANNA": {
++      "root": {
++        "map": "MAP_METEOR_FALLS_1F_1R",
++        "original_species": "SPECIES_SOLROCK",
++        "species": "SPECIES_SPEWPA_SAVANNA",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_SPEWPA_SUN": {
++      "root": {
++        "map": "MAP_METEOR_FALLS_1F_2R",
++        "original_species": "SPECIES_GOLBAT",
++        "species": "SPECIES_SPEWPA_SUN",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_SPEWPA_OCEAN": {
++      "root": {
++        "map": "MAP_METEOR_FALLS_B1F_1R",
++        "original_species": "SPECIES_GOLBAT",
++        "species": "SPECIES_SPEWPA_OCEAN",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_SPEWPA_JUNGLE": {
++      "root": {
++        "map": "MAP_METEOR_FALLS_B1F_2R",
++        "original_species": "SPECIES_BAGON",
++        "species": "SPECIES_SPEWPA_JUNGLE",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_SPEWPA_FANCY": {
++      "root": {
++        "map": "MAP_METEOR_FALLS_STEVENS_CAVE",
++        "original_species": "SPECIES_GOLBAT",
++        "species": "SPECIES_SPEWPA_FANCY",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_SPEWPA_POKEBALL": {
++      "root": {
++        "map": "MAP_MIRAGE_TOWER_1F",
++        "original_species": "SPECIES_SANDSHREW",
++        "species": "SPECIES_SPEWPA_POKEBALL",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": []
++    },
++    "SPECIES_GROTLE": {
++      "root": {
++        "map": "MAP_ROUTE103",
++        "original_species": "SPECIES_ZIGZAGOON",
++        "species": "SPECIES_TURTWIG",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": [
++        {
++          "source": "SPECIES_TURTWIG",
++          "raw": "{EVO_LEVEL, 18, SPECIES_GROTLE}",
++          "method": "EVO_LEVEL",
++          "param": 18,
++          "target": "SPECIES_GROTLE",
++          "target_engine_id": 443
++        }
++      ]
++    },
++    "SPECIES_QUILLADIN": {
++      "root": {
++        "map": "MAP_ROUTE103",
++        "original_species": "SPECIES_POOCHYENA",
++        "species": "SPECIES_CHESPIN",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": [
++        {
++          "source": "SPECIES_CHESPIN",
++          "raw": "{EVO_LEVEL, 16, SPECIES_QUILLADIN}",
++          "method": "EVO_LEVEL",
++          "param": 16,
++          "target": "SPECIES_QUILLADIN",
++          "target_engine_id": 706
++        }
++      ]
++    },
++    "SPECIES_TORTERRA": {
++      "root": {
++        "map": "MAP_ROUTE103",
++        "original_species": "SPECIES_ZIGZAGOON",
++        "species": "SPECIES_TURTWIG",
++        "rule": "WORLD_RULE_EXPANDED_ROSTER",
++        "resolver": "src/platform/expanded_species.c:ExpandedSpecies_ResolveEncounter"
++      },
++      "evolutions": [
++        {
++          "source": "SPECIES_TURTWIG",
++          "raw": "{EVO_LEVEL, 18, SPECIES_GROTLE}",
++          "method": "EVO_LEVEL",
++          "param": 18,
++          "target": "SPECIES_GROTLE",
++          "target_engine_id": 443
++        },
++        {
++          "source": "SPECIES_GROTLE",
++          "raw": "{EVO_LEVEL, 32, SPECIES_TORTERRA}",
++          "method": "EVO_LEVEL",
++          "param": 32,
++          "target": "SPECIES_TORTERRA",
++          "target_engine_id": 444
++        }
++      ]
++    }
++  },
++  "header_coverage": [
++    {
++      "header": 0,
++      "label": "gRoute101",
++      "map": "MAP_ROUTE101",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_WURMPLE",
++        "SPECIES_POOCHYENA",
++        "SPECIES_ZIGZAGOON"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_MELTAN",
++        "SPECIES_COSMOEM",
++        "SPECIES_GIMMIGHOUL_ROAMING"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_WURMPLE",
++        "NATIONAL_DEX_POOCHYENA",
++        "NATIONAL_DEX_ZIGZAGOON"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_MELTAN",
++        "NATIONAL_DEX_COSMOEM",
++        "NATIONAL_DEX_GIMMIGHOUL"
++      ],
++      "total": 6,
++      "dexnav_supported": true
++    },
++    {
++      "header": 1,
++      "label": "gRoute102",
++      "map": "MAP_ROUTE102",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_POOCHYENA",
++        "SPECIES_WURMPLE",
++        "SPECIES_LOTAD",
++        "SPECIES_ZIGZAGOON",
++        "SPECIES_RALTS",
++        "SPECIES_SEEDOT"
++      ],
++      "capacity": 12,
++      "native_count": 6,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_TYPE_NULL"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_POOCHYENA",
++        "NATIONAL_DEX_WURMPLE",
++        "NATIONAL_DEX_LOTAD",
++        "NATIONAL_DEX_ZIGZAGOON",
++        "NATIONAL_DEX_RALTS",
++        "NATIONAL_DEX_SEEDOT"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_TYPE_NULL"
++      ],
++      "total": 7,
++      "dexnav_supported": true
++    },
++    {
++      "header": 1,
++      "label": "gRoute102",
++      "map": "MAP_ROUTE102",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_MARILL",
++        "SPECIES_GOLDEEN"
++      ],
++      "capacity": 5,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MARILL",
++        "NATIONAL_DEX_GOLDEEN"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 1,
++      "label": "gRoute102",
++      "map": "MAP_ROUTE102",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_GOLDEEN",
++        "SPECIES_CORPHISH"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_GOLDEEN",
++        "NATIONAL_DEX_CORPHISH"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 2,
++      "label": "gRoute103",
++      "map": "MAP_ROUTE103",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_POOCHYENA",
++        "SPECIES_WINGULL",
++        "SPECIES_ZIGZAGOON"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_CHESPIN",
++        "SPECIES_TURTWIG"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_POOCHYENA",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_ZIGZAGOON"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_CHESPIN",
++        "NATIONAL_DEX_TURTWIG"
++      ],
++      "total": 5,
++      "dexnav_supported": true
++    },
++    {
++      "header": 2,
++      "label": "gRoute103",
++      "map": "MAP_ROUTE103",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 2,
++      "label": "gRoute103",
++      "map": "MAP_ROUTE103",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER",
++        "SPECIES_SHARPEDO"
++      ],
++      "capacity": null,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_ARROKUDA"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER",
++        "NATIONAL_DEX_SHARPEDO"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_ARROKUDA"
++      ],
++      "total": 5,
++      "dexnav_supported": false
++    },
++    {
++      "header": 3,
++      "label": "gRoute104",
++      "map": "MAP_ROUTE104",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_POOCHYENA",
++        "SPECIES_WURMPLE",
++        "SPECIES_MARILL",
++        "SPECIES_TAILLOW",
++        "SPECIES_WINGULL"
++      ],
++      "capacity": 12,
++      "native_count": 5,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_POOCHYENA",
++        "NATIONAL_DEX_WURMPLE",
++        "NATIONAL_DEX_MARILL",
++        "NATIONAL_DEX_TAILLOW",
++        "NATIONAL_DEX_WINGULL"
++      ],
++      "extra_dex": [],
++      "total": 5,
++      "dexnav_supported": true
++    },
++    {
++      "header": 3,
++      "label": "gRoute104",
++      "map": "MAP_ROUTE104",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 3,
++      "label": "gRoute104",
++      "map": "MAP_ROUTE104",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP"
++      ],
++      "capacity": null,
++      "native_count": 1,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": false
++    },
++    {
++      "header": 4,
++      "label": "gRoute105",
++      "map": "MAP_ROUTE105",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 4,
++      "label": "gRoute105",
++      "map": "MAP_ROUTE105",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 5,
++      "label": "gRoute110",
++      "map": "MAP_ROUTE110",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_POOCHYENA",
++        "SPECIES_ELECTRIKE",
++        "SPECIES_GULPIN",
++        "SPECIES_MINUN",
++        "SPECIES_ODDISH",
++        "SPECIES_WINGULL",
++        "SPECIES_PLUSLE"
++      ],
++      "capacity": 12,
++      "native_count": 7,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_POOCHYENA",
++        "NATIONAL_DEX_ELECTRIKE",
++        "NATIONAL_DEX_GULPIN",
++        "NATIONAL_DEX_MINUN",
++        "NATIONAL_DEX_ODDISH",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PLUSLE"
++      ],
++      "extra_dex": [],
++      "total": 7,
++      "dexnav_supported": true
++    },
++    {
++      "header": 5,
++      "label": "gRoute110",
++      "map": "MAP_ROUTE110",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 5,
++      "label": "gRoute110",
++      "map": "MAP_ROUTE110",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 6,
++      "label": "gRoute111",
++      "map": "MAP_ROUTE111",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SANDSHREW",
++        "SPECIES_TRAPINCH",
++        "SPECIES_BALTOY",
++        "SPECIES_CACNEA"
++      ],
++      "capacity": 12,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SANDSHREW",
++        "NATIONAL_DEX_TRAPINCH",
++        "NATIONAL_DEX_BALTOY",
++        "NATIONAL_DEX_CACNEA"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": true
++    },
++    {
++      "header": 6,
++      "label": "gRoute111",
++      "map": "MAP_ROUTE111",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_MARILL",
++        "SPECIES_GOLDEEN"
++      ],
++      "capacity": 5,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MARILL",
++        "NATIONAL_DEX_GOLDEEN"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 6,
++      "label": "gRoute111",
++      "map": "MAP_ROUTE111",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_GOLDEEN",
++        "SPECIES_BARBOACH"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_GOLDEEN",
++        "NATIONAL_DEX_BARBOACH"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 6,
++      "label": "gRoute111",
++      "map": "MAP_ROUTE111",
++      "field": "rock_smash_mons",
++      "originals": [
++        "SPECIES_GEODUDE"
++      ],
++      "capacity": null,
++      "native_count": 1,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_GEODUDE"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": false
++    },
++    {
++      "header": 7,
++      "label": "gRoute112",
++      "map": "MAP_ROUTE112",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_NUMEL",
++        "SPECIES_MARILL"
++      ],
++      "capacity": 12,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_NUMEL",
++        "NATIONAL_DEX_MARILL"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 8,
++      "label": "gRoute113",
++      "map": "MAP_ROUTE113",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SPINDA",
++        "SPECIES_SLUGMA",
++        "SPECIES_SKARMORY"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SPINDA",
++        "NATIONAL_DEX_SLUGMA",
++        "NATIONAL_DEX_SKARMORY"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 9,
++      "label": "gRoute114",
++      "map": "MAP_ROUTE114",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SWABLU",
++        "SPECIES_LOTAD",
++        "SPECIES_LOMBRE",
++        "SPECIES_SEVIPER",
++        "SPECIES_NUZLEAF"
++      ],
++      "capacity": 12,
++      "native_count": 5,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SWABLU",
++        "NATIONAL_DEX_LOTAD",
++        "NATIONAL_DEX_LOMBRE",
++        "NATIONAL_DEX_SEVIPER",
++        "NATIONAL_DEX_NUZLEAF"
++      ],
++      "extra_dex": [],
++      "total": 5,
++      "dexnav_supported": true
++    },
++    {
++      "header": 9,
++      "label": "gRoute114",
++      "map": "MAP_ROUTE114",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_MARILL",
++        "SPECIES_GOLDEEN"
++      ],
++      "capacity": 5,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MARILL",
++        "NATIONAL_DEX_GOLDEEN"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 9,
++      "label": "gRoute114",
++      "map": "MAP_ROUTE114",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_GOLDEEN",
++        "SPECIES_BARBOACH"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_GOLDEEN",
++        "NATIONAL_DEX_BARBOACH"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 9,
++      "label": "gRoute114",
++      "map": "MAP_ROUTE114",
++      "field": "rock_smash_mons",
++      "originals": [
++        "SPECIES_GEODUDE"
++      ],
++      "capacity": null,
++      "native_count": 1,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_GEODUDE"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": false
++    },
++    {
++      "header": 10,
++      "label": "gRoute116",
++      "map": "MAP_ROUTE116",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_POOCHYENA",
++        "SPECIES_WHISMUR",
++        "SPECIES_NINCADA",
++        "SPECIES_ABRA",
++        "SPECIES_TAILLOW",
++        "SPECIES_SKITTY"
++      ],
++      "capacity": 12,
++      "native_count": 6,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_POOCHYENA",
++        "NATIONAL_DEX_WHISMUR",
++        "NATIONAL_DEX_NINCADA",
++        "NATIONAL_DEX_ABRA",
++        "NATIONAL_DEX_TAILLOW",
++        "NATIONAL_DEX_SKITTY"
++      ],
++      "extra_dex": [],
++      "total": 6,
++      "dexnav_supported": true
++    },
++    {
++      "header": 11,
++      "label": "gRoute117",
++      "map": "MAP_ROUTE117",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_POOCHYENA",
++        "SPECIES_ODDISH",
++        "SPECIES_MARILL",
++        "SPECIES_ILLUMISE",
++        "SPECIES_VOLBEAT",
++        "SPECIES_SEEDOT"
++      ],
++      "capacity": 12,
++      "native_count": 6,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_POOCHYENA",
++        "NATIONAL_DEX_ODDISH",
++        "NATIONAL_DEX_MARILL",
++        "NATIONAL_DEX_ILLUMISE",
++        "NATIONAL_DEX_VOLBEAT",
++        "NATIONAL_DEX_SEEDOT"
++      ],
++      "extra_dex": [],
++      "total": 6,
++      "dexnav_supported": true
++    },
++    {
++      "header": 11,
++      "label": "gRoute117",
++      "map": "MAP_ROUTE117",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_MARILL",
++        "SPECIES_GOLDEEN"
++      ],
++      "capacity": 5,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MARILL",
++        "NATIONAL_DEX_GOLDEEN"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 11,
++      "label": "gRoute117",
++      "map": "MAP_ROUTE117",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_GOLDEEN",
++        "SPECIES_CORPHISH"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_GOLDEEN",
++        "NATIONAL_DEX_CORPHISH"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 12,
++      "label": "gRoute118",
++      "map": "MAP_ROUTE118",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZIGZAGOON",
++        "SPECIES_ELECTRIKE",
++        "SPECIES_LINOONE",
++        "SPECIES_MANECTRIC",
++        "SPECIES_WINGULL",
++        "SPECIES_KECLEON"
++      ],
++      "capacity": 12,
++      "native_count": 6,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_ZIGZAGOON",
++        "NATIONAL_DEX_ELECTRIKE",
++        "NATIONAL_DEX_LINOONE",
++        "NATIONAL_DEX_MANECTRIC",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_KECLEON"
++      ],
++      "extra_dex": [],
++      "total": 6,
++      "dexnav_supported": true
++    },
++    {
++      "header": 12,
++      "label": "gRoute118",
++      "map": "MAP_ROUTE118",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 12,
++      "label": "gRoute118",
++      "map": "MAP_ROUTE118",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_CARVANHA",
++        "SPECIES_SHARPEDO"
++      ],
++      "capacity": null,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_CARVANHA",
++        "NATIONAL_DEX_SHARPEDO"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": false
++    },
++    {
++      "header": 13,
++      "label": "gRoute124",
++      "map": "MAP_ROUTE124",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 13,
++      "label": "gRoute124",
++      "map": "MAP_ROUTE124",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER",
++        "SPECIES_SHARPEDO"
++      ],
++      "capacity": null,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER",
++        "NATIONAL_DEX_SHARPEDO"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": false
++    },
++    {
++      "header": 14,
++      "label": "gPetalburgWoods",
++      "map": "MAP_PETALBURG_WOODS",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_POOCHYENA",
++        "SPECIES_WURMPLE",
++        "SPECIES_SHROOMISH",
++        "SPECIES_SILCOON",
++        "SPECIES_CASCOON",
++        "SPECIES_TAILLOW",
++        "SPECIES_SLAKOTH"
++      ],
++      "capacity": 12,
++      "native_count": 7,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_POOCHYENA",
++        "NATIONAL_DEX_WURMPLE",
++        "NATIONAL_DEX_SHROOMISH",
++        "NATIONAL_DEX_SILCOON",
++        "NATIONAL_DEX_CASCOON",
++        "NATIONAL_DEX_TAILLOW",
++        "NATIONAL_DEX_SLAKOTH"
++      ],
++      "extra_dex": [],
++      "total": 7,
++      "dexnav_supported": true
++    },
++    {
++      "header": 15,
++      "label": "gRusturfTunnel",
++      "map": "MAP_RUSTURF_TUNNEL",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_WHISMUR"
++      ],
++      "capacity": 12,
++      "native_count": 1,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_WHISMUR"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": true
++    },
++    {
++      "header": 16,
++      "label": "gGraniteCave_1F",
++      "map": "MAP_GRANITE_CAVE_1F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_MAKUHITA",
++        "SPECIES_ABRA",
++        "SPECIES_GEODUDE"
++      ],
++      "capacity": 12,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_SPEWPA_POLAR"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_MAKUHITA",
++        "NATIONAL_DEX_ABRA",
++        "NATIONAL_DEX_GEODUDE"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_SPEWPA"
++      ],
++      "total": 5,
++      "dexnav_supported": true
++    },
++    {
++      "header": 17,
++      "label": "gGraniteCave_B1F",
++      "map": "MAP_GRANITE_CAVE_B1F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_ARON",
++        "SPECIES_ABRA",
++        "SPECIES_MAKUHITA",
++        "SPECIES_SABLEYE"
++      ],
++      "capacity": 12,
++      "native_count": 5,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_SPEWPA_TUNDRA"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_ARON",
++        "NATIONAL_DEX_ABRA",
++        "NATIONAL_DEX_MAKUHITA",
++        "NATIONAL_DEX_SABLEYE"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_SPEWPA"
++      ],
++      "total": 6,
++      "dexnav_supported": true
++    },
++    {
++      "header": 18,
++      "label": "gMtPyre_1F",
++      "map": "MAP_MT_PYRE_1F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SHUPPET"
++      ],
++      "capacity": 12,
++      "native_count": 1,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SHUPPET"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": true
++    },
++    {
++      "header": 19,
++      "label": "gVictoryRoad_1F",
++      "map": "MAP_VICTORY_ROAD_1F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_GOLBAT",
++        "SPECIES_HARIYAMA",
++        "SPECIES_LAIRON",
++        "SPECIES_LOUDRED",
++        "SPECIES_ZUBAT",
++        "SPECIES_MAKUHITA",
++        "SPECIES_ARON",
++        "SPECIES_WHISMUR"
++      ],
++      "capacity": 12,
++      "native_count": 8,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_GOLBAT",
++        "NATIONAL_DEX_HARIYAMA",
++        "NATIONAL_DEX_LAIRON",
++        "NATIONAL_DEX_LOUDRED",
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_MAKUHITA",
++        "NATIONAL_DEX_ARON",
++        "NATIONAL_DEX_WHISMUR"
++      ],
++      "extra_dex": [],
++      "total": 8,
++      "dexnav_supported": true
++    },
++    {
++      "header": 20,
++      "label": "gSafariZone_South",
++      "map": "MAP_SAFARI_ZONE_SOUTH",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ODDISH",
++        "SPECIES_GIRAFARIG",
++        "SPECIES_NATU",
++        "SPECIES_DODUO",
++        "SPECIES_GLOOM",
++        "SPECIES_WOBBUFFET",
++        "SPECIES_PIKACHU"
++      ],
++      "capacity": 12,
++      "native_count": 7,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_ODDISH",
++        "NATIONAL_DEX_GIRAFARIG",
++        "NATIONAL_DEX_NATU",
++        "NATIONAL_DEX_DODUO",
++        "NATIONAL_DEX_GLOOM",
++        "NATIONAL_DEX_WOBBUFFET",
++        "NATIONAL_DEX_PIKACHU"
++      ],
++      "extra_dex": [],
++      "total": 7,
++      "dexnav_supported": true
++    },
++    {
++      "header": 21,
++      "label": "gUnderwater_Route126",
++      "map": "MAP_UNDERWATER_ROUTE126",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_CLAMPERL",
++        "SPECIES_CHINCHOU",
++        "SPECIES_RELICANTH"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_CLAMPERL",
++        "NATIONAL_DEX_CHINCHOU",
++        "NATIONAL_DEX_RELICANTH"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 22,
++      "label": "gAbandonedShip_Rooms_B1F",
++      "map": "MAP_ABANDONED_SHIP_ROOMS_B1F",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_TENTACRUEL"
++      ],
++      "capacity": 5,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_TENTACRUEL"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 22,
++      "label": "gAbandonedShip_Rooms_B1F",
++      "map": "MAP_ABANDONED_SHIP_ROOMS_B1F",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_TENTACRUEL"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_TENTACRUEL"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 23,
++      "label": "gGraniteCave_B2F",
++      "map": "MAP_GRANITE_CAVE_B2F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_ARON",
++        "SPECIES_ABRA",
++        "SPECIES_SABLEYE"
++      ],
++      "capacity": 12,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_SPEWPA_CONTINENTAL"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_ARON",
++        "NATIONAL_DEX_ABRA",
++        "NATIONAL_DEX_SABLEYE"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_SPEWPA"
++      ],
++      "total": 5,
++      "dexnav_supported": true
++    },
++    {
++      "header": 23,
++      "label": "gGraniteCave_B2F",
++      "map": "MAP_GRANITE_CAVE_B2F",
++      "field": "rock_smash_mons",
++      "originals": [
++        "SPECIES_GEODUDE",
++        "SPECIES_NOSEPASS"
++      ],
++      "capacity": null,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_GEODUDE",
++        "NATIONAL_DEX_NOSEPASS"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": false
++    },
++    {
++      "header": 24,
++      "label": "gFieryPath",
++      "map": "MAP_FIERY_PATH",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_NUMEL",
++        "SPECIES_KOFFING",
++        "SPECIES_MACHOP",
++        "SPECIES_TORKOAL",
++        "SPECIES_SLUGMA",
++        "SPECIES_GRIMER"
++      ],
++      "capacity": 12,
++      "native_count": 6,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_SPEWPA_ICY_SNOW"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_NUMEL",
++        "NATIONAL_DEX_KOFFING",
++        "NATIONAL_DEX_MACHOP",
++        "NATIONAL_DEX_TORKOAL",
++        "NATIONAL_DEX_SLUGMA",
++        "NATIONAL_DEX_GRIMER"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_SPEWPA"
++      ],
++      "total": 7,
++      "dexnav_supported": true
++    },
++    {
++      "header": 25,
++      "label": "gMeteorFalls_B1F_2R",
++      "map": "MAP_METEOR_FALLS_B1F_2R",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_GOLBAT",
++        "SPECIES_BAGON",
++        "SPECIES_SOLROCK"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_SPEWPA_JUNGLE"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_GOLBAT",
++        "NATIONAL_DEX_BAGON",
++        "NATIONAL_DEX_SOLROCK"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_SPEWPA"
++      ],
++      "total": 4,
++      "dexnav_supported": true
++    },
++    {
++      "header": 25,
++      "label": "gMeteorFalls_B1F_2R",
++      "map": "MAP_METEOR_FALLS_B1F_2R",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_GOLBAT",
++        "SPECIES_SOLROCK"
++      ],
++      "capacity": 5,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_GOLBAT",
++        "NATIONAL_DEX_SOLROCK"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 25,
++      "label": "gMeteorFalls_B1F_2R",
++      "map": "MAP_METEOR_FALLS_B1F_2R",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_GOLDEEN",
++        "SPECIES_BARBOACH",
++        "SPECIES_WHISCASH"
++      ],
++      "capacity": null,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_GOLDEEN",
++        "NATIONAL_DEX_BARBOACH",
++        "NATIONAL_DEX_WHISCASH"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": false
++    },
++    {
++      "header": 26,
++      "label": "gJaggedPass",
++      "map": "MAP_JAGGED_PASS",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_NUMEL",
++        "SPECIES_MACHOP",
++        "SPECIES_SPOINK"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_SPEWPA_ELEGANT"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_NUMEL",
++        "NATIONAL_DEX_MACHOP",
++        "NATIONAL_DEX_SPOINK"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_SPEWPA"
++      ],
++      "total": 4,
++      "dexnav_supported": true
++    },
++    {
++      "header": 27,
++      "label": "gRoute106",
++      "map": "MAP_ROUTE106",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 27,
++      "label": "gRoute106",
++      "map": "MAP_ROUTE106",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 28,
++      "label": "gRoute107",
++      "map": "MAP_ROUTE107",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 28,
++      "label": "gRoute107",
++      "map": "MAP_ROUTE107",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 29,
++      "label": "gRoute108",
++      "map": "MAP_ROUTE108",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 29,
++      "label": "gRoute108",
++      "map": "MAP_ROUTE108",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 30,
++      "label": "gRoute109",
++      "map": "MAP_ROUTE109",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 30,
++      "label": "gRoute109",
++      "map": "MAP_ROUTE109",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 31,
++      "label": "gRoute115",
++      "map": "MAP_ROUTE115",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SWABLU",
++        "SPECIES_TAILLOW",
++        "SPECIES_SWELLOW",
++        "SPECIES_JIGGLYPUFF",
++        "SPECIES_WINGULL"
++      ],
++      "capacity": 12,
++      "native_count": 5,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SWABLU",
++        "NATIONAL_DEX_TAILLOW",
++        "NATIONAL_DEX_SWELLOW",
++        "NATIONAL_DEX_JIGGLYPUFF",
++        "NATIONAL_DEX_WINGULL"
++      ],
++      "extra_dex": [],
++      "total": 5,
++      "dexnav_supported": true
++    },
++    {
++      "header": 31,
++      "label": "gRoute115",
++      "map": "MAP_ROUTE115",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 31,
++      "label": "gRoute115",
++      "map": "MAP_ROUTE115",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 32,
++      "label": "gNewMauville_Inside",
++      "map": "MAP_NEW_MAUVILLE_INSIDE",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_VOLTORB",
++        "SPECIES_MAGNEMITE",
++        "SPECIES_ELECTRODE",
++        "SPECIES_MAGNETON"
++      ],
++      "capacity": 12,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_VOLTORB",
++        "NATIONAL_DEX_MAGNEMITE",
++        "NATIONAL_DEX_ELECTRODE",
++        "NATIONAL_DEX_MAGNETON"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": true
++    },
++    {
++      "header": 33,
++      "label": "gRoute119",
++      "map": "MAP_ROUTE119",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZIGZAGOON",
++        "SPECIES_LINOONE",
++        "SPECIES_ODDISH",
++        "SPECIES_TROPIUS",
++        "SPECIES_KECLEON"
++      ],
++      "capacity": 12,
++      "native_count": 5,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_ZIGZAGOON",
++        "NATIONAL_DEX_LINOONE",
++        "NATIONAL_DEX_ODDISH",
++        "NATIONAL_DEX_TROPIUS",
++        "NATIONAL_DEX_KECLEON"
++      ],
++      "extra_dex": [],
++      "total": 5,
++      "dexnav_supported": true
++    },
++    {
++      "header": 33,
++      "label": "gRoute119",
++      "map": "MAP_ROUTE119",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 33,
++      "label": "gRoute119",
++      "map": "MAP_ROUTE119",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_CARVANHA"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_CARVANHA"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 34,
++      "label": "gRoute120",
++      "map": "MAP_ROUTE120",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_POOCHYENA",
++        "SPECIES_MIGHTYENA",
++        "SPECIES_ODDISH",
++        "SPECIES_MARILL",
++        "SPECIES_ABSOL",
++        "SPECIES_KECLEON",
++        "SPECIES_SEEDOT"
++      ],
++      "capacity": 12,
++      "native_count": 7,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_POOCHYENA",
++        "NATIONAL_DEX_MIGHTYENA",
++        "NATIONAL_DEX_ODDISH",
++        "NATIONAL_DEX_MARILL",
++        "NATIONAL_DEX_ABSOL",
++        "NATIONAL_DEX_KECLEON",
++        "NATIONAL_DEX_SEEDOT"
++      ],
++      "extra_dex": [],
++      "total": 7,
++      "dexnav_supported": true
++    },
++    {
++      "header": 34,
++      "label": "gRoute120",
++      "map": "MAP_ROUTE120",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_MARILL",
++        "SPECIES_GOLDEEN"
++      ],
++      "capacity": 5,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MARILL",
++        "NATIONAL_DEX_GOLDEEN"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 34,
++      "label": "gRoute120",
++      "map": "MAP_ROUTE120",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_GOLDEEN",
++        "SPECIES_BARBOACH"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_GOLDEEN",
++        "NATIONAL_DEX_BARBOACH"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 35,
++      "label": "gRoute121",
++      "map": "MAP_ROUTE121",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_POOCHYENA",
++        "SPECIES_SHUPPET",
++        "SPECIES_MIGHTYENA",
++        "SPECIES_ODDISH",
++        "SPECIES_GLOOM",
++        "SPECIES_WINGULL",
++        "SPECIES_KECLEON"
++      ],
++      "capacity": 12,
++      "native_count": 7,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_POOCHYENA",
++        "NATIONAL_DEX_SHUPPET",
++        "NATIONAL_DEX_MIGHTYENA",
++        "NATIONAL_DEX_ODDISH",
++        "NATIONAL_DEX_GLOOM",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_KECLEON"
++      ],
++      "extra_dex": [],
++      "total": 7,
++      "dexnav_supported": true
++    },
++    {
++      "header": 35,
++      "label": "gRoute121",
++      "map": "MAP_ROUTE121",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 35,
++      "label": "gRoute121",
++      "map": "MAP_ROUTE121",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 36,
++      "label": "gRoute122",
++      "map": "MAP_ROUTE122",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 36,
++      "label": "gRoute122",
++      "map": "MAP_ROUTE122",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER",
++        "SPECIES_SHARPEDO"
++      ],
++      "capacity": null,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER",
++        "NATIONAL_DEX_SHARPEDO"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": false
++    },
++    {
++      "header": 37,
++      "label": "gRoute123",
++      "map": "MAP_ROUTE123",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_POOCHYENA",
++        "SPECIES_SHUPPET",
++        "SPECIES_MIGHTYENA",
++        "SPECIES_ODDISH",
++        "SPECIES_GLOOM",
++        "SPECIES_WINGULL",
++        "SPECIES_KECLEON"
++      ],
++      "capacity": 12,
++      "native_count": 7,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_POOCHYENA",
++        "NATIONAL_DEX_SHUPPET",
++        "NATIONAL_DEX_MIGHTYENA",
++        "NATIONAL_DEX_ODDISH",
++        "NATIONAL_DEX_GLOOM",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_KECLEON"
++      ],
++      "extra_dex": [],
++      "total": 7,
++      "dexnav_supported": true
++    },
++    {
++      "header": 37,
++      "label": "gRoute123",
++      "map": "MAP_ROUTE123",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 37,
++      "label": "gRoute123",
++      "map": "MAP_ROUTE123",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 38,
++      "label": "gMtPyre_2F",
++      "map": "MAP_MT_PYRE_2F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SHUPPET"
++      ],
++      "capacity": 12,
++      "native_count": 1,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SHUPPET"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": true
++    },
++    {
++      "header": 39,
++      "label": "gMtPyre_3F",
++      "map": "MAP_MT_PYRE_3F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SHUPPET"
++      ],
++      "capacity": 12,
++      "native_count": 1,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SHUPPET"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": true
++    },
++    {
++      "header": 40,
++      "label": "gMtPyre_4F",
++      "map": "MAP_MT_PYRE_4F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SHUPPET",
++        "SPECIES_DUSKULL"
++      ],
++      "capacity": 12,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SHUPPET",
++        "NATIONAL_DEX_DUSKULL"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 41,
++      "label": "gMtPyre_5F",
++      "map": "MAP_MT_PYRE_5F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SHUPPET",
++        "SPECIES_DUSKULL"
++      ],
++      "capacity": 12,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SHUPPET",
++        "NATIONAL_DEX_DUSKULL"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 42,
++      "label": "gMtPyre_6F",
++      "map": "MAP_MT_PYRE_6F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SHUPPET",
++        "SPECIES_DUSKULL"
++      ],
++      "capacity": 12,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SHUPPET",
++        "NATIONAL_DEX_DUSKULL"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 43,
++      "label": "gMtPyre_Exterior",
++      "map": "MAP_MT_PYRE_EXTERIOR",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SHUPPET",
++        "SPECIES_VULPIX",
++        "SPECIES_WINGULL"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SHUPPET",
++        "NATIONAL_DEX_VULPIX",
++        "NATIONAL_DEX_WINGULL"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 44,
++      "label": "gMtPyre_Summit",
++      "map": "MAP_MT_PYRE_SUMMIT",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SHUPPET",
++        "SPECIES_DUSKULL",
++        "SPECIES_CHIMECHO"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SHUPPET",
++        "NATIONAL_DEX_DUSKULL",
++        "NATIONAL_DEX_CHIMECHO"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 45,
++      "label": "gGraniteCave_StevensRoom",
++      "map": "MAP_GRANITE_CAVE_STEVENS_ROOM",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_MAKUHITA",
++        "SPECIES_ABRA",
++        "SPECIES_ARON"
++      ],
++      "capacity": 12,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_SPEWPA_GARDEN"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_MAKUHITA",
++        "NATIONAL_DEX_ABRA",
++        "NATIONAL_DEX_ARON"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_SPEWPA"
++      ],
++      "total": 5,
++      "dexnav_supported": true
++    },
++    {
++      "header": 46,
++      "label": "gRoute125",
++      "map": "MAP_ROUTE125",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 46,
++      "label": "gRoute125",
++      "map": "MAP_ROUTE125",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER",
++        "SPECIES_SHARPEDO"
++      ],
++      "capacity": null,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER",
++        "NATIONAL_DEX_SHARPEDO"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": false
++    },
++    {
++      "header": 47,
++      "label": "gRoute126",
++      "map": "MAP_ROUTE126",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 47,
++      "label": "gRoute126",
++      "map": "MAP_ROUTE126",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER",
++        "SPECIES_SHARPEDO"
++      ],
++      "capacity": null,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER",
++        "NATIONAL_DEX_SHARPEDO"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": false
++    },
++    {
++      "header": 48,
++      "label": "gRoute127",
++      "map": "MAP_ROUTE127",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 48,
++      "label": "gRoute127",
++      "map": "MAP_ROUTE127",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER",
++        "SPECIES_SHARPEDO"
++      ],
++      "capacity": null,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER",
++        "NATIONAL_DEX_SHARPEDO"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": false
++    },
++    {
++      "header": 49,
++      "label": "gRoute128",
++      "map": "MAP_ROUTE128",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 49,
++      "label": "gRoute128",
++      "map": "MAP_ROUTE128",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_LUVDISC",
++        "SPECIES_WAILMER",
++        "SPECIES_CORSOLA"
++      ],
++      "capacity": null,
++      "native_count": 5,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_LUVDISC",
++        "NATIONAL_DEX_WAILMER",
++        "NATIONAL_DEX_CORSOLA"
++      ],
++      "extra_dex": [],
++      "total": 5,
++      "dexnav_supported": false
++    },
++    {
++      "header": 50,
++      "label": "gRoute129",
++      "map": "MAP_ROUTE129",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER",
++        "SPECIES_WAILORD"
++      ],
++      "capacity": 5,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER",
++        "NATIONAL_DEX_WAILORD"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": true
++    },
++    {
++      "header": 50,
++      "label": "gRoute129",
++      "map": "MAP_ROUTE129",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER",
++        "SPECIES_SHARPEDO"
++      ],
++      "capacity": null,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER",
++        "NATIONAL_DEX_SHARPEDO"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": false
++    },
++    {
++      "header": 51,
++      "label": "gRoute130",
++      "map": "MAP_ROUTE130",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_WYNAUT"
++      ],
++      "capacity": 12,
++      "native_count": 1,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_WYNAUT"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": true
++    },
++    {
++      "header": 51,
++      "label": "gRoute130",
++      "map": "MAP_ROUTE130",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 51,
++      "label": "gRoute130",
++      "map": "MAP_ROUTE130",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER",
++        "SPECIES_SHARPEDO"
++      ],
++      "capacity": null,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER",
++        "NATIONAL_DEX_SHARPEDO"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": false
++    },
++    {
++      "header": 52,
++      "label": "gRoute131",
++      "map": "MAP_ROUTE131",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 52,
++      "label": "gRoute131",
++      "map": "MAP_ROUTE131",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER",
++        "SPECIES_SHARPEDO"
++      ],
++      "capacity": null,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER",
++        "NATIONAL_DEX_SHARPEDO"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": false
++    },
++    {
++      "header": 53,
++      "label": "gRoute132",
++      "map": "MAP_ROUTE132",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 53,
++      "label": "gRoute132",
++      "map": "MAP_ROUTE132",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER",
++        "SPECIES_SHARPEDO",
++        "SPECIES_HORSEA"
++      ],
++      "capacity": null,
++      "native_count": 5,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER",
++        "NATIONAL_DEX_SHARPEDO",
++        "NATIONAL_DEX_HORSEA"
++      ],
++      "extra_dex": [],
++      "total": 5,
++      "dexnav_supported": false
++    },
++    {
++      "header": 54,
++      "label": "gRoute133",
++      "map": "MAP_ROUTE133",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 54,
++      "label": "gRoute133",
++      "map": "MAP_ROUTE133",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER",
++        "SPECIES_SHARPEDO",
++        "SPECIES_HORSEA"
++      ],
++      "capacity": null,
++      "native_count": 5,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER",
++        "NATIONAL_DEX_SHARPEDO",
++        "NATIONAL_DEX_HORSEA"
++      ],
++      "extra_dex": [],
++      "total": 5,
++      "dexnav_supported": false
++    },
++    {
++      "header": 55,
++      "label": "gRoute134",
++      "map": "MAP_ROUTE134",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 55,
++      "label": "gRoute134",
++      "map": "MAP_ROUTE134",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER",
++        "SPECIES_SHARPEDO",
++        "SPECIES_HORSEA"
++      ],
++      "capacity": null,
++      "native_count": 5,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER",
++        "NATIONAL_DEX_SHARPEDO",
++        "NATIONAL_DEX_HORSEA"
++      ],
++      "extra_dex": [],
++      "total": 5,
++      "dexnav_supported": false
++    },
++    {
++      "header": 56,
++      "label": "gAbandonedShip_HiddenFloorCorridors",
++      "map": "MAP_ABANDONED_SHIP_HIDDEN_FLOOR_CORRIDORS",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_TENTACRUEL"
++      ],
++      "capacity": 5,
++      "native_count": 2,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_TENTACRUEL"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 56,
++      "label": "gAbandonedShip_HiddenFloorCorridors",
++      "map": "MAP_ABANDONED_SHIP_HIDDEN_FLOOR_CORRIDORS",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_TENTACRUEL"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_TENTACRUEL"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 57,
++      "label": "gSeafloorCavern_Room1",
++      "map": "MAP_SEAFLOOR_CAVERN_ROOM1",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_GOLBAT"
++      ],
++      "capacity": 12,
++      "native_count": 2,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_GOLBAT"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 58,
++      "label": "gSeafloorCavern_Room2",
++      "map": "MAP_SEAFLOOR_CAVERN_ROOM2",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_GOLBAT"
++      ],
++      "capacity": 12,
++      "native_count": 2,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_GOLBAT"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 59,
++      "label": "gSeafloorCavern_Room3",
++      "map": "MAP_SEAFLOOR_CAVERN_ROOM3",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_GOLBAT"
++      ],
++      "capacity": 12,
++      "native_count": 2,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_GOLBAT"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 60,
++      "label": "gSeafloorCavern_Room4",
++      "map": "MAP_SEAFLOOR_CAVERN_ROOM4",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_GOLBAT"
++      ],
++      "capacity": 12,
++      "native_count": 2,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_GOLBAT"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 61,
++      "label": "gSeafloorCavern_Room5",
++      "map": "MAP_SEAFLOOR_CAVERN_ROOM5",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_GOLBAT"
++      ],
++      "capacity": 12,
++      "native_count": 2,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_GOLBAT"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 62,
++      "label": "gSeafloorCavern_Room6",
++      "map": "MAP_SEAFLOOR_CAVERN_ROOM6",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_GOLBAT"
++      ],
++      "capacity": 12,
++      "native_count": 2,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_GOLBAT"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 62,
++      "label": "gSeafloorCavern_Room6",
++      "map": "MAP_SEAFLOOR_CAVERN_ROOM6",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_ZUBAT",
++        "SPECIES_GOLBAT"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_GOLBAT"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 62,
++      "label": "gSeafloorCavern_Room6",
++      "map": "MAP_SEAFLOOR_CAVERN_ROOM6",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 63,
++      "label": "gSeafloorCavern_Room7",
++      "map": "MAP_SEAFLOOR_CAVERN_ROOM7",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_GOLBAT"
++      ],
++      "capacity": 12,
++      "native_count": 2,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_GOLBAT"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 63,
++      "label": "gSeafloorCavern_Room7",
++      "map": "MAP_SEAFLOOR_CAVERN_ROOM7",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_ZUBAT",
++        "SPECIES_GOLBAT"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_GOLBAT"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 63,
++      "label": "gSeafloorCavern_Room7",
++      "map": "MAP_SEAFLOOR_CAVERN_ROOM7",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 64,
++      "label": "gSeafloorCavern_Room8",
++      "map": "MAP_SEAFLOOR_CAVERN_ROOM8",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_GOLBAT"
++      ],
++      "capacity": 12,
++      "native_count": 2,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_GOLBAT"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 65,
++      "label": "gSeafloorCavern_Entrance",
++      "map": "MAP_SEAFLOOR_CAVERN_ENTRANCE",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_ZUBAT",
++        "SPECIES_GOLBAT"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_GOLBAT"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 65,
++      "label": "gSeafloorCavern_Entrance",
++      "map": "MAP_SEAFLOOR_CAVERN_ENTRANCE",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 66,
++      "label": "gCaveOfOrigin_Entrance",
++      "map": "MAP_CAVE_OF_ORIGIN_ENTRANCE",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_GOLBAT"
++      ],
++      "capacity": 12,
++      "native_count": 2,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_GOLBAT"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 67,
++      "label": "gCaveOfOrigin_1F",
++      "map": "MAP_CAVE_OF_ORIGIN_1F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_SABLEYE",
++        "SPECIES_GOLBAT"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_SABLEYE",
++        "NATIONAL_DEX_GOLBAT"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 68,
++      "label": "gCaveOfOrigin_UnusedRubySapphireMap1",
++      "map": "MAP_CAVE_OF_ORIGIN_UNUSED_RUBY_SAPPHIRE_MAP1",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_SABLEYE",
++        "SPECIES_GOLBAT"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_SABLEYE",
++        "NATIONAL_DEX_GOLBAT"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 69,
++      "label": "gCaveOfOrigin_UnusedRubySapphireMap2",
++      "map": "MAP_CAVE_OF_ORIGIN_UNUSED_RUBY_SAPPHIRE_MAP2",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_SABLEYE",
++        "SPECIES_GOLBAT"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_SABLEYE",
++        "NATIONAL_DEX_GOLBAT"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 70,
++      "label": "gCaveOfOrigin_UnusedRubySapphireMap3",
++      "map": "MAP_CAVE_OF_ORIGIN_UNUSED_RUBY_SAPPHIRE_MAP3",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_SABLEYE",
++        "SPECIES_GOLBAT"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_SABLEYE",
++        "NATIONAL_DEX_GOLBAT"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 71,
++      "label": "gNewMauville_Entrance",
++      "map": "MAP_NEW_MAUVILLE_ENTRANCE",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_VOLTORB",
++        "SPECIES_MAGNEMITE"
++      ],
++      "capacity": 12,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_VOLTORB",
++        "NATIONAL_DEX_MAGNEMITE"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 72,
++      "label": "gSafariZone_Southwest",
++      "map": "MAP_SAFARI_ZONE_SOUTHWEST",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ODDISH",
++        "SPECIES_GIRAFARIG",
++        "SPECIES_NATU",
++        "SPECIES_DODUO",
++        "SPECIES_GLOOM",
++        "SPECIES_WOBBUFFET",
++        "SPECIES_PIKACHU"
++      ],
++      "capacity": 12,
++      "native_count": 7,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_ODDISH",
++        "NATIONAL_DEX_GIRAFARIG",
++        "NATIONAL_DEX_NATU",
++        "NATIONAL_DEX_DODUO",
++        "NATIONAL_DEX_GLOOM",
++        "NATIONAL_DEX_WOBBUFFET",
++        "NATIONAL_DEX_PIKACHU"
++      ],
++      "extra_dex": [],
++      "total": 7,
++      "dexnav_supported": true
++    },
++    {
++      "header": 72,
++      "label": "gSafariZone_Southwest",
++      "map": "MAP_SAFARI_ZONE_SOUTHWEST",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_PSYDUCK"
++      ],
++      "capacity": 5,
++      "native_count": 1,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_PSYDUCK"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": true
++    },
++    {
++      "header": 72,
++      "label": "gSafariZone_Southwest",
++      "map": "MAP_SAFARI_ZONE_SOUTHWEST",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_GOLDEEN",
++        "SPECIES_SEAKING"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_GOLDEEN",
++        "NATIONAL_DEX_SEAKING"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 73,
++      "label": "gSafariZone_North",
++      "map": "MAP_SAFARI_ZONE_NORTH",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_PHANPY",
++        "SPECIES_ODDISH",
++        "SPECIES_NATU",
++        "SPECIES_GLOOM",
++        "SPECIES_XATU",
++        "SPECIES_HERACROSS"
++      ],
++      "capacity": 12,
++      "native_count": 6,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_PHANPY",
++        "NATIONAL_DEX_ODDISH",
++        "NATIONAL_DEX_NATU",
++        "NATIONAL_DEX_GLOOM",
++        "NATIONAL_DEX_XATU",
++        "NATIONAL_DEX_HERACROSS"
++      ],
++      "extra_dex": [],
++      "total": 6,
++      "dexnav_supported": true
++    },
++    {
++      "header": 73,
++      "label": "gSafariZone_North",
++      "map": "MAP_SAFARI_ZONE_NORTH",
++      "field": "rock_smash_mons",
++      "originals": [
++        "SPECIES_GEODUDE"
++      ],
++      "capacity": null,
++      "native_count": 1,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_GEODUDE"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": false
++    },
++    {
++      "header": 74,
++      "label": "gSafariZone_Northwest",
++      "map": "MAP_SAFARI_ZONE_NORTHWEST",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_RHYHORN",
++        "SPECIES_ODDISH",
++        "SPECIES_DODUO",
++        "SPECIES_GLOOM",
++        "SPECIES_DODRIO",
++        "SPECIES_PINSIR"
++      ],
++      "capacity": 12,
++      "native_count": 6,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_RHYHORN",
++        "NATIONAL_DEX_ODDISH",
++        "NATIONAL_DEX_DODUO",
++        "NATIONAL_DEX_GLOOM",
++        "NATIONAL_DEX_DODRIO",
++        "NATIONAL_DEX_PINSIR"
++      ],
++      "extra_dex": [],
++      "total": 6,
++      "dexnav_supported": true
++    },
++    {
++      "header": 74,
++      "label": "gSafariZone_Northwest",
++      "map": "MAP_SAFARI_ZONE_NORTHWEST",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_PSYDUCK",
++        "SPECIES_GOLDUCK"
++      ],
++      "capacity": 5,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_PSYDUCK",
++        "NATIONAL_DEX_GOLDUCK"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 74,
++      "label": "gSafariZone_Northwest",
++      "map": "MAP_SAFARI_ZONE_NORTHWEST",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_GOLDEEN",
++        "SPECIES_SEAKING"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_GOLDEEN",
++        "NATIONAL_DEX_SEAKING"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 75,
++      "label": "gVictoryRoad_B1F",
++      "map": "MAP_VICTORY_ROAD_B1F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_GOLBAT",
++        "SPECIES_HARIYAMA",
++        "SPECIES_LAIRON",
++        "SPECIES_MAWILE"
++      ],
++      "capacity": 12,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_GOLBAT",
++        "NATIONAL_DEX_HARIYAMA",
++        "NATIONAL_DEX_LAIRON",
++        "NATIONAL_DEX_MAWILE"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": true
++    },
++    {
++      "header": 75,
++      "label": "gVictoryRoad_B1F",
++      "map": "MAP_VICTORY_ROAD_B1F",
++      "field": "rock_smash_mons",
++      "originals": [
++        "SPECIES_GRAVELER",
++        "SPECIES_GEODUDE"
++      ],
++      "capacity": null,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_GRAVELER",
++        "NATIONAL_DEX_GEODUDE"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": false
++    },
++    {
++      "header": 76,
++      "label": "gVictoryRoad_B2F",
++      "map": "MAP_VICTORY_ROAD_B2F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_GOLBAT",
++        "SPECIES_SABLEYE",
++        "SPECIES_LAIRON",
++        "SPECIES_MAWILE"
++      ],
++      "capacity": 12,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_GOLBAT",
++        "NATIONAL_DEX_SABLEYE",
++        "NATIONAL_DEX_LAIRON",
++        "NATIONAL_DEX_MAWILE"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": true
++    },
++    {
++      "header": 76,
++      "label": "gVictoryRoad_B2F",
++      "map": "MAP_VICTORY_ROAD_B2F",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_GOLBAT"
++      ],
++      "capacity": 5,
++      "native_count": 1,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_GOLBAT"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": true
++    },
++    {
++      "header": 76,
++      "label": "gVictoryRoad_B2F",
++      "map": "MAP_VICTORY_ROAD_B2F",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_GOLDEEN",
++        "SPECIES_BARBOACH",
++        "SPECIES_WHISCASH"
++      ],
++      "capacity": null,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_GOLDEEN",
++        "NATIONAL_DEX_BARBOACH",
++        "NATIONAL_DEX_WHISCASH"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": false
++    },
++    {
++      "header": 77,
++      "label": "gMeteorFalls_1F_1R",
++      "map": "MAP_METEOR_FALLS_1F_1R",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_SOLROCK"
++      ],
++      "capacity": 12,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_SPEWPA_SAVANNA"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_SOLROCK"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_SPEWPA"
++      ],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 77,
++      "label": "gMeteorFalls_1F_1R",
++      "map": "MAP_METEOR_FALLS_1F_1R",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_SOLROCK"
++      ],
++      "capacity": 5,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_SPEWPA_SAVANNA"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_SOLROCK"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_SPEWPA"
++      ],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 77,
++      "label": "gMeteorFalls_1F_1R",
++      "map": "MAP_METEOR_FALLS_1F_1R",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_GOLDEEN",
++        "SPECIES_BARBOACH"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_GOLDEEN",
++        "NATIONAL_DEX_BARBOACH"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 78,
++      "label": "gMeteorFalls_1F_2R",
++      "map": "MAP_METEOR_FALLS_1F_2R",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_GOLBAT",
++        "SPECIES_SOLROCK"
++      ],
++      "capacity": 12,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_SPEWPA_SUN"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_GOLBAT",
++        "NATIONAL_DEX_SOLROCK"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_SPEWPA"
++      ],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 78,
++      "label": "gMeteorFalls_1F_2R",
++      "map": "MAP_METEOR_FALLS_1F_2R",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_GOLBAT",
++        "SPECIES_SOLROCK"
++      ],
++      "capacity": 5,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_SPEWPA_SUN"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_GOLBAT",
++        "NATIONAL_DEX_SOLROCK"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_SPEWPA"
++      ],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 78,
++      "label": "gMeteorFalls_1F_2R",
++      "map": "MAP_METEOR_FALLS_1F_2R",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_GOLDEEN",
++        "SPECIES_BARBOACH",
++        "SPECIES_WHISCASH"
++      ],
++      "capacity": null,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_GOLDEEN",
++        "NATIONAL_DEX_BARBOACH",
++        "NATIONAL_DEX_WHISCASH"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": false
++    },
++    {
++      "header": 79,
++      "label": "gMeteorFalls_B1F_1R",
++      "map": "MAP_METEOR_FALLS_B1F_1R",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_GOLBAT",
++        "SPECIES_SOLROCK"
++      ],
++      "capacity": 12,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_SPEWPA_OCEAN"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_GOLBAT",
++        "NATIONAL_DEX_SOLROCK"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_SPEWPA"
++      ],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 79,
++      "label": "gMeteorFalls_B1F_1R",
++      "map": "MAP_METEOR_FALLS_B1F_1R",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_GOLBAT",
++        "SPECIES_SOLROCK"
++      ],
++      "capacity": 5,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_SPEWPA_OCEAN"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_GOLBAT",
++        "NATIONAL_DEX_SOLROCK"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_SPEWPA"
++      ],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 79,
++      "label": "gMeteorFalls_B1F_1R",
++      "map": "MAP_METEOR_FALLS_B1F_1R",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_GOLDEEN",
++        "SPECIES_BARBOACH",
++        "SPECIES_WHISCASH"
++      ],
++      "capacity": null,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_GOLDEEN",
++        "NATIONAL_DEX_BARBOACH",
++        "NATIONAL_DEX_WHISCASH"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": false
++    },
++    {
++      "header": 80,
++      "label": "gShoalCave_LowTideStairsRoom",
++      "map": "MAP_SHOAL_CAVE_LOW_TIDE_STAIRS_ROOM",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_SPHEAL",
++        "SPECIES_GOLBAT"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_SPHEAL",
++        "NATIONAL_DEX_GOLBAT"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 81,
++      "label": "gShoalCave_LowTideLowerRoom",
++      "map": "MAP_SHOAL_CAVE_LOW_TIDE_LOWER_ROOM",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_SPHEAL",
++        "SPECIES_GOLBAT"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_SPHEAL",
++        "NATIONAL_DEX_GOLBAT"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 82,
++      "label": "gShoalCave_LowTideInnerRoom",
++      "map": "MAP_SHOAL_CAVE_LOW_TIDE_INNER_ROOM",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_SPHEAL",
++        "SPECIES_GOLBAT"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_SPHEAL",
++        "NATIONAL_DEX_GOLBAT"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 82,
++      "label": "gShoalCave_LowTideInnerRoom",
++      "map": "MAP_SHOAL_CAVE_LOW_TIDE_INNER_ROOM",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_ZUBAT",
++        "SPECIES_SPHEAL"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_SPHEAL"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 82,
++      "label": "gShoalCave_LowTideInnerRoom",
++      "map": "MAP_SHOAL_CAVE_LOW_TIDE_INNER_ROOM",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 83,
++      "label": "gShoalCave_LowTideEntranceRoom",
++      "map": "MAP_SHOAL_CAVE_LOW_TIDE_ENTRANCE_ROOM",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_SPHEAL",
++        "SPECIES_GOLBAT"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_SPHEAL",
++        "NATIONAL_DEX_GOLBAT"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 83,
++      "label": "gShoalCave_LowTideEntranceRoom",
++      "map": "MAP_SHOAL_CAVE_LOW_TIDE_ENTRANCE_ROOM",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_ZUBAT",
++        "SPECIES_SPHEAL"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_SPHEAL"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 83,
++      "label": "gShoalCave_LowTideEntranceRoom",
++      "map": "MAP_SHOAL_CAVE_LOW_TIDE_ENTRANCE_ROOM",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 84,
++      "label": "gLilycoveCity",
++      "map": "MAP_LILYCOVE_CITY",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 84,
++      "label": "gLilycoveCity",
++      "map": "MAP_LILYCOVE_CITY",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER",
++        "SPECIES_STARYU"
++      ],
++      "capacity": null,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER",
++        "NATIONAL_DEX_STARYU"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": false
++    },
++    {
++      "header": 85,
++      "label": "gDewfordTown",
++      "map": "MAP_DEWFORD_TOWN",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 85,
++      "label": "gDewfordTown",
++      "map": "MAP_DEWFORD_TOWN",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 86,
++      "label": "gSlateportCity",
++      "map": "MAP_SLATEPORT_CITY",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 86,
++      "label": "gSlateportCity",
++      "map": "MAP_SLATEPORT_CITY",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 87,
++      "label": "gMossdeepCity",
++      "map": "MAP_MOSSDEEP_CITY",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 87,
++      "label": "gMossdeepCity",
++      "map": "MAP_MOSSDEEP_CITY",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER",
++        "SPECIES_SHARPEDO"
++      ],
++      "capacity": null,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER",
++        "NATIONAL_DEX_SHARPEDO"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": false
++    },
++    {
++      "header": 88,
++      "label": "gPacifidlogTown",
++      "map": "MAP_PACIFIDLOG_TOWN",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 88,
++      "label": "gPacifidlogTown",
++      "map": "MAP_PACIFIDLOG_TOWN",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_WAILMER",
++        "SPECIES_SHARPEDO"
++      ],
++      "capacity": null,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WAILMER",
++        "NATIONAL_DEX_SHARPEDO"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": false
++    },
++    {
++      "header": 89,
++      "label": "gEverGrandeCity",
++      "map": "MAP_EVER_GRANDE_CITY",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_TENTACOOL",
++        "SPECIES_WINGULL",
++        "SPECIES_PELIPPER"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_WINGULL",
++        "NATIONAL_DEX_PELIPPER"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 89,
++      "label": "gEverGrandeCity",
++      "map": "MAP_EVER_GRANDE_CITY",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_LUVDISC",
++        "SPECIES_WAILMER",
++        "SPECIES_CORSOLA"
++      ],
++      "capacity": null,
++      "native_count": 5,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_LUVDISC",
++        "NATIONAL_DEX_WAILMER",
++        "NATIONAL_DEX_CORSOLA"
++      ],
++      "extra_dex": [],
++      "total": 5,
++      "dexnav_supported": false
++    },
++    {
++      "header": 90,
++      "label": "gPetalburgCity",
++      "map": "MAP_PETALBURG_CITY",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_MARILL"
++      ],
++      "capacity": 5,
++      "native_count": 1,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MARILL"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": true
++    },
++    {
++      "header": 90,
++      "label": "gPetalburgCity",
++      "map": "MAP_PETALBURG_CITY",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_GOLDEEN",
++        "SPECIES_CORPHISH"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_GOLDEEN",
++        "NATIONAL_DEX_CORPHISH"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 91,
++      "label": "gUnderwater_Route124",
++      "map": "MAP_UNDERWATER_ROUTE124",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_CLAMPERL",
++        "SPECIES_CHINCHOU",
++        "SPECIES_RELICANTH"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_CLAMPERL",
++        "NATIONAL_DEX_CHINCHOU",
++        "NATIONAL_DEX_RELICANTH"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 92,
++      "label": "gShoalCave_LowTideIceRoom",
++      "map": "MAP_SHOAL_CAVE_LOW_TIDE_ICE_ROOM",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT",
++        "SPECIES_SPHEAL",
++        "SPECIES_SNORUNT",
++        "SPECIES_GOLBAT"
++      ],
++      "capacity": 12,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT",
++        "NATIONAL_DEX_SPHEAL",
++        "NATIONAL_DEX_SNORUNT",
++        "NATIONAL_DEX_GOLBAT"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": true
++    },
++    {
++      "header": 93,
++      "label": "gSkyPillar_1F",
++      "map": "MAP_SKY_PILLAR_1F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SABLEYE",
++        "SPECIES_GOLBAT",
++        "SPECIES_CLAYDOL",
++        "SPECIES_BANETTE"
++      ],
++      "capacity": 12,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SABLEYE",
++        "NATIONAL_DEX_GOLBAT",
++        "NATIONAL_DEX_CLAYDOL",
++        "NATIONAL_DEX_BANETTE"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": true
++    },
++    {
++      "header": 94,
++      "label": "gSootopolisCity",
++      "map": "MAP_SOOTOPOLIS_CITY",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_MAGIKARP"
++      ],
++      "capacity": 5,
++      "native_count": 1,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": true
++    },
++    {
++      "header": 94,
++      "label": "gSootopolisCity",
++      "map": "MAP_SOOTOPOLIS_CITY",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_TENTACOOL",
++        "SPECIES_GYARADOS"
++      ],
++      "capacity": null,
++      "native_count": 3,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_TENTACOOL",
++        "NATIONAL_DEX_GYARADOS"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": false
++    },
++    {
++      "header": 95,
++      "label": "gSkyPillar_3F",
++      "map": "MAP_SKY_PILLAR_3F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SABLEYE",
++        "SPECIES_GOLBAT",
++        "SPECIES_CLAYDOL",
++        "SPECIES_BANETTE"
++      ],
++      "capacity": 12,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SABLEYE",
++        "NATIONAL_DEX_GOLBAT",
++        "NATIONAL_DEX_CLAYDOL",
++        "NATIONAL_DEX_BANETTE"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": true
++    },
++    {
++      "header": 96,
++      "label": "gSkyPillar_5F",
++      "map": "MAP_SKY_PILLAR_5F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SABLEYE",
++        "SPECIES_GOLBAT",
++        "SPECIES_CLAYDOL",
++        "SPECIES_BANETTE",
++        "SPECIES_ALTARIA"
++      ],
++      "capacity": 12,
++      "native_count": 5,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SABLEYE",
++        "NATIONAL_DEX_GOLBAT",
++        "NATIONAL_DEX_CLAYDOL",
++        "NATIONAL_DEX_BANETTE",
++        "NATIONAL_DEX_ALTARIA"
++      ],
++      "extra_dex": [],
++      "total": 5,
++      "dexnav_supported": true
++    },
++    {
++      "header": 97,
++      "label": "gSafariZone_Southeast",
++      "map": "MAP_SAFARI_ZONE_SOUTHEAST",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SUNKERN",
++        "SPECIES_MAREEP",
++        "SPECIES_AIPOM",
++        "SPECIES_SPINARAK",
++        "SPECIES_HOOTHOOT",
++        "SPECIES_SNUBBULL",
++        "SPECIES_STANTLER",
++        "SPECIES_GLIGAR"
++      ],
++      "capacity": 12,
++      "native_count": 8,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SUNKERN",
++        "NATIONAL_DEX_MAREEP",
++        "NATIONAL_DEX_AIPOM",
++        "NATIONAL_DEX_SPINARAK",
++        "NATIONAL_DEX_HOOTHOOT",
++        "NATIONAL_DEX_SNUBBULL",
++        "NATIONAL_DEX_STANTLER",
++        "NATIONAL_DEX_GLIGAR"
++      ],
++      "extra_dex": [],
++      "total": 8,
++      "dexnav_supported": true
++    },
++    {
++      "header": 97,
++      "label": "gSafariZone_Southeast",
++      "map": "MAP_SAFARI_ZONE_SOUTHEAST",
++      "field": "water_mons",
++      "originals": [
++        "SPECIES_WOOPER",
++        "SPECIES_MARILL",
++        "SPECIES_QUAGSIRE"
++      ],
++      "capacity": 5,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_WOOPER",
++        "NATIONAL_DEX_MARILL",
++        "NATIONAL_DEX_QUAGSIRE"
++      ],
++      "extra_dex": [],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 97,
++      "label": "gSafariZone_Southeast",
++      "map": "MAP_SAFARI_ZONE_SOUTHEAST",
++      "field": "fishing_mons",
++      "originals": [
++        "SPECIES_MAGIKARP",
++        "SPECIES_GOLDEEN",
++        "SPECIES_REMORAID",
++        "SPECIES_OCTILLERY"
++      ],
++      "capacity": null,
++      "native_count": 4,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAGIKARP",
++        "NATIONAL_DEX_GOLDEEN",
++        "NATIONAL_DEX_REMORAID",
++        "NATIONAL_DEX_OCTILLERY"
++      ],
++      "extra_dex": [],
++      "total": 4,
++      "dexnav_supported": false
++    },
++    {
++      "header": 98,
++      "label": "gSafariZone_Northeast",
++      "map": "MAP_SAFARI_ZONE_NORTHEAST",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_AIPOM",
++        "SPECIES_TEDDIURSA",
++        "SPECIES_SUNKERN",
++        "SPECIES_LEDYBA",
++        "SPECIES_HOOTHOOT",
++        "SPECIES_PINECO",
++        "SPECIES_HOUNDOUR",
++        "SPECIES_MILTANK"
++      ],
++      "capacity": 12,
++      "native_count": 8,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_AIPOM",
++        "NATIONAL_DEX_TEDDIURSA",
++        "NATIONAL_DEX_SUNKERN",
++        "NATIONAL_DEX_LEDYBA",
++        "NATIONAL_DEX_HOOTHOOT",
++        "NATIONAL_DEX_PINECO",
++        "NATIONAL_DEX_HOUNDOUR",
++        "NATIONAL_DEX_MILTANK"
++      ],
++      "extra_dex": [],
++      "total": 8,
++      "dexnav_supported": true
++    },
++    {
++      "header": 98,
++      "label": "gSafariZone_Northeast",
++      "map": "MAP_SAFARI_ZONE_NORTHEAST",
++      "field": "rock_smash_mons",
++      "originals": [
++        "SPECIES_SHUCKLE"
++      ],
++      "capacity": null,
++      "native_count": 1,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SHUCKLE"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": false
++    },
++    {
++      "header": 99,
++      "label": "gMagmaHideout_1F",
++      "map": "MAP_MAGMA_HIDEOUT_1F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_GEODUDE",
++        "SPECIES_TORKOAL",
++        "SPECIES_GRAVELER"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_SPEWPA_MEADOW"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_GEODUDE",
++        "NATIONAL_DEX_TORKOAL",
++        "NATIONAL_DEX_GRAVELER"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_SPEWPA"
++      ],
++      "total": 4,
++      "dexnav_supported": true
++    },
++    {
++      "header": 100,
++      "label": "gMagmaHideout_2F_1R",
++      "map": "MAP_MAGMA_HIDEOUT_2F_1R",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_GEODUDE",
++        "SPECIES_TORKOAL",
++        "SPECIES_GRAVELER"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_SPEWPA_MODERN"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_GEODUDE",
++        "NATIONAL_DEX_TORKOAL",
++        "NATIONAL_DEX_GRAVELER"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_SPEWPA"
++      ],
++      "total": 4,
++      "dexnav_supported": true
++    },
++    {
++      "header": 101,
++      "label": "gMagmaHideout_2F_2R",
++      "map": "MAP_MAGMA_HIDEOUT_2F_2R",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_GEODUDE",
++        "SPECIES_TORKOAL",
++        "SPECIES_GRAVELER"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_SPEWPA_MARINE"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_GEODUDE",
++        "NATIONAL_DEX_TORKOAL",
++        "NATIONAL_DEX_GRAVELER"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_SPEWPA"
++      ],
++      "total": 4,
++      "dexnav_supported": true
++    },
++    {
++      "header": 102,
++      "label": "gMagmaHideout_3F_1R",
++      "map": "MAP_MAGMA_HIDEOUT_3F_1R",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_GEODUDE",
++        "SPECIES_TORKOAL",
++        "SPECIES_GRAVELER"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_SPEWPA_HIGH_PLAINS"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_GEODUDE",
++        "NATIONAL_DEX_TORKOAL",
++        "NATIONAL_DEX_GRAVELER"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_SPEWPA"
++      ],
++      "total": 4,
++      "dexnav_supported": true
++    },
++    {
++      "header": 103,
++      "label": "gMagmaHideout_3F_2R",
++      "map": "MAP_MAGMA_HIDEOUT_3F_2R",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_GEODUDE",
++        "SPECIES_TORKOAL",
++        "SPECIES_GRAVELER"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_SPEWPA_SANDSTORM"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_GEODUDE",
++        "NATIONAL_DEX_TORKOAL",
++        "NATIONAL_DEX_GRAVELER"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_SPEWPA"
++      ],
++      "total": 4,
++      "dexnav_supported": true
++    },
++    {
++      "header": 104,
++      "label": "gMagmaHideout_4F",
++      "map": "MAP_MAGMA_HIDEOUT_4F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_GEODUDE",
++        "SPECIES_TORKOAL",
++        "SPECIES_GRAVELER"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_SPEWPA_MONSOON"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_GEODUDE",
++        "NATIONAL_DEX_TORKOAL",
++        "NATIONAL_DEX_GRAVELER"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_SPEWPA"
++      ],
++      "total": 4,
++      "dexnav_supported": true
++    },
++    {
++      "header": 105,
++      "label": "gMagmaHideout_3F_3R",
++      "map": "MAP_MAGMA_HIDEOUT_3F_3R",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_GEODUDE",
++        "SPECIES_TORKOAL",
++        "SPECIES_GRAVELER"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_SPEWPA_RIVER"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_GEODUDE",
++        "NATIONAL_DEX_TORKOAL",
++        "NATIONAL_DEX_GRAVELER"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_SPEWPA"
++      ],
++      "total": 4,
++      "dexnav_supported": true
++    },
++    {
++      "header": 106,
++      "label": "gMagmaHideout_2F_3R",
++      "map": "MAP_MAGMA_HIDEOUT_2F_3R",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_GEODUDE",
++        "SPECIES_TORKOAL",
++        "SPECIES_GRAVELER"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_SPEWPA_ARCHIPELAGO"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_GEODUDE",
++        "NATIONAL_DEX_TORKOAL",
++        "NATIONAL_DEX_GRAVELER"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_SPEWPA"
++      ],
++      "total": 4,
++      "dexnav_supported": true
++    },
++    {
++      "header": 107,
++      "label": "gMirageTower_1F",
++      "map": "MAP_MIRAGE_TOWER_1F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SANDSHREW",
++        "SPECIES_TRAPINCH"
++      ],
++      "capacity": 12,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_SPEWPA_POKEBALL"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_SANDSHREW",
++        "NATIONAL_DEX_TRAPINCH"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_SPEWPA"
++      ],
++      "total": 3,
++      "dexnav_supported": true
++    },
++    {
++      "header": 108,
++      "label": "gMirageTower_2F",
++      "map": "MAP_MIRAGE_TOWER_2F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SANDSHREW",
++        "SPECIES_TRAPINCH"
++      ],
++      "capacity": 12,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SANDSHREW",
++        "NATIONAL_DEX_TRAPINCH"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 109,
++      "label": "gMirageTower_3F",
++      "map": "MAP_MIRAGE_TOWER_3F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SANDSHREW",
++        "SPECIES_TRAPINCH"
++      ],
++      "capacity": 12,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SANDSHREW",
++        "NATIONAL_DEX_TRAPINCH"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 110,
++      "label": "gMirageTower_4F",
++      "map": "MAP_MIRAGE_TOWER_4F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SANDSHREW",
++        "SPECIES_TRAPINCH"
++      ],
++      "capacity": 12,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SANDSHREW",
++        "NATIONAL_DEX_TRAPINCH"
++      ],
++      "extra_dex": [],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 111,
++      "label": "gDesertUnderpass",
++      "map": "MAP_DESERT_UNDERPASS",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_DITTO",
++        "SPECIES_WHISMUR",
++        "SPECIES_LOUDRED"
++      ],
++      "capacity": 12,
++      "native_count": 3,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_KUBFU",
++        "SPECIES_HIPPOPOTAS",
++        "SPECIES_CAPSAKID"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_DITTO",
++        "NATIONAL_DEX_WHISMUR",
++        "NATIONAL_DEX_LOUDRED"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_KUBFU",
++        "NATIONAL_DEX_HIPPOPOTAS",
++        "NATIONAL_DEX_CAPSAKID"
++      ],
++      "total": 6,
++      "dexnav_supported": true
++    },
++    {
++      "header": 112,
++      "label": "gArtisanCave_B1F",
++      "map": "MAP_ARTISAN_CAVE_B1F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SMEARGLE"
++      ],
++      "capacity": 12,
++      "native_count": 1,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SMEARGLE"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": true
++    },
++    {
++      "header": 113,
++      "label": "gArtisanCave_1F",
++      "map": "MAP_ARTISAN_CAVE_1F",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SMEARGLE"
++      ],
++      "capacity": 12,
++      "native_count": 1,
++      "campaign_connected": false,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SMEARGLE"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": true
++    },
++    {
++      "header": 114,
++      "label": "gAlteringCave1",
++      "map": "MAP_ALTERING_CAVE",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_ZUBAT"
++      ],
++      "capacity": 12,
++      "native_count": 1,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_BLIPBUG"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_ZUBAT"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_BLIPBUG"
++      ],
++      "total": 2,
++      "dexnav_supported": true
++    },
++    {
++      "header": 115,
++      "label": "gAlteringCave2",
++      "map": "MAP_ALTERING_CAVE",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_MAREEP"
++      ],
++      "capacity": 12,
++      "native_count": 1,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_MAREEP"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": true
++    },
++    {
++      "header": 116,
++      "label": "gAlteringCave3",
++      "map": "MAP_ALTERING_CAVE",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_PINECO"
++      ],
++      "capacity": 12,
++      "native_count": 1,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_PINECO"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": true
++    },
++    {
++      "header": 117,
++      "label": "gAlteringCave4",
++      "map": "MAP_ALTERING_CAVE",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_HOUNDOUR"
++      ],
++      "capacity": 12,
++      "native_count": 1,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_HOUNDOUR"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": true
++    },
++    {
++      "header": 118,
++      "label": "gAlteringCave5",
++      "map": "MAP_ALTERING_CAVE",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_TEDDIURSA"
++      ],
++      "capacity": 12,
++      "native_count": 1,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_TEDDIURSA"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": true
++    },
++    {
++      "header": 119,
++      "label": "gAlteringCave6",
++      "map": "MAP_ALTERING_CAVE",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_AIPOM"
++      ],
++      "capacity": 12,
++      "native_count": 1,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_AIPOM"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": true
++    },
++    {
++      "header": 120,
++      "label": "gAlteringCave7",
++      "map": "MAP_ALTERING_CAVE",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SHUCKLE"
++      ],
++      "capacity": 12,
++      "native_count": 1,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SHUCKLE"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": true
++    },
++    {
++      "header": 121,
++      "label": "gAlteringCave8",
++      "map": "MAP_ALTERING_CAVE",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_STANTLER"
++      ],
++      "capacity": 12,
++      "native_count": 1,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_STANTLER"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": true
++    },
++    {
++      "header": 122,
++      "label": "gAlteringCave9",
++      "map": "MAP_ALTERING_CAVE",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_SMEARGLE"
++      ],
++      "capacity": 12,
++      "native_count": 1,
++      "campaign_connected": true,
++      "extras": [],
++      "native_dex": [
++        "NATIONAL_DEX_SMEARGLE"
++      ],
++      "extra_dex": [],
++      "total": 1,
++      "dexnav_supported": true
++    },
++    {
++      "header": 123,
++      "label": "gMeteorFalls_StevensCave",
++      "map": "MAP_METEOR_FALLS_STEVENS_CAVE",
++      "field": "land_mons",
++      "originals": [
++        "SPECIES_GOLBAT",
++        "SPECIES_SOLROCK"
++      ],
++      "capacity": 12,
++      "native_count": 2,
++      "campaign_connected": true,
++      "extras": [
++        "SPECIES_SPEWPA_FANCY"
++      ],
++      "native_dex": [
++        "NATIONAL_DEX_GOLBAT",
++        "NATIONAL_DEX_SOLROCK"
++      ],
++      "extra_dex": [
++        "NATIONAL_DEX_SPEWPA"
++      ],
++      "total": 3,
++      "dexnav_supported": true
++    }
++  ],
++  "geometry": {
++    "native_keys": 527,
++    "native_headers": 124,
++    "field_headers": 209,
++    "bound_keys": 31,
++    "searchable_field_headers": 150
++  },
++  "support_limits": {
++    "proof": "Generated bindings and compiled seams, not actual gameplay proof.",
++    "levels": "Existing source-slot natural rolls, unchanged.",
++    "fishing_rock": "Ordinary acquisition only unless the same key really occurs in land/water. No synthetic DexNav environments.",
++    "capacity": "All real alternate headers checked, land 12 and water 5. No truncation, base entries preserved.",
++    "assignment": "Append-only persisted bindings; removed/invalid old entries fail closed instead of reshuffling.",
++    "map_reachability": "Conservative directed real warp/connection closure from Route101; unused and script-only destinations are not allocated. All alternate headers are still capacity-checked.",
++    "evolution": "Only selected targets via emitted EVO_LEVEL edges. Other selected forms may be ordinary roots."
++  }
++}
+--- a/src/platform/expanded_species.c
++++ b/src/platform/expanded_species.c
+@@ -63,47 +63,164 @@
+ 
+ u16 ExpandedSpecies_ResolveEncounter(u16 species, u8 mapGroup, u8 mapNum)
+ {
+-    /* Pure extra-variant lookup shared by ordinary encounters and DexNav.
+-     * This function consumes no RNG. The ordinary wrapper chooses original or
+-     * extra, while an intentional DexNav target is never remapped. */
+-    if (WorldRules_Enabled(WORLD_RULE_EXPANDED_ROSTER)
+-        && mapGroup == MAP_GROUP(MAP_ROUTE101) && mapNum == MAP_NUM(MAP_ROUTE101))
+-    {
+-        switch (species)
+-        {
+-        case SPECIES_ZIGZAGOON:
+-            return SPECIES_GIMMIGHOUL_ROAMING;
+-        case SPECIES_WURMPLE:
+-            return SPECIES_MELTAN;
+-        case SPECIES_POOCHYENA:
+-            return SPECIES_COSMOEM;
+-        }
+-    }
++    /* Pure generated lookup. Natural levels and MORE RNG remain in the caller. */
++    if (!WorldRules_Enabled(WORLD_RULE_EXPANDED_ROSTER))
++        return species;
++#ifdef SPECIES_GIMMIGHOUL_ROAMING
++    if (mapGroup == MAP_GROUP(MAP_ROUTE101) && mapNum == MAP_NUM(MAP_ROUTE101)
++        && species == SPECIES_ZIGZAGOON && ExpandedSpecies_IsPlayable(SPECIES_GIMMIGHOUL_ROAMING))
++        return SPECIES_GIMMIGHOUL_ROAMING;
++#endif
++#ifdef SPECIES_MELTAN
++    if (mapGroup == MAP_GROUP(MAP_ROUTE101) && mapNum == MAP_NUM(MAP_ROUTE101)
++        && species == SPECIES_WURMPLE && ExpandedSpecies_IsPlayable(SPECIES_MELTAN))
++        return SPECIES_MELTAN;
++#endif
++#ifdef SPECIES_COSMOEM
++    if (mapGroup == MAP_GROUP(MAP_ROUTE101) && mapNum == MAP_NUM(MAP_ROUTE101)
++        && species == SPECIES_POOCHYENA && ExpandedSpecies_IsPlayable(SPECIES_COSMOEM))
++        return SPECIES_COSMOEM;
++#endif
+ #ifdef SPECIES_TYPE_NULL
+-    /* Route 102's existing rare Ralts land slot. No extra random draw, and
+-     * no effect until matching generated headers AND playable data promote. */
+-    if (WorldRules_Enabled(WORLD_RULE_EXPANDED_ROSTER)
+-        && mapGroup == MAP_GROUP(MAP_ROUTE102) && mapNum == MAP_NUM(MAP_ROUTE102)
++    if (mapGroup == MAP_GROUP(MAP_ROUTE102) && mapNum == MAP_NUM(MAP_ROUTE102)
+         && species == SPECIES_RALTS && ExpandedSpecies_IsPlayable(SPECIES_TYPE_NULL))
+         return SPECIES_TYPE_NULL;
+ #endif
+-    if (WorldRules_Enabled(WORLD_RULE_EXPANDED_ROSTER)
+-        && mapGroup == MAP_GROUP(MAP_ROUTE103) && mapNum == MAP_NUM(MAP_ROUTE103))
+-    {
+ #ifdef SPECIES_TURTWIG
+-        if (species == SPECIES_ZIGZAGOON && ExpandedSpecies_IsPlayable(SPECIES_TURTWIG))
+-            return SPECIES_TURTWIG;
++    if (mapGroup == MAP_GROUP(MAP_ROUTE103) && mapNum == MAP_NUM(MAP_ROUTE103)
++        && species == SPECIES_ZIGZAGOON && ExpandedSpecies_IsPlayable(SPECIES_TURTWIG))
++        return SPECIES_TURTWIG;
+ #endif
+ #ifdef SPECIES_CHESPIN
+-        if (species == SPECIES_POOCHYENA && ExpandedSpecies_IsPlayable(SPECIES_CHESPIN))
+-            return SPECIES_CHESPIN;
++    if (mapGroup == MAP_GROUP(MAP_ROUTE103) && mapNum == MAP_NUM(MAP_ROUTE103)
++        && species == SPECIES_POOCHYENA && ExpandedSpecies_IsPlayable(SPECIES_CHESPIN))
++        return SPECIES_CHESPIN;
+ #endif
+ #ifdef SPECIES_ARROKUDA
+-        /* Existing fishing Magikarp slot; ordinary wrapper retains the source. */
+-        if (species == SPECIES_MAGIKARP && ExpandedSpecies_IsPlayable(SPECIES_ARROKUDA))
+-            return SPECIES_ARROKUDA;
+-#endif
+-    }
++    if (mapGroup == MAP_GROUP(MAP_ROUTE103) && mapNum == MAP_NUM(MAP_ROUTE103)
++        && species == SPECIES_MAGIKARP && ExpandedSpecies_IsPlayable(SPECIES_ARROKUDA))
++        return SPECIES_ARROKUDA;
++#endif
++#ifdef SPECIES_BLIPBUG
++    if (mapGroup == MAP_GROUP(MAP_ALTERING_CAVE) && mapNum == MAP_NUM(MAP_ALTERING_CAVE)
++        && species == SPECIES_ZUBAT && ExpandedSpecies_IsPlayable(SPECIES_BLIPBUG))
++        return SPECIES_BLIPBUG;
++#endif
++#ifdef SPECIES_KUBFU
++    if (mapGroup == MAP_GROUP(MAP_DESERT_UNDERPASS) && mapNum == MAP_NUM(MAP_DESERT_UNDERPASS)
++        && species == SPECIES_DITTO && ExpandedSpecies_IsPlayable(SPECIES_KUBFU))
++        return SPECIES_KUBFU;
++#endif
++#ifdef SPECIES_CAPSAKID
++    if (mapGroup == MAP_GROUP(MAP_DESERT_UNDERPASS) && mapNum == MAP_NUM(MAP_DESERT_UNDERPASS)
++        && species == SPECIES_LOUDRED && ExpandedSpecies_IsPlayable(SPECIES_CAPSAKID))
++        return SPECIES_CAPSAKID;
++#endif
++#ifdef SPECIES_HIPPOPOTAS
++    if (mapGroup == MAP_GROUP(MAP_DESERT_UNDERPASS) && mapNum == MAP_NUM(MAP_DESERT_UNDERPASS)
++        && species == SPECIES_WHISMUR && ExpandedSpecies_IsPlayable(SPECIES_HIPPOPOTAS))
++        return SPECIES_HIPPOPOTAS;
++#endif
++#ifdef SPECIES_SPEWPA_ICY_SNOW
++    if (mapGroup == MAP_GROUP(MAP_FIERY_PATH) && mapNum == MAP_NUM(MAP_FIERY_PATH)
++        && species == SPECIES_GRIMER && ExpandedSpecies_IsPlayable(SPECIES_SPEWPA_ICY_SNOW))
++        return SPECIES_SPEWPA_ICY_SNOW;
++#endif
++#ifdef SPECIES_SPEWPA_POLAR
++    if (mapGroup == MAP_GROUP(MAP_GRANITE_CAVE_1F) && mapNum == MAP_NUM(MAP_GRANITE_CAVE_1F)
++        && species == SPECIES_ABRA && ExpandedSpecies_IsPlayable(SPECIES_SPEWPA_POLAR))
++        return SPECIES_SPEWPA_POLAR;
++#endif
++#ifdef SPECIES_SPEWPA_TUNDRA
++    if (mapGroup == MAP_GROUP(MAP_GRANITE_CAVE_B1F) && mapNum == MAP_NUM(MAP_GRANITE_CAVE_B1F)
++        && species == SPECIES_ABRA && ExpandedSpecies_IsPlayable(SPECIES_SPEWPA_TUNDRA))
++        return SPECIES_SPEWPA_TUNDRA;
++#endif
++#ifdef SPECIES_SPEWPA_CONTINENTAL
++    if (mapGroup == MAP_GROUP(MAP_GRANITE_CAVE_B2F) && mapNum == MAP_NUM(MAP_GRANITE_CAVE_B2F)
++        && species == SPECIES_ABRA && ExpandedSpecies_IsPlayable(SPECIES_SPEWPA_CONTINENTAL))
++        return SPECIES_SPEWPA_CONTINENTAL;
++#endif
++#ifdef SPECIES_SPEWPA_GARDEN
++    if (mapGroup == MAP_GROUP(MAP_GRANITE_CAVE_STEVENS_ROOM) && mapNum == MAP_NUM(MAP_GRANITE_CAVE_STEVENS_ROOM)
++        && species == SPECIES_ABRA && ExpandedSpecies_IsPlayable(SPECIES_SPEWPA_GARDEN))
++        return SPECIES_SPEWPA_GARDEN;
++#endif
++#ifdef SPECIES_SPEWPA_ELEGANT
++    if (mapGroup == MAP_GROUP(MAP_JAGGED_PASS) && mapNum == MAP_NUM(MAP_JAGGED_PASS)
++        && species == SPECIES_MACHOP && ExpandedSpecies_IsPlayable(SPECIES_SPEWPA_ELEGANT))
++        return SPECIES_SPEWPA_ELEGANT;
++#endif
++#ifdef SPECIES_SPEWPA_MEADOW
++    if (mapGroup == MAP_GROUP(MAP_MAGMA_HIDEOUT_1F) && mapNum == MAP_NUM(MAP_MAGMA_HIDEOUT_1F)
++        && species == SPECIES_GEODUDE && ExpandedSpecies_IsPlayable(SPECIES_SPEWPA_MEADOW))
++        return SPECIES_SPEWPA_MEADOW;
++#endif
++#ifdef SPECIES_SPEWPA_MODERN
++    if (mapGroup == MAP_GROUP(MAP_MAGMA_HIDEOUT_2F_1R) && mapNum == MAP_NUM(MAP_MAGMA_HIDEOUT_2F_1R)
++        && species == SPECIES_GEODUDE && ExpandedSpecies_IsPlayable(SPECIES_SPEWPA_MODERN))
++        return SPECIES_SPEWPA_MODERN;
++#endif
++#ifdef SPECIES_SPEWPA_MARINE
++    if (mapGroup == MAP_GROUP(MAP_MAGMA_HIDEOUT_2F_2R) && mapNum == MAP_NUM(MAP_MAGMA_HIDEOUT_2F_2R)
++        && species == SPECIES_GEODUDE && ExpandedSpecies_IsPlayable(SPECIES_SPEWPA_MARINE))
++        return SPECIES_SPEWPA_MARINE;
++#endif
++#ifdef SPECIES_SPEWPA_ARCHIPELAGO
++    if (mapGroup == MAP_GROUP(MAP_MAGMA_HIDEOUT_2F_3R) && mapNum == MAP_NUM(MAP_MAGMA_HIDEOUT_2F_3R)
++        && species == SPECIES_GEODUDE && ExpandedSpecies_IsPlayable(SPECIES_SPEWPA_ARCHIPELAGO))
++        return SPECIES_SPEWPA_ARCHIPELAGO;
++#endif
++#ifdef SPECIES_SPEWPA_HIGH_PLAINS
++    if (mapGroup == MAP_GROUP(MAP_MAGMA_HIDEOUT_3F_1R) && mapNum == MAP_NUM(MAP_MAGMA_HIDEOUT_3F_1R)
++        && species == SPECIES_GEODUDE && ExpandedSpecies_IsPlayable(SPECIES_SPEWPA_HIGH_PLAINS))
++        return SPECIES_SPEWPA_HIGH_PLAINS;
++#endif
++#ifdef SPECIES_SPEWPA_SANDSTORM
++    if (mapGroup == MAP_GROUP(MAP_MAGMA_HIDEOUT_3F_2R) && mapNum == MAP_NUM(MAP_MAGMA_HIDEOUT_3F_2R)
++        && species == SPECIES_GEODUDE && ExpandedSpecies_IsPlayable(SPECIES_SPEWPA_SANDSTORM))
++        return SPECIES_SPEWPA_SANDSTORM;
++#endif
++#ifdef SPECIES_SPEWPA_RIVER
++    if (mapGroup == MAP_GROUP(MAP_MAGMA_HIDEOUT_3F_3R) && mapNum == MAP_NUM(MAP_MAGMA_HIDEOUT_3F_3R)
++        && species == SPECIES_GEODUDE && ExpandedSpecies_IsPlayable(SPECIES_SPEWPA_RIVER))
++        return SPECIES_SPEWPA_RIVER;
++#endif
++#ifdef SPECIES_SPEWPA_MONSOON
++    if (mapGroup == MAP_GROUP(MAP_MAGMA_HIDEOUT_4F) && mapNum == MAP_NUM(MAP_MAGMA_HIDEOUT_4F)
++        && species == SPECIES_GEODUDE && ExpandedSpecies_IsPlayable(SPECIES_SPEWPA_MONSOON))
++        return SPECIES_SPEWPA_MONSOON;
++#endif
++#ifdef SPECIES_SPEWPA_SAVANNA
++    if (mapGroup == MAP_GROUP(MAP_METEOR_FALLS_1F_1R) && mapNum == MAP_NUM(MAP_METEOR_FALLS_1F_1R)
++        && species == SPECIES_SOLROCK && ExpandedSpecies_IsPlayable(SPECIES_SPEWPA_SAVANNA))
++        return SPECIES_SPEWPA_SAVANNA;
++#endif
++#ifdef SPECIES_SPEWPA_SUN
++    if (mapGroup == MAP_GROUP(MAP_METEOR_FALLS_1F_2R) && mapNum == MAP_NUM(MAP_METEOR_FALLS_1F_2R)
++        && species == SPECIES_GOLBAT && ExpandedSpecies_IsPlayable(SPECIES_SPEWPA_SUN))
++        return SPECIES_SPEWPA_SUN;
++#endif
++#ifdef SPECIES_SPEWPA_OCEAN
++    if (mapGroup == MAP_GROUP(MAP_METEOR_FALLS_B1F_1R) && mapNum == MAP_NUM(MAP_METEOR_FALLS_B1F_1R)
++        && species == SPECIES_GOLBAT && ExpandedSpecies_IsPlayable(SPECIES_SPEWPA_OCEAN))
++        return SPECIES_SPEWPA_OCEAN;
++#endif
++#ifdef SPECIES_SPEWPA_JUNGLE
++    if (mapGroup == MAP_GROUP(MAP_METEOR_FALLS_B1F_2R) && mapNum == MAP_NUM(MAP_METEOR_FALLS_B1F_2R)
++        && species == SPECIES_BAGON && ExpandedSpecies_IsPlayable(SPECIES_SPEWPA_JUNGLE))
++        return SPECIES_SPEWPA_JUNGLE;
++#endif
++#ifdef SPECIES_SPEWPA_FANCY
++    if (mapGroup == MAP_GROUP(MAP_METEOR_FALLS_STEVENS_CAVE) && mapNum == MAP_NUM(MAP_METEOR_FALLS_STEVENS_CAVE)
++        && species == SPECIES_GOLBAT && ExpandedSpecies_IsPlayable(SPECIES_SPEWPA_FANCY))
++        return SPECIES_SPEWPA_FANCY;
++#endif
++#ifdef SPECIES_SPEWPA_POKEBALL
++    if (mapGroup == MAP_GROUP(MAP_MIRAGE_TOWER_1F) && mapNum == MAP_NUM(MAP_MIRAGE_TOWER_1F)
++        && species == SPECIES_SANDSHREW && ExpandedSpecies_IsPlayable(SPECIES_SPEWPA_POKEBALL))
++        return SPECIES_SPEWPA_POKEBALL;
++#endif
+     return species;
+ }
+ #endif

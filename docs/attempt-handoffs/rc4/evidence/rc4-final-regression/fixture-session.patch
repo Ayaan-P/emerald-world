@@ -1,0 +1,713 @@
+--- before/scripts/linux_package.py
++++ after/scripts/linux_package.py
+@@ -92,6 +92,8 @@
+         ('tools/expanded_moves/coverage.json', 'credits/expanded/moves.json'),
+     ]:
+         frozen[name] = (plain(REPO / source).read_bytes(), 0o644)
++    # One reviewed player-facing scope document, never the whole docs tree.
++    frozen['RC4_SCOPE.md'] = (plain(REPO / 'docs/RC4_PLAYER_SCOPE.md').read_bytes(), 0o644)
+     # Fixed non-Python runtime manifests; never recurse into private state.
+     frozen['world/map_catalog.json'] = (plain(REPO / 'world/map_catalog.json').read_bytes(), 0o644)
+     frozen['world/content_compat.json'] = (content_payload, 0o644)
+--- before/test/test_rc4_more_encounter_pool.py
++++ after/test/test_rc4_more_encounter_pool.py
+@@ -254,11 +254,13 @@
+   }
+  }
+  assert(draws==0 && roll==0);
+- assert(SPECIES_TABLE_COUNT==864);
++ assert(SPECIES_TABLE_COUNT==947);
+  u16 selected[]={SPECIES_GIMMIGHOUL_ROAMING,SPECIES_COSMOEM,SPECIES_MELTAN,SPECIES_TYPE_NULL,
+- SPECIES_TURTWIG,SPECIES_GROTLE,SPECIES_CHESPIN,SPECIES_QUILLADIN};
++ SPECIES_TURTWIG,SPECIES_GROTLE,SPECIES_TORTERRA,SPECIES_CHESPIN,SPECIES_QUILLADIN,
++ SPECIES_ARROKUDA,SPECIES_KUBFU};
++ assert(ARRAY_COUNT(selected)==11);
+  for(i=0;i<ARRAY_COUNT(selected);++i)assert(ExpandedSpecies_IsPlayable(selected[i]));
+- puts("intentional targets are exact; all 8 selected generated species playable");return 0;
++ puts("intentional targets are exact; all 11 selected generated species playable");return 0;
+ }
+ '''
+         run_c('exact-hunts', code)
+--- before/test/world/test_battle_observation.py
++++ after/test/world/test_battle_observation.py
+@@ -42,12 +42,21 @@
+ #define MON_DATA_MOVE1 6
+ #define MON_DATA_PP1 10
+ #define MON_DATA_IS_EGG 14
++#define MON_DATA_EXP 15
++#define BATTLE_TYPE_IS_MASTER 0x80000000
+ typedef uint8_t u8;
+ typedef int8_t s8;
+ typedef uint16_t u16;
+ typedef uint32_t u32;
+ typedef int bool32;
+-struct Pokemon { u32 data[15]; };
++struct Pokemon { u32 data[16]; };
++struct WorldCoopPublicMon { u16 species,hp,maxHP; u32 status; u8 level; };
++static int WorldCoop_IsBattle(void) { return 0; }
++static u8 WorldCoop_GetOwnPartyCount(void) { abort(); }
++static const struct Pokemon *WorldCoop_GetOwnMon(u8 slot) { (void)slot; abort(); }
++static int WorldCoop_GetPublicMon(u8 battler,struct WorldCoopPublicMon *mon) { (void)battler; (void)mon; abort(); }
++static const char *LinkTransport_TagPeer(void) { return NULL; }
++static int LinkTransport_TagInRange(void) { return 0; }
+ struct BattlePokemon {
+     u16 species, hp, maxHP; u8 level; u32 status1;
+     u16 moves[4]; u8 pp[4];
+@@ -107,7 +116,7 @@
+ static u32 __attribute__((unused)) GetMonData(struct Pokemon *mon, int field) {
+     if (!gSaveBlock1Ptr || !gSaveBlock2Ptr) abort();
+     if (mon < gPlayerParty || mon >= gPlayerParty + PARTY_SIZE) abort();
+-    if (field < MON_DATA_SPECIES || field > MON_DATA_IS_EGG) abort();
++    if (field < MON_DATA_SPECIES || field > MON_DATA_EXP) abort();
+     return mon->data[field];
+ }
+ '''
+@@ -238,7 +247,8 @@
+     def test_activity_observation_is_allowlisted_local_state(self):
+         self.assertEqual(self.observe()["activity"], {
+             "phase": "menu", "mode": 0, "status": "peer menu",
+-            "link_connected": True, "generation": 17, "trade_phase": "inactive"})
++            "link_connected": True, "generation": 17, "trade_phase": "inactive",
++            "tag_peer": "", "tag_in_range": False, "coop": False})
+ 
+     def test_trade_phase_getter_reaches_actual_serializer(self):
+         for mode, phase in enumerate(
+@@ -254,7 +264,7 @@
+         self.assertEqual(state["party"], [
+             {"slot": i, "species": 252 + i, "level": 5 + i,
+              "hp": 0 if i else 17, "max_hp": 20 + i,
+-             "status": 128 if i else 0,
++             "status": 128 if i else 0, "exp": 0,
+              "moves": [{"id": 33 + j, "pp": 35 - j} for j in range(4)]}
+             for i in range(2)])
+ 
+--- before/test/world/test_catalog.py
++++ after/test/world/test_catalog.py
+@@ -131,7 +131,11 @@
+  (void)g; (void)n; return &h;
+ }
+ #include "platform/world_catalog.h"
+-'''
++#define PORTABLE
++#include "platform/world_rally.h"
++'''
++        import re
++        source += re.search(r'^#define WB_TRAVEL_PEERS .*$', bridge, re.M).group() + '\n'
+         source += declarations
+         source += ''.join(function(bridge, n) for n in ('Identifier', 'Decimal', 'ObjectText', 'MapCoords', 'Line'))
+         source += '''static void ApplyTiles(void) {
+@@ -281,15 +285,17 @@
+         from test_save_isolation import function
+         bridge = (ROOT / 'src/platform/world_bridge.c').read_text()
+         source = '''#include <assert.h>
++ #include <string.h>
+  typedef unsigned char bool8;
+  #define FALSE 0
++ #define TRUE 1
+  #define MAP_OFFSET 7
+  struct Peer {unsigned group,num,x,y,facing,gfx;};
+  struct ObjectEvent {struct {int x,y;} currentCoords; unsigned facingDirection,graphicsId;};
+  static struct ObjectEvent gObjectEvents[1] = {{{13,12},1,7}};
+  static struct {unsigned objectEventId;} gPlayerAvatar;
+  static struct {int active;} gPaletteFade;
+- static struct {struct Peer field; bool8 fieldKnown;} sWorld;
++ static struct {struct Peer field; bool8 fieldKnown,menuAnchor;} sWorld;
+  static struct Save {struct {int mapGroup,mapNum;} location;} save={{1,4}}, *gSaveBlock1Ptr=&save;
+  static void CB1_Overworld(void) {}
+  static struct {int inBattle; void (*callback1)(void);} gMain={0,CB1_Overworld};
+@@ -299,6 +305,10 @@
+  static void Task_ShowStartMenu(unsigned char taskId) {(void)taskId;}
+  static bool8 FuncIsActiveTask(void (*func)(unsigned char)) {(void)func;return menu;}
+  static bool8 MapCoords(unsigned g,unsigned n,unsigned x,unsigned y) {return g==1 && n==4 && x<14 && y<14;}
++ static bool8 WorldActivity_OwnsFieldInput(void) {return 0;}
++ static const char *WorldActivity_Phase(void) {return "idle";}
++ static bool8 WorldActivity_IsEncounterPending(void) {return 0;}
++ static bool8 PresenceReady(void) {return overworld && !gMain.inBattle && !gPaletteFade.active && !script && !menu;}
+ '''
+         source += function(bridge, 'UpdateFieldPresence')
+         source += '''int main(void) {
+@@ -377,6 +387,7 @@
+ static struct {int connected; unsigned seq; size_t outputSize; char output[4096]; struct Peer field; bool8 fieldKnown;} sWorld;
+ static bool8 Overworld(void) {return 1;}
+ static bool8 PresenceReady(void) {return 0;}
++static bool8 WorldActivity_IsEncounterPending(void) {return 0;}
+ static void Flush(void) {}
+ static void Fingerprint(const void *p,size_t n,char out[17]) {(void)p;(void)n;strcpy(out,"0000000000000000");}
+ '''
+--- before/test/world/test_chat.py
++++ after/test/world/test_chat.py
+@@ -189,6 +189,8 @@
+ static int MapCoords(unsigned g,unsigned n,unsigned x,unsigned y) {return g<35 && n<100 && x<200 && y<200;}
+ static int WorldCatalog_Metatile(unsigned g,unsigned n,unsigned t) {(void)g;(void)n;return t<1024;}
+ '''+declarations
++        source += '#include "' + str(root/'src/platform/world_rules.c') + '"\n'
++        source += '#include "' + str(root/'src/platform/content_compat.c') + '"\n'
+         source += 'static void Flush(void) {sWorld.outputSize=0;}\n'
+         for name in ('Identifier', 'Decimal', 'ObjectText', 'Line', 'QueueHello', 'WorldBridge_ChatSend',
+                      'WorldBridge_ChatCount', 'WorldBridge_ChatStatus', 'WorldBridge_ChatLine'):
+@@ -198,14 +200,14 @@
+ int main(void) {
+  sWorld.rallyLegacy=sWorld.travelLegacy=1; /* Newer roles unavailable: exercise the chat-only authority fallback. */
+  strcpy(sWorld.trainer,"alice");strcpy(sWorld.token,"secret");
+- QueueHello(0); assert(strstr(sWorld.output," SOCIALCHAT\n") && sWorld.chatProbe);
++ QueueHello(0); assert(strstr(sWorld.output," SOCIALCHAT DATA ") && sWorld.chatProbe);
+  assert(!line("ERROR AUTH") && sWorld.chatLegacy);
+- QueueHello(0); assert(strstr(sWorld.output," SOCIAL\n") && !sWorld.chatProbe);
++ QueueHello(0); assert(strstr(sWorld.output," SOCIAL DATA ") && !sWorld.chatProbe);
+  assert(line("WELCOME 1 alice 0")); assert(!sWorld.chatAvailable);
+  assert(!strcmp(WorldBridge_ChatStatus(),"unsupported"));
+  assert(!WorldBridge_ChatSend("*","must not send"));
+  sWorld.connected=0; sWorld.chatLegacy=0; QueueHello(1);
+- assert(strstr(sWorld.output," SOCIAL\n") && !sWorld.chatProbe);
++ assert(strstr(sWorld.output," SOCIAL DATA ") && !sWorld.chatProbe);
+  QueueHello(0); assert(line("WELCOME 1 alice 0") && sWorld.chatAvailable);
+  sWorld.outputSize=0;
+ 
+--- before/test/world/test_chat_in_memory.py
++++ after/test/world/test_chat_in_memory.py
+@@ -13,6 +13,8 @@
+     def setUp(self):
+         self.server = WorldServer.__new__(WorldServer)
+         self.server.chat_serial = 0
++        from world.rules import make
++        self.server.world_rules = make('0' * 32)
+         self.server.peers = {name: peer(name, name != 'legacy') for name in ('alice', 'bob', 'carol', 'legacy')}
+         self.server.rally = RallyCoordinator(self.server.peers)
+         self.server._broadcast = Mock()
+--- before/test/world/test_coop_catching.py
++++ after/test/world/test_coop_catching.py
+@@ -61,7 +61,11 @@
+                          'GetMonData3', 'GetMonData2', 'GetBoxMonData3', 'GetBoxMonData2',
+                          'SetMonData', 'SetBoxMonData', 'CopyMon', 'GiveMonToPlayer'):
+                 stock += function('src/pokemon.c', name)
+-            (Path(tmp) / 'stock_pokemon.inc').write_text(stock)
++            expanded = '\n'.join(function('src/platform/expanded_species.c', name)
++                                 for name in ('ExpandedSpecies_IsPlayable', 'ExpandedSpecies_Clamp'))
++            expanded = expanded.replace('"../data/pokemon/expanded/playable_cases.inc"',
++                                        '"' + str(ROOT/'src/data/pokemon/expanded/playable_cases.inc') + '"')
++            (Path(tmp) / 'stock_pokemon.inc').write_text(expanded + '\n' + stock)
+             # Match the native sanitizer build: stock SET32 uses signed shifts.
+             command = ['gcc', '-std=gnu99', '-g', '-fsanitize=address,undefined',
+                        '-fno-sanitize=shift-base',
+--- before/test/world/test_coop_private_return.py
++++ after/test/world/test_coop_private_return.py
+@@ -60,6 +60,7 @@
+     prepared++; gBattleTypeFlags = 0; gBattleControllerExecFlags = 0; return 1;
+ }
+ static void ResetTasks(void) {}
++static void MegaGame_Reset(void) {}
+ static void BattleRebuildPrivateRewardHealthbox(void) {}
+ static void CoopPrivateRewards(void) {}
+ static void BeginNormalPaletteFade(unsigned a, int b, int c, int d, int e) {
+--- before/test/world/test_expanded_moves.py
++++ after/test/world/test_expanded_moves.py
+@@ -131,8 +131,8 @@
+         rows = (ROOT/'src/data/expanded_moves/battle_moves.h').read_text()
+         names = re.findall(r'\[(MOVE_\w+)\]',rows)
+         self.assertEqual(set(names),{row['name'] for row in supported})
+-        self.assertEqual(len(names),43)
+-        self.assertEqual([row['native_id'] for row in supported],list(range(355,398)))
++        self.assertEqual(len(names),55)
++        self.assertEqual([row['native_id'] for row in supported],list(range(355,410)))
+         ids = (ROOT/'include/constants/moves.h').read_text()
+         base = subprocess.check_output(['git','show','HEAD:include/constants/moves.h'],cwd=ROOT,text=True)
+         native = lambda s: {n:int(v) for n,v in re.findall(r'^#define (MOVE_\w+) (\d+)$',s,re.M) if int(v)<=354}
+--- before/test/world/test_launcher.py
++++ after/test/world/test_launcher.py
+@@ -7,7 +7,7 @@
+ 
+ class LauncherTests(unittest.TestCase):
+     def load(self):
+-        spec=importlib.util.spec_from_file_location('world_launcher',ROOT/'world/launcher.py')
++        spec=importlib.util.spec_from_file_location('world.fixture_launcher',ROOT/'world/launcher.py')
+         self.assertIsNotNone(spec)
+         self.assertTrue(Path(spec.origin).exists(),'local host/join launcher must exist')
+         mod=importlib.util.module_from_spec(spec); spec.loader.exec_module(mod); return mod
+--- before/test/world/test_link_battle_payloads.py
++++ after/test/world/test_link_battle_payloads.py
+@@ -44,6 +44,19 @@
+ #define PARTY_SIZE 6
+ #define MAX_MON_MOVES 4
+ #define BLOCK_BUFFER_SIZE 256
++#include "platform/mega_game.h"
++#include "platform/mega_wire.h"
++#include "platform/mega_forms.h"
++#include "platform/world_rules.h"
++/* These transport cases run with Mega disabled by world policy. Dedicated
++ * Mega controller tests exercise the enabled adapter and actual form data. */
++bool8 WorldRules_Enabled(u32 rule) { (void)rule; return FALSE; }
++u32 NativeLink_Generation(void) { return 17; }
++bool8 MegaGame_ReplyAllowed(u8 b, u8 a) { (void)b; (void)a; return FALSE; }
++bool8 MegaGame_CanQueue(u8 b) { (void)b; return FALSE; }
++bool8 MegaGame_ValidateMoveChoice(u8 b, u8 c, u8 t) { (void)b; (void)t; return !(c & MEGA_MOVE_CHOICE_BIT); }
++bool8 MegaGame_ObserveForm(u8 b, u8 f, u8 p) { (void)b; (void)f; (void)p; return FALSE; }
++void MegaGame_RefreshSprite(u8 b) { (void)b; }
+ #define BATTLE_BUFFER_LINK_SIZE 4096
+ #define ARRAY_COUNT(a) (sizeof(a)/sizeof((a)[0]))
+ struct Task { s16 data[16]; };
+@@ -105,6 +118,9 @@
+         helpers = ''
+         if '/* Native battle payload boundary. */' in source:
+             helpers = source.split('/* Native battle payload boundary. */', 1)[1].split('/* End native battle payload boundary. */', 1)[0]
++            # Publishing is an unrelated outgoing engine service, not part of
++            # the incoming validation/queue seam exercised by this fixture.
++            helpers = helpers.replace(function(source, 'MegaGame_PublishForm'), '')
+         structs = ''
+         for filename, names in [('include/battle.h', ['DisableStruct']), ('include/pokemon.h', ['BattlePokemon']), ('include/battle_message.h', ['BattleMsgData']), ('include/battle_controllers.h', ['HpAndStatus', 'ChooseMoveStruct'])]:
+             text = (ROOT / filename).read_text()
+@@ -681,9 +697,10 @@
+  u8 *p=(u8 *)gBlockRecvBuffer[source]; p[0]=B_COMM_TO_CONTROLLER; p[4]=244;
+  p[8]=CONTROLLER_32; p[9]=236; receivedSize=252;
+  for (unsigned i=0; i<100; i++) {
+-   p[11]=(u8)i;
++   /* Avoid the reserved Mega-wire magic while exercising 100 legal wraps. */
++   p[11]=(u8)(i+128);
+    TryReceiveLinkBattleData(); Task_HandleCopyReceivedLinkBuffersData(0);
+-   assert(!aborted && !gLinkErrorOccurred && gBattleBufferA[0][3]==(u8)i);
++   assert(!aborted && !gLinkErrorOccurred && gBattleBufferA[0][3]==(u8)(i+128));
+    assert(gTasks[0].tCurrentBlock_Start==gTasks[0].tCurrentBlock_End);
+  }
+  ''')
+--- before/test/world/test_link_trade_payloads.py
++++ after/test/world/test_link_trade_payloads.py
+@@ -29,6 +29,13 @@
+         if 'NativeTradeMonValid' in names or 'NativeTradeAuxBlockValid' in names:
+             expanded = (ROOT / 'src/platform/expanded_species.c').read_text()
+             prelude += '\n#include "constants/expanded_species.h"\n' + function(expanded, 'ExpandedSpecies_IsPlayable')
++            import json
++            manifest = json.loads((ROOT / 'tools/expanded/coverage.json').read_text())
++            ids = [r['engine_id'] for r in manifest['species'] if r['name'] in manifest['playable_selection']]
++            self.assertEqual(len(ids), 11)
++            prelude += '\nstatic bool8 FixtureSelected(u32 species) { return ' + ' || '.join('species==' + str(i) for i in ids) + '; }\n'
++            main = main.replace('species==440 || species==845 || species==863', 'FixtureSelected(species)')
++            main = main.replace('selected[]={440,845,863}', 'selected[]={' + ','.join(map(str, ids)) + '}')
+         if 'NativeTradeAuxBlockValid' in names:
+             mail = (ROOT / 'src/mail_data.c').read_text()
+             prelude += '\n#define UNOWN_OFFSET 30000\n#define NUM_UNOWN_FORMS 28\n#define SPECIES_UNOWN 201\n'
+--- before/test/world/test_linux_package.py
++++ after/test/world/test_linux_package.py
+@@ -50,6 +50,17 @@
+         packaged = bundle / 'world/content_compat.json'
+         self.assertTrue(packaged.is_file(), 'native content compatibility manifest missing from archive')
+         self.assertEqual(packaged.read_bytes(), (REPO / 'world/content_compat.json').read_bytes())
++
++    def test_archive_includes_exact_rc4_player_scope(self):
++        bundle = self.extract(self.package())
++        scope = bundle / 'RC4_SCOPE.md'
++        self.assertTrue(scope.is_file(), 'RC4 player scope missing from archive root')
++        expected = (REPO / 'docs/RC4_PLAYER_SCOPE.md').read_bytes()
++        self.assertEqual(scope.read_bytes(), expected)
++        manifest = json.loads((bundle / 'manifest.json').read_text())
++        self.assertEqual(manifest['files']['RC4_SCOPE.md'],
++                         {'sha256': hashlib.sha256(expected).hexdigest(), 'mode': 0o644})
++        self.assertFalse((bundle / 'docs').exists(), 'scope packaging must not recurse through docs')
+ 
+     def test_archive_includes_exact_expanded_coverage_and_attribution(self):
+         bundle = self.extract(self.package())
+--- before/test/world/test_native_coop_acceptance.py
++++ after/test/world/test_native_coop_acceptance.py
+@@ -13,6 +13,9 @@
+         assert spec is not None and spec.loader is not None
+         self.module = importlib.util.module_from_spec(spec)
+         spec.loader.exec_module(self.module)
++        # The acceptance helper predates the nested worktree layout. Its seed
++        # is shared read-only research evidence, never generated by this test.
++        self.module.RESEARCH = Path(__file__).resolve().parents[4]
+ 
+     def test_readiness_requires_explicit_success_and_matching_binary(self):
+         with tempfile.TemporaryDirectory() as tmp:
+--- before/test/world/test_native_link.py
++++ after/test/world/test_native_link.py
+@@ -99,8 +99,9 @@
+         link = (ROOT/'src/link.c').read_text()
+         stub = (ROOT/'src/stub.c').read_text()
+         self.assertNotIn('STUB_FUNC_QUIET_BLOCK(bool8 HandleLinkConnection()', stub)
+-        for hook in ['NativeLink_Open(gLinkType)', 'NativeLink_Close()', 'NativeLink_Main1(', 'NativeLink_IsActive()', 'NativeLink_LocalId()', 'NativeLink_Abort()']:
++        for hook in ['NativeLink_Open(wireLinkType)', 'NativeLink_Close()', 'NativeLink_Main1(', 'NativeLink_IsActive()', 'NativeLink_LocalId()', 'NativeLink_Abort()']:
+             self.assertIn(hook, link)
++        self.assertIn('BattleRules_LinkType(gLinkType, WorldRules_Enabled(WORLD_RULE_MODERN_SPLIT)', link)
+         self.assertIn('gRecvCmds[i][1] >= ARRAY_COUNT(sBlockRequests)', link)
+         self.assertIn('sBlockRecv[i].pos + 14 > BLOCK_BUFFER_SIZE', link)
+ 
+--- before/test/world/test_native_world_config.py
++++ after/test/world/test_native_world_config.py
+@@ -23,6 +23,7 @@
+         cls.binary = directory / 'config'
+         harness.write_text(r'''
+ #include "src/platform/world_bridge.c"
++void WorldRally_Init(const char *configPath) { (void)configPath; }
+ int main(int argc, char **argv)
+ {
+     if (argc > 2) return 3;
+--- before/test/world/test_offline_desktop.py
++++ after/test/world/test_offline_desktop.py
+@@ -17,7 +17,8 @@
+             root = Path(tmp)
+             session = DesktopSession(root)
+             calls = []
+-            def command(binary, state, paths, display, *, online):
++            def command(binary, state, paths, display, *, online, agent_control=False):
++                self.assertFalse(agent_control)
+                 calls.append((state, paths, online))
+                 return ['/usr/bin/sleep', '30']
+             try:
+--- before/test/world/test_player_control.py
++++ after/test/world/test_player_control.py
+@@ -302,7 +302,7 @@
+     def test_sdl_hooks_and_bad_config(self):
+         source = (ROOT / 'src/platform/sdl2.c').read_text()
+         self.assertIn('"--player-control"', source)
+-        self.assertLess(source.index('PlayerControl_Init('), source.index('ReadSaveFile(sSavePath);'))
++        self.assertLess(source.index('PlayerControl_Init('), source.index('if (!ReadSaveFile(sSavePath))'))
+         self.assertIn('PlayerControl_BeforeFrame();', source)
+         self.assertIn('PlayerControl_AfterFrame(', source)
+ 
+--- before/test/world/test_presence_handshake.py
++++ after/test/world/test_presence_handshake.py
+@@ -48,6 +48,8 @@
+     return g < 2 && n < 2 && t < 1024;
+ }
+ ''' + declarations
++        source += '#include "' + str(ROOT/'src/platform/world_rules.c') + '"\n'
++        source += '#include "' + str(ROOT/'src/platform/content_compat.c') + '"\n'
+         source += 'struct WorldBridgePeer { char name[25]; unsigned group,num,x,y; bool8 ready; };\n'
+         for name in ('Identifier', 'Decimal', 'ObjectText', 'Disconnect', 'Line',
+                      'SocketOpen', 'QueueHello', 'Flush', 'Connect', 'Receive', 'WorldBridge_Poll',
+@@ -122,7 +124,10 @@
+         self.peer, _ = self.listener.accept()
+         self.peer.settimeout(.1)
+         self.pump()
+-        self.assertEqual(self.peer.recv(4096), b'HELLO 1 alice ' + b'a'*64 + b' SOCIALTRAVELCHATRALLY\n')
++        import re
++        header = (ROOT/'include/platform/content_compat_generated.h').read_text()
++        tag = re.search(r'#define WORLD_CONTENT_ID "([a-f0-9]{64})"', header)[1]
++        self.assertEqual(self.peer.recv(4096), b'HELLO 1 alice ' + b'a'*64 + b' SOCIALTRAVELCHATRALLY DATA ' + tag.encode() + b'\n')
+ 
+     def incoming(self, data):
+         self.peer.sendall(data)
+--- before/test/world/test_rc4_catalog_evolutions.py
++++ after/test/world/test_rc4_catalog_evolutions.py
+@@ -122,7 +122,7 @@
+     _Static_assert(NUM_SPECIES == 412, "legacy count");
+     assert(memcmp(gEvolutionTable, baselineEvolutionTable, sizeof(baselineEvolutionTable)) == 0);
+ '''
+-        for name, level, target in [('TURTWIG', 18, 'GROTLE'), ('CHESPIN', 16, 'QUILLADIN')]:
++        for name, level, target in [('TURTWIG', 18, 'GROTLE'), ('GROTLE', 32, 'TORTERRA'), ('CHESPIN', 16, 'QUILLADIN')]:
+             source += f'''testSpecies = SPECIES_{name};
+ for (rules = 0; rules <= 1; rules++) {{
+     assert(ExpandedSpecies_Clamp(testSpecies) == testSpecies);
+@@ -137,7 +137,7 @@
+     assert(memcmp(&mon, &before, sizeof(mon)) == 0);
+ }}
+ '''
+-        for name in ('GROTLE', 'QUILLADIN', 'TYPE_NULL', 'COSMOEM', 'MELTAN', 'GIMMIGHOUL_ROAMING'):
++        for name in ('TORTERRA', 'QUILLADIN', 'TYPE_NULL', 'COSMOEM', 'MELTAN', 'GIMMIGHOUL_ROAMING', 'ARROKUDA', 'KUBFU'):
+             source += f'testSpecies = SPECIES_{name}; testLevel = 100; assert(GetEvolutionTargetSpecies(&mon, EVO_MODE_NORMAL, 0) == SPECIES_NONE);\n'
+         source += '''testSpecies = SPECIES_BULBASAUR; testLevel = 16;
+ assert(GetEvolutionTargetSpecies(&mon, EVO_MODE_NORMAL, 0) == SPECIES_IVYSAUR);
+@@ -176,8 +176,8 @@
+                         'missing staged native evolution table')
+         supported = {n: r['supported_evolutions'] for n, r in self.rows.items()
+                      if r.get('supported_evolutions')}
+-        self.assertEqual(set(supported), {'SPECIES_TURTWIG', 'SPECIES_CHESPIN'})
+-        for name, level, target in [('TURTWIG', 18, 'GROTLE'), ('CHESPIN', 16, 'QUILLADIN')]:
++        self.assertEqual(set(supported), {'SPECIES_TURTWIG', 'SPECIES_GROTLE', 'SPECIES_CHESPIN'})
++        for name, level, target in [('TURTWIG', 18, 'GROTLE'), ('GROTLE', 32, 'TORTERRA'), ('CHESPIN', 16, 'QUILLADIN')]:
+             row = self.rows['SPECIES_' + name]
+             edge, = row['supported_evolutions']
+             self.assertEqual((edge['method'], edge['param'], edge['target']),
+@@ -185,13 +185,14 @@
+             self.assertEqual(edge['target_engine_id'], self.rows[edge['target']]['engine_id'])
+             self.assertEqual(row['unsupported_evolutions'], [])
+             self.assertNotIn('evolution', row['unsupported_features'])
+-            self.assertIn('acquisition_route', row['unsupported_features'])
+-        for name, target in [('GROTLE', 'TORTERRA'), ('QUILLADIN', 'CHESNAUGHT')]:
++            self.assertTrue(row['obtainable'])
++            self.assertNotIn('acquisition_route', row['unsupported_features'])
++        for name, target in [('QUILLADIN', 'CHESNAUGHT')]:
+             row = self.rows['SPECIES_' + name]
+             self.assertEqual(row['supported_evolutions'], [])
+             edge = row['unsupported_evolutions'][0]
+             self.assertEqual(edge['target'], 'SPECIES_' + target)
+-            self.assertEqual(edge['param'], 32 if name == 'GROTLE' else 36)
++            self.assertEqual(edge['param'], 36)
+             self.assertIn(edge['raw'], row['resolved_species_source'])
+             self.assertIn('target_not_native_or_selected', row['unsupported_evolutions'][0]['reasons'])
+             self.assertIn('evolution', row['unsupported_features'])
+@@ -202,7 +203,8 @@
+         self.assertEqual(len(self.rows), 1670)
+         self.assertEqual({n: r['engine_id'] for n, r in self.rows.items()},
+                          {r['name']: r['engine_id'] for r in baseline['species']})
+-        self.assertEqual(len(self.manifest['playable_selection']), 8)
++        self.assertEqual(len(self.manifest['playable_selection']), 11)
++        self.assertEqual(len(self.manifest['obtainable_selection']), 10)
+ 
+ 
+ if __name__ == '__main__':
+--- before/test/world/test_rc4_move_catalog_growth.py
++++ after/test/world/test_rc4_move_catalog_growth.py
+@@ -48,7 +48,10 @@
+                         '--donor', str(DONOR), '--output', str(OUT)], check=True, capture_output=True)
+         coverage = json.loads((OUT / 'tools/expanded_moves/coverage.json').read_text())
+         old = json.loads((ROOT / 'tools/expanded_moves/coverage.json').read_text())
+-        added = coverage['effect_supported'][len(old['effect_supported']):]
++        # Promotion puts the growth batch in the seed. Keep checking all twelve
++        # donor bodies rather than accidentally running an empty assertion loop.
++        added = [row for row in coverage['effect_supported'] if row['native_id'] >= 398]
++        self.assertEqual(len(added), 12)
+         self.assertIn('candidate_audit', coverage)
+         donor = dict(re.findall(r'\[(MOVE_\w+)\] =\s*\{(.*?)\n    \},',
+                                 (DONOR / 'src/data/moves_info.h').read_text(), re.S))
+@@ -176,7 +179,7 @@
+         cases = {
+             'collision': 'm["ASSIGNED_IDS"]["MOVE_ACCELEROCK"]=404',
+             'gap': 'm["ASSIGNED_IDS"]["MOVE_ACCELEROCK"]=406',
+-            'missing': 'del m["ASSIGNED_IDS"]["MOVE_ACCELEROCK"]',
++            'missing': 'm["PORTS"].append(("FIXTURE_UNASSIGNED", "HIT", 0, "TACKLE"))',
+             'seed_conflict': 'm["ASSIGNED_IDS"]["MOVE_MOONBLAST"]=356',
+         }
+         for name, mutation in cases.items():
+@@ -190,7 +193,7 @@
+                                      cwd=ROOT, text=True, capture_output=True)
+                 self.assertNotEqual(ran.returncode, 0)
+                 self.assertIn('ValueError:', ran.stderr)
+-                self.assertIn({'collision': 'collision or gap', 'gap': 'collision or gap',
++                self.assertIn({'collision': 'disagree with legacy seed', 'gap': 'disagree with legacy seed',
+                                'missing': 'Ports and stable assignments disagree',
+                                'seed_conflict': 'disagree with legacy seed'}[name], ran.stderr)
+                 self.assertFalse(output.exists())
+@@ -202,7 +205,9 @@
+         module = importlib.util.module_from_spec(spec)
+         spec.loader.exec_module(module)
+         old = json.loads((ROOT / 'tools/expanded_moves/coverage.json').read_text())
+-        added = {p[0] for p in module.PORTS} - {r['name'][5:] for r in old['effect_supported']}
++        installed_batch = {r['name'][5:] for r in old['effect_supported'] if r['native_id'] >= 398}
++        added = {p[0] for p in module.PORTS} & installed_batch
++        self.assertEqual(len(old['effect_supported']), 55)
+         self.assertEqual(added, {'STONE_EDGE', 'LIQUIDATION', 'LUNGE', 'SKITTER_SMACK',
+                                  'MYSTICAL_FIRE', 'HIGH_HORSEPOWER', 'WILD_CHARGE', 'ACCELEROCK',
+                                  'CLOSE_COMBAT', 'HEADLONG_RUSH', 'HAMMER_ARM', 'ICE_HAMMER'})
+--- before/test/world/test_rc4_self_drop_move_catalog.py
++++ after/test/world/test_rc4_self_drop_move_catalog.py
+@@ -19,8 +19,28 @@
+ 
+ 
+ def stage():
+-    subprocess.run([sys.executable, str(ROOT / 'tools/expanded_moves/generate.py'),
+-                    '--donor', str(DONOR), '--output', str(OUT)],
++    # Replay the 51-to-55 transition even after the final catalog is promoted.
++    # Overlay the coherent manifest/data seed. Integration sources and the
++    # generator stay installed files, and frozen baseline bytes are read-only.
++    script = '''import pathlib,runpy,sys
++from unittest.mock import patch
++root,baseline,generator,donor,out=map(pathlib.Path,sys.argv[1:])
++read=pathlib.Path.read_text
++seed=read(baseline/'tools/expanded_moves/coverage.json')
++def overlay(path,*a,**kw):
++    if path == root/'tools/expanded_moves/coverage.json':
++        return seed
++    relative = path.relative_to(root) if path.is_relative_to(root) else None
++    if relative and (str(relative).startswith('src/data/expanded_moves/')
++                     or str(relative) == 'data/expanded_move_animations.inc'):
++        return read(baseline/relative,*a,**kw)
++    return read(path,*a,**kw)
++sys.argv=[str(generator),'--donor',str(donor),'--output',str(out)]
++with patch.object(pathlib.Path,'read_text',overlay):
++    runpy.run_path(str(generator),run_name='__main__')
++'''
++    subprocess.run([sys.executable, '-c', script, str(ROOT), str(BASELINE),
++                    str(ROOT / 'tools/expanded_moves/generate.py'), str(DONOR), str(OUT)],
+                    cwd=ROOT, check=True, capture_output=True)
+     return json.loads((OUT / 'tools/expanded_moves/coverage.json').read_text())
+ 
+--- before/test/world/test_windows_bridge.py
++++ after/test/world/test_windows_bridge.py
+@@ -83,12 +83,14 @@
+ #define bool8 int
+ #define TRUE 1
+ #define FALSE 0
++#define WB_PEERS 8
+ #define INVALID_SOCKET (~(unsigned long long)0)
+ #define MAKEWORD(a,b) ((a)|((b)<<8))
+ typedef struct { unsigned short wVersion; } WSADATA;
+ static int WSAStartup(int v, WSADATA *d) { d->wVersion=v; return 0; }
+ static int WSACleanup(void) { return 0; }
+-static struct { unsigned long long fd; int enabled, winsockStarted;
++static void WorldRally_Init(const char *path) { (void)path; }
++static struct { unsigned long long fd; int enabled, winsockStarted; unsigned visiblePeers;
+ unsigned loopbackPort; char loopbackToken[65], socketPath[108], trainer[25], token[65], telemetry[1024]; } sWorld;
+ static bool8 Identifier(''' + identifier + '\nbool8 WorldBridge_Init(' + init + '''
+ int main(int argc, char **argv) {
+@@ -200,20 +202,31 @@
+         self.assertEqual(subprocess.run([str(self.exe), str(path)], capture_output=True).returncode, 1)
+ 
+     def test_wire_preface_precedes_unchanged_hello(self):
+-        self.assertIn('static void QueueHello(void)', self.source)
+-        helper = self.source.split('static void QueueHello(void)', 1)[1].split('static void Flush', 1)[0]
++        signature = 'static void QueueHello(bool8 headless)'
++        self.assertIn(signature, self.source)
++        helper = self.source.split(signature, 1)[1].split('static void Flush', 1)[0]
+         c = self.path / 'wire.c'
+         c.write_text('#include <stdio.h>\n#include <string.h>\n'
++                     '#include "platform/content_compat.h"\n'
++                     'typedef unsigned char bool8;\n#define FALSE 0\n'
++                     'static const char *WorldRules_Wire(void) { return ""; }\n'
+                      'static struct { char output[4096], loopbackToken[65], trainer[25], token[65]; '
+-                     'size_t outputSize; } sWorld;\nstatic void QueueHello(void)' + helper +
++                     'bool8 rallyProbe,rallyLegacy,travelProbe,travelLegacy,chatProbe,chatLegacy; '
++                     'size_t outputSize; } sWorld;\n' + signature + helper +
+                      '\nint main(void) { memset(sWorld.loopbackToken, 97, 64); '
+                      'memset(sWorld.token, 98, 64); strcpy(sWorld.trainer, "alice"); '
+-                     'QueueHello(); fwrite(sWorld.output, 1, sWorld.outputSize, stdout); return 0; }')
++                     'sWorld.rallyLegacy=sWorld.travelLegacy=1; '
++                     'QueueHello(1); fwrite(sWorld.output, 1, sWorld.outputSize, stdout); return 0; }')
++        import re
++        tag = re.search(r'#define WORLD_CONTENT_ID "([a-f0-9]{64})"',
++                        (ROOT/'include/platform/content_compat_generated.h').read_text())[1]
+         for define, prefix in [(['-D_WIN32'], 'EWLOCAL1 ' + 'a' * 64 + '\n'), ([], '')]:
+             exe = self.path / 'wire'
+-            subprocess.run([os.environ.get('CC', 'cc'), '-std=gnu99', *define, str(c), '-o', str(exe)], check=True, capture_output=True)
++            subprocess.run([os.environ.get('CC', 'cc'), '-std=gnu99', '-Wall', '-Wextra', '-Werror',
++                            '-DPORTABLE', '-iquote', str(ROOT/'include'), *define, str(c),
++                            str(ROOT/'src/platform/content_compat.c'), '-o', str(exe)], check=True, capture_output=True)
+             result = subprocess.run([str(exe)], check=True, capture_output=True, text=True)
+-            self.assertEqual(result.stdout, prefix + 'HELLO 1 alice ' + 'b' * 64 + ' SOCIAL\n')
++            self.assertEqual(result.stdout, prefix + 'HELLO 1 alice ' + 'b' * 64 + ' SOCIAL DATA ' + tag + '\n')
+ 
+     def test_windows_transport_and_atomic_replace_guards(self):
+         for required in ('SOCKET fd;', 'INVALID_SOCKET', 'WSAStartup', 'WSACleanup',
+--- before/test/world/test_windows_client.py
++++ after/test/world/test_windows_client.py
+@@ -22,7 +22,9 @@
+         source = (Path(__file__).resolve().parents[2]/'src/platform/world_bridge.c').read_text()
+         for key in ('loopback_port', 'loopback_token', 'trainer', 'token', 'telemetry'):
+             self.assertIn('"' + key + '"', source)
+-        self.assertIn('"EWLOCAL1 %s\\nHELLO 1 %s %s SOCIAL\\n"', source)
++        self.assertIn('"EWLOCAL1 %s\\nHELLO 1 %s %s %s\\n"', source)
++        self.assertIn('"SOCIALTRAVELRALLY"', source)
++        self.assertIn('" DATA %s\\n"', source)
+         self.assertIn('htonl(INADDR_LOOPBACK)', source)
+         code = ("import sys, subprocess; sys.modules.pop('fcntl', None); import world.windows_client; "
+                 "assert not any(m in sys.modules for m in "
+@@ -74,7 +76,7 @@
+         wait_for(lambda: gateway.active_clients == 0)
+         self.assertLess(time.monotonic() - start, .7)
+         with self.assertRaises(ValueError):
+-            LoopbackGateway(('localhost', 1), fingerprint='a'*64, local_token='b'*64, max_clients=9)
++            LoopbackGateway(('localhost', 1), fingerprint='a'*64, local_token='b'*64, max_clients=1025)
+         with self.assertRaises(ValueError):
+             LoopbackGateway(('localhost', 1), fingerprint='a'*64, local_token='b'*64, auth_timeout=6)
+ 
+@@ -346,6 +348,28 @@
+         self.exe = self.root / 'game/pokeemerald64.exe'
+         self.exe.parent.mkdir()
+         self.exe.write_bytes(b'fixture, never executed')
++        # Profile/lock tests have no remote authority. Model only its new
++        # authenticated CONTROL policy response; TLS is exercised by TLSTests.
++        import io
++        from unittest.mock import patch
++        from world.rules import make
++        class PolicyControl:
++            trainer = None
++            def __enter__(self): return self
++            def __exit__(self, *args): pass
++            def sendall(self, data):
++                if data.startswith(b'EWLOCAL1 '):
++                    self.trainer = data.splitlines()[1].split()[2].decode('ascii')
++                else:
++                    assert json.loads(data) == {'command': 'world_rules'}
++            def makefile(self, mode):
++                assert mode == 'rb' and self.trainer is not None
++                return io.BytesIO(('WELCOME 1 ' + self.trainer + ' 0 CONTROL\n' +
++                                   json.dumps({'ok': True, 'world_rules': make('0' * 32)}) + '\n').encode())
++        control = patch('world.windows_client.socket.create_connection',
++                        side_effect=lambda *args, **kwargs: PolicyControl())
++        control.start()
++        self.addCleanup(control.stop)
+ 
+     def session(self, **kwargs):
+         from world.windows_client import WindowsGuestSession
+@@ -494,9 +518,11 @@
+         self.assertEqual(paths['profile'].parts[-2:], (namespace, trainer_dir))
+         self.assertFalse(paths['save'].exists())
+         command = session.game_args()
++        from world.rules import wire
+         self.assertEqual(command, [str(self.exe), '--save', str(paths['save']),
+                                   '--config', str(paths['settings']),
+-                                  '--world-config', str(paths['config'])])
++                                  '--world-config', str(paths['config']),
++                                  '--world-rules', wire(session.world_rules)])
+         config = paths['config'].read_text()
+         self.assertIn('token ' + 'd'*64 + '\n', config)
+         self.assertIn('loopback_port ', config)
+--- before/test/world/test_world_rules.py
++++ after/test/world/test_world_rules.py
+@@ -247,7 +247,9 @@
+     def test_immutable_native_rules_and_gameplay_getters(self):
+         import subprocess
+         root = Path(__file__).resolve().parents[2]
+-        artifact = root / 'build/rc4-mega-production/world-rules'
++        directory = tempfile.TemporaryDirectory(prefix='rc4-world-rules-')
++        self.addCleanup(directory.cleanup)
++        artifact = Path(directory.name)
+         artifact.mkdir(parents=True, exist_ok=True)
+         source = artifact / 'rules_fixture.c'
+         source.write_text(r'''#include <assert.h>
+@@ -289,7 +291,9 @@
+             generated=root.parent/'rc3/include'
+         if not (generated/'constants/map_groups.h').exists():
+             self.skipTest('Generate native engine headers before bridge fixture compilation.')
+-        artifact=root/'build/rc4-mega-production/world-rules'
++        directory = tempfile.TemporaryDirectory(prefix='rc4-world-rules-hello-')
++        self.addCleanup(directory.cleanup)
++        artifact=Path(directory.name)
+         artifact.mkdir(parents=True,exist_ok=True)
+         source=artifact/'hello_fixture.c'
+         source.write_text(r'''#include "src/platform/world_bridge.c"
+--- before/test/world/test_world_travel.py
++++ after/test/world/test_world_travel.py
+@@ -17,7 +17,7 @@
+                 'gcc', '-std=gnu99', '-DPORTABLE', '-DMODERN=1', '-DNONMATCHING',
+                 '-DUBFIX', '-DVER_64BIT', '-Wall', '-Wextra', '-Werror', '-Wno-unused-function', '-Wno-ignored-qualifiers',
+                 '-ffunction-sections', '-fdata-sections', '-iquote', '.', '-iquote', 'include',
+-                str(source), '-Wl,--gc-sections', '-o', str(binary),
++                str(source), 'src/platform/content_compat.c', '-Wl,--gc-sections', '-o', str(binary),
+             ], cwd=ROOT, capture_output=True, text=True)
+             self.assertEqual(result.returncode, 0, result.stderr)
+             subprocess.run([str(binary)], check=True)
+@@ -104,16 +104,16 @@
+ int main(void) {
+     strcpy(sWorld.trainer, "viewer"); strcpy(sWorld.token, "secret");
+     QueueHello(0);
+-    assert(strstr(sWorld.output, " SOCIALTRAVELCHATRALLY\n"));
++    assert(strstr(sWorld.output, " SOCIALTRAVELCHATRALLY DATA "));
+     assert(!line("ERROR AUTH") && sWorld.rallyLegacy && !sWorld.travelLegacy);
+     QueueHello(0);
+-    assert(strstr(sWorld.output, " SOCIALTRAVELCHAT\n"));
++    assert(strstr(sWorld.output, " SOCIALTRAVELCHAT DATA "));
+     assert(!line("ERROR AUTH") && sWorld.travelLegacy && !sWorld.chatLegacy);
+     QueueHello(0);
+-    assert(strstr(sWorld.output, " SOCIALCHAT\n"));
++    assert(strstr(sWorld.output, " SOCIALCHAT DATA "));
+     assert(!line("ERROR AUTH") && sWorld.chatLegacy);
+     QueueHello(0);
+-    assert(strstr(sWorld.output, " SOCIAL\n"));
++    assert(strstr(sWorld.output, " SOCIAL DATA "));
+     assert(line("WELCOME 1 viewer 1"));
+     assert(!sWorld.chatAvailable);
+     return 0;
+--- before/test/world/coop_engine_core.c
++++ after/test/world/coop_engine_core.c
+@@ -77,7 +77,11 @@
+     }
+ }
+ u32 GetMonData2(struct Pokemon *mon, s32 field) { return GetMonData3(mon, field, NULL); }
+-const struct SpeciesInfo gSpeciesInfo[NUM_SPECIES] = {0};
++const struct SpeciesInfo gSpeciesInfo[SPECIES_TABLE_COUNT] = {0};
++/* This co-op fixture keeps legacy type policy. Execute the real type adapter
++ * used by private reward projection, rather than omitting its new dependency. */
++bool8 ExpandedMoves_UseModernTypes(void) { return FALSE; }
++#include "src/platform/modern_species_types.c"
+ u8 GetMonAbility(struct Pokemon *mon) { return 1; }
+ u8 CalculatePPWithBonus(u16 move, u8 bonuses, u8 index) { return 40; }
+ u8 BattleSetup_GetEnvironmentId(void) { return BATTLE_ENVIRONMENT_GRASS; }

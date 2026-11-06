@@ -14,8 +14,12 @@
 #include "constants/abilities.h"
 #ifdef PORTABLE
 #include "platform/native_link.h"
+#include "platform/expanded_species.h"
 #include "platform/world_coop.h"
 #include "platform/mega_game.h"
+#include "platform/mega_forms.h"
+#include "platform/mega_wire.h"
+#include "platform/world_rules.h"
 #include "constants/moves.h"
 #include "constants/items.h"
 #endif
@@ -28,7 +32,7 @@ static bool8 sNativeBattleReplyUsed[MAX_BATTLERS_COUNT];
 static bool8 sNativeBattleRequestPending[MAX_BATTLERS_COUNT];
 /* Controllers replace buffer A's opcode with TERMINATOR_NOP on completion.
  * Keep the accepted request identity until its authenticated reply arrives. */
-static u8 sNativeBattleRequest[MAX_BATTLERS_COUNT][3];
+static u8 sNativeBattleRequest[MAX_BATTLERS_COUNT][4];
 #endif
 static EWRAM_DATA u8 sUnused = 0; // Debug? Never read
 EWRAM_DATA struct UnusedControllerStruct gUnusedControllerStruct = {}; // Debug? Unused code that writes to it, never read
@@ -875,6 +879,9 @@ static bool8 NativeBattleCommandValid(const u8 *data, u16 size, u8 bufferId)
         needed = 4 + sizeof(struct BattleMsgData);
         break;
     case CONTROLLER_CHOOSEMOVE:
+        if ((data[3] & ~MEGA_MOVE_CAN_SELECT_BIT)
+         || (data[3] && (!MEGA_FEATURE_READY || !WorldRules_Enabled(WORLD_RULE_MEGA_EVOLUTION))))
+            return FALSE;
         needed = 4 + sizeof(struct ChooseMoveStruct);
         break;
     case CONTROLLER_CHOOSEPOKEMON:
@@ -898,6 +905,10 @@ static bool8 NativeBattleCommandValid(const u8 *data, u16 size, u8 bufferId)
         needed = 2 + data[1] * 3;
         break;
     case CONTROLLER_32:
+        if (MegaWire_IsCandidate(data, size, CONTROLLER_32))
+            return MEGA_FEATURE_READY && bufferId == B_COMM_TO_CONTROLLER
+                && WorldRules_Enabled(WORLD_RULE_MEGA_EVOLUTION)
+                && MegaWire_Valid(data, size, CONTROLLER_32, MEGA_FORM_COUNT, NativeLink_Generation());
         needed = 3 + (data[1] | (data[2] << 8));
         if (needed < 3)
             return FALSE;
@@ -913,7 +924,7 @@ static bool8 NativeBattleCommandValid(const u8 *data, u16 size, u8 bufferId)
             && (data[1] > B_ACTION_UNK_14
                 || ((data[1] == B_ACTION_USE_MOVE || data[1] == B_ACTION_EXEC_SCRIPT)
                     && !(data[2] == 0xFF && data[3] == 0xFF)
-                    && (data[2] >= MAX_MON_MOVES || data[3] >= MAX_BATTLERS_COUNT))))
+                    && ((data[2] & ~MEGA_MOVE_CHOICE_BIT) >= MAX_MON_MOVES || data[3] >= MAX_BATTLERS_COUNT))))
             return FALSE;
         break;
     case CONTROLLER_DRAWPARTYSTATUSSUMMARY:
@@ -971,6 +982,14 @@ static bool8 NativeBattleHeaderValid(const u8 *packet, u16 size)
             : NativeBattleCommandValid(packet + LINK_BUFF_DATA, size - LINK_BUFF_DATA, packet[LINK_BUFF_BUFFER_ID]));
 }
 
+/* Wire/save IDs keep their legacy bound. Only explicitly playable native
+ * additions may cross the multiplayer boundary; reserved table slots may not. */
+static bool8 NativeSpeciesValid(u16 species)
+{
+    return (species > SPECIES_NONE && species < NUM_SPECIES)
+        || ExpandedSpecies_IsPlayable(species);
+}
+
 /* Only REQUEST_ALL_BATTLE is used by the native link engine. Validate it
  * against the outstanding command before an untrusted byte reaches buffer B.
  * Controller-only fields in BattlePokemon are uninitialized on the cable, so
@@ -980,7 +999,7 @@ static bool8 NativeBattleMonValid(const u8 *data)
     struct BattlePokemon mon;
     u8 i;
     memcpy(&mon, data, sizeof(mon));
-    if (!mon.species || mon.species >= NUM_SPECIES || mon.item >= ITEMS_COUNT
+    if (!NativeSpeciesValid(mon.species) || mon.item >= ITEMS_COUNT
      || !mon.level || mon.level > MAX_LEVEL || mon.experience > 1640000
      || !mon.maxHP || mon.maxHP > 999 || mon.hp > mon.maxHP
      || !mon.attack || mon.attack > 999 || !mon.defense || mon.defense > 999
@@ -1037,7 +1056,7 @@ static bool8 NativeBattleReplyValid(u8 battler, const u8 *data)
             return data[1] == B_ACTION_EXEC_SCRIPT
                 && ((data[2] == 0xFF && data[3] == 0xFF)
                     || ((data[2] & ~MEGA_MOVE_CHOICE_BIT) < MAX_MON_MOVES
-                        && (!(data[2] & MEGA_MOVE_CHOICE_BIT) || MegaGame_CanQueue(battler))
+                        && (!(data[2] & MEGA_MOVE_CHOICE_BIT) || MegaGame_ReplyAllowed(battler, request[3]))
                         && data[3] < MAX_BATTLERS_COUNT));
         return request[0] == CONTROLLER_CHOOSEACTION
             || request[0] == CONTROLLER_EXPUPDATE || request[0] == CONTROLLER_DRAWPARTYSTATUSSUMMARY;
@@ -1049,6 +1068,25 @@ static bool8 NativeBattleReplyValid(u8 battler, const u8 *data)
                 : (data[1] | (data[2] << 8)) < ITEMS_COUNT);
     }
     return FALSE;
+}
+
+/* Both native views ACK this transient form before abilities or moves run. */
+bool8 MegaGame_PublishForm(u8 battler, u8 kind)
+{
+    u8 packet[MEGA_WIRE_BYTES], previous, form;
+    if (!MEGA_FEATURE_READY || !WorldRules_Enabled(WORLD_RULE_MEGA_EVOLUTION)
+     || battler >= gBattlersCount || battler >= MAX_BATTLERS_COUNT
+     || !(gBattleTypeFlags & BATTLE_TYPE_LINK) || !(gBattleTypeFlags & BATTLE_TYPE_IS_MASTER)
+     || !NativeLink_IsActive() || !NativeLink_Generation()) return FALSE;
+    form = MegaGame_ActiveForm(battler);
+    if (!form || (kind != MEGA_WIRE_ACTIVATE && kind != MEGA_WIRE_REENTER)) return FALSE;
+    MegaWire_Encode(packet, CONTROLLER_32, form, kind, gBattlerPartyIndexes[battler], NativeLink_Generation());
+    previous = gActiveBattler;
+    gActiveBattler = battler;
+    PrepareBufferDataTransferLink(B_COMM_TO_CONTROLLER, sizeof(packet), packet);
+    MarkBattlerForControllerExec(battler);
+    gActiveBattler = previous;
+    return TRUE;
 }
 
 static bool8 NativeBattleRingStateValid(u8 taskId)
@@ -1111,7 +1149,8 @@ void PrepareBufferDataTransferLink(u8 bufferId, u16 size, u8 *data)
         BYTE_TO_SEND(LINK_BUFF_DATA + i) = data[i];
 
 #ifdef PORTABLE
-    if (WorldCoop_IsBattle())
+    if (WorldCoop_IsBattle() || (bufferId == B_COMM_TO_CONTROLLER
+     && size == MEGA_WIRE_BYTES && MegaWire_IsCandidate(data, size, CONTROLLER_32)))
         for (; i < alignedSize; i++)
             BYTE_TO_SEND(LINK_BUFF_DATA + i) = 0;
 #endif
@@ -1431,6 +1470,19 @@ static void Task_HandleCopyReceivedLinkBuffersData(u8 taskId)
                 sNativeBattleRequestPending[battler] = TRUE;
                 memcpy(sNativeBattleRequest[battler], &BYTE_TO_RECEIVE(LINK_BUFF_DATA),
                     sizeof(sNativeBattleRequest[battler]));
+            }
+#endif
+#ifdef PORTABLE
+            if (NativeLink_IsActive() && MegaWire_IsCandidate(&BYTE_TO_RECEIVE(LINK_BUFF_DATA), blockSize, CONTROLLER_32))
+            {
+                if (!MegaGame_ObserveForm(battler, BYTE_TO_RECEIVE(LINK_BUFF_DATA + 5), BYTE_TO_RECEIVE(LINK_BUFF_DATA + 7)))
+                {
+                    AbortNativeBattlePayload();
+                    return;
+                }
+                if (!(gBattleTypeFlags & BATTLE_TYPE_IS_MASTER)
+                 && BYTE_TO_RECEIVE(LINK_BUFF_DATA + 6) == MEGA_WIRE_ACTIVATE)
+                    MegaGame_RefreshSprite(battler);
             }
 #endif
             memcpy(gBattleBufferA[battler], &BYTE_TO_RECEIVE(LINK_BUFF_DATA), blockSize);
@@ -1756,7 +1808,11 @@ void BtlController_EmitChooseMove(u8 bufferId, bool8 isDoubleBattle, bool8 noPPN
     sBattleBuffersTransferData[0] = CONTROLLER_CHOOSEMOVE;
     sBattleBuffersTransferData[1] = isDoubleBattle;
     sBattleBuffersTransferData[2] = noPPNumber;
+#ifdef PORTABLE
+    sBattleBuffersTransferData[3] = MegaGame_CanQueue(gActiveBattler) ? MEGA_MOVE_CAN_SELECT_BIT : 0;
+#else
     sBattleBuffersTransferData[3] = 0;
+#endif
     for (i = 0; i < sizeof(*movePPData); i++)
         sBattleBuffersTransferData[4 + i] = *((u8 *)(movePPData) + i);
     PrepareBufferDataTransfer(bufferId, sBattleBuffersTransferData, sizeof(*movePPData) + 4);

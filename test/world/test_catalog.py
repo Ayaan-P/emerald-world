@@ -131,7 +131,11 @@ static const struct MapHeader *Overworld_GetMapHeaderByGroupAndId(unsigned g, un
  (void)g; (void)n; return &h;
 }
 #include "platform/world_catalog.h"
+#define PORTABLE
+#include "platform/world_rally.h"
 '''
+        import re
+        source += re.search(r'^#define WB_TRAVEL_PEERS .*$', bridge, re.M).group() + '\n'
         source += declarations
         source += ''.join(function(bridge, n) for n in ('Identifier', 'Decimal', 'ObjectText', 'MapCoords', 'Line'))
         source += '''static void ApplyTiles(void) {
@@ -281,15 +285,17 @@ static const struct MapHeader *Overworld_GetMapHeaderByGroupAndId(unsigned g, un
         from test_save_isolation import function
         bridge = (ROOT / 'src/platform/world_bridge.c').read_text()
         source = '''#include <assert.h>
+ #include <string.h>
  typedef unsigned char bool8;
  #define FALSE 0
+ #define TRUE 1
  #define MAP_OFFSET 7
  struct Peer {unsigned group,num,x,y,facing,gfx;};
  struct ObjectEvent {struct {int x,y;} currentCoords; unsigned facingDirection,graphicsId;};
  static struct ObjectEvent gObjectEvents[1] = {{{13,12},1,7}};
  static struct {unsigned objectEventId;} gPlayerAvatar;
  static struct {int active;} gPaletteFade;
- static struct {struct Peer field; bool8 fieldKnown;} sWorld;
+ static struct {struct Peer field; bool8 fieldKnown,menuAnchor;} sWorld;
  static struct Save {struct {int mapGroup,mapNum;} location;} save={{1,4}}, *gSaveBlock1Ptr=&save;
  static void CB1_Overworld(void) {}
  static struct {int inBattle; void (*callback1)(void);} gMain={0,CB1_Overworld};
@@ -299,6 +305,10 @@ static const struct MapHeader *Overworld_GetMapHeaderByGroupAndId(unsigned g, un
  static void Task_ShowStartMenu(unsigned char taskId) {(void)taskId;}
  static bool8 FuncIsActiveTask(void (*func)(unsigned char)) {(void)func;return menu;}
  static bool8 MapCoords(unsigned g,unsigned n,unsigned x,unsigned y) {return g==1 && n==4 && x<14 && y<14;}
+ static bool8 WorldActivity_OwnsFieldInput(void) {return 0;}
+ static const char *WorldActivity_Phase(void) {return "idle";}
+ static bool8 WorldActivity_IsEncounterPending(void) {return 0;}
+ static bool8 PresenceReady(void) {return overworld && !gMain.inBattle && !gPaletteFade.active && !script && !menu;}
 '''
         source += function(bridge, 'UpdateFieldPresence')
         source += '''int main(void) {
@@ -377,6 +387,7 @@ struct Peer { unsigned group,num,x,y,facing,gfx; };
 static struct {int connected; unsigned seq; size_t outputSize; char output[4096]; struct Peer field; bool8 fieldKnown;} sWorld;
 static bool8 Overworld(void) {return 1;}
 static bool8 PresenceReady(void) {return 0;}
+static bool8 WorldActivity_IsEncounterPending(void) {return 0;}
 static void Flush(void) {}
 static void Fingerprint(const void *p,size_t n,char out[17]) {(void)p;(void)n;strcpy(out,"0000000000000000");}
 '''

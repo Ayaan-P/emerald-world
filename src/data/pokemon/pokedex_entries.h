@@ -4643,4 +4643,7 @@ const struct PokedexEntry gPokedexEntries[] =
         .trainerScale = 290,
         .trainerOffset = 2,
     },
+#ifdef PORTABLE
+#include "expanded/dex_entries.inc"
+#endif
 };

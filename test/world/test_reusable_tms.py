@@ -11,7 +11,7 @@ PRELUDE=r'''
 typedef uint8_t u8; typedef uint16_t u16; typedef int16_t s16;
 #define ITEM_TM01 289
 #define ITEM_HM01 339
-#define FLAG_REUSABLE_TMS 123
+#define WORLD_RULE_REUSABLE_TMS 2
 #define FRIENDSHIP_EVENT_LEARN_TMHM 1
 #define TRUE 1
 struct Pokemon {int unused;}; struct Pokemon gPlayerParty[6];
@@ -20,7 +20,7 @@ struct Task {void (*func)(u8);};struct Task gTasks[1];
 u16 gSpecialVar_ItemId;int enabled,removed,friendship;
 char gStringVar1[32],gStringVar2[32],gStringVar4[32];
 const char *gMoveNames[2]={"zero","one"};const char *gText_PkmnLearnedMove3="learned";
-static int FlagGet(int x) {(void)x;return enabled;}
+static int WorldRules_Enabled(int x) {assert(x==WORLD_RULE_REUSABLE_TMS);return enabled;}
 static void AdjustFriendship(struct Pokemon *p,int e) {(void)p;(void)e;friendship++;}
 static void RemoveBagItem(u16 item,int count) {(void)item;removed+=count;}
 static void GetMonNickname(struct Pokemon *p,char *d) {(void)p;(void)d;}
@@ -49,14 +49,14 @@ int main(void) {
 }'''
         with tempfile.TemporaryDirectory() as d:
             c=Path(d)/'t.c';exe=Path(d)/'t';c.write_text(PRELUDE+prefix+body+'\n}\n'+main)
-            result=subprocess.run(['cc','-std=c99','-Wall','-Wextra','-Werror',str(c),'-o',str(exe)],capture_output=True,text=True)
+            result=subprocess.run(['cc','-std=c99','-DPORTABLE','-Wall','-Wextra','-Werror',str(c),'-o',str(exe)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
             result=subprocess.run([str(exe)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
-    def test_world_menu_has_independent_persistent_toggle(self):
+    def test_world_menu_is_read_only(self):
         menu=(ROOT/'src/platform/world_menu.c').read_text()
-        self.assertIn('FlagSet(FLAG_REUSABLE_TMS)',menu)
-        self.assertIn('FlagClear(FLAG_REUSABLE_TMS)',menu)
+        self.assertNotIn('FlagSet(FLAG_REUSABLE_TMS)',menu)
+        self.assertNotIn('FlagClear(FLAG_REUSABLE_TMS)',menu)
         self.assertIn('Reusable TMs: ON',menu)
         self.assertIn('Reusable TMs: OFF',menu)
 

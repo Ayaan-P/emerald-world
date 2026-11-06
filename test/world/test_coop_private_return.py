@@ -60,6 +60,7 @@ static int WorldCoop_PreparePrivateRewards(void) {
     prepared++; gBattleTypeFlags = 0; gBattleControllerExecFlags = 0; return 1;
 }
 static void ResetTasks(void) {}
+static void MegaGame_Reset(void) {}
 static void BattleRebuildPrivateRewardHealthbox(void) {}
 static void CoopPrivateRewards(void) {}
 static void BeginNormalPaletteFade(unsigned a, int b, int c, int d, int e) {

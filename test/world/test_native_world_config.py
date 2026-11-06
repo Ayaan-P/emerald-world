@@ -23,6 +23,7 @@ class NativeWorldConfigTests(unittest.TestCase):
         cls.binary = directory / 'config'
         harness.write_text(r'''
 #include "src/platform/world_bridge.c"
+void WorldRally_Init(const char *configPath) { (void)configPath; }
 int main(int argc, char **argv)
 {
     if (argc > 2) return 3;

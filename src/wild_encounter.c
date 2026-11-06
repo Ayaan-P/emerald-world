@@ -1,6 +1,7 @@
 #include "global.h"
 #ifdef PORTABLE
 #include "platform/dexnav_native.h"
+#include "platform/expanded_species.h"
 #include "dexnav.h"
 #endif
 #include "battle_setup.h"
@@ -387,7 +388,11 @@ static u8 PickWildMonNature(void)
     return Random() % NUM_NATURES;
 }
 
+#ifdef PORTABLE
+static void CreateWildMonExact(u16 species, u8 level)
+#else
 static void CreateWildMon(u16 species, u8 level)
+#endif
 {
     bool32 checkCuteCharm;
 
@@ -426,6 +431,19 @@ static void CreateWildMon(u16 species, u8 level)
 }
 
 #ifdef PORTABLE
+static void CreateWildMon(u16 species, u8 level)
+{
+    u16 extraVariant = ExpandedSpecies_ResolveEncounter(species,
+        gSaveBlock1Ptr->location.mapGroup, gSaveBlock1Ptr->location.mapNum);
+    /* MORE adds an equal-chance variant, never removes a native acquisition.
+     * Expanded worlds consume one NEW RNG draw for mapped slots only. Old
+     * fixed-snapshot proofs remain historical, not same-RNG expanded proofs.
+     * Disabled rules and unmapped slots keep the original RNG stream. */
+    if (extraVariant != species && (Random() & 1))
+        species = extraVariant;
+    CreateWildMonExact(species, level);
+}
+
 void WildEncounter_CreateDexNavMon(u16 species, u8 level)
 {
     u32 roll;
@@ -434,7 +452,7 @@ void WildEncounter_CreateDexNavMon(u16 species, u8 level)
      * creation and shiny predicates retain the stock Pokemon representation. */
     for (roll = 0; roll <= extraRolls; ++roll)
     {
-        CreateWildMon(species, level);
+        CreateWildMonExact(species, level);
         if (IsMonShiny(&gEnemyParty[0]))
             break;
     }

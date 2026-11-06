@@ -1,0 +1,175 @@
+--- before/include/constants/battle.h
++++ after/include/constants/battle.h
+@@ -306,7 +306,8 @@
+ #define MOVE_EFFECT_SP_ATK_TWO_DOWN     59
+ #ifdef PORTABLE
+ #define MOVE_EFFECT_DEF_SPDEF_DOWN      60
+-#define NUM_MOVE_EFFECTS                61
++#define MOVE_EFFECT_SELF_SPEED_DOWN     61
++#define NUM_MOVE_EFFECTS                62
+ #else
+ #define NUM_MOVE_EFFECTS                60
+ #endif
+--- before/include/battle_scripts.h
++++ after/include/battle_scripts.h
+@@ -2,6 +2,7 @@
+ #define GUARD_BATTLE_SCRIPTS_H
+ #ifdef PORTABLE
+ extern const u8 BattleScript_DefSpDefDown[];
++extern const u8 BattleScript_SelfSpeedDown[];
+ extern const u8 BattleScript_EffectDefSpDefDownHit[];
+ extern const u8 BattleScript_EffectSelfSpeedDownHit[];
+ extern const u8 BattleScript_CoopSharedCatch[];
+--- before/src/battle_script_commands.c
++++ after/src/battle_script_commands.c
+@@ -2876,6 +2876,10 @@
+                 BattleScriptPush(gBattlescriptCurrInstr + 1);
+                 gBattlescriptCurrInstr = BattleScript_DefSpDefDown;
+                 break;
++            case MOVE_EFFECT_SELF_SPEED_DOWN:
++                BattleScriptPush(gBattlescriptCurrInstr + 1);
++                gBattlescriptCurrInstr = BattleScript_SelfSpeedDown;
++                break;
+ #endif
+             case MOVE_EFFECT_ATK_DEF_DOWN: // SuperPower
+                 BattleScriptPush(gBattlescriptCurrInstr + 1);
+--- before/data/battle_scripts_1.s
++++ after/data/battle_scripts_1.s
+@@ -2395,7 +2395,7 @@
+ 	goto BattleScript_EffectHit
+ 
+ BattleScript_EffectSelfSpeedDownHit::
+-	setmoveeffect MOVE_EFFECT_SPD_MINUS_1 | MOVE_EFFECT_AFFECTS_USER | MOVE_EFFECT_CERTAIN
++	setmoveeffect MOVE_EFFECT_SELF_SPEED_DOWN | MOVE_EFFECT_AFFECTS_USER | MOVE_EFFECT_CERTAIN
+ 	goto BattleScript_EffectHit
+ .endif
+ 
+@@ -3636,6 +3636,18 @@
+ 	goto BattleScript_MoveEnd
+ 
+ .ifdef PORTABLE
++BattleScript_SelfSpeedDown::
++	setbyte sSTAT_ANIM_PLAYED, FALSE
++	playstatchangeanimation BS_ATTACKER, BIT_SPEED, STAT_CHANGE_CANT_PREVENT | STAT_CHANGE_NEGATIVE
++	setstatchanger STAT_SPEED, 1, TRUE
++	@ The generic secondary stat dispatch drops CERTAIN before ChangeStatBuffs.
++	statbuffchange MOVE_EFFECT_AFFECTS_USER | MOVE_EFFECT_CERTAIN | STAT_CHANGE_ALLOW_PTR, BattleScript_SelfSpeedDown_End
++	jumpifbyte CMP_EQUAL, cMULTISTRING_CHOOSER, B_MSG_STAT_WONT_DECREASE, BattleScript_SelfSpeedDown_End
++	printfromtable gStatDownStringIds
++	waitmessage B_WAIT_TIME_LONG
++BattleScript_SelfSpeedDown_End::
++	return
++
+ BattleScript_DefSpDefDown::
+ 	setbyte sSTAT_ANIM_PLAYED, FALSE
+ 	playstatchangeanimation BS_ATTACKER, BIT_DEF | BIT_SPDEF, STAT_CHANGE_CANT_PREVENT | STAT_CHANGE_NEGATIVE | STAT_CHANGE_MULTIPLE_STATS
+--- before/test/world/test_rc4_self_drop_effects.py
++++ after/test/world/test_rc4_self_drop_effects.py
+@@ -32,6 +32,8 @@
+         result = subprocess.run(['cc', '-std=gnu11', '-DPORTABLE', '-iquote', str(ROOT / 'include'), '-x', 'c', '-fsyntax-only', '-'], input='''#include "constants/battle.h"
+ _Static_assert(MOVE_EFFECT_DEF_SPDEF_DOWN < NUM_MOVE_EFFECTS, "paired effect indexes native status table");
+ _Static_assert(MOVE_EFFECT_DEF_SPDEF_DOWN < MOVE_EFFECT_AFFECTS_USER, "effect overlaps flags");
++_Static_assert(MOVE_EFFECT_SELF_SPEED_DOWN < NUM_MOVE_EFFECTS, "speed effect indexes native status table");
++_Static_assert(MOVE_EFFECT_SELF_SPEED_DOWN < MOVE_EFFECT_AFFECTS_USER, "speed effect overlaps flags");
+ ''', capture_output=True, text=True)
+         self.assertEqual(result.returncode, 0, result.stderr)
+ 
+@@ -43,7 +45,7 @@
+                 tmp = Path(tmp)
+                 cpp = subprocess.run(['cc', '-E', '-P', '-x', 'c', '-iquote', str(ROOT / 'include')] + (['-DPORTABLE=PORTABLE'] if portable else []) + ['-'], input='#include "constants/battle_move_effects.h"\n#include "constants/battle.h"\nNUM_BATTLE_MOVE_EFFECTS NUM_MOVE_EFFECTS\n', capture_output=True, text=True)
+                 self.assertEqual(cpp.returncode, 0, cpp.stderr)
+-                self.assertEqual(cpp.stdout.strip().splitlines()[-1].split(), [str(count), '61' if portable else '60'])
++                self.assertEqual(cpp.stdout.strip().splitlines()[-1].split(), [str(count), '62' if portable else '60'])
+                 asm = '.include "asm/macros/bit_width.inc"\n.set VER_64BIT, 1\n'
+                 if portable:
+                     asm += '.set PORTABLE, 1\n'
+@@ -83,9 +85,12 @@
+         scripts = (ROOT / 'data/battle_scripts_1.s').read_text()
+         self.assertTrue('BattleScript_EffectSelfSpeedDownHit::' in scripts,
+                         'missing native self SPEED hit entry')
+-        self.run_native(scripts, speed=True)
+-
+-    def run_native(self, scripts, speed=False):
++        for protection in range(6):
++            with self.subTest(protection=('none', 'mist', 'clear_body', 'both',
++                                          'white_smoke', 'mist_white_smoke')[protection]):
++                self.run_native(scripts, speed=True, protection=protection)
++
++    def run_native(self, scripts, speed=False, protection=3):
+         source = (ROOT / 'src/battle_script_commands.c').read_text()
+         # Production entry guards plus production pair dispatch, not a fake stat setter.
+         entry = source[source.index('void SetMoveEffect(bool8 primary, u8 certain)'):
+@@ -94,6 +99,10 @@
+         self.assertIsNotNone(case, 'missing paired effect dispatch')
+         assert case is not None
+         cases = case[0]
++        speed_case = re.search(r'            case MOVE_EFFECT_SELF_SPEED_DOWN:.*?break;', source, re.S)
++        self.assertIsNotNone(speed_case, 'missing self Speed dispatch')
++        assert speed_case is not None
++        cases += speed_case[0]
+         cases += re.search(r'            case MOVE_EFFECT_ATK_DEF_DOWN:.*?break;', source, re.S)[0]
+         cases += source[source.index('            case MOVE_EFFECT_ATK_MINUS_1:'):source.index('            case MOVE_EFFECT_ATK_PLUS_2:')]
+         status_table = re.search(r'static const u32 sStatusFlagsForMoveEffects\[NUM_MOVE_EFFECTS\] =\n\{.*?\n\};', source, re.S)[0]
+@@ -130,13 +139,14 @@
+ '''
+         asm += block(scripts, 'BattleScript_EffectDefSpDefDownHit', 'BattleScript_EffectMagicCoat')
+         asm += block(scripts, 'BattleScript_DefSpDefDown', 'BattleScript_AtkDefDown')
++        asm += block(scripts, 'BattleScript_SelfSpeedDown', 'BattleScript_DefSpDefDown')
+         asm += block(scripts, 'BattleScript_AtkDefDown', 'BattleScript_KnockedOff')
+         asm += block(scripts, 'BattleScript_StatDown', 'BattleScript_EffectHaze')
+         asm += 'BattleScript_EffectHit::\n seteffectwithchance\n end\n'
+         with tempfile.TemporaryDirectory(prefix='rc4-self-drop-') as tmp:
+             tmp = Path(tmp)
+             (tmp / 'seam.raw.s').write_text(asm)
+-            main = MAIN.replace('TEST_SPEED', '1' if speed else '0')
++            main = MAIN.replace('TEST_SPEED', '1' if speed else '0').replace('TEST_PROTECTION', str(protection))
+             (tmp / 'seam.c').write_text(PRELUDE + support + stat_defines + function(source, 'ChangeStatBuffs') + '\n' + macros + dispatch + '\n' + commands[commands.index('static void Cmd_statbuffchange'): ] + main)
+             processed = subprocess.run([str(ROOT / 'tools/preproc/preproc'), str(tmp / 'seam.raw.s'), 'charmap.txt'], cwd=ROOT, capture_output=True, text=True)
+             self.assertEqual(processed.returncode, 0, processed.stderr)
+@@ -185,6 +195,7 @@
+ u32 gHitMarker,gSideStatuses[2]; unsigned gCurrentMove;
+ const u8 *gBattlescriptCurrInstr,*stack[16]; int depth;
+ extern const u8 BattleScript_EffectDefSpDefDownHit[],BattleScript_DefSpDefDown[],BattleScript_AtkDefDown[],BattleScript_StatDown[],BattleScript_EffectSelfSpeedDownHit[],BattleScript_EffectSuperpower[];
++extern const u8 BattleScript_SelfSpeedDown[];
+ const u8 BattleScript_MistProtected[1]={0},BattleScript_ButItFailed[1]={0},BattleScript_AbilityNoStatLoss[1]={0},BattleScript_AbilityNoSpecificStatLoss[1]={0};
+ const unsigned short gStatDownStringIds[4]={0};
+ static void BattleScriptPush(const u8 *p) { assert(depth<16); stack[depth++]=p; }
+@@ -227,8 +238,8 @@
+   memset(gBattleCommunication,0,sizeof(gBattleCommunication));
+   for(int b=0;b<2;b++) for(int s=0;s<8;s++) gBattleMons[b].statStages[s]=6;
+   gBattlerAttacker=0;gBattlerTarget=1;gBattleMons[0].hp=100;gBattleMons[1].hp=faint?0:100;
+-  gBattleMons[0].ability=TEST_SPEED&&!vanilla?ABILITY_NONE:ABILITY_CLEAR_BODY;gBattleMons[1].ability=ABILITY_CLEAR_BODY;
+-  gSideTimers[0].mistTimer=TEST_SPEED&&!vanilla?0:5;gSideTimers[1].mistTimer=5;
++  gBattleMons[0].ability=TEST_PROTECTION>=4?ABILITY_WHITE_SMOKE:TEST_PROTECTION>=2?ABILITY_CLEAR_BODY:ABILITY_NONE;gBattleMons[1].ability=ABILITY_CLEAR_BODY;
++  gSideTimers[0].mistTimer=(TEST_PROTECTION&1)?5:0;gSideTimers[1].mistTimer=5;
+   gBattleMons[0].status2=gBattleMons[1].status2=substitute?STATUS2_SUBSTITUTE:0;
+   gBattleMons[0].statStages[first]=(floor&1)?0:6;
+   if(second!=first) gBattleMons[0].statStages[second]=(floor&2)?0:6;
+@@ -249,6 +260,27 @@
+   }
+  }
+  }
++ /* Legacy generic Speed secondaries must keep their original prevention,
++    even when Cmd_seteffectwithchance receives CERTAIN. */
++ for(int user=0;user<2;user++) for(int protection=0;protection<6;protection++) {
++  const u8 legacy[]={B_SCR_OP_SETEFFECTWITHCHANCE,B_SCR_OP_END};
++  memset(gBattleMons,0,sizeof(gBattleMons));
++  memset(gBattleCommunication,0,sizeof(gBattleCommunication));
++  memset(gSideTimers,0,sizeof(gSideTimers));
++  memset(gProtectStructs,0,sizeof(gProtectStructs));
++  for(int b=0;b<2;b++) {
++   gBattleMons[b].hp=100;
++   for(int s=0;s<8;s++) gBattleMons[b].statStages[s]=6;
++  }
++  int battler=user?0:1;
++  gBattleMons[battler].ability=protection>=4?ABILITY_WHITE_SMOKE:protection>=2?ABILITY_CLEAR_BODY:ABILITY_NONE;
++  gSideTimers[battler].mistTimer=(protection&1)?5:0;
++  gMoveResultFlags=0;depth=0;
++  gBattleCommunication[MOVE_EFFECT_BYTE]=MOVE_EFFECT_SPD_MINUS_1|MOVE_EFFECT_CERTAIN|(user?MOVE_EFFECT_AFFECTS_USER:0);
++  gBattlescriptCurrInstr=legacy;execute();
++  for(int b=0;b<2;b++) for(int s=0;s<8;s++)
++   assert(gBattleMons[b].statStages[s]==6-(!protection&&b==battler&&s==STAT_SPEED));
++ }
+  return 0;
+ }
+ '''

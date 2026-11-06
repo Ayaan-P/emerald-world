@@ -14,8 +14,10 @@
 #include "platform/native_file.h"
 #ifndef _WIN32
 #include "platform/native_save.h"
+#include "platform/world_unstuck.h"
 #endif
 #include "global.h"
+#include "platform/expanded_species.h"
 #include "platform.h"
 #include "rtc.h"
 #include "gba/defines.h"
@@ -28,6 +30,7 @@
 #include "platform/system.h"
 #include "platform/test_state.h"
 #include "platform/world_bridge.h"
+#include "platform/world_rules.h"
 #include "platform/world_chat.h"
 #include "platform/world_activity.h"
 #include "platform/player_control.h"
@@ -189,6 +192,11 @@ int main(int argc, char **argv)
         return 1;
     }
     DexNavNative_Init(sSavePath, !sTestMode);
+    ExpandedDex_Init(sSavePath, !sTestMode);
+#ifndef _WIN32
+    WorldUnstuck_SetSavePath(sSavePath);
+    WorldUnstuck_Reset();
+#endif
     // Before AgbMain, whose RtcInit reads it
     InitInternalClock();
 
@@ -315,6 +323,10 @@ int main(int argc, char **argv)
                 if (!RunMainLoop())
                 {
                     NativeLink_Reset();
+                    ExpandedDex_Reset();
+#ifndef _WIN32
+                    WorldUnstuck_Reset();
+#endif
                     // Soft reset: drop the old sound, and start the next frame with MainLoop
                     WorldActivity_Update();
                     WorldBridge_AfterFrame(sWorldFrame++);
@@ -729,7 +741,7 @@ static bool ParseArgs(int argc, char **argv)
             fprintf(stderr, "Missing player control option value.\n");
             return false;
         }
-        if (value == NULL && (!strcmp(arg, "--world-config") || !strcmp(arg, "--world-input") || !strcmp(arg, "--world-shot")))
+        if (value == NULL && (!strcmp(arg, "--world-config") || !strcmp(arg, "--world-input") || !strcmp(arg, "--world-shot") || !strcmp(arg, "--world-rules")))
         {
             fprintf(stderr, "Missing world option value.\n");
             return false;
@@ -750,6 +762,10 @@ static bool ParseArgs(int argc, char **argv)
             if (sPlayerControlPath != NULL)
                 return false;
             sPlayerControlPath = value;
+        }
+        else if (strcmp(arg, "--world-rules") == 0)
+        {
+            if (!WorldRules_Init(value)) return false;
         }
         else if (strcmp(arg, "--world-config") == 0)
         {
@@ -1038,7 +1054,13 @@ static int RunTestMode(void)
             NativeLink_AfterFrame();
         }
         else
+        {
             NativeLink_Reset();
+            ExpandedDex_Reset();
+#ifndef _WIN32
+            WorldUnstuck_Reset();
+#endif
+        }
 
         if (sTestHashes != NULL)
             fprintf(sTestHashes, "%u %016llx %016llx\n", sTestFrame,

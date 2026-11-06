@@ -168,6 +168,7 @@ class LauncherBridge:
                     'trainer': self.session.remote_trainer,
                     'world_key': self.session.state.name if self.session.state is not None else None,
                     'offline_world_key': offline_world_key,
+                    'world_rules_owner': self.session.server is not None,
                     'games': [name for name, (process, _paths) in self.session.games.items()
                               if process.poll() is None], 'status': self.session.status}
 
@@ -205,6 +206,9 @@ class LauncherBridge:
                         return result
                     elif action == 'host_refresh':
                         self.hosted.refresh()
+                    elif action in ('host_rules_get', 'host_rules_set'):
+                        rules = self.hosted.rules(payload.get('world'), payload.get('rules') if action == 'host_rules_set' else None)
+                        return {'world_rules': rules}
                     elif action == 'host_create':
                         self.remote_paths = self.hosted.create(payload.get('name'), payload.get('trainer'))
                     elif action == 'host_ack':
@@ -239,6 +243,12 @@ class LauncherBridge:
                     raise SessionError(message) from None
                 except (OSError, ValueError):
                     raise SessionError('Could not complete the hosted-world request. Check your access file and connection, then retry.') from None
+            elif action == 'world_rules_get':
+                from .rules import read
+                return {'world_rules': read(self.session.state) if self.session.state else None,
+                        'editable': self.session.server is not None}
+            elif action == 'world_rules_set':
+                return {'world_rules': self.session.set_world_rules(payload.get('rules'))}
             elif action == 'join':
                 raw = payload.get('invitation')
                 if not isinstance(raw, str) or len(raw.encode('utf-8')) > 4096:

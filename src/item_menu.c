@@ -1,4 +1,5 @@
 #include "global.h"
+#include "move.h"
 #ifdef PORTABLE
 #include "platform/world_coop.h"
 #endif
@@ -901,7 +902,7 @@ static void GetItemNameFromPocket(u8 *dest, u16 itemId)
     switch (gBagPosition.pocket)
     {
     case TMHM_POCKET:
-        StringCopy(gStringVar2, gMoveNames[ItemIdToBattleMoveId(itemId)]);
+        StringCopy(gStringVar2, gMovesInfo[ItemIdToBattleMoveId(itemId)].name);
         if (itemId >= ITEM_HM01)
         {
             // Get HM number

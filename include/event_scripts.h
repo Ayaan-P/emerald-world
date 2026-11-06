@@ -612,4 +612,13 @@ extern const u8 EventScript_TradeCenter_Chair0[];
 extern const u8 EventScript_ConfirmLeaveCableClubRoom[];
 extern const u8 EventScript_TerminateLink[];
 
+extern const u8 BattleFrontier_Lounge5_Text_NatureGirlAttackHighAttackLow[];
+extern const u8 BattleFrontier_Lounge5_Text_NatureGirlAttackHighDefenseLow[];
+extern const u8 BattleFrontier_Lounge5_Text_NatureGirlAttackHighSupportLow[];
+extern const u8 BattleFrontier_Lounge5_Text_NatureGirlDefenseHighAttackLow[];
+extern const u8 BattleFrontier_Lounge5_Text_NatureGirlDefenseHighDefenseLow[];
+extern const u8 BattleFrontier_Lounge5_Text_NatureGirlDefenseHighSupportLow[];
+extern const u8 BattleFrontier_Lounge5_Text_NatureGirlSupportHighAttackLow[];
+extern const u8 BattleFrontier_Lounge5_Text_NatureGirlSupportHighDefenseLow[];
+extern const u8 BattleFrontier_Lounge5_Text_NatureGirlSupportHighSupportLow[];
 #endif // GUARD_EVENT_SCRIPTS_H

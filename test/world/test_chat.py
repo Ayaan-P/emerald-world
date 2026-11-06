@@ -189,6 +189,8 @@ int main(int argc,char **argv) {
 static int MapCoords(unsigned g,unsigned n,unsigned x,unsigned y) {return g<35 && n<100 && x<200 && y<200;}
 static int WorldCatalog_Metatile(unsigned g,unsigned n,unsigned t) {(void)g;(void)n;return t<1024;}
 '''+declarations
+        source += '#include "' + str(root/'src/platform/world_rules.c') + '"\n'
+        source += '#include "' + str(root/'src/platform/content_compat.c') + '"\n'
         source += 'static void Flush(void) {sWorld.outputSize=0;}\n'
         for name in ('Identifier', 'Decimal', 'ObjectText', 'Line', 'QueueHello', 'WorldBridge_ChatSend',
                      'WorldBridge_ChatCount', 'WorldBridge_ChatStatus', 'WorldBridge_ChatLine'):
@@ -198,14 +200,14 @@ static int line(const char *s) {char b[1024];strcpy(b,s);return Line(b);}
 int main(void) {
  sWorld.rallyLegacy=sWorld.travelLegacy=1; /* Newer roles unavailable: exercise the chat-only authority fallback. */
  strcpy(sWorld.trainer,"alice");strcpy(sWorld.token,"secret");
- QueueHello(0); assert(strstr(sWorld.output," SOCIALCHAT\n") && sWorld.chatProbe);
+ QueueHello(0); assert(strstr(sWorld.output," SOCIALCHAT DATA ") && sWorld.chatProbe);
  assert(!line("ERROR AUTH") && sWorld.chatLegacy);
- QueueHello(0); assert(strstr(sWorld.output," SOCIAL\n") && !sWorld.chatProbe);
+ QueueHello(0); assert(strstr(sWorld.output," SOCIAL DATA ") && !sWorld.chatProbe);
  assert(line("WELCOME 1 alice 0")); assert(!sWorld.chatAvailable);
  assert(!strcmp(WorldBridge_ChatStatus(),"unsupported"));
  assert(!WorldBridge_ChatSend("*","must not send"));
  sWorld.connected=0; sWorld.chatLegacy=0; QueueHello(1);
- assert(strstr(sWorld.output," SOCIAL\n") && !sWorld.chatProbe);
+ assert(strstr(sWorld.output," SOCIAL DATA ") && !sWorld.chatProbe);
  QueueHello(0); assert(line("WELCOME 1 alice 0") && sWorld.chatAvailable);
  sWorld.outputSize=0;
 

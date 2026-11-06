@@ -5252,6 +5252,10 @@ SINGLE_ANIMATION(UnownZ);
 SINGLE_ANIMATION(UnownEMark);
 SINGLE_ANIMATION(UnownQMark);
 
+#ifdef PORTABLE
+#include "../pokemon/expanded/animations.inc"
+#endif
+
 const union AnimCmd *const *const gMonFrontAnimsPtrTable[] =
 {
     [SPECIES_NONE]        = sAnims_None,
@@ -5695,4 +5699,7 @@ const union AnimCmd *const *const gMonFrontAnimsPtrTable[] =
     [SPECIES_UNOWN_EMARK] = sAnims_UnownEMark,
     [SPECIES_UNOWN_QMARK] = sAnims_UnownQMark,
 
+#ifdef PORTABLE
+#include "../pokemon/expanded/animation_pointers.inc"
+#endif
 };

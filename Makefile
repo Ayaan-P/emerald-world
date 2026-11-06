@@ -367,6 +367,8 @@ WAV2AGB   := $(TOOLS_DIR)/wav2agb/wav2agb$(EXE)
 MID       := $(TOOLS_DIR)/mid2agb/mid2agb$(EXE)
 SCANINC   := $(TOOLS_DIR)/scaninc/scaninc$(EXE)
 PREPROC   := $(TOOLS_DIR)/preproc/preproc$(EXE)
+SMOL      := $(TOOLS_DIR)/compresSmol/compresSmol$(EXE)
+SMOLTM    := $(TOOLS_DIR)/compresSmol/compresSmolTilemap$(EXE)
 RAMSCRGEN := $(TOOLS_DIR)/ramscrgen/ramscrgen$(EXE)
 FIX       := $(TOOLS_DIR)/gbafix/gbafix$(EXE)
 MAPJSON   := $(TOOLS_DIR)/mapjson/mapjson$(EXE)
@@ -421,6 +423,10 @@ endif
 # Collect sources
 C_SRCS_IN := $(wildcard $(C_SUBDIR)/*.c $(C_SUBDIR)/*/*.c $(C_SUBDIR)/*/*/*.c)
 C_SRCS := $(foreach src,$(C_SRCS_IN),$(if $(findstring .inc.c,$(src)),,$(src)))
+ifeq ($(PORTABLE),1)
+# Superseded AI interpreters are replaced by expansion's coherent AI modules.
+C_SRCS := $(filter-out src/battle_ai_script_commands.c src/battle_ai_switch_items.c,$(C_SRCS))
+endif
 C_OBJS := $(patsubst $(C_SUBDIR)/%.c,$(C_BUILDDIR)/%.o,$(C_SRCS))
 
 C_ASM_SRCS := $(wildcard $(C_SUBDIR)/*.s $(C_SUBDIR)/*/*.s $(C_SUBDIR)/*/*/*.s)
@@ -450,9 +456,14 @@ OBJS_REL := $(patsubst $(OBJ_DIR)/%,%,$(OBJS))
 SUBDIRS  := $(sort $(dir $(OBJS)))
 $(shell mkdir -p $(SUBDIRS))
 
+# Native assembly shares C constants, while GNU as must still see the literal
+# PORTABLE symbol in .ifdef directives. A self-referential CPP definition does
+# both; -DPORTABLE=1 would incorrectly rewrite those directives to .ifdef 1.
+ASM_CPPFLAGS := $(if $(filter 1,$(PORTABLE)),-DPORTABLE=PORTABLE)
+
 # Make only compares timestamps, so rebuild everything when the flags change
 ifeq ($(SETUP_PREREQS),1)
-  BUILD_FLAGS := $(strip $(MODERNCC) $(CC1) $(CPP) $(CPPFLAGS) $(CFLAGS) $(AS) $(ASFLAGS) $(PLATFORM_LFLAGS) $(OS_LFLAGS))
+  BUILD_FLAGS := $(strip $(MODERNCC) $(CC1) $(CPP) $(CPPFLAGS) $(ASM_CPPFLAGS) $(CFLAGS) $(AS) $(ASFLAGS) $(PLATFORM_LFLAGS) $(OS_LFLAGS))
   BUILD_FLAGS_FILE := $(OBJ_DIR)/build_flags.txt
   ifneq ($(BUILD_FLAGS),$(strip $(shell cat $(BUILD_FLAGS_FILE) 2>/dev/null)))
     $(shell printf '%s\n' '$(BUILD_FLAGS)' > $(BUILD_FLAGS_FILE))
@@ -536,6 +547,9 @@ generated: $(AUTO_GEN_TARGETS)
 %.gbapal: %.png  ; $(GFX) $< $@
 %.lz:     %      ; $(GFX) $< $@
 %.rl:     %      ; $(GFX) $< $@
+%.smol:   %      ; $(SMOL) -w $< $@
+%.smolTM: %      ; $(SMOLTM) $< $@
+%.fastSmol: %    ; $(SMOL) -w $< $@ false false false
 
 clean-generated:
 	@rm -f $(AUTO_GEN_TARGETS)
@@ -556,6 +570,24 @@ else ifneq ($(PORTABLE),1)
 $(C_BUILDDIR)/librfu_intr.o: CFLAGS := -mthumb-interwork -O2 -mabi=apcs-gnu -mtune=arm7tdmi -march=armv4t -fno-toplevel-reorder -Wno-pointer-to-int-cast
 $(C_BUILDDIR)/berry_crush.o: override CFLAGS += -Wno-address-of-packed-member
 endif
+
+# BEGIN native content compatibility
+ifeq ($(PORTABLE),1)
+# Rehash source inputs on every native invocation, including removed/new files.
+# The generator preserves timestamps when bytes match. Only the tag getter is
+# dependent on this generated header, not every native compilation unit.
+.PHONY: native-content-compat
+native-content-compat:
+	@python3 tools/content_compat.py
+
+include/platform/content_compat_generated.h world/content_compat.json: native-content-compat
+	@test -f $@
+
+$(C_BUILDDIR)/platform/content_compat.o: include/platform/content_compat_generated.h
+# Bootstrap dependency scanning too, without forcing included .d remakes.
+$(C_BUILDDIR)/platform/content_compat.d: | include/platform/content_compat_generated.h
+endif
+# END native content compatibility
 
 # Dependency rules (for the *.c & *.s sources to .o files)
 # Have to be explicit or else missing files won't be reported.
@@ -580,10 +612,10 @@ endif
 $(C_BUILDDIR)/%.o: $(C_SUBDIR)/%.c
 ifeq ($(COMPILER),clang)
 	@echo "$(MODERNCC) <flags> -o $@ $<"
-	@$(CPP) $(CPPFLAGS) $(GAME_RAM_CPPFLAGS) $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(MODERNCC) $(CFLAGS) -x c -c -o $@ -
+	@$(CPP) $(CPPFLAGS) $(GAME_RAM_CPPFLAGS) $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(if $(filter 1,$(PORTABLE)),sed -f tools/expansion_native/c_filter.sed,cat) | $(MODERNCC) $(CFLAGS) -x c -c -o $@ -
 else ifneq ($(KEEP_TEMPS),1)
 	@echo "$(CC1) <flags> -o $@ $<"
-	@$(CPP) $(CPPFLAGS) $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(CC1) $(CFLAGS) -o - - | cat - <(echo -e ".text\n\t.align\t2, 0") | $(AS) $(ASFLAGS) -o $@ -
+	@$(CPP) $(CPPFLAGS) $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(if $(filter 1,$(PORTABLE)),sed -f tools/expansion_native/c_filter.sed,cat) | $(CC1) $(CFLAGS) -o - - | cat - <(echo -e ".text\n\t.align\t2, 0") | $(AS) $(ASFLAGS) -o $@ -
 	@$(GAME_RAM_SECTION)
 else
 	@$(CPP) $(CPPFLAGS) $< -o $(C_BUILDDIR)/$*.i
@@ -612,7 +644,7 @@ ifneq ($(NODEP),1)
 endif
 
 $(C_BUILDDIR)/%.o: $(C_SUBDIR)/%.s
-	$(PREPROC) $< charmap.txt | $(CPP) $(INCLUDE_SCANINC_ARGS) - | $(PREPROC) -ie $< charmap.txt | $(AS) $(ASFLAGS) -o $@
+	$(PREPROC) $< charmap.txt | $(CPP) $(ASM_CPPFLAGS) $(INCLUDE_SCANINC_ARGS) - | $(PREPROC) -ie $< charmap.txt | $(AS) $(ASFLAGS) -o $@
 
 $(C_BUILDDIR)/%.d: $(C_SUBDIR)/%.s
 	$(SCANINC) -M $@ -g $(ASSETS_DIR_NAME) $(INCLUDE_SCANINC_ARGS) -I "" $<
@@ -622,7 +654,7 @@ ifneq ($(NODEP),1)
 endif
 
 $(DATA_ASM_BUILDDIR)/%.o: $(DATA_ASM_SUBDIR)/%.s
-	$(PREPROC) $< charmap.txt | $(CPP) $(INCLUDE_SCANINC_ARGS) - | $(PREPROC) -ie $< charmap.txt | $(ASM_PSEUDO_OP_CONV) | $(AS) $(ASFLAGS) -o $@
+	$(PREPROC) $< charmap.txt | $(CPP) $(ASM_CPPFLAGS) $(INCLUDE_SCANINC_ARGS) - | $(PREPROC) -ie $< charmap.txt | $(ASM_PSEUDO_OP_CONV) | $(AS) $(ASFLAGS) -o $@
 	$(FIX_UNDERSCORE) $@
 
 $(DATA_ASM_BUILDDIR)/%.d: $(DATA_ASM_SUBDIR)/%.s

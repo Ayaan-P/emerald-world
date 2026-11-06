@@ -16,7 +16,7 @@ struct TMHMLearnset
 const union {
     struct TMHMLearnset learnset;
     u32 as_u32s[sizeof(struct TMHMLearnset) / sizeof(u32)];
-} gTMHMLearnsets[NUM_SPECIES] =
+} gTMHMLearnsets[SPECIES_TABLE_COUNT] =
 {
     [SPECIES_NONE] = {},
 
@@ -10180,4 +10180,7 @@ const union {
         .FLASH = TRUE,
     } },
 
+#ifdef PORTABLE
+#include "expanded/tmhm.inc"
+#endif
 };

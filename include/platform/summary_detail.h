@@ -17,7 +17,8 @@ static inline void SummaryDetail_CalculateHiddenPower(const u8 ivs[6], u8 *type,
         powerBits |= ((ivs[i] & 2) >> 1) << i;
     }
     *power = (40 * powerBits) / 63 + 30;
-    *type = ((NUMBER_OF_MON_TYPES - 3) * typeBits) / 63 + 1;
+    /* Hidden Power excludes Normal, Mystery and Fairy regardless of table size. */
+    *type = ((TYPE_DARK - 2) * typeBits) / 63 + 1;
     if (*type >= TYPE_MYSTERY)
         (*type)++;
 }

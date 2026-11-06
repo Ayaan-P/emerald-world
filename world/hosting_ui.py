@@ -161,6 +161,12 @@ class HostedLauncher:
             raise ValueError('invalid world metadata')
         return {key: item[key] for key in ('id', 'name', 'trainer')}
 
+    def rules(self, world_id, rules=None):
+        self._ready()
+        from .hosting_client import HostingClient
+        client = HostingClient.from_file(self.profile)
+        return client.world_rules(world_id) if rules is None else client.set_world_rules(world_id, rules)
+
     def refresh(self):
         self._ready()
         from .hosting_client import HostingClient

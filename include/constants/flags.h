@@ -1511,7 +1511,8 @@
 #define FLAG_UNUSED_0x8E7                           (SYSTEM_FLAGS + 0x87) // Unused Flag
 #define FLAG_UNUSED_0x8E8                           (SYSTEM_FLAGS + 0x88) // Unused Flag
 #define FLAG_UNUSED_0x8E9                           (SYSTEM_FLAGS + 0x89) // Unused Flag
-// Private, opt-in native gameplay setting. Remains clear for vanilla saves.
+// Reserved legacy RC4 save bits. Gameplay uses immutable WorldRules instead.
+// Imported values are ignored. Keep aliases so the raw save layout is unchanged.
 #define FLAG_PARTY_EXP_SHARE                         FLAG_UNUSED_0x8E9
 #define FLAG_UNUSED_0x8EA                           (SYSTEM_FLAGS + 0x8A) // Unused Flag
 #define FLAG_REUSABLE_TMS                           FLAG_UNUSED_0x8EA

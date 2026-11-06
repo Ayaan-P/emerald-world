@@ -1,0 +1,2505 @@
+diff --git a/data/battle_anim_scripts.s b/data/battle_anim_scripts.s
+index 7ee4033..6dcbfb9 100644
+--- a/data/battle_anim_scripts.s
++++ b/data/battle_anim_scripts.s
+@@ -371,6 +371,9 @@ gBattleAnims_Moves::
+ 	ptrvalue Move_WATER_PULSE
+ 	ptrvalue Move_DOOM_DESIRE
+ 	ptrvalue Move_PSYCHO_BOOST
++#ifdef PORTABLE
++#include "data/expanded_move_animations.inc"
++#endif
+ 	ptrvalue Move_COUNT /* cannot be reached, because last move is Psycho Boost*/
+ 
+ 	ptr_align
+diff --git a/data/maps/MossdeepCity_StevensHouse/scripts.inc b/data/maps/MossdeepCity_StevensHouse/scripts.inc
+index 466b2d2..5c5dcc8 100644
+--- a/data/maps/MossdeepCity_StevensHouse/scripts.inc
++++ b/data/maps/MossdeepCity_StevensHouse/scripts.inc
+@@ -128,9 +128,63 @@ MossdeepCity_StevensHouse_EventScript_ReceivedBeldum::
+ 	end
+ 
+ MossdeepCity_StevensHouse_EventScript_RockDisplay::
++	.ifdef PORTABLE
++	callnative MegaGame_CheckAcquisition
++	goto_if_eq VAR_RESULT, TRUE, MossdeepCity_StevensHouse_EventScript_MegaCollection
++	.endif
+ 	msgbox MossdeepCity_StevensHouse_Text_CollectionOfRareRocks, MSGBOX_SIGN
+ 	end
+ 
++	.ifdef PORTABLE
++MossdeepCity_StevensHouse_EventScript_MegaCollection:
++	lockall
++	checkitem ITEM_MEGA_RING
++	goto_if_eq VAR_RESULT, TRUE, MossdeepCity_StevensHouse_EventScript_MegaShop
++	msgbox MossdeepCity_StevensHouse_Text_MegaRing, MSGBOX_DEFAULT
++	giveitem ITEM_MEGA_RING
++	goto_if_eq VAR_RESULT, FALSE, MossdeepCity_StevensHouse_EventScript_MegaDone
++MossdeepCity_StevensHouse_EventScript_MegaShop:
++	msgbox MossdeepCity_StevensHouse_Text_MegaStones, MSGBOX_YESNO
++	goto_if_eq VAR_RESULT, NO, MossdeepCity_StevensHouse_EventScript_MegaDone
++	pokemart MossdeepCity_StevensHouse_MegaStones
++MossdeepCity_StevensHouse_EventScript_MegaDone:
++	releaseall
++	end
++
++MossdeepCity_StevensHouse_Text_MegaRing:
++	.string "A note from STEVEN reads,\n"
++	.string "Your MIND BADGE shows your bond.\p"
++	.string "Take this MEGA RING. Let a compatible\n"
++	.string "POKéMON hold its matching stone.\p"
++	.string "Press START while choosing a move\n"
++	.string "to Mega Evolve once per battle.$"
++
++MossdeepCity_StevensHouse_Text_MegaStones:
++	.string "Another note lists rare stones\n"
++	.string "for sale from STEVEN's collection.\p"
++	.string "Browse the stones?$"
++
++	.balign 2
++MossdeepCity_StevensHouse_MegaStones:
++	.2byte ITEM_VENUSAURITE
++	.2byte ITEM_CHARIZARDITE_Y
++	.2byte ITEM_ALAKAZITE
++	.2byte ITEM_SLOWBRONITE
++	.2byte ITEM_GENGARITE
++	.2byte ITEM_STARMINITE
++	.2byte ITEM_MEWTWONITE_Y
++	.2byte ITEM_TYRANITARITE
++	.2byte ITEM_SCEPTILITE
++	.2byte ITEM_BLAZIKENITE
++	.2byte ITEM_SWAMPERTITE
++	.2byte ITEM_MEDICHAMITE
++	.2byte ITEM_MANECTITE
++	.2byte ITEM_CHIMECHITE
++	.2byte ITEM_LATIASITE
++	.2byte ITEM_LATIOSITE
++	.2byte ITEM_NONE
++	.endif
++
+ MossdeepCity_StevensHouse_EventScript_Steven::
+ 	msgbox MossdeepCity_StevensHouse_Text_UnderwateCavernBetweenMossdeepSootopolis, MSGBOX_NPC
+ 	end
+diff --git a/graphics_file_rules.mk b/graphics_file_rules.mk
+index 0123417..9fbc3a2 100644
+--- a/graphics_file_rules.mk
++++ b/graphics_file_rules.mk
+@@ -130,6 +130,9 @@ $(BTLANMSPRGFXDIR)/spark.4bpp: $(BTLANMSPRGFXDIR)/spark_0.4bpp \
+                                $(BTLANMSPRGFXDIR)/spark_1.4bpp
+ 	@cat $^ >$@
+ 
++$(TYPESGFXDIR)/move_types_expanded.4bpp: $(types:%=$(TYPESGFXDIR)/%.4bpp) $(TYPESGFXDIR)/fairy.4bpp $(contest_types:%=$(TYPESGFXDIR)/contest_%.4bpp)
++	@cat $^ >$@
++
+ $(TYPESGFXDIR)/move_types.4bpp: $(types:%=$(TYPESGFXDIR)/%.4bpp) $(contest_types:%=$(TYPESGFXDIR)/contest_%.4bpp)
+ 	@cat $^ >$@
+ 
+diff --git a/include/battle_main.h b/include/battle_main.h
+index ea6e5be..7ab3fe2 100755
+--- a/include/battle_main.h
++++ b/include/battle_main.h
+@@ -23,9 +23,16 @@ struct MultiPartnerMenuPokemon
+ };
+ 
+ // defines for the u8 array gTypeEffectiveness
++#ifdef PORTABLE
++#include "platform/expanded_moves.h"
++#define TYPE_EFFECT_ATK_TYPE(i) (ExpandedMoves_TypeTable()[(i) + 0])
++#define TYPE_EFFECT_DEF_TYPE(i) (ExpandedMoves_TypeTable()[(i) + 1])
++#define TYPE_EFFECT_MULTIPLIER(i) (ExpandedMoves_TypeTable()[(i) + 2])
++#else
+ #define TYPE_EFFECT_ATK_TYPE(i) ((gTypeEffectiveness[i + 0]))
+ #define TYPE_EFFECT_DEF_TYPE(i) ((gTypeEffectiveness[i + 1]))
+ #define TYPE_EFFECT_MULTIPLIER(i) ((gTypeEffectiveness[i + 2]))
++#endif
+ 
+ // defines for the gTypeEffectiveness multipliers
+ #define TYPE_MUL_NO_EFFECT          0
+diff --git a/include/battle_move_split.h b/include/battle_move_split.h
+index d86b7d9..552b4ac 100644
+--- a/include/battle_move_split.h
++++ b/include/battle_move_split.h
+@@ -6,6 +6,7 @@
+ #include "constants/moves.h"
+ #ifdef PORTABLE
+ #include "platform/native_link.h"
++#include "platform/world_rules.h"
+ /* Move categories sourced from pokeemerald-expansion-native bb3fd057.
+  * The four Gen 3 spelling aliases map to their renamed donor equivalents. */
+ enum { MOVE_SPLIT_PHYSICAL, MOVE_SPLIT_SPECIAL, MOVE_SPLIT_STATUS };
+@@ -373,7 +374,7 @@ static inline bool8 BattleRules_UseModernSplit(void)
+ #ifdef PORTABLE
+     /* Native link OPEN negotiates this setting before either engine starts.
+      * Legacy wireless/cable link has no such negotiation and stays vanilla. */
+-    return FlagGet(FLAG_MODERN_MOVE_SPLIT)
++    return WorldRules_Enabled(WORLD_RULE_MODERN_SPLIT)
+         && !(gBattleTypeFlags & (BATTLE_TYPE_RECORDED | BATTLE_TYPE_RECORDED_LINK))
+         && (!(gBattleTypeFlags & BATTLE_TYPE_LINK) || NativeLink_IsActive());
+ #else
+diff --git a/include/constants/abilities.h b/include/constants/abilities.h
+index 4ad54c8..8f4a214 100755
+--- a/include/constants/abilities.h
++++ b/include/constants/abilities.h
+@@ -80,6 +80,14 @@
+ #define ABILITY_CACOPHONY 76
+ #define ABILITY_AIR_LOCK 77
+ 
++#ifdef PORTABLE
++/* Native append-only IDs. Expansion IDs are translated, never cast to u8. */
++#define ABILITY_TECHNICIAN 78
++#define ABILITY_ADAPTABILITY 79
++#define ABILITY_TOUGH_CLAWS 80
++#define ABILITIES_COUNT 81
++#else
+ #define ABILITIES_COUNT 78
++#endif
+ 
+ #endif  // GUARD_CONSTANTS_ABILITIES_H
+diff --git a/include/constants/flags.h b/include/constants/flags.h
+index e065898..ff7afa0 100644
+--- a/include/constants/flags.h
++++ b/include/constants/flags.h
+@@ -1511,7 +1511,8 @@
+ #define FLAG_UNUSED_0x8E7                           (SYSTEM_FLAGS + 0x87) // Unused Flag
+ #define FLAG_UNUSED_0x8E8                           (SYSTEM_FLAGS + 0x88) // Unused Flag
+ #define FLAG_UNUSED_0x8E9                           (SYSTEM_FLAGS + 0x89) // Unused Flag
+-// Private, opt-in native gameplay setting. Remains clear for vanilla saves.
++// Reserved legacy RC4 save bits. Gameplay uses immutable WorldRules instead.
++// Imported values are ignored. Keep aliases so the raw save layout is unchanged.
+ #define FLAG_PARTY_EXP_SHARE                         FLAG_UNUSED_0x8E9
+ #define FLAG_UNUSED_0x8EA                           (SYSTEM_FLAGS + 0x8A) // Unused Flag
+ #define FLAG_REUSABLE_TMS                           FLAG_UNUSED_0x8EA
+diff --git a/include/constants/moves.h b/include/constants/moves.h
+index 324bfb8..1fad2a6 100755
+--- a/include/constants/moves.h
++++ b/include/constants/moves.h
+@@ -357,7 +357,59 @@
+ #define MOVE_DOOM_DESIRE 353
+ #define MOVE_PSYCHO_BOOST 354
+ 
++#ifdef PORTABLE
++/* Native IDs 0..354 remain unchanged. Donor numeric IDs are never serialized. */
++#define MOVE_MOONBLAST 355
++#define MOVE_DAZZLING_GLEAM 356
++#define MOVE_FAIRY_WIND 357
++#define MOVE_PLAY_ROUGH 358
++#define MOVE_AURA_SPHERE 359
++#define MOVE_DARK_PULSE 360
++#define MOVE_AIR_SLASH 361
++#define MOVE_FLASH_CANNON 362
++#define MOVE_DRAGON_PULSE 363
++#define MOVE_NASTY_PLOT 364
++#define MOVE_AQUA_JET 365
++#define MOVE_BULLET_PUNCH 366
++#define MOVE_ICE_SHARD 367
++#define MOVE_SHADOW_SNEAK 368
++#define MOVE_ZEN_HEADBUTT 369
++#define MOVE_IRON_HEAD 370
++#define MOVE_X_SCISSOR 371
++#define MOVE_SEED_BOMB 372
++#define MOVE_ENERGY_BALL 373
++#define MOVE_EARTH_POWER 374
++#define MOVE_POWER_GEM 375
++#define MOVE_VACUUM_WAVE 376
++#define MOVE_PSYCHO_CUT 377
++#define MOVE_NIGHT_SLASH 378
++#define MOVE_LEAF_STORM 379
++#define MOVE_DRACO_METEOR 380
++#define MOVE_BRAVE_BIRD 381
++#define MOVE_WOOD_HAMMER 382
++#define MOVE_GIGA_IMPACT 383
++#define MOVE_SLUDGE_WAVE 384
++#define MOVE_ICICLE_CRASH 385
++#define MOVE_PETAL_BLIZZARD 386
++#define MOVE_SMART_STRIKE 387
++#define MOVE_SPIRIT_BREAK 388
++#define MOVE_FORCE_PALM 389
++#define MOVE_DRAGON_RUSH 390
++#define MOVE_ROCK_POLISH 391
++#define MOVE_DOUBLE_HIT 392
++#define MOVE_ROCK_WRECKER 393
++#define MOVE_POISON_JAB 394
++#define MOVE_CROSS_POISON 395
++#define MOVE_DRAIN_PUNCH 396
++#define MOVE_HORN_LEECH 397
++#define MOVE_VISE_GRIP MOVE_VICE_GRIP
++#define MOVE_HIGH_JUMP_KICK MOVE_HI_JUMP_KICK
++#define MOVE_FEINT_ATTACK MOVE_FAINT_ATTACK
++#define MOVE_SMELLING_SALTS MOVE_SMELLING_SALT
++#define MOVES_COUNT 398
++#else
+ #define MOVES_COUNT 355
++#endif
+ 
+ // Used for checks for moves affected by Disable, Mimic, etc.
+ #define MOVE_UNAVAILABLE 0xFFFF
+diff --git a/include/constants/pokedex.h b/include/constants/pokedex.h
+index c9c5162..df39e6d 100644
+--- a/include/constants/pokedex.h
++++ b/include/constants/pokedex.h
+@@ -845,4 +845,9 @@ enum {
+ 
+ #define HOENN_DEX_COUNT HOENN_DEX_DEOXYS
+ 
++/* Native lookup IDs do not enlarge the original saved national-Dex bitsets. */
++#ifdef PORTABLE
++#include "expanded_pokedex.h"
++#endif
++
+ #endif // GUARD_CONSTANTS_POKEDEX_H
+diff --git a/include/constants/pokemon.h b/include/constants/pokemon.h
+index 0d6a20e..9c20740 100755
+--- a/include/constants/pokemon.h
++++ b/include/constants/pokemon.h
+@@ -21,7 +21,12 @@
+ #define TYPE_ICE              15
+ #define TYPE_DRAGON           16
+ #define TYPE_DARK             17
++#ifdef PORTABLE
++#define TYPE_FAIRY            18
++#define NUMBER_OF_MON_TYPES   19
++#else
+ #define NUMBER_OF_MON_TYPES   18
++#endif
+ 
+ // Pokémon egg groups
+ #define EGG_GROUP_NONE                0
+diff --git a/include/constants/species.h b/include/constants/species.h
+index ec60c14..b167902 100755
+--- a/include/constants/species.h
++++ b/include/constants/species.h
+@@ -419,6 +419,13 @@
+ 
+ #define NUM_SPECIES SPECIES_EGG
+ 
++/* Runtime tables may grow without moving legacy IDs or saved Dex arrays. */
++#ifdef PORTABLE
++#include "expanded_species.h"
++#else
++#define SPECIES_TABLE_COUNT NUM_SPECIES
++#endif
++
+ #define SPECIES_UNOWN_B (NUM_SPECIES + 1)
+ #define SPECIES_UNOWN_C (SPECIES_UNOWN_B + 1)
+ #define SPECIES_UNOWN_D (SPECIES_UNOWN_B + 2)
+diff --git a/include/graphics.h b/include/graphics.h
+index 14f2f5e..6daddfc 100755
+--- a/include/graphics.h
++++ b/include/graphics.h
+@@ -5070,4 +5070,8 @@ extern const u32 gMailTilemap_Retro[];
+ extern const u8 gMonMarkingsMenu_Gfx[];
+ extern const u16 gMonMarkingsMenu_Pal[];
+ 
++#ifdef PORTABLE
++#include "expanded_species_graphics.h"
++#endif
++
+ #endif //GUARD_GRAPHICS_H
+diff --git a/include/platform/dexnav_native.h b/include/platform/dexnav_native.h
+index a30e916..ee7e478 100644
+--- a/include/platform/dexnav_native.h
++++ b/include/platform/dexnav_native.h
+@@ -52,6 +52,7 @@ bool8 DexNavNative_AcquireFieldResources(u16 species, bool8 owned, bool8 hidden)
+ void DexNavNative_ReleaseFieldResources(void);
+ u8 DexNavNative_ItemPalette(void);
+ bool8 DexNavNative_TextBadges(void);
++bool8 DexNavNative_TextOnlyHud(void);
+ bool8 DexNavNative_CanUseHudWindow(u8 width, u8 height);
+ u8 DexNavNative_CreateMonIcon(u16 species, s16 x, s16 y, u8 priority);
+ void DexNavNative_FreeIcons(void);
+diff --git a/include/platform/mega_game.h b/include/platform/mega_game.h
+index af5a725..20cde0a 100644
+--- a/include/platform/mega_game.h
++++ b/include/platform/mega_game.h
+@@ -1,20 +1,25 @@
+ #ifndef GUARD_PLATFORM_MEGA_GAME_H
+ #define GUARD_PLATFORM_MEGA_GAME_H
+ #ifdef PORTABLE
+-/* Locked until graphics, switching, abilities and private-save integration
+- * have been verified together. Component tests may explicitly enable it. */
++/* Bounded native implementation: only catalogued forms are eligible. Cable
++ * battles require native transport. Facilities and recordings stay closed. */
+ #ifndef MEGA_FEATURE_READY
+-#define MEGA_FEATURE_READY 0
++#define MEGA_FEATURE_READY 1
+ #endif
+ #define MEGA_MOVE_CHOICE_BIT 0x80
+ void MegaGame_Reset(void);
++void MegaGame_CheckAcquisition(void);
+ bool8 MegaGame_CanSelect(u8 battler);
+ bool8 MegaGame_CanQueue(u8 battler);
++bool8 MegaGame_ValidateMoveChoice(u8 battler, u8 choice, u8 target);
+ bool8 MegaGame_ToggleSelection(u8 battler);
+ u8 MegaGame_ChoiceBit(u8 battler);
+ void MegaGame_ClearSelection(u8 battler);
+ bool8 MegaGame_Queue(u8 battler);
+ void MegaGame_CancelQueue(u8 battler);
++void MegaGame_Restore(u8 battler);
++void MegaGame_RecalculateStats(u8 battler);
++void MegaGame_RefreshSprite(u8 battler);
+ bool8 MegaGame_Apply(u8 battler);
+ u8 MegaGame_ActiveForm(u8 battler);
+ #endif
+diff --git a/launcher-web/src/main.jsx b/launcher-web/src/main.jsx
+index d2e8aa1..86bb83e 100644
+--- a/launcher-web/src/main.jsx
++++ b/launcher-web/src/main.jsx
+@@ -6,6 +6,7 @@ import './style.css';
+ import SaveBackups from './SaveBackups';
+ import PlayerHome from './PlayerHome';
+ import GameMirror from './GameMirror';
++import WorldRules from './WorldRules';
+ 
+ const empty = { worlds: [], offline_saves: [], presence: null, hosting: { available: false, backup_available: false, enrolled: false, loaded: false, worlds: [], pending: null }, setup: [], connected: false, world_key: null, offline_world_key: null, trainer: null, games: [], status: 'Choose a world to begin.' };
+ 
+@@ -265,7 +266,7 @@ export function App() {
+       {page === 'worlds'  && <div className="interior"><button className="back" onClick={() => go('play')}><ArrowLeft size={16} /> Back to play</button><span className="eyebrow gold">YOUR ADVENTURES</span><h1>Worlds worth<br /><em>returning to.</em></h1><p className="lead">Your saved connections live here. Your private trainer progress stays on your device.</p><div className="world-toolbar"><h2>Saved worlds <span className="count">{state.worlds.length}</span></h2><button className="button small primary" onClick={() => { setError(''); setDialog('join'); }} disabled={!ready || busy}><Plus size={16} /> Join a world</button></div>{state.worlds.length > 0 && <label className="world-search"><span className="visually-hidden">Search saved worlds</span><input className="text-input" type="search" value={worldSearch} placeholder="Search worlds or trainers" onChange={event => setWorldSearch(event.target.value)} /></label>}{state.worlds.length ? (visibleWorlds.length ? <div className="world-grid">{visibleWorlds.map((world, i) => <WorldCard key={world.key} world={world} index={i} busy={busy} ready={ready} onContinue={() => requestPlay('rejoin', { world: world.key }, world.key)} onForget={() => setDialog({ type: 'forget', world })} onOffline={() => { setError(''); setDialog({ type: 'offline', world }); }} onRename={() => { setError(''); setWorldName(world.name); setDialog({ type: 'rename', world }); }} onFavorite={() => run('favorite', { world: world.key, favorite: !world.favorite })} />)}</div> : <p className="muted-copy">No worlds match that search.</p>) : <EmptyWorlds onJoin={() => setDialog('join')} ready={ready} />}</div>}
+       {page === 'screen' && <GameMirror gameRunning={state.games.length > 0} onBack={() => go('play')} />}
+       {page === 'backups' && <SaveBackups state={state} busy={busy} onBack={() => go('play')} />}
+-      {page === 'settings' && <div className="interior narrow"><button className="back" onClick={() => go('play')}><ArrowLeft size={16} /> Back to play</button><span className="eyebrow gold">THE DETAILS</span><h1>Settings</h1><p className="lead">A little more control, when you need it.</p><div className="settings-card"><div className="settings-icon"><ShieldCheck size={22} /></div><div><h3>Your adventure stays yours</h3><p>Trainer saves stay on this device. Invitations are private credentials, so only import one from a trusted host.</p></div></div><div className="settings-card"><div className="settings-icon"><Settings2 size={22} /></div><div><h3>Game setup</h3><p>Basic checks for the native Linux game. Follow INSTALL_PC.md for installation and troubleshooting.</p><ul className="setup-list">{state.setup.map(item => <li key={item.name}><span className={`dot ${item.ready ? 'online' : 'error-dot'}`} /><span><strong>{item.name}</strong> {item.ready ? 'available' : 'needed'}{!item.ready && <small>{item.help}</small>}</span></li>)}</ul><p>Passing these checks does not guarantee the game will launch.</p></div></div><button className="text-button danger" onClick={() => setDialog('quit')}><DoorOpen size={16} /> Quit launcher</button></div>}
++      {page === 'settings' && <div className="interior narrow"><button className="back" onClick={() => go('play')}><ArrowLeft size={16} /> Back to play</button><span className="eyebrow gold">THE DETAILS</span><h1>Settings</h1><p className="lead">A little more control, when you need it.</p><WorldRules key={state.world_key || "disconnected"} state={state} /><div className="settings-card"><div className="settings-icon"><ShieldCheck size={22} /></div><div><h3>Your adventure stays yours</h3><p>Trainer saves stay on this device. Invitations are private credentials, so only import one from a trusted host.</p></div></div><div className="settings-card"><div className="settings-icon"><Settings2 size={22} /></div><div><h3>Game setup</h3><p>Basic checks for the native Linux game. Follow INSTALL_PC.md for installation and troubleshooting.</p><ul className="setup-list">{state.setup.map(item => <li key={item.name}><span className={`dot ${item.ready ? 'online' : 'error-dot'}`} /><span><strong>{item.name}</strong> {item.ready ? 'available' : 'needed'}{!item.ready && <small>{item.help}</small>}</span></li>)}</ul><p>Passing these checks does not guarantee the game will launch.</p></div></div><button className="text-button danger" onClick={() => setDialog('quit')}><DoorOpen size={16} /> Quit launcher</button></div>}
+       <footer className="footer"><div><span className={`dot ${ready ? (state.connected ? 'online' : 'idle') : 'error-dot'}`} /> {ready ? state.status : 'Local launcher unavailable'}</div><span>EMERALD WORLD <b>•</b> YOUR ADVENTURE, TOGETHER</span></footer>
+     </main>
+     {(error || connectionError) && !dialog && <div className="toast" role="alert"><span>{error || connectionError}</span><button aria-label="Dismiss" onClick={() => { setError(''); setConnectionError(''); }}><X size={16} /></button></div>}
+diff --git a/src/battle_controllers.c b/src/battle_controllers.c
+index 1f35876..e200003 100644
+--- a/src/battle_controllers.c
++++ b/src/battle_controllers.c
+@@ -1036,9 +1036,7 @@ static bool8 NativeBattleReplyValid(u8 battler, const u8 *data)
+         if (request[0] == CONTROLLER_CHOOSEMOVE)
+             return data[1] == B_ACTION_EXEC_SCRIPT
+                 && ((data[2] == 0xFF && data[3] == 0xFF)
+-                    || ((data[2] & ~MEGA_MOVE_CHOICE_BIT) < MAX_MON_MOVES
+-                        && (!(data[2] & MEGA_MOVE_CHOICE_BIT) || MegaGame_CanQueue(battler))
+-                        && data[3] < MAX_BATTLERS_COUNT));
++                    || MegaGame_ValidateMoveChoice(battler, data[2], data[3]));
+         return request[0] == CONTROLLER_CHOOSEACTION
+             || request[0] == CONTROLLER_EXPUPDATE || request[0] == CONTROLLER_DRAWPARTYSTATUSSUMMARY;
+     case CONTROLLER_ONERETURNVALUE:
+diff --git a/src/battle_gfx_sfx_util.c b/src/battle_gfx_sfx_util.c
+index fd9bf8c..07c7564 100644
+--- a/src/battle_gfx_sfx_util.c
++++ b/src/battle_gfx_sfx_util.c
+@@ -27,6 +27,9 @@
+ #include "constants/battle_palace.h"
+ #ifdef PORTABLE
+ #include "platform/world_coop.h"
++#include "platform/mega_game.h"
++#include "platform/mega_forms.h"
++#include "data/mega_graphics.h"
+ #endif
+ 
+ extern const u8 gBattlePalaceNatureToMoveTarget[];
+@@ -577,6 +580,34 @@ bool8 IsBattleSEPlaying(u8 battler)
+     return TRUE;
+ }
+ 
++#ifdef PORTABLE
++static bool8 LoadMegaMonSpriteGfx(struct Pokemon *mon, u8 battler, bool8 back)
++{
++    u8 i, form = MegaGame_ActiveForm(battler);
++    const struct MegaFormData *data = MegaForm_Get(form);
++    const u32 *pic;
++    const u16 *pal;
++    if (!data || data->baseSpecies != GetMonData(mon, MON_DATA_SPECIES)
++     || gBattleSpritesDataPtr->battlerData[battler].transformSpecies != SPECIES_NONE) return FALSE;
++    pic = back ? sMegaGraphics[form].back : sMegaGraphics[form].front;
++    pal = IsMonShiny(mon) ? sMegaGraphics[form].shiny : sMegaGraphics[form].normal;
++    /* Native animations address four 64x64 frames. Duplicate the static Mega
++     * frame so a base-species animation cannot expose stale tiles. */
++    for (i = 0; i < 4; i++)
++        CpuCopy32(pic, (u8 *)gMonSpritesGfxPtr->sprites.ptr[GetBattlerPosition(battler)] + i * 0x800, 0x800);
++    LoadPalette(pal, OBJ_PLTT_ID(battler), PLTT_SIZE_4BPP);
++    LoadPalette(pal, BG_PLTT_ID(8) + BG_PLTT_ID(battler), PLTT_SIZE_4BPP);
++    gBattleMonForms[battler] = 0;
++    return TRUE;
++}
++
++void MegaGame_RefreshSprite(u8 battler)
++{
++    if (!gBattleSpritesDataPtr->battlerData[battler].behindSubstitute)
++        LoadBattleMonGfxAndAnimate(battler, TRUE, gBattlerSpriteIds[battler]);
++}
++#endif
++
+ void BattleLoadOpponentMonSpriteGfx(struct Pokemon *mon, u8 battler)
+ {
+     u32 monsPersonality, currentPersonality, otId;
+@@ -585,6 +616,9 @@ void BattleLoadOpponentMonSpriteGfx(struct Pokemon *mon, u8 battler)
+     u16 paletteOffset;
+     const void *lzPaletteData;
+ 
++#ifdef PORTABLE
++    if (LoadMegaMonSpriteGfx(mon, battler, FALSE)) return;
++#endif
+     monsPersonality = GetMonData(mon, MON_DATA_PERSONALITY);
+ 
+     if (gBattleSpritesDataPtr->battlerData[battler].transformSpecies == SPECIES_NONE)
+@@ -638,6 +672,9 @@ void BattleLoadPlayerMonSpriteGfx(struct Pokemon *mon, u8 battler)
+     u16 paletteOffset;
+     const void *lzPaletteData;
+ 
++#ifdef PORTABLE
++    if (LoadMegaMonSpriteGfx(mon, battler, TRUE)) return;
++#endif
+     monsPersonality = GetMonData(mon, MON_DATA_PERSONALITY);
+ 
+     if (gBattleSpritesDataPtr->battlerData[battler].transformSpecies == SPECIES_NONE)
+diff --git a/src/battle_main.c b/src/battle_main.c
+index c7091c5..b4ad18b 100644
+--- a/src/battle_main.c
++++ b/src/battle_main.c
+@@ -4,6 +4,7 @@
+ #include "platform/native_link.h"
+ #include "platform/world_activity.h"
+ #include "platform/mega_game.h"
++#include "platform/world_rules.h"
+ #endif
+ #include "battle.h"
+ #include "battle_move_split.h"
+@@ -77,6 +78,7 @@ static void CB2_HandleStartCoopBattle(void);
+ static void CoopPrivateRewards(void);
+ static void FreeRestoreBattleData(void);
+ static bool8 sCoopPayoffDone;
++static u8 sMegaTurnBattler, sMegaTurnPhase, sMegaTurnDelay;
+ #endif
+ static void CB2_PreInitMultiBattle(void);
+ static void CB2_PreInitIngamePlayerPartnerBattle(void);
+@@ -737,7 +739,7 @@ static void CB2_InitBattleInternal(void)
+ #ifdef PORTABLE
+     MegaGame_Reset();
+     gSaveBlock2Ptr->frontier.disableRecordBattle = BattleRules_UseModernSplit()
+-        || (MEGA_FEATURE_READY && FlagGet(FLAG_MEGA_EVOLUTION));
++        || (MEGA_FEATURE_READY && WorldRules_Enabled(WORLD_RULE_MEGA_EVOLUTION));
+ #else
+     gSaveBlock2Ptr->frontier.disableRecordBattle = BattleRules_UseModernSplit();
+ #endif
+@@ -1937,6 +1939,9 @@ void BattleMainCB2(void)
+ 
+ static void FreeRestoreBattleData(void)
+ {
++#ifdef PORTABLE
++    MegaGame_Reset();
++#endif
+     gMain.callback1 = gPreBattleCallback1;
+     gScanlineEffect.state = 3;
+     gMain.inBattle = FALSE;
+@@ -3332,6 +3337,11 @@ void SwitchInClearSetData(void)
+ 
+     ClearBattlerMoveHistory(gActiveBattler);
+     ClearBattlerAbilityHistory(gActiveBattler);
++#ifdef PORTABLE
++    MegaGame_CancelQueue(gActiveBattler);
++    MegaGame_ClearSelection(gActiveBattler);
++    MegaGame_Restore(gActiveBattler);
++#endif
+ }
+ 
+ void FaintClearSetData(void)
+@@ -3339,6 +3349,10 @@ void FaintClearSetData(void)
+     s32 i;
+     u8 *ptr;
+ 
++#ifdef PORTABLE
++    MegaGame_CancelQueue(gActiveBattler);
++    MegaGame_ClearSelection(gActiveBattler);
++#endif
+     for (i = 0; i < NUM_BATTLE_STATS; i++)
+         gBattleMons[gActiveBattler].statStages[i] = DEFAULT_STAT_STAGE;
+ 
+@@ -4250,6 +4264,10 @@ static void HandleTurnActionSelectionState(void)
+             gBattleCommunication[gActiveBattler] = STATE_BEFORE_ACTION_CHOSEN;
+             break;
+         case STATE_BEFORE_ACTION_CHOSEN: // Choose an action.
++#ifdef PORTABLE
++            MegaGame_CancelQueue(gActiveBattler);
++            MegaGame_ClearSelection(gActiveBattler);
++#endif
+             *(gBattleStruct->monToSwitchIntoId + gActiveBattler) = PARTY_SIZE;
+             if (gBattleTypeFlags & BATTLE_TYPE_MULTI
+                 || (position & BIT_FLANK) == B_FLANK_LEFT
+@@ -4493,6 +4511,15 @@ static void HandleTurnActionSelectionState(void)
+                     {
+ #ifdef PORTABLE
+                         bool8 megaRequested = FALSE;
++                        if ((gBattleBufferB[gActiveBattler][2] | (gBattleBufferB[gActiveBattler][3] << 8)) != 0xFFFF
++                         && !MegaGame_ValidateMoveChoice(gActiveBattler, gBattleBufferB[gActiveBattler][2], gBattleBufferB[gActiveBattler][3]))
++                        {
++                            if (NativeLink_IsActive()) NativeLink_Abort();
++                            MegaGame_CancelQueue(gActiveBattler);
++                            MegaGame_ClearSelection(gActiveBattler);
++                            gBattleCommunication[gActiveBattler] = STATE_BEFORE_ACTION_CHOSEN;
++                            return;
++                        }
+                         if ((gBattleBufferB[gActiveBattler][2] | (gBattleBufferB[gActiveBattler][3] << 8)) != 0xFFFF
+                          && (gBattleBufferB[gActiveBattler][2] & MEGA_MOVE_CHOICE_BIT))
+                         {
+@@ -4680,6 +4707,9 @@ static void HandleTurnActionSelectionState(void)
+     // Check if everyone chose actions.
+     if (gBattleCommunication[ACTIONS_CONFIRMED_COUNT] == gBattlersCount)
+     {
++#ifdef PORTABLE
++        sMegaTurnBattler = sMegaTurnPhase = sMegaTurnDelay = 0;
++#endif
+         RecordedBattle_CheckMovesetChanges(B_RECORD_MODE_RECORDING);
+         gBattleMainFunc = SetActionsAndBattlersTurnOrder;
+ 
+@@ -4896,11 +4926,63 @@ u8 GetWhoStrikesFirst(u8 battler1, u8 battler2, bool8 ignoreChosenMoves)
+     return strikesFirst;
+ }
+ 
++#ifdef PORTABLE
++/* Resolve queued forms before ordering moves. Ability scripts use the normal
++ * callback stack and return here, rather than skipping their battle effects. */
++static bool8 TryMegaEvolutionBeforeTurn(void)
++{
++    if (gBattleControllerExecFlags) return TRUE;
++    if (gBattleOutcome) return FALSE;
++    while (sMegaTurnBattler < gBattlersCount && sMegaTurnBattler < MAX_BATTLERS_COUNT)
++    {
++        u8 battler = sMegaTurnBattler;
++        gActiveBattler = battler;
++        switch (sMegaTurnPhase)
++        {
++        case 0:
++            if (gChosenActionByBattler[battler] != B_ACTION_USE_MOVE)
++                MegaGame_CancelQueue(battler);
++            if (!MegaGame_Apply(battler))
++            {
++                sMegaTurnBattler++;
++                break;
++            }
++            MegaGame_RefreshSprite(battler);
++            {
++                static const u8 sMegaEvolved[] = _("MEGA EVOLUTION!");
++                BattlePutTextOnWindow(sMegaEvolved, B_WIN_MSG);
++            }
++            sMegaTurnDelay = 45;
++            sMegaTurnPhase = 1;
++            return TRUE;
++        case 1:
++            if (sMegaTurnDelay) { sMegaTurnDelay--; return TRUE; }
++            gSpecialStatuses[battler].intimidatedMon = FALSE;
++            gSpecialStatuses[battler].traced = FALSE;
++            gStatuses3[battler] &= ~(STATUS3_INTIMIDATE_POKES | STATUS3_TRACE);
++            sMegaTurnPhase = 2;
++            if (AbilityBattleEffects(ABILITYEFFECT_ON_SWITCHIN, battler, 0, 0, 0)) return TRUE;
++            break;
++        case 2:
++            if (AbilityBattleEffects(ABILITYEFFECT_INTIMIDATE1, 0, 0, 0, 0)) return TRUE;
++            if (AbilityBattleEffects(ABILITYEFFECT_TRACE, 0, 0, 0, 0)) return TRUE;
++            sMegaTurnPhase = 0;
++            sMegaTurnBattler++;
++            break;
++        }
++    }
++    return FALSE;
++}
++#endif
++
+ static void SetActionsAndBattlersTurnOrder(void)
+ {
+     s32 turnOrderId = 0;
+     s32 i, j;
+ 
++#ifdef PORTABLE
++    if (TryMegaEvolutionBeforeTurn()) return;
++#endif
+     if (gBattleTypeFlags & BATTLE_TYPE_SAFARI)
+     {
+         for (gActiveBattler = 0; gActiveBattler < gBattlersCount; gActiveBattler++)
+@@ -5323,6 +5405,7 @@ static void FreeResetData_ReturnToOvOrDoEvolutions(void)
+     if (!gPaletteFade.active)
+     {
+ #ifdef PORTABLE
++    MegaGame_Reset();
+     FreeAllWindowBuffers(); // This needs to be moved up here to avoid a use-after-free
+     if (!(gBattleTypeFlags & BATTLE_TYPE_LINK))
+     {
+@@ -5528,6 +5611,7 @@ static void CoopPrivateRewards(void)
+ void WorldCoop_BeginPrivateRewards(void)
+ {
+     u8 localBattler = gBattleScripting.multiplayerId * 2;
++    MegaGame_Reset();
+     if (localBattler == 2)
+     {
+         /* Keep the owner's mon sprite for native level-up animations.
+diff --git a/src/battle_script_commands.c b/src/battle_script_commands.c
+index 640a6a0..862c780 100644
+--- a/src/battle_script_commands.c
++++ b/src/battle_script_commands.c
+@@ -1,5 +1,6 @@
+ #include "global.h"
+ #ifdef PORTABLE
++#include "platform/world_rules.h"
+ #include "platform/world_coop.h"
+ #include "platform/native_link.h"
+ #endif
+@@ -3273,8 +3274,12 @@ static void Cmd_getexp(void)
+     s32 viaExpShare = 0;
+     // NPC-partner battles use a mixed party, so leave their original EXP rules
+     // intact. Co-op rewards run here only after restoring the private party.
+-    bool8 partyExpShare = FlagGet(FLAG_PARTY_EXP_SHARE)
++#ifdef PORTABLE
++    bool8 partyExpShare = WorldRules_Enabled(WORLD_RULE_PARTY_EXP)
+         && !(gBattleTypeFlags & BATTLE_TYPE_INGAME_PARTNER);
++#else
++    bool8 partyExpShare = FALSE;
++#endif
+     u16 *exp = &gBattleStruct->expValue;
+ 
+     gBattlerFainted = GetBattlerForBattleScript(gBattlescriptCurrInstr[1]);
+diff --git a/src/data/battle_moves.h b/src/data/battle_moves.h
+index 8289212..5af8761 100644
+--- a/src/data/battle_moves.h
++++ b/src/data/battle_moves.h
+@@ -4614,4 +4614,7 @@ const struct BattleMove gBattleMoves[MOVES_COUNT] =
+         .priority = 0,
+         .flags = FLAG_PROTECT_AFFECTED | FLAG_MIRROR_MOVE_AFFECTED | FLAG_KINGS_ROCK_AFFECTED,
+     },
++#ifdef PORTABLE
++#include "expanded_moves/battle_moves.h"
++#endif
+ };
+diff --git a/src/data/contest_moves.h b/src/data/contest_moves.h
+index 6585282..a3a1180 100644
+--- a/src/data/contest_moves.h
++++ b/src/data/contest_moves.h
+@@ -3245,4 +3245,7 @@ void (*const gContestEffectFuncs[])(void) =
+     ContestEffect_BadlyStartleMonsWithGoodAppeals,
+     ContestEffect_BetterWhenAudienceExcited,
+     ContestEffect_DontExciteAudience,
++#ifdef PORTABLE
++#include "expanded_moves/contest_moves.h"
++#endif
+ };
+diff --git a/src/data/graphics/pokemon.h b/src/data/graphics/pokemon.h
+index 6fbd1b7..7414aad 100644
+--- a/src/data/graphics/pokemon.h
++++ b/src/data/graphics/pokemon.h
+@@ -2822,3 +2822,7 @@ const u8 gMonIcon_UnownExclamationMark[] = INCGFX_U8("graphics/pokemon/unown/exc
+ const u32 gMonStillFrontPic_UnownQuestionMark[] = INCGFX_U32("graphics/pokemon/unown/question_mark/front.png", ".4bpp.lz");
+ const u32 gMonBackPic_UnownQuestionMark[] = INCGFX_U32("graphics/pokemon/unown/question_mark/back.png", ".4bpp.lz");
+ const u8 gMonIcon_UnownQuestionMark[] = INCGFX_U8("graphics/pokemon/unown/question_mark/icon.png", ".4bpp");
++
++#ifdef PORTABLE
++#include "data/pokemon/expanded/graphics.inc"
++#endif
+diff --git a/src/data/items.h b/src/data/items.h
+index 2228192..113af32 100644
+--- a/src/data/items.h
++++ b/src/data/items.h
+@@ -1,6 +1,6 @@
+ #ifdef PORTABLE
+ static const u8 sMegaStoneDesc[] = _("A stone held by a compatible\nPOKéMON to Mega Evolve.");
+-static const u8 sMegaRingDesc[] = _("A mysterious ring that enables\nMega Evolution in battle.");
++static const u8 sMegaRingDesc[] = _("A KEY STONE set in a ring for\nMega Evolution in battle.");
+ #endif
+ 
+ const struct Item gItems[] =
+@@ -4544,82 +4544,82 @@ const struct Item gItems[] =
+     },
+     #ifdef PORTABLE
+     [ITEM_VENUSAURITE] = {
+-        .name = _("VENUSAURITE"), .itemId = ITEM_VENUSAURITE, .price = 0,
++        .name = _("VENUSAURITE"), .itemId = ITEM_VENUSAURITE, .price = 10000,
+         .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+         .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+     },
+     [ITEM_CHARIZARDITE_Y] = {
+-        .name = _("CHARIZARDITEY"), .itemId = ITEM_CHARIZARDITE_Y, .price = 0,
++        .name = _("CHARIZARDITEY"), .itemId = ITEM_CHARIZARDITE_Y, .price = 10000,
+         .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+         .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+     },
+     [ITEM_ALAKAZITE] = {
+-        .name = _("ALAKAZITE"), .itemId = ITEM_ALAKAZITE, .price = 0,
++        .name = _("ALAKAZITE"), .itemId = ITEM_ALAKAZITE, .price = 10000,
+         .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+         .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+     },
+     [ITEM_SLOWBRONITE] = {
+-        .name = _("SLOWBRONITE"), .itemId = ITEM_SLOWBRONITE, .price = 0,
++        .name = _("SLOWBRONITE"), .itemId = ITEM_SLOWBRONITE, .price = 10000,
+         .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+         .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+     },
+     [ITEM_GENGARITE] = {
+-        .name = _("GENGARITE"), .itemId = ITEM_GENGARITE, .price = 0,
++        .name = _("GENGARITE"), .itemId = ITEM_GENGARITE, .price = 10000,
+         .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+         .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+     },
+     [ITEM_STARMINITE] = {
+-        .name = _("STARMINITE"), .itemId = ITEM_STARMINITE, .price = 0,
++        .name = _("STARMINITE"), .itemId = ITEM_STARMINITE, .price = 10000,
+         .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+         .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+     },
+     [ITEM_MEWTWONITE_Y] = {
+-        .name = _("MEWTWONITE Y"), .itemId = ITEM_MEWTWONITE_Y, .price = 0,
++        .name = _("MEWTWONITE Y"), .itemId = ITEM_MEWTWONITE_Y, .price = 10000,
+         .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+         .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+     },
+     [ITEM_TYRANITARITE] = {
+-        .name = _("TYRANITARITE"), .itemId = ITEM_TYRANITARITE, .price = 0,
++        .name = _("TYRANITARITE"), .itemId = ITEM_TYRANITARITE, .price = 10000,
+         .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+         .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+     },
+     [ITEM_SCEPTILITE] = {
+-        .name = _("SCEPTILITE"), .itemId = ITEM_SCEPTILITE, .price = 0,
++        .name = _("SCEPTILITE"), .itemId = ITEM_SCEPTILITE, .price = 10000,
+         .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+         .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+     },
+     [ITEM_BLAZIKENITE] = {
+-        .name = _("BLAZIKENITE"), .itemId = ITEM_BLAZIKENITE, .price = 0,
++        .name = _("BLAZIKENITE"), .itemId = ITEM_BLAZIKENITE, .price = 10000,
+         .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+         .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+     },
+     [ITEM_SWAMPERTITE] = {
+-        .name = _("SWAMPERTITE"), .itemId = ITEM_SWAMPERTITE, .price = 0,
++        .name = _("SWAMPERTITE"), .itemId = ITEM_SWAMPERTITE, .price = 10000,
+         .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+         .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+     },
+     [ITEM_MEDICHAMITE] = {
+-        .name = _("MEDICHAMITE"), .itemId = ITEM_MEDICHAMITE, .price = 0,
++        .name = _("MEDICHAMITE"), .itemId = ITEM_MEDICHAMITE, .price = 10000,
+         .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+         .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+     },
+     [ITEM_MANECTITE] = {
+-        .name = _("MANECTITE"), .itemId = ITEM_MANECTITE, .price = 0,
++        .name = _("MANECTITE"), .itemId = ITEM_MANECTITE, .price = 10000,
+         .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+         .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+     },
+     [ITEM_CHIMECHITE] = {
+-        .name = _("CHIMECHITE"), .itemId = ITEM_CHIMECHITE, .price = 0,
++        .name = _("CHIMECHITE"), .itemId = ITEM_CHIMECHITE, .price = 10000,
+         .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+         .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+     },
+     [ITEM_LATIASITE] = {
+-        .name = _("LATIASITE"), .itemId = ITEM_LATIASITE, .price = 0,
++        .name = _("LATIASITE"), .itemId = ITEM_LATIASITE, .price = 10000,
+         .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+         .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+     },
+     [ITEM_LATIOSITE] = {
+-        .name = _("LATIOSITE"), .itemId = ITEM_LATIOSITE, .price = 0,
++        .name = _("LATIOSITE"), .itemId = ITEM_LATIOSITE, .price = 10000,
+         .description = sMegaStoneDesc, .pocket = POCKET_ITEMS,
+         .type = ITEM_USE_BAG_MENU, .fieldUseFunc = ItemUseOutOfBattle_CannotUse,
+     },
+diff --git a/src/data/pokemon/evolution.h b/src/data/pokemon/evolution.h
+index c9b0cf7..1ef3ca8 100644
+--- a/src/data/pokemon/evolution.h
++++ b/src/data/pokemon/evolution.h
+@@ -1,4 +1,4 @@
+-const struct Evolution gEvolutionTable[NUM_SPECIES][EVOS_PER_MON] =
++const struct Evolution gEvolutionTable[SPECIES_TABLE_COUNT][EVOS_PER_MON] =
+ {
+     [SPECIES_BULBASAUR]  = {{EVO_LEVEL, 16, SPECIES_IVYSAUR}},
+     [SPECIES_IVYSAUR]    = {{EVO_LEVEL, 32, SPECIES_VENUSAUR}},
+diff --git a/src/data/pokemon/level_up_learnset_pointers.h b/src/data/pokemon/level_up_learnset_pointers.h
+index 661458c..bdfa68b 100644
+--- a/src/data/pokemon/level_up_learnset_pointers.h
++++ b/src/data/pokemon/level_up_learnset_pointers.h
+@@ -1,4 +1,4 @@
+-const u16 *const gLevelUpLearnsets[NUM_SPECIES] =
++const u16 *const gLevelUpLearnsets[SPECIES_TABLE_COUNT] =
+ {
+     [SPECIES_NONE] = sBulbasaurLevelUpLearnset,
+     [SPECIES_BULBASAUR] = sBulbasaurLevelUpLearnset,
+@@ -412,4 +412,7 @@ const u16 *const gLevelUpLearnsets[NUM_SPECIES] =
+     [SPECIES_JIRACHI] = sJirachiLevelUpLearnset,
+     [SPECIES_DEOXYS] = sDeoxysLevelUpLearnset,
+     [SPECIES_CHIMECHO] = sChimechoLevelUpLearnset,
++#ifdef PORTABLE
++#include "data/pokemon/expanded/learnset_pointers.inc"
++#endif
+ };
+diff --git a/src/data/pokemon/level_up_learnsets.h b/src/data/pokemon/level_up_learnsets.h
+index 212b969..9d3d6ff 100644
+--- a/src/data/pokemon/level_up_learnsets.h
++++ b/src/data/pokemon/level_up_learnsets.h
+@@ -5615,3 +5615,7 @@ static const u16 sChimechoLevelUpLearnset[] = {
+     LEVEL_UP_MOVE(46, MOVE_PSYCHIC),
+     LEVEL_UP_END
+ };
++
++#ifdef PORTABLE
++#include "data/pokemon/expanded/learnsets.inc"
++#endif
+diff --git a/src/data/pokemon/pokedex_entries.h b/src/data/pokemon/pokedex_entries.h
+index 8a15a18..786462e 100644
+--- a/src/data/pokemon/pokedex_entries.h
++++ b/src/data/pokemon/pokedex_entries.h
+@@ -4643,4 +4643,7 @@ const struct PokedexEntry gPokedexEntries[] =
+         .trainerScale = 290,
+         .trainerOffset = 2,
+     },
++#ifdef PORTABLE
++#include "data/pokemon/expanded/dex_entries.inc"
++#endif
+ };
+diff --git a/src/data/pokemon/pokedex_text.h b/src/data/pokemon/pokedex_text.h
+index ec4a831..1f65c23 100644
+--- a/src/data/pokemon/pokedex_text.h
++++ b/src/data/pokemon/pokedex_text.h
+@@ -2319,3 +2319,7 @@ const u8 gDeoxysPokedexText[] = _(
+     "extraterrestrial virus exposed to a laser\n"
+     "beam. Its body is configured for superior\n"
+     "agility and speed.");
++
++#ifdef PORTABLE
++#include "data/pokemon/expanded/dex_text.inc"
++#endif
+diff --git a/src/data/pokemon/species_info.h b/src/data/pokemon/species_info.h
+index fbd3bcb..a96e527 100644
+--- a/src/data/pokemon/species_info.h
++++ b/src/data/pokemon/species_info.h
+@@ -11665,4 +11665,8 @@ const struct SpeciesInfo gSpeciesInfo[] =
+         .bodyColor = BODY_COLOR_BLUE,
+         .noFlip = FALSE,
+     }
++#ifdef PORTABLE
++    ,
++#include "data/pokemon/expanded/species_info.inc"
++#endif
+ };
+diff --git a/src/data/pokemon/tmhm_learnsets.h b/src/data/pokemon/tmhm_learnsets.h
+index 4357cdd..d90d7ed 100644
+--- a/src/data/pokemon/tmhm_learnsets.h
++++ b/src/data/pokemon/tmhm_learnsets.h
+@@ -16,7 +16,7 @@ struct TMHMLearnset
+ const union {
+     struct TMHMLearnset learnset;
+     u32 as_u32s[sizeof(struct TMHMLearnset) / sizeof(u32)];
+-} gTMHMLearnsets[NUM_SPECIES] =
++} gTMHMLearnsets[SPECIES_TABLE_COUNT] =
+ {
+     [SPECIES_NONE] = {},
+ 
+@@ -10180,4 +10180,7 @@ const union {
+         .FLASH = TRUE,
+     } },
+ 
++#ifdef PORTABLE
++#include "data/pokemon/expanded/tmhm.inc"
++#endif
+ };
+diff --git a/src/data/pokemon/tutor_learnsets.h b/src/data/pokemon/tutor_learnsets.h
+index 2c8c3b3..2ec673b 100644
+--- a/src/data/pokemon/tutor_learnsets.h
++++ b/src/data/pokemon/tutor_learnsets.h
+@@ -5747,5 +5747,8 @@ static const u32 sTutorLearnsets[] =
+                                 | TUTOR(MOVE_SLEEP_TALK)
+                                 | TUTOR(MOVE_DEFENSE_CURL)),
+ 
++#ifdef PORTABLE
++#include "data/pokemon/expanded/tutors.inc"
++#endif
+ };
+ 
+diff --git a/src/data/pokemon_graphics/back_pic_coordinates.h b/src/data/pokemon_graphics/back_pic_coordinates.h
+index 43986dd..0dfd24e 100644
+--- a/src/data/pokemon_graphics/back_pic_coordinates.h
++++ b/src/data/pokemon_graphics/back_pic_coordinates.h
+@@ -444,5 +444,8 @@ const struct MonCoords gMonBackPicCoords[] =
+     [SPECIES_UNOWN_Z]     = { .size = MON_COORDS_SIZE(32, 48), .y_offset = 10 },
+     [SPECIES_UNOWN_EMARK] = { .size = MON_COORDS_SIZE(24, 56), .y_offset =  6 },
+     [SPECIES_UNOWN_QMARK] = { .size = MON_COORDS_SIZE(32, 56), .y_offset =  6 },
++#ifdef PORTABLE
++#include "data/pokemon/expanded/back_coords.inc"
++#endif
+ };
+ 
+diff --git a/src/data/pokemon_graphics/back_pic_table.h b/src/data/pokemon_graphics/back_pic_table.h
+index 1a51f9c..102e512 100644
+--- a/src/data/pokemon_graphics/back_pic_table.h
++++ b/src/data/pokemon_graphics/back_pic_table.h
+@@ -440,4 +440,7 @@ const struct CompressedSpriteSheet gMonBackPicTable[] =
+     SPECIES_SPRITE(UNOWN_Z, gMonBackPic_UnownZ),
+     SPECIES_SPRITE(UNOWN_EMARK, gMonBackPic_UnownExclamationMark),
+     SPECIES_SPRITE(UNOWN_QMARK, gMonBackPic_UnownQuestionMark),
++#ifdef PORTABLE
++#include "data/pokemon/expanded/back_table.inc"
++#endif
+ };
+diff --git a/src/data/pokemon_graphics/enemy_mon_elevation.h b/src/data/pokemon_graphics/enemy_mon_elevation.h
+index f3d81d2..a5d59c3 100644
+--- a/src/data/pokemon_graphics/enemy_mon_elevation.h
++++ b/src/data/pokemon_graphics/enemy_mon_elevation.h
+@@ -1,6 +1,6 @@
+ // This determines how much higher above the usual position the enemy Pokémon
+ // is during battle. Species that float or fly have nonzero values.
+-const u8 gEnemyMonElevation[NUM_SPECIES] =
++const u8 gEnemyMonElevation[SPECIES_TABLE_COUNT] =
+ {
+     [SPECIES_BUTTERFREE] = 8,
+     [SPECIES_BEEDRILL] = 8,
+@@ -63,4 +63,7 @@ const u8 gEnemyMonElevation[NUM_SPECIES] =
+     [SPECIES_JIRACHI] = 12,
+     [SPECIES_DEOXYS] = 8,
+     [SPECIES_CHIMECHO] = 12,
++#ifdef PORTABLE
++#include "data/pokemon/expanded/elevations.inc"
++#endif
+ };
+diff --git a/src/data/pokemon_graphics/footprint_table.h b/src/data/pokemon_graphics/footprint_table.h
+index d63e33e..c183916 100644
+--- a/src/data/pokemon_graphics/footprint_table.h
++++ b/src/data/pokemon_graphics/footprint_table.h
+@@ -413,4 +413,7 @@ const u8 *const gMonFootprintTable[] =
+     [SPECIES_DEOXYS] = gMonFootprint_Deoxys,
+     [SPECIES_CHIMECHO] = gMonFootprint_Chimecho,
+     [SPECIES_EGG] = gMonFootprint_Bulbasaur,
++#ifdef PORTABLE
++#include "data/pokemon/expanded/footprints.inc"
++#endif
+ };
+diff --git a/src/data/pokemon_graphics/front_pic_anims.h b/src/data/pokemon_graphics/front_pic_anims.h
+index 68cedda..a8639c0 100644
+--- a/src/data/pokemon_graphics/front_pic_anims.h
++++ b/src/data/pokemon_graphics/front_pic_anims.h
+@@ -5252,6 +5252,10 @@ SINGLE_ANIMATION(UnownZ);
+ SINGLE_ANIMATION(UnownEMark);
+ SINGLE_ANIMATION(UnownQMark);
+ 
++#ifdef PORTABLE
++#include "data/pokemon/expanded/animations.inc"
++#endif
++
+ const union AnimCmd *const *const gMonFrontAnimsPtrTable[] =
+ {
+     [SPECIES_NONE]        = sAnims_None,
+@@ -5695,4 +5699,7 @@ const union AnimCmd *const *const gMonFrontAnimsPtrTable[] =
+     [SPECIES_UNOWN_EMARK] = sAnims_UnownEMark,
+     [SPECIES_UNOWN_QMARK] = sAnims_UnownQMark,
+ 
++#ifdef PORTABLE
++#include "data/pokemon/expanded/animation_pointers.inc"
++#endif
+ };
+diff --git a/src/data/pokemon_graphics/front_pic_coordinates.h b/src/data/pokemon_graphics/front_pic_coordinates.h
+index 34d5c67..c95a397 100644
+--- a/src/data/pokemon_graphics/front_pic_coordinates.h
++++ b/src/data/pokemon_graphics/front_pic_coordinates.h
+@@ -444,4 +444,7 @@ const struct MonCoords gMonFrontPicCoords[] =
+     [SPECIES_UNOWN_Z]     = { .size = MON_COORDS_SIZE(24, 32), .y_offset = 16 },
+     [SPECIES_UNOWN_EMARK] = { .size = MON_COORDS_SIZE(24, 40), .y_offset = 15 },
+     [SPECIES_UNOWN_QMARK] = { .size = MON_COORDS_SIZE(24, 40), .y_offset = 13 },
++#ifdef PORTABLE
++#include "data/pokemon/expanded/front_coords.inc"
++#endif
+ };
+diff --git a/src/data/pokemon_graphics/front_pic_table.h b/src/data/pokemon_graphics/front_pic_table.h
+index acb0bba..23505d6 100644
+--- a/src/data/pokemon_graphics/front_pic_table.h
++++ b/src/data/pokemon_graphics/front_pic_table.h
+@@ -440,4 +440,7 @@ const struct CompressedSpriteSheet gMonFrontPicTable[] =
+     SPECIES_SPRITE(UNOWN_Z, gMonFrontPic_UnownZ),
+     SPECIES_SPRITE(UNOWN_EMARK, gMonFrontPic_UnownExclamationMark),
+     SPECIES_SPRITE(UNOWN_QMARK, gMonFrontPic_UnownQuestionMark),
++#ifdef PORTABLE
++#include "data/pokemon/expanded/front_table.inc"
++#endif
+ };
+diff --git a/src/data/pokemon_graphics/palette_table.h b/src/data/pokemon_graphics/palette_table.h
+index 8bdfd2d..3e11b0d 100644
+--- a/src/data/pokemon_graphics/palette_table.h
++++ b/src/data/pokemon_graphics/palette_table.h
+@@ -440,4 +440,7 @@ const struct CompressedSpritePalette gMonPaletteTable[] =
+     SPECIES_PAL(UNOWN_Z, gMonPalette_Unown),
+     SPECIES_PAL(UNOWN_EMARK, gMonPalette_Unown),
+     SPECIES_PAL(UNOWN_QMARK, gMonPalette_Unown),
++#ifdef PORTABLE
++#include "data/pokemon/expanded/palette_table.inc"
++#endif
+ };
+diff --git a/src/data/pokemon_graphics/shiny_palette_table.h b/src/data/pokemon_graphics/shiny_palette_table.h
+index 1db14d8..26d7049 100644
+--- a/src/data/pokemon_graphics/shiny_palette_table.h
++++ b/src/data/pokemon_graphics/shiny_palette_table.h
+@@ -440,4 +440,7 @@ const struct CompressedSpritePalette gMonShinyPaletteTable[] =
+     SPECIES_SHINY_PAL(UNOWN_Z, gMonShinyPalette_Unown),
+     SPECIES_SHINY_PAL(UNOWN_EMARK, gMonShinyPalette_Unown),
+     SPECIES_SHINY_PAL(UNOWN_QMARK, gMonShinyPalette_Unown),
++#ifdef PORTABLE
++#include "data/pokemon/expanded/shiny_table.inc"
++#endif
+ };
+diff --git a/src/data/pokemon_graphics/still_front_pic_table.h b/src/data/pokemon_graphics/still_front_pic_table.h
+index 9a77855..580930e 100644
+--- a/src/data/pokemon_graphics/still_front_pic_table.h
++++ b/src/data/pokemon_graphics/still_front_pic_table.h
+@@ -443,4 +443,7 @@ const struct CompressedSpriteSheet gMonStillFrontPicTable[] =
+     SPECIES_SPRITE(UNOWN_Z,       gMonStillFrontPic_UnownZ),
+     SPECIES_SPRITE(UNOWN_EMARK,   gMonStillFrontPic_UnownExclamationMark),
+     SPECIES_SPRITE(UNOWN_QMARK,   gMonStillFrontPic_UnownQuestionMark),
++#ifdef PORTABLE
++#include "data/pokemon/expanded/front_table.inc"
++#endif
+ };
+diff --git a/src/data/text/abilities.h b/src/data/text/abilities.h
+index 0931197..8a2034f 100644
+--- a/src/data/text/abilities.h
++++ b/src/data/text/abilities.h
+@@ -76,6 +76,12 @@ static const u8 sPurePowerDescription[] = _("Raises ATTACK.");
+ static const u8 sShellArmorDescription[] = _("Blocks critical hits.");
+ static const u8 sCacophonyDescription[] = _("Avoids sound-based moves.");
+ static const u8 sAirLockDescription[] = _("Negates weather effects.");
++#ifdef PORTABLE
++/* Descriptions from Expansion bb3fd057, with native uppercase name styling. */
++static const u8 sTechnicianDescription[] = _("Powers up weak moves.");
++static const u8 sAdaptabilityDescription[] = _("Powers up same-type moves.");
++static const u8 sToughClawsDescription[] = _("Powers up contact moves.");
++#endif
+ 
+ const u8 gAbilityNames[ABILITIES_COUNT][ABILITY_NAME_LENGTH + 1] =
+ {
+@@ -157,6 +163,11 @@ const u8 gAbilityNames[ABILITIES_COUNT][ABILITY_NAME_LENGTH + 1] =
+     [ABILITY_SHELL_ARMOR] = _("SHELL ARMOR"),
+     [ABILITY_CACOPHONY] = _("CACOPHONY"),
+     [ABILITY_AIR_LOCK] = _("AIR LOCK"),
++#ifdef PORTABLE
++    [ABILITY_TECHNICIAN] = _("TECHNICIAN"),
++    [ABILITY_ADAPTABILITY] = _("ADAPTABILITY"),
++    [ABILITY_TOUGH_CLAWS] = _("TOUGH CLAWS"),
++#endif
+ };
+ 
+ const u8 *const gAbilityDescriptionPointers[ABILITIES_COUNT] =
+@@ -239,4 +250,9 @@ const u8 *const gAbilityDescriptionPointers[ABILITIES_COUNT] =
+     [ABILITY_SHELL_ARMOR] = sShellArmorDescription,
+     [ABILITY_CACOPHONY] = sCacophonyDescription,
+     [ABILITY_AIR_LOCK] = sAirLockDescription,
++#ifdef PORTABLE
++    [ABILITY_TECHNICIAN] = sTechnicianDescription,
++    [ABILITY_ADAPTABILITY] = sAdaptabilityDescription,
++    [ABILITY_TOUGH_CLAWS] = sToughClawsDescription,
++#endif
+ };
+diff --git a/src/data/text/move_descriptions.h b/src/data/text/move_descriptions.h
+index 34880f1..8681ffe 100644
+--- a/src/data/text/move_descriptions.h
++++ b/src/data/text/move_descriptions.h
+@@ -1,3 +1,7 @@
++#ifdef PORTABLE
++#include "../expanded_moves/descriptions.h"
++#endif
++
+ static const u8 sNullDescription[] = _(
+     "");
+ 
+@@ -1774,4 +1778,7 @@ const u8 *const gMoveDescriptionPointers[MOVES_COUNT - 1] =
+     [MOVE_WATER_PULSE - 1] = sWaterPulseDescription,
+     [MOVE_DOOM_DESIRE - 1] = sDoomDesireDescription,
+     [MOVE_PSYCHO_BOOST - 1] = sPsychoBoostDescription,
++#ifdef PORTABLE
++#include "../expanded_moves/description_pointers.h"
++#endif
+ };
+diff --git a/src/data/text/move_names.h b/src/data/text/move_names.h
+index 9f540f1..b524c47 100644
+--- a/src/data/text/move_names.h
++++ b/src/data/text/move_names.h
+@@ -355,4 +355,7 @@ const u8 gMoveNames[MOVES_COUNT][MOVE_NAME_LENGTH + 1] =
+     [MOVE_WATER_PULSE] = _("WATER PULSE"),
+     [MOVE_DOOM_DESIRE] = _("DOOM DESIRE"),
+     [MOVE_PSYCHO_BOOST] = _("PSYCHO BOOST"),
++#ifdef PORTABLE
++#include "../expanded_moves/names.h"
++#endif
+ };
+diff --git a/src/data/text/species_names.h b/src/data/text/species_names.h
+index 25f2c9a..fc1558c 100644
+--- a/src/data/text/species_names.h
++++ b/src/data/text/species_names.h
+@@ -411,4 +411,7 @@ const u8 gSpeciesNames[][POKEMON_NAME_LENGTH + 1] = {
+     [SPECIES_JIRACHI] = _("JIRACHI"),
+     [SPECIES_DEOXYS] = _("DEOXYS"),
+     [SPECIES_CHIMECHO] = _("CHIMECHO"),
++#ifdef PORTABLE
++#include "data/pokemon/expanded/names.inc"
++#endif
+ };
+diff --git a/src/dexnav.c b/src/dexnav.c
+index db202d3..e8a3f76 100644
+--- a/src/dexnav.c
++++ b/src/dexnav.c
+@@ -431,6 +431,11 @@ static void DrawDexNavSearchMonIcon(u16 species, u8 *dst, bool8 owned)
+ {
+     u8 spriteId;
+ 
++    if (DexNavNative_TextOnlyHud())
++    {
++        *dst = MAX_SPRITES;
++        return;
++    }
+     /* Field icon palette is acquired without touching native icon tags. */
+     spriteId = DexNavNative_CreateMonIcon(species, SPECIES_ICON_X - 6, GetSearchWindowY() + 8, 0);
+     if (spriteId != MAX_SPRITES)
+@@ -1114,10 +1119,13 @@ static void RevealHiddenMon(void)
+         DrawSearchWindow(species, sDexNavSearchDataPtr->potential, TRUE);
+         DrawDexNavSearchMonIcon(species, &sDexNavSearchDataPtr->iconSpriteId, FALSE);
+         // whiteout icon
+-        index = IndexOfSpritePaletteTag(gSprites[sDexNavSearchDataPtr->iconSpriteId].template->paletteTag);
+-        CpuCopy16(&gPlttBufferUnfaded[OBJ_PLTT_ID(index)], sDexNavSearchDataPtr->palBuffer, 32);
+-        TintPalette_CustomTone(sDexNavSearchDataPtr->palBuffer, 16, 510, 510, 510);
+-        LoadPalette(sDexNavSearchDataPtr->palBuffer, OBJ_PLTT_ID(index), PLTT_SIZE_4BPP);
++        if (sDexNavSearchDataPtr->iconSpriteId != MAX_SPRITES)
++        {
++            index = IndexOfSpritePaletteTag(gSprites[sDexNavSearchDataPtr->iconSpriteId].template->paletteTag);
++            CpuCopy16(&gPlttBufferUnfaded[OBJ_PLTT_ID(index)], sDexNavSearchDataPtr->palBuffer, 32);
++            TintPalette_CustomTone(sDexNavSearchDataPtr->palBuffer, 16, 510, 510, 510);
++            LoadPalette(sDexNavSearchDataPtr->palBuffer, OBJ_PLTT_ID(index), PLTT_SIZE_4BPP);
++        }
+     }
+     else
+     {
+@@ -2750,6 +2758,17 @@ static void DexNavDrawHiddenIcons(void)
+     DrawHiddenSearchWindow(12);
+     if (sDexNavSearchDataPtr->windowId == WINDOW_NONE)
+         return;
++    if (DexNavNative_TextBadges())
++    {
++        static const u8 caught[] = _("Caught");
++        static const u8 hidden[] = _("Hidden");
++        if (DexNavGetPokedexFlag(SpeciesToNationalPokedexNum(species), FLAG_GET_CAUGHT))
++            AddTextPrinterParameterized3(sDexNavSearchDataPtr->windowId, FONT_SMALL, 0, 26, sSearchFontColor, TEXT_SKIP_DRAW, caught);
++        if (sDexNavSearchDataPtr->isHiddenMon)
++            AddTextPrinterParameterized3(sDexNavSearchDataPtr->windowId, FONT_SMALL, 48, 26, sSearchFontColor, TEXT_SKIP_DRAW, hidden);
++        CopyWindowToVram(sDexNavSearchDataPtr->windowId, 2);
++        return;
++    }
+     DrawSearchIcon();
+ 
+     if (DexNavGetPokedexFlag(SpeciesToNationalPokedexNum(species), FLAG_GET_CAUGHT))
+diff --git a/src/field_effect.c b/src/field_effect.c
+index 14f0000..0f5eb89 100644
+--- a/src/field_effect.c
++++ b/src/field_effect.c
+@@ -1,4 +1,7 @@
+ #include "global.h"
++#if defined(PORTABLE) && !defined(_WIN32)
++#include "platform/world_unstuck.h"
++#endif
+ #include "decompress.h"
+ #include "event_object_movement.h"
+ #include "field_camera.h"
+@@ -2501,7 +2504,10 @@ static void TeleportWarpOutFieldEffect_End(struct Task *task)
+ 
+         if (BGMusicStopped() == TRUE)
+         {
+-            SetWarpDestinationToLastHealLocation();
++#if defined(PORTABLE) && !defined(_WIN32)
++            if (!WorldUnstuck_SetPlannedWarp())
++#endif
++                SetWarpDestinationToLastHealLocation();
+             WarpIntoMap();
+             SetMainCallback2(CB2_LoadMap);
+             gFieldCallback = FieldCallback_TeleportWarpIn;
+@@ -2600,8 +2606,32 @@ static void TeleportWarpInFieldEffect_SpinGround(struct Task *task)
+     {
+         ObjectEventTurn(objectEvent, spinDirections[objectEvent->facingDirection]);
+         task->data[1] = 8;
+-        if ((++task->data[2]) > 4 && task->data[14] == objectEvent->facingDirection)
++        if ((++task->data[2]) > 4 &&
++#if defined(PORTABLE) && !defined(_WIN32)
++            /* Slot 14 is subspriteMode, not a direction. Keep stock Teleport
++             * unchanged and use the saved facing slot for owned recovery. */
++            (WorldUnstuck_OwnsFieldInput() ? task->data[15] : task->data[14])
++#else
++            task->data[14]
++#endif
++            == objectEvent->facingDirection)
+         {
++#if defined(PORTABLE) && !defined(_WIN32)
++            enum WorldUnstuckArrival result = WorldUnstuck_CompleteArrival();
++            if (result == UNSTUCK_ARRIVAL_HOLD)
++            {
++                task->data[2] = 5;
++                return;
++            }
++            if (result == UNSTUCK_ARRIVAL_RETURN)
++            {
++                WarpIntoMap();
++                SetMainCallback2(CB2_LoadMap);
++                gFieldCallback = FieldCallback_TeleportWarpIn;
++                DestroyTask(FindTaskIdByFunc(Task_TeleportWarpIn));
++                return;
++            }
++#endif
+             UnlockPlayerFieldControls();
+             CameraObjectReset();
+             UnfreezeObjectEvents();
+diff --git a/src/link.c b/src/link.c
+index 925cbff..cbef6e1 100644
+--- a/src/link.c
++++ b/src/link.c
+@@ -32,6 +32,7 @@
+ #include "platform/native_link.h"
+ #include "platform/battle_rules_wire.h"
+ #include "platform/mega_game.h"
++#include "platform/world_rules.h"
+ #endif
+ 
+ // Window IDs for the link error screens
+@@ -388,8 +389,8 @@ void OpenLink(void)
+ #ifdef PORTABLE
+         if (NativeLink_IsActive())
+         {
+-            u16 wireLinkType = BattleRules_LinkType(gLinkType, FlagGet(FLAG_MODERN_MOVE_SPLIT),
+-                MEGA_FEATURE_READY && FlagGet(FLAG_MEGA_EVOLUTION));
++            u16 wireLinkType = BattleRules_LinkType(gLinkType, WorldRules_Enabled(WORLD_RULE_MODERN_SPLIT),
++                MEGA_FEATURE_READY && WorldRules_Enabled(WORLD_RULE_MEGA_EVOLUTION));
+             NativeLink_SetCommandSource(gSendCmd);
+             // Only the wire value carries the rules revision; gLinkType and
+             // ordinary GBA link data are unchanged.
+diff --git a/src/party_menu.c b/src/party_menu.c
+index ae471ea..5b514a2 100644
+--- a/src/party_menu.c
++++ b/src/party_menu.c
+@@ -1,5 +1,6 @@
+ #include "global.h"
+ #ifdef PORTABLE
++#include "platform/world_rules.h"
+ #include "platform/world_coop.h"
+ #include "platform/party_autoheal.h"
+ #endif
+@@ -4857,7 +4858,11 @@ static void Task_LearnedMove(u8 taskId)
+     if (move[1] == 0)
+     {
+         AdjustFriendship(mon, FRIENDSHIP_EVENT_LEARN_TMHM);
+-        if (item < ITEM_HM01 && !FlagGet(FLAG_REUSABLE_TMS))
++        if (item < ITEM_HM01
++#ifdef PORTABLE
++            && !WorldRules_Enabled(WORLD_RULE_REUSABLE_TMS)
++#endif
++        )
+             RemoveBagItem(item, 1);
+     }
+     GetMonNickname(mon, gStringVar1);
+diff --git a/src/platform/dexnav_native.c b/src/platform/dexnav_native.c
+index fe0ca7b..69ed009 100644
+--- a/src/platform/dexnav_native.c
++++ b/src/platform/dexnav_native.c
+@@ -64,7 +64,7 @@ static FILE *sProgressFile;
+ static u16 sBgPalette[16], sObjPalettes[3][16];
+ static u16 sBgPaletteFaded[16], sObjPalettesFaded[3][16];
+ static u8 sFieldPaletteSlots[3] = {0xFF, 0xFF, 0xFF};
+-static bool8 sFieldResources, sSharedHud, sBgPaletteWritten, sTextBadges;
++static bool8 sFieldResources, sSharedHud, sBgPaletteWritten, sTextBadges, sTextOnlyHud;
+ static u8 sFieldIcon[0x200];
+ static u16 sFieldSpecies;
+ static u16 sEffectTileStart = 0xFFFF;
+@@ -531,8 +531,7 @@ bool8 DexNavNative_AcquireFieldResources(u16 species, bool8 owned, bool8 hidden)
+     /* An exact 15-color pack is not always possible (e.g. caught Wurmple).
+      * Keep the original icon palette and render badge information using the
+      * already-owned HUD window palette, rather than demand another OBJ bank. */
+-    sTextBadges = !hidden && !sSharedHud;
+-    if (!sSharedHud && !sTextBadges && !AcquireFieldPalette(1, gDexNavNative_HeldItemPalette)) goto fail;
++    sTextBadges = !sSharedHud;
+     return TRUE;
+ fail:
+     DexNavNative_ReleaseFieldResources();
+@@ -542,8 +541,10 @@ fail:
+ void DexNavNative_ReleaseFieldResources(void)
+ {
+     u32 i;
+-    bool8 ownsHud = IndexOfSpritePaletteTag(ICON_PALETTE_TAG) == sFieldPaletteSlots[0]
+-        && sFieldPaletteSlots[0] != 0xFF;
++    bool8 ownsHud = (IndexOfSpritePaletteTag(ICON_PALETTE_TAG) == sFieldPaletteSlots[0]
++        && sFieldPaletteSlots[0] != 0xFF)
++        || (sTextOnlyHud && sFieldPaletteSlots[2] != 0xFF
++            && IndexOfSpritePaletteTag(EFFECT_PALETTE_TAG) == sFieldPaletteSlots[2]);
+     if (!sFieldResources) return;
+     DexNavNative_FreeIcons();
+     for (i = 0; i < ARRAY_COUNT(sFieldTags); ++i)
+@@ -568,10 +569,12 @@ void DexNavNative_ReleaseFieldResources(void)
+     sBgPaletteWritten = FALSE;
+     sSharedHud = FALSE;
+     sTextBadges = FALSE;
++    sTextOnlyHud = FALSE;
+     sFieldResources = FALSE;
+ }
+ u8 DexNavNative_ItemPalette(void) { return sFieldPaletteSlots[sSharedHud ? 0 : 1]; }
+ bool8 DexNavNative_TextBadges(void) { return sTextBadges; }
++bool8 DexNavNative_TextOnlyHud(void) { return sTextOnlyHud; }
+ 
+ /* Field tilesets use BG palettes 0..12 (NUM_PALS_TOTAL). BG14 and the
+  * frame tiles at 0x214 are the standard window resources from menu.c,
+@@ -688,7 +691,26 @@ static bool8 UseEffectPalette(u16 nativeTag, const u16 *palette)
+     }
+     if (sFieldPaletteSlots[2] == 0xFF)
+     {
+-        if (!AcquireFieldPalette(2, palette)) return FALSE;
++        if (!AcquireFieldPalette(2, palette))
++        {
++            u8 slot = sFieldPaletteSlots[0];
++            /* Decide before HUD sprites/windows exist. The standard BG14
++             * window owns its text tiles/palette (same collision preflight as
++             * AddSearchWindow). Keep all search information there and reserve
++             * the sole free OBJ bank for the actual signal. Never evict a
++             * live icon or borrow a map/NPC palette to make room. */
++            if (slot == 0xFF || IndexOfSpritePaletteTag(ICON_PALETTE_TAG) != slot
++                || PaletteInUse(slot) || !DexNavNative_CanUseHudWindow(28, 5))
++                return FALSE;
++            LoadPalette(sObjPalettes[0], OBJ_PLTT_ID(slot), PLTT_SIZE_4BPP);
++            CpuCopy16(sObjPalettesFaded[0], &gPlttBufferFaded[OBJ_PLTT_ID(slot)], PLTT_SIZE_4BPP);
++            FreeSpritePaletteByTag(ICON_PALETTE_TAG);
++            sFieldPaletteSlots[0] = 0xFF;
++            sSharedHud = FALSE;
++            sTextBadges = TRUE;
++            sTextOnlyHud = TRUE;
++            if (!AcquireFieldPalette(2, palette)) return FALSE;
++        }
+     }
+     else
+     {
+diff --git a/src/platform/mega_game.c b/src/platform/mega_game.c
+index c6ef4ed..9ff2ac6 100644
+--- a/src/platform/mega_game.c
++++ b/src/platform/mega_game.c
+@@ -6,6 +6,7 @@
+ #include "item.h"
+ #include "event_data.h"
+ #include "constants/flags.h"
++#include "platform/world_rules.h"
+ #include "constants/items.h"
+ #include "platform/native_link.h"
+ #include "platform/mega_battle.h"
+@@ -15,19 +16,25 @@
+ static struct MegaBattleState sMega;
+ static u8 sQueued[MAX_BATTLERS_COUNT];
+ static u8 sSelected[MAX_BATTLERS_COUNT];
+-static u8 sActiveForm[MAX_BATTLERS_COUNT];
++
++void MegaGame_CheckAcquisition(void)
++{
++    /* Steven's collection becomes available after the Mind Badge. This is
++     * private story progression, not ownership of the world's ruleset. */
++    gSpecialVar_Result = MEGA_FEATURE_READY
++        && WorldRules_Enabled(WORLD_RULE_MEGA_EVOLUTION) && FlagGet(FLAG_BADGE07_GET);
++}
+ 
+ void MegaGame_Reset(void)
+ {
+     MegaBattle_Reset(&sMega);
+     memset(sQueued, 0, sizeof(sQueued));
+     memset(sSelected, 0, sizeof(sSelected));
+-    memset(sActiveForm, 0, sizeof(sActiveForm));
+ }
+ 
+ static bool8 MegaGame_Identity(u8 battler, u8 *owner, u8 *slot, struct Pokemon **mon)
+ {
+-    u8 index;
++    u16 index;
+     if (battler >= gBattlersCount || battler >= MAX_BATTLERS_COUNT)
+         return FALSE;
+     index = gBattlerPartyIndexes[battler];
+@@ -43,9 +50,12 @@ bool8 MegaGame_CanQueue(u8 battler)
+ {
+     struct Pokemon *mon;
+     u8 owner, slot, i, stone;
+-    if (!MEGA_FEATURE_READY || !FlagGet(FLAG_MEGA_EVOLUTION)
++    if (!MEGA_FEATURE_READY || !WorldRules_Enabled(WORLD_RULE_MEGA_EVOLUTION)
+      || !MegaGame_Identity(battler, &owner, &slot, &mon)) return FALSE;
+     if ((gBattleTypeFlags & BATTLE_TYPE_LINK) && !NativeLink_IsActive()) return FALSE;
++    if (gBattleTypeFlags & (BATTLE_TYPE_FRONTIER | BATTLE_TYPE_SAFARI | BATTLE_TYPE_WALLY_TUTORIAL | BATTLE_TYPE_TRAINER_HILL)) return FALSE;
++    if (!(gBattleTypeFlags & BATTLE_TYPE_LINK)
++     && (GetBattlerSide(battler) != B_SIDE_PLAYER || !CheckBagHasItem(ITEM_MEGA_RING, 1))) return FALSE;
+     if ((gBattleTypeFlags & (BATTLE_TYPE_RECORDED | BATTLE_TYPE_RECORDED_LINK)) || !gBattleMons[battler].hp
+      || (gBattleMons[battler].status2 & STATUS2_TRANSFORMED) || sMega.used[owner]
+      || sMega.forms[owner][slot]) return FALSE;
+@@ -67,6 +77,14 @@ bool8 MegaGame_CanSelect(u8 battler)
+         && CheckBagHasItem(ITEM_MEGA_RING, 1);
+ }
+ 
++bool8 MegaGame_ValidateMoveChoice(u8 battler, u8 choice, u8 target)
++{
++    return battler < gBattlersCount && battler < MAX_BATTLERS_COUNT
++        && (choice & ~MEGA_MOVE_CHOICE_BIT) < MAX_MON_MOVES
++        && target < gBattlersCount && target < MAX_BATTLERS_COUNT
++        && (!(choice & MEGA_MOVE_CHOICE_BIT) || MegaGame_CanQueue(battler));
++}
++
+ bool8 MegaGame_ToggleSelection(u8 battler)
+ {
+     u8 owner, slot, i; struct Pokemon *mon;
+@@ -106,6 +124,54 @@ void MegaGame_CancelQueue(u8 battler)
+     if (battler < MAX_BATTLERS_COUNT) sQueued[battler] = FALSE;
+ }
+ 
++static void MegaGame_WriteStats(u8 battler, const struct MegaBattleStats *stats)
++{
++    /* HP, stages, PP and statuses belong to the existing battle engine. */
++    gBattleMons[battler].attack = stats->attack;
++    gBattleMons[battler].defense = stats->defense;
++    gBattleMons[battler].speed = stats->speed;
++    gBattleMons[battler].spAttack = stats->spAttack;
++    gBattleMons[battler].spDefense = stats->spDefense;
++    gBattleMons[battler].types[0] = stats->type1;
++    gBattleMons[battler].types[1] = stats->type2;
++    gBattleMons[battler].ability = stats->ability;
++}
++
++void MegaGame_Restore(u8 battler)
++{
++    static const u8 ivFields[MEGA_STAT_COUNT] = {MON_DATA_ATK_IV, MON_DATA_DEF_IV, MON_DATA_SPEED_IV, MON_DATA_SPATK_IV, MON_DATA_SPDEF_IV};
++    static const u8 evFields[MEGA_STAT_COUNT] = {MON_DATA_ATK_EV, MON_DATA_DEF_EV, MON_DATA_SPEED_EV, MON_DATA_SPATK_EV, MON_DATA_SPDEF_EV};
++    struct MegaStatInput input = {0};
++    struct MegaBattleStats stats;
++    struct Pokemon *mon;
++    u8 owner, slot, i, form = MegaGame_ActiveForm(battler);
++    if (!form || !MegaGame_Identity(battler, &owner, &slot, &mon)
++     || gBattleMons[battler].species != GetMonData(mon, MON_DATA_SPECIES)) return;
++    input.level = gBattleMons[battler].level;
++    input.nature = GetNature(mon);
++    for (i = 0; i < MEGA_STAT_COUNT; i++)
++    {
++        input.iv[i] = GetMonData(mon, ivFields[i]);
++        input.ev[i] = GetMonData(mon, evFields[i]);
++    }
++    if (MegaForm_Calculate(form, &input, ModifyStatByNature, &stats))
++        MegaGame_WriteStats(battler, &stats);
++}
++
++void MegaGame_RecalculateStats(u8 battler)
++{
++    u8 ability, type1, type2;
++    if (battler >= gBattlersCount || battler >= MAX_BATTLERS_COUNT) return;
++    /* EXP stat copies must not undo Skill Swap, Trace or changed types. */
++    ability = gBattleMons[battler].ability;
++    type1 = gBattleMons[battler].types[0];
++    type2 = gBattleMons[battler].types[1];
++    MegaGame_Restore(battler);
++    gBattleMons[battler].ability = ability;
++    gBattleMons[battler].types[0] = type1;
++    gBattleMons[battler].types[1] = type2;
++}
++
+ bool8 MegaGame_Apply(u8 battler)
+ {
+     static const u8 ivFields[MEGA_STAT_COUNT] = {MON_DATA_ATK_IV, MON_DATA_DEF_IV, MON_DATA_SPEED_IV, MON_DATA_SPATK_IV, MON_DATA_SPDEF_IV};
+@@ -129,16 +195,18 @@ bool8 MegaGame_Apply(u8 battler)
+         stone, TRUE, gBattleMons[battler].hp != 0, &input, ModifyStatByNature, &stats);
+     if (!form) return FALSE;
+     /* Never write a Mega species or altered stats into either trainer's party. */
+-    gBattleMons[battler].attack = stats.attack; gBattleMons[battler].defense = stats.defense;
+-    gBattleMons[battler].speed = stats.speed; gBattleMons[battler].spAttack = stats.spAttack;
+-    gBattleMons[battler].spDefense = stats.spDefense; gBattleMons[battler].types[0] = stats.type1;
+-    gBattleMons[battler].types[1] = stats.type2; gBattleMons[battler].ability = stats.ability;
+-    sActiveForm[battler] = form;
++    MegaGame_WriteStats(battler, &stats);
+     return TRUE;
+ }
+ 
+ u8 MegaGame_ActiveForm(u8 battler)
+ {
+-    return battler < MAX_BATTLERS_COUNT ? sActiveForm[battler] : MEGA_FORM_NONE;
++    struct Pokemon *mon;
++    const struct MegaFormData *data;
++    u8 owner, slot, form;
++    if (!MegaGame_Identity(battler, &owner, &slot, &mon)) return MEGA_FORM_NONE;
++    form = MegaBattle_GetForm(&sMega, owner, slot);
++    data = MegaForm_Get(form);
++    return data && data->baseSpecies == GetMonData(mon, MON_DATA_SPECIES) ? form : MEGA_FORM_NONE;
+ }
+ #endif
+diff --git a/src/platform/sdl2.c b/src/platform/sdl2.c
+index 0f2cad3..4dd07b9 100644
+--- a/src/platform/sdl2.c
++++ b/src/platform/sdl2.c
+@@ -28,6 +28,7 @@
+ #include "platform/system.h"
+ #include "platform/test_state.h"
+ #include "platform/world_bridge.h"
++#include "platform/world_rules.h"
+ #include "platform/world_chat.h"
+ #include "platform/world_activity.h"
+ #include "platform/player_control.h"
+@@ -729,7 +730,7 @@ static bool ParseArgs(int argc, char **argv)
+             fprintf(stderr, "Missing player control option value.\n");
+             return false;
+         }
+-        if (value == NULL && (!strcmp(arg, "--world-config") || !strcmp(arg, "--world-input") || !strcmp(arg, "--world-shot")))
++        if (value == NULL && (!strcmp(arg, "--world-config") || !strcmp(arg, "--world-input") || !strcmp(arg, "--world-shot") || !strcmp(arg, "--world-rules")))
+         {
+             fprintf(stderr, "Missing world option value.\n");
+             return false;
+@@ -751,6 +752,10 @@ static bool ParseArgs(int argc, char **argv)
+                 return false;
+             sPlayerControlPath = value;
+         }
++        else if (strcmp(arg, "--world-rules") == 0)
++        {
++            if (!WorldRules_Init(value)) return false;
++        }
+         else if (strcmp(arg, "--world-config") == 0)
+         {
+             sWorldConfigPath = value;
+diff --git a/src/platform/world_bridge.c b/src/platform/world_bridge.c
+index d5f08c0..0d781df 100644
+--- a/src/platform/world_bridge.c
++++ b/src/platform/world_bridge.c
+@@ -1,4 +1,5 @@
+ #ifdef PORTABLE
++#include "platform/world_rules.h"
+ #ifdef _WIN32
+ #ifndef WIN32_LEAN_AND_MEAN
+ #define WIN32_LEAN_AND_MEAN
+@@ -791,6 +792,13 @@ static void QueueHello(bool8 headless)
+             : sWorld.travelProbe ? (sWorld.chatProbe ? "SOCIALTRAVELCHAT" : "SOCIALTRAVEL")
+             : (sWorld.chatProbe ? "SOCIALCHAT" : "SOCIAL"));
+ #endif
++    if (WorldRules_Wire()[0]) {
++        unsigned n = sWorld.outputSize;
++        if (n && sWorld.output[n - 1] == '\n') {
++            sWorld.outputSize = n - 1 + snprintf(sWorld.output + n - 1, sizeof(sWorld.output) - n + 1,
++                " RULES %s\n", WorldRules_Wire());
++        }
++    }
+ }
+ 
+ static void Flush(void)
+diff --git a/src/platform/world_menu.c b/src/platform/world_menu.c
+index a54700a..eca91c6 100644
+--- a/src/platform/world_menu.c
++++ b/src/platform/world_menu.c
+@@ -20,6 +20,7 @@
+ #include "platform/world_activity.h"
+ #include "platform/world_bridge.h"
+ #include "platform/world_menu.h"
++#include "platform/world_rules.h"
+ #include "platform/world_rally.h"
+ #include "platform/world_travel.h"
+ #include "constants/characters.h"
+@@ -32,7 +33,7 @@
+ /* One field window, not another Start-menu row or another input consumer.
+  * Lists are rebuilt from live state, but focus is an action identity. */
+ enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, RALLY, DISPATCH };
+-enum Action { FRIENDS, STORY, DEXNAV, PARTY_EXP, REUSABLE_TMS, MOVE_SPLIT, BACK, MODE, SCOPE, REQUEST, READY,
++enum Action { FRIENDS, STORY, DEXNAV, PARTY_EXP, REUSABLE_TMS, MOVE_SPLIT, MEGA_RULE, ROSTER_RULE, BACK, MODE, SCOPE, REQUEST, READY,
+     LATER, CANCEL, GO, FINISH, RETURN, STAY, ACTION_COUNT };
+ enum Page { CONTROLS, ROSTER, STATUS, PAGE_COUNT };
+ enum { WORLD_MENU_WIDTH = 28, WORLD_MENU_HEIGHT = 18, LINE_HEIGHT = 12,
+@@ -156,9 +157,11 @@ static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 onlin
+         AddRow(rows, &n, STORY, "Story rally", NULL);
+         AddRow(rows, &n, DEXNAV, "DexNav", DexNavNative_Available() ? NULL :
+             "DexNav needs a Pokedex and conscious party outside restricted or link areas.");
+-        AddRow(rows, &n, PARTY_EXP, FlagGet(FLAG_PARTY_EXP_SHARE) ? "Party EXP: ON" : "Party EXP: OFF", NULL);
+-        AddRow(rows, &n, REUSABLE_TMS, FlagGet(FLAG_REUSABLE_TMS) ? "Reusable TMs: ON" : "Reusable TMs: OFF", NULL);
+-        AddRow(rows, &n, MOVE_SPLIT, FlagGet(FLAG_MODERN_MOVE_SPLIT) ? "Move split: ON" : "Move split: OFF", NULL);
++        AddRow(rows, &n, PARTY_EXP, WorldRules_Enabled(WORLD_RULE_PARTY_EXP) ? "Party EXP: ON" : "Party EXP: OFF", NULL);
++        AddRow(rows, &n, REUSABLE_TMS, WorldRules_Enabled(WORLD_RULE_REUSABLE_TMS) ? "Reusable TMs: ON" : "Reusable TMs: OFF", NULL);
++        AddRow(rows, &n, MOVE_SPLIT, WorldRules_Enabled(WORLD_RULE_MODERN_SPLIT) ? "Move split: ON" : "Move split: OFF", NULL);
++        AddRow(rows, &n, ROSTER_RULE, WorldRules_Enabled(WORLD_RULE_EXPANDED_ROSTER) ? "Expanded roster: ON" : "Expanded roster: OFF", "World owner setting. Change it in launcher settings.");
++        AddRow(rows, &n, MEGA_RULE, WorldRules_Enabled(WORLD_RULE_MEGA_EVOLUTION) ? "Mega: ON" : "Mega: OFF", "World owner setting. Mega is unavailable in this build.");
+         AddRow(rows, &n, BACK, "Back", NULL);
+         return n;
+     }
+@@ -491,22 +494,23 @@ void WorldMenu_Update(void)
+             }
+             else if (sMenu.focus == PARTY_EXP)
+             {
+-                if (FlagGet(FLAG_PARTY_EXP_SHARE)) FlagClear(FLAG_PARTY_EXP_SHARE);
+-                else FlagSet(FLAG_PARTY_EXP_SHARE);
+-                sMenu.notice = "Party EXP changed. Save the game to keep this setting.";
++                /* World policy is immutable for the lifetime of this game. */
++                sMenu.notice = "World rules are read-only. Use owner launcher settings.";
+             }
+             else if (sMenu.focus == REUSABLE_TMS)
+             {
+-                if (FlagGet(FLAG_REUSABLE_TMS)) FlagClear(FLAG_REUSABLE_TMS);
+-                else FlagSet(FLAG_REUSABLE_TMS);
+-                sMenu.notice = "Reusable TMs changed. Save the game to keep this setting.";
++                /* World policy is immutable for the lifetime of this game. */
++                sMenu.notice = "World rules are read-only. Use owner launcher settings.";
+             }
+             else if (sMenu.focus == MOVE_SPLIT)
+             {
+-                if (FlagGet(FLAG_MODERN_MOVE_SPLIT)) FlagClear(FLAG_MODERN_MOVE_SPLIT);
+-                else FlagSet(FLAG_MODERN_MOVE_SPLIT);
+-                sMenu.notice = "Move split changed. Save the game to keep this setting.";
++                /* World policy is immutable for the lifetime of this game. */
++                sMenu.notice = "World rules are read-only. Use owner launcher settings.";
+             }
++            else if (sMenu.focus == ROSTER_RULE)
++                sMenu.notice = "World rules are read-only. Use owner launcher settings.";
++            else if (sMenu.focus == MEGA_RULE)
++                sMenu.notice = "Mega is unavailable in this build.";
+             else if (sMenu.focus == MODE) WorldRally_SetAutoJoin(!WorldRally_GetAutoJoin());
+             else if (sMenu.focus == SCOPE) sMenu.scope ^= 1;
+             else { Queue(sMenu.focus, r.id); return; }
+diff --git a/src/pokemon.c b/src/pokemon.c
+index 3b9fd1b..ddf01a2 100644
+--- a/src/pokemon.c
++++ b/src/pokemon.c
+@@ -6,6 +6,11 @@
+ #include "apprentice.h"
+ #include "battle.h"
+ #include "battle_move_split.h"
++#ifdef PORTABLE
++#include "platform/expanded_abilities.h"
++#include "platform/expanded_moves.h"
++#include "platform/expanded_species.h"
++#endif
+ #include "battle_anim.h"
+ #include "battle_controllers.h"
+ #include "battle_message.h"
+@@ -3125,6 +3130,13 @@ s32 CalculateBaseDamage(struct BattlePokemon *attacker, struct BattlePokemon *de
+     else
+         gBattleMovePower = powerOverride;
+ 
++#ifdef PORTABLE
++    /* Resolve dynamic power before ability modifiers; confusion's synthetic
++     * self-hit is not a move and must never receive those modifiers. */
++    if (attacker != defender && battlerIdAtk != battlerIdDef)
++        gBattleMovePower = ExpandedAbilities_ModifyBasePower(attacker->ability, move, gBattleMovePower);
++#endif
++
+     if (!typeOverride)
+         type = gBattleMoves[move].type;
+     else
+diff --git a/src/pokemon_icon.c b/src/pokemon_icon.c
+index 2970ccc..77ddae1 100644
+--- a/src/pokemon_icon.c
++++ b/src/pokemon_icon.c
+@@ -436,6 +436,9 @@ const u8 *const gMonIconTable[] =
+     [SPECIES_DEOXYS] = gMonIcon_Deoxys,
+     [SPECIES_CHIMECHO] = gMonIcon_Chimecho,
+     [SPECIES_EGG] = gMonIcon_Egg,
++#ifdef PORTABLE
++#include "data/pokemon/expanded/icon_table.inc"
++#endif
+     [SPECIES_UNOWN_B] = gMonIcon_UnownB,
+     [SPECIES_UNOWN_C] = gMonIcon_UnownC,
+     [SPECIES_UNOWN_D] = gMonIcon_UnownD,
+@@ -880,6 +883,9 @@ const u8 gMonIconPaletteIndices[] =
+     [SPECIES_DEOXYS] = 0,
+     [SPECIES_CHIMECHO] = 0,
+     [SPECIES_EGG] = 1,
++#ifdef PORTABLE
++#include "data/pokemon/expanded/icon_palettes.inc"
++#endif
+     [SPECIES_UNOWN_B] = 0,
+     [SPECIES_UNOWN_C] = 0,
+     [SPECIES_UNOWN_D] = 0,
+diff --git a/src/wild_encounter.c b/src/wild_encounter.c
+index 4f6cfe8..3d08b7f 100644
+--- a/src/wild_encounter.c
++++ b/src/wild_encounter.c
+@@ -1,6 +1,7 @@
+ #include "global.h"
+ #ifdef PORTABLE
+ #include "platform/dexnav_native.h"
++#include "platform/expanded_species.h"
+ #include "dexnav.h"
+ #endif
+ #include "battle_setup.h"
+@@ -387,7 +388,11 @@ static u8 PickWildMonNature(void)
+     return Random() % NUM_NATURES;
+ }
+ 
++#ifdef PORTABLE
++static void CreateWildMonExact(u16 species, u8 level)
++#else
+ static void CreateWildMon(u16 species, u8 level)
++#endif
+ {
+     bool32 checkCuteCharm;
+ 
+@@ -426,6 +431,14 @@ static void CreateWildMon(u16 species, u8 level)
+ }
+ 
+ #ifdef PORTABLE
++static void CreateWildMon(u16 species, u8 level)
++{
++    /* Ordinary route substitution is not an intentional search selection.
++     * Keep the shared native Pokemon generator identical for both paths. */
++    species = ExpandedSpecies_ResolveEncounter(species, gSaveBlock1Ptr->location.mapGroup, gSaveBlock1Ptr->location.mapNum);
++    CreateWildMonExact(species, level);
++}
++
+ void WildEncounter_CreateDexNavMon(u16 species, u8 level)
+ {
+     u32 roll;
+@@ -434,7 +447,7 @@ void WildEncounter_CreateDexNavMon(u16 species, u8 level)
+      * creation and shiny predicates retain the stock Pokemon representation. */
+     for (roll = 0; roll <= extraRolls; ++roll)
+     {
+-        CreateWildMon(species, level);
++        CreateWildMonExact(species, level);
+         if (IsMonShiny(&gEnemyParty[0]))
+             break;
+     }
+diff --git a/test/test_dexnav_lifecycle.py b/test/test_dexnav_lifecycle.py
+index 328a320..04d6f34 100644
+--- a/test/test_dexnav_lifecycle.py
++++ b/test/test_dexnav_lifecycle.py
+@@ -9,6 +9,32 @@ def function(s,name):
+  while depth:depth+=(s[i]=='{')-(s[i]=='}');i+=1
+  return s[m.start():i]
+ class DexNavLifecycle(unittest.TestCase):
++ def test_intentional_target_does_not_run_ordinary_encounter_substitution(self):
++  source=(ROOT/'src/wild_encounter.c').read_text()
++  body=function(source,'WildEncounter_CreateDexNavMon')
++  ordinary_body=function(source,'CreateWildMon')
++  c=r'''
++#include <assert.h>
++#include <stdint.h>
++typedef uint8_t u8;typedef uint16_t u16;typedef uint32_t u32;
++static int gEnemyParty[1];static unsigned ordinary,exact;static u16 finalSpecies;
++static unsigned CalculateDexNavShinyRolls(void){return 0;}
++static struct {struct {u8 mapGroup,mapNum;}location;}save,*gSaveBlock1Ptr=&save;
++static u16 ExpandedSpecies_ResolveEncounter(u16 s,u8 group,u8 num){(void)s;(void)group;(void)num;ordinary++;return 999;}
++static void CreateWildMonExact(u16 s,u8 l){(void)l;exact++;finalSpecies=s;}
++static int IsMonShiny(int *m){(void)m;return 0;}
++''' + ordinary_body + body + r'''
++int main(void){
++ WildEncounter_CreateDexNavMon(286,3);assert(finalSpecies==286 && exact==1 && ordinary==0);
++ CreateWildMon(286,3);assert(finalSpecies==999 && exact==2 && ordinary==1);
++ return 0;
++}
++'''
++  with tempfile.TemporaryDirectory(prefix='dexnav-target-')as tmp:
++   p=Path(tmp);(p/'test.c').write_text(c)
++   subprocess.run(['cc','-std=gnu99',str(p/'test.c'),'-o',str(p/'test')],check=True,capture_output=True,text=True)
++   result=subprocess.run([str(p/'test')],capture_output=True,text=True)
++   self.assertEqual(result.returncode,0,result.stderr)
+  def test_real_latch_rejects_unrelated_battle_and_is_consumed_once(self):
+   s=(ROOT/'src/platform/dexnav_native.c').read_text()
+   names=['DexNavNative_SetBattleOwner','DexNavNative_OwnsWildMon','DexNavNative_AbandonBattle','DexNavNative_PrepareNativeActivity','DexNavNative_CancelForOtherBattle','DexNavNative_BattleFinished']
+diff --git a/test/test_dexnav_resources.py b/test/test_dexnav_resources.py
+index 833df9c..f804cf7 100644
+--- a/test/test_dexnav_resources.py
++++ b/test/test_dexnav_resources.py
+@@ -9,7 +9,7 @@ class DexNavResources(unittest.TestCase):
+     def test_one_free_slot_and_foreign_collision_rollback(self):
+         source = (ROOT / 'src/platform/dexnav_native.c').read_text()
+         state = source[source.index('static u16 sBgPalette'):source.index('static u8 sIconCount')]
+-        names = ['PaletteInUse', 'UsedColors', 'PackFieldHud', 'AcquireFieldPalette', 'DexNavNative_AcquireFieldResources', 'DexNavNative_ReleaseFieldResources', 'UseEffectPalette', 'DexNavNative_CanUseHudWindow']
++        names = ['PaletteInUse', 'UsedColors', 'PackFieldHud', 'AcquireFieldPalette', 'DexNavNative_AcquireFieldResources', 'DexNavNative_ReleaseFieldResources', 'DexNavNative_CanUseHudWindow', 'UseEffectPalette']
+         bodies = '\n'.join(function(source, n) for n in names)
+         def asset(name, path, kind='u8'):
+             raw = (ROOT/'build/assets/graphics'/path).read_bytes()
+@@ -24,6 +24,7 @@ class DexNavResources(unittest.TestCase):
+         assets += asset('sHudStar', 'dexnav/star.png.4bpp')
+         assets += asset('sHudOwned', 'dexnav/owned_icon.png.4bpp')
+         assets += asset('nativeEffect', 'field_effects/palettes/general_1.pal.gbapal', 'u16')
++        assets += asset('caveDustPalette', 'field_effects/palettes/cave_dust.pal.gbapal', 'u16')
+         c = r'''
+ #include <assert.h>
+ #include <stdint.h>
+@@ -101,9 +102,11 @@ int main(void){
+  assert(UseEffectPalette(0x1005,nativeEffect));
+  DexNavNative_ReleaseFieldResources();
+  assert(!memcmp(before,gPlttBufferUnfaded,sizeof before));assert(!memcmp(faded,gPlttBufferFaded,sizeof faded));
+- // A native-tag collision with wrong colors must fail, not recolor foreign art.
++ // Foreign native tag with wrong colors is never borrowed or overwritten.
+  assert(DexNavNative_AcquireFieldResources(1, TRUE, FALSE));
+- assert(!UseEffectPalette(0x1200,nativeEffect));DexNavNative_ReleaseFieldResources();
++ assert(UseEffectPalette(0x1200,nativeEffect));
++ assert(sEffectTemplate.paletteTag==EFFECT_PALETTE_TAG && tags[12]==0x1200);
++ DexNavNative_ReleaseFieldResources();
+  assert(!memcmp(before,gPlttBufferUnfaded,sizeof before));
+  // TAG_NONE may resolve to a free bank with matching stale colors, never borrow it.
+  tags[13]=0xFFFF;LoadPalette(nativeEffect,OBJ_PLTT_ID(13),32);
+@@ -114,7 +117,33 @@ int main(void){
+  tags[13]=0x1201;LoadPalette(before+OBJ_PLTT_ID(13),OBJ_PLTT_ID(13),32);
+  memcpy(gPlttBufferFaded,faded,sizeof faded);
+  assert(DexNavNative_AcquireFieldResources(1, TRUE, FALSE));
+- assert(!UseEffectPalette(TAG_NONE,nativeEffect));DexNavNative_ReleaseFieldResources();
++ // Cave dust has no borrowable native palette. With only bank 15 free,
++ // move the HUD to its owned text window and give that bank to the effect.
++ assert(UseEffectPalette(TAG_NONE,caveDustPalette));
++ assert(!memcmp(gPlttBufferUnfaded+OBJ_PLTT_ID(15),caveDustPalette,32));
++ assert(sTextBadges && sTextOnlyHud && sFieldPaletteSlots[0]==0xFF && sFieldPaletteSlots[2]==15);
++ assert(!memcmp(before,gPlttBufferUnfaded,OBJ_PLTT_ID(15)*2));
++ // Loading the owned BG14 HUD must also restore its unfaded/faded colors.
++ sBgPaletteWritten=TRUE;
++ LoadPalette(nativeEffect,BG_PLTT_ID(14),32);
++ DexNavNative_ReleaseFieldResources();
++ assert(!memcmp(before,gPlttBufferUnfaded,sizeof before));
++ assert(!memcmp(faded,gPlttBufferFaded,sizeof faded));
++ // The hidden detector also works without demanding two HUD OBJ palettes.
++ assert(DexNavNative_AcquireFieldResources(1,FALSE,TRUE));
++ assert(UseEffectPalette(TAG_NONE,nativeEffect));
++ assert(sTextBadges && sFieldPaletteSlots[2]==15);
++ DexNavNative_ReleaseFieldResources();
++ // Never evict a live icon, or switch to BG text without window ownership.
++ assert(DexNavNative_AcquireFieldResources(1,TRUE,FALSE));
++ gSprites[0].inUse=TRUE;gSprites[0].oam.paletteNum=15;
++ assert(!UseEffectPalette(TAG_NONE,nativeEffect));
++ gSprites[0].inUse=FALSE;DexNavNative_ReleaseFieldResources();
++ assert(DexNavNative_AcquireFieldResources(1,TRUE,FALSE));
++ gWindows[1].window=(struct WindowTemplate){.bg=0,.width=1,.height=1,.paletteNum=14,.baseBlock=300};
++ assert(!UseEffectPalette(TAG_NONE,nativeEffect));
++ gWindows[1].window.bg=0xFF;DexNavNative_ReleaseFieldResources();
++ assert(!memcmp(before,gPlttBufferUnfaded,sizeof before));
+  // Palette ownership lost on a reset: do not restore over or free its new owner.
+  assert(DexNavNative_AcquireFieldResources(1, TRUE, FALSE));
+  tags[15]=0x7777;gPlttBufferUnfaded[OBJ_PLTT_ID(15)]=1234;
+diff --git a/test/world/test_mega_battle_components.py b/test/world/test_mega_battle_components.py
+index 2066973..56a4f3b 100644
+--- a/test/world/test_mega_battle_components.py
++++ b/test/world/test_mega_battle_components.py
+@@ -71,7 +71,7 @@ int main(void) {
+                 shutil.copy(ROOT/'include/platform'/name,root/'platform'/name)
+             (root/'main.c').write_text(main)
+             exe=root/'test'
+-            cmd=['cc','-std=c99','-DPORTABLE','-Wall','-Wextra','-Werror','-I',str(root),str(ROOT/'src/platform/mega_forms.c'),str(ROOT/'src/platform/mega_battle.c'),str(root/'main.c'),'-o',str(exe)]
++            cmd=['cc','-std=c99','-DPORTABLE','-Wall','-Wextra','-Werror','-iquote',str(root),'-iquote',str(ROOT/'include/constants'),str(ROOT/'src/platform/mega_forms.c'),str(ROOT/'src/platform/mega_battle.c'),str(root/'main.c'),'-o',str(exe)]
+             result=subprocess.run(cmd,capture_output=True,text=True)
+             self.assertEqual(result.returncode,0,result.stderr)
+             result=subprocess.run([str(exe)],capture_output=True,text=True)
+diff --git a/test/world/test_mega_game_adapter.py b/test/world/test_mega_game_adapter.py
+index bfec964..5c52803 100644
+--- a/test/world/test_mega_game_adapter.py
++++ b/test/world/test_mega_game_adapter.py
+@@ -17,8 +17,10 @@ class GameAdapterTests(unittest.TestCase):
+ #include <assert.h>
+ #include <string.h>
+ struct Pokemon gPlayerParty[6],gEnemyParty[6];struct BattlePokemon gBattleMons[4];
+-u8 gBattlersCount=4,gBattlerPartyIndexes[4];u32 gBattleTypeFlags;int hasKey=1;
+-int FlagGet(int x){(void)x;return 1;}int NativeLink_IsActive(void){return 1;}
++u8 gBattlersCount=4;u16 gBattlerPartyIndexes[4];u32 gBattleTypeFlags;int hasKey=1,worldMega=1,badge=0;
++u16 gSpecialVar_Result;
++int FlagGet(int x){(void)x;return badge;}
++bool8 WorldRules_Enabled(u32 rule){return rule==8 && worldMega;}int NativeLink_IsActive(void){return 1;}
+ int CheckBagHasItem(u16 x,u16 y){(void)x;(void)y;return hasKey;}
+ u8 GetBattlerPosition(u8 x){return x;}u8 GetBattlerSide(u8 x){return x&1;}
+ u8 GetNature(struct Pokemon *p){(void)p;return 0;}
+@@ -31,13 +33,22 @@ u32 GetMonData(struct Pokemon *p,int field){
+ }
+ int main(void){
+  struct Pokemon before[6];
++ MegaGame_CheckAcquisition();assert(!gSpecialVar_Result);
++ badge=1;MegaGame_CheckAcquisition();assert(gSpecialVar_Result);
++ worldMega=0;MegaGame_CheckAcquisition();assert(!gSpecialVar_Result);worldMega=1;
+  gPlayerParty[0].species=SPECIES_VENUSAUR;gPlayerParty[3].species=SPECIES_GENGAR;
+  memcpy(before,gPlayerParty,sizeof(before));
+  gBattlerPartyIndexes[0]=0;gBattlerPartyIndexes[2]=3;
+  gBattleMons[0].species=SPECIES_VENUSAUR;gBattleMons[0].item=ITEM_VENUSAURITE;gBattleMons[0].hp=30;gBattleMons[0].level=50;
+  gBattleMons[2].species=SPECIES_GENGAR;gBattleMons[2].item=ITEM_GENGARITE;gBattleMons[2].hp=30;gBattleMons[2].level=50;
+- MegaGame_Reset();hasKey=0;assert(!MegaGame_CanSelect(0));hasKey=1;
+- assert(MegaGame_CanSelect(0));assert(MegaGame_ToggleSelection(0));
++ MegaGame_Reset();worldMega=0;assert(!MegaGame_CanQueue(0));worldMega=1;
++ gBattlerPartyIndexes[0]=256;assert(!MegaGame_CanQueue(0));gBattlerPartyIndexes[0]=0;
++ hasKey=0;assert(!MegaGame_CanSelect(0));hasKey=1;
++ assert(MegaGame_CanSelect(0));
++ for(unsigned choice=0;choice<256;choice++)
++  assert(MegaGame_ValidateMoveChoice(0,choice,1)==((choice & ~MEGA_MOVE_CHOICE_BIT)<4));
++ assert(!MegaGame_ValidateMoveChoice(0,MEGA_MOVE_CHOICE_BIT,4));
++ assert(MegaGame_ToggleSelection(0));
+  assert(MegaGame_ChoiceBit(0)==MEGA_MOVE_CHOICE_BIT);
+  assert(!MegaGame_ToggleSelection(2));
+  MegaGame_ClearSelection(0);assert(!MegaGame_ChoiceBit(0));
+@@ -45,6 +56,17 @@ int main(void){
+  assert(!MegaGame_CanQueue(2)); /* ordinary doubles share one trainer */
+  assert(MegaGame_Apply(0));assert(gBattleMons[0].attack==152 && gBattleMons[0].ability==ABILITY_THICK_FAT);
+  assert(!memcmp(before,gPlayerParty,sizeof(before)));assert(!MegaGame_CanQueue(0));
++ gBattlerPartyIndexes[0]=1;gPlayerParty[1].species=SPECIES_GENGAR;
++ assert(MegaGame_ActiveForm(0)==MEGA_FORM_NONE); /* no stale battler-form leak */
++ gBattlerPartyIndexes[0]=0;gPlayerParty[1].species=0;
++ assert(MegaGame_ActiveForm(0)==MEGA_FORM_VENUSAUR_MEGA);
++ gBattleMons[0].attack=1;gBattleMons[0].ability=0;
++ MegaGame_Restore(0);
++ assert(gBattleMons[0].attack==152 && gBattleMons[0].ability==ABILITY_THICK_FAT);
++ gBattleMons[0].level=51;gBattleMons[0].ability=ABILITY_LEVITATE;gBattleMons[0].types[0]=0;
++ MegaGame_RecalculateStats(0);
++ assert(gBattleMons[0].attack>152 && gBattleMons[0].ability==ABILITY_LEVITATE && gBattleMons[0].types[0]==0);
++ gBattleMons[0].level=50;
+  MegaGame_Reset();gBattleTypeFlags=BATTLE_TYPE_MULTI;
+  assert(MegaGame_Queue(0));assert(MegaGame_Queue(2));
+  assert(MegaGame_Apply(0));assert(MegaGame_Apply(2));
+@@ -52,21 +74,27 @@ int main(void){
+  assert(MegaGame_ActiveForm(0)==MEGA_FORM_VENUSAUR_MEGA);
+  assert(MegaGame_ActiveForm(2)==MEGA_FORM_GENGAR_MEGA);
+  MegaGame_Reset();gBattleMons[0].status2=STATUS2_TRANSFORMED;assert(!MegaGame_CanQueue(0));
++ gBattleMons[0].status2=0;gBattleTypeFlags=BATTLE_TYPE_RECORDED;assert(!MegaGame_CanQueue(0));
++ gBattleTypeFlags=BATTLE_TYPE_FRONTIER;assert(!MegaGame_CanQueue(0));
++ gBattleTypeFlags=BATTLE_TYPE_SAFARI;assert(!MegaGame_CanQueue(0));
++ gBattleTypeFlags=0;hasKey=0;assert(!MegaGame_CanQueue(0));hasKey=1;
+  return 0;
+ }'''
+-  globalh='''#include <stdint.h>\n#include <stddef.h>\ntypedef uint8_t u8;typedef uint16_t u16;typedef uint32_t u32;typedef uint8_t bool8;\n#define TRUE 1\n#define FALSE 0\n#define PARTY_SIZE 6\n#define MULTI_PARTY_SIZE 3\n#define MAX_BATTLERS_COUNT 4\n'''
+-  battleh='''#include "global.h"\n#define BATTLE_TYPE_MULTI 1\n#define BATTLE_TYPE_LINK 2\n#define BATTLE_TYPE_RECORDED 4\n#define BATTLE_TYPE_RECORDED_LINK 8\n#define B_SIDE_PLAYER 0\n#define STATUS2_TRANSFORMED 1\nstruct BattlePokemon {u16 species,item,hp,level,attack,defense,speed,spAttack,spDefense;u8 types[2],ability;u32 status2;};\nextern struct BattlePokemon gBattleMons[4];extern u8 gBattlersCount,gBattlerPartyIndexes[4];extern u32 gBattleTypeFlags;u8 GetBattlerPosition(u8);u8 GetBattlerSide(u8);\n'''
++  globalh='''#include <stdint.h>\n#include <stddef.h>\ntypedef uint8_t u8;typedef uint16_t u16;typedef uint32_t u32;typedef uint8_t bool8;\n#define TRUE 1\n#define FALSE 0\n#define PARTY_SIZE 6\n#define MULTI_PARTY_SIZE 3\n#define MAX_BATTLERS_COUNT 4\n#define MAX_MON_MOVES 4\n'''
++  battleh='''#include "global.h"\n#define BATTLE_TYPE_MULTI 1\n#define BATTLE_TYPE_LINK 2\n#define BATTLE_TYPE_RECORDED 4\n#define BATTLE_TYPE_RECORDED_LINK 8\n#define BATTLE_TYPE_FRONTIER 16\n#define BATTLE_TYPE_SAFARI 32\n#define BATTLE_TYPE_WALLY_TUTORIAL 64\n#define BATTLE_TYPE_TRAINER_HILL 128\n#define B_SIDE_PLAYER 0\n#define STATUS2_TRANSFORMED 1\nstruct BattlePokemon {u16 species,item,hp,level,attack,defense,speed,spAttack,spDefense;u8 types[2],ability;u32 status2;};\nextern struct BattlePokemon gBattleMons[4];extern u8 gBattlersCount;extern u16 gBattlerPartyIndexes[4];extern u32 gBattleTypeFlags;u8 GetBattlerPosition(u8);u8 GetBattlerSide(u8);\n'''
+   pokemonh='''#include "global.h"\nstruct Pokemon {u16 species;};extern struct Pokemon gPlayerParty[6],gEnemyParty[6];\nenum {MON_DATA_SPECIES,MON_DATA_ATK_IV,MON_DATA_DEF_IV,MON_DATA_SPEED_IV,MON_DATA_SPATK_IV,MON_DATA_SPDEF_IV,MON_DATA_ATK_EV,MON_DATA_DEF_EV,MON_DATA_SPEED_EV,MON_DATA_SPATK_EV,MON_DATA_SPDEF_EV};\nu32 GetMonData(struct Pokemon *,int);u8 GetNature(struct Pokemon *);u16 ModifyStatByNature(u8,u16,u8);\n'''
+   with tempfile.TemporaryDirectory() as d:
+    root=Path(d);(root/'constants').mkdir();(root/'platform').mkdir()
+    (root/'global.h').write_text('#ifndef GLOB\n#define GLOB\n'+globalh+'#endif\n')
+    (root/'battle.h').write_text(battleh);(root/'battle_anim.h').write_text('');(root/'pokemon.h').write_text(pokemonh)
+-   (root/'item.h').write_text('int CheckBagHasItem(u16,u16);\n');(root/'event_data.h').write_text('int FlagGet(int);\n')
+-   (root/'constants/flags.h').write_text('#define FLAG_MEGA_EVOLUTION 1\n')
++   (root/'item.h').write_text('int CheckBagHasItem(u16,u16);\n');(root/'event_data.h').write_text('int FlagGet(int);extern u16 gSpecialVar_Result;\n')
++   (root/'constants/flags.h').write_text('#define FLAG_BADGE07_GET 1\n')
+    for n in ('species.h','pokemon.h','abilities.h','items.h'):shutil.copy(ROOT/'include/constants'/n,root/'constants'/n)
+    for n in ('mega_game.h','mega_battle.h','mega_forms.h'):shutil.copy(ROOT/'include/platform'/n,root/'platform'/n)
++   (root/'platform/world_rules.h').write_text('#define WORLD_RULE_MEGA_EVOLUTION 8\nbool8 WorldRules_Enabled(u32);\n')
+    (root/'platform/native_link.h').write_text('int NativeLink_IsActive(void);\n');(root/'main.c').write_text(main)
+-   cmd=['cc','-std=c99','-DPORTABLE','-DMEGA_FEATURE_READY=1','-Wall','-Wextra','-Werror','-I',str(root)]+[str(ROOT/'src/platform'/x) for x in ('mega_forms.c','mega_battle.c','mega_game.c')]+[str(root/'main.c'),'-o',str(root/'test')]
++   cmd=['cc','-std=c99','-DPORTABLE','-Wall','-Wextra','-Werror','-iquote',str(root),'-iquote',str(ROOT/'include/constants')]+[str(ROOT/'src/platform'/x) for x in ('mega_forms.c','mega_battle.c','mega_game.c')]+[str(root/'main.c'),'-o',str(root/'test')]
+    result=subprocess.run(cmd,capture_output=True,text=True);self.assertEqual(result.returncode,0,result.stderr)
+    result=subprocess.run([str(root/'test')],capture_output=True,text=True);self.assertEqual(result.returncode,0,result.stderr)
++   shutil.copytree(root, ROOT/'build/rc4-mega/game_adapter', dirs_exist_ok=True)
+ if __name__=='__main__':unittest.main()
+diff --git a/test/world/test_move_split_categories.py b/test/world/test_move_split_categories.py
+index b26c502..cde7e2c 100644
+--- a/test/world/test_move_split_categories.py
++++ b/test/world/test_move_split_categories.py
+@@ -22,7 +22,8 @@ typedef uint8_t u8;typedef uint16_t u16;typedef uint8_t bool8;
+ #define IS_TYPE_PHYSICAL(t) ((t)<TYPE_MYSTERY)
+ #define IS_TYPE_SPECIAL(t) ((t)>TYPE_MYSTERY)
+ uint32_t gBattleTypeFlags;int flag,linked;
+-int FlagGet(int id) {(void)id;return flag;}
++int FlagGet(int id) {(void)id;return !flag;}
++int WorldRules_Enabled(unsigned rule) {assert(rule==4);return flag;}
+ int NativeLink_IsActive(void) {return linked;}
+ #include "battle_move_split.h"
+ #include "battle_rules_wire.h"
+@@ -61,6 +62,7 @@ int main(void) {
+             # Real original move IDs, copied into the isolated test include tree.
+             (root/'constants/moves.h').write_text((ROOT/'include/constants/moves.h').read_text())
+             (root/'platform/native_link.h').write_text('int NativeLink_IsActive(void);\n')
++            (root/'platform/world_rules.h').write_text('#define WORLD_RULE_MODERN_SPLIT 4\nint WorldRules_Enabled(unsigned);\n')
+             (root/'battle_move_split.h').write_text((ROOT/'include/battle_move_split.h').read_text())
+             (root/'battle_rules_wire.h').write_text((ROOT/'include/platform/battle_rules_wire.h').read_text())
+             c=root/'t.c';exe=root/'t';c.write_text(source)
+@@ -73,17 +75,20 @@ int main(void) {
+         link=(ROOT/'src/link.c').read_text()
+         scripts=(ROOT/'src/battle_script_commands.c').read_text()
+         self.assertIn('disableRecordBattle = BattleRules_UseModernSplit()',battle)
+-        self.assertIn('BattleRules_LinkType(gLinkType, FlagGet(FLAG_MODERN_MOVE_SPLIT),',link)
++        self.assertIn('BattleRules_LinkType(gLinkType, WorldRules_Enabled(WORLD_RULE_MODERN_SPLIT),',link)
+         self.assertIn('BattleMove_IsPhysical(gCurrentMove, moveType)',scripts)
+         self.assertIn('BattleRules_UseModernSplit() && gSpecialStatuses[gBattlerTarget].physicalDmg',scripts)
+ 
+-    def test_all_native_move_ids_have_explicit_categories(self):
++    def test_original_move_ids_have_explicit_categories(self):
+         import re
+         ids=(ROOT/'include/constants/moves.h').read_text()
+         header=(ROOT/'include/battle_move_split.h').read_text()
+-        names={m.group(1) for m in re.finditer(r'^#define (MOVE_\w+) (\d+)$',ids,re.M) if int(m.group(2))<=354}
++        # The expanded-move owner tests the separate native category hook.
++        # This table remains the original catalog without pinning MOVES_COUNT.
++        original=ids.split('#ifdef PORTABLE',1)[0]
++        names={m.group(1) for m in re.finditer(r'^#define (MOVE_\w+) (\d+)$',original,re.M)}
+         rows=re.findall(r'^\s*\[(MOVE_\w+)\]\s*=',header,re.M)
+-        self.assertEqual(len(rows),355);self.assertEqual(len(set(rows)),355)
++        self.assertEqual(len(rows),len(names));self.assertEqual(len(set(rows)),len(names))
+         self.assertEqual(set(rows),names)
+ 
+ if __name__=='__main__':unittest.main()
+diff --git a/test/world/test_move_split_damage.py b/test/world/test_move_split_damage.py
+index 454d65d..1b5e8aa 100644
+--- a/test/world/test_move_split_damage.py
++++ b/test/world/test_move_split_damage.py
+@@ -71,7 +71,8 @@ struct Flags flags;struct Resources resources={&flags},*gBattleResources=&resour
+ u32 gBattleTypeFlags,gBattleWeather,gBattleMovePower;u8 gCritMultiplier=1;u16 gCurrentMove;
+ static const u16 sHoldEffectToType[][2]={{0,0}};
+ int flag,linked;
+-int FlagGet(int id) {(void)id;return flag;}
++int FlagGet(int id) {(void)id;return !flag;}
++int WorldRules_Enabled(unsigned rule) {assert(rule==4);return flag;}
+ int NativeLink_IsActive(void) {return linked;}
+ #include "battle_move_split.h"
+ int GetItemHoldEffect(int x) {(void)x;return 0;}
+@@ -116,6 +117,7 @@ int main(void) {
+             (root/'constants/flags.h').write_text('#define FLAG_MODERN_MOVE_SPLIT 1\n')
+             (root/'constants/moves.h').write_text((ROOT/'include/constants/moves.h').read_text())
+             (root/'platform/native_link.h').write_text('int NativeLink_IsActive(void);\n')
++            (root/'platform/world_rules.h').write_text('#define WORLD_RULE_MODERN_SPLIT 4\nint WorldRules_Enabled(unsigned);\n')
+             (root/'battle_move_split.h').write_text((ROOT/'include/battle_move_split.h').read_text())
+             c=root/'t.c';exe=root/'t'
+             c.write_text(PRELUDE+'#include "constants/moves.h"\n'+defines+stubs+fn+main)
+diff --git a/test/world/test_party_exp.py b/test/world/test_party_exp.py
+index 1598ab4..27b28b5 100644
+--- a/test/world/test_party_exp.py
++++ b/test/world/test_party_exp.py
+@@ -43,12 +43,12 @@ int main(void) {
+         battle=(ROOT/'src/battle_script_commands.c').read_text()
+         menu=(ROOT/'src/platform/world_menu.c').read_text()
+         flags=(ROOT/'include/constants/flags.h').read_text()
+-        self.assertIn('FlagGet(FLAG_PARTY_EXP_SHARE)',battle)
++        self.assertIn('WorldRules_Enabled(WORLD_RULE_PARTY_EXP)',battle)
+         self.assertIn('!(gBattleTypeFlags & BATTLE_TYPE_INGAME_PARTNER)',battle)
+         self.assertIn('PartyExp_Eligible(',battle)
+         self.assertIn('PartyExp_RecipientBase(',battle)
+-        self.assertIn('FlagSet(FLAG_PARTY_EXP_SHARE)',menu)
+-        self.assertIn('FlagClear(FLAG_PARTY_EXP_SHARE)',menu)
++        self.assertNotIn('FlagSet(FLAG_PARTY_EXP_SHARE)',menu)
++        self.assertNotIn('FlagClear(FLAG_PARTY_EXP_SHARE)',menu)
+         self.assertIn('#define FLAG_PARTY_EXP_SHARE',flags)
+ 
+ if __name__=='__main__':unittest.main()
+diff --git a/test/world/test_reusable_tms.py b/test/world/test_reusable_tms.py
+index f4ea0f1..f305cc4 100644
+--- a/test/world/test_reusable_tms.py
++++ b/test/world/test_reusable_tms.py
+@@ -11,7 +11,7 @@ PRELUDE=r'''
+ typedef uint8_t u8; typedef uint16_t u16; typedef int16_t s16;
+ #define ITEM_TM01 289
+ #define ITEM_HM01 339
+-#define FLAG_REUSABLE_TMS 123
++#define WORLD_RULE_REUSABLE_TMS 2
+ #define FRIENDSHIP_EVENT_LEARN_TMHM 1
+ #define TRUE 1
+ struct Pokemon {int unused;}; struct Pokemon gPlayerParty[6];
+@@ -20,7 +20,7 @@ struct Task {void (*func)(u8);};struct Task gTasks[1];
+ u16 gSpecialVar_ItemId;int enabled,removed,friendship;
+ char gStringVar1[32],gStringVar2[32],gStringVar4[32];
+ const char *gMoveNames[2]={"zero","one"};const char *gText_PkmnLearnedMove3="learned";
+-static int FlagGet(int x) {(void)x;return enabled;}
++static int WorldRules_Enabled(int x) {assert(x==WORLD_RULE_REUSABLE_TMS);return enabled;}
+ static void AdjustFriendship(struct Pokemon *p,int e) {(void)p;(void)e;friendship++;}
+ static void RemoveBagItem(u16 item,int count) {(void)item;removed+=count;}
+ static void GetMonNickname(struct Pokemon *p,char *d) {(void)p;(void)d;}
+@@ -49,14 +49,14 @@ int main(void) {
+ }'''
+         with tempfile.TemporaryDirectory() as d:
+             c=Path(d)/'t.c';exe=Path(d)/'t';c.write_text(PRELUDE+prefix+body+'\n}\n'+main)
+-            result=subprocess.run(['cc','-std=c99','-Wall','-Wextra','-Werror',str(c),'-o',str(exe)],capture_output=True,text=True)
++            result=subprocess.run(['cc','-std=c99','-DPORTABLE','-Wall','-Wextra','-Werror',str(c),'-o',str(exe)],capture_output=True,text=True)
+             self.assertEqual(result.returncode,0,result.stderr)
+             result=subprocess.run([str(exe)],capture_output=True,text=True)
+             self.assertEqual(result.returncode,0,result.stderr)
+-    def test_world_menu_has_independent_persistent_toggle(self):
++    def test_world_menu_is_read_only(self):
+         menu=(ROOT/'src/platform/world_menu.c').read_text()
+-        self.assertIn('FlagSet(FLAG_REUSABLE_TMS)',menu)
+-        self.assertIn('FlagClear(FLAG_REUSABLE_TMS)',menu)
++        self.assertNotIn('FlagSet(FLAG_REUSABLE_TMS)',menu)
++        self.assertNotIn('FlagClear(FLAG_REUSABLE_TMS)',menu)
+         self.assertIn('Reusable TMs: ON',menu)
+         self.assertIn('Reusable TMs: OFF',menu)
+ 
+diff --git a/world/client.py b/world/client.py
+index ef17483..2cff309 100644
+--- a/world/client.py
++++ b/world/client.py
+@@ -22,7 +22,7 @@ def admin_request(socket_path, request, timeout=5, admin_path=None):
+ 
+ class WorldClient:
+     """A single authenticated session. Each snapshot replaces the previous one."""
+-    def __init__(self, socket_path, trainer_id, token, timeout=5, *, control=False, social=False):
++    def __init__(self, socket_path, trainer_id, token, timeout=5, *, control=False, social=False, rules=None):
+         from .server import ID, HEX
+         if not ID.fullmatch(trainer_id) or not HEX.fullmatch(token):
+             raise ValueError('invalid credentials')
+@@ -32,10 +32,14 @@ class WorldClient:
+         self.control = control
+         self.social = social
+         self.trainer_id = trainer_id
++        self.rules = rules
+         try:
+             self.sock.connect(str(socket_path))
+             self.stream = self.sock.makefile('rb')
+             suffix = ' CONTROL' if control else (' SOCIAL' if social else '')
++            if rules is not None and not control:
++                from .rules import wire
++                suffix += ' RULES ' + wire(rules)
+             self.sock.sendall(f'HELLO 1 {trainer_id} {token}{suffix}\n'.encode('ascii'))
+             welcome = self._line().split()
+             if (len(welcome) != (5 if control else 4) or welcome[:3] != ['WELCOME', '1', trainer_id]
+diff --git a/world/hosting.py b/world/hosting.py
+index 0561bf8..70e7818 100644
+--- a/world/hosting.py
++++ b/world/hosting.py
+@@ -256,6 +256,18 @@ class HostedWorldManager:
+             row = self._owned(token, world_id)
+             return self._result(row, row['trainer'])
+ 
++    def world_rules(self, token, world_id, rules=None):
++        with self.lock:
++            row = self._owned(token, world_id)
++            server = self._start_world(row)
++            from .client import admin_request
++            request = (dict(command='inspect') if rules is None else
++                       dict(command='set_world_rules', rules=rules))
++            result = admin_request(server.socket_path, request, admin_path=server.admin_path)
++            if not result.get('ok'):
++                raise HostingError(409, 'conflict')
++            return dict(world_rules=result['world_rules'])
++
+     def invite(self, token, world_id, request_id):
+         """Owner issues one private, single-identity bearer. Retry by request_id."""
+         with self.lock, self.db:
+@@ -431,12 +443,14 @@ class HostingService:
+                     elif self.command == 'POST' and path == '/v1/join' and set(body) == {'trainer'}:
+                         result = manager.join(token, body['trainer'])
+                     else:
+-                        match = re.fullmatch('/v1/worlds/([0-9a-f]{16})/(resume|invites)', path)
++                        match = re.fullmatch('/v1/worlds/([0-9a-f]{16})/(resume|invites|rules)', path)
+                         if self.command != 'POST' or match is None:
+                             raise HostingError()
+                         world_id, action = match.groups()
+                         if action == 'resume' and not body:
+                             result = manager.resume(token, world_id)
++                        elif action == 'rules' and (not body or set(body) == {'rules'}):
++                            result = manager.world_rules(token, world_id, body.get('rules'))
+                         elif action == 'invites' and set(body) == {'request_id'}:
+                             result = dict(manager.invite(token, world_id, body['request_id']),
+                                           endpoint=service.endpoint, pin=manager.pin)
+diff --git a/world/hosting_client.py b/world/hosting_client.py
+index 8a4e37f..35d1b4f 100644
+--- a/world/hosting_client.py
++++ b/world/hosting_client.py
+@@ -145,6 +145,16 @@ class HostingClient:
+     def resume(self, world_id):
+         return self._request(self.profile, 'POST', '/v1/worlds/' + self._world_id(world_id) + '/resume', {})
+ 
++    def world_rules(self, world_id):
++        from .rules import validate
++        return validate(self._request(self.profile, 'POST', '/v1/worlds/' + self._world_id(world_id) + '/rules', {})['world_rules'])
++
++    def set_world_rules(self, world_id, rules):
++        from .rules import settings
++        self._request(self.profile, 'POST', '/v1/worlds/' + self._world_id(world_id) + '/rules', dict(rules=settings(rules)))
++        # Read back the authority rather than trusting the mutation response.
++        return self.world_rules(world_id)
++
+     def invite_account(self, invitation_out, *, request_id=None):
+         """Bootstrap sponsor issues a private HOST ACCESS file for another owner."""
+         value = self._request(self.profile, 'POST', '/v1/accounts/invites',
+diff --git a/world/hosting_ui.py b/world/hosting_ui.py
+index 6050b0b..62afc60 100644
+--- a/world/hosting_ui.py
++++ b/world/hosting_ui.py
+@@ -161,6 +161,12 @@ class HostedLauncher:
+             raise ValueError('invalid world metadata')
+         return {key: item[key] for key in ('id', 'name', 'trainer')}
+ 
++    def rules(self, world_id, rules=None):
++        self._ready()
++        from .hosting_client import HostingClient
++        client = HostingClient.from_file(self.profile)
++        return client.world_rules(world_id) if rules is None else client.set_world_rules(world_id, rules)
++
+     def refresh(self):
+         self._ready()
+         from .hosting_client import HostingClient
+diff --git a/world/launcher.py b/world/launcher.py
+index fdfd4b7..e06404f 100644
+--- a/world/launcher.py
++++ b/world/launcher.py
+@@ -231,8 +231,12 @@ def game_command(binary, state_dir, paths, display=None, agent_control=False, *,
+         env['SDL_VIDEODRIVER'] = 'dummy'
+     for key, value in env.items():
+         args += ['--setenv', key, value]
++    from .rules import read, wire
++    policy = read(state_dir.parent if not online and state_dir.name == '.offline' else state_dir)
+     command = args + ['--', str(binary), '--save', str(paths['save']),
+                       '--config', str(paths['settings'])]
++    if policy is not None:
++        command += ['--world-rules', wire(policy)]
+     if online:
+         command += ['--world-config', str(paths['config'])]
+     if agent_control:
+diff --git a/world/link_protocol.py b/world/link_protocol.py
+index abb9052..3b7802b 100644
+--- a/world/link_protocol.py
++++ b/world/link_protocol.py
+@@ -61,10 +61,11 @@ def _uint(text, limit):
+ 
+ 
+ class LinkProtocol:
+-    def __init__(self, *, clock=time.monotonic, id_factory=None, max_players=8):
++    def __init__(self, *, clock=time.monotonic, id_factory=None, max_players=8, world_mask=None):
+         if type(max_players) is not int or not 1 <= max_players <= 64:
+             raise ValueError('max_players must be between 1 and 64')
+         self.max_players = max_players
++        self.world_mask = world_mask
+         self.sessions = LinkSessions(clock=clock, max_sessions=max_players // 2 or 1)
+         self.id_factory = id_factory or (lambda: secrets.randbits(64))
+         self._wire = {}
+@@ -325,6 +326,10 @@ class LinkProtocol:
+                     if step != 0 or link_type not in _LINK_TYPES[mode]:
+                         raise ValueError('open')
+                     rule = link_type & 0xC000
++                    if self.world_mask is not None and mode != 3:
++                        expected = (0x8000 if self.world_mask & 4 else 0) | (0x4000 if self.world_mask & 8 else 0)
++                        if rule != expected:
++                            raise LinkError('world_rules_mismatch')
+                     if mode != 3 and wire in self._rules and self._rules[wire] != rule:
+                         raise LinkError('link_type_mismatch')
+                     result = self.sessions.open(actor, entry.internal, generation, link_type, now=now)
+diff --git a/world/offline.py b/world/offline.py
+index 332d7fd..f3cfd49 100644
+--- a/world/offline.py
++++ b/world/offline.py
+@@ -101,6 +101,8 @@ def offline_profile(state_dir, trainer, seed_save=None, *, copy_online=False):
+     with ExitStack() as stack:
+         stack.enter_context(WorldActivityLock(state))
+         state.mkdir(parents=True, mode=0o700, exist_ok=True)
++        from .rules import read
++        read(state, create=True)
+         offline = state / '.offline'
+         _private_directory(offline)
+         marker = offline / '.offline-copy'
+diff --git a/world/server.py b/world/server.py
+index 8f61670..086b7cf 100644
+--- a/world/server.py
++++ b/world/server.py
+@@ -95,6 +95,8 @@ class WorldServer:
+                           else self.socket_path + '.admin')
+         self.admin_path = str(admin_path)
+         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
++        from .rules import read
++        self.world_rules = read(self.root, create=True)
+         self.db = sqlite3.connect(self.root / 'world.sqlite3', check_same_thread=False)
+         self.db.executescript('''
+             CREATE TABLE IF NOT EXISTS identities (
+@@ -149,7 +151,7 @@ class WorldServer:
+         self.link_channels = {}
+         self.sharing: dict | None = None
+         self.sharing_listen = None
+-        self.link_protocol = LinkProtocol(max_players=self.max_players)
++        self.link_protocol = LinkProtocol(max_players=self.max_players, world_mask=self.world_rules['mask'])
+         self.tiles = []
+         self.objects = []
+         self.interaction_cursor = 0
+@@ -402,6 +404,10 @@ class WorldServer:
+         try:
+             fields = raw.decode('ascii').split()
+             if conn['id'] is None:
++                rule_claim = None
++                if len(fields) >= 6 and fields[-2] == 'RULES':
++                    rule_claim = fields[-1]
++                    fields = fields[:-2]
+                 control = len(fields) == 5 and fields[4] == 'CONTROL'
+                 chat_capable = len(fields) == 5 and fields[4] in ('SOCIALCHAT', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELCHATRALLY')
+                 travel = len(fields) == 5 and fields[4] in ('SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
+@@ -418,6 +424,12 @@ class WorldServer:
+                 if row is None or not secrets.compare_digest(row[0], token):
+                     self._error(conn, 'AUTH')
+                     return
++                from .rules import wire
++                if not control and not link and (rule_claim is not None or self.world_rules['mask']):
++                    if rule_claim != wire(self.world_rules):
++                        self._error(conn, 'RULES')
++                        return
++                conn['rules_validated'] = rule_claim == wire(self.world_rules)
+                 if link:
+                     presence = self.peers.get(name)
+                     if presence is None or presence.get('closing'):
+@@ -669,6 +681,9 @@ class WorldServer:
+             request = json.loads(raw)
+             if type(request) is not dict:
+                 raise ValueError('control request must be an object')
++            if request == {'command': 'world_rules'}:
++                self._queue(conn, json.dumps(dict(ok=True, world_rules=self.world_rules)) + '\n')
++                return
+             if request.get('command') == 'intent':
+                 if set(request) != {'command', 'request_id', 'text'}:
+                     raise ValueError('invalid intent fields')
+@@ -747,6 +762,13 @@ class WorldServer:
+                     return
+                 identity = self.create_identity(request['trainer'])
+                 result = dict(ok=True, invitation=dict(self.sharing, trainer=identity['id'], token=identity['token']))
++            elif request.get('command') == 'set_world_rules':
++                try:
++                    if set(request) != {'command', 'rules'}:
++                        raise ValueError('invalid world settings request')
++                    result = dict(ok=True, world_rules=self.set_world_rules(request['rules']))
++                except ValueError as exc:
++                    result = dict(ok=False, error=str(exc))
+             elif request.get('command') == 'inspect':
+                 result = self.inspect()
+             elif request.get('command') == 'host_controls':
+@@ -779,6 +801,30 @@ class WorldServer:
+             result = dict(ok=False, error=str(exc))
+         self._queue(conn, json.dumps(result, ensure_ascii=True) + '\n')
+ 
++    def set_world_rules(self, rules):
++        from .rules import settings, make, publish
++        from .launcher import ProfileLock
++        from contextlib import ExitStack
++        with self.lock, ExitStack() as locks:
++            rules = settings(rules)
++            if self.peers or self.link_channels:
++                raise ValueError('Stop every native game before changing world rules.')
++            # Disconnected and offline games also retain profile locks.
++            for state in (self.root, self.root / '.offline'):
++                trainers = state / 'trainers'
++                if trainers.exists():
++                    for profile in trainers.iterdir():
++                        if profile.is_dir():
++                            locks.enter_context(ProfileLock(state, profile.name))
++            current = self.world_rules
++            if current['rules'] == rules:
++                return dict(current)
++            updated = make(current['world_id'], current['version'] + 1, rules)
++            publish(self.root, updated)
++            self.world_rules = updated
++            self.link_protocol.world_mask = updated['mask']
++            return dict(updated)
++
+     def inspect(self):
+         with self.lock:
+             players = []
+@@ -789,7 +835,7 @@ class WorldServer:
+                     player.update(zip(('group','num','x','y','facing','gfx','ready'), conn['state']))
+                 player['meeting'] = conn.get('meeting')
+                 players.append(player)
+-            return dict(ok=True, revision=self.revision, players=players,
++            return dict(ok=True, revision=self.revision, players=players, world_rules=dict(self.world_rules),
+                         sharing=(dict(endpoint=self.sharing['endpoint'], listen=getattr(self, 'sharing_listen', None))
+                                  if self.sharing else None),
+                         capacity=dict(players=self.max_players, controls=self.max_controls,
+diff --git a/world/session.py b/world/session.py
+index 08a99bb..c4bdfab 100644
+--- a/world/session.py
++++ b/world/session.py
+@@ -128,6 +128,28 @@ class DesktopSession:
+             server.close()
+             return path
+ 
++    def set_world_rules(self, rules):
++        if self.server is None:
++            raise SessionError('Only the local world owner can change gameplay rules.')
++        from .client import admin_request
++        result = admin_request(self.server.socket_path, dict(command='set_world_rules', rules=rules))
++        if not result.get('ok'):
++            raise SessionError(result.get('error', 'World settings were not saved.'))
++        return result['world_rules']
++
++    def refresh_world_rules(self, trainer):
++        if self.state is None:
++            raise SessionError('Connect to a world before loading its rules.')
++        from .rules import validate, publish
++        with self._intent_client(trainer) as control:
++            response = control._request({'command': 'world_rules'})
++        if not response.get('ok'):
++            raise SessionError('The host does not support world rules.')
++        policy = validate(response['world_rules'])
++        if self.server is None and self.broker is not None:
++            publish(self.state, policy)
++        return policy
++
+     def host(self, name):
+         from .server import WorldServer
+         if self.state is not None:
+@@ -309,8 +331,13 @@ class DesktopSession:
+                                            'Do not delete socket or lock files.') from None
+                     # Control role checks credentials without occupying native presence.
+                     from .client import IntentClient
+-                    with IntentClient(broker.socket_path, identity['trainer'], identity['token'], timeout=4):
+-                        pass
++                    with IntentClient(broker.socket_path, identity['trainer'], identity['token'], timeout=4) as control:
++                        response = control._request({'command': 'world_rules'})
++                        if not response.get('ok'):
++                            raise SessionError('The host does not support world rules. Update the host before joining.')
++                        from .rules import validate, publish
++                        policy = validate(response['world_rules'])
++                        publish(path, policy)
+                     paths['profile'].parent.mkdir(mode=0o700, exist_ok=True)
+                     paths['profile'].mkdir(mode=0o700, exist_ok=True)
+                     config = (f'socket {transport}/world.sock\ntrainer {identity["trainer"]}\n'
+@@ -381,9 +408,6 @@ class DesktopSession:
+             self.game_locks.pop(key).close()
+         import os
+         import shutil
+-        command = (game_command(binary, state, paths, display, online=False) if offline else
+-                   game_command(binary, state, paths, display, agent_control=True) if agent_control else
+-                   game_command(binary, state, paths, display))
+         if not shutil.which('bwrap'):
+             raise SessionError('Bubblewrap is required to isolate the native game.')
+         if not Path(binary).is_file() or not os.access(binary, os.X_OK):
+@@ -396,6 +420,9 @@ class DesktopSession:
+         else:
+             lock = ProfileLock(state, trainer)
+         try:
++            if not offline:
++                self.refresh_world_rules(trainer)
++            command = game_command(binary, state, paths, display, agent_control=agent_control, online=not offline)
+             if agent_control:
+                 from .launcher import check_player_endpoint
+                 check_player_endpoint(paths)
+diff --git a/world/web_launcher.py b/world/web_launcher.py
+index 301e89b..702a421 100644
+--- a/world/web_launcher.py
++++ b/world/web_launcher.py
+@@ -168,6 +168,7 @@ class LauncherBridge:
+                     'trainer': self.session.remote_trainer,
+                     'world_key': self.session.state.name if self.session.state is not None else None,
+                     'offline_world_key': offline_world_key,
++                    'world_rules_owner': self.session.server is not None,
+                     'games': [name for name, (process, _paths) in self.session.games.items()
+                               if process.poll() is None], 'status': self.session.status}
+ 
+@@ -205,6 +206,9 @@ class LauncherBridge:
+                         return result
+                     elif action == 'host_refresh':
+                         self.hosted.refresh()
++                    elif action in ('host_rules_get', 'host_rules_set'):
++                        rules = self.hosted.rules(payload.get('world'), payload.get('rules') if action == 'host_rules_set' else None)
++                        return {'world_rules': rules}
+                     elif action == 'host_create':
+                         self.remote_paths = self.hosted.create(payload.get('name'), payload.get('trainer'))
+                     elif action == 'host_ack':
+@@ -239,6 +243,12 @@ class LauncherBridge:
+                     raise SessionError(message) from None
+                 except (OSError, ValueError):
+                     raise SessionError('Could not complete the hosted-world request. Check your access file and connection, then retry.') from None
++            elif action == 'world_rules_get':
++                from .rules import read
++                return {'world_rules': read(self.session.state) if self.session.state else None,
++                        'editable': self.session.server is not None}
++            elif action == 'world_rules_set':
++                return {'world_rules': self.session.set_world_rules(payload.get('rules'))}
+             elif action == 'join':
+                 raw = payload.get('invitation')
+                 if not isinstance(raw, str) or len(raw.encode('utf-8')) > 4096:
+diff --git a/world/windows_client.py b/world/windows_client.py
+index 8f4739a..8d21de3 100644
+--- a/world/windows_client.py
++++ b/world/windows_client.py
+@@ -228,6 +228,25 @@ class WindowsGuestSession:
+                     raise ValueError('unsupported telemetry path')
+                 self.gateway = LoopbackGateway(self.remote, fingerprint=self.pin,
+                                                local_token=secrets.token_hex(32)).start()
++                # Use the same capability-gated, pinned-TLS gateway as native.
++                # This control connection cannot occupy gameplay presence.
++                with socket.create_connection(self.gateway.address, timeout=5) as control:
++                    control.sendall((f'EWLOCAL1 {self.gateway.local_token}\n'
++                                     f'HELLO 1 {self.trainer} {self._token} CONTROL\n').encode('ascii'))
++                    with control.makefile('rb') as stream:
++                        welcome = stream.readline(1025).decode('ascii').split()
++                        if (len(welcome) != 5 or welcome[:3] != ['WELCOME','1',self.trainer]
++                                or welcome[4] != 'CONTROL'):
++                            raise ValueError('world authentication failed')
++                        control.sendall(b'{"command":"world_rules"}\n')
++                        raw = stream.readline(4097)
++                        if not raw.endswith(b'\n') or len(raw) > 4096:
++                            raise ValueError('invalid world rules response')
++                        response = json.loads(raw)
++                        if not response.get('ok'):
++                            raise ValueError('host does not support world rules')
++                        from .rules import validate
++                        self.world_rules = validate(response['world_rules'])
+                 text = (f'loopback_port {self.gateway.address[1]}\n'
+                         f'loopback_token {self.gateway.local_token}\n'
+                         f'trainer {self.trainer}\ntoken {self._token}\n'
+@@ -251,8 +270,10 @@ class WindowsGuestSession:
+         binary = self.binary if self.binary is not None else locate_game()
+         if not binary.is_file():
+             raise ValueError('packaged game is missing')
++        from .rules import wire
+         return [str(binary), '--save', str(self.paths['save']),
+-                '--config', str(self.paths['settings']), '--world-config', str(self.paths['config'])]
++                '--config', str(self.paths['settings']), '--world-config', str(self.paths['config']),
++                '--world-rules', wire(self.world_rules)]
+ 
+     def start(self):
+         with self._guard:

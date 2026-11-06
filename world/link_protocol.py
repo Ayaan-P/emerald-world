@@ -61,10 +61,11 @@ def _uint(text, limit):
 
 
 class LinkProtocol:
-    def __init__(self, *, clock=time.monotonic, id_factory=None, max_players=8):
+    def __init__(self, *, clock=time.monotonic, id_factory=None, max_players=8, world_mask=None):
         if type(max_players) is not int or not 1 <= max_players <= 64:
             raise ValueError('max_players must be between 1 and 64')
         self.max_players = max_players
+        self.world_mask = world_mask
         self.sessions = LinkSessions(clock=clock, max_sessions=max_players // 2 or 1)
         self.id_factory = id_factory or (lambda: secrets.randbits(64))
         self._wire = {}
@@ -96,13 +97,23 @@ class LinkProtocol:
                 output.extend((actor, f'T RANGE {tag.id} {flag}\n') for actor in tag.participants)
         return output
 
-    def _tag_request(self, actor, fields, presence, now):
+    @staticmethod
+    def _require_content(content_ids, first, second):
+        # IDs are supplied by the authenticated presence boundary, not LINK input.
+        one, two = content_ids.get(first), content_ids.get(second)
+        if (one != two or any(tag is not None and
+                (not isinstance(tag, str) or not re.fullmatch(r'[0-9a-f]{64}', tag))
+                for tag in (one, two))):
+            raise LinkError('incompatible_game_content')
+
+    def _tag_request(self, actor, fields, presence, now, content_ids):
         if len(fields) != 3:
             raise ValueError('tag shape')
         op, value = fields[1:]
         if op == 'OFFER':
             if not _NAME.fullmatch(value):
                 raise ValueError('target')
+            self._require_content(content_ids, actor, value)
             if actor == value:
                 raise LinkError('self_offer')
             if actor in self._tag_actor or value in self._tag_actor:
@@ -131,6 +142,7 @@ class LinkProtocol:
             raise LinkError('invalid_state')
         if op == 'REJECT':
             return self._end_tag(tag)
+        self._require_content(content_ids, *tag.participants)
         self.sessions._near(presence, *tag.participants, coop=True)
         tag.active = True
         tag.in_range = 1
@@ -244,13 +256,14 @@ class LinkProtocol:
         entry = self._wire.get(wire)
         return entry is not None and actor in entry.participants
 
-    def process(self, actor, raw, presence, *, now=None):
+    def process(self, actor, raw, presence, *, now=None, content_ids=None):
         """Input actor comes only from the authenticated LINK connection.
 
         Errors contain fixed codes only. A malformed operation by an admitted
         participant aborts its reservation; it never silently skips an engine
         round. Bad activity IDs from outsiders cannot abort another pair.
         """
+        content_ids = {} if content_ids is None else content_ids
         output = self.tick(now=now)
         channel = 'L'
         try:
@@ -263,7 +276,7 @@ class LinkProtocol:
                 channel = 'T'
                 if any(not field for field in fields):
                     raise ValueError('shape')
-                output.extend(self._tag_request(actor, fields, presence, self.sessions._last_now))
+                output.extend(self._tag_request(actor, fields, presence, self.sessions._last_now, content_ids))
                 return output
             if any(not field for field in fields) or fields[0] != 'L':
                 raise ValueError('shape')
@@ -272,6 +285,7 @@ class LinkProtocol:
                 target = fields[3]
                 if mode not in _KINDS or not _NAME.fullmatch(target):
                     raise ValueError('offer')
+                self._require_content(content_ids, actor, target)
                 tag = None
                 if mode == 4:
                     tag = self._tags.get(self._tag_actor.get(actor))
@@ -300,6 +314,7 @@ class LinkProtocol:
                 wire = _uint(fields[2], 2**64-1)
                 entry = self._entry(actor, wire)
                 if fields[1] == 'ACCEPT':
+                    self._require_content(content_ids, *entry.participants)
                     result = self.sessions.accept(actor, entry.internal, presence, now=now)
                 else:
                     result = self.sessions.reject(actor, entry.internal, now=now)
@@ -315,6 +330,7 @@ class LinkProtocol:
                     raise ValueError('event')
                 words = struct.unpack('<8H', bytes.fromhex(fields[9]))
                 entry = self._entry(actor, wire)
+                self._require_content(content_ids, *entry.participants)
                 if entry.mode != mode:
                     raise LinkError('mode')
                 if entry.participants[slot] != actor:
@@ -325,6 +341,10 @@ class LinkProtocol:
                     if step != 0 or link_type not in _LINK_TYPES[mode]:
                         raise ValueError('open')
                     rule = link_type & 0xC000
+                    if self.world_mask is not None and mode != 3:
+                        expected = (0x8000 if self.world_mask & 4 else 0) | (0x4000 if self.world_mask & 8 else 0)
+                        if rule != expected:
+                            raise LinkError('world_rules_mismatch')
                     if mode != 3 and wire in self._rules and self._rules[wire] != rule:
                         raise LinkError('link_type_mismatch')
                     result = self.sessions.open(actor, entry.internal, generation, link_type, now=now)

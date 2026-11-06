@@ -48,6 +48,8 @@ static bool8 WorldCatalog_Metatile(unsigned g,unsigned n,unsigned t) {
     return g < 2 && n < 2 && t < 1024;
 }
 ''' + declarations
+        source += '#include "' + str(ROOT/'src/platform/world_rules.c') + '"\n'
+        source += '#include "' + str(ROOT/'src/platform/content_compat.c') + '"\n'
         source += 'struct WorldBridgePeer { char name[25]; unsigned group,num,x,y; bool8 ready; };\n'
         for name in ('Identifier', 'Decimal', 'ObjectText', 'Disconnect', 'Line',
                      'SocketOpen', 'QueueHello', 'Flush', 'Connect', 'Receive', 'WorldBridge_Poll',
@@ -122,7 +124,10 @@ void send_state(void) {
         self.peer, _ = self.listener.accept()
         self.peer.settimeout(.1)
         self.pump()
-        self.assertEqual(self.peer.recv(4096), b'HELLO 1 alice ' + b'a'*64 + b' SOCIALTRAVELCHATRALLY\n')
+        import re
+        header = (ROOT/'include/platform/content_compat_generated.h').read_text()
+        tag = re.search(r'#define WORLD_CONTENT_ID "([a-f0-9]{64})"', header)[1]
+        self.assertEqual(self.peer.recv(4096), b'HELLO 1 alice ' + b'a'*64 + b' SOCIALTRAVELCHATRALLY DATA ' + tag.encode() + b'\n')
 
     def incoming(self, data):
         self.peer.sendall(data)

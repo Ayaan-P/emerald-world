@@ -101,6 +101,8 @@ def offline_profile(state_dir, trainer, seed_save=None, *, copy_online=False):
     with ExitStack() as stack:
         stack.enter_context(WorldActivityLock(state))
         state.mkdir(parents=True, mode=0o700, exist_ok=True)
+        from .rules import read
+        read(state, create=True)
         offline = state / '.offline'
         _private_directory(offline)
         marker = offline / '.offline-copy'

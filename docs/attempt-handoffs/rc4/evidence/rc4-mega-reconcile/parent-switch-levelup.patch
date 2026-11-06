@@ -1,0 +1,42 @@
+--- a/src/battle_script_commands.c
++++ b/src/battle_script_commands.c
+@@ -6,6 +6,8 @@
+ #include "platform/world_rules.h"
+ #include "platform/world_coop.h"
+ #include "platform/native_link.h"
++#include "platform/mega_game.h"
++#include "platform/mega_wire.h"
+ #endif
+ #include "battle.h"
+ #include "battle_move_split.h"
+@@ -3533,6 +3535,9 @@
+                     gBattleMons[0].speed = GetMonData(&gPlayerParty[gBattleStruct->expGetterMonId], MON_DATA_SPEED);
+                     gBattleMons[0].spAttack = GetMonData(&gPlayerParty[gBattleStruct->expGetterMonId], MON_DATA_SPATK);
+                     gBattleMons[0].spDefense = GetMonData(&gPlayerParty[gBattleStruct->expGetterMonId], MON_DATA_SPDEF);
++#ifdef PORTABLE
++                    MegaGame_RecalculateStats(0);
++#endif
+                 }
+ 
+                 if (gBattlerPartyIndexes[2] == gBattleStruct->expGetterMonId && gBattleMons[2].hp && (gBattleTypeFlags & BATTLE_TYPE_DOUBLE))
+@@ -3550,6 +3555,9 @@
+                     gBattleMons[2].speed = GetMonData(&gPlayerParty[gBattleStruct->expGetterMonId], MON_DATA_SPEED);
+ #endif
+                     gBattleMons[2].spAttack = GetMonData(&gPlayerParty[gBattleStruct->expGetterMonId], MON_DATA_SPATK);
++#ifdef PORTABLE
++                    MegaGame_RecalculateStats(2);
++#endif
+                 }
+                 gBattleScripting.getexpState = 5;
+             }
+@@ -4734,6 +4742,10 @@
+     }
+ 
+     SwitchInClearSetData();
++#ifdef PORTABLE
++    if (MegaGame_OnSwitchIn(gActiveBattler))
++        MegaGame_PublishForm(gActiveBattler, MEGA_WIRE_REENTER);
++#endif
+ 
+     if (gBattleTypeFlags & BATTLE_TYPE_PALACE
+         && gBattleMons[gActiveBattler].maxHP / 2 >= gBattleMons[gActiveBattler].hp

@@ -61,7 +61,11 @@ class CoopCatching(unittest.TestCase):
                          'GetMonData3', 'GetMonData2', 'GetBoxMonData3', 'GetBoxMonData2',
                          'SetMonData', 'SetBoxMonData', 'CopyMon', 'GiveMonToPlayer'):
                 stock += function('src/pokemon.c', name)
-            (Path(tmp) / 'stock_pokemon.inc').write_text(stock)
+            expanded = '\n'.join(function('src/platform/expanded_species.c', name)
+                                 for name in ('ExpandedSpecies_IsPlayable', 'ExpandedSpecies_Clamp'))
+            expanded = expanded.replace('"../data/pokemon/expanded/playable_cases.inc"',
+                                        '"' + str(ROOT/'src/data/pokemon/expanded/playable_cases.inc') + '"')
+            (Path(tmp) / 'stock_pokemon.inc').write_text(expanded + '\n' + stock)
             # Match the native sanitizer build: stock SET32 uses signed shifts.
             command = ['gcc', '-std=gnu99', '-g', '-fsanitize=address,undefined',
                        '-fno-sanitize=shift-base',
