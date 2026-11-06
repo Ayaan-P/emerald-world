@@ -223,6 +223,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('theme', help='design theme sent to the model provider')
     parser.add_argument('--timeout', type=float, default=120)
+    parser.add_argument('--replace-output', action='store_true', help='atomically replace an existing regular output file after validation')
     target = parser.add_mutually_exclusive_group()
     target.add_argument('--admin-socket', type=Path, help='also publish to the local owner authority')
     target.add_argument('--offline-output', type=Path, help='write a new offline template with model-selected encounter profile')
@@ -269,7 +270,13 @@ def main(argv=None):
         parser.error('--shared-wildlife requires --admin-socket')
     if args.shared_ecology and args.admin_socket is None:
         parser.error('--shared-ecology requires --admin-socket')
+    if args.replace_output and not any((args.xl_events_wilds_output,args.xl_cast_wilds_output,args.xl_wilds_output,args.offline_output,args.offline_wildlife_output,args.large_offline_output,args.large_wildlife_output,args.wilds_output,args.guided_wilds_output,args.cast_wilds_output)):
+        parser.error('--replace-output requires an offline output target')
+    output = args.xl_events_wilds_output or args.xl_cast_wilds_output or args.xl_wilds_output or args.offline_output or args.offline_wildlife_output or args.large_offline_output or args.large_wildlife_output or args.wilds_output or args.guided_wilds_output or args.cast_wilds_output
     try:
+        if args.replace_output:
+            from .map_store import validate_replacement
+            validate_replacement(output)
         proposal, blob = author(args.theme, args.timeout, offline_ecology=args.offline_output is not None or args.shared_ecology,
                                 custom_wildlife=args.offline_wildlife_output is not None or args.shared_wildlife or args.large_wildlife_output is not None or args.shared_large_wildlife,
                                 large=args.xl_events_wilds_output is not None or args.xl_cast_wilds_output is not None or args.xl_wilds_output is not None or args.large_offline_output is not None or args.shared_large or args.large_wildlife_output is not None or args.shared_large_wildlife or args.wilds_output is not None or args.shared_wilds or args.guided_wilds_output is not None or args.shared_guided_wilds or args.cast_wilds_output is not None or args.shared_cast_wilds,
@@ -278,10 +285,9 @@ def main(argv=None):
                                 cast=args.xl_events_wilds_output is not None or args.xl_cast_wilds_output is not None or args.cast_wilds_output is not None or args.shared_cast_wilds,
                                 xl=args.xl_events_wilds_output is not None or args.xl_cast_wilds_output is not None or args.xl_wilds_output is not None,
                                 events=args.xl_events_wilds_output is not None)
-        output = args.xl_events_wilds_output or args.xl_cast_wilds_output or args.xl_wilds_output or args.offline_output or args.offline_wildlife_output or args.large_offline_output or args.large_wildlife_output or args.wilds_output or args.guided_wilds_output or args.cast_wilds_output
         if output is not None:
-            with output.open('xb') as out:
-                out.write(blob)
+            from .map_store import write_map
+            write_map(output,blob,replace=args.replace_output)
             print(f'Wrote offline cave template: {output}')
         elif args.admin_socket is not None:
             print(publish_bytes(blob, args.admin_socket))
