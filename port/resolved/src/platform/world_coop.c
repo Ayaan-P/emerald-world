@@ -1,5 +1,4 @@
 #ifdef PORTABLE
-#include <stdio.h>
 #include "global.h"
 #include "data.h"
 #include "battle.h"
@@ -682,14 +681,8 @@ static void CB2_Exchange(void)
 {
     u8 peer, i;
     u8 phase = sCoop.phase;
-    static u8 lastPhase = 255;
-    if (phase != lastPhase) {
-        fprintf(stderr, "coop-diag phase=%u local=%u link=%d status=%u finished=%d\n", phase, sCoop.local, NativeLink_IsActive(), GetBlockReceivedStatus(), IsLinkTaskFinished());
-        lastPhase = phase;
-    }
     if (!NativeLink_IsActive() || !gReceivedRemoteLinkPlayers || ++sCoop.timer > COOP_TIMEOUT)
     {
-        fprintf(stderr, "coop-diag failure-site=12 phase=%u timer=%u status=%u finished=%d\n", phase, sCoop.timer, GetBlockReceivedStatus(), IsLinkTaskFinished());
         ExchangeFailed();
         return;
     }
@@ -728,14 +721,12 @@ static void CB2_Exchange(void)
             struct CoopHeader header;
             if (GetBlockReceivedSize(peer) != sizeof(header))
             {
-                fprintf(stderr, "coop-diag failure-site=50 phase=%u timer=%u status=%u finished=%d\n", phase, sCoop.timer, GetBlockReceivedStatus(), IsLinkTaskFinished());
                 ExchangeFailed();
                 return;
             }
             memcpy(&header, gBlockRecvBuffer[peer], sizeof(header));
             if (!HeaderValid(&header, phase))
             {
-                fprintf(stderr, "coop-diag failure-site=56 phase=%u timer=%u status=%u finished=%d\n", phase, sCoop.timer, GetBlockReceivedStatus(), IsLinkTaskFinished());
                 ExchangeFailed();
                 return;
             }
@@ -746,7 +737,6 @@ static void CB2_Exchange(void)
                 header.phase = 0;
                 if (memcmp(&header, &sCoop.headers[peer], sizeof(header)))
                 {
-                    fprintf(stderr, "coop-diag failure-site=66 phase=%u timer=%u status=%u finished=%d\n", phase, sCoop.timer, GetBlockReceivedStatus(), IsLinkTaskFinished());
                     ExchangeFailed();
                     return;
                 }
@@ -759,7 +749,6 @@ static void CB2_Exchange(void)
                 : peer != sCoop.ownerPeer || phase - 4 >= sCoop.enemyCount;
             if (GetBlockReceivedSize(peer) != sizeof(block))
             {
-                fprintf(stderr, "coop-diag failure-site=78 phase=%u timer=%u status=%u finished=%d\n", phase, sCoop.timer, GetBlockReceivedStatus(), IsLinkTaskFinished());
                 ExchangeFailed();
                 return;
             }
@@ -769,7 +758,6 @@ static void CB2_Exchange(void)
              || (!empty && GetMonData(&block.mon, MON_DATA_HP) == 0)
              || (empty && GetMonData(&block.mon, MON_DATA_SPECIES) != SPECIES_NONE))
             {
-                fprintf(stderr, "coop-diag failure-site=87 phase=%u timer=%u status=%u finished=%d\n", phase, sCoop.timer, GetBlockReceivedStatus(), IsLinkTaskFinished());
                 ExchangeFailed();
                 return;
             }
@@ -785,7 +773,6 @@ static void CB2_Exchange(void)
         if (sCoop.headers[0].owner + sCoop.headers[1].owner != 1
          || sCoop.headers[sCoop.local].owner != sCoop.owner)
         {
-            fprintf(stderr, "coop-diag failure-site=102 phase=%u timer=%u status=%u finished=%d\n", phase, sCoop.timer, GetBlockReceivedStatus(), IsLinkTaskFinished());
             ExchangeFailed();
             return;
         }
