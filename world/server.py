@@ -1005,7 +1005,8 @@ class WorldServer:
     def _terrain_requires_geometry(self):
         from .shared_terrain import needs_geometry
         if not self.shared_cave or self.shared_cave.version!=9:return False
-        return needs_geometry(self.shared_cave,self._active_terrain()[1])
+        revision,payload=self._active_terrain()
+        return (revision>0 and payload==b'\0') or needs_geometry(self.shared_cave,payload)
 
     def _active_walkable(self, x, y):
         cave=self.shared_cave
@@ -1069,16 +1070,16 @@ class WorldServer:
                     except Exception:peer['closing']=True
             return {'ok':True,'identity':identity,'revision':revision,'tiles':len(merged),'changed':True,'queued':queued,'delivery_failed':delivery_failed}
 
-    def set_shared_geometry(self, identity, tiles):
+    def set_shared_geometry(self, identity, tiles, replace=False):
         """Commit connected terrain geometry only while the generated area is empty."""
         from .shared_terrain import validate,encode,project
-        if type(identity) is not str or not re.fullmatch(r'[0-9a-f]{64}',identity) or type(tiles) is not list or not 1<=len(tiles)<=64:raise ValueError('invalid shared geometry request')
+        if type(identity) is not str or not re.fullmatch(r'[0-9a-f]{64}',identity) or type(tiles) is not list or type(replace) is not bool or len(tiles)>64 or (not tiles and not replace):raise ValueError('invalid shared geometry request')
         changes={}
         for tile in tiles:
             if type(tile) is not dict or set(tile)!={'x','y','terrain'}:raise ValueError('invalid shared geometry request')
             x,y,terrain=tile['x'],tile['y'],tile['terrain']
-            if type(x) is not int or type(y) is not int or not 0<=x<63 or not 0<=y<63 or type(terrain) is not str or terrain not in ('grass','tall_grass','water') or (x,y) in changes:raise ValueError('invalid shared geometry request')
-            changes[(x,y)]={'grass':0,'tall_grass':1,'water':2}[terrain]
+            if type(x) is not int or type(y) is not int or not 0<=x<63 or not 0<=y<63 or type(terrain) is not str or terrain not in ('grass','tall_grass','water','original') or (x,y) in changes:raise ValueError('invalid shared geometry request')
+            changes[(x,y)]={'grass':0,'tall_grass':1,'water':2,'original':None}[terrain]
         with self.lock:
             cave=self.shared_cave
             if not self.archive_generated_areas or not cave or cave.version!=9 or cave.identity!=identity:raise ValueError('durable active event area required')
@@ -1086,7 +1087,13 @@ class WorldServer:
             if stored is None or type(stored[0]) is not bytes or hashlib.sha256(stored[0]).hexdigest()!=identity:raise ValueError('publish the active event area before editing geometry')
             peers=[p for p in self.peers.values() if not p.get('closing') and p.get('cave_capable')]
             if any(p.get('in_generated_cave') or (p.get('state') is not None and tuple(p['state'][:2]) in (self.cave_map,self.wilds_map)) for p in peers):raise ValueError('all trainers must leave the generated area')
-            revision,old=self._active_terrain();merged=validate(cave,old);merged.update(changes);payload=encode(cave,merged)
+            revision,old=self._active_terrain();merged={} if replace else validate(cave,old)
+            npcs={(cave.cast[2+61*i],cave.cast[3+61*i]) for i in range(cave.cast[0])}
+            for (x,y),kind in changes.items():
+                if not 0<x<62 or not 0<y<62 or (x,y) in npcs or (x,y) in ((1,1),(61,60),(61,61)):raise ValueError('protected geometry cell')
+                if kind is None:merged.pop((x,y),None)
+                else:merged[(x,y)]=kind
+            payload=encode(cave,merged)
             if payload==old:return {'ok':True,'identity':identity,'revision':revision,'tiles':len(merged),'changed':False}
             if revision>=2147483647:raise ValueError('terrain revision exhausted')
             reset=f'CAVE RESET {identity}\n';recipients=[p for p in peers if p.get('cave_ack')==identity or p.get('cave_offer')==identity]
@@ -1222,8 +1229,8 @@ class WorldServer:
                     result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'set_shared_geometry':
                 try:
-                    if set(request)!={'command','identity','tiles'}:raise ValueError('invalid shared geometry request')
-                    result=self.set_shared_geometry(request['identity'],request['tiles'])
+                    if set(request) not in ({'command','identity','tiles'},{'command','identity','tiles','replace'}):raise ValueError('invalid shared geometry request')
+                    result=self.set_shared_geometry(request['identity'],request['tiles'],request.get('replace',False))
                 except ValueError as exc:
                     result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'inspect_shared_terrain':
