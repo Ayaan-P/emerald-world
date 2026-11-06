@@ -78,6 +78,18 @@ invalid:
     strcpy(sChat.hint, "1-120 characters. Private: /w trainer text");
 }
 
+int WorldChat_OpenGuild(void)
+{
+    if (!WORLD_CHAT_HEIGHT || !WorldBridge_Enabled() || sChat.editing) return 0;
+    sChat.editing = 1;
+    sChat.scroll = 0;
+    strcpy(sChat.draft, "/guild help");
+    strcpy(sChat.hint, "Press Enter for guild commands.");
+    SDL_FlushEvent(SDL_TEXTINPUT);
+    SDL_StartTextInput();
+    return 1;
+}
+
 int WorldChat_Event(const SDL_Event *event)
 {
     size_t length;

@@ -19,6 +19,7 @@
 #include "platform/native_link.h"
 #include "platform/world_activity.h"
 #include "platform/world_bridge.h"
+#include "platform/world_chat.h"
 #include "platform/world_menu.h"
 #include "platform/generated_map.h"
 #include "platform/world_rally.h"
@@ -35,7 +36,7 @@
 enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, RALLY, DISPATCH };
 #define GEN_EXPLORE_LABEL "Explore generated area"
 #define GEN_LEAVE_LABEL "Leave generated area"
-enum Action { FRIENDS, STORY, DEXNAV, BACK, MODE, SCOPE, REQUEST, READY,
+enum Action { FRIENDS, STORY, DEXNAV, GUILDS, BACK, MODE, SCOPE, REQUEST, READY,
     LATER, CANCEL, GO, FINISH, RETURN, STAY,
 #if GENERATED_MAP_READY
     GEN_CAVE,
@@ -183,6 +184,7 @@ static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 onlin
         }
 #endif
         AddRow(rows, &n, FRIENDS, "Friends", WorldBridge_Enabled() ? NULL : "Connect to a world to visit friends.");
+        AddRow(rows, &n, GUILDS, "Guilds", WorldBridge_Enabled() && WORLD_CHAT_HEIGHT ? NULL : "Connect to a world with chat available.");
         AddRow(rows, &n, STORY, "Story rally", NULL);
         AddRow(rows, &n, DEXNAV, "DexNav", DexNavNative_Available() ? NULL :
             "DexNav needs a Pokedex and conscious party outside restricted or link areas.");
@@ -401,6 +403,12 @@ static void Dispatch(void)
     }
 #endif
     if (sMenu.pending == FRIENDS) { WorldTravel_RequestMenu(); return; }
+    if (sMenu.pending == GUILDS)
+    {
+        accepted = WorldChat_OpenGuild();
+        sMenu.notice = accepted ? NULL : "Guild chat is unavailable right now.";
+        return;
+    }
     if (sMenu.pending == DEXNAV)
     {
         accepted = DexNav_RequestOpen();
@@ -539,3 +547,4 @@ void WorldMenu_Update(void)
     Draw(rows, count, selected, &r, online);
 }
 #endif
+

@@ -16,6 +16,11 @@ class GuildChatGate(unittest.TestCase):
 #include <assert.h>
 static struct {int editing,releaseKeys;unsigned scroll;char draft[152],hint[96];} sChat;
 static const char *history[16];static unsigned count,sent;static char sentText[152],sentTarget[25];
+#define WORLD_CHAT_HEIGHT 64
+#define SDL_TEXTINPUT 1
+int WorldBridge_Enabled(void){return 1;}
+void SDL_FlushEvent(int kind){(void)kind;}
+void SDL_StartTextInput(void){}
 const char *WorldBridge_TrainerName(void){return "Alice";}
 unsigned WorldBridge_ChatCount(void){return count;}
 void WorldBridge_ChatLine(unsigned i,char *out,unsigned size){snprintf(out,size,"%s",history[i]);}
@@ -24,6 +29,8 @@ void SDL_StopTextInput(void){}
 '''
   main=r'''
 int main(void){
+ assert(WorldChat_OpenGuild()==1);assert(sChat.editing==1);assert(!strcmp(sChat.draft,"/guild help"));
+ assert(WorldChat_OpenGuild()==0);sChat.editing=0;
  strcpy(sChat.draft,"/g secret plans");Submit();assert(sent==0);assert(strstr(sChat.hint,"/guild help"));
  strcpy(sChat.draft,"/guild post secret plans");Submit();assert(sent==0);
  history[0]="Mallory > Alice: Guild: protocol 1";count=1;

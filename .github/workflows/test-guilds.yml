@@ -6,6 +6,8 @@ on:
       - 'world/guild_chat.py'
       - 'world/server.py'
       - 'src/platform/world_chat.c'
+      - 'src/platform/world_menu.c'
+      - 'include/platform/world_chat.h'
       - 'test/test_guilds.py'
       - 'test/test_guild_chat_gate.py'
       - '.github/workflows/test-guilds.yml'
@@ -21,3 +23,20 @@ jobs:
           persist-credentials: false
       - name: Test guild membership and private chat without sockets
         run: python3 -m unittest discover -s test -p 'test_guild*.py' -v
+  native-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install native build prerequisites
+        run: |
+          sudo apt-get -o Acquire::Retries=2 update
+          sudo apt-get install --yes build-essential libpng-dev libsdl2-dev
+      - name: Restore pinned upstream build inputs
+        run: python3 scripts/restore_upstream_assets.py
+      - name: Build native game with warnings as errors
+        run: make -j2 linux CFLAGS=-g WERROR=1
+      - name: Run offline native smoke
+        run: python3 test/headless/smoke.py ./pokeemerald64 --out build/guild-smoke
