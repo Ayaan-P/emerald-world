@@ -80,3 +80,7 @@ and cold restart with state checks matching. The only screenshot difference
 was the start menu; the image was reviewed and shows the added WORLD entry
 without obvious clipping. Only that expected hash was updated. The later
 experimental co-op controller merge still needs a fresh build and replay.
+
+Expansion's player battle controller now carries the existing co-op item,
+roster, medicine, catch and defeat message hooks. Battle-end/private reward
+flow still needs its battle-main integration; no co-op behavior is verified.

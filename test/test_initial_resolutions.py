@@ -88,3 +88,9 @@ class InitialResolutions(unittest.TestCase):
   fixture=self.read('tests/smoke/expected/screenshots.md5')
   self.assertIn('72868519c964cc9a90990c55d19d2f2e  24_start_menu.ppm',fixture)
   self.assertEqual(len(fixture.splitlines()),26)
+
+ def test_coop_player_controller_hooks_present(self):
+  s=self.read('src/battle_controller_player.c')
+  for x in ('WorldCoop_SelectBattleItem(', 'WorldCoop_SetMenuConfusion(', 'WorldCoop_ApplyRosterRequest(', 'WorldCoop_ApplyRosterMirror(', 'WorldCoop_ConsumeMedicine(', 'WorldCoop_RecordCatchEvent(', 'WorldCoop_RecordDefeat('):
+   self.assertIn(x,s)
+  self.assertNotIn('gActiveBattler',s)
