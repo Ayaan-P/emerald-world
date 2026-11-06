@@ -544,3 +544,7 @@ gSpecials::
 	def_special RemoveRecordsWindow
 	def_special CloseDeptStoreElevatorWindow
 	def_special TrySetBattleTowerLinkType
+
+	.ifdef PORTABLE
+	def_special GeneratedMap_RunEvent
+	.endif

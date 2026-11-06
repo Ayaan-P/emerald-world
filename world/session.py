@@ -452,10 +452,10 @@ class DesktopSession:
                        else f'{trainer} starting. Use the native game window to play.')
         return process
 
-    def author_shared_cave(self, theme, *, wilds=False):
+    def author_shared_cave(self, theme, *, wilds=False, guide=False, cast=False):
         """Explicit local-host action; never display provider or credential text."""
         from .author_cave import MAX_THEME, author
-        if type(wilds) is not bool:
+        if type(wilds) is not bool or type(guide) is not bool or type(cast) is not bool or ((guide or cast) and not wilds) or (guide and cast):
             raise SessionError('Choose a cave or outdoor area.')
         if type(theme) is not str or not theme.strip() or len(theme.encode('utf-8')) > MAX_THEME:
             raise SessionError('Enter a cave description of at most 2,000 UTF-8 bytes.')
@@ -468,7 +468,11 @@ class DesktopSession:
                    for peer in server.peers.values() if not peer.get('closing')):
                 raise SessionError('Ask everyone to leave the generated cave before replacing it.')
         try:
-            if wilds:
+            if cast:
+                _, blob = author(theme, large=True, wilds=True, cast=True)
+            elif guide:
+                _, blob = author(theme, large=True, wilds=True, guide=True)
+            elif wilds:
                 _, blob = author(theme, large=True, wilds=True)
             else:
                 _, blob = author(theme, large=True, custom_wildlife=True)
@@ -1028,7 +1032,7 @@ class DesktopApp:
         heading('Generate a shared area')
         note('Host a local world, then describe a 63×63 cave or outdoor area. Generating sends your description to the configured model provider and may incur charges. It replaces the current generated area only when everyone has left and persists across local host restarts. Compatible experimental clients are required.')
         field('cave_theme', 'Area description')
-        actions([('Generate shared cave', self.generate_cave), ('Generate shared wilds', self.generate_wilds)])
+        actions([('Generate shared cave', self.generate_cave), ('Generate shared wilds', self.generate_wilds), ('Wilds with guide', self.generate_guided_wilds), ('Wilds with cast', self.generate_cast_wilds)])
         note('Generated areas and the first 80 characters of their description are saved in this local world. Refresh the list to revisit one; everyone must leave the current generated area before switching.')
         self.generated_area_entry = field('generated_area', 'Saved generated area')
         actions([('Refresh saved areas', self.refresh_generated_areas), ('Activate saved area', self.activate_generated_area)])
@@ -1158,6 +1162,14 @@ class DesktopApp:
         pass
 
     def generate_wilds(self):
+        # submit() owns the confirmation and background operation.
+        pass
+
+    def generate_guided_wilds(self):
+        # submit() owns the confirmation and background operation.
+        pass
+
+    def generate_cast_wilds(self):
         # submit() owns the confirmation and background operation.
         pass
 
@@ -1474,11 +1486,13 @@ class DesktopApp:
             self.message.set('Starting session operation. The window remains available...')
             self._set_busy(True)
             return
-        if operation in (self.generate_cave, self.generate_wilds):
+        if operation in (self.generate_cave, self.generate_wilds, self.generate_guided_wilds, self.generate_cast_wilds):
             from tkinter import messagebox
             value = self.values()
             theme = value['cave_theme']
-            wilds = operation == self.generate_wilds
+            cast = operation == self.generate_cast_wilds
+            guide = operation == self.generate_guided_wilds
+            wilds = operation in (self.generate_wilds, self.generate_guided_wilds, self.generate_cast_wilds)
             if not theme or len(theme.encode('utf-8')) > 2000:
                 self.message.set('Enter a cave description of at most 2,000 UTF-8 bytes.')
                 return
@@ -1490,7 +1504,11 @@ class DesktopApp:
                     parent=self.window, default='no'):
                 return
             self.pending_kind = 'author_cave'
-            if wilds:
+            if cast:
+                self.pending = self.executor.submit(self.session.author_shared_cave, theme, wilds=True, cast=True)
+            elif guide:
+                self.pending = self.executor.submit(self.session.author_shared_cave, theme, wilds=True, guide=True)
+            elif wilds:
                 self.pending = self.executor.submit(self.session.author_shared_cave, theme, wilds=True)
             else:
                 self.pending = self.executor.submit(self.session.author_shared_cave, theme)

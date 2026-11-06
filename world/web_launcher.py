@@ -213,17 +213,30 @@ class LauncherBridge:
                      for name, ready, help_text in prerequisites(self.binary) if name != 'tkinter']
             server = self.session.server
             local_host = server is not None and not getattr(server, '_closed', True)
+            wilds_authoring = bool(server is not None and local_host and server.wilds_map is not None)
             areas, archive_error = [], None
             archive_enabled = bool(local_host and getattr(server, 'archive_generated_areas', False))
-            if archive_enabled:
+            if archive_enabled and server is not None:
                 try:
-                    areas = self.session.list_generated_areas()
+                    # The archive stores every outdoor format as "wilds".
+                    # Read only the header to distinguish guides, casts and
+                    # owner-published events without exposing their contents.
+                    with server.lock:
+                        areas = self.session.list_generated_areas()
+                        formats = dict(server.db.execute(
+                            'SELECT identity, substr(template, 1, 8) FROM generated_area_archive'))
+                    kinds = {b'EWGMAP06': 'wilds', b'EWGMAP07': 'guided_wilds',
+                             b'EWGMAP08': 'cast_wilds', b'EWGMAP09': 'event_wilds'}
+                    areas = [dict(area, kind=kinds.get(formats.get(area['identity'], b''), area['kind']))
+                             for area in areas]
                 except Exception:
                     archive_error = 'Saved areas could not be loaded. Reopen the local host and try again.'
             return {'local_worlds': self.local_expeditions(),
                     'generated_areas': areas, 'area_archive': archive_enabled,
                     'area_archive_error': archive_error,
-                    'wilds_authoring': bool(local_host and server.wilds_map is not None),
+                    'wilds_authoring': wilds_authoring,
+                    'guided_wilds_authoring': wilds_authoring,
+                    'cast_wilds_authoring': wilds_authoring,
                     'local_host': local_host,
                     'cave_authoring': server is not None and local_host and server.cave_map is not None,
                     'cave_persistent': bool(server is not None and local_host and server.persist_generated_cave),
@@ -335,19 +348,20 @@ class LauncherBridge:
                 # Keep bridge mutations serialized throughout authoring, but never
                 # hold the world server lock while waiting for the provider.
                 if payload.get('confirmed') is not True:
-                    raise SessionError('Confirm provider usage and cave replacement before generating.')
+                    raise SessionError('Confirm provider usage and area replacement before generating.')
                 if (self.session.state is None or payload.get('world') != self.session.state.name
                         or self.session.server is None):
-                    raise SessionError('Host the selected local expedition before generating a cave.')
+                    raise SessionError('Host the selected local expedition before generating an area.')
                 kind = payload.get('kind', 'cave')
-                if kind not in ('cave', 'wilds'):
-                    raise SessionError('Choose a cave or outdoor area.')
+                if kind not in ('cave', 'wilds', 'guided_wilds', 'cast_wilds'):
+                    raise SessionError('Choose a cave, outdoor wilds, wilds with a guide or wilds with a cast.')
                 try:
-                    self.session.author_shared_cave(payload.get('theme'), wilds=kind == 'wilds')
+                    self.session.author_shared_cave(payload.get('theme'), wilds=kind != 'cave',
+                        guide=kind == 'guided_wilds', cast=kind == 'cast_wilds')
                 except SessionError:
                     raise
                 except Exception:
-                    raise SessionError('Cave generation could not complete. Check model login and local host setup before retrying.') from None
+                    raise SessionError('Area generation could not complete. Check model login and local host setup before retrying.') from None
             elif action == 'activate_area':
                 if payload.get('confirmed') is not True:
                     raise SessionError('Confirm changing the active generated area.')

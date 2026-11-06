@@ -193,6 +193,9 @@ void WriteTestState(FILE *file, u32 frame)
                 (int)MapGridGetMetatileIdAt(player->currentCoords.x, player->currentCoords.y),
                 (int)MapGridGetMetatileIdAt(29 + MAP_OFFSET, 29 + MAP_OFFSET));
 #endif
+#if GENERATED_WILDS_EVENTS
+    if (GeneratedMap_IsInside()) fprintf(file, ", \"event_state\": %u", (unsigned)GeneratedMap_EventState());
+#endif
     if (WorldBridge_Enabled())
     {
         fprintf(file, ", \"world\": ");

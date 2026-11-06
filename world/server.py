@@ -76,7 +76,7 @@ class WorldServer:
             raise ValueError('generated area archive requires persistent generated caves')
         self.archive_generated_areas = archive_generated_areas
         self.shared_cave = SharedCave(cave_template) if cave_template is not None else None
-        if self.shared_cave and (self.wilds_map if self.shared_cave.version == 6 else self.cave_map) is None:
+        if self.shared_cave and (self.wilds_map if self.shared_cave.version in (6, 7, 8, 9) else self.cave_map) is None:
             raise ValueError('generated map missing from catalog')
         if type(max_players) is not int or not 1 <= max_players <= 64:
             raise ValueError('max_players must be between 1 and 64')
@@ -148,12 +148,12 @@ class WorldServer:
             row = self.db.execute('SELECT template FROM generated_cave WHERE singleton=1').fetchone()
             if row is not None:
                 self.shared_cave = SharedCave(row[0])
-                if (self.wilds_map if self.shared_cave.version == 6 else self.cave_map) is None:
+                if (self.wilds_map if self.shared_cave.version in (6, 7, 8, 9) else self.cave_map) is None:
                     raise ValueError('generated map missing from catalog')
             if self.archive_generated_areas:
                 self.db.execute('CREATE TABLE IF NOT EXISTS generated_area_archive (identity TEXT PRIMARY KEY, label TEXT NOT NULL, kind TEXT NOT NULL, template BLOB NOT NULL, created INTEGER NOT NULL)')
                 if row is not None:
-                    kind = 'wilds' if self.shared_cave.version == 6 else 'cave'
+                    kind = 'wilds' if self.shared_cave.version in (6, 7, 8, 9) else 'cave'
                     self.db.execute('INSERT OR IGNORE INTO generated_area_archive (identity,label,kind,template,created) VALUES (?,?,?,?,?)',
                                     (self.shared_cave.identity, 'Outdoor area' if kind == 'wilds' else 'Cave', kind, row[0], int(time.time())))
         self.db.commit()
@@ -481,7 +481,10 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
-                cave_wilds = role.endswith('CAVE6')
+                cave_events = role.endswith('CAVE9')
+                cave_cast = cave_events or role.endswith('CAVE8')
+                cave_guide = cave_cast or role.endswith('CAVE7')
+                cave_wilds = cave_guide or role.endswith('CAVE6')
                 cave_large_wildlife = cave_wilds or role.endswith('CAVE5')
                 cave_large = cave_large_wildlife or role.endswith('CAVE4')
                 cave_wildlife = cave_large or role.endswith('CAVE3')
@@ -555,6 +558,12 @@ class WorldServer:
                 conn['cave_large'] = cave_large
                 conn['cave_large_wildlife'] = cave_large_wildlife
                 conn['cave_wilds'] = cave_wilds
+                conn['cave_guide'] = cave_guide
+                conn['cave_cast'] = cave_cast
+                conn['cave_events'] = cave_events
+                conn['event_command_seq'] = 0
+                conn['event_commands'] = {}
+                conn['event_command_session'] = secrets.token_hex(8)
                 conn['cave_offer'] = conn['cave_ack'] = None
                 conn['cave_revoked'] = []
                 conn['peer_limit'] = MAX_PEERS_EXTENDED if peer32 else MAX_PEERS_INTERMEDIATE if peer16 else MAX_PEERS
@@ -581,8 +590,17 @@ class WorldServer:
                 if not conn.get('cave_capable') or self.peers.get(conn['id']) is not conn:
                     self._error(conn, 'CAVE')
                     return
+                if len(fields)==5 and fields[1]=='EVENTACK':
+                    if not conn.get('cave_events') or not re.fullmatch(r'[0-9a-f]{64}',fields[2]) or fields[4] not in ('APPLIED','REJECTED'):
+                        self._error(conn,'CAVE');return
+                    seq=bounded(fields[3],1,2147483647);entry=conn.get('event_commands',{}).get(seq)
+                    if entry and entry['identity']==fields[2] and entry['status']=='queued':entry['status']=fields[4].lower()
+                    return
                 if fields == ['CAVE', 'GET']:
                     if (self.shared_cave is None
+                            or (self.shared_cave.version == 9 and not conn.get('cave_events'))
+                            or (self.shared_cave.version == 8 and not conn.get('cave_cast'))
+                            or (self.shared_cave.version == 7 and not conn.get('cave_guide'))
                             or (self.shared_cave.version == 6 and not conn.get('cave_wilds'))
                             or (self.shared_cave.version == 5 and not conn.get('cave_large_wildlife'))
                             or (self.shared_cave.version == 4 and not conn.get('cave_large'))
@@ -654,7 +672,7 @@ class WorldServer:
             limits = [255, 255, 32767, 32767, 4, 65535, 1]
             state = [bounded(v, 0, limit) for v, limit in zip(fields[2:9], limits)]
             if tuple(state[:2]) in (self.cave_map, self.wilds_map):
-                active_map = self.wilds_map if self.shared_cave and self.shared_cave.version == 6 else self.cave_map
+                active_map = self.wilds_map if self.shared_cave and self.shared_cave.version in (6, 7, 8, 9) else self.cave_map
                 if tuple(state[:2]) != active_map:
                     raise ValueError('wrong generated map')
                 if (self.shared_cave and conn.get('cave_capable') and conn.get('cave_revoked')
@@ -927,7 +945,7 @@ class WorldServer:
                 self.db.execute('INSERT OR REPLACE INTO generated_cave (singleton, template) VALUES (1, ?)', (blob,))
                 if self.archive_generated_areas:
                     identity = hashlib.sha256(blob).hexdigest()
-                    kind = 'wilds' if blob[:8] == b'EWGMAP06' else 'cave'
+                    kind = 'wilds' if blob[:8] in (b'EWGMAP06', b'EWGMAP07', b'EWGMAP08', b'EWGMAP09') else 'cave'
                     display = label if label is not None else ('Outdoor area' if kind == 'wilds' else 'Cave')
                     self.db.execute('INSERT OR IGNORE INTO generated_area_archive (identity,label,kind,template,created) VALUES (?,?,?,?,?)',
                                     (identity, display, kind, blob, int(time.time())))
@@ -942,7 +960,7 @@ class WorldServer:
         if label is not None and (type(label) is not str or not label or len(label) > 80 or any(ord(c) < 32 or ord(c) == 127 for c in label)):
             raise ValueError('invalid generated area label')
         with self.lock:
-            if (self.wilds_map if candidate.version == 6 else self.cave_map) is None:
+            if (self.wilds_map if candidate.version in (6, 7, 8, 9) else self.cave_map) is None:
                 raise ValueError('generated map missing from catalog')
             if self.shared_cave and candidate.identity == self.shared_cave.identity:
                 self._persist_cave(blob, label=label)
@@ -984,6 +1002,48 @@ class WorldServer:
                 raise ValueError('generated area unavailable')
             return self._replace_cave(row[0])
 
+    def _queue_event_command(self, trainer, identity, verb, args, npc=None):
+        if type(trainer) is not str or not ID.fullmatch(trainer) or type(identity) is not str or not re.fullmatch(r'[0-9a-f]{64}',identity):
+            raise ValueError('invalid event command')
+        with self.lock:
+            cave=self.shared_cave;peer=self.peers.get(trainer)
+            if (not cave or cave.version!=9 or cave.identity!=identity or not peer or peer.get('closing')
+                or not peer.get('cave_events') or peer.get('cave_ack')!=identity
+                or not peer.get('in_generated_cave') or peer.get('state') is None
+                or tuple(peer['state'][:2])!=self.wilds_map):
+                raise ValueError('trainer is not in the requested event area')
+            if npc is not None and npc>cave.cast[0]:raise ValueError('character not in area')
+            seq=peer.get('event_command_seq',0)+1
+            if seq>2147483647:raise ValueError('event command sequence exhausted')
+            message=f'CAVE {verb} {identity} {seq} {args}\n'
+            if len(peer['out'])+len(message)>MAX_QUEUE:raise ValueError('trainer connection is busy')
+            self._queue(peer,message);peer['event_command_seq']=seq
+            commands=peer.setdefault('event_commands',{});commands[seq]={'identity':identity,'status':'queued'}
+            while len(commands)>64:del commands[next(iter(commands))]
+            return {'ok':True,'queued':True,'trainer':trainer,'identity':identity,'sequence':seq,'session':peer['event_command_session']}
+
+    def set_event_state(self, trainer, identity, state):
+        """Queue an owner-only, per-trainer state assignment; not delivery confirmation."""
+        if type(state) is not int or not 0<=state<=15:raise ValueError('invalid event state command')
+        result=self._queue_event_command(trainer,identity,'EVENTSET',str(state));result['state']=state;return result
+
+    def set_event_rule(self, trainer, identity, state, npc, next_state, text):
+        """Queue a literal per-trainer rule patch; native application is independent."""
+        from .wilds_cast import _text
+        if any(type(v) is not int for v in (state,npc,next_state)) or not 0<=state<=15 or not 1<=npc<=3 or not 0<=next_state<=15:
+            raise ValueError('invalid event rule command')
+        value=_text(text)
+        return self._queue_event_command(trainer,identity,'EVENTRULE',f'{state} {npc} {next_state} {value.hex()}',npc=npc)
+
+    def event_command_status(self, trainer, identity, session, sequence):
+        """Report a client-reported result or unknown; never infer delivery."""
+        if type(trainer) is not str or not ID.fullmatch(trainer) or type(identity) is not str or not re.fullmatch(r'[0-9a-f]{64}',identity) or type(session) is not str or not re.fullmatch(r'[0-9a-f]{16}',session) or type(sequence) is not int or not 1<=sequence<=2147483647:
+            raise ValueError('invalid event command status request')
+        with self.lock:
+            peer=self.peers.get(trainer);entry=peer.get('event_commands',{}).get(sequence) if peer and not peer.get('closing') and peer.get('event_command_session')==session else None
+            status=entry['status'] if entry and entry['identity']==identity else 'unknown'
+            return {'ok':True,'trainer':trainer,'identity':identity,'session':session,'sequence':sequence,'status':status}
+
     def _admin_line(self, conn, raw):
         conn['closing'] = True
         try:
@@ -1002,6 +1062,24 @@ class WorldServer:
                 except ValueError as exc:
                     # Expected validation/occupancy refusal is not a mechanic error.
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'set_event_state':
+                try:
+                    if set(request)!={'command','trainer','identity','state'}:raise ValueError('invalid event state command')
+                    result=self.set_event_state(request['trainer'],request['identity'],request['state'])
+                except ValueError as exc:
+                    result=dict(ok=False,error=str(exc))
+            elif request.get('command') == 'event_command_status':
+                try:
+                    if set(request)!={'command','trainer','identity','session','sequence'}:raise ValueError('invalid event command status request')
+                    result=self.event_command_status(request['trainer'],request['identity'],request['session'],request['sequence'])
+                except ValueError as exc:
+                    result=dict(ok=False,error=str(exc))
+            elif request.get('command') == 'set_event_rule':
+                try:
+                    if set(request)!={'command','trainer','identity','state','npc','next_state','text'}:raise ValueError('invalid event rule command')
+                    result=self.set_event_rule(request['trainer'],request['identity'],request['state'],request['npc'],request['next_state'],request['text'])
+                except ValueError as exc:
+                    result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'invitation':
                 if set(request) != {'command', 'trainer'} or self.sharing is None:
                     self._queue(conn, json.dumps(dict(ok=False, error='secure sharing required')) + '\n')

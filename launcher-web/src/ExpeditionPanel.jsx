@@ -1,5 +1,13 @@
 import React, { useEffect, useState } from 'react';
 
+const areaTypes = {
+  cave: { label: 'Cave with custom wildlife', capability: 'cave_authoring', description: 'Caves use existing art with a model-selected biome and custom wildlife roster.' },
+  wilds: { label: 'Outdoor wilds', capability: 'wilds_authoring', description: 'Outdoor areas use existing Hoenn art, blocked water, tall grass and Route 101 encounters, not custom outdoor wildlife.' },
+  guided_wilds: { label: 'Outdoor wilds with a guide', capability: 'guided_wilds_authoring', description: 'Outdoor wilds with one guide and short model-authored dialogue. Talk to the guide in the game. Dialogue is fixed text, not a live conversation.' },
+  cast_wilds: { label: 'Outdoor wilds with a cast', capability: 'cast_wilds_authoring', description: 'Outdoor wilds with one to three characters and short model-authored dialogue. Talk to them in the game. Dialogue is fixed text, not a live conversation.' },
+};
+const areaLabels = { ...Object.fromEntries(Object.entries(areaTypes).map(([key, type]) => [key, type.label])), event_wilds: 'Outdoor wilds with events' };
+
 export default function ExpeditionPanel({ state, ready, busy, onOpen, onAuthor, onActivate }) {
   const [name, setName] = useState('');
   const [trainer, setTrainer] = useState('Player');
@@ -14,7 +22,7 @@ export default function ExpeditionPanel({ state, ready, busy, onOpen, onAuthor, 
   const current = localWorlds.find(world => world.key === state.world_key);
   const areas = [...(state.generated_areas || [])].sort((a, b) => Number(b.active) - Number(a.active));
   const pending = confirmation?.world === state.world_key ? confirmation : null;
-  const canAuthor = kind === 'wilds' ? state.wilds_authoring : state.cave_authoring;
+  const canAuthor = state[areaTypes[kind].capability];
 
   return <section className="worlds-section expedition-panel" aria-labelledby="expedition-title">
     <div className="section-heading"><div><span className="eyebrow gold">ON THIS COMPUTER</span><h2 id="expedition-title">Local expeditions</h2></div></div>
@@ -29,7 +37,7 @@ export default function ExpeditionPanel({ state, ready, busy, onOpen, onAuthor, 
         {state.area_archive_error && <p role="alert">{state.area_archive_error}</p>}
         {!areas.length && !state.area_archive_error && <p className="muted-copy">No saved areas are listed. Generate an area below to begin exploring.</p>}
         {areas.map(area => <div className={`settings-card${area.active ? ' expedition-active-area' : ''}`} key={area.identity}><div>
-          <h3>{area.label}</h3><p>{area.kind === 'wilds' ? 'Outdoor wilds' : 'Cave'} · {area.active ? 'Active now' : 'Saved'}</p>
+          <h3>{area.label}</h3><p>{areaLabels[area.kind] || 'Generated area'} · {area.active ? 'Active now' : 'Saved'}</p>
           {area.active ? <p className="field-hint">Enter from START → WORLD → Explore generated area.</p> : <button className="button small ghost" disabled={disabled || Boolean(pending)} onClick={() => setConfirmation({ type: 'activate', world: state.world_key, identity: area.identity, label: area.label })}>Use this area</button>}
         </div></div>)}
       </div>
@@ -38,10 +46,10 @@ export default function ExpeditionPanel({ state, ready, busy, onOpen, onAuthor, 
         <div className="expedition-details-content">
           <label className="field-label" htmlFor="expedition-kind">Area type</label>
           <select id="expedition-kind" className="text-input" value={kind} disabled={disabled || Boolean(pending)} onChange={event => setKind(event.target.value)}>
-            <option value="cave">Cave with custom wildlife</option>
-            <option value="wilds" disabled={!state.wilds_authoring}>Outdoor wilds</option>
+            {Object.entries(areaTypes).map(([value, type]) => <option key={value} value={value} disabled={!state[type.capability]}>{type.label}</option>)}
           </select>
-          <p className="field-hint">{kind === 'wilds' ? 'Outdoor areas use existing Hoenn art, blocked water, tall grass and Route 101 encounters, not custom outdoor wildlife.' : 'Caves use existing art with a model-selected biome and custom wildlife roster.'}</p>
+          <p className="field-hint">{areaTypes[kind].description}</p>
+          {(kind === 'guided_wilds' || kind === 'cast_wilds') && <p className="field-hint">These areas use existing Hoenn art and Route 101 encounters, not custom outdoor wildlife. Compatible experimental clients are required to see the characters and dialogue.</p>}
           {!canAuthor ? <p role="status">This host's catalog does not support this area type. Build the compatible game and reopen the local host.</p> : <>
             <label className="field-label" htmlFor="expedition-theme">Area theme</label>
             <textarea id="expedition-theme" className="text-input invite-paste" value={theme} disabled={disabled || Boolean(pending)} onChange={event => setTheme(event.target.value)} placeholder="Describe the landscape or cavern you want to explore." aria-describedby="expedition-theme-help" />
@@ -52,7 +60,8 @@ export default function ExpeditionPanel({ state, ready, busy, onOpen, onAuthor, 
         </div>
       </details>
       {pending && <div className="settings-card"><div>
-        <h3>{pending.type === 'activate' ? 'Make this the active area?' : `Generate a new ${pending.kind === 'wilds' ? 'outdoor area' : 'cave'}?`}</h3>
+        <h3>{pending.type === 'activate' ? 'Make this the active area?' : 'Generate this area?'}</h3>
+        {pending.type === 'generate' && <p>{areaLabels[pending.kind] || 'Generated area'}</p>}
         {pending.type === 'activate' ? <><p>{pending.label}</p><p>No model call is made. The current area stays in the library, but everyone must leave it before switching.</p></> : <><p>The provider receives this theme and usage may incur charges:</p><p className="expedition-theme-preview">{pending.theme}</p></>}
         <div className="modal-actions"><button className="button ghost" disabled={disabled} onClick={() => setConfirmation(null)}>Cancel</button><button className="button primary" disabled={disabled} onClick={async () => {
           if (pending.type === 'activate') await onActivate({ world: pending.world, identity: pending.identity, confirmed: true });
