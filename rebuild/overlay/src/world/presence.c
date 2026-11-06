@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include "global.h"
 #include "world/presence.h"
 #ifdef _WIN32
@@ -12,6 +13,7 @@ void EwPresenceShutdown(void) {}
 #include "event_object_movement.h"
 #include "field_player_avatar.h"
 #include "global.fieldmap.h"
+#include "fieldmap.h"
 #include "script.h"
 #include "sprite.h"
 #include "pokemon.h"
@@ -21,7 +23,6 @@ void EwPresenceShutdown(void) {}
 #include <fcntl.h>
 #include <poll.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
