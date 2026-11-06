@@ -1,0 +1,29 @@
+{
+  "public_native_url": "https://github.com/uehlbran/pokeemerald-expansion-native",
+  "public_base_commit": "bb3fd057061cdd7e6a9e79b76abb41924ee44ecc",
+  "verified_foundation_commit": "c22527265e72236fb269937d9705bafa49cc02cc",
+  "upstream_expansion_commit": "79dd436920845ebc145577649de624f65298c209",
+  "local_native_wip_commit": "e406cf82922e9c3a5bfee746f9a97f67f3916a4c",
+  "protected_upstream_inputs": [
+    {
+      "path": "data/mb_berry_fix.gba",
+      "sha256": "f3d87e14688faf0190b33e071607887c7783462b45f92f1cb7135eec56260740",
+      "note": "not distributed in these patches; obtain from the trusted upstream source if needed"
+    },
+    {
+      "path": "data/mb_colosseum.gba",
+      "sha256": "d133d340ce7507932bcb3a83f9ee1dd9905072763d493b66db20e1bde4304572",
+      "note": "not distributed in these patches; obtain from the trusted upstream source if needed"
+    },
+    {
+      "path": "data/mb_ereader.gba",
+      "sha256": "e50d06841b3485282bf772f1cfe2988da2bb476eb26ff5337b467af8a60bdf07",
+      "note": "not distributed in these patches; obtain from the trusted upstream source if needed"
+    },
+    {
+      "path": "tools/mgba/mgba-rom-test.exe",
+      "sha256": "84c7f1babecf563722224d462a889f7f6d34ab11bcfa6b6160eef569b5f2608a",
+      "note": "not distributed in these patches; obtain from the trusted upstream source if needed"
+    }
+  ]
+}

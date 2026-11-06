@@ -1,0 +1,41 @@
+RC7 / Expansion integration: fresh source investigation
+
+Scope and provenance
+This report is based on direct reads of the current RC7, RC4 and nested native Expansion trees, historical RC4 compiler logs, and nm symbol inventories. No compilation, gameplay test or implementation edit was performed during this investigation. Prior conversation summaries and success reports were not used as proof. Historical logs demonstrate failures at those recorded attempts, not necessarily the final condition of every later RC4 change. The RC4 checkout is dirty and its source must not be equated with its HEAD commit or its existing executable.
+
+1. What is currently missing, proved by source and binary
+RC7 engines/expansion_presence.c:10-39 only wraps frame_run, reads scalar inspect facts, and writes presence JSON. world/expansion.py:84-122 labels snapshots presence-only, multiplayer=False, and sends FIELD/busy states. The linked RC7 build/expansion-native/pokeemerald-native contains __wrap_frame_run but has no defined symbols prefixed WorldBridge_, LinkTransport_, NativeLink_, WorldActivity_, WorldCoop_, WorldTravel_, or GeneratedMap_. Those are actual missing compiled components, not merely hidden UI.
+
+2. RC4's recorded failure was broader dependency closure, not insufficient roster testing
+rc4/build/rc4-battle-transplant/parent-build-04.log:14-37 records graphics pointer-type and ContestMoveAnimData field mismatches. The same file records missing cycle-count/script-effects APIs and pointer-width failures.
+parent-build-08.log:392-422 records conflicting GetPlayerTextSpeedDelay signatures and missing TextPrinter subStructFields.
+parent-build-15.log:163-173 records undefined old Unown species constants. Its end also records non-constant event-script assembler expressions and failure to remake linux.
+The current RC4 source includes modern src/pokemon.c/gParties and modern battle_main.c, alongside legacy-name/remapping and compatibility layers. It is not accurately described as only a small roster patch. Its current battle_main.c has no WorldCoop_ references, whereas RC7's has explicit completion, private-reward, roster-action and abort hooks. This confirms a concrete integration surface that cannot be discarded by replacing battle_main.c wholesale.
+Existing RC4 pokeemerald64 defines gPlayerParty/gEnemyParty, whereas its current build/linux64/src/pokemon.o defines gParties. The existing executable is not evidence that the current imported party model was successfully linked into that game.
+
+3. Reusable multiplayer transport, not a new Pokemon simulator
+world/link_protocol.py:1-5 explicitly relays native command rounds and does not simulate battles or certify engine payloads. Lines 167-171 carry two rows of eight 16-bit words. src/platform/native_link.c and include/platform/native_link.h implement consent-admitted sessions, generations, ordered bounded command windows, self-echo validation and abort/close semantics. src/platform/link_transport.c:272-337 owns the authenticated LINK channel.
+These components are concrete reuse candidates. Their engine-side callers and payload validators still need adaptation and behavioral proof. The Python relay being generic does not prove every current admission limit and link type can remain unchanged.
+
+4. Pokemon size equality is not semantic compatibility
+RC7 include/pokemon.h:99-113 stores a 16-bit species and 16-bit move array. Native include/pokemon.h:132-167 packs species with tera type, packs moves with evolution/hypertraining bits, and uses different PP bitfields. Native BoxPokemon also packs language/nature and other state.
+RC7 src/platform/world_coop.c:33-83 asserts 100-byte Pokemon and fixed message sizes. The existing native symbol table gives gParties size 0x960. Native include/constants/battle.h:78-84 defines four trainers and include/pokemon.h:729-730 declares their six-mon parties. The native and old 100-byte layouts must NOT be assumed compatible merely because size checks can pass. Payload validation and ownership operations must compile against and use the selected engine's actual types/accessors. Cross-engine raw-save or party exchange is not an acceptable shortcut. Fresh matched expanded clients avoid a legacy migration project, but still require engine/version segregation.
+
+5. Expansion already has useful full-party mechanics to build on
+Native include/constants/battle.h:28-56 documents four distinct six-mon parties, including local player and partner. It explicitly says the local player remains B_TRAINER_PLAYER even when occupying the right-hand link position. RC7 src/platform/world_coop.c:252-299 instead maps an owned original slot into a combined local*MULTI_PARTY_SIZE staging party.
+Native src/battle_util.c:9991-10047 contains full-versus-half-team policy and link-opponent exceptions. Reusing these party domains is preferable to blindly preserving RC7's old combined-party offsets. This is an implementation direction, not proof that an unmodified two-peer wild co-op mode already works in Expansion.
+
+6. Real integration spans frame, field, battle, save and renderer domains
+RC7 src/platform/sdl2.c:127-129,420-445,1137-1154 pumps WorldBridge/LinkTransport/NativeLink around engine ticks, calls activity updates, and retires commands after consumption. Native src/main.c:148-187 owns its AgbMainLoop and platform/frame.c owns emulated frame time. A read-only post-frame wrapper cannot replace both domains' gameplay sequencing.
+RC7 contains WorldCoop_ hooks in 18 non-platform gameplay C files, covering controller setup, message validation, menus, item use, rewards/catching and return paths. WorldActivity_ also reaches battle_setup.c and cable_club.c. WorldBridge_PrepareSave is called by load_save.c:206,218 and fieldmap.c:402 to keep transient network objects/tiles out of saves. All these seams must be accounted for.
+The native engine's src/link.c:1844 onward still drives serial-register link state; it has no NativeLink virtual-cable override. That override and the native command-validation guards are essential, not optional.
+RC7 include/constants/global.h:47-54 separates saved 16 objects from an optional 48-object runtime pool. Native global.h still saves OBJECT_EVENTS_COUNT directly and its default count is 16. RC7 sprite.h supports feature-gated 96/127 sprites; native defaults to 64. Blindly increasing a single constant would change saved layouts and miss renderer constraints.
+
+Recommendation
+Keep the complete native Expansion engine as one coherent gameplay/data/runtime foundation. Port the existing RC7 world domain and its actual game-loop, virtual-cable, battle/controller, storage, generated-map and capacity hooks into that foundation. Reuse the existing server/transport and preserve vanilla as its independent default. Do not route the expanded game through the presence-only adapter and call that multiplayer. Do not restart RC4's import-and-patch dependency chase or preserve legacy creature IDs/save conversions that are not required for fresh expanded clients.
+
+Implementation evidence required before claiming completion
+Two matched expanded clients must interact through the real existing authority and virtual cable. Verify visible world interaction; consented battle and party trade with modern species/moves; co-op own-party control with catch/item/reward ownership; PC/storage persistence; generated-world travel; save/cold reload; and disconnect/abort restoration without duplicating or leaking private progress. Use fresh disposable state. These are acceptance requirements, not tests run by this research.
+
+Still unproven
+The full hook port has not been compiled or run. Two-peer co-op's mapping onto Expansion's trainer/party model requires an actual prototype. Controller payload validation and the capacity/renderer port need detailed adaptation. This investigation supports the architectural direction and identifies concrete missing code; it does not establish a time estimate or guarantee that copying the RC7 modules alone will work.

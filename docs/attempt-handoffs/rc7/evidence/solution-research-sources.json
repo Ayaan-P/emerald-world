@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "id": 1,
+      "url": "https://github.com/rh-hideout/pokeemerald-expansion",
+      "title": "",
+      "accessed": "2026-11-05"
+    },
+    {
+      "id": 2,
+      "url": "https://github.com/gamecorner-033/Gen1Online",
+      "title": "",
+      "accessed": "2026-11-05"
+    },
+    {
+      "id": 3,
+      "url": "https://github.com/uehlbran/pokeemerald-expansion-native",
+      "title": "",
+      "accessed": "2026-11-05"
+    },
+    {
+      "id": 4,
+      "url": "https://raw.githubusercontent.com/uehlbran/pokeemerald-expansion-native/main/README.md",
+      "title": "",
+      "accessed": "2026-11-05"
+    },
+    {
+      "id": 5,
+      "url": "https://raw.githubusercontent.com/gamecorner-033/Gen1Online/master/README.md",
+      "title": "",
+      "accessed": "2026-11-05"
+    },
+    {
+      "id": 6,
+      "url": "https://raw.githubusercontent.com/rh-hideout/pokeemerald-expansion/master/README.md",
+      "title": "",
+      "accessed": "2026-11-05"
+    },
+    {
+      "id": 7,
+      "url": "https://github.com/gamecorner-033/Pokeemerald-expansion-gamecorner-overworldmultiplayer",
+      "title": "",
+      "accessed": "2026-11-05"
+    },
+    {
+      "id": 8,
+      "url": "https://github.com/gamecorner-033/pokeemerald-gamecorner-expansion",
+      "title": "",
+      "accessed": "2026-11-05"
+    },
+    {
+      "id": 9,
+      "url": "https://github.com/KittyPBoxx/pokeemerald-net-demo",
+      "title": "",
+      "accessed": "2026-11-05"
+    }
+  ]
+}
