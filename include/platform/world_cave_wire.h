@@ -78,5 +78,6 @@ void WorldCaveWire_Reset(struct WorldCaveWire *wire);
 bool8 WorldCaveWire_ValidId(const char *id);
 void WorldCaveWire_XLEventDigest(const u8 *events,const u8 *cast,const u8 *cells,char hex[65]);
 void WorldCaveWire_XLPaintedEventDigest(const u8 *events,const u8 *cast,const u8 *cells,char hex[65]);
+void WorldCaveWire_XLStableStoryDigest(const u8 *events,const u8 *cast,const u8 *worldId,char hex[65]);
 #endif
 #endif

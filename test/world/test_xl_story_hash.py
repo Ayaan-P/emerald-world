@@ -12,7 +12,7 @@ class XLStoryHash(unittest.TestCase):
 #include <stdint.h>
 #include "global.h"
 #include "platform/world_cave_wire.h"
-int main(int argc,char **argv){u8 e[1466],c[184],m[16129];char hex[65];if(argc!=2||fread(e,1,1466,stdin)!=1466||fread(c,1,184,stdin)!=184||fread(m,1,16129,stdin)!=16129)return 1;if(argv[1][0]=='E')WorldCaveWire_XLPaintedEventDigest(e,c,m,hex);else WorldCaveWire_XLEventDigest(e,c,m,hex);puts(hex);return 0;}'''
+int main(int argc,char **argv){u8 e[1466],c[184],m[16129];char hex[65];if(argc!=2||fread(e,1,1466,stdin)!=1466||fread(c,1,184,stdin)!=184||fread(m,1,16129,stdin)!=16129)return 1;if(argv[1][0]=='F')WorldCaveWire_XLStableStoryDigest(e,c,m,hex);else if(argv[1][0]=='E')WorldCaveWire_XLPaintedEventDigest(e,c,m,hex);else WorldCaveWire_XLEventDigest(e,c,m,hex);puts(hex);return 0;}'''
   with tempfile.TemporaryDirectory() as t:
    p=Path(t);(p/'global.h').write_text('#include <stdint.h>\ntypedef uint8_t u8;typedef uint32_t u32;typedef int bool8;\n#define TRUE 1\n#define FALSE 0\n');(p/'test.c').write_text(code)
    q=subprocess.run(['cc','-std=gnu99','-Wall','-Wextra','-Werror','-DPORTABLE','-iquote',str(p),'-iquote',str(ROOT/'include'),str(ROOT/'src/platform/world_cave_wire.c'),str(p/'test.c'),'-o',str(p/'test')],capture_output=True,text=True);self.assertEqual(q.returncode,0,q.stderr)
@@ -26,6 +26,8 @@ int main(int argc,char **argv){u8 e[1466],c[184],m[16129];char hex[65];if(argc!=
     blob=bytearray(painted)
     if offset is not None:blob[offset]^=1
     q=subprocess.run([str(p/'test'),'E'],input=bytes(blob[8:]),capture_output=True);self.assertEqual(q.returncode,0,q.stderr.decode());self.assertEqual(q.stdout.decode().strip(),hashlib.sha256(blob).hexdigest())
+   events=painted[8:8+1466];cast=painted[8+1466:8+1466+184];world_id=b'1'*16
+   q=subprocess.run([str(p/'test'),'F'],input=events+cast+world_id+bytes(16129-16),capture_output=True);self.assertEqual(q.returncode,0,q.stderr.decode());self.assertEqual(q.stdout.decode().strip(),hashlib.sha256(b'EWGMAP0F'+events+cast+world_id).hexdigest())
  def test_invalid_serialized_identity_is_rejected(self):
   from test_save_isolation import function
   src=(ROOT/'src/platform/generated_map.c').read_text()

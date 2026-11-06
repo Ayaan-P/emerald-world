@@ -45,11 +45,12 @@ typedef uint8_t u8;typedef int bool8;
 #define XL_PROGRESS_SLOTS 64
 #define XL_PROGRESS_SLOT_BYTES (6 + 64)
 #define XL_PROGRESS_PAYLOAD_BYTES (1 + XL_PROGRESS_SLOTS * XL_PROGRESS_SLOT_BYTES)
-static bool8 sXLActive=1,sEventActive=1,sXLHasPalette;static u8 sXLPalette[16129];static u8 sEventState,sEventData[1466],sCastMetadata[184],sXLTemplate[16129];
+static bool8 sXLActive=1,sEventActive=1,sXLHasPalette,sXLHasStableId;static u8 sXLPalette[16129],sXLStableId[16];static u8 sEventState,sEventData[1466],sCastMetadata[184],sXLTemplate[16129];
 static struct {bool8 valid;u8 trainer[4],state,identity[64];} sXLProgress[64];static u8 sXLProgressCurrent=255,sXLProgressNext,sXLProgressPayload[XL_PROGRESS_PAYLOAD_BYTES];static bool8 sXLProgressDurable;
 static struct {u8 playerTrainerId[4];} save,*gSaveBlock2Ptr=&save;static int WorldBridge_Enabled(void){return 0;}
 void WorldCaveWire_XLEventDigest(const u8 *,const u8 *,const u8 *,char *);
 void WorldCaveWire_XLPaintedEventDigest(const u8 *,const u8 *,const u8 *,char *);
+void WorldCaveWire_XLStableStoryDigest(const u8 *,const u8 *,const u8 *,char *);
 '''+ '\n'.join(function(src,n) for n in ('XLProgressPack','XLProgressUnpack','GeneratedMap_InitXLProgress','XLProgressPersist','XLRestoreEventProgress','XLRememberEventProgress'))+r'''
 int main(int argc,char **argv){int mode=atoi(argv[2]);(void)argc;save.playerTrainerId[0]=1;if(!GeneratedMap_InitXLProgress(argv[1],1))return 2;
 if(mode>=3){sXLHasPalette=1;sXLPalette[100]=mode==5?'.':'t';}

@@ -85,6 +85,9 @@ extern const u8 GeneratedWorld_Wilds_EventScript_Cast2[], GeneratedWorld_Wilds_E
 #define XL_SIDE 127
 #define XL_CELLS (XL_SIDE*XL_SIDE)
 static u16 sXLTiles[XL_CELLS];static u8 sXLTemplate[XL_CELLS],sXLPalette[XL_CELLS];static bool8 sXLHasPalette;
+#if GENERATED_WILDS_EVENTS
+static bool8 sXLHasStableId;static u8 sXLStableId[16];
+#endif
 static bool8 sXLStaged,sXLActive;
 #if GENERATED_WILDS_CAST
 static bool8 sXLCastStaged;
@@ -131,7 +134,8 @@ static void XLRestoreEventProgress(void)
     sXLProgressCurrent=0xFF;
     if(!sXLActive || !sEventActive || WorldBridge_Enabled() || !gSaveBlock2Ptr)return;
     trainer=gSaveBlock2Ptr->playerTrainerId;
-    if(sXLHasPalette)WorldCaveWire_XLPaintedEventDigest(sEventData,sCastMetadata,sXLPalette,identity);
+    if(sXLHasStableId)WorldCaveWire_XLStableStoryDigest(sEventData,sCastMetadata,sXLStableId,identity);
+    else if(sXLHasPalette)WorldCaveWire_XLPaintedEventDigest(sEventData,sCastMetadata,sXLPalette,identity);
     else WorldCaveWire_XLEventDigest(sEventData,sCastMetadata,sXLTemplate,identity);
     for(i=0;i<XL_PROGRESS_SLOTS;i++)if(sXLProgress[i].valid && !memcmp(sXLProgress[i].trainer,trainer,4)
        && !memcmp(sXLProgress[i].identity,identity,64)) {sXLProgressCurrent=i;sEventState=sXLProgress[i].state;return;}
@@ -351,6 +355,9 @@ bool8 GeneratedMap_StageXLWilds(const u8 *cells, u32 size)
     }
     for(i=0;i<XL_CELLS;i++)if(cells[i]=='.' && !seen[i])return FALSE;
     memcpy(sXLTemplate,cells,XL_CELLS);sXLStaged=TRUE;sXLHasPalette=FALSE;
+#if GENERATED_WILDS_EVENTS
+    sXLHasStableId=FALSE;
+#endif
 #if GENERATED_WILDS_CAST
     sXLCastStaged=FALSE;
 #if GENERATED_WILDS_EVENTS
@@ -681,6 +688,19 @@ bool8 GeneratedMap_StageXLPaintedEvents(const u8 *events,u32 eventSize,const u8 
     (void)events;(void)eventSize;(void)cast;(void)castSize;(void)cells;(void)size;return FALSE;
 #endif
 }
+bool8 GeneratedMap_StageXLVersionedWorld(const u8 *id,u32 idSize,const u8 *events,u32 eventSize,const u8 *cast,u32 castSize,const u8 *cells,u32 size)
+{
+#if GENERATED_MAP_READY && GENERATED_WORLD_XL && GENERATED_WILDS_EVENTS
+    unsigned i;bool8 nonzero=FALSE;
+    if(!id || idSize!=16)return FALSE;
+    for(i=0;i<16;i++)if(id[i])nonzero=TRUE;
+    if(!nonzero || !GeneratedMap_StageXLPaintedEvents(events,eventSize,cast,castSize,cells,size))return FALSE;
+    memcpy(sXLStableId,id,16);sXLHasStableId=TRUE;return TRUE;
+#else
+    (void)id;(void)idSize;(void)events;(void)eventSize;(void)cast;(void)castSize;(void)cells;(void)size;return FALSE;
+#endif
+}
+
 
 bool8 GeneratedMap_StageEventWilds(const u8 *events, u32 eventSize, const u8 *cast, u32 castSize, const u8 *cells, u32 size)
 {
