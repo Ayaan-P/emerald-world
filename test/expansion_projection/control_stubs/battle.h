@@ -1,0 +1,1 @@
+#define B_TRAINER_PLAYER 0

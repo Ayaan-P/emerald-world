@@ -4,7 +4,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "pokemon.h"
 bool ExpansionControl_BeforeFrame(void); void ExpansionControl_AfterFrame(void);
+struct Pokemon gParties[4][6] = {{{7}}}; uint8_t gPartiesCount[4] = {1}; static int save; void *gSaveBlock1Ptr = &save, *gSaveBlock2Ptr = &save;
+unsigned GetMonData(struct Pokemon *p,int field){return p->slot + field;}
 static uint16_t reg, keys; static unsigned frame, consumed, polls; static void (*state)(FILE*,uint32_t); static bool (*shot)(FILE*);
 uint32_t frame_count(void){return frame;}
 const uint16_t *frame_pixels(void){static uint16_t pixels[240*160];return pixels;}
@@ -16,5 +19,5 @@ void PlayerControl_AfterFrame(uint32_t f){assert(f==1);assert(reg==0x3fe);consum
 uint16_t PlayerControl_Buttons(void){return keys;}
 int main(void){setenv("EW_EXPANSION_CONTROL","/tmp/profile/player.sock",1);setenv("EW_EXPANSION_SAVE","/tmp/profile/game.sav",1);
  assert(ExpansionControl_BeforeFrame()); assert(consumed==0);frame=1;ExpansionControl_AfterFrame();assert(polls==1&&reg==0x3fe);assert(ExpansionControl_BeforeFrame());assert(consumed==1);
- FILE *f=tmpfile();assert(f);state(f,frame);rewind(f);char buf[256];assert(fgets(buf,sizeof buf,f));assert(strstr(buf,"\"map\":[1,2]")&&strstr(buf,"\"pos\":[3,4]")&&strstr(buf,"\"battle\":false"));fclose(f);
+ FILE *f=tmpfile();assert(f);state(f,frame);rewind(f);char buf[1024];assert(fgets(buf,sizeof buf,f));assert(strstr(buf,"\"map\":[1,2]")&&strstr(buf,"\"pos\":[3,4]")&&strstr(buf,"\"battle\":false")&&strstr(buf,"\"species\":7")&&strstr(buf,"\"moves\":["));fclose(f);
  f=tmpfile();assert(f&&shot(f));assert(ftell(f)>240*160*3);fclose(f);return 0;}

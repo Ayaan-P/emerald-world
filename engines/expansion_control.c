@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "global.h"
+#include "battle.h"
+#include "pokemon.h"
 #include "platform/frame.h"
 #include "platform/gba_memmap.h"
 #include "platform/inspect.h"
@@ -23,7 +26,25 @@ static void observation(FILE *out, uint32_t frame)
     if (has_map) fprintf(out, "[%u,%u]", group, number); else fputs("null", out);
     fputs(",\"pos\":", out);
     if (has_pos) fprintf(out, "[%u,%u]", x, y); else fputs("null", out);
-    fprintf(out, ",\"battle\":%s}", battle[0] == '1' && battle[1] == '\0' ? "true" : battle[0] == '0' && battle[1] == '\0' ? "false" : "null");
+    fprintf(out, ",\"battle\":%s", battle[0] == '1' && battle[1] == '\0' ? "true" : battle[0] == '0' && battle[1] == '\0' ? "false" : "null");
+    /* Own party only: never reveal opponent reserves or unrevealed moves. */
+    fputs(",\"party\":[", out);
+    if (gSaveBlock1Ptr && gSaveBlock2Ptr) {
+        unsigned count = gPartiesCount[B_TRAINER_PLAYER];
+        if (count > PARTY_SIZE) count = PARTY_SIZE;
+        for (unsigned i = 0; i < count; i++) {
+            struct Pokemon *mon = &gParties[B_TRAINER_PLAYER][i];
+            fprintf(out, "%s{\"slot\":%u,\"species\":%u,\"level\":%u,\"hp\":%u,\"max_hp\":%u,\"status\":%u,\"moves\":[", i ? "," : "", i,
+                (unsigned)GetMonData(mon, MON_DATA_SPECIES), (unsigned)GetMonData(mon, MON_DATA_LEVEL),
+                (unsigned)GetMonData(mon, MON_DATA_HP), (unsigned)GetMonData(mon, MON_DATA_MAX_HP),
+                (unsigned)GetMonData(mon, MON_DATA_STATUS));
+            for (unsigned j = 0; j < MAX_MON_MOVES; j++)
+                fprintf(out, "%s{\"id\":%u,\"pp\":%u}", j ? "," : "",
+                    (unsigned)GetMonData(mon, MON_DATA_MOVE1 + j), (unsigned)GetMonData(mon, MON_DATA_PP1 + j));
+            fprintf(out, "],\"exp\":%u}", (unsigned)GetMonData(mon, MON_DATA_EXP));
+        }
+    }
+    fputs("]}", out);
 }
 static bool screenshot(FILE *out)
 {
