@@ -23,6 +23,7 @@ typedef uint8_t u8; typedef uint16_t u16; typedef uint64_t u64; typedef int8_t s
 #define COPYWIN_FULL 1
 #define A_BUTTON 1
 #define LINKTYPE_SINGLE_BATTLE 0x2233
+#define LINKTYPE_DOUBLE_BATTLE 0x2244
 struct Pokemon { int species,hp,egg; };
 extern struct Pokemon gParties[4][6]; extern u8 gPartiesCount[4];
 struct Save1 { struct { int mapGroup,mapNum; } location; }; extern struct Save1 *gSaveBlock1Ptr; extern void *gSaveBlock2Ptr;

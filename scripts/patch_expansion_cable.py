@@ -26,12 +26,12 @@ static void Task_ExpansionStartBattle(u8 taskId)
 int ExpansionActivity_StartBattle(unsigned mode)
 {
     u8 taskId;
-    if (mode != 1) return FALSE;
+    if (mode != 1 && mode != 2) return FALSE;
     taskId = CreateTask(Task_ExpansionStartBattle, 80);
     if (taskId == TASK_NONE) return FALSE;
     SavePlayerParty();
     LoadPlayerBag();
-    gSpecialVar_0x8004 = USING_SINGLE_BATTLE;
+    gSpecialVar_0x8004 = mode == 2 ? USING_DOUBLE_BATTLE : USING_SINGLE_BATTLE;
     gLinkPlayers[0].id = 0;
     gLinkPlayers[1].id = 1;
     return TRUE;

@@ -32,7 +32,7 @@ static struct {
     enum ActivityPhase phase;
     u8 window, task;
     bool8 locked, outgoing;
-    unsigned timer;
+    unsigned timer, mode;
     u64 invite;
     char peer[25];
 } sActivity = { .window = WINDOW_NONE, .task = TASK_NONE };
@@ -58,14 +58,14 @@ int ExpansionActivity_PresenceReady(void)
     if (sActivity.phase >= ACT_CONNECT) return 0;
     return sActivity.locked || !ArePlayerFieldControlsLocked();
 }
-static bool8 party_ready(void)
+static bool8 party_ready(unsigned mode)
 {
-    unsigned i;
+    unsigned i, usable = 0;
     for (i = 0; i < gPartiesCount[B_TRAINER_PLAYER] && i < PARTY_SIZE; i++)
         if (GetMonData(&gParties[B_TRAINER_PLAYER][i], MON_DATA_SPECIES)
             && !GetMonData(&gParties[B_TRAINER_PLAYER][i], MON_DATA_IS_EGG)
-            && GetMonData(&gParties[B_TRAINER_PLAYER][i], MON_DATA_HP)) return TRUE;
-    return FALSE;
+            && GetMonData(&gParties[B_TRAINER_PLAYER][i], MON_DATA_HP)) usable++;
+    return usable >= (mode == NATIVE_LINK_DOUBLE ? 2 : 1);
 }
 static void encode(u8 *out, const char *text)
 {
@@ -121,13 +121,15 @@ static void task_menu(u8 task)
     if (choice == MENU_NOTHING_CHOSEN) return;
     close_menu();
     if (sActivity.phase == ACT_INVITE) {
-        if (choice != 0 || !party_ready()) {
+        if (choice != 0 || !party_ready(sActivity.mode)) {
             LinkTransport_Reject(sActivity.invite); stop_activity(); return;
         }
         if (!LinkTransport_Accept(sActivity.invite)) { stop_activity(); return; }
         sActivity.outgoing = FALSE;
     } else {
-        if (choice != 0 || !party_ready() || !LinkTransport_Offer(sActivity.peer, NATIVE_LINK_SINGLE)) {
+        if (choice < 0 || choice > 1) { stop_activity(); return; }
+        sActivity.mode = choice == 0 ? NATIVE_LINK_SINGLE : NATIVE_LINK_DOUBLE;
+        if (!party_ready(sActivity.mode) || !LinkTransport_Offer(sActivity.peer, sActivity.mode)) {
             stop_activity(); return;
         }
         sActivity.outgoing = TRUE;
@@ -138,20 +140,24 @@ static void task_menu(u8 task)
 }
 static bool8 show_menu(bool8 incoming)
 {
-    struct WindowTemplate window = {0, 1, 1, 28, 9, 15, 0x125};
+    struct WindowTemplate window = {0, 1, 1, 28, 10, 15, 0x125};
     u8 text[64];
     sActivity.window = AddWindow(&window);
     if (sActivity.window == WINDOW_NONE) return FALSE;
     SetStandardWindowBorderStyle(sActivity.window, FALSE);
     encode(text, sActivity.peer);
     AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 0, TEXT_SKIP_DRAW, NULL);
-    encode(text, incoming ? "Battle invitation" : "Battle this trainer");
+    encode(text, incoming ? (sActivity.mode == NATIVE_LINK_DOUBLE ? "Double battle invitation" : "Single battle invitation") : "Battle this trainer");
     AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 16, TEXT_SKIP_DRAW, NULL);
-    encode(text, incoming ? "Yes" : "Battle");
+    encode(text, incoming ? "Yes" : "Single battle");
     AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 32, TEXT_SKIP_DRAW, NULL);
-    encode(text, incoming ? "No" : "Cancel");
+    encode(text, incoming ? "No" : "Double battle");
     AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 48, TEXT_SKIP_DRAW, NULL);
-    InitMenuNormal(sActivity.window, FONT_NORMAL, 0, 32, 16, 2, 1);
+    if (!incoming) {
+        encode(text, "Cancel");
+        AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 64, TEXT_SKIP_DRAW, NULL);
+    }
+    InitMenuNormal(sActivity.window, FONT_NORMAL, 0, 32, 16, incoming ? 2 : 3, incoming ? 1 : 2);
     CopyWindowToVram(sActivity.window, COPYWIN_FULL);
     sActivity.task = CreateTask(task_menu, 80);
     if (sActivity.task == TASK_NONE) { close_menu(); return FALSE; }
@@ -197,8 +203,10 @@ void ExpansionActivity_Update(void)
     if (sActivity.phase == ACT_IDLE) {
         pending = LinkTransport_PendingInvitation();
         if (!pending) return;
-        if (pending->mode != NATIVE_LINK_SINGLE || !party_ready()
-            || !begin_menu(pending->name, TRUE)) { LinkTransport_Reject(pending->id); return; }
+        if ((pending->mode != NATIVE_LINK_SINGLE && pending->mode != NATIVE_LINK_DOUBLE)
+            || !party_ready(pending->mode)) { LinkTransport_Reject(pending->id); return; }
+        sActivity.mode = pending->mode;
+        if (!begin_menu(pending->name, TRUE)) { LinkTransport_Reject(pending->id); return; }
         sActivity.invite = pending->id;
         return;
     }
@@ -211,12 +219,12 @@ void ExpansionActivity_Update(void)
         return;
     }
     if (sActivity.phase == ACT_WAIT) {
-        if (!field_context() || !party_ready() || !LinkTransport_Ready() || ++sActivity.timer > 1800
+        if (!field_context() || !party_ready(sActivity.mode) || !LinkTransport_Ready() || ++sActivity.timer > 1800
             || (sActivity.outgoing && !LinkTransport_OfferPending() && !NativeLink_IsActive())) {
             stop_activity(); return;
         }
         if (!NativeLink_IsActive()) return;
-        gWirelessCommType = 0; gLinkType = LINKTYPE_SINGLE_BATTLE;
+        gWirelessCommType = 0; gLinkType = sActivity.mode == NATIVE_LINK_DOUBLE ? LINKTYPE_DOUBLE_BATTLE : LINKTYPE_SINGLE_BATTLE;
         OpenLink(); ResetLinkPlayers();
         sActivity.phase = ACT_CONNECT; sActivity.timer = 0;
         show_waiting("Connecting");
@@ -229,7 +237,7 @@ void ExpansionActivity_Update(void)
         gFieldLinkPlayerCount = 2; gLocalLinkPlayerId = GetMultiplayerId(); SaveLinkPlayers(2);
         SetDynamicWarp(0, gSaveBlock1Ptr->location.mapGroup, gSaveBlock1Ptr->location.mapNum, -1);
         ClearLinkCallback_2(); close_menu(); sActivity.phase = ACT_BATTLE;
-        if (!ExpansionActivity_StartBattle(NATIVE_LINK_SINGLE)) stop_activity();
+        if (!ExpansionActivity_StartBattle(sActivity.mode)) stop_activity();
         return;
     }
     if (sActivity.phase == ACT_BATTLE) {
