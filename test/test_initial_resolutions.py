@@ -49,3 +49,8 @@ class InitialResolutions(unittest.TestCase):
   self.assertIn('TryStartDexNavSearch()',field)
   self.assertIn('DexNav_OpenFromField(void)',dex)
   self.assertIn('$(C_SUBDIR)/platform/repeat_repel.c',make)
+
+ def test_carried_sprite_hooks(self):
+  s=self.read('src/sprite.c')
+  self.assertIn('NativeSpriteTileClone(',s);self.assertIn('NativeSpriteTileScope(',s)
+  self.assertIn('#elif defined(PORTABLE) && WORLD_EXTENDED_SPRITES',s)

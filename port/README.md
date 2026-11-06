@@ -54,3 +54,7 @@ Expansion's own DexNav input and Repel/Lure menu are used in the candidate;
 the World-only RepeatRepel implementation is excluded from compilation. The
 World menu entry is connected to Expansion's DexNav through the prior source
 port. Exact behavior, including multiplayer restrictions, is not yet verified.
+
+The earlier native sprite tile-bank and OAM source changes are carried over
+against the pinned donor to satisfy object-event hooks. Renderer integration,
+capacity, ordering and visual correctness are not verified.
