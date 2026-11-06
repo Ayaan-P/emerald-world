@@ -98,9 +98,9 @@ class GuildChat:
                         recipient=s.peers.get(name)
                         if recipient and recipient.get('chat') and not recipient.get('closing'):
                             self.message(recipient,conn['id'],'[Guild] '+body)
-                            s._queue(recipient,s._snapshot(recipient))
+                            if recipient is not conn: s._queue(recipient,s._snapshot(recipient))
                 except GuildError as exc:
-                    self.message(conn,conn['id'],'Guild: '+str(exc));s._queue(conn,s._snapshot(conn))
+                    self.message(conn,conn['id'],'Guild: '+str(exc))
             conn['chat_status']='sent';s._queue(conn,s._snapshot(conn));return True
         return False
 
