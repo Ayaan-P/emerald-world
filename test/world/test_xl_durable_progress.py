@@ -14,13 +14,15 @@ static unsigned char data[N];
 int main(int argc,char **argv){int mode=atoi(argv[2]);(void)argc;if(mode==0){if(XLProgressStore_Init(argv[1],0,data,N))return 1;return 0;}
  if(!XLProgressStore_Init(argv[1],1,data,N))return 2;
  if(mode==1){data[0]=1;if(!XLProgressStore_Save(data,N))return 3;data[0]=2;if(!XLProgressStore_Save(data,N))return 4;}
+ if(mode==4){data[0]=1;if(!XLProgressStore_Save(data,N))return 3;}
+ if(mode==5){data[0]=2;if(!XLProgressStore_Save(data,N))return 4;}
  if(mode==2&&data[0]!=2)return 5;if(mode==3&&data[0]!=1)return 6;XLProgressStore_Close();return 0;}'''
   with tempfile.TemporaryDirectory() as t:
    p=Path(t);(p/'test.c').write_text(code)
    q=subprocess.run(['cc','-std=gnu99','-Wall','-Wextra','-Werror','-Wno-misleading-indentation','-DPORTABLE','-iquote',str(ROOT/'include'),str(ROOT/'src/platform/xl_progress_store.c'),str(ROOT/'src/platform/native_save.c'),str(p/'test.c'),'-o',str(p/'test')],capture_output=True,text=True);self.assertEqual(q.returncode,0,q.stderr)
    run=lambda path,mode:subprocess.run([str(p/'test'),str(path),str(mode)],capture_output=True,text=True).returncode
    save=p/'trainer.sav';self.assertEqual(run(save,0),0);side=p/'trainer.sav.generated-story';self.assertFalse(side.exists())
-   self.assertEqual(run(save,1),0);self.assertEqual(side.stat().st_mode&0o777,0o600);self.assertEqual(run(save,2),0)
+   self.assertEqual(run(save,4),0);snapshot=side.read_bytes()[12+PAYLOAD:];self.assertEqual(run(save,5),0);self.assertEqual(side.read_bytes()[12+PAYLOAD:],snapshot);self.assertEqual(side.stat().st_mode&0o777,0o600);self.assertEqual(run(save,2),0)
    raw=bytearray(side.read_bytes());raw[20]^=1;side.write_bytes(raw);self.assertEqual(run(save,3),0)
    damaged=bytearray(side.read_bytes());damaged[12+PAYLOAD+20]^=1;side.write_bytes(damaged);before=side.read_bytes();self.assertEqual(run(save,2),2);self.assertEqual(side.read_bytes(),before)
    unsafe=p/'unsafe.sav.generated-story';target=p/'target';target.write_bytes(b'keep');unsafe.symlink_to(target);self.assertEqual(run(p/'unsafe.sav',1),2);self.assertEqual(target.read_bytes(),b'keep')
