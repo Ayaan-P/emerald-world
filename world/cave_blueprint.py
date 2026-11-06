@@ -14,7 +14,7 @@ MAX_INPUT = 16384
 
 
 def proposal_from_blueprint(doc, *, side=31):
-    if type(side) is not int or side not in (31, 63):
+    if type(side) is not int or side not in (31, 63, 127):
         raise ValueError('unsupported cave size')
     keys = {'rooms', 'links', 'entrance_room', 'exit_room'}
     if type(doc) is not dict or not keys <= set(doc) or set(doc) - keys - {'style', 'seed', 'corridor_width'}:

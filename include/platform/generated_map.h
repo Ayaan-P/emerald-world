@@ -28,6 +28,9 @@
 #error GENERATED_CAVE_WILDLIFE requires generated maps and cave profiles
 #endif
 
+#ifndef GENERATED_WORLD_XL
+#define GENERATED_WORLD_XL 0
+#endif
 #ifndef GENERATED_MAP_LARGE
 #define GENERATED_MAP_LARGE 0
 #endif
@@ -87,9 +90,16 @@ struct WildPokemonInfo;
 #if GENERATED_WILDS_LARGE_TERRAIN && !GENERATED_WILDS_SHARED_GEOMETRY
 #error GENERATED_WILDS_LARGE_TERRAIN requires shared geometry
 #endif
+#if GENERATED_WORLD_XL && (!GENERATED_MAP_LARGE || !GENERATED_MAP_WILDS)
+#error GENERATED_WORLD_XL requires large generated wilds
+#endif
+#define GENERATED_XL_MAP_BYTES (127 * 127)
 #define GENERATED_TERRAIN_MAX_BYTES (GENERATED_WILDS_LARGE_TERRAIN ? 1539 : 193)
 #define GENERATED_EVENT_BYTES 1466
 #define GENERATED_CAST_BYTES 184
+bool8 GeneratedMap_StageXLWilds(const u8 *cells, u32 size);
+bool8 GeneratedMap_StageSharedXLWilds(const u8 *cells, u32 size);
+bool8 GeneratedMap_MatchesPreparedXLWilds(const u8 *cells, u32 size);
 bool8 GeneratedMap_StageTemplate(const u8 *cells, u32 size);
 bool8 GeneratedMap_StageLargeTemplate(const u8 *cells, u32 size);
 bool8 GeneratedMap_StageWildsTemplate(const u8 *cells, u32 size);

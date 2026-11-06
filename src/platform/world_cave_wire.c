@@ -37,13 +37,13 @@ static void Digest(const u8 *cells, u8 version, u8 profile, const u8 *wildlife, 
     static const char alphabet[]="0123456789abcdef";
     u32 state[8]={0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
     u8 block[64]; unsigned i,j,offset; const unsigned extra = version == 9 ? WORLD_CAVE_EVENT_BYTES + WORLD_CAVE_CAST_BYTES : version == 8 ? WORLD_CAVE_CAST_BYTES : version == 7 ? WORLD_CAVE_GUIDE_BYTES : (version == 3 || version == 5) ? 38 : version == 2 ? 1 : 0;
-    const unsigned count = version >= 4 ? WORLD_CAVE_LARGE_CELLS : WORLD_CAVE_CELLS;
+    const unsigned count = version == 10 ? WORLD_CAVE_XL_CELLS : version >= 4 ? WORLD_CAVE_LARGE_CELLS : WORLD_CAVE_CELLS;
     const unsigned length=8+extra+count, padded=((length+9+63)/64)*64;
     for(offset=0;offset<padded;offset+=64) {
         memset(block,0,sizeof(block));
         for(i=0;i<64;i++) {
             unsigned p=offset+i;
-            if(p<8) block[i]=(p==7 && version>=2) ? ('0' + version) : magic[p];
+            if(p<8) block[i]=(p==7 && version>=2) ? (version == 10 ? 'A' : '0' + version) : magic[p];
             else if(version==9 && p<8+WORLD_CAVE_EVENT_BYTES) block[i]=events[p-8];
             else if(version==9 && p<8+WORLD_CAVE_EVENT_BYTES+WORLD_CAVE_CAST_BYTES) block[i]=cast[p-8-WORLD_CAVE_EVENT_BYTES];
             else if(version==8 && p<8+WORLD_CAVE_CAST_BYTES) block[i]=cast[p-8];
@@ -84,6 +84,12 @@ int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned n, const char *const
         if(wire->active || !WorldCaveWire_ValidId(t[2])) return -1;
         memcpy(wire->id,t[2],65);wire->nextRow=0;wire->version=1;wire->profile=0;wire->active=TRUE;return 0;
     }
+#if GENERATED_WORLD_XL
+    if (n==4 && !strcmp(t[1],"BEGIN") && !strcmp(t[3],"XLWILDS")) {
+        if(wire->active || !WorldCaveWire_ValidId(t[2])) return -1;
+        memcpy(wire->id,t[2],65);wire->nextRow=0;wire->version=10;wire->profile=0;wire->active=TRUE;return 0;
+    }
+#endif
 #if GENERATED_WILDS_EVENTS
     if (n==4 && !strcmp(t[1],"BEGIN") && !strcmp(t[3],"EVENTS")) {
         if(wire->active || !WorldCaveWire_ValidId(t[2])) return -1;
@@ -222,7 +228,7 @@ int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned n, const char *const
 #endif
     if(n==5 && !strcmp(t[1],"ROW")) {
         const char *p=t[3];
-        const unsigned side = wire->version>=4 ? WORLD_CAVE_LARGE_SIDE : WORLD_CAVE_SIDE;
+        const unsigned side = wire->version==10 ? WORLD_CAVE_XL_SIDE : wire->version>=4 ? WORLD_CAVE_LARGE_SIDE : WORLD_CAVE_SIDE;
         if((wire->version==3 || wire->version==5) && !wire->wildlifeSeen) return -1;
         if(wire->version==7 && !wire->guideSeen) return -1;
 #if GENERATED_WILDS_CAST
@@ -232,13 +238,13 @@ int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned n, const char *const
 #endif
 #endif
         if(!*p || (p[0]=='0' && p[1])) return -1;
-        while(*p) { if(*p<'0'||*p>'9'||index>63) return -1; index=index*10+(*p++-'0'); }
+        while(*p) { if(*p<'0'||*p>'9'||index>127) return -1; index=index*10+(*p++-'0'); }
         if(index!=wire->nextRow || index>=side || strlen(t[4])!=side) return -1;
         for(i=0;i<side;i++) if(t[4][i]!='.' && t[4][i]!='#') return -1;
         memcpy(wire->cells+index*side,t[4],side);wire->nextRow++;return 0;
     }
     if(n==3 && !strcmp(t[1],"END")) {
-        if(wire->nextRow!=(wire->version>=4 ? WORLD_CAVE_LARGE_SIDE : WORLD_CAVE_SIDE) || ((wire->version==3 || wire->version==5) && !wire->wildlifeSeen) || (wire->version==7 && !wire->guideSeen)) return -1;
+        if(wire->nextRow!=(wire->version==10 ? WORLD_CAVE_XL_SIDE : wire->version>=4 ? WORLD_CAVE_LARGE_SIDE : WORLD_CAVE_SIDE) || ((wire->version==3 || wire->version==5) && !wire->wildlifeSeen) || (wire->version==7 && !wire->guideSeen)) return -1;
 #if GENERATED_WILDS_CAST
         if(wire->version==8 && !wire->castSeen) return -1;
 #if GENERATED_WILDS_EVENTS
