@@ -117,3 +117,8 @@ class InitialResolutions(unittest.TestCase):
   s=self.read('src/battle_util.c');m=self.read('src/battle_main.c')
   self.assertIn('&& !WorldCoop_IsBattle()',s)
   self.assertIn('&& !WorldCoop_IsBattle()',m)
+
+ def test_coop_opponent_intro_hooks_present(self):
+  s=self.read('src/battle_controller_link_opponent.c')
+  self.assertIn('WorldCoop_IsBattle() && (gAbsentBattlerFlags',s)
+  self.assertIn('GetTrainerPicFromId(TRAINER_BATTLE_PARAM.opponentA)',s)
