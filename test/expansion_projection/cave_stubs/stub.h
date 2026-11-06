@@ -2,7 +2,7 @@
 #define CAVE_STUB_H
 #include <stdint.h>
 #include <stddef.h>
-typedef uint8_t u8; typedef uint16_t u16; typedef int16_t s16; typedef int8_t s8; typedef int bool8;
+typedef uint32_t u32; typedef uint8_t u8; typedef uint16_t u16; typedef int16_t s16; typedef int8_t s8; typedef int bool8;
 #define TRUE 1
 #define FALSE 0
 #define MAP_OFFSET 7

@@ -31,3 +31,12 @@ class CaveLaunch(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d, patch.dict(os.environ,{'EW_EXPERIMENTAL_EXPANSION_CAVE':'1'},clear=True):
             session=ExpansionSession(Path(d),'Alice',online=True)
             with self.assertRaises(ValueError): session.run(generated_map=Path('/tmp/not-used'))
+    def test_print_command_cleans_staged_template(self):
+        import contextlib
+        import io
+        with tempfile.TemporaryDirectory() as d, patch.dict(os.environ,{'EW_EXPERIMENTAL_EXPANSION_CAVE':'1'},clear=True):
+            root=Path(d).resolve(); source=root/'source'; source.write_bytes(self.template())
+            session=ExpansionSession(root,'Alice',online=False)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(session.run(binary='/bin/true', generated_map=source, print_command=True),0)
+            self.assertEqual(list(session.paths['profile'].glob('.expansion-cave-*')),[])

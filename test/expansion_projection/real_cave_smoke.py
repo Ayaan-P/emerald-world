@@ -21,14 +21,12 @@ with tempfile.TemporaryDirectory(prefix='expansion-cave-smoke-') as directory:
     script = root / 'cave.replay'
     script.write_text((donor / 'tests/smoke/opening_start.replay').read_text() + '''\nwait 30
 mash A until controls_locked=0 max 3000
-wait 10
-press SELECT,R
+mash SELECT,R until map=75.0 max 3000
 wait-until map=75.0 max 900
 wait-until callback2=CB2_Overworld max 900
 wait 30
 mash A until controls_locked=0 max 3000
-wait 10
-press SELECT,R
+mash SELECT,R until map=0.9 max 3000
 wait-until map=0.9 max 900
 wait-until callback2=CB2_Overworld max 900
 wait 30
@@ -36,11 +34,15 @@ wait 30
     out = root / 'out'
     out.mkdir()
     env = dict(os.environ, EW_EXPERIMENTAL_EXPANSION_CAVE='1', EW_EXPANSION_OFFLINE='1',
-               EW_EXPANSION_CAVE_TEMPLATE=str(template), EW_CAVE_DIAGNOSTIC='1')
+               EW_EXPANSION_CAVE_TEMPLATE=str(template), EW_CAVE_DIAGNOSTIC='1', EW_CAVE_SAVE_AUDIT='1')
     p = subprocess.run([str(binary), '--headless', '--silent', '--unthrottled',
         '--replay', str(script), '--out', str(out), '--save', str(root / 'game.sav'),
         '--rtc-offset', str(root / 'clock.rtc'), '--rtc-fixed', '1700000000'],
         env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=240)
     if p.returncode:
         raise AssertionError('Donor cave replay failed: ' + p.stderr[-5000:])
-    print('Entered and left an inert generated cave in the Expansion donor.')
+    import re
+    audit = re.search(r'cave save audit: status=(\d+) writes_before=(\d+) writes_after=(\d+)', p.stderr)
+    if not audit or int(audit[1]) != 255 or audit[2] != audit[3]:
+        raise AssertionError('Saving inside cave was not safely rejected: ' + p.stderr[-5000:])
+    print('Entered and left an inert generated cave; save was rejected without flash writes.')

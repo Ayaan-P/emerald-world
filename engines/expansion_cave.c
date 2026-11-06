@@ -19,6 +19,8 @@
 #include "palette.h"
 #include "script.h"
 #include "task.h"
+#include "save.h"
+#include "platform/flash.h"
 #include "constants/maps.h"
 #include "constants/event_objects.h"
 
@@ -34,7 +36,7 @@ static struct MapHeader sHeader;
 static struct MapEvents sEvents;
 static struct WarpEvent sExit;
 static struct WarpData sReturn, sPreviousDynamic;
-static bool8 sStaged, sPrepared, sSeenInside;
+static bool8 sStaged, sPrepared, sSeenInside, sHasHeader;
 
 bool8 ExpansionCave_Stage(const uint8_t *wire, size_t size)
 {
@@ -50,7 +52,8 @@ bool8 ExpansionCave_IsInside(void)
 }
 const struct MapHeader *ExpansionCave_Header(void)
 {
-    if (!sPrepared) { fputs("Unprepared Expansion generated cave.\n", stderr); abort(); }
+    if (!sPrepared && !sHasHeader) { fputs("Unprepared Expansion generated cave.\n", stderr); abort(); }
+    sHasHeader = TRUE;
     const struct MapHeader *base = Overworld_GetMapHeaderByGroupAndId(MAP_GROUP(MAP_CAVE_OF_ORIGIN_ENTRANCE), MAP_NUM(MAP_CAVE_OF_ORIGIN_ENTRANCE));
     sHeader = *base;
     sExit = (struct WarpEvent){ .x=29, .y=29, .elevation=3, .warpId=WARP_ID_DYNAMIC,
@@ -73,6 +76,14 @@ const struct MapLayout *ExpansionCave_ResolveLayout(const struct MapLayout *base
 }
 void ExpansionCave_Update(void)
 {
+    static bool8 audited;
+    if (getenv("EW_CAVE_SAVE_AUDIT") && !audited && sPrepared && ExpansionCave_IsInside()) {
+        u32 before=flash_write_count();
+        u8 status=TrySavingData(SAVE_NORMAL);
+        u32 after=flash_write_count();
+        fprintf(stderr,"cave save audit: status=%u writes_before=%u writes_after=%u\n",status,before,after);
+        audited=TRUE;
+    }
     if (sPrepared && sSeenInside && !ExpansionCave_IsInside()) {
         if (gSaveBlock1Ptr) gSaveBlock1Ptr->dynamicWarp = sPreviousDynamic;
         sPrepared = sSeenInside = sStaged = FALSE;
