@@ -129,3 +129,8 @@ class InitialResolutions(unittest.TestCase):
    self.assertIn(x,main)
   self.assertIn('WorldCoop_ReadyForPrivateRewards()',player)
   self.assertIn('BattleScript_CoopPrivateCatch::',script)
+
+ def test_coop_defeat_is_recorded_before_private_exp(self):
+  s=self.read('src/battle_script_commands.c')
+  self.assertIn('WorldCoop_EmitDefeat()',s)
+  self.assertIn('gBattlescriptCurrInstr = cmd->nextInstr',s)
