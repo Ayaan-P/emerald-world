@@ -11,7 +11,7 @@ struct Coord { s16 x,y; };
 struct ObjectEvent { int active,isPlayer,localId,mapGroup,mapNum,spriteId, currentElevation,previousElevation,facingDirection; struct Coord currentCoords,initialCoords; };
 struct Sprite { int inUse; s16 data[8]; };
 struct ObjectEventTemplate { int localId; };
-struct Save { struct { int mapGroup,mapNum; } location; struct ObjectEventTemplate objectEventTemplates[64]; };
+struct Save { struct { int mapGroup,mapNum; } location; struct ObjectEventTemplate objectEventTemplates[64]; struct ObjectEvent objectEvents[OBJECT_EVENTS_COUNT]; };
 struct Layout { int width,height; }; struct Events { int objectEventCount; };
 struct Header { struct Layout *mapLayout; struct Events *events; };
 extern struct ObjectEvent gObjectEvents[OBJECT_EVENTS_COUNT]; extern struct Sprite gSprites[MAX_SPRITES];

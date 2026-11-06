@@ -142,11 +142,23 @@ class ExpansionSession:
             if state.get('schema') != 1 or state.get('engine') != ENGINE:
                 raise ValueError('unsupported Expansion presence schema')
             seq += 1
+            coordinates = None
             if state.get('field'):
                 coordinates = [state[key] for key in ('group', 'num', 'x', 'y')]
                 if any(type(value) is not int or not 0 <= value <= limit
                        for value, limit in zip(coordinates, (255, 255, 32767, 32767))):
                     raise ValueError('invalid Expansion presence coordinates')
+                # Group 34 is generated worlds in the server's vanilla catalog,
+                # but FRLG link rooms in Expansion. Never alias unrelated maps.
+                from .build_catalog import validate_coords
+                if coordinates[0] >= 34:
+                    coordinates = None
+                else:
+                    try:
+                        validate_coords(*coordinates)
+                    except ValueError:
+                        coordinates = None
+            if coordinates is not None:
                 # FIELD is the SOCIAL protocol's visible-but-busy state.
                 # Zero hashes mean unavailable, not portable ownership.
                 values = [seq, *coordinates, 1, 0, 0]

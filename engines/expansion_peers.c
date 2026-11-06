@@ -155,3 +155,26 @@ unsigned ExpansionPeers_Count(void)
     for (i = 0; i < MAX_PEERS; i++) if (owned(i)) count++;
     return count;
 }
+
+/* Do not persist projected peers when the game snapshots overworld objects.
+ * Both entry points are wrapped: the full-save helper calls SaveObjectEvents
+ * from the same translation unit, where a direct reference may bypass --wrap.
+ * Other game code calls SaveObjectEvents directly for map transitions. */
+void __real_SaveObjectEvents(void);
+void __real_CopyPartyAndObjectsToSave(void);
+static void clear_saved_peers(void)
+{
+    unsigned i;
+    for (i = 0; i < MAX_PEERS; i++)
+        if (owned(i)) gSaveBlock1Ptr->objectEvents[remotes[i].object].active = 0;
+}
+void __wrap_SaveObjectEvents(void)
+{
+    __real_SaveObjectEvents();
+    clear_saved_peers();
+}
+void __wrap_CopyPartyAndObjectsToSave(void)
+{
+    __real_CopyPartyAndObjectsToSave();
+    clear_saved_peers();
+}

@@ -25,10 +25,17 @@ u8 SpawnSpecialObjectEventParameterized(int gfx,int movement,int local,int x,int
     return OBJECT_EVENTS_COUNT;
 }
 void ExpansionPeers_Update(int);
+void __wrap_SaveObjectEvents(void);
+void __wrap_CopyPartyAndObjectsToSave(void);
+void __real_SaveObjectEvents(void) { memcpy(save.objectEvents,gObjectEvents,sizeof gObjectEvents); }
+void __real_CopyPartyAndObjectsToSave(void) { __real_SaveObjectEvents(); }
 int main(void) {
     char path[]="/tmp/ew-peers-XXXXXX"; int fd=mkstemp(path); assert(fd>=0); close(fd); assert(!setenv("EW_EXPANSION_PEERS",path,1));
     FILE *f=fopen(path,"w"); assert(f); fputs("EWPEERS 1\nAsh 0 0 4 5 2\n",f); fclose(f);
     ExpansionPeers_Update(1); assert(gObjectEvents[0].active); assert(gObjectEvents[0].currentCoords.x==11); assert(gObjectEvents[0].facingDirection==2);
+    gObjectEvents[1].active=1; gObjectEvents[1].localId=1;
+    __wrap_SaveObjectEvents(); assert(!save.objectEvents[0].active && save.objectEvents[1].active);
+    __wrap_CopyPartyAndObjectsToSave(); assert(!save.objectEvents[0].active && save.objectEvents[1].active);
     scripts=1; ExpansionPeers_Update(1); assert(!gObjectEvents[0].active); scripts=0;
     f=fopen(path,"w"); assert(f); fputs("EWPEERS 1\nAsh 0 0 4 5 2\nAsh 0 0 4 5 2\n",f); fclose(f);
     ExpansionPeers_Update(1); assert(!gObjectEvents[0].active);
