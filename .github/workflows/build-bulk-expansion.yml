@@ -56,7 +56,7 @@ jobs:
         run: |
           if [ -x build/native64/pokeemerald-native ]; then
             mkdir -p "$RUNNER_TEMP/bulk-debug"
-            gdb -batch -ex run -ex 'thread apply all bt full' --args \
+            gdb -batch -ex run -ex 'x/12i $pc-16' -ex 'info registers' -ex 'thread apply all bt full' --args \
               build/native64/pokeemerald-native --headless --silent --unthrottled \
               --replay tests/smoke/opening.replay --out "$RUNNER_TEMP/bulk-debug" \
               --save "$RUNNER_TEMP/bulk-debug/player.sav" \
