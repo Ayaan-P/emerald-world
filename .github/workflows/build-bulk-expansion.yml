@@ -7,6 +7,7 @@ on:
       - 'test/test_apply_bulk_expansion_port.py'
       - 'test/test_initial_resolutions.py'
       - 'test/test_movement_capacity.py'
+      - 'test/test_expansion_battle_header.py'
       - 'test/test_link_engine_gate.py'
       - 'world/server.py'
       - '.github/workflows/build-bulk-expansion.yml'
@@ -30,6 +31,8 @@ jobs:
           python3 -m unittest discover -s test -p test_link_engine_gate.py -v
       - name: Apply candidate to clean pinned donor
         run: python3 scripts/apply_bulk_expansion_port.py engines/expansion-native
+      - name: Test offline Expansion battle packet headers
+        run: python3 -m unittest discover -s test -p test_expansion_battle_header.py -v
       - name: Install native build prerequisites
         timeout-minutes: 30
         run: |
