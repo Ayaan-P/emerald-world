@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 const areaTypes = {
+  xl_wilds: { label: 'XL outdoor world (127 × 127)', capability: 'xl_wilds_authoring', description: 'A shared outdoor world with four times the terrain of standard wilds. Existing Hoenn art and encounters; no generated characters, story graphs or editable overlays in this XL multiplayer mode. Matching RC8 clients required.' },
   cave: { label: 'Cave with custom wildlife', capability: 'cave_authoring', description: 'Caves use existing art with a model-selected biome and custom wildlife roster.' },
   wilds: { label: 'Outdoor wilds', capability: 'wilds_authoring', description: 'Outdoor areas use existing Hoenn art, blocked water, tall grass and Route 101 encounters, not custom outdoor wildlife.' },
   guided_wilds: { label: 'Outdoor wilds with a guide', capability: 'guided_wilds_authoring', description: 'Outdoor wilds with one guide and short model-authored dialogue. Talk to the guide in the game. Dialogue is fixed text, not a live conversation.' },

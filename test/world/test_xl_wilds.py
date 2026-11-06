@@ -104,7 +104,8 @@ int main(void){u8 data[16129],bad[16129],paint[16129];unsigned chosen=0;struct M
             (p/'platform/world_bridge.h').write_text('int WorldBridge_Enabled(void);int WorldBridge_GeneratedCaveReady(void);\n')
             (p/'platform/generated_map.h').write_text((ROOT/'include/platform/generated_map.h').read_text())
             (p/'constants/maps.h').write_text(f'#define MAP_GENERATED_WORLD_CAVE ({group}<<8)\n#define MAP_GENERATED_WORLD_WILDS (({group}<<8)|1)\n#define MAP_GROUP(x) ((x)>>8)\n#define MAP_NUM(x) ((x)&255)\n#define WARP_ID_NONE (-1)\n')
-            (p/'test.c').write_text(code)
+            (p/'pokemon.h').write_text('#ifndef FIXTURE_POKEMON_H\n#define FIXTURE_POKEMON_H\n#include "global.h"\n#define PARTY_SIZE 6\n#define MON_DATA_SPECIES 0\n#define MON_DATA_IS_EGG 1\n#define MON_DATA_HP 2\nstruct Pokemon {u16 fields[3];};\nextern u8 gPlayerPartyCount;\nextern struct Pokemon gPlayerParty[PARTY_SIZE];\nu32 GetMonData(const struct Pokemon *, int);\n#endif\n')
+            (p/'test.c').write_text(code+'\n#include "pokemon.h"\nu8 gPlayerPartyCount=1;\nstruct Pokemon gPlayerParty[PARTY_SIZE]={{{1,0,10}}};\nu32 GetMonData(const struct Pokemon *mon,int field){return mon->fields[field];}\n')
             cmd=['cc','-std=gnu99','-Wall','-Wextra','-Werror','-DPORTABLE','-DGENERATED_MAP_READY=1','-DGENERATED_MAP_AUTOTILE=1','-DGENERATED_MAP_LARGE=1','-DGENERATED_MAP_WILDS=1','-DGENERATED_WORLD_XL=1','-iquote',str(p),str(ROOT/'src/platform/generated_map.c'),str(p/'test.c'),'-o',str(p/'test')]
             build=subprocess.run(cmd,capture_output=True,text=True);self.assertEqual(build.returncode,0,build.stderr)
             cells=xl_wilds.encode(cave_blueprint.proposal_from_blueprint(DOC,side=127))[8:]

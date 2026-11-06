@@ -17,6 +17,18 @@ it('shows unexpected exit recovery from the last save only and hides it for a li
 const state = { world_key: 'local-one', local_host: true, trainer: 'Player', cave_authoring: true, generated_areas: [] };
 const props = { ready: true, busy: false, onOpen: vi.fn(), onActivate: vi.fn(), onAuthor: vi.fn() };
 
+it('offers shared XL generation only after explicit paid-generation confirmation', async () => {
+  const onAuthor = vi.fn().mockResolvedValue(true);
+  render(<ExpeditionPanel {...props} onAuthor={onAuthor} state={{ ...state, xl_wilds_authoring: true }} />);
+  fireEvent.change(screen.getByLabelText('Area type'), { target: { value: 'xl_wilds' } });
+  fireEvent.change(screen.getByLabelText('Area theme'), { target: { value: 'Wide islands' } });
+  expect(screen.getByText(/no generated characters, story graphs or editable overlays/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Review generation and cost', hidden: true }));
+  expect(onAuthor).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm generation' }));
+  await waitFor(() => expect(onAuthor).toHaveBeenCalledWith({ world: 'local-one', theme: 'Wide islands', kind: 'xl_wilds', confirmed: true }));
+});
+
 it('separates published adventures from fixed scenery without inventing an adventure', () => {
   const { rerender } = render(<ExpeditionPanel {...props} state={state} />);
   expect(screen.getByText('Your director has not published an adventure')).toBeTruthy();

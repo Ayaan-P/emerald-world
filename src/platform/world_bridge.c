@@ -278,7 +278,7 @@ static bool8 MapCoords(unsigned group, unsigned num, unsigned x, unsigned y)
     if (IsGeneratedCaveMap(group, num))
         return sWorld.connected && sWorld.caveAvailable && sWorld.caveState == CAVE_READY
 #if GENERATED_MAP_WILDS
-            && ((sWorld.caveWire.version == 6 || sWorld.caveWire.version == 7 || sWorld.caveWire.version == 8 || sWorld.caveWire.version == 9) == (group == MAP_GROUP(MAP_GENERATED_WORLD_WILDS)
+            && ((sWorld.caveWire.version == 6 || sWorld.caveWire.version == 7 || sWorld.caveWire.version == 8 || sWorld.caveWire.version == 9 || sWorld.caveWire.version == 10) == (group == MAP_GROUP(MAP_GENERATED_WORLD_WILDS)
                                                 && num == MAP_NUM(MAP_GENERATED_WORLD_WILDS)))
 #endif
             && GeneratedMap_SharedCoordValid(x, y);
