@@ -13,18 +13,24 @@
 int LinkTransport_Init(const char *configPath);
 void LinkTransport_Pump(void);
 int LinkTransport_Ready(void);
+void NativeLink_AfterFrame(void);
+int NativeLink_BeforeFrame(const u16 send[8]);
+extern u16 gSendCmd[8];
 void ExpansionPeers_Update(int overworld);
 unsigned ExpansionPeers_Count(void);
 enum frame_result __real_frame_run(void);
 enum frame_result __wrap_frame_run(void)
 {
-    enum frame_result result = __real_frame_run();
     static int link_state;
     const char *config = getenv("EW_EXPANSION_LINK_CONFIG");
     if (config && link_state == 0)
         link_state = LinkTransport_Init(config) ? 1 : -1;
-    if (link_state == 1)
+    if (link_state == 1) {
+        NativeLink_AfterFrame();
         LinkTransport_Pump();
+        (void)NativeLink_BeforeFrame(gSendCmd);
+    }
+    enum frame_result result = __real_frame_run();
     const char *path = getenv("EW_EXPANSION_PRESENCE");
     if (path == NULL || frame_count() % 6 != 0)
         return result;

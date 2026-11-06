@@ -26,3 +26,15 @@ $(EW_LINK): ../../src/platform/link_transport.c
 $(EW_CABLE): ../../src/platform/native_link.c
 	@mkdir -p $(@D)
 	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -DPORTABLE -iquote ../../include -c $< -o $@
+
+# Build a generated, fail-closed overlay of the pinned donor's link engine.
+# It imports the existing world's validated native command handling while
+# leaving the donor checkout untouched. The original dependency scan still
+# covers its unchanged asset includes.
+EW_PATCHED_LINK := ../../build/expansion-link-game.c
+$(EW_PATCHED_LINK): src/link.c ../../src/link.c ../../scripts/patch_expansion_link.py
+	@mkdir -p $(@D)
+	python3 ../../scripts/patch_expansion_link.py src/link.c ../../src/link.c $@
+$(C_BUILDDIR)/link.o: $(EW_PATCHED_LINK) $(C_FILTER_SCRIPT) ../../include/platform/native_link.h
+	@echo "$(TARGET_CC) <Expansion link overlay> -o $@"
+	@$(CPP) $(CPPFLAGS) -iquote ../../include $(EW_PATCHED_LINK) | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $(EW_PATCHED_LINK) charmap.txt | $(C_FILTER) > $(C_PREPROCESSED) && $(TARGET_CC) $(CFLAGS) -c -x c -o $@ $(C_PREPROCESSED); status=$$?; rm -f $(C_PREPROCESSED); exit $$status

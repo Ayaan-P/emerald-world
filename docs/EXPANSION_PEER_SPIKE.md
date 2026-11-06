@@ -27,3 +27,9 @@ machine in the donor process, mounting only that world's transport directory.
 This is the protocol transport, not the Expansion battle or trade integration:
 no game menu issues invitations, and the donor's engine link hooks have not yet
 been ported. Real socket connections and LINK traffic have not been tested.
+
+The experimental build also generates an overlay of the donor's link engine
+with the existing world's virtual-cable command validation and frame hooks.
+The donor checkout is not modified and generation fails if expected source
+anchors change. This is a work-in-progress engine port, not a claim that battle,
+trade, consent flows or co-op work; no real LINK session has been tested.
