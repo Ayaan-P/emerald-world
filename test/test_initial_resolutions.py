@@ -67,3 +67,11 @@ class InitialResolutions(unittest.TestCase):
   self.assertIn('-DWORLD_NATIVE_EWRAM=1',flags);self.assertIn('gba_native_ewram_size=0x80000',flags)
   self.assertIn('GBA_EWRAM_SIZE UINT32_C(0x00080000)',mem);self.assertIn('EWRAM_START + 0x80000',defs)
   self.assertIn('ASSERT(gba_ewram_data_end <= gba_linked_ewram_start + gba_native_ewram_size',link)
+
+ def test_expanded_movement_storage_matches_object_capacity(self):
+  s=self.read('src/script_movement.c')
+  self.assertIn('sWorldMovementObjectIds[OBJECT_EVENTS_COUNT]',s)
+  self.assertIn('_Static_assert(OBJECT_EVENTS_COUNT <= 64',s)
+  self.assertIn('sWorldMovementFinished |= (1ULL << moveScrId)',s)
+  self.assertIn('sWorldMovementObjectIds[i] = 0xFF',s)
+  self.assertIn('pObjEventId = sWorldMovementObjectIds',s)

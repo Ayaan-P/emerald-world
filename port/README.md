@@ -68,3 +68,8 @@ The native EWRAM mapping and linker region are expanded from 256 KiB to
 mapping and game-side bound are changed together; pointer relocation, reset,
 heap behavior and saves still require verification. This does not change a
 GBA ROM's memory map.
+
+The opening replay crashed in ScriptMovement_MoveObjects. Its original task
+storage holds 16 completion bits, while World configures 48 object events.
+The candidate now stores native movement IDs and 64-bit completion state
+separately. This is a suspected fix and requires the replay to pass.
