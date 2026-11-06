@@ -83,3 +83,8 @@ class InitialResolutions(unittest.TestCase):
   for symbol in ('WorldCoop_InitControllers()', 'NativeBattleHeaderValid(', 'NativeBattleSourceValid(', 'NativeBattleReplyValid(', 'WorldCoop_ReceiveCompletion(', 'WorldCoop_ObserveController(', 'WorldCoop_ObserveMonData('):
    self.assertIn(symbol,s)
   self.assertNotIn('gBattleBufferA',s);self.assertNotIn('gBattleBufferB',s);self.assertNotIn('gActiveBattler',s)
+
+ def test_reviewed_start_menu_fixture_only(self):
+  fixture=self.read('tests/smoke/expected/screenshots.md5')
+  self.assertIn('72868519c964cc9a90990c55d19d2f2e  24_start_menu.ppm',fixture)
+  self.assertEqual(len(fixture.splitlines()),26)
