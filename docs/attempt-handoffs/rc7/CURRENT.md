@@ -120,3 +120,32 @@ The original-to-Expansion contract map is `docs/RC7_PORT_CONTRACT.md`.
 ## Final RC7 pre-RC9 checkpoint
 
 Engine 9506377d1fff0e1f553caaf66f99550cbd715f59 includes original menu-return, absent-NPC rendering, trainer presentation and private-summary guards. The actual extracted Linux package passed ordinary multiplayer battle, shared wild win/private EXP, independent normal saves and cold Continue. Packaged DesktopSession created and authenticated an Expansion profile and reached ready overworld. No separate RC7 release was published; user selected combined RC9 from this checkpoint plus Dot PR237. Capture/medicine are expected implemented behavior, not disabled features; their complete action journey is not asserted here.
+
+
+## DexNav collecting UI source candidate
+
+`native-collecting-ui.patch` applies after the four patches listed in
+`player-ui-source-manifest.json`. `collecting-ui-source-manifest.json` records
+its exact base/result trees and file hashes. The released engine gitlink is
+unchanged. Integrate this source into trusted engine ancestry and rebuild with
+all mandatory native checks before including it in a player package.
+
+In Expansion DexNav, L selects the next seen-but-uncaught species from the
+screen's existing map encounters. It skips empty, unseen and locked hidden
+slots. It does not start searching, register a species, reveal unknown names,
+change encounters or write a save. A still searches and R still registers.
+The native header keeps registration on the left and exposes L Uncaught on
+the right in place of the map name. If no eligible species exists, selection
+stays put and the header says No known uncaught. WORLD explains each actual
+DexNav restriction, including generated-area wildlife, rather than showing a
+single generic error. No gameplay option or default is changed.
+
+Run `python3 -m unittest test.world.test_dexnav_collection_ui -v` for the
+source-candidate fixture. Set `EW_RC7_ENGINE` to the applied Expansion checkout
+to verify exact file/function correspondence as well. The fixture executes the
+actual DexNav getter, input handler, navigation and availability code with
+instrumented backends. It covers all cursor slots, seen/caught states, detector
+locking, form-to-national-dex matching and existing A/R/B input. It compiles
+with warnings as errors and UBSan using installed compilers. It is not a
+native game, screenshot or multiplayer acceptance test. Full native build,
+rendering and gameplay remain unverified.

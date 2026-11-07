@@ -1,0 +1,40 @@
+{
+  "description": "Source-only Expansion DexNav collecting UI candidate. Native build and gameplay remain unverified.",
+  "base_engine_commit": "2024a83db5242783c0f9ae93f8381271045e7037",
+  "public_base_commit": "bb3fd057061cdd7e6a9e79b76abb41924ee44ecc",
+  "ordered_patches": [
+    "native-foundation.patch",
+    "native-world-wip.patch",
+    "native-world-integration-current.patch",
+    "native-player-ui.patch",
+    "native-collecting-ui.patch"
+  ],
+  "base_tree": "77c00a6729f572b5ae549d3399026c9595b7874a",
+  "result_tree": "5d82cc0edc6259f7847be0d97a4b0692e11c62e4",
+  "patch": "native-collecting-ui.patch",
+  "patch_sha256": "38a4785c2edc8459dbd57ebd94ff91bfabfb5772d1f7e41116d671ad40d41f98",
+  "files": [
+    {
+      "path": "include/platform/dexnav_native.h",
+      "sha256": "9e650c528a98bfc64a3be54fbed29a1fd8c9a1c6110418177c1c1b70e059a520"
+    },
+    {
+      "path": "src/dexnav.c",
+      "sha256": "5f7ef940409d612ff23fcf32e6136483fe0d28bf3c1c0dbf9bbadcd47fa081fc"
+    },
+    {
+      "path": "src/world/dexnav_native.c",
+      "sha256": "a0559cfd8c8eaaa36e2b742109ec5cd336076e543f43158d685ee0b6643b3342"
+    },
+    {
+      "path": "src/world/world_menu.c",
+      "sha256": "a00df0af2de957a53504d9d7610c724ee2c8f6eff385f0a16e42035d093bef74"
+    }
+  ],
+  "verification": {
+    "exact_tree_reconstruction": true,
+    "native_build": false,
+    "native_gameplay": false,
+    "visual_inspection": false
+  }
+}
