@@ -191,6 +191,35 @@ class LauncherBridge:
                           'has_save': any(saved and name == trainer for saved, _, name in profiles)})
         return found
 
+    def personal_profiles(self):
+        """Only profiles already discoverable in this launcher's library."""
+        if self.engine != 'expansion-native':
+            return []
+        from .launcher import profile_paths
+        from .world_library import _read_metadata
+        candidates = [dict(world=item['key'], trainer=item['trainer'], name=item['name'], offline=False)
+                      for item in self.local_expeditions()]
+        for item in self.session.friend_worlds():
+            try:
+                label = _read_metadata(self.session._world(item['name']))['display_name']
+            except (OSError, ValueError, KeyError, TypeError):
+                label = item['name']
+            candidates.append(dict(world=item['name'], trainer=item['trainer'], name=label, offline=False))
+        candidates.extend(dict(item, offline=True) for item in self.offline_saves())
+        profiles = {}
+        for item in candidates:
+            try:
+                world = self.session._world(item['world'])
+                path = profile_paths(world / '.offline' if item['offline'] else world,
+                                     item['trainer'], engine=self.engine)['profile']
+                if not path.is_dir():
+                    continue
+                key = f'{"offline" if item["offline"] else "online"}/{item["world"]}/{item["trainer"]}'
+                profiles[key] = dict(item, id=key)
+            except (OSError, ValueError, TypeError):
+                continue
+        return list(profiles.values())
+
     def snapshot(self):
         with self.lock:
             from .world_library import _read_metadata
@@ -284,7 +313,12 @@ class LauncherBridge:
                 code = process.poll()
                 if code is not None:
                     game_exit = {'trainer': name, 'code': code, 'unexpected': code != 0}
-            return {'local_worlds': self.local_expeditions(),
+            from .rules_ui import options_snapshot
+            from .local_sharing_ui import sharing_snapshot
+            local_worlds = self.local_expeditions()
+            return {'local_worlds': local_worlds,
+                    'world_options': options_snapshot(self.session, local_worlds),
+                    'local_sharing': sharing_snapshot(self.session, local_worlds),
                     'local_hosts': self.session.hosted_worlds(),
                     'game_exit': game_exit,
                     'generated_areas': areas, 'active_generated_area': active_area, 'area_archive': archive_enabled,
@@ -426,6 +460,12 @@ class LauncherBridge:
                     raise
                 except Exception:
                     raise SessionError('Area generation could not complete. Check model login and local host setup before retrying.') from None
+            elif action in ('terrain_read', 'terrain_review', 'terrain_apply'):
+                from .terrain_ui import terrain_action
+                return terrain_action(self.session, self.local_expeditions(), action, payload)
+            elif action == 'inspect_area':
+                from .area_library_ui import inspect_area
+                return inspect_area(self.session, self.local_expeditions(), payload)
             elif action == 'activate_area':
                 if payload.get('confirmed') is not True:
                     raise SessionError('Confirm changing the active generated area.')
@@ -467,6 +507,44 @@ class LauncherBridge:
                 if not isinstance(name, str):
                     raise SessionError('Choose a saved world.')
                 self.remote_paths = self.session.rejoin_friend(name)
+            elif action in ('local_share_start', 'local_share_stop', 'local_invite'):
+                from .local_sharing_ui import start_sharing, stop_sharing, export_friend
+                worlds = self.local_expeditions()
+                if action == 'local_share_start':
+                    start_sharing(self.session, worlds, payload)
+                elif action == 'local_share_stop':
+                    stop_sharing(self.session, worlds, payload)
+                else:
+                    invitation = export_friend(self.session, worlds, payload)
+                    result = self.snapshot()
+                    result['download'] = invitation
+                    result['download_kind'] = 'local_friend'
+                    return result
+            elif action == 'local_share_refresh':
+                pass
+            elif action == 'personal_settings_info':
+                from .personal_settings import DEFAULTS, KEYS
+                return {'available': self.engine == 'expansion-native', 'profiles': self.personal_profiles(),
+                        'defaults': dict(DEFAULTS), 'keys': KEYS}
+            elif action in ('personal_settings_read', 'personal_settings_save'):
+                profile = next((item for item in self.personal_profiles() if item['id'] == payload.get('profile')), None)
+                if profile is None:
+                    raise SessionError('Choose an existing Expansion trainer profile.')
+                from .personal_settings import read_settings, write_settings
+                try:
+                    world = self.session._world(profile['world'])
+                    if action == 'personal_settings_read':
+                        return read_settings(world, profile['trainer'], offline=profile['offline'])
+                    if set(payload) != {'profile', 'changes', 'expected_revision'}:
+                        raise SessionError('Choose supported personal settings.')
+                    return write_settings(world, profile['trainer'], payload['changes'], payload['expected_revision'],
+                                          offline=profile['offline'])
+                except UnicodeError:
+                    raise SessionError('Settings are not valid UTF-8 text. Check settings.ini before editing.') from None
+                except OSError:
+                    raise SessionError('Settings could not be read or the save confirmed. Reload before trying again.') from None
+                except ValueError as exc:
+                    raise SessionError(str(exc)) from None
             elif action == 'save_backup_info':
                 return {'available': importlib.util.find_spec('world.save_backup') is not None}
             elif action == 'save_backup':
@@ -555,6 +633,11 @@ class LauncherBridge:
                 if not trainer:
                     raise SessionError('No connected trainer is selected.')
                 self.session.leave_game(trainer)
+            elif action == 'rules_replace':
+                from .rules_ui import replace_options
+                replace_options(self.session, self.local_expeditions(), self.engine, payload)
+            elif action == 'rules_refresh':
+                pass  # Snapshot only. Never initialize or mutate a world's rules.
             elif action == 'local_stop':
                 name = payload.get('world')
                 if (not isinstance(name, str) or name not in self.session.hosted_worlds()
