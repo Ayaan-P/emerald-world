@@ -10,6 +10,12 @@ The Linux browser launcher manages native game sessions, local worlds, dedicated
 
 Saved areas appear before the generator. Switching still requires review, and the authority rejects replacement while anyone is inside. Closing a preview, changing worlds or receiving an obsolete response cannot activate an area. The archive is owner-local only; this does not add remote server browsing or a new generation format.
 
+**Explore → active interactive adventure → Edit terrain** opens the existing durable 63×63 geometry system. Paint grass, tall grass or blocked water, restore individual cells, undo drafts or restore the base layout. This is not available for caves, fixed-dialogue areas or XL worlds. The map shows the stored shared overlay, not per-trainer temporary overrides or proof of native rendering.
+
+Review validates the complete proposed overlay using the authority’s connectivity and protected-cell checks. Apply requires an explicit confirmation, the exact reviewed revision, and no connected players anywhere in the world. Save and close all games first; this editor never disconnects anyone. The stricter empty-world gate avoids exposing the existing geometry entry/return race through this UI. Checking the revision and committing through the existing authority share its lock. Changes persist in the local world, with at most 512 overrides. Matching geometry-capable clients are required, including large-overlay support above 64 cells.
+
+An uncertain save requires reload before another edit. Unapplied edits are guarded on navigation and tab close. Draft overlay JSON uses the existing `shared_terrain_control --geometry --replace --tiles-file` format for authorized owner workflows. The editor does not add remote hosted editing, new terrain/art, runtime settings or a new multiplayer protocol. Rejoin to inspect the result in-game; a stored revision is not proof of client application.
+
 Closing a game, disconnecting a session and stopping a host are separate operations. Disconnect leaves owned local hosts running, and they remain visible under Local worlds. Stop host requires confirmation and affects only that local world. Quit closes this launcher's games and owned hosts; it does not stop remote servers.
 
 **Local worlds → Invite friends** exposes the existing local TLS sharing flow. Open the host without starting the game, enter a numeric listen address and port, then review before enabling it. The default is loopback, so nothing becomes remotely reachable automatically. For LAN play, use this computer's LAN address and an address your friend can reach. Router/firewall/relay setup is not automated, and an active listener is not proof of Internet reachability. TLS identity creation requires OpenSSL; an existing world identity is reused.
@@ -58,7 +64,7 @@ When the online game is running, the launcher can show connection status and nea
 ## Checks
 
 ```sh
-python3 -m unittest test.world.test_hosting_ui test.world.test_hosting_ui_contract test.world.test_web_launcher test.world.test_rules_ui test.world.test_personal_settings test.world.test_local_sharing_ui test.world.test_area_library_ui
+python3 -m unittest test.world.test_hosting_ui test.world.test_hosting_ui_contract test.world.test_web_launcher test.world.test_rules_ui test.world.test_personal_settings test.world.test_local_sharing_ui test.world.test_area_library_ui test.world.test_terrain_ui
 cd launcher-web && npm test && npm run test:ui && npm run build
 ```
 

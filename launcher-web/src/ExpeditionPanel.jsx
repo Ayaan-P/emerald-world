@@ -10,7 +10,7 @@ const areaTypes = {
 };
 const areaLabels = { ...Object.fromEntries(Object.entries(areaTypes).map(([key, type]) => [key, type.label])), event_wilds: 'Interactive adventure' };
 
-export default function ExpeditionPanel({ state, ready, busy, onOpen, onAuthor, onActivate, onInspect }) {
+export default function ExpeditionPanel({ state, ready, busy, onOpen, onAuthor, onActivate, onInspect, onEditTerrain }) {
   const [name, setName] = useState('');
   const [trainer, setTrainer] = useState('Player');
   const [theme, setTheme] = useState('');
@@ -87,7 +87,7 @@ export default function ExpeditionPanel({ state, ready, busy, onOpen, onAuthor, 
         {occupied ? <p role="status">{activeArea.occupants} {activeArea.occupants === 1 ? 'trainer' : 'trainers'} inside. Everyone must leave before replacing this area.</p>
           : <p className="field-hint">No trainers inside.</p>}
       </div></section>}
-      <AreaLibrary key={state.world_key} world={state.world_key} areas={areas} error={state.area_archive_error} disabled={disabled} occupied={occupied} pending={pending} onInspect={onInspect} onReview={review} />
+      <AreaLibrary key={state.world_key} world={state.world_key} areas={areas} error={state.area_archive_error} disabled={disabled} occupied={occupied} pending={pending} onInspect={onInspect} onReview={review} onEditTerrain={onEditTerrain} />
       <details className="expedition-generator" open={areas.length === 0 ? true : undefined}>
         <summary>Generate an area</summary>
         <div className="expedition-details-content">
