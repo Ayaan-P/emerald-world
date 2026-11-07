@@ -1,5 +1,30 @@
 # RC7 integration checkpoint — unfinished
 
+## Current verified checkpoint — supersedes older blocker notes below
+
+Build26 completed the real two-client tagged grass encounter, shared win,
+canonical owner-private EXP settlement, separate normal saves and cold Continue.
+Each restored Treecko retained identity and EXP149->174, remaining level5.
+The weak build23 reward check was NOT valid gameplay acceptance (131337 bogus
+EXP); its result is retained and explicitly marked rejected in the JSON ledger.
+The original co-op EXPUPDATE multiplexer and end-turn resource-preserving exit
+branch are now ported together. GDB identified the freed-text-window crash.
+
+Canonical generated wildlife now has explicit Expansion species-cohort tags,
+compiler-derived enabled IDs and cross-cohort admission guards. Focused native
+wire digest/catalogue/isolation tests pass. This is not yet live modern-cave
+acquisition acceptance or a published player release.
+
+Remaining closure: complete existing original action/ownership dispatch parity,
+medicine/capture edge cases, usable Expansion launcher/authority/private-profile
+routing, assembled-package gameplay and release publication. No trading, newer
+Dot integration, human-save conversion or desktop replacement is authorized.
+Current source, reconstruction proof and exact evidence are in
+`docs/attempt-handoffs/rc7/CURRENT.md` and `docs/rc7-evidence-summary.json`.
+
+---
+
+
 ## What this repository builds
 
 The pinned Expansion native engine combined with RC7's world authority/client,

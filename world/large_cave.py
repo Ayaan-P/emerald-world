@@ -29,10 +29,10 @@ def encode(proposal):
     return MAGIC + ''.join(rows).encode('ascii')
 
 
-def encode_wildlife(proposal, profile, rate, wildlife):
+def encode_wildlife(proposal, profile, rate, wildlife, *, cohort='vanilla'):
     """Combine large geometry with a bounded 12-slot native wildlife table."""
-    from .cave_species import SPECIES
     from .offline_cave import PROFILES
+    from .species_cohort import species_id
     if type(profile) is not str or profile not in PROFILES:
         raise ValueError('invalid visual profile')
     if type(rate) is not int or not 1 <= rate <= 100:
@@ -44,7 +44,8 @@ def encode_wildlife(proposal, profile, rate, wildlife):
         if type(slot) is not dict or set(slot) != {'species','level'}:
             raise ValueError('invalid wildlife slot')
         name,level=slot['species'],slot['level']
-        if type(name) is not str or name not in SPECIES or type(level) is not int or not 1 <= level <= 100:
+        if type(name) is not str or type(level) is not int or not 1 <= level <= 100:
             raise ValueError('invalid wildlife species or level')
-        metadata.extend(SPECIES[name].to_bytes(2,'little'));metadata.append(level)
-    return b'EWGMAP05' + bytes([PROFILES[profile]]) + bytes(metadata) + encode(proposal)[8:]
+        metadata.extend(species_id(name, cohort).to_bytes(2,'little'));metadata.append(level)
+    magic = b'EWGMAP11' if cohort == 'expansion-native' else b'EWGMAP05'
+    return magic + bytes([PROFILES[profile]]) + bytes(metadata) + encode(proposal)[8:]

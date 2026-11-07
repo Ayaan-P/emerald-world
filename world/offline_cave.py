@@ -24,9 +24,9 @@ def encode_profile(proposal, profile):
     return b'EWGMAP02' + bytes([PROFILES[profile]]) + cells
 
 
-def encode_wildlife(proposal, profile, rate, wildlife):
+def encode_wildlife(proposal, profile, rate, wildlife, *, cohort='vanilla'):
     """Build a V3 cave with 12 weighted native encounter slots."""
-    from .cave_species import SPECIES
+    from .species_cohort import species_id
     if type(rate) is not int or not 1 <= rate <= 100:
         raise ValueError('encounter rate must be 1..100')
     if type(wildlife) is not list or len(wildlife) != 12:
@@ -36,9 +36,10 @@ def encode_wildlife(proposal, profile, rate, wildlife):
         if type(slot) is not dict or set(slot) != {'species', 'level'}:
             raise ValueError('each wildlife slot needs species and level')
         name, level = slot['species'], slot['level']
-        if type(name) is not str or name not in SPECIES or type(level) is not int or not 1 <= level <= 100:
+        if type(name) is not str or type(level) is not int or not 1 <= level <= 100:
             raise ValueError('invalid wildlife species or level')
-        metadata.extend(SPECIES[name].to_bytes(2, 'little'))
+        metadata.extend(species_id(name, cohort).to_bytes(2, 'little'))
         metadata.append(level)
     v2 = encode_profile(proposal, profile)
-    return b'EWGMAP03' + v2[8:9] + bytes(metadata) + v2[9:]
+    magic = b'EWGMAP10' if cohort == 'expansion-native' else b'EWGMAP03'
+    return magic + v2[8:9] + bytes(metadata) + v2[9:]

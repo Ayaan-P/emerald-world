@@ -83,6 +83,7 @@ def assemble(binary, web_dist, version, output):
     # Generated safety catalog is the only non-Python world runtime asset.
     # Runtime catalog reads do not require source data/maps or build tools.
     frozen['world/map_catalog.json'] = (plain(REPO / 'world/map_catalog.json').read_bytes(), 0o644)
+    frozen['world/expansion_species.json'] = (plain(REPO / 'world/expansion_species.json').read_bytes(), 0o644)
     frozen['scripts/__init__.py'] = (b'', 0o644)  # Prevent an installed scripts package shadowing this helper.
     for source, name in [('linux_client.py', 'scripts/linux_client.py'),
                          ('linux_bundle_entry.py', 'entry.py'),

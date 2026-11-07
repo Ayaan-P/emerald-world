@@ -27,6 +27,12 @@ def main():
     if args.jobs < 1:
         parser.error('--jobs must be positive')
     source = ROOT / 'engines/expansion-native'
+    import sys
+    sys.path.insert(0, str(ROOT))
+    from scripts.export_expansion_species_catalogue import export_catalogue
+    catalogue_path = ROOT / 'build/species-cohort/expansion-species.json'
+    export_catalogue(source, catalogue_path)
+    shutil.copy2(catalogue_path, ROOT / 'world/expansion_species.json')
     head = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
     dirty = subprocess.check_output(['git', '-C', str(source), 'status', '--porcelain'], text=True).strip()
     if not args.development and (head != PIN or dirty):
