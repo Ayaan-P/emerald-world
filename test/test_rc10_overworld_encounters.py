@@ -37,9 +37,10 @@ class OverworldEncounterTests(unittest.TestCase):
                 sources[path].append('')
         for entry in manifest['files']:
             content = '\n'.join(sources[entry['path']]) + '\n'
-            assert hashlib.sha256(content.encode()).hexdigest() == entry['sha256']
+            if entry['path'] not in manifest.get('partial_context_files', []):
+                assert hashlib.sha256(content.encode()).hexdigest() == entry['sha256']
             if 'EW_RC7_ENGINE' in os.environ:
-                assert (ENGINE / entry['path']).read_text() == content
+                assert hashlib.sha256((ENGINE / entry['path']).read_bytes()).hexdigest() == entry['sha256']
             target = Path(cls.source_dir.name) / entry['path']
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content)
@@ -177,6 +178,11 @@ int main(void) {
         encounter = (ENGINE / 'src/wild_encounter_ow.c').read_text()
         start = function(activity, 'StartCoopBattle')
         cleanup = function(encounter, 'DespawnOWEOnBattleStart')
+        token = encounter.split('static struct\n{', 1)[1].split('} sNativeOWEEncounter;', 1)[0]
+        token = 'static struct\n{' + token + '} sNativeOWEEncounter;\n'
+        token += function(encounter, 'ClearNativeOWEEncounter') + '\n'
+        token += function(encounter, 'CaptureNativeOWEEncounter') + '\n'
+        token += function(encounter, 'TakeNativeOWEEncounter') + '\n'
         preamble = r"""
 #include <assert.h>
 #include <stddef.h>
@@ -189,7 +195,7 @@ typedef unsigned u32;
 #define LOCALID_NONE 0
 #define OWE_ANY 0
 #define OWE_MANUAL 1
-struct ObjectEvent { unsigned active, wild, manual, localId, mapNum, mapGroup; };
+struct ObjectEvent { unsigned active, wild, manual, localId, mapNum, mapGroup, graphicsId; };
 static struct ObjectEvent gObjectEvents[OBJECT_EVENTS_COUNT];
 static unsigned gSpecialVar_LastTalked, flags, cleared, timers, calls, prepared;
 static unsigned owner, started, preparedOwner, sequence;
@@ -201,7 +207,7 @@ static void DexNavNative_PrepareNativeActivity(bool8 owns) {
 static int WorldCoop_StartBattle(bool8 owns) {
     assert(owns == owner); calls++; sequence = 1; return started;
 }
-static u32 GetObjectEventIdByLocalId(unsigned localId) {
+static u32 __attribute__((unused)) GetObjectEventIdByLocalId(unsigned localId) {
     for (unsigned i = 0; i < OBJECT_EVENTS_COUNT; i++)
         if (gObjectEvents[i].active && gObjectEvents[i].localId == localId) return i;
     return OBJECT_EVENTS_COUNT;
@@ -214,7 +220,9 @@ static unsigned GetObjectEventFlagIdByLocalIdAndMap(unsigned id, unsigned n, uns
     assert(id == 7 && n == 2 && g == 3); return 42;
 }
 static void FlagSet(unsigned flag) { assert(flag == 42); flags++; }
+void ClearNativeOWEEncounter(struct ObjectEvent *object);
 static void ClearObjectEvent(struct ObjectEvent *o) {
+    ClearNativeOWEEncounter(o);
     assert(sequence == 1); cleared++; memset(o, 0, sizeof(*o));
 }
 static void SetNewOWESpawnCountdown(void) { timers++; }
@@ -224,9 +232,22 @@ int main(void) {
     // Random encounters, invalid IDs and ordinary NPCs cannot index/consume OWE.
     DespawnOWEOnBattleStart(); assert(!cleared && !flags && !timers);
     gSpecialVar_LastTalked = 65535; DespawnOWEOnBattleStart(); assert(!cleared);
-    gObjectEvents[0] = (struct ObjectEvent){1,0,0,7,2,3};
+    gObjectEvents[0] = (struct ObjectEvent){1,0,0,7,2,3,25};
     gSpecialVar_LastTalked = 7; DespawnOWEOnBattleStart(); assert(!cleared);
     gObjectEvents[0].wild = 1;
+    // A random owner battle with stale LastTalked resolving to a REAL wild
+    // object is not a visible encounter. Test generated AND authored objects.
+    owner = started = 1;
+    for (unsigned manual = 0; manual < 2; manual++) {
+        gObjectEvents[0].manual = manual;
+        sActivity.wildCaptured = sActivity.encounterPending = 1;
+        assert(StartCoopBattle());
+        assert(!cleared && !flags && !timers && gObjectEvents[0].active);
+        assert(gSpecialVar_LastTalked == 7);
+    }
+    gObjectEvents[0].manual = 0;
+    started = 0;
+    CaptureNativeOWEEncounter(&gObjectEvents[0]);
     // Failed native start preserves the selected wild object and fallback flags.
     owner = 1; sActivity.wildCaptured = sActivity.encounterPending = 1;
     assert(!StartCoopBattle());
@@ -237,11 +258,15 @@ int main(void) {
     assert(StartCoopBattle());
     assert(!cleared && !sActivity.encounterPending && !sActivity.wildCaptured);
     assert(!preparedOwner);
+    DespawnOWEOnBattleStart(); assert(!cleared); /* Guest discarded old token. */
     // Trainer owners do not consume the wild object either.
+    CaptureNativeOWEEncounter(&gObjectEvents[0]);
     owner = 1; sActivity.trainerCaptured = sActivity.encounterPending = 1;
     assert(StartCoopBattle()); assert(!cleared && !sActivity.trainerCaptured);
     assert(!preparedOwner);
-    // Successful owner wild start consumes exactly its selected object.
+    DespawnOWEOnBattleStart(); assert(!cleared); /* Trainer discarded old token. */
+    // Successful owner wild start consumes exactly its explicitly armed object.
+    CaptureNativeOWEEncounter(&gObjectEvents[0]);
     sActivity.wildCaptured = sActivity.encounterPending = 1;
     assert(StartCoopBattle());
     assert(cleared == 1 && timers == 1 && !flags && preparedOwner);
@@ -249,17 +274,50 @@ int main(void) {
     assert(!sActivity.wildCaptured && !sActivity.encounterPending);
     DespawnOWEOnBattleStart(); assert(cleared == 1 && timers == 1);
     // Authored encounters retain Expansion's flag semantics on the owner only.
-    gObjectEvents[0] = (struct ObjectEvent){1,1,1,7,2,3};
+    gObjectEvents[0] = (struct ObjectEvent){1,1,1,7,2,3,25};
     gSpecialVar_LastTalked = 7; sActivity.wildCaptured = 1;
+    CaptureNativeOWEEncounter(&gObjectEvents[0]);
     assert(StartCoopBattle()); assert(cleared == 2 && flags == 1 && timers == 2);
-    assert(calls == 5 && prepared == 5);
+    assert(calls == 7 && prepared == 7);
+    // Removal/reuse with IDENTICAL identity invalidates the previous token.
+    gObjectEvents[0] = (struct ObjectEvent){1,1,0,7,2,3,25};
+    CaptureNativeOWEEncounter(&gObjectEvents[0]);
+    ClearNativeOWEEncounter(&gObjectEvents[0]);
+    gObjectEvents[0] = (struct ObjectEvent){1,1,0,7,2,3,25};
+    DespawnOWEOnBattleStart(); assert(cleared == 2 && gObjectEvents[0].active);
+    // Map/species/local-ID drift cannot consume a different identity.
+    CaptureNativeOWEEncounter(&gObjectEvents[0]);
+    gObjectEvents[0].mapGroup++;
+    DespawnOWEOnBattleStart(); assert(cleared == 2);
+    CaptureNativeOWEEncounter(&gObjectEvents[0]);
+    gObjectEvents[0].graphicsId++;
+    DespawnOWEOnBattleStart(); assert(cleared == 2);
+    CaptureNativeOWEEncounter(&gObjectEvents[0]);
+    gObjectEvents[0].localId++;
+    DespawnOWEOnBattleStart(); assert(cleared == 2);
+    // Abort/load invalidates even an otherwise exact matching token.
+    CaptureNativeOWEEncounter(&gObjectEvents[0]);
+    ClearNativeOWEEncounter(NULL);
+    DespawnOWEOnBattleStart(); assert(cleared == 2);
+    // The identity does not depend on ambient LastTalked, nor clear another ID.
+    CaptureNativeOWEEncounter(&gObjectEvents[0]);
+    gSpecialVar_LastTalked = 99;
+    DespawnOWEOnBattleStart(); assert(cleared == 3 && gSpecialVar_LastTalked == 99);
+    // Failed co-op startup still allows the normal battle transition to consume
+    // the original token. Clearing a different object's slot cannot revoke it.
+    gObjectEvents[0] = (struct ObjectEvent){1,1,0,7,2,3,25};
+    CaptureNativeOWEEncounter(&gObjectEvents[0]);
+    ClearNativeOWEEncounter(&gObjectEvents[1]);
+    sActivity.wildCaptured = sActivity.encounterPending = 1; started = 0;
+    assert(!StartCoopBattle());
+    DespawnOWEOnBattleStart(); assert(cleared == 4 && flags == 1 && timers == 4);
     return 0;
 }
 """
         with tempfile.TemporaryDirectory() as directory:
             p = Path(directory)
             source = p / 'transition.c'
-            source.write_text(preamble + cleanup + '\n' + start + body)
+            source.write_text(preamble + token + cleanup + '\n' + start + body)
             binary = p / 'transition'
             build = subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror',
                                     '-fsanitize=undefined', '-fno-sanitize-recover=all',
@@ -268,6 +326,14 @@ int main(void) {
             self.assertEqual(build.returncode, 0, build.stderr)
             subprocess.run([str(binary)], check=True)
         self.assertIn('if (!StartCoopBattle())\n            { Stop("tagged battle unavailable"); return; }', activity)
+        self.assertIn('ClearNativeOWEEncounter(objectEvent);',
+                      (ENGINE / 'src/event_object_movement.c').read_text())
+        self.assertIn('ClearNativeOWEEncounter(owe);', function(encounter, 'OnOverworldWildEncounterDespawn'))
+        self.assertIn('ClearNativeOWEEncounter(NULL);', function(activity, 'WorldActivity_ReturnToField'))
+        self.assertIn('ClearNativeOWEEncounter(NULL);',
+                      function((ENGINE / 'src/load_save.c').read_text(), 'LoadObjectEvents'))
+        self.assertIn('CaptureNativeOWEEncounter(owe);', function(encounter, 'StartWildBattleWithOWE'))
+
 
     def test_spawn_and_battle_ownership_guards(self):
         source = (ENGINE / 'src/wild_encounter_ow.c').read_text()

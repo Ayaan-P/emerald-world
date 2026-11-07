@@ -64,11 +64,128 @@ index 000000000..83a76ef0b
 +void OverworldEncounters_Toggle(void);
 +#endif
 +#endif
+diff --git a/include/wild_encounter_ow.h b/include/wild_encounter_ow.h
+index cd9334ed5..b4960a412 100644
+--- a/include/wild_encounter_ow.h
++++ b/include/wild_encounter_ow.h
+@@ -1,109 +1,112 @@
+ #ifndef GUARD_WILD_ENCOUNTER_OW_H
+ #define GUARD_WILD_ENCOUNTER_OW_H
+
+ #define OWE_SPAWNS_MAX                  4
+ #define OWE_APPROACH_DISTANCE           2
+ #define OWE_APPROACH_JUMP_TIMER_MIN     16
+ #define OWE_APPROACH_JUMP_TIMER_MAX     64
+ #define OWE_FLEE_COLLISION_TIME         6   // If a fleeing mon is unable to take a step for this many tries it will despawn. (Multiply this value by 16 to get number of frames.)
+ #define OWE_DESPAWN_FRAMES              30  // Number of frames before a mon despawns after noticing the player (OWE_BEHAVIOR_DESPAWN)
+
+ enum SpawnDespawnTypeOWE
+ {
+     OWE_SPAWN_ANIM_GRASS,
+     OWE_SPAWN_ANIM_LONG_GRASS,
+     OWE_SPAWN_ANIM_WATER,
+     OWE_SPAWN_ANIM_UNDERWATER,
+     OWE_SPAWN_ANIM_CAVE,
+     OWE_SPAWN_ANIM_SHINY
+ };
+
+ enum TypeOWE
+ {
+     OWE_ANY,
+     OWE_GENERATED,
+     OWE_MANUAL,
+     OWE_NONE
+ };
+
+ // OWE_SPEED_FASTER seems to visually bug out sometimes.
+ enum SpeedOWE
+ {
+     OWE_SPEED_NORMAL,
+     OWE_SPEED_SLOW,
+     OWE_SPEED_FAST,
+     OWE_SPEED_FASTER
+ };
+
+ enum ReturnToIdleOWE
+ {
+     NEVER_RETURN,
+     PLAYER_OUTSIDE_ACTIVE_RANGE,
+     PLAYER_CANT_BE_SEEN
+ };
+
+ struct BehaviorOWE
+ {
+     u32 movementType:8;
+     u32 viewDistance:4;
+     u32 viewWidth:4;
+     u32 activeDistance:4;
+     enum SpeedOWE idleSpeed:2;
+     enum SpeedOWE activeSpeed:2;
+     enum ReturnToIdleOWE returnToIdle:2;
+     u32 padding:6;
+ };
+
+ enum __attribute__((packed)) OverworldWildEncounterBehaviors
+ {
+     OWE_IGNORE_PLAYER,
+     OWE_CHASE_PLAYER_SLOW,
+     OWE_FLEE_PLAYER_NORMAL,
+     OWE_WATCH_PLAYER_NORMAL,
+     OWE_APPROACH_PLAYER_SLOW,
+     OWE_DESPAWN_ON_NOTICE,
+     OWE_SPECIES_BEHAVIOR_COUNT
+ };
+
+ struct FieldEffectInfoOWE
+ {
+     s16 xOffset;
+     s16 yOffset;
+     u32 visual;
+ };
+
+ extern const struct FieldEffectInfoOWE gOverworldWildEncounterFieldEffectInfo[];
+
+ void UpdateOverworldWildEncounter(void);
+ bool32 IsOverworldWildEncounter(struct ObjectEvent *owe, enum TypeOWE oweType);
+ void SetMinimumOWESpawnTimer(void);
+ void TryTriggerOverworldWildEncounter(struct ObjectEvent *obstacle, struct ObjectEvent *collider);
+ const u8 *GetOverworlWildEncounterScript(u32 objectEventId);
+ void OnOverworldWildEncounterSpawn(struct ObjectEvent *owe);
+ void OnOverworldWildEncounterDespawn(struct ObjectEvent *owe);
+ bool32 IsOWEDespawnExempt(struct ObjectEvent *owe);
+ bool32 DespawnOWEDueToNPCCollision(struct ObjectEvent *obstacle, struct ObjectEvent *activeObject);
+ void DespawnAllOverworldWildEncounters(enum TypeOWE oweType, u32 flags);
+ u32 TryAndDespawnOldestGeneratedOWE_ToFreeObject();
+ void DespawnOWEOnBattleStart(void);
++#ifdef PORTABLE
++void ClearNativeOWEEncounter(struct ObjectEvent *object);
++#endif
+ void TryDespawnOWEsCrossingMapConnection(void);
+ void RestoreSavedOWEBehaviorState(struct ObjectEvent *owe, struct Sprite *sprite);
+ void SetSavedOWEMovementState(struct ObjectEvent *owe);
+ void ClearSavedOWEMovementState(struct ObjectEvent *owe);
+ bool32 CheckRestrictedOWEMovement(struct ObjectEvent *owe, enum Direction direction);
+ bool32 CanAwareOWESeePlayer(struct ObjectEvent *owe);
+ bool32 IsPlayerInsideOWEActiveDistance(struct ObjectEvent *owe);
+ bool32 IsOWENextToPlayer(struct ObjectEvent *owe);
+ enum Direction DirectionOfOWEToPlayerFromCollision(struct ObjectEvent *owe);
+ u32 GetApproachingOWEDistanceToPlayer(struct ObjectEvent *owe, bool32 *equalDistances);
+ u32 GetOWEWalkMovementActionInDirectionWithSpeed(enum Direction direction, enum SpeedOWE speed);
+ bool32 TryPlayAmbientCryOWE(void);
+ u32 GetNumberOfActiveOWEs(enum TypeOWE oweType);
+ const struct ObjectEventTemplate TryGetObjectEventTemplateForOWE(const struct ObjectEventTemplate *template);
+ struct SpritePalette GetOWESpawnDespawnAnimFldEffPalette(enum SpawnDespawnTypeOWE spawnAnim);
+ u32 RemoveOldestGeneratedOWE(void);
+ bool32 CanRemoveObjectForOWEMovement(struct ObjectEvent *objectEvent);
+
+ extern const u8 InteractWithOverworldWildEncounter[];
+
+ #endif // GUARD_WILD_ENCOUNTER_OW_H
 diff --git a/src/load_save.c b/src/load_save.c
-index f03e602a1..b82643d33 100644
+index f03e602a1..8f57c2f38 100644
 --- a/src/load_save.c
 +++ b/src/load_save.c
-@@ -1,332 +1,336 @@
+@@ -1,332 +1,339 @@
  #include "global.h"
  #ifdef PORTABLE
  #include "platform/world_bridge.h"
@@ -317,6 +434,9 @@ index f03e602a1..b82643d33 100644
 
  void LoadObjectEvents(void)
  {
++#ifdef PORTABLE
++    ClearNativeOWEEncounter(NULL);
++#endif
      memset(gObjectEvents, 0, sizeof(gObjectEvents));
      int i;
      u16 graphicsId;
@@ -406,10 +526,10 @@ index f03e602a1..b82643d33 100644
      ApplyNewEncryptionKeyToHword(&gSaveBlock1Ptr->coins, encryptionKey);
  }
 diff --git a/src/wild_encounter_ow.c b/src/wild_encounter_ow.c
-index 783546688..c18f4bf4b 100644
+index 783546688..7f02c8991 100644
 --- a/src/wild_encounter_ow.c
 +++ b/src/wild_encounter_ow.c
-@@ -1,1795 +1,1837 @@
+@@ -1,1795 +1,1886 @@
  #include "global.h"
  #include "wild_encounter_ow.h"
 +#ifdef PORTABLE
@@ -591,6 +711,44 @@ index 783546688..c18f4bf4b 100644
  static bool32 CheckValidOWESpecies(enum Species speciesId);
 
  static EWRAM_DATA u8 sOWESpawnCountdown = 0;
++#ifdef PORTABLE
++/* Only the visible-encounter command can arm this one-shot identity. Global
++ * LastTalked is script UI state and is not proof of a battle's origin. */
++static struct
++{
++    struct ObjectEvent *object;
++    u32 localId, mapNum, mapGroup, graphicsId;
++} sNativeOWEEncounter;
++
++void ClearNativeOWEEncounter(struct ObjectEvent *object)
++{
++    if (object == NULL || sNativeOWEEncounter.object == object)
++        sNativeOWEEncounter.object = NULL;
++}
++
++static void CaptureNativeOWEEncounter(struct ObjectEvent *object)
++{
++    sNativeOWEEncounter.object = object;
++    sNativeOWEEncounter.localId = object->localId;
++    sNativeOWEEncounter.mapNum = object->mapNum;
++    sNativeOWEEncounter.mapGroup = object->mapGroup;
++    sNativeOWEEncounter.graphicsId = object->graphicsId;
++}
++
++static struct ObjectEvent *TakeNativeOWEEncounter(void)
++{
++    struct ObjectEvent *object = sNativeOWEEncounter.object;
++    sNativeOWEEncounter.object = NULL;
++    if (object == NULL || !IsOverworldWildEncounter(object, OWE_ANY)
++        || object->localId != sNativeOWEEncounter.localId
++        || object->mapNum != sNativeOWEEncounter.mapNum
++        || object->mapGroup != sNativeOWEEncounter.mapGroup
++        || object->graphicsId != sNativeOWEEncounter.graphicsId)
++        return NULL;
++    return object;
++}
++#endif
++
 
  struct AgeSort
  {
@@ -794,6 +952,7 @@ index 783546688..c18f4bf4b 100644
      u32 objEventId = GetObjectEventIdByLocalId(localId);
      u32 headerId = GetCurrentMapWildMonHeaderId();
 +#ifdef PORTABLE
++    ClearNativeOWEEncounter(NULL);
 +    Script_RequestEffects(SCREFF_V1 | SCREFF_HARDWARE);
 +    if (objEventId >= OBJECT_EVENTS_COUNT
 +        || !IsOverworldWildEncounter(&gObjectEvents[objEventId], OWE_ANY)
@@ -818,6 +977,10 @@ index 783546688..c18f4bf4b 100644
          return;
      }
 
++#ifdef PORTABLE
++    CaptureNativeOWEEncounter(owe);
++#endif
++
      if (category < ROAMER_COUNT && StartWildBattleWithOWE_CheckRoamer(category))
          return;
 
@@ -1469,6 +1632,9 @@ index 783546688..c18f4bf4b 100644
 
  void OnOverworldWildEncounterDespawn(struct ObjectEvent *owe)
  {
++#ifdef PORTABLE
++    ClearNativeOWEEncounter(owe);
++#endif
      enum TypeOWE type = GetOverworldWildEncounterType(owe);
      if (type == OWE_NONE)
          return;
@@ -1548,12 +1714,9 @@ index 783546688..c18f4bf4b 100644
  void DespawnOWEOnBattleStart(void)
  {
 +#ifdef PORTABLE
-+    // Random encounters and a co-op guest have no selected encounter object.
-+    // Never index the not-found sentinel, including repeated cleanup calls.
-+    u32 objectEventId = GetObjectEventIdByLocalId(gSpecialVar_LastTalked);
-+    if (objectEventId >= OBJECT_EVENTS_COUNT)
++    struct ObjectEvent *owe = TakeNativeOWEEncounter();
++    if (owe == NULL)
 +        return;
-+    struct ObjectEvent *owe = &gObjectEvents[objectEventId];
 +#else
      struct ObjectEvent *owe = &gObjectEvents[GetObjectEventIdByLocalId(gSpecialVar_LastTalked)];
 +#endif
@@ -1563,9 +1726,15 @@ index 783546688..c18f4bf4b 100644
      if (IsOverworldWildEncounter(owe, OWE_MANUAL))
          FlagSet(GetObjectEventFlagIdByLocalIdAndMap(owe->localId, owe->mapNum, owe->mapGroup));
 
++#ifdef PORTABLE
++    if (gSpecialVar_LastTalked == owe->localId)
++        gSpecialVar_LastTalked = LOCALID_NONE;
++#endif
      ClearObjectEvent(owe);
      SetNewOWESpawnCountdown();
++#ifndef PORTABLE
      gSpecialVar_LastTalked = LOCALID_NONE;
++#endif
  }
 
  void TryDespawnOWEsCrossingMapConnection(void)
@@ -2324,10 +2493,10 @@ index 000000000..cd34e8168
 +}
 +#endif
 diff --git a/src/world/world_activity.c b/src/world/world_activity.c
-index 93cf0190f..fd737f35a 100644
+index 93cf0190f..66a7d5172 100644
 --- a/src/world/world_activity.c
 +++ b/src/world/world_activity.c
-@@ -1,658 +1,672 @@
+@@ -1,658 +1,675 @@
  #ifdef PORTABLE
  #include "global.h"
  #include "main.h"
@@ -2688,6 +2857,7 @@ index 93cf0190f..fd737f35a 100644
 
  void WorldActivity_ReturnToField(void)
  {
++    ClearNativeOWEEncounter(NULL);
      DexNavNative_AbandonBattle();
      /* An incomplete exchange is neither a victory nor a defeat. Discard the
       * suspended trainer script, rather than invoking its ordinary result
@@ -2766,6 +2936,8 @@ index 93cf0190f..fd737f35a 100644
 +        return FALSE;
 +    if (owner && sActivity.wildCaptured)
 +        DespawnOWEOnBattleStart();
++    else
++        ClearNativeOWEEncounter(NULL);
 +    sActivity.wildCaptured = sActivity.encounterPending = FALSE;
 +    sActivity.trainerCaptured = FALSE;
 +    return TRUE;
@@ -3645,3 +3817,39 @@ index 234f6cc73..86e2323de 100644
      Draw(rows, count, selected, &r, online);
  }
  #endif
+diff --git a/src/event_object_movement.c b/src/event_object_movement.c
+index 8a94fbbc3..0e2f1ca0d 100644
+--- a/src/event_object_movement.c
++++ b/src/event_object_movement.c
+@@ -1368,28 +1368,31 @@ static const u8 sPlayerDirectionToCopyDirection[][4] = {
+         [DIR_EAST - 1]  = DIR_NORTH
+     },
+     [DIR_EAST - 1] = { // MOVEMENT_TYPE_COPY_PLAYER_CLOCKWISE(_IN_GRASS)
+         [DIR_SOUTH - 1] = DIR_WEST,
+         [DIR_NORTH - 1] = DIR_EAST,
+         [DIR_WEST - 1]  = DIR_NORTH,
+         [DIR_EAST - 1]  = DIR_SOUTH
+     }
+ };
+
+ #include "data/object_events/movement_action_func_tables.h"
+
+ void ClearObjectEvent(struct ObjectEvent *objectEvent)
+ {
++#ifdef PORTABLE
++    ClearNativeOWEEncounter(objectEvent);
++#endif
+     *objectEvent = (struct ObjectEvent){};
+     objectEvent->localId = LOCALID_PLAYER;
+     objectEvent->mapNum = MAP_NUM(MAP_UNDEFINED);
+     objectEvent->mapGroup = MAP_GROUP(MAP_UNDEFINED);
+     objectEvent->movementActionId = MOVEMENT_ACTION_NONE;
+ }
+
+ static void ClearAllObjectEvents(void)
+ {
+     u8 i;
+
+     for (i = 0; i < OBJECT_EVENTS_COUNT; i++)
+         ClearObjectEvent(&gObjectEvents[i]);
+ }

@@ -11,9 +11,9 @@
     "native-overworld-encounters.patch"
   ],
   "base_tree": "5d82cc0edc6259f7847be0d97a4b0692e11c62e4",
-  "result_tree": "c1dbd945348b6663dfe4c2b15efb28fb329ee57c",
+  "result_tree": "cd1254767b1bbaba4731b0c22af3ca2ea34f0de4",
   "patch": "native-overworld-encounters.patch",
-  "patch_sha256": "43092f82a704fb40eb81439512c46978dc365087065d021f86ac6a477e7e0989",
+  "patch_sha256": "c720b55b85555f2e9a09bd6675804aeaf4cedaea11d536d52af5878818521b5b",
   "files": [
     {
       "path": "include/config/wild_encounter.h",
@@ -24,12 +24,20 @@
       "sha256": "4d2bbdf326a52cfdbb1820635f84dc1ed96be8082303a8fa8d6e45863b61aa52"
     },
     {
+      "path": "include/wild_encounter_ow.h",
+      "sha256": "4959871c40646063fae398e578d9a891bd295126ee5331fd114407bb9ba94651"
+    },
+    {
+      "path": "src/event_object_movement.c",
+      "sha256": "bb1892808da9aff486b69a75058718d36f36739e5dd1dd2badc3dbb6f565e984"
+    },
+    {
       "path": "src/load_save.c",
-      "sha256": "5abd14873733dd4306ccea8f5eb814f31b35e076dad0e43d7405c07af2c328e3"
+      "sha256": "ba3d96221b04ab259f240a83e3d16ac352881b819b2fb5a47cea932314825c58"
     },
     {
       "path": "src/wild_encounter_ow.c",
-      "sha256": "1dd3acea1a023d461cf64eb2ed073b41326df59c2de12c9ccff780dec160cc5d"
+      "sha256": "c03200635e8feff404e9e4cdcf7f69715f0be9d980ba33b58de1c5d357cffb99"
     },
     {
       "path": "src/world/overworld_encounters.c",
@@ -37,7 +45,7 @@
     },
     {
       "path": "src/world/world_activity.c",
-      "sha256": "a0ed33016f94aa0219fe6eda70d7a617b066811086522921660428c5986f5a5a"
+      "sha256": "18afc2eaa5d93a4f84061d0aa2e8c54621efc63f2cdfd163b35b31738c10eec1"
     },
     {
       "path": "src/world/world_menu.c",
@@ -51,5 +59,8 @@
     "native_gameplay": false,
     "visual_inspection": false,
     "coop_transition_ubsan": true
-  }
+  },
+  "partial_context_files": [
+    "src/event_object_movement.c"
+  ]
 }
