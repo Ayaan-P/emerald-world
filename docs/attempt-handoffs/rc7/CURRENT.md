@@ -3,7 +3,7 @@
 ## Current source
 
 - App branch: `integrate/rc7`. Engine gitlink and JSON manifest are authoritative.
-- Engine checkpoint: `1d82672e93db02a28a1deea281c5f694f52a5e9f` on local `integrate/rc7-world`.
+- Engine checkpoint: `9f188f2c299535015759e1ed90a7b53655f4d049` on local `integrate/rc7-world`.
 - Engine is an existing submodule, not another product. Its local commit is not
   fetchable from the upstream URL in `.gitmodules`; the complete source deltas
   are published here so a parent push does not imply a missing object is public.
@@ -22,7 +22,7 @@ An existing checkout at `e406cf82922e9c3a5bfee746f9a97f67f3916a4c` needs only th
 Use `git apply --check /path/to/patch` before each `git apply`.
 The JSON manifest records exact changed-file hashes and incremental patch hash.
 All three patches were actually applied to a separate temporary Git index. Its
-reconstructed tree exactly equals `e33f8cae5e4c6bb76d0e640b5dac51d42a4ddc61`, the current engine source tree.
+reconstructed tree exactly equals `374a5938af4354d1d24598ab175fc0692c2cb200`, the current engine source tree.
 The working source and its Git index were not reset or modified by that check.
 
 This proves source-byte reconstruction, not original commit ancestry or a fresh
@@ -66,3 +66,21 @@ includes remaining original controller/action ownership parity, species-cohort
 integration, actual Expansion package launch/profile routing, current-binary
 acceptance and publication. Trading and newer Dot work remain excluded.
 The original-to-Expansion contract map is `docs/RC7_PORT_CONTRACT.md`.
+
+## Subsequent original-contract closure (builds27–29)
+
+- Restored full-six callback1 mutation barrier, disconnect menu close, hidden
+  reserve eligibility and absolute guest friendship publication.
+- Restored authoritative co-op bag confusion and remote roster mirrors.
+- Restored early voluntary roster handshake; decode global stages only at
+  native engine ingress, preserving tagged rotations/cancellation.
+- Ball selection no longer spends before ordered execution; co-op excludes
+  the unsupported last-ball shortcut. Catch validation uses the native ball
+  enum rather than the legacy Master Ball numeric lower bound.
+- Mandatory native builds passed through29. Actual build27 shared-win/private
+  EXP/save/cold-Continue regression passed. Capture/full-six edge acceptance
+  and build29 complete-bundle acceptance remain pending.
+- Presentation/summary/reshow closure is delegated from complete source review.
+  Strict-dispatch draft is HELD: independent review found legitimate-action
+  rejection, missing completion, premature correlation retirement and missing
+  snapshot implementations. It is not integrated or accepted.

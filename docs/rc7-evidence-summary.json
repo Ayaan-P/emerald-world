@@ -357,6 +357,82 @@
           }
         }
       }
+    },
+    {
+      "run": "coop-save-build27",
+      "source_artifact": "/home/ayaan/projects/emerald-world-research/worktrees/rc7/build/release-acceptance/coop-save-build27/acceptance.json",
+      "ok": true,
+      "scope": "real shared tagged wild battle win and owner-private EXP followed by separate normal saves and cold Continue; no capture/medicine acceptance",
+      "binary_sha256": "53a99fda78d2c602a2de1289b457b6d2f0d83c3c2188320472e9aa71585645d5",
+      "error": null,
+      "milestones": [
+        "both real native control endpoints connected",
+        "both clients connected to the disposable authority and reached ready overworld",
+        "native Bob position changed after actual GBA input",
+        "both native renderers report visible peer sprites at the other current position",
+        "real tag peer menu opened",
+        "real tag invitation received",
+        "tag consent returned both trainers to field",
+        "left actual lab alice",
+        "left actual lab bob",
+        "walked into Route101 alice",
+        "walked into Route101 bob",
+        "both native clients entered tagged wild battle",
+        "both clients returned after tagged wild battle",
+        "both restored private Pokemon retained identity and independently gained experience from the shared win",
+        "both normal in-game saves changed only their own distinct private files",
+        "both independent native saves cold-Continued at their own distinct locations with matching party counts"
+      ],
+      "private_reward_progress": {
+        "alice": {
+          "before": {
+            "species": 252,
+            "personality": 1439202710,
+            "ot": 2898929743,
+            "exp": 149,
+            "hp": 20,
+            "max_hp": 20,
+            "level": 5,
+            "status": 0,
+            "outcome": 0
+          },
+          "after": {
+            "species": 252,
+            "personality": 1439202710,
+            "ot": 2898929743,
+            "exp": 163,
+            "hp": 17,
+            "max_hp": 20,
+            "level": 5,
+            "status": 0,
+            "outcome": 1
+          }
+        },
+        "bob": {
+          "before": {
+            "species": 252,
+            "personality": 1439202710,
+            "ot": 2898929743,
+            "exp": 149,
+            "hp": 20,
+            "max_hp": 20,
+            "level": 5,
+            "status": 0,
+            "outcome": 0
+          },
+          "after": {
+            "species": 252,
+            "personality": 1439202710,
+            "ot": 2898929743,
+            "exp": 163,
+            "hp": 18,
+            "max_hp": 20,
+            "level": 5,
+            "status": 0,
+            "outcome": 1
+          }
+        }
+      }
     }
   ]
 }

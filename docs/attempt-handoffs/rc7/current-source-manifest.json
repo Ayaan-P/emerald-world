@@ -1,9 +1,9 @@
 {
   "description": "Current source-only incremental engine checkpoint; not a complete-game acceptance",
   "base_engine_commit": "e406cf82922e9c3a5bfee746f9a97f67f3916a4c",
-  "target_engine_commit": "1d82672e93db02a28a1deea281c5f694f52a5e9f",
+  "target_engine_commit": "9f188f2c299535015759e1ed90a7b53655f4d049",
   "patch": "native-world-integration-current.patch",
-  "patch_sha256": "e160073044b3f90c782ad21509c53a557c79ac2fc74a0cfee246d8ee83575f31",
+  "patch_sha256": "f57008dc6ee32dd9486d802419c1aa217903ee675a7fc65dad44a937729e4b84",
   "files": [
     {
       "path": "data/battle_scripts_2.s",
@@ -102,12 +102,16 @@
       "sha256": "22d258993828221948d5dd3475d27c3a2fd731875e86014f9e8205081c21fba7"
     },
     {
+      "path": "src/battle_controller_link_partner.c",
+      "sha256": "6b40c8c2a2a5578352490cd3e76cea4e0d9ed1de8af5c1558375517e2cc49213"
+    },
+    {
       "path": "src/battle_controller_player.c",
-      "sha256": "98701e3f19fd787737851903b71d84e8d0dc067518c9cd54470cb4d2b5dd5a96"
+      "sha256": "692d06a58a764c00b438665deea395fc312167aa2eb3f69d2010e14dc94f43fa"
     },
     {
       "path": "src/battle_controllers.c",
-      "sha256": "f9e5755cd80d9dbce87e2c30763e37a0fff65714a37139be789cf3823ea155d2"
+      "sha256": "0e95dc233fc3b73914e7320522fe1d424d45c83b0549eed3f833e15cdd458b96"
     },
     {
       "path": "src/battle_gfx_sfx_util.c",
@@ -123,11 +127,11 @@
     },
     {
       "path": "src/battle_interface.c",
-      "sha256": "f84c91bfcd9d2f095f98bb810a7f1c633cae30371e32e0c757dfc47bd5070e6b"
+      "sha256": "c701a2fb9826156f90d35934dad16ffdb127770cbfe73f35f062305d9a0816de"
     },
     {
       "path": "src/battle_main.c",
-      "sha256": "c503289564e86e45b7015fddfa7336fe475602f39964cd9a2a342b955c228abb"
+      "sha256": "44d0d5d8d6681f014b5858d4a46edc052f14d7d841d4f9a73710118b8342fb84"
     },
     {
       "path": "src/battle_script_commands.c",
@@ -143,7 +147,11 @@
     },
     {
       "path": "src/battle_util.c",
-      "sha256": "5ab26a54eab4e787c6b0df3f48430d9c0b4001efd5686be8daf95dbcd9ac594f"
+      "sha256": "d0274f27a3414b7b7f8dd7fe1cbcc3d16c4cb8975427533c57169e731adf28fd"
+    },
+    {
+      "path": "src/battle_util2.c",
+      "sha256": "f755ba947ba7d3f1dc2c1939286c166f9f38b7de4ad99021a795a5c8af28d0a1"
     },
     {
       "path": "src/data/party_menu.h",
@@ -163,7 +171,7 @@
     },
     {
       "path": "src/item_use.c",
-      "sha256": "d47a77ea5d3bb40c446fa8be705bc1d5ca43b1781db0ce10461eb0624761e3b6"
+      "sha256": "f69f6878db2479dbc3b71167e058f34f5ccd369babe65d3748f02ffdcdf604e8"
     },
     {
       "path": "src/librfu_rfu.c",
@@ -183,7 +191,7 @@
     },
     {
       "path": "src/party_menu.c",
-      "sha256": "c565953dcbe46eb3ee8059c9128b0d930bd993c1615bd158165306d12d55e12d"
+      "sha256": "ebd9a665498b5acd8f4822e7d7668da9d25730d6da678e3fff3729d569cabc67"
     },
     {
       "path": "src/script_movement.c",
@@ -215,7 +223,7 @@
     },
     {
       "path": "src/world/world_coop.c",
-      "sha256": "d189cb48d27d5af87562f574629a662b6e92ef05be02e6d3815989e255cc6905"
+      "sha256": "70ef3d687ccb3df12f6956c2117c074fe1bb188d253d643160dd83b2663c597b"
     },
     {
       "path": "src/world/world_coop_potion.c",
@@ -243,5 +251,5 @@
     "identical": true,
     "fresh_clone_build_verified": false
   },
-  "reconstructed_tree": "e33f8cae5e4c6bb76d0e640b5dac51d42a4ddc61"
+  "reconstructed_tree": "374a5938af4354d1d24598ab175fc0692c2cb200"
 }

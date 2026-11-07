@@ -1011,8 +1011,50 @@ index 0000000000..7d9531fa98
 +bool video_is_headless(void);
 +
 +#endif /* VIDEO_MODE_H */
+diff --git a/src/battle_controller_link_partner.c b/src/battle_controller_link_partner.c
+index b17dca5a79..59b022b38c 100644
+--- a/src/battle_controller_link_partner.c
++++ b/src/battle_controller_link_partner.c
+@@ -2,6 +2,10 @@
+ #include "battle.h"
+ #include "battle_anim.h"
+ #include "battle_controllers.h"
++#ifdef PORTABLE
++#include "platform/world_coop.h"
++#include "platform/native_link.h"
++#endif
+ #include "battle_interface.h"
+ #include "battle_message.h"
+ #include "battle_setup.h"
+@@ -39,6 +43,17 @@ static void LinkPartnerHandleEndLinkBattle(enum BattlerId battler);
+ 
+ static void LinkPartnerBufferRunCommand(enum BattlerId battler);
+ 
++static void LinkPartnerHandleExpUpdate(enum BattlerId battler)
++{
++#if defined(PORTABLE) && COOP_FULL_SIX_READY
++    if (WorldCoop_IsBattle()
++     && gBattleResources->bufferA[battler][1] == WORLD_COOP_ROSTER_MIRROR_TAG
++     && !WorldCoop_ApplyRosterMirror(battler, gBattleResources->bufferA[battler]))
++        NativeLink_Abort();
++#endif
++    BtlController_Complete(battler);
++}
++
+ static void (*const sLinkPartnerBufferCommands[CONTROLLER_CMDS_COUNT])(enum BattlerId battler) =
+ {
+     [CONTROLLER_GETMONDATA]               = BtlController_HandleGetMonData,
+@@ -65,7 +80,7 @@ static void (*const sLinkPartnerBufferCommands[CONTROLLER_CMDS_COUNT])(enum Batt
+     [CONTROLLER_CHOOSEPOKEMON]            = BtlController_Empty,
+     [CONTROLLER_23]                       = BtlController_Empty,
+     [CONTROLLER_HEALTHBARUPDATE]          = BtlController_HandleHealthBarUpdate,
+-    [CONTROLLER_EXPUPDATE]                = BtlController_Empty,
++    [CONTROLLER_EXPUPDATE]                = LinkPartnerHandleExpUpdate,
+     [CONTROLLER_STATUSICONUPDATE]         = BtlController_HandleStatusIconUpdate,
+     [CONTROLLER_STATUSANIMATION]          = BtlController_HandleStatusAnimation,
+     [CONTROLLER_STATUSXOR]                = BtlController_Empty,
 diff --git a/src/battle_controller_player.c b/src/battle_controller_player.c
-index 7553ca6144..bc0cfa98df 100644
+index 7553ca6144..3223895ac6 100644
 --- a/src/battle_controller_player.c
 +++ b/src/battle_controller_player.c
 @@ -48,6 +48,10 @@
@@ -1069,7 +1111,25 @@ index 7553ca6144..bc0cfa98df 100644
      if (gBattleTypeFlags & BATTLE_TYPE_PALACE)
      {
          gBattleStruct->arenaMindPoints[battler] = 8;
-@@ -2193,6 +2217,49 @@ void PlayerHandleExpUpdate(enum BattlerId battler)
+@@ -2143,6 +2167,17 @@ void InitMoveSelectionsVarsAndStrings(enum BattlerId battler)
+ static void PlayerHandleChooseItem(enum BattlerId battler)
+ {
+     s32 i;
++#ifdef PORTABLE
++    if (WorldCoop_IsBattle())
++    {
++        if (gBattleResources->bufferA[battler][4] > 1)
++        {
++            NativeLink_Abort();
++            return;
++        }
++        WorldCoop_SetMenuConfusion(gBattleResources->bufferA[battler][4] != 0);
++    }
++#endif
+ 
+     BeginNormalPaletteFade(PALETTES_ALL, 0, 0, 0x10, RGB_BLACK);
+     gBattlerControllerFuncs[battler] = OpenBagAndChooseItem;
+@@ -2193,6 +2228,49 @@ void PlayerHandleExpUpdate(enum BattlerId battler)
      u8 monId = gBattleResources->bufferA[battler][1];
      s32 taskId, expPointsToGive;
  
@@ -1120,7 +1180,7 @@ index 7553ca6144..bc0cfa98df 100644
      {
          BtlController_Complete(battler);
 diff --git a/src/battle_controllers.c b/src/battle_controllers.c
-index 466fd5481d..f1ecdebddd 100644
+index 466fd5481d..62a4162b55 100644
 --- a/src/battle_controllers.c
 +++ b/src/battle_controllers.c
 @@ -1,6 +1,7 @@
@@ -1419,6 +1479,39 @@ index 466fd5481d..f1ecdebddd 100644
                  {
                      u8 *dest, *src;
                      u16 dataSize = gBlockRecvBuffer[i][2];
+@@ -835,6 +1068,17 @@ static void Task_HandleCopyReceivedLinkBuffersData(u8 taskId)
+             break;
+         case B_COMM_TO_ENGINE:
+             memcpy(gBattleResources->bufferB[battler], &gLinkBattleRecvBuffer[gTasks[taskId].tCurrentBlock_Start + LINK_BUFF_DATA], blockSize);
++#ifdef PORTABLE
++            /* Authenticate/transport the original global stage unchanged,
++             * then decode once at native engine ingress. Owner 1's stages
++             * 3..5 are its trainer-local slots 0..2. Cancellation 6 and
++             * tagged roster rotations retain their protocol meaning. */
++            if (WorldCoop_IsBattle() && battler == B_POSITION_PLAYER_RIGHT
++             && gBattleResources->bufferB[battler][0] == CONTROLLER_CHOSENMONRETURNVALUE
++             && gBattleResources->bufferB[battler][1] >= MULTI_PARTY_SIZE
++             && gBattleResources->bufferB[battler][1] < PARTY_SIZE)
++                gBattleResources->bufferB[battler][1] -= MULTI_PARTY_SIZE;
++#endif
+             break;
+         case B_COMM_CONTROLLER_IS_DONE:
+             playerId = BYTE_TO_RECEIVE(LINK_BUFF_DATA);
+@@ -1127,6 +1371,14 @@ void BtlController_EmitChooseItem(enum BattlerId battler, u32 bufferId, u8 *batt
+     gBattleResources->transferBuffer[0] = CONTROLLER_OPENBAG;
+     for (i = 0; i < PARTY_SIZE / 2; i++)
+         gBattleResources->transferBuffer[1 + i] = battlePartyOrder[i];
++#ifdef PORTABLE
++    if (WorldCoop_IsBattle())
++    {
++        gBattleResources->transferBuffer[4] = !!GetBattlerVolatile(battler, VOLATILE_CONFUSION);
++        PrepareBufferDataTransfer(battler, bufferId, gBattleResources->transferBuffer, 5);
++        return;
++    }
++#endif
+     PrepareBufferDataTransfer(battler, bufferId, gBattleResources->transferBuffer, 4);
+ }
+ 
 diff --git a/src/battle_gfx_sfx_util.c b/src/battle_gfx_sfx_util.c
 index 9494cb6b73..6018ce9e38 100644
 --- a/src/battle_gfx_sfx_util.c
@@ -1572,20 +1665,21 @@ index 5d775a35ad..c3b9d03827 100644
      {
          gBattleStruct->moneyMultiplier *= 2;
 diff --git a/src/battle_interface.c b/src/battle_interface.c
-index f802c98d62..782e67fd31 100644
+index f802c98d62..a5133a9c6f 100644
 --- a/src/battle_interface.c
 +++ b/src/battle_interface.c
-@@ -5,6 +5,9 @@
+@@ -5,6 +5,10 @@
  #include "battle_controllers.h"
  #include "battle_interface.h"
  #include "battle_z_move.h"
 +#ifdef PORTABLE
++#include "platform/world_coop.h"
 +#include "battle_gimmick.h"
 +#endif
  #include "graphics.h"
  #include "sprite.h"
  #include "window.h"
-@@ -792,6 +795,27 @@ void SetHealthboxSpriteVisible(u8 healthboxSpriteId)
+@@ -792,6 +796,27 @@ void SetHealthboxSpriteVisible(u8 healthboxSpriteId)
      UpdateIndicatorVisibilityAndType(healthboxSpriteId, FALSE);
  }
  
@@ -1613,8 +1707,21 @@ index f802c98d62..782e67fd31 100644
  static void UpdateSpritePos(u8 spriteId, s16 x, s16 y)
  {
      gSprites[spriteId].x = x;
+@@ -2988,6 +3013,12 @@ static const struct SpriteSheet sSpriteSheet_MoveInfoWindow =
+ 
+ bool32 CanThrowLastUsedBall(void)
+ {
++#ifdef PORTABLE
++    /* Original co-op capture uses the owner-validated bag action, not this
++     * Expansion shortcut's process-local last-ball state. */
++    if (WorldCoop_IsBattle())
++        return FALSE;
++#endif
+     if (B_LAST_USED_BALL == FALSE)
+         return FALSE;
+     if (!CanThrowBall())
 diff --git a/src/battle_main.c b/src/battle_main.c
-index 5ac7d92dc6..51d5aabbeb 100644
+index 5ac7d92dc6..958b8e0afe 100644
 --- a/src/battle_main.c
 +++ b/src/battle_main.c
 @@ -63,6 +63,13 @@
@@ -1727,7 +1834,29 @@ index 5ac7d92dc6..51d5aabbeb 100644
      AnimateSprites();
      BuildOamBuffer();
      RunTextPrinters();
-@@ -3100,11 +3168,45 @@ void FaintClearSetData(enum BattlerId battler)
+@@ -2744,9 +2812,21 @@ void BeginBattleIntro(void)
+ 
+ static void BattleMainCB1(void)
+ {
++#ifdef PORTABLE
++    /* The full-six menu substitutes the private party for battle staging.
++     * Keep the original mutation barrier, including its opening frame. */
++    if (WorldCoop_FullPartyMenuActive())
++        return;
++#endif
+     gBattleMainFunc();
+     for (enum BattlerId battler = 0; battler < gBattlersCount; battler++)
++    {
++#ifdef PORTABLE
++        if (WorldCoop_FullPartyMenuActive())
++            break;
++#endif
+         gBattlerControllerFuncs[battler](battler);
++    }
+ }
+ 
+ static void ClearSetBScriptingStruct(void)
+@@ -3100,11 +3180,45 @@ void FaintClearSetData(enum BattlerId battler)
      TryBattleFormChange(battler, FORM_CHANGE_FAINT, GetBattlerAbility(battler));
  }
  
@@ -1773,7 +1902,7 @@ index 5ac7d92dc6..51d5aabbeb 100644
      switch ((enum BattleIntroStates)gBattleStruct->eventState.battleIntro)
      {
      case BATTLE_INTRO_STATE_GET_MON_DATA:
-@@ -3146,24 +3248,7 @@ static void DoBattleIntro(void)
+@@ -3146,24 +3260,7 @@ static void DoBattleIntro(void)
              }
              else
              {
@@ -1799,7 +1928,28 @@ index 5ac7d92dc6..51d5aabbeb 100644
              }
  
              // Draw sprite.
-@@ -5229,6 +5314,28 @@ static void HandleEndTurn_FinishBattle(void)
+@@ -4174,6 +4271,20 @@ static void HandleTurnActionSelectionState(void)
+                     }
+                     break;
+                 case B_ACTION_SWITCH:
++#if defined(PORTABLE) && COOP_FULL_SIX_READY
++                    if (WorldCoop_IsBattle() && (WorldCoop_RosterActionActive(battler)
++                     || (gBattleResources->bufferB[battler][1] & 0x80)))
++                    {
++                        int result;
++                        if (WorldCoop_RosterActionActive(battler))
++                            result = WorldCoop_AdvanceRosterAction(battler);
++                        else
++                            result = WorldCoop_BeginRosterAction(battler,
++                                gBattleResources->bufferB[battler][1], &gBattleResources->bufferB[battler][2]);
++                        if (result < 0) { WorldCoop_FailRosterAction(); return; }
++                        if (!result) return;
++                    }
++#endif
+                     if (gBattleResources->bufferB[battler][1] == PARTY_SIZE)
+                     {
+                         gBattleCommunication[battler] = STATE_BEFORE_ACTION_CHOSEN;
+@@ -5229,6 +5340,28 @@ static void HandleEndTurn_FinishBattle(void)
  {
      if (gCurrentActionFuncId == B_ACTION_TRY_FINISH || gCurrentActionFuncId == B_ACTION_FINISHED)
      {
@@ -1828,7 +1978,7 @@ index 5ac7d92dc6..51d5aabbeb 100644
          if (!(gBattleTypeFlags & (BATTLE_TYPE_LINK
                                    | BATTLE_TYPE_RECORDED_LINK
                                    | BATTLE_TYPE_FIRST_BATTLE
-@@ -5473,6 +5580,93 @@ void RunBattleScriptCommands_PopCallbacksStack(void)
+@@ -5473,6 +5606,93 @@ void RunBattleScriptCommands_PopCallbacksStack(void)
      }
  }
  
@@ -2390,7 +2540,7 @@ index 2185158845..43f8e3a8ce 100644
          gSelectedObjectEvent = i;
          gSpecialVar_LastTalked = gObjectEvents[i].localId;
 diff --git a/src/battle_util.c b/src/battle_util.c
-index 0f07d4f8e1..1c26a8b295 100644
+index 0f07d4f8e1..dad1c686ee 100644
 --- a/src/battle_util.c
 +++ b/src/battle_util.c
 @@ -1,4 +1,8 @@
@@ -2528,7 +2678,55 @@ index 0f07d4f8e1..1c26a8b295 100644
      }
  }
  
-@@ -2912,7 +2980,12 @@ bool32 TryFieldEffects(enum FieldEffectCases caseId)
+@@ -1910,15 +1978,44 @@ bool32 HandleFaintedMonActions(void)
+ bool32 HasNoMonsToSwitch(enum BattlerId battler, u8 partyIdBattlerOn1, u8 partyIdBattlerOn2)
+ {
+     u32 i, playerId, flankId;
+-    s32 lastId = GetAILastPartyIndex(battler); // + 1
++    s32 lastId;
+     struct Pokemon *party = GetBattlerParty(battler);
+ 
+-
+     if (!IsDoubleBattle())
+         return FALSE;
+ 
+     bool32 isPlayerSide = IsOnPlayerSide(battler);
+-
++#ifdef PORTABLE
++    /* Native co-op owns three staged slots per human plus private reserves;
++     * the NPC retains its complete roster. Split trainer arrays use local
++     * indexes, so another owner's slot zero must not reserve our slot zero. */
++    if (WorldCoop_IsBattle())
++    {
++        enum BattlerId partner = GetPartnerBattler(battler);
++        bool32 sameParty = party == GetBattlerParty(partner);
++        u32 end = isPlayerSide ? MULTI_PARTY_SIZE : PARTY_SIZE;
++        if (!isPlayerSide && (!WorldCoop_IsTrainer()
++         || ((GetBattlerPosition(battler) & BIT_FLANK) && !WorldCoop_HasSecondOpponent())))
++            return TRUE;
++        for (i = 0; i < end; i++)
++        {
++            u32 stage = isPlayerSide ? (battler / 2) * MULTI_PARTY_SIZE + i : i;
++            if (i != gBattlerPartyIndexes[battler]
++             && (!sameParty || (gAbsentBattlerFlags & (1u << partner)) || i != gBattlerPartyIndexes[partner])
++             && stage != partyIdBattlerOn1 && stage != partyIdBattlerOn2
++             && (!sameParty || !gSpecialStatuses[partner].faintedHasReplacement
++                 || i != gBattleStruct->monToSwitchIntoId[partner])
++             && IsValidForBattle(&party[i]))
++                return FALSE;
++        }
++#if COOP_FULL_SIX_READY
++        if (isPlayerSide && WorldCoop_HasHiddenUsable(battler))
++            return FALSE;
++#endif
++        return TRUE;
++    }
++#endif
++    lastId = GetAILastPartyIndex(battler); // + 1
+     if (BATTLE_TWO_VS_ONE_OPPONENT && !isPlayerSide)
+     {
+         flankId = GetBattlerAtPosition(B_POSITION_OPPONENT_LEFT);
+@@ -2912,7 +3009,12 @@ bool32 TryFieldEffects(enum FieldEffectCases caseId)
      case FIELD_EFFECT_OVERWORLD_WEATHER:
          if (!(gBattleTypeFlags & BATTLE_TYPE_RECORDED))
          {
@@ -2542,7 +2740,7 @@ index 0f07d4f8e1..1c26a8b295 100644
              {
              case WEATHER_RAIN:
              case WEATHER_RAIN_THUNDERSTORM:
-@@ -2971,7 +3044,11 @@ bool32 TryFieldEffects(enum FieldEffectCases caseId)
+@@ -2971,7 +3073,11 @@ bool32 TryFieldEffects(enum FieldEffectCases caseId)
          {
              if (GetConfig(B_OVERWORLD_WEATHER_OVERRIDE) >= GEN_9)
                  gBattleStruct->overworldWeatherPresent = TRUE;
@@ -2555,6 +2753,39 @@ index 0f07d4f8e1..1c26a8b295 100644
              BattleScriptPushCursorAndCallback(BattleScript_OverworldWeatherStarts);
          }
          break;
+diff --git a/src/battle_util2.c b/src/battle_util2.c
+index 25b1e04aec..caad6731cb 100644
+--- a/src/battle_util2.c
++++ b/src/battle_util2.c
+@@ -2,6 +2,9 @@
+ #include "battle.h"
+ #include "battle_anim.h"
+ #include "battle_controllers.h"
++#ifdef PORTABLE
++#include "platform/world_coop.h"
++#endif
+ #include "malloc.h"
+ #include "pokemon.h"
+ #include "trainer_hill.h"
+@@ -121,6 +124,18 @@ void AdjustFriendshipOnBattleFaint(enum BattlerId battler)
+         AdjustFriendship(GetBattlerMon(battler), FRIENDSHIP_EVENT_FAINT_LARGE);
+     else
+         AdjustFriendship(GetBattlerMon(battler), FRIENDSHIP_EVENT_FAINT_SMALL);
++#ifdef PORTABLE
++    if (WorldCoop_IsBattle())
++    {
++        u8 friendship = GetMonData(GetBattlerMon(battler), MON_DATA_FRIENDSHIP);
++        /* Only the master simulates fainting. Publish the absolute value so
++         * the guest owner's private merge retains the canonical penalty. */
++        gBattleMons[battler].friendship = friendship;
++        BtlController_EmitSetMonData(battler, B_COMM_TO_CONTROLLER,
++            REQUEST_FRIENDSHIP_BATTLE, 0, sizeof(friendship), &friendship);
++        MarkBattlerForControllerExec(battler);
++    }
++#endif
+ }
+ 
+ void SwitchPartyOrderInGameMulti(enum BattlerId battler, u8 arg1)
 diff --git a/src/data/party_menu.h b/src/data/party_menu.h
 index 9d65313c6e..97a038c2a1 100644
 --- a/src/data/party_menu.h
@@ -2669,7 +2900,7 @@ index 84c87a3ab6..32a0eb70f4 100755
              gBagMenu->contextMenuItemsPtr = sContextMenuItems_BattleUse;
              gBagMenu->contextMenuNumItems = ARRAY_COUNT(sContextMenuItems_BattleUse);
 diff --git a/src/item_use.c b/src/item_use.c
-index d6ab79713e..2774def1fb 100644
+index d6ab79713e..0b827cca50 100644
 --- a/src/item_use.c
 +++ b/src/item_use.c
 @@ -1,4 +1,8 @@
@@ -2707,6 +2938,25 @@ index d6ab79713e..2774def1fb 100644
      ItemUseInBattle_ShowPartyMenu(taskId);
  }
  
+@@ -1327,6 +1341,18 @@ bool32 CannotUseItemsInBattle(enum Item itemId, struct Pokemon *mon)
+ 
+ void ItemUseInBattle_BagMenu(u8 taskId)
+ {
++#ifdef PORTABLE
++    if (WorldCoop_IsBattle() && GetItemBattleUsage(gSpecialVar_ItemId) == EFFECT_ITEM_THROW_BALL)
++    {
++        /* Match the original ownership contract: choosing a ball does not
++         * spend it. Its owner's ordered ball-use controller consumes once. */
++        if (WorldCoop_CanSelectBall(gSpecialVar_ItemId) && CheckBagHasItem(gSpecialVar_ItemId, 1))
++            gTasks[taskId].func = Task_FadeAndCloseBagMenu;
++        else
++            DisplayItemMessage(taskId, FONT_NORMAL, gText_BoxFull, CloseItemMessage);
++        return;
++    }
++#endif
+     gPartyMenu.slotId = gBattleStruct->itemPartyIndex[gBattlerInMenuId] = gBattlerPartyIndexes[gBattlerInMenuId];
+     if (CannotUseItemsInBattle(gSpecialVar_ItemId, NULL))
+     {
 diff --git a/src/librfu_rfu.c b/src/librfu_rfu.c
 index f9686288f1..b5f7c870da 100644
 --- a/src/librfu_rfu.c
@@ -2806,13 +3056,14 @@ index f1c246a1ff..f5008e5ad2 100644
  
  void ApplyCurrentWarp(void)
 diff --git a/src/party_menu.c b/src/party_menu.c
-index a11fd37726..b9745ad589 100644
+index a11fd37726..e91edb799e 100644
 --- a/src/party_menu.c
 +++ b/src/party_menu.c
-@@ -1,4 +1,12 @@
+@@ -1,4 +1,13 @@
  #include "global.h"
 +#ifdef PORTABLE
 +#include "platform/world_coop.h"
++#include "platform/native_link.h"
 +#include "platform/world_coop_potion.h"
 +#include "platform/party_autoheal.h"
 +static const u8 sText_AutoHealUsed[] = _("Your party was healed.");
@@ -2822,7 +3073,7 @@ index a11fd37726..b9745ad589 100644
  #include "malloc.h"
  #include "battle.h"
  #include "battle_anim.h"
-@@ -80,6 +88,9 @@
+@@ -80,6 +89,9 @@
  #include "constants/party_menu.h"
  #include "constants/rgb.h"
  #include "constants/songs.h"
@@ -2832,7 +3083,7 @@ index a11fd37726..b9745ad589 100644
  
  enum {
      MENU_SUMMARY,
-@@ -110,6 +121,9 @@ enum {
+@@ -110,6 +122,9 @@ enum {
      MENU_CATALOG_MOWER,
      MENU_CHANGE_FORM,
      MENU_CHANGE_ABILITY,
@@ -2842,7 +3093,7 @@ index a11fd37726..b9745ad589 100644
      MENU_FIELD_MOVES
  };
  
-@@ -219,6 +233,9 @@ static EWRAM_DATA u16 *sSlot1TilemapBuffer = 0; // for switching party slots
+@@ -219,6 +234,9 @@ static EWRAM_DATA u16 *sSlot1TilemapBuffer = 0; // for switching party slots
  static EWRAM_DATA u16 *sSlot2TilemapBuffer = 0; //
  EWRAM_DATA u8 gSelectedOrderFromParty[MAX_FRONTIER_PARTY_SIZE] = {0};
  static EWRAM_DATA enum Item sPartyMenuItemId = 0;
@@ -2852,7 +3103,7 @@ index a11fd37726..b9745ad589 100644
  EWRAM_DATA u8 gBattlePartyCurrentOrder[PARTY_SIZE / 2] = {0}; // bits 0-3 are the current pos of Slot 1, 4-7 are Slot 2, and so on
  static EWRAM_DATA u8 sInitialLevel = 0;
  static EWRAM_DATA u8 sFinalLevel = 0;
-@@ -457,6 +474,10 @@ static void BlitBitmapToPartyWindow_RightColumn(u8, u8, u8, u8, u8, bool8);
+@@ -457,6 +475,10 @@ static void BlitBitmapToPartyWindow_RightColumn(u8, u8, u8, u8, u8, bool8);
  static void CursorCb_Summary(u8);
  static void CursorCb_Switch(u8);
  static void CursorCb_Cancel1(u8);
@@ -2863,7 +3114,7 @@ index a11fd37726..b9745ad589 100644
  static void CursorCb_Item(u8);
  static void CursorCb_Give(u8);
  static void CursorCb_TakeItem(u8);
-@@ -519,10 +540,23 @@ static void InitPartyMenu(enum PartyMenuType menuType, enum PartyMenuLayout layo
+@@ -519,10 +541,23 @@ static void InitPartyMenu(enum PartyMenuType menuType, enum PartyMenuLayout layo
  {
      u16 i;
  
@@ -2887,7 +3138,7 @@ index a11fd37726..b9745ad589 100644
          SetMainCallback2(callback);
      }
      else
-@@ -876,6 +910,15 @@ static void Task_ExitPartyMenu(u8 taskId)
+@@ -876,6 +911,15 @@ static void Task_ExitPartyMenu(u8 taskId)
  {
      if (!gPaletteFade.active)
      {
@@ -2903,7 +3154,7 @@ index a11fd37726..b9745ad589 100644
          SetMainCallback2(gPartyMenu.exitCallback);
          FreePartyPointers();
          DestroyTask(taskId);
-@@ -1458,7 +1501,26 @@ static void Task_ClosePartyMenuAndSetCB2(u8 taskId)
+@@ -1458,7 +1502,26 @@ static void Task_ClosePartyMenuAndSetCB2(u8 taskId)
  {
      if (!gPaletteFade.active)
      {
@@ -2931,7 +3182,22 @@ index a11fd37726..b9745ad589 100644
              UpdatePartyToFieldOrder();
  
          if (sPartyMenuInternal->exitCallback != NULL)
-@@ -2901,14 +2963,14 @@ static u8 DisplaySelectionWindow(u8 windowType)
+@@ -1484,6 +1547,14 @@ u8 GetPartyMenuType(void)
+ 
+ void Task_HandleChooseMonInput(u8 taskId)
+ {
++#ifdef PORTABLE
++    if (WorldCoop_FullPartyMenuActive() && !NativeLink_IsActive())
++    {
++        gPartyMenuUseExitCallback = FALSE;
++        Task_ClosePartyMenu(taskId);
++        return;
++    }
++#endif
+     if (!gPaletteFade.active && MenuHelpers_ShouldWaitForLinkRecv() != TRUE)
+     {
+         s8 *slotPtr = GetCurrentPartySlotPtr();
+@@ -2901,14 +2972,14 @@ static u8 DisplaySelectionWindow(u8 windowType)
          const u8 *text;
          u8 fontColorsId = 3;
  
@@ -2949,7 +3215,7 @@ index a11fd37726..b9745ad589 100644
          AddTextPrinterParameterized4(sPartyMenuInternal->windowId[0], FONT_NORMAL, cursorDimension, (i * 16) + 1, letterSpacing, 0, sFontColorTable[fontColorsId], 0, text);
      }
  
-@@ -2991,6 +3053,13 @@ static void SetPartyMonFieldSelectionActions(struct Pokemon *mons, u8 slotId)
+@@ -2991,6 +3062,13 @@ static void SetPartyMonFieldSelectionActions(struct Pokemon *mons, u8 slotId)
          else
              AppendToList(sPartyMenuInternal->actions, &sPartyMenuInternal->numActions, MENU_ITEM);
      }
@@ -2963,7 +3229,7 @@ index a11fd37726..b9745ad589 100644
      AppendToList(sPartyMenuInternal->actions, &sPartyMenuInternal->numActions, MENU_CANCEL1);
  }
  
-@@ -3135,6 +3204,51 @@ static void Task_HandleSelectionMenuInput(u8 taskId)
+@@ -3135,6 +3213,51 @@ static void Task_HandleSelectionMenuInput(u8 taskId)
      }
  }
  
@@ -3015,7 +3281,7 @@ index a11fd37726..b9745ad589 100644
  static void CursorCb_Summary(u8 taskId)
  {
      PlaySE(SE_SELECT);
-@@ -4852,7 +4966,51 @@ static bool32 IsItemFlute(enum Item item)
+@@ -4852,7 +4975,51 @@ static bool32 IsItemFlute(enum Item item)
      return FALSE;
  }
  
@@ -3068,7 +3334,7 @@ index a11fd37726..b9745ad589 100644
  void ItemUseCB_BattleScript(u8 taskId, TaskFunc task)
  {
      struct Pokemon *mon = GetPartyMonFromPartyMenuId(gPartyMenu.slotId);
-@@ -7504,6 +7662,27 @@ static u8 GetPartyLayoutFromBattleType(void)
+@@ -7504,6 +7671,27 @@ static u8 GetPartyLayoutFromBattleType(void)
  
  void OpenPartyMenuInBattle(u8 partyAction)
  {
@@ -3096,7 +3362,7 @@ index a11fd37726..b9745ad589 100644
      if (IS_FRLG && !BtlCtrl_OakOldMan_TestState2Flag(FIRST_BATTLE_MSG_FLAG_PARTY_MENU) && (gBattleTypeFlags & BATTLE_TYPE_FIRST_BATTLE))
      {
          InitPartyMenu(PARTY_MENU_TYPE_IN_BATTLE, GetPartyLayoutFromBattleType(), partyAction, FALSE, PARTY_MSG_NONE, Task_FirstBattleEnterParty_WaitFadeIn, CB2_SetUpReshowBattleScreenAfterMenu);
-@@ -7547,7 +7726,21 @@ static bool8 TrySwitchInPokemon(void)
+@@ -7547,7 +7735,21 @@ static bool8 TrySwitchInPokemon(void)
      struct Pokemon *party = NULL;
      s8 partySlot = 0, newPartySlot = 0;
      u8 newSlot;
@@ -3618,7 +3884,7 @@ index b9ca672169..3de1c0096d 100644
      return 0;
  }
 diff --git a/src/world/world_coop.c b/src/world/world_coop.c
-index 5bbb04afe7..b2e63c3ede 100644
+index 5bbb04afe7..caa167db71 100644
 --- a/src/world/world_coop.c
 +++ b/src/world/world_coop.c
 @@ -6,11 +6,14 @@
@@ -4390,7 +4656,19 @@ index 5bbb04afe7..b2e63c3ede 100644
      packet[2] = gBattlerAttacker / 2 + 1;
      packet[3] = reply & 0xFF;
      memcpy(packet + 4, &generation, sizeof(generation));
-@@ -1410,6 +1789,144 @@ void WorldCoop_RecordDefeat(const u8 *data)
+@@ -1287,8 +1666,9 @@ bool8 WorldCoop_CatchPacketValid(const u8 *data, u16 size)
+         && packet.mon.attack == base->attack && packet.mon.defense == base->defense
+         && packet.mon.speed == base->speed && packet.mon.spAttack == base->spAttack
+         && packet.mon.spDefense == base->spDefense
+-        && GetMonData(&packet.mon, MON_DATA_POKEBALL) >= ITEM_MASTER_BALL
+-        && GetMonData(&packet.mon, MON_DATA_POKEBALL) != ITEM_SAFARI_BALL;
++        && GetMonData(&packet.mon, MON_DATA_POKEBALL) >= BALL_POKE
++        && GetMonData(&packet.mon, MON_DATA_POKEBALL) < POKEBALL_COUNT
++        && GetMonData(&packet.mon, MON_DATA_POKEBALL) != BALL_SAFARI;
+ }
+ 
+ void WorldCoop_RecordCatchEvent(u8 battler, const u8 *data)
+@@ -1410,6 +1790,144 @@ void WorldCoop_RecordDefeat(const u8 *data)
      sCoop.rewardMultiplier = data[8];
  }
  
@@ -4535,7 +4813,7 @@ index 5bbb04afe7..b2e63c3ede 100644
  static bool8 BuildPrivateParty(struct Pokemon merged[PARTY_SIZE])
  {
      u8 i;
-@@ -1417,10 +1934,14 @@ static bool8 BuildPrivateParty(struct Pokemon merged[PARTY_SIZE])
+@@ -1417,10 +1935,14 @@ static bool8 BuildPrivateParty(struct Pokemon merged[PARTY_SIZE])
      memcpy(merged, sCoop.working, sizeof(sCoop.working));
      for (i = 0; i < sCoop.count; i++)
      {
@@ -4551,7 +4829,7 @@ index 5bbb04afe7..b2e63c3ede 100644
           || GetMonData(&mon, MON_DATA_SPECIES) != GetMonData(original, MON_DATA_SPECIES))
          {
              valid = FALSE;
-@@ -1448,11 +1969,15 @@ int WorldCoop_ReceiveCompletion(const u8 *data, u16 size, u8 sender)
+@@ -1448,11 +1970,15 @@ int WorldCoop_ReceiveCompletion(const u8 *data, u16 size, u8 sender)
       || (packet.catchOwner && (sCoop.kind || sCoop.enemyCount != 1 || packet.reward))
       || packet.outcome == 0 || packet.outcome > B_OUTCOME_MON_TELEPORTED
       || (packet.reward & ~((1 << sCoop.enemyCount) - 1))
@@ -4568,7 +4846,7 @@ index 5bbb04afe7..b2e63c3ede 100644
              return -1;
          if (packet.phase == COOP_COMMIT)
          {
-@@ -1464,16 +1989,19 @@ int WorldCoop_ReceiveCompletion(const u8 *data, u16 size, u8 sender)
+@@ -1464,16 +1990,19 @@ int WorldCoop_ReceiveCompletion(const u8 *data, u16 size, u8 sender)
      }
      if (packet.phase == COOP_READY)
      {
@@ -4590,7 +4868,7 @@ index 5bbb04afe7..b2e63c3ede 100644
              return -1;
          sCoop.peerCommit = TRUE;
      }
-@@ -1514,6 +2042,10 @@ bool8 WorldCoop_ReadyForPrivateRewards(void)
+@@ -1514,6 +2043,10 @@ bool8 WorldCoop_ReadyForPrivateRewards(void)
      }
      if (!IsLinkTaskFinished())
          return FALSE;
@@ -4601,7 +4879,7 @@ index 5bbb04afe7..b2e63c3ede 100644
      packet.magic = COOP_MAGIC;
      packet.version = COOP_VERSION;
      packet.generation = sCoop.generation;
-@@ -1522,6 +2054,7 @@ bool8 WorldCoop_ReadyForPrivateRewards(void)
+@@ -1522,6 +2055,7 @@ bool8 WorldCoop_ReadyForPrivateRewards(void)
      packet.outcome = gBattleOutcome;
      packet.reward = sCoop.reward;
      packet.catchOwner = sCoop.catchOwner;
