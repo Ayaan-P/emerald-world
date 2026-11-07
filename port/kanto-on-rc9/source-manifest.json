@@ -1,0 +1,117 @@
+{
+  "base_application_commit": "73af5021705d67f65c9d5a9e510ba35d35a6902a",
+  "base_engine_checkpoint": "2024a83db5242783c0f9ae93f8381271045e7037",
+  "reconstructed_base_tree": "181a0eb3bdb9f9bc110c8c112a3d9109bf3e6cb6",
+  "patched_tree": "4b6083800609a17330e5b8756692af0836b175a9",
+  "patch_sha256": "d74c06d2a2f0749ce38a59e5f94ca386e33edb6adb44109b4648d6819009c340",
+  "files": [
+    {
+      "path": "asm/macros/event.inc",
+      "sha256": "6fd12dd920cff8e61b7f1066a97ea05230b2b93564daf133af8945d07117ece6"
+    },
+    {
+      "path": "data/event_scripts.s",
+      "sha256": "84a8e421b8f65c1ef3338d0fd4e33eabd1ebb51389f06c58eb9c1825c50eb446"
+    },
+    {
+      "path": "data/scripts/new_game.inc",
+      "sha256": "6caccf4257322fafaee381c49ddbcf30b9db06f09af31c5d0414cf762c545e72"
+    },
+    {
+      "path": "include/constants/flags.h",
+      "sha256": "919cc681e6dfe5f69bcad362894a71dcabe36bd973cbe50783b680b69ec53c1f"
+    },
+    {
+      "path": "include/constants/region_state.h",
+      "sha256": "7949f0f323201de1962cd468d656f85a4cc062d68ef6b827d169d164f03acb27"
+    },
+    {
+      "path": "include/constants/vars_frlg.h",
+      "sha256": "3d1963ba15231df0271c420c9d652a70efab28360e529216e90c33d031ffa63f"
+    },
+    {
+      "path": "include/event_scripts.h",
+      "sha256": "a64b2c82be2c7f119102bbde62233b0e3eb2fb634322f1ff47211b900dbede0c"
+    },
+    {
+      "path": "map_data_rules.mk",
+      "sha256": "417f5947aab6162fa5f5241fc45b62abe3825431324fdcd526003dda8abada3e"
+    },
+    {
+      "path": "platform/Makefile",
+      "sha256": "4d30c2973bb26ce77f01431d6c76438454e41685ca83d4c8ac1f26d23d68d72c"
+    },
+    {
+      "path": "platform/build_glue/asm_filter.py",
+      "sha256": "5944c971251907db88b56207491e804761558e92622fa4158bb4d5363ae9c014"
+    },
+    {
+      "path": "platform/region_state.c",
+      "sha256": "3e365c2939d0f9e5e2ccd9c8387df7f998b54ba475691ef8e8c1dc89432e5d3a"
+    },
+    {
+      "path": "platform/region_state.h",
+      "sha256": "eae230da6815c741e395eb3510ed4979b26b120c31ea526ccfcbd34567c91921"
+    },
+    {
+      "path": "platform/save_extension.c",
+      "sha256": "2d0575485501094b794a5551b9a20e77cbdd2c71e233f13ab7bebd39df5c0ba0"
+    },
+    {
+      "path": "platform/save_extension.h",
+      "sha256": "2ff36e272294b512cd856d1ab61ca0a234e7f0b5581019e3fe26bd7c427d5bb4"
+    },
+    {
+      "path": "platform/save_file.c",
+      "sha256": "c3236cc3eaa299fd744b70707e6361b0277ed63bf094bc1bfbf3350e1b4580b5"
+    },
+    {
+      "path": "platform/save_file.h",
+      "sha256": "6a29f00d639de3f385f2e1862c20d237ea63180a992385c5e0e18476bcfc417e"
+    },
+    {
+      "path": "platform/test/test_save_extension.c",
+      "sha256": "56ac40696a25b1cce98e35d70b4f0077b609c2721a68ae201ca9048ca0274760"
+    },
+    {
+      "path": "platform/test/test_save_extension_file.c",
+      "sha256": "76343f6e41f6120f6e314688522e71096c178a225ab147c6172d1a68513fa0fb"
+    },
+    {
+      "path": "src/data/tilesets/graphics.h",
+      "sha256": "06f45bcd0fc27f506979db0b2d9b31eb4123166d5fe8a6b348e8c0814f4ba90f"
+    },
+    {
+      "path": "src/data/tilesets/headers.h",
+      "sha256": "7d4c21f6284c5ca47ccf72d3f5f2996508f02f1898d368225821e92a1bf0ec53"
+    },
+    {
+      "path": "src/data/tilesets/metatiles.h",
+      "sha256": "64b512e624cd6cfe0ebbbed46f8f810d24e29c291420c8f561f332b729f8f96a"
+    },
+    {
+      "path": "src/event_data.c",
+      "sha256": "3d14e354dff23422dbb0be57ee824a0105624c211556a7bc9e987cd0c28f8a7e"
+    },
+    {
+      "path": "src/save.c",
+      "sha256": "3e2ad6d98b4837688bd6ba650f50fb120037041132f91649e7dfd26b1f8e5f08"
+    },
+    {
+      "path": "src/script.c",
+      "sha256": "f77838bc166e7b426c2cae6a4ec47b1abc35dc06971aa24a3cd8900e9a0d89cc"
+    },
+    {
+      "path": "tests/rc8/region_content.c",
+      "sha256": "54463b3fc49b069662a3a0baf27c232acb7a6d5913ec4965d393ff0d0eec014e"
+    },
+    {
+      "path": "tests/rc8/region_state_save.c",
+      "sha256": "6fae7a67442a76aa3299be6c291ed515a95b71d4683f10be37ed651eacb087d3"
+    },
+    {
+      "path": "tools/mapjson/mapjson.cpp",
+      "sha256": "47a052d2b116df43d1dae7e75ddce5a90ebb53d952521f772bcd38dcf81da0fe"
+    }
+  ]
+}
