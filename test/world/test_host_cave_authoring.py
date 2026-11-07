@@ -69,6 +69,23 @@ class HostCaveAuthoring(unittest.TestCase):
             self.assertEqual(server.shared_cave.version,8);self.assertEqual(server.list_generated_areas()[0]['kind'],'wilds')
         finally:server.close()
 
+    def test_host_authors_shared_xl_into_real_authority(self):
+        from world.xl_wilds import encode
+        proposal = cave_blueprint.proposal_from_blueprint(DOC, side=127)
+        blob = encode(proposal)
+        root = Path(self.temp.name)
+        server = MemoryAuthority(root/'socket', root/'world', persist_generated_cave=True, archive_generated_areas=True)
+        self.session.server = server
+        self.session.state = root/'world'
+        try:
+            with patch('world.author_cave.author', return_value=(proposal, blob)) as author:
+                self.assertEqual(self.session.author_shared_cave('large islands', wilds=True, xl=True), SharedCave(blob).identity)
+                author.assert_called_once_with('large islands', large=True, wilds=True, xl=True)
+            self.assertEqual(server.shared_cave.version, 10)
+            self.assertEqual(server.list_generated_areas()[0]['kind'], 'wilds')
+        finally:
+            server.close()
+
     def test_missing_host_and_occupied_cave_do_not_call_model(self):
         with patch('world.author_cave.author') as author:
             self.session.server=None

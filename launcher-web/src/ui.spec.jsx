@@ -181,7 +181,7 @@ describe('player launcher', () => {
 
   it('makes the last saved adventure playable directly from the home page', async () => {
     render(<App />);
-    const play = await screen.findByRole('button', { name: /^play now$/i });
+    const play = await screen.findByRole('button', { name: /^continue adventure$/i });
     fireEvent.click(play);
     await waitFor(() => expect(perform).toHaveBeenCalledWith('launch', {}));
     expect(perform.mock.calls.map(call => call[0]).slice(-2)).toEqual(['rejoin', 'launch']);
@@ -257,7 +257,7 @@ describe('player launcher', () => {
   it('creates a hosted world when an owner account is ready', async () => {
     loadState.mockResolvedValue({ ...snapshot(), hosting: { available: true, enrolled: true, loaded: false, worlds: [], pending: null } });
     render(<App />);
-    fireEvent.click(await screen.findByRole('button', { name: /create a world/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /new world \/ save/i }));
     const modal = screen.getByRole('dialog');
     fireEvent.change(within(modal).getByLabelText(/world name/i), { target: { value: 'Our Hoenn' } });
     fireEvent.change(within(modal).getByLabelText(/trainer profile/i), { target: { value: 'May' } });
@@ -269,7 +269,7 @@ describe('player launcher', () => {
     const hosting = { available: true, backup_available: true, enrolled: false, loaded: false, worlds: [], pending: null };
     loadState.mockResolvedValue({ ...snapshot(), hosting });
     const { container } = render(<App />);
-    fireEvent.click(await screen.findByRole('button', { name: /create a world/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /new world \/ save/i }));
     const modal = screen.getByRole('dialog');
     fireEvent.click(within(modal).getByRole('button', { name: /^use backup$/i }));
     const raw = JSON.stringify({ kind: 'host-profile', pin: 'a'.repeat(64) });
@@ -368,7 +368,7 @@ describe('player launcher', () => {
 
   it('starts a solo adventure without an invitation', async () => {
     render(<App />);
-    fireEvent.click(await screen.findByRole('button', { name: /new solo adventure/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /new solo save/i }));
     const modal = screen.getByRole('dialog');
     fireEvent.change(within(modal).getByLabelText(/trainer profile/i), { target: { value: 'May' } });
     fireEvent.click(within(modal).getByRole('button', { name: /start adventure/i }));
@@ -377,7 +377,7 @@ describe('player launcher', () => {
 
   it('copies an optional save into a new solo adventure', async () => {
     const { container } = render(<App />);
-    fireEvent.click(await screen.findByRole('button', { name: /new solo adventure/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /new solo save/i }));
     const modal = screen.getByRole('dialog');
     const bytes = new Uint8Array([1, 2, 3]);
     const file = { name: 'emerald.sav', size: bytes.length, arrayBuffer: async () => bytes.buffer };
