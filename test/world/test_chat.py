@@ -83,6 +83,7 @@ class NativeChatTests(unittest.TestCase):
 static int enabled=1, sent;
 static char recipient[25], message[121];
 bool8 WorldBridge_Enabled(void) {return enabled;}
+const char *WorldBridge_TrainerName(void) {return "Alice";}
 int WorldBridge_ChatSend(const char *target,const char *text) {
  strcpy(recipient,target);strcpy(message,text);sent++;return 1;
 }

@@ -145,8 +145,9 @@ class OfflineTests(unittest.TestCase):
             args = argparse.Namespace(state_dir=state, trainer='alice', seed_save=None,
                                       copy_online=False, binary=Path('/usr/bin/false'), display=None,
                                       test_input=None, print_command=False)
-            def command(binary, state_dir, paths, display, *, online):
+            def command(binary, state_dir, paths, display, *, online, engine):
                 self.assertFalse(online)
+                self.assertEqual(engine, "vanilla")
                 with self.assertRaises(ValueError):
                     launcher.ProfileLock(state / '.offline', 'alice')
                 return ['/usr/bin/false']
