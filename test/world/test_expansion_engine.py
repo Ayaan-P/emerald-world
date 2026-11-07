@@ -247,49 +247,33 @@ class ExpansionEngineTest(unittest.TestCase):
                                                 '--engine', 'expansion-native', '--print-command']), 0)
                 self.assertEqual(run.call_args.args[0].engine, 'expansion-native')
 
-    def test_presence_session_drains_peer_broadcasts_independently(self):
+    def test_native_transport_uses_the_prepared_engine_authority_identity(self):
+        # The old read-only Python presence pump was replaced by native transport.
+        # Exercise real provisioning/authentication; actual native peer rendering
+        # and battle/save acceptance live in run_expansion_release_journey.py.
+        import contextlib
+        import io
         import json
-        import threading
-        import time
+        from contextlib import closing
         from world.client import WorldClient
         from world.expansion import ExpansionSession
-        from contextlib import closing
         from world.server import WorldServer
         with tempfile.TemporaryDirectory() as directory:
             session = ExpansionSession(directory, 'Ash')
             session.state.mkdir(parents=True)
-            with closing(WorldServer(session.state/'transport/world.sock', session.state)) as server:
+            with closing(WorldServer(session.state/'transport/world.sock', Path(directory))) as server:
                 server.start()
-                launcher.prepare_profile(session.state, 'Ash')
-                bob = launcher.prepare_profile(session.state, 'Bob')
-                config = dict(line.split(' ', 1) for line in bob['config'].read_text().splitlines())
-                fixture = dict(schema=1, engine='expansion-native', frame=6, field=False)
-                (session.paths['profile']/'presence.json').write_text(json.dumps(fixture))
-                worker = threading.Thread(target=session._presence)
-                worker.start()
-                try:
-                    deadline = time.monotonic()+1
-                    while not session.paths['telemetry'].exists() and time.monotonic() < deadline:
-                        time.sleep(.01)
-                    with WorldClient(config['socket'], 'Bob', config['token']) as peer:
-                        peer.snapshot()
-                        for seq in range(1, 101):
-                            (session.paths['profile']/'presence.json').touch()
-                            peer.send_state(seq, 0, 0, 0, 0, 1, 7, 0, f'{seq:016x}', '0'*16)
-                            target = peer.snapshot()['revision']
-                    deadline = time.monotonic()+.5
-                    actual = -1
-                    while time.monotonic() < deadline:
-                        actual = json.loads(session.paths['telemetry'].read_text())['revision']
-                        if actual >= target:
-                            break
-                        time.sleep(.01)
-                    self.assertIsNone(session.error)
-                    self.assertGreaterEqual(actual, target)
-                finally:
-                    session.stop.set()
-                    worker.join(timeout=3)
-                    self.assertFalse(worker.is_alive())
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    session.run('/bin/true', print_command=True)
+                command = json.loads(output.getvalue())
+                self.assertIn('EW_WORLD_CONFIG', command)
+                self.assertNotIn('EW_EXPANSION_PRESENCE', command)
+                config = dict(line.split(' ', 1) for line in session.paths['config'].read_text().splitlines())
+                self.assertEqual(config['socket'], str(session.state/'transport/world.sock'))
+                with WorldClient(config['socket'], 'Ash', config['token']) as client:
+                    self.assertGreaterEqual(client.snapshot()['revision'], 0)
+                self.assertFalse((session.state/'world.sqlite3').exists())
 
     def test_replay_staging_does_not_mount_its_parent_directory(self):
         import contextlib
@@ -336,11 +320,12 @@ class ExpansionEngineTest(unittest.TestCase):
             self.assertIn('--headless', native)
             self.assertNotIn('--world-config', native)
             self.assertNotIn('--config', native)
-            self.assertIn('EW_EXPANSION_PRESENCE', command)
+            self.assertIn('EW_WORLD_CONFIG', command)
+            self.assertNotIn('EW_EXPANSION_PRESENCE', command)
             with self.assertRaises(ValueError):
                 launcher.game_command('/bin/true', directory, launcher.profile_paths(directory, 'Ash'), engine='expansion-native')
-            with self.assertRaises(ValueError):
-                launcher.game_command('/bin/true', directory, paths, agent_control=True, engine='expansion-native')
+            controlled = launcher.game_command('/bin/true', directory, paths, agent_control=True, engine='expansion-native')
+            self.assertIn('--player-control', controlled)
 
     def test_launch_command_rejects_cross_engine_binary_namespace_pairing(self):
         with tempfile.TemporaryDirectory() as directory:

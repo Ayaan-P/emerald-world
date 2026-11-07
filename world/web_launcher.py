@@ -254,7 +254,7 @@ class LauncherBridge:
                 with server.lock:
                     cave = server.shared_cave
                     if cave is not None:
-                        kinds = {6: 'wilds', 7: 'guided_wilds', 8: 'cast_wilds', 9: 'event_wilds', 10: 'xl_wilds'}
+                        kinds = {6: 'wilds', 7: 'guided_wilds', 8: 'cast_wilds', 9: 'event_wilds', 16: 'xl_wilds'}
                         archived = next((area for area in areas if area['identity'] == cave.identity), {})
                         occupants = sum(1 for peer in server.peers.values()
                             if not peer.get('closing') and (peer.get('in_generated_cave') or
@@ -398,7 +398,7 @@ class LauncherBridge:
                 if kind not in ('cave', 'wilds', 'guided_wilds', 'cast_wilds', 'xl_wilds'):
                     raise SessionError('Choose a cave, outdoor wilds, wilds with a guide or wilds with a cast.')
                 try:
-                    self.session.author_shared_cave(payload.get('theme'), wilds=kind != 'cave',
+                    self.session.author_shared_cave(payload.get('theme'), cohort=self.engine, wilds=kind != 'cave',
                         guide=kind == 'guided_wilds', cast=kind == 'cast_wilds', **({'xl': True} if kind == 'xl_wilds' else {}))
                 except SessionError:
                     raise

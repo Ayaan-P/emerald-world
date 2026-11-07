@@ -1,3 +1,7 @@
+# Current RC9 source handoff
+
+Latest target engine: `2024a83db5242783c0f9ae93f8381271045e7037`; exact three-patch tree reconstruction verified. Earlier RC7 milestones below remain historical. The patch now includes Dot PR237 XL/guild/shuffle on top of the final RC7 ownership/presentation fixes, native-only host map backing storage (fixed 256KiB EWRAM checks unchanged), and owned native journal IO.
+
 # Current RC7 Expansion source handoff
 
 ## Current source

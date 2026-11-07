@@ -1,9 +1,9 @@
 {
   "description": "Current source-only incremental engine checkpoint; not a complete-game acceptance",
   "base_engine_commit": "e406cf82922e9c3a5bfee746f9a97f67f3916a4c",
-  "target_engine_commit": "9506377d1fff0e1f553caaf66f99550cbd715f59",
+  "target_engine_commit": "2024a83db5242783c0f9ae93f8381271045e7037",
   "patch": "native-world-integration-current.patch",
-  "patch_sha256": "0c87f2f0809891e8670c471c619865198b6f470305e8030615d4484091186958",
+  "patch_sha256": "56d1f12819a1c18abecb99e9250168c7966e8906edee6cc10a0d767640edcd7f",
   "files": [
     {
       "path": "data/battle_scripts_2.s",
@@ -34,6 +34,10 @@
       "sha256": "41e067ede74a87fd9f28476d357e1322fe4e407ac73a79621cb74cfce1f574f3"
     },
     {
+      "path": "include/fieldmap.h",
+      "sha256": "69c8ebe15068502e3808ad51e2d4fb4aebf46be811e432d7a6edcbbe90054e1e"
+    },
+    {
       "path": "include/librfu.h",
       "sha256": "8773fb05518f6d871db40baae8b05ae3567e264f1b5f3cbff0935dad79a27963"
     },
@@ -42,16 +46,36 @@
       "sha256": "4e0b51b799e19fd249ecd76dd69f30a994d279490e7d79be848bbf9c0bfb9fd2"
     },
     {
+      "path": "include/platform/generated_map.h",
+      "sha256": "3fb22a801fdd597ef34c062887d62f122ce9b8e00b4e9c518232776433ce6004"
+    },
+    {
       "path": "include/platform/player_control.h",
       "sha256": "0126c458d599abb17dfd38a7cf3fb93c4aeea04d7c04b1a85e4689b4b67f5086"
     },
     {
+      "path": "include/platform/wild_shuffle.h",
+      "sha256": "a4573f7273a573c24b16b950bad62e4b6c09a9d94bbf3e00dda6ee5a61919b83"
+    },
+    {
+      "path": "include/platform/world_cave_wire.h",
+      "sha256": "0be1a9bd5b6a67c85d0502d12b55b33ea6f58b1215358e20ee77bdaeb5630f26"
+    },
+    {
       "path": "include/platform/world_chat.h",
-      "sha256": "91506516a06fa32e5692cf812de3ff46484bef396eab661673ae791ac0bdbf40"
+      "sha256": "65377372914ce6fc15da81789aa3e90f0d5599834cf7e31c13106206c360cd05"
     },
     {
       "path": "include/platform/world_coop.h",
       "sha256": "85d60d43ffc0b5e1c65cf1821bd7d40869907c525c5ba46dca02d4c15b70f1fc"
+    },
+    {
+      "path": "include/platform/world_runtime.h",
+      "sha256": "dff34439be9aceae6ab04c8918141e44106abc9933ff1dcd7ea391f8d251e483"
+    },
+    {
+      "path": "include/platform/xl_progress_store.h",
+      "sha256": "396cbcb6c139720e3e816b5b4c5ee12dfc8f0fa5f22bdf29525517ba7c109802"
     },
     {
       "path": "platform/Makefile",
@@ -79,15 +103,15 @@
     },
     {
       "path": "platform/main.c",
-      "sha256": "cf6ca2f9cada41a0eea9504450246a7f0960a27a740049c6a7953bfa521f1956"
+      "sha256": "1d1eb58877ecf4e2aa0e0d4c2a561d86122264a6f710f7bed94466752deac16c"
     },
     {
       "path": "platform/options.c",
-      "sha256": "f7fed3498fdf4499b8b6bfba3f2c614df98aa7fe44f74e639cd35006e589f528"
+      "sha256": "a3fa9d01227c7ff95cdd4764436ed270ba2d988e10fd064786430e7e4710bcd2"
     },
     {
       "path": "platform/options.h",
-      "sha256": "61ede5d3997fcef844922a9e3ae9480d80180ad720d4f6b26bfc423ad95e262c"
+      "sha256": "ac95078ba5d79cb3dd477d67742c5a6efb5120e0fde2d1f9340c2bda98103b24"
     },
     {
       "path": "platform/video.c",
@@ -182,6 +206,10 @@
       "sha256": "68d10a1bcdae64e2a99c939af5d5502032c60481207d522840466862c85cb156"
     },
     {
+      "path": "src/fieldmap.c",
+      "sha256": "fc778a05b9d4a506d576c4e0d5fac16fcd314d7b039e27a0a3a88e76de062075"
+    },
+    {
       "path": "src/item_menu.c",
       "sha256": "fcf94ffc08b109d9ea6549255381406d62f3dba57b444f62639565d0ee17a558"
     },
@@ -231,19 +259,31 @@
     },
     {
       "path": "src/wild_encounter.c",
-      "sha256": "c5a00328f2f7daa04c9e9c34ced877dd13ebb21fc28774ddec917d85b83cc6f5"
+      "sha256": "99be70d467a109dcc942b13df780b234ea1ccb7e86a23504a27a71fd3d61577b"
+    },
+    {
+      "path": "src/world/generated_map.c",
+      "sha256": "5fe50a1abcd1c421d2bebe2957141ce212675eaedad21c28312da4b5d609533c"
+    },
+    {
+      "path": "src/world/native_save.c",
+      "sha256": "c4b829bd2bae8c5d7269fff7e7f34e3c80c79641ee16aa3a4bfb983298d75133"
+    },
+    {
+      "path": "src/world/wild_shuffle.c",
+      "sha256": "74db5cf1126adfdbbfb5d3311e1c2b774aaada03c84970817be082b55eac5168"
     },
     {
       "path": "src/world/world_bridge.c",
-      "sha256": "2f3577c7277c0f0e2afb35e0850034f385ee1a0216f9f8b82ee32b2f406955ea"
+      "sha256": "2e9a2eafdf71282ea89de59c81f638dee9871c26a82b8fb3d485d95e871d6c09"
     },
     {
       "path": "src/world/world_cave_wire.c",
-      "sha256": "68e26fab83afd978d795cca33ab8c12949a6e58941f9b1d741600fbc84b45f42"
+      "sha256": "aaba09cac92d59b92f641c95fc781ec9faf157e43744ee6915c7b7754c5632f1"
     },
     {
       "path": "src/world/world_chat.c",
-      "sha256": "288a1e725fb570b9673f9a37965bdad039913fc05ceb9e84a1c1ee9de795633c"
+      "sha256": "38b84cf2a52061a9a34384a020209d42d5d7e2771bc93c1815f2f22b7412207e"
     },
     {
       "path": "src/world/world_coop.c",
@@ -254,12 +294,24 @@
       "sha256": "19c029b31f6ba6a99f0b3d29f30245e002371dc0f8290155119ab4353c2cceab"
     },
     {
+      "path": "src/world/world_menu.c",
+      "sha256": "073516bf57988e360b71f94abe54ed67df83ceb78ecf6438c280981112f91ea0"
+    },
+    {
       "path": "src/world/world_runtime.c",
-      "sha256": "579296f4908efb59d86a4cddf05c54ba7ee5fd5c36906c1efdfe71dbfaaa3f19"
+      "sha256": "3f22897fa88e8eba382faf067189f64089b7271d1cd7b2ddddae10c3a019f968"
+    },
+    {
+      "path": "src/world/xl_progress_store.c",
+      "sha256": "9da1c81382602a0f84fc7fd2df15ebcf21e8e02577ca47291c75114b85fce6f6"
     },
     {
       "path": "tests/check_coop_private_completion_cleanup.py",
       "sha256": "ebe41b11c98dd76b54e6845ea0eaae079b24d0b05afd60bcf0eb6db0b183426d"
+    },
+    {
+      "path": "tests/rc8/generated_options_test.c",
+      "sha256": "42cb78197802f08702ca5600a53e6c0cdd546fd26bcb54b15c596a1345a17fca"
     }
   ],
   "reconstruction_verification": {
@@ -275,5 +327,5 @@
     "identical": true,
     "fresh_clone_build_verified": false
   },
-  "reconstructed_tree": "153a2167574ccef824ef1e688c99731adde1593c"
+  "reconstructed_tree": "181a0eb3bdb9f9bc110c8c112a3d9109bf3e6cb6"
 }
