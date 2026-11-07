@@ -82,6 +82,25 @@ index e62b08658..be22f3ead 100644
  bool8 GeneratedMap_StageCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size);
  bool8 GeneratedMap_StageSharedCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size);
  bool8 GeneratedMap_MatchesPreparedCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size);
+diff --git a/include/platform/wild_shuffle.h b/include/platform/wild_shuffle.h
+new file mode 100644
+index 000000000..cf40a848e
+--- /dev/null
++++ b/include/platform/wild_shuffle.h
+@@ -0,0 +1,13 @@
++#ifndef GUARD_PLATFORM_WILD_SHUFFLE_H
++#define GUARD_PLATFORM_WILD_SHUFFLE_H
++#ifdef PORTABLE
++#include "gba/types.h"
++/* Session-only opt-in. Seeds 1..20 are stable presets shared across engines. */
++int WildShuffle_Enabled(void);
++unsigned WildShuffle_Seed(void);
++void WildShuffle_Toggle(void);
++void WildShuffle_NextSeed(void);
++u16 WildShuffle_MapNational(u16 national);
++u16 WildShuffle_MapSpecies(u16 species);
++#endif
++#endif
 diff --git a/include/platform/world_cave_wire.h b/include/platform/world_cave_wire.h
 index 1654b28c7..3f9148041 100644
 --- a/include/platform/world_cave_wire.h
@@ -144,6 +163,18 @@ index 1654b28c7..3f9148041 100644
 +void WorldCaveWire_XLStableStoryDigest(const u8 *events,const u8 *cast,const u8 *worldId,char hex[65]);
  #endif
  #endif
+diff --git a/include/platform/world_chat.h b/include/platform/world_chat.h
+index b3161865b..7f77fde90 100644
+--- a/include/platform/world_chat.h
++++ b/include/platform/world_chat.h
+@@ -10,6 +10,7 @@
+ /* Optional native hooks: the standalone platform library is linked before
+  * the game objects and must remain usable without the world module. */
+ unsigned WorldChat_Height(void);
++int WorldChat_OpenGuild(void);
+ int WorldChat_Event(const SDL_Event *event);
+ int WorldChat_BlocksInput(unsigned keys);
+ void WorldChat_Draw(SDL_Renderer *renderer);
 diff --git a/include/platform/world_runtime.h b/include/platform/world_runtime.h
 index 8983d53a7..0c47f94e4 100644
 --- a/include/platform/world_runtime.h
@@ -244,6 +275,58 @@ index 44fb5fff1..a18781b6f 100644
      const char *rtc_offset_path; /* --rtc-offset, or NULL: in the data directory; NULL in test-runner mode */
      const char *screenshot_path;
      const char *replay_path; /* NULL: play normally */
+diff --git a/src/wild_encounter.c b/src/wild_encounter.c
+index f11f92e22..d12367161 100644
+--- a/src/wild_encounter.c
++++ b/src/wild_encounter.c
+@@ -24,6 +24,7 @@
+ #include "wild_encounter.h"
+ #ifdef PORTABLE
+ #include "platform/generated_map.h"
++#include "platform/wild_shuffle.h"
+ #endif
+ #include "battle_debug.h"
+ #include "battle_pike.h"
+@@ -541,6 +542,22 @@ void CreateWildMon(enum Species species, u8 level)
+ #define TRY_GET_ABILITY_INFLUENCED_WILD_MON_INDEX(wildPokemon, type, ability, ptr, count) TryGetAbilityInfluencedWildMonIndex(wildPokemon, type, ability, ptr)
+ #endif
+ 
++/* Preserve special encounters, generated areas and Frontier rules. */
++static enum Species ShuffleOrdinaryWildSpecies(enum Species species)
++{
++#ifdef PORTABLE
++#if GENERATED_MAP_READY
++    if (GeneratedMap_IsInside()) return species;
++#endif
++    if (gMapHeader.mapLayoutId == LAYOUT_BATTLE_FRONTIER_BATTLE_PIKE_ROOM_WILD_MONS
++     || gMapHeader.mapLayoutId == LAYOUT_BATTLE_FRONTIER_BATTLE_PYRAMID_FLOOR)
++        return species;
++    return (enum Species)WildShuffle_MapSpecies(species);
++#else
++    return species;
++#endif
++}
++
+ bool8 TryGenerateWildMon(const struct WildPokemonInfo *wildMonInfo, enum WildPokemonArea area, u8 flags)
+ {
+     u8 wildMonIndex = 0;
+@@ -595,7 +612,7 @@ bool8 TryGenerateWildMon(const struct WildPokemonInfo *wildMonInfo, enum WildPok
+     if (gMapHeader.mapLayoutId != LAYOUT_BATTLE_FRONTIER_BATTLE_PIKE_ROOM_WILD_MONS && flags & WILD_CHECK_KEEN_EYE && !IsAbilityAllowingEncounter(level))
+         return FALSE;
+ 
+-    CreateWildMon(wildMonInfo->wildPokemon[wildMonIndex].species, level);
++    CreateWildMon(ShuffleOrdinaryWildSpecies(wildMonInfo->wildPokemon[wildMonIndex].species), level);
+     return TRUE;
+ }
+ 
+@@ -606,6 +623,7 @@ static u16 GenerateFishingWildMon(const struct WildPokemonInfo *wildMonInfo, u8
+     u8 level = ChooseWildMonLevel(wildMonInfo->wildPokemon, wildMonIndex, WILD_AREA_FISHING);
+ 
+     UpdateChainFishingStreak();
++    wildMonSpecies = ShuffleOrdinaryWildSpecies(wildMonSpecies);
+     CreateWildMon(wildMonSpecies, level);
+     return wildMonSpecies;
+ }
 diff --git a/src/world/generated_map.c b/src/world/generated_map.c
 index 886c7f316..13156b675 100644
 --- a/src/world/generated_map.c
@@ -962,6 +1045,62 @@ index 000000000..4aa1892a6
 +    return true;
 +}
 +#endif
+diff --git a/src/world/wild_shuffle.c b/src/world/wild_shuffle.c
+new file mode 100644
+index 000000000..d2959d45f
+--- /dev/null
++++ b/src/world/wild_shuffle.c
+@@ -0,0 +1,50 @@
++#ifdef PORTABLE
++#include "global.h"
++#include "pokemon.h"
++#include "platform/wild_shuffle.h"
++
++/* Canonical National Dex 1..386 is shared by the current game and Expansion.
++ * Keep the permutation algorithm version stable: a seed names the same map. */
++#define SHUFFLE_DEX 386
++#define SHUFFLE_SEEDS 20
++static bool8 sEnabled;
++static unsigned sSeed=1, sBuiltSeed;
++static u16 sMapping[SHUFFLE_DEX+1];
++
++static u32 Next(u32 *state)
++{
++    u32 x=*state;
++    x^=x<<13;x^=x>>17;x^=x<<5;
++    *state=x;
++    return x;
++}
++static void Build(void)
++{
++    unsigned i;u32 rng=(u32)sSeed;
++    for (i=1;i<=SHUFFLE_DEX;i++) sMapping[i]=(u16)i;
++    for (i=SHUFFLE_DEX;i>1;i--) {
++        unsigned j=1+Next(&rng)%i;
++        u16 temporary=sMapping[i];sMapping[i]=sMapping[j];sMapping[j]=temporary;
++    }
++    sBuiltSeed=sSeed;
++}
++int WildShuffle_Enabled(void){return sEnabled;}
++unsigned WildShuffle_Seed(void){return sSeed;}
++void WildShuffle_Toggle(void){sEnabled=!sEnabled;}
++void WildShuffle_NextSeed(void){sSeed=sSeed%SHUFFLE_SEEDS+1;}
++u16 WildShuffle_MapNational(u16 national)
++{
++    if (!sEnabled || !national || national>SHUFFLE_DEX) return national;
++    if (sBuiltSeed!=sSeed) Build();
++    return sMapping[national];
++}
++u16 WildShuffle_MapSpecies(u16 species)
++{
++    u16 national,mapped;
++    if (!sEnabled) return species;
++    national=SpeciesToNationalPokedexNum(species);
++    if (!national || national>SHUFFLE_DEX) return species;
++    mapped=NationalPokedexNumToSpecies(WildShuffle_MapNational(national));
++    return mapped ? mapped : species;
++}
++#endif
 diff --git a/src/world/world_bridge.c b/src/world/world_bridge.c
 index b2efe0e28..2d33a8a7d 100644
 --- a/src/world/world_bridge.c
@@ -1437,6 +1576,218 @@ index 7b96c1216..7332e8a70 100644
  #if GENERATED_WILDS_CAST
          if(wire->version==8 && !wire->castSeen) return -1;
  #if GENERATED_WILDS_EVENTS
+diff --git a/src/world/world_chat.c b/src/world/world_chat.c
+index 3de1c0096..01ad96125 100644
+--- a/src/world/world_chat.c
++++ b/src/world/world_chat.c
+@@ -29,6 +29,24 @@ static int Identifier(const char *text)
+     return 1;
+ }
+ 
++/* A private self-addressed capability reply is required before guild
++ * commands. On old servers only the harmless /guild help probe is sent;
++ * private guild/board text can never fall back to public chat. The live
++ * history is cleared on disconnect, so capabilities do not survive reconnects. */
++static int GuildAvailable(void)
++{
++    const char *trainer = WorldBridge_TrainerName();
++    char expected[128], line[184];
++    unsigned i;
++    if (!trainer || !Identifier(trainer)) return 0;
++    snprintf(expected, sizeof(expected), "%s > %s: Guild: protocol 1", trainer, trainer);
++    for (i = 0; i < WorldBridge_ChatCount(); i++) {
++        WorldBridge_ChatLine(i, line, sizeof(line));
++        if (!strcmp(line, expected)) return 1;
++    }
++    return 0;
++}
++
+ static void Submit(void)
+ {
+     char copy[152], *text = copy, *target = "*", *space;
+@@ -42,6 +60,13 @@ static void Submit(void)
+         if (!Identifier(target)) goto invalid;
+     }
+     if (!*text || strlen(text) > 120) goto invalid;
++    if (!strcmp(target, "*")
++     && ((!strncmp(text, "/guild", 6) && (text[6] == 0 || text[6] == ' '))
++      || (!strncmp(text, "/g", 2) && (text[2] == 0 || text[2] == ' ')))
++     && strcmp(text, "/guild help") && !GuildAvailable()) {
++        strcpy(sChat.hint, "Send /guild help to check server support first.");
++        return;
++    }
+     if (!WorldBridge_ChatSend(target, text)) {
+         strcpy(sChat.hint, "Not sent. Check connection or try again.");
+         return;
+@@ -58,6 +83,18 @@ invalid:
+     strcpy(sChat.hint, "1-120 characters. Private: /w trainer text");
+ }
+ 
++int WorldChat_OpenGuild(void)
++{
++    if (!WORLD_CHAT_HEIGHT || !WorldBridge_Enabled() || sChat.editing) return 0;
++    sChat.editing = 1;
++    sChat.scroll = 0;
++    strcpy(sChat.draft, "/guild help");
++    strcpy(sChat.hint, "Press Enter for guild commands.");
++    SDL_FlushEvent(SDL_TEXTINPUT);
++    SDL_StartTextInput();
++    return 1;
++}
++
+ int WorldChat_Event(const SDL_Event *event)
+ {
+     size_t length;
+@@ -263,3 +300,4 @@ void WorldChat_Draw(SDL_Renderer *renderer)
+     }
+ }
+ #endif /* PORTABLE */
++
+diff --git a/src/world/world_menu.c b/src/world/world_menu.c
+index c4b69cd9d..e338fa92f 100644
+--- a/src/world/world_menu.c
++++ b/src/world/world_menu.c
+@@ -1,4 +1,5 @@
+ #ifdef PORTABLE
++#include "platform/world_chat.h"
+ #include "global.h"
+ #include "main.h"
+ #include "overworld.h"
+@@ -20,6 +21,7 @@
+ #include "platform/world_activity.h"
+ #include "platform/world_bridge.h"
+ #include "platform/world_menu.h"
++#include "platform/wild_shuffle.h"
+ #include "platform/generated_map.h"
+ #include "platform/world_rally.h"
+ #include "platform/world_travel.h"
+@@ -32,10 +34,10 @@
+ 
+ /* One field window, not another Start-menu row or another input consumer.
+  * Lists are rebuilt from live state, but focus is an action identity. */
+-enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, RALLY, DISPATCH };
++enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, SHUFFLE_MENU, RALLY, DISPATCH };
+ #define GEN_EXPLORE_LABEL "Explore generated area"
+ #define GEN_LEAVE_LABEL "Leave generated area"
+-enum Action { FRIENDS, STORY, DEXNAV, BACK, MODE, SCOPE, REQUEST, READY,
++enum Action { FRIENDS, STORY, DEXNAV, GUILDS, SHUFFLE, SHUFFLE_TOGGLE, SHUFFLE_SEED, BACK, MODE, SCOPE, REQUEST, READY,
+     LATER, CANCEL, GO, FINISH, RETURN, STAY,
+ #if GENERATED_MAP_READY
+     GEN_CAVE,
+@@ -183,6 +185,8 @@ static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 onlin
+         }
+ #endif
+         AddRow(rows, &n, FRIENDS, "Friends", WorldBridge_Enabled() ? NULL : "Connect to a world to visit friends.");
++        AddRow(rows, &n, GUILDS, "Guilds", WorldBridge_Enabled() && WORLD_CHAT_HEIGHT ? NULL : "Connect to a world with chat available.");
++        AddRow(rows, &n, SHUFFLE, "Wild shuffle", NULL);
+         AddRow(rows, &n, STORY, "Story rally", NULL);
+         AddRow(rows, &n, DEXNAV, "DexNav", DexNavNative_Available() ? NULL :
+             "DexNav needs a Pokedex and conscious party outside restricted or link areas.");
+@@ -192,6 +196,15 @@ static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 onlin
+         AddRow(rows, &n, BACK, "Back", NULL);
+         return n;
+     }
++    if (sMenu.state == SHUFFLE_MENU)
++    {
++        static char seedLabel[32];
++        snprintf(seedLabel, sizeof(seedLabel), "Seed: %u", WildShuffle_Seed());
++        AddRow(rows, &n, SHUFFLE_TOGGLE, WildShuffle_Enabled() ? "Wild shuffle: ON" : "Wild shuffle: OFF", NULL);
++        AddRow(rows, &n, SHUFFLE_SEED, seedLabel, NULL);
++        AddRow(rows, &n, BACK, "Back", NULL);
++        return n;
++    }
+     AddRow(rows, &n, MODE, WorldRally_GetAutoJoin() ? "Mode AUTO-JOIN" : "Mode ASK", NULL);
+     AddRow(rows, &n, SCOPE, sMenu.scope ? "Scope World" : "Scope Nearby", r->id ?
+         "Scope applies to your next request. It cannot change a running rally." : NULL);
+@@ -297,13 +310,18 @@ static void Draw(const struct Row *rows, unsigned count, unsigned selected,
+         Line(&screen, 0, "WORLD");
+         Line(&screen, 1, "Up/Down choose. A open. B close.");
+     }
++    else if (sMenu.state == SHUFFLE_MENU)
++    {
++        Line(&screen, 0, "WILD SHUFFLE");
++        Line(&screen, 1, "Up/Down choose. A change. B back.");
++    }
+     else
+     {
+         snprintf(text, sizeof(text), "Roxanne   %s", online ? phases[r->phase <= WORLD_RALLY_RETURN ? r->phase : 0] : "Offline");
+         Line(&screen, 0, text);
+         Line(&screen, 1, "Left/Right controls roster status");
+     }
+-    if (sMenu.state == FEATURES || sMenu.page == CONTROLS)
++    if (sMenu.state == FEATURES || sMenu.state == SHUFFLE_MENU || sMenu.page == CONTROLS)
+     {
+         for (i = 0; i < count; i++)
+         {
+@@ -318,6 +336,7 @@ static void Draw(const struct Row *rows, unsigned count, unsigned selected,
+             sMenu.focus == FINISH ? "Ends the visit. Only the encounter owner earns boss credit." :
+             sMenu.focus == STAY ? "Keep this position and discard your pre-rally return point." :
+             sMenu.focus == STORY ? "Roxanne visit for up to four trainers. Normal two-player battles. Boss credit stays personal." :
++            (sMenu.focus == SHUFFLE || sMenu.state == SHUFFLE_MENU) ? "Shuffle ordinary wild species. Same seed, same mapping. New game process starts OFF." :
+ #if GENERATED_MAP_READY
+             sMenu.focus == GEN_CAVE ? (GeneratedMap_IsInside() ?
+                 "Return to where you entered. Save after returning. Adventure conversations restart on a new visit." :
+@@ -401,6 +420,12 @@ static void Dispatch(void)
+     }
+ #endif
+     if (sMenu.pending == FRIENDS) { WorldTravel_RequestMenu(); return; }
++    if (sMenu.pending == GUILDS)
++    {
++        accepted = WorldChat_OpenGuild();
++        sMenu.notice = accepted ? NULL : "Guild chat is unavailable right now.";
++        return;
++    }
+     if (sMenu.pending == DEXNAV)
+     {
+         accepted = DexNav_RequestOpen();
+@@ -495,8 +520,8 @@ void WorldMenu_Update(void)
+     if (JOY_NEW(B_BUTTON))
+     {
+         if (sMenu.state == FEATURES) { Close(); return; }
++        sMenu.focus = sMenu.state == SHUFFLE_MENU ? SHUFFLE : STORY;
+         sMenu.state = FEATURES;
+-        sMenu.focus = STORY;
+         sMenu.dirty = TRUE;
+         return;
+     }
+@@ -505,7 +530,7 @@ void WorldMenu_Update(void)
+         sMenu.page = (sMenu.page + (JOY_NEW(DPAD_LEFT) ? PAGE_COUNT - 1 : 1)) % PAGE_COUNT;
+         sMenu.dirty = TRUE;
+     }
+-    if (sMenu.state == FEATURES || sMenu.page == CONTROLS)
++    if (sMenu.state == FEATURES || sMenu.state == SHUFFLE_MENU || sMenu.page == CONTROLS)
+     {
+         if (JOY_REPEAT(DPAD_UP) && selected) selected--;
+         if (JOY_REPEAT(DPAD_DOWN) && selected + 1 < count) selected++;
+@@ -516,11 +541,22 @@ void WorldMenu_Update(void)
+             else if (sMenu.focus == BACK)
+             {
+                 if (sMenu.state == FEATURES) { Close(); return; }
++                sMenu.focus = sMenu.state == SHUFFLE_MENU ? SHUFFLE : STORY;
+                 sMenu.state = FEATURES;
+-                sMenu.focus = STORY;
+                 sMenu.dirty = TRUE;
+                 return;
+             }
++            else if (sMenu.focus == SHUFFLE)
++            {
++                sMenu.state = SHUFFLE_MENU;
++                sMenu.page = CONTROLS;
++                sMenu.focus = SHUFFLE_TOGGLE;
++                sMenu.notice = NULL;
++                sMenu.dirty = TRUE;
++                return;
++            }
++            else if (sMenu.focus == SHUFFLE_TOGGLE) { WildShuffle_Toggle(); sMenu.notice = NULL; }
++            else if (sMenu.focus == SHUFFLE_SEED) { WildShuffle_NextSeed(); sMenu.notice = NULL; }
+             else if (sMenu.focus == STORY)
+             {
+                 sMenu.state = RALLY;
+@@ -539,3 +575,4 @@ void WorldMenu_Update(void)
+     Draw(rows, count, selected, &r, online);
+ }
+ #endif
++
 diff --git a/src/world/world_runtime.c b/src/world/world_runtime.c
 index e48277589..8da27e8e0 100644
 --- a/src/world/world_runtime.c
