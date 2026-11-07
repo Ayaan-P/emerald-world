@@ -272,7 +272,10 @@ class LauncherBridge:
                 code = process.poll()
                 if code is not None:
                     game_exit = {'trainer': name, 'code': code, 'unexpected': code != 0}
-            return {'local_worlds': self.local_expeditions(),
+            from .rules_ui import options_snapshot
+            local_worlds = self.local_expeditions()
+            return {'local_worlds': local_worlds,
+                    'world_options': options_snapshot(self.session, local_worlds),
                     'local_hosts': self.session.hosted_worlds(),
                     'game_exit': game_exit,
                     'generated_areas': areas, 'active_generated_area': active_area, 'area_archive': archive_enabled,
@@ -526,6 +529,11 @@ class LauncherBridge:
                 if not trainer:
                     raise SessionError('No connected trainer is selected.')
                 self.session.leave_game(trainer)
+            elif action == 'rules_replace':
+                from .rules_ui import replace_options
+                replace_options(self.session, self.local_expeditions(), self.engine, payload)
+            elif action == 'rules_refresh':
+                pass  # Snapshot only. Never initialize or mutate a world's rules.
             elif action == 'local_stop':
                 name = payload.get('world')
                 if (not isinstance(name, str) or name not in self.session.hosted_worlds()
