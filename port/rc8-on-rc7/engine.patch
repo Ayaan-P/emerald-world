@@ -230,6 +230,19 @@ index 000000000..3c29f9d77
 +bool XLProgressStore_Save(const void *payload, size_t size);
 +void XLProgressStore_Close(void);
 +#endif
+diff --git a/map_data_rules.mk b/map_data_rules.mk
+index eb08e2104..1bee17310 100755
+--- a/map_data_rules.mk
++++ b/map_data_rules.mk
+@@ -26,7 +26,7 @@ $(DATA_ASM_BUILDDIR)/map_events.o: $(DATA_ASM_SUBDIR)/map_events.s $(MAPS_DIR)/e
+ 	$(PREPROC) -s $< charmap.txt | $(CPP) $(CPPFLAGS) -I include - | $(PREPROC) -ie $< charmap.txt | $(AS) $(ASFLAGS) -o $@
+ 
+ $(MAPS_OUTDIR)/%/header.inc $(MAPS_OUTDIR)/%/events.inc $(MAPS_OUTDIR)/%/connections.inc: $(MAPS_DIR)/%/map.json $(INCLUDECONSTS_OUTDIR)/map_groups.h $(MAPJSON)
+-	$(MAPJSON) map emerald $< $(LAYOUTS_DIR)/layouts.json $(@D)
++	$(MAPJSON) map $(if $(filter combined,$(MAP_VERSION)),combined,emerald) $< $(LAYOUTS_DIR)/layouts.json $(@D)
+ 
+ 
+ $(MAPS_OUTDIR)/connections.inc $(MAPS_OUTDIR)/groups.inc $(MAPS_OUTDIR)/events.inc $(MAPS_OUTDIR)/headers.inc $(INCLUDECONSTS_OUTDIR)/map_groups.h $(DATA_SRC_SUBDIR)/map_group_count.h: $(MAPS_DIR)/map_groups.json $(MAP_JSONS) .map_version $(MAPJSON)
 diff --git a/platform/main.c b/platform/main.c
 index fac8168c6..457326c76 100644
 --- a/platform/main.c
@@ -2221,3 +2234,169 @@ index 000000000..224fe9fba
 +    assert(options_parse(3, bad, &out) == OPTIONS_ERR_USAGE);
 +    return 0;
 +}
+diff --git a/tools/mapjson/mapjson.cpp b/tools/mapjson/mapjson.cpp
+index d05467ab0..d5551bf47 100644
+--- a/tools/mapjson/mapjson.cpp
++++ b/tools/mapjson/mapjson.cpp
+@@ -32,6 +32,7 @@ using json11::Json;
+ #include "mapjson.h"
+ 
+ #include <filesystem>
++#include <set>
+ 
+ string version;
+ // System directory separator
+@@ -182,7 +183,7 @@ string generate_map_header_text(Json map_data, Json layouts_data) {
+ 
+     if (version == "ruby")
+         text << "\t.byte " << json_to_string(map_data, "show_map_name") << "\n";
+-    else if (version == "emerald" || version == "firered")
++    else if (version == "emerald" || version == "firered" || version == "combined")
+     {
+         text << "\tmap_header_flags "
+              << "allow_cycling=" << json_to_string(map_data, "allow_cycling") << ", "
+@@ -228,8 +229,11 @@ string generate_map_connections_text(Json map_data) {
+ 
+     for (auto &connection : map_data["connections"].array_items()) {
+         auto it = find(existing_maps.begin(), existing_maps.end(), json_to_string(connection, "map"));
+-        if (it == existing_maps.end())
++        if (it == existing_maps.end()) {
++            if (version == "combined")
++                FATAL_ERROR("Unknown combined connection in %s: %s\n", mapName.c_str(), json_to_string(connection, "map").c_str());
+             continue;
++        }
+         text << "\tconnection "
+              << json_to_string(connection, "direction") << ", "
+              << json_to_string(connection, "offset") << ", "
+@@ -732,6 +736,7 @@ void process_groups(string groups_filepath, vector<string> &map_filepaths, strin
+     Json groups_data = Json::parse(read_text_file(groups_filepath), err);
+     vector<string> invalid_maps;
+     vector<string> valid_map_ids;
++    std::set<string> supplied_map_names;
+ 
+     for (const string &filepath : map_filepaths) {
+         string err;
+@@ -743,12 +748,18 @@ void process_groups(string groups_filepath, vector<string> &map_filepaths, strin
+         string region = json_to_string(map_data, "region", true);
+ 
+         if (region.empty()) {
+-            if (version == "emerald")
++            if (version == "emerald" || version == "combined")
+                 region = "REGION_HOENN";
+             else if (version == "firered")
+                 region = "REGION_KANTO";
+         }
+         string map_name = json_to_string(map_data, "name");
++        if (version == "combined") {
++            if (region != "REGION_HOENN" && region != "REGION_KANTO")
++                FATAL_ERROR("Unsupported combined map region for %s: %s\n", map_name.c_str(), region.c_str());
++            if (!supplied_map_names.insert(map_name).second)
++                FATAL_ERROR("Duplicate combined map: %s\n", map_name.c_str());
++        }
+ 
+         if ((version == "emerald" && region != "REGION_HOENN")
+          || (version == "firered" && region != "REGION_KANTO")) {
+@@ -758,6 +769,16 @@ void process_groups(string groups_filepath, vector<string> &map_filepaths, strin
+ 
+     if (groups_data == Json())
+         FATAL_ERROR("%s\n", err.c_str());
++    if (version == "combined") {
++        std::set<string> grouped;
++        for (auto &group : groups_data["group_order"].array_items()) {
++            for (auto &entry : groups_data[json_to_string(group)].array_items()) {
++                string name = json_to_string(entry);
++                if (!grouped.insert(name).second || supplied_map_names.count(name) != 1)
++                    FATAL_ERROR("Missing or duplicate grouped combined map: %s\n", name.c_str());
++            }
++        }
++    }
+ 
+     string groups_text = generate_groups_text(groups_data, invalid_maps);
+     string connections_text = generate_connections_text(groups_data, invalid_maps, output_asm);
+@@ -765,7 +786,8 @@ void process_groups(string groups_filepath, vector<string> &map_filepaths, strin
+     string events_text = generate_events_text(groups_data, invalid_maps, output_asm);
+     string map_header_text = generate_map_constants_text(groups_filepath, groups_data, valid_map_ids);
+ 
+-    clean_heal_locations(valid_map_ids);
++    // Combined builds must not rewrite source heal locations during generation.
++    if (version != "combined") clean_heal_locations(valid_map_ids);
+     write_text_file(output_asm + sep + "groups.inc", groups_text);
+     write_text_file(output_asm + sep + "connections.inc", connections_text);
+     write_text_file(output_asm + sep + "headers.inc", headers_text);
+@@ -780,16 +802,23 @@ string generate_layout_headers_text(Json layouts_data) {
+ 
+     for (auto &layout : layouts_data["layouts"].array_items()) {
+         if (layout == Json::object()) continue;
+-        if (!std::filesystem::exists(json_to_string(layout, "border_filepath")))
++        if (!std::filesystem::exists(json_to_string(layout, "border_filepath"))) {
++            if (version == "combined")
++                FATAL_ERROR("Combined map build is missing layout border: %s\n", json_to_string(layout, "border_filepath").c_str());
+             continue;
++        }
++        if (version == "combined" && !std::filesystem::exists(json_to_string(layout, "blockdata_filepath")))
++            FATAL_ERROR("Combined map build is missing layout data: %s\n", json_to_string(layout, "blockdata_filepath").c_str());
+         string layout_version = json_to_string(layout, "layout_version", true);
+ 
+         if (layout_version.empty()) {
+-            if (version == "emerald")
++            if (version == "emerald" || version == "combined")
+                 layout_version = "emerald";
+             else if (version == "firered")
+                 layout_version = "frlg";
+         }
++        if (version == "combined" && layout_version != "emerald" && layout_version != "frlg")
++            FATAL_ERROR("Unsupported combined layout version: %s\n", layout_version.c_str());
+         if ((version == "emerald" && layout_version != "emerald")
+          || (version == "firered" && layout_version != "frlg"))
+             continue;
+@@ -839,15 +868,22 @@ string generate_layouts_table_text(Json layouts_data) {
+          << json_to_string(layouts_data, "layouts_table_label") << "::\n";
+ 
+     for (auto &layout : layouts_data["layouts"].array_items()) {
+-        if (!std::filesystem::exists(json_to_string(layout, "border_filepath")))
++        if (!std::filesystem::exists(json_to_string(layout, "border_filepath"))) {
++            if (version == "combined")
++                FATAL_ERROR("Combined map build is missing layout border: %s\n", json_to_string(layout, "border_filepath").c_str());
+             continue;
++        }
++        if (version == "combined" && !std::filesystem::exists(json_to_string(layout, "blockdata_filepath")))
++            FATAL_ERROR("Combined map build is missing layout data: %s\n", json_to_string(layout, "blockdata_filepath").c_str());
+         string layout_version = json_to_string(layout, "layout_version", true);
+         if (layout_version.empty()) {
+-            if (version == "emerald")
++            if (version == "emerald" || version == "combined")
+                 layout_version = "emerald";
+             else if (version == "firered")
+                 layout_version = "frlg";
+         }
++        if (version == "combined" && layout_version != "emerald" && layout_version != "frlg")
++            FATAL_ERROR("Unsupported combined layout version: %s\n", layout_version.c_str());
+         if ((version == "emerald" && layout_version != "emerald") || (version == "firered" && layout_version != "frlg")) {
+             text << "\t.4byte NULL\n";
+         } else {
+@@ -885,8 +921,13 @@ string generate_layouts_constants_text(Json layouts_data) {
+ 
+     int i = 1;
+     for (auto &layout : layouts_data["layouts"].array_items()) {
+-        if (!std::filesystem::exists(json_to_string(layout, "border_filepath")))
++        if (!std::filesystem::exists(json_to_string(layout, "border_filepath"))) {
++            if (version == "combined")
++                FATAL_ERROR("Combined map build is missing layout border: %s\n", json_to_string(layout, "border_filepath").c_str());
+             continue;
++        }
++        if (version == "combined" && !std::filesystem::exists(json_to_string(layout, "blockdata_filepath")))
++            FATAL_ERROR("Combined map build is missing layout data: %s\n", json_to_string(layout, "blockdata_filepath").c_str());
+         if (layout != Json::object())
+         {
+             text << "#define " << json_to_string(layout, "id") << " " << i << "\n";
+@@ -942,8 +983,8 @@ int main(int argc, char *argv[]) {
+ 
+     char *version_arg = argv[2];
+     version = string(version_arg);
+-    if (version != "emerald" && version != "ruby" && version != "firered")
+-        FATAL_ERROR("ERROR: <game-version> must be 'emerald', 'firered', or 'ruby'.\n");
++    if (version != "emerald" && version != "ruby" && version != "firered" && version != "combined")
++        FATAL_ERROR("ERROR: <game-version> must be 'emerald', 'firered', 'combined', or 'ruby'.\n");
+ 
+     char *mode_arg = argv[1];
+     string mode(mode_arg);
