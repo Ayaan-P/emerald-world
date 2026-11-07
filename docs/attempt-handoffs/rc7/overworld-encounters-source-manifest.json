@@ -11,9 +11,9 @@
     "native-overworld-encounters.patch"
   ],
   "base_tree": "5d82cc0edc6259f7847be0d97a4b0692e11c62e4",
-  "result_tree": "cd1254767b1bbaba4731b0c22af3ca2ea34f0de4",
+  "result_tree": "096faf4ef21293b9fadb7eebd3a835d81bd4fce6",
   "patch": "native-overworld-encounters.patch",
-  "patch_sha256": "c720b55b85555f2e9a09bd6675804aeaf4cedaea11d536d52af5878818521b5b",
+  "patch_sha256": "666af9a33cba1e5d2966a22dcec4748d416376f133da8ac0e7c54ec4004652c1",
   "files": [
     {
       "path": "include/config/wild_encounter.h",
@@ -49,7 +49,7 @@
     },
     {
       "path": "src/world/world_menu.c",
-      "sha256": "b444defabcb8269e88d5f3c4f7abee5474cdb6fa22780dffbca299e46f1bbbc7"
+      "sha256": "8b0cba8f7ab1e9c3cddd6a4537d5f20f72bc5b5d281be3418f83be279b13a26b"
     }
   ],
   "verification": {

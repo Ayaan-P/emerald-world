@@ -3177,10 +3177,10 @@ index 93cf0190f..66a7d5172 100644
  }
  #endif
 diff --git a/src/world/world_menu.c b/src/world/world_menu.c
-index 234f6cc73..86e2323de 100644
+index 234f6cc737aa3f39776bffbd9199a8b4ffd44072..8c93db861fd6b7be24beb49e75f095787e98138d 100644
 --- a/src/world/world_menu.c
 +++ b/src/world/world_menu.c
-@@ -1,628 +1,635 @@
+@@ -1,628 +1,637 @@
  #ifdef PORTABLE
  #include "platform/world_chat.h"
  #include "global.h"
@@ -3567,11 +3567,15 @@ index 234f6cc73..86e2323de 100644
      }
      if (sMenu.state == FEATURES || sMenu.state == SHUFFLE_MENU || sMenu.page == CONTROLS)
      {
-         for (i = 0; i < count; i++)
+-        for (i = 0; i < count; i++)
++        /* Keep every action reachable without overwriting the help area. */
++        unsigned first = selected >= 7 ? selected - 6 : 0;
++        for (i = first; i < count && i < first + 7; i++)
          {
              snprintf(text, sizeof(text), "%s%s%s", i == selected ? "> " : "  ",
                  rows[i].reason ? "X " : "", rows[i].label);
-             Line(&screen, 2 + i, text);
+-            Line(&screen, 2 + i, text);
++            Line(&screen, 2 + i - first, text);
          }
          Wrap(&screen, 9, SCREEN_LINES, rows[selected].reason ? rows[selected].reason :
              sMenu.notice && sMenu.noticeAction == sMenu.focus ? sMenu.notice : ActionHelp(sMenu.focus));

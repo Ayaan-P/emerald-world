@@ -51,6 +51,35 @@ class OverworldEncounterTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.source_dir.cleanup()
 
+    def test_world_actions_scroll_above_help(self):
+        menu = (ENGINE / 'src/world/world_menu.c').read_text()
+        start = menu.index('        unsigned first = selected >= 7')
+        end = menu.index('        Wrap(&screen, 9,', start)
+        loop = menu[start:end]
+        source = r"""
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+struct Row {const char *label,*reason;};
+struct Screen {unsigned calls, selected;};
+static void Line(struct Screen *screen,unsigned row,const char *text){
+ assert(row>=2 && row<9);screen->calls++;if(text[0]=='>')screen->selected++;
+}
+static void Draw(unsigned count,unsigned selected){
+ struct Row rows[12]; struct Screen screen={0};char text[80];unsigned i;
+ for(i=0;i<count;i++)rows[i]=(struct Row){"Action",NULL};
+""" + loop + r"""
+ assert(screen.calls<=7 && screen.selected==1);
+}
+int main(void){unsigned count,selected;
+ for(count=1;count<=12;count++)for(selected=0;selected<count;selected++)Draw(count,selected);
+ return 0;}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory);(path/'scroll.c').write_text(source)
+            subprocess.run(['cc','-Wall','-Wextra','-Werror','-fsanitize=undefined',str(path/'scroll.c'),'-o',str(path/'scroll')],check=True)
+            subprocess.run([str(path/'scroll')],check=True)
+
     def test_native_policy(self):
         with tempfile.TemporaryDirectory() as directory:
             p = Path(directory)
