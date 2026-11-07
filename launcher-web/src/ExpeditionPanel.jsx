@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import AreaLibrary from './AreaLibrary';
 
 const areaTypes = {
   xl_wilds: { label: 'XL outdoor world (127 × 127)', capability: 'xl_wilds_authoring', description: 'A shared outdoor world with four times the terrain of standard wilds. Existing Hoenn art and encounters; no generated characters, story graphs or editable overlays in this XL multiplayer mode. Matching clients required.' },
@@ -9,7 +10,7 @@ const areaTypes = {
 };
 const areaLabels = { ...Object.fromEntries(Object.entries(areaTypes).map(([key, type]) => [key, type.label])), event_wilds: 'Interactive adventure' };
 
-export default function ExpeditionPanel({ state, ready, busy, onOpen, onAuthor, onActivate }) {
+export default function ExpeditionPanel({ state, ready, busy, onOpen, onAuthor, onActivate, onInspect }) {
   const [name, setName] = useState('');
   const [trainer, setTrainer] = useState('Player');
   const [theme, setTheme] = useState('');
@@ -28,8 +29,6 @@ export default function ExpeditionPanel({ state, ready, busy, onOpen, onAuthor, 
   const localWorlds = state.local_worlds || [];
   const current = localWorlds.find(world => world.key === state.world_key);
   const areas = [...(state.generated_areas || [])].sort((a, b) => Number(b.active) - Number(a.active));
-  const adventures = areas.filter(area => area.kind === 'event_wilds');
-  const library = areas.filter(area => area.kind !== 'event_wilds');
   const activeArea = state.active_generated_area;
   const occupied = (activeArea?.occupants || 0) > 0;
   const gameRunning = state.games?.includes(state.trainer);
@@ -88,8 +87,9 @@ export default function ExpeditionPanel({ state, ready, busy, onOpen, onAuthor, 
         {occupied ? <p role="status">{activeArea.occupants} {activeArea.occupants === 1 ? 'trainer' : 'trainers'} inside. Everyone must leave before replacing this area.</p>
           : <p className="field-hint">No trainers inside.</p>}
       </div></section>}
-      <section className="expedition-generator" aria-labelledby="generate-title">
-        <h3 id="generate-title">Generate an area</h3>
+      <AreaLibrary key={state.world_key} world={state.world_key} areas={areas} error={state.area_archive_error} disabled={disabled} occupied={occupied} pending={pending} onInspect={onInspect} onReview={review} />
+      <details className="expedition-generator" open={areas.length === 0 ? true : undefined}>
+        <summary>Generate an area</summary>
         <div className="expedition-details-content">
           <label className="field-label" htmlFor="expedition-kind">Area type</label>
           <select id="expedition-kind" className="text-input" value={kind} disabled={disabled || Boolean(pending)} onChange={event => setKind(event.target.value)}>
@@ -105,32 +105,13 @@ export default function ExpeditionPanel({ state, ready, busy, onOpen, onAuthor, 
             {!pending && <button className="button small ghost" disabled={disabled || occupied || !theme.trim() || themeBytes > 2000} onClick={() => review({ type: 'generate', world: state.world_key, kind, theme })}>Review generation</button>}
           </>}
         </div>
-      </section>
+      </details>
       {pending && <section className="settings-card generation-confirmation" ref={confirmationPanel} tabIndex={-1} aria-label="Review area change"><div>
         <h3>{pending.type === 'activate' ? (pending.adventure ? 'Open this adventure?' : 'Make this the active area?') : 'Generate this area?'}</h3>
         {pending.type === 'generate' && <p>{areaLabels[pending.kind] || 'Generated area'}</p>}
         {pending.type === 'activate' ? <><p>{pending.label}</p><p>No model call is made. Everyone must leave the current area before switching.</p></> : <><p>The provider receives this theme and usage may incur charges:</p><p className="expedition-theme-preview">{pending.theme}</p></>}
         <div className="modal-actions"><button className="button ghost" disabled={disabled} onClick={() => setConfirmation(null)}>Cancel</button><button className="button primary" disabled={disabled || occupied} onClick={confirm}>{submitting ? 'Working…' : pending.type === 'activate' ? (pending.adventure ? 'Confirm open adventure' : 'Activate saved area') : 'Confirm generation'}</button></div>
       </div></section>}
-      <section className="published-adventures" aria-labelledby="published-adventures-title">
-        <h3 id="published-adventures-title">Published adventures</h3>
-        <p className="field-hint">Published by a connected director. Conversation state resets on a new visit; opening one does not start a director.</p>
-        {!adventures.length && <p className="muted-copy">{state.area_archive_error ? 'Published adventures could not be checked. See the library error below.' : 'No published adventures.'}</p>}
-        {adventures.map(area => <article className={`settings-card${area.active ? ' expedition-active-area' : ''}`} key={area.identity}><div>
-          <h3>{area.label}</h3><p>Interactive adventure · {area.active ? 'Active now' : 'Published'}</p>
-          {area.active ? <p className="field-hint">Choose Play now if needed, then START → WORLD → Explore generated area. Face a character and press A (default Z). Leave through WORLD → Leave generated area and save after returning.</p> : <button className="button small ghost" disabled={disabled || occupied || Boolean(pending)} onClick={() => review({ type: 'activate', world: state.world_key, identity: area.identity, label: area.label, adventure: true })}>Open adventure</button>}
-        </div></article>)}
-      </section>
-      <div className="generated-area-library">
-        <h3>Saved exploration areas</h3>
-        <p className="field-hint">One area is active at a time. Reopening a saved area makes no model call.</p>
-        {state.area_archive_error && <p role="alert">{state.area_archive_error}</p>}
-        {!library.length && !state.area_archive_error && <p className="muted-copy">No saved areas.</p>}
-        {library.map(area => <div className={`settings-card${area.active ? ' expedition-active-area' : ''}`} key={area.identity}><div>
-          <h3>{area.label}</h3><p>{areaLabels[area.kind] || 'Generated area'} · {area.active ? 'Active now' : 'Saved'}</p>
-          {area.active ? <p className="field-hint">Enter from START → WORLD → Explore generated area. Face characters and press A (default Z). Leave through WORLD → Leave generated area, then save after returning.</p> : <button className="button small ghost" disabled={disabled || occupied || Boolean(pending)} onClick={() => review({ type: 'activate', world: state.world_key, identity: area.identity, label: area.label })}>Use this area</button>}
-        </div></div>)}
-      </div>
       {result && <p className="expedition-result" role="status">{result}</p>}
       {(busy || submitting) && <p role="status">Working. Your game can keep running.</p>}
     </> : <>

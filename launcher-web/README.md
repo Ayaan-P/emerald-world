@@ -6,6 +6,10 @@ The Linux browser launcher manages native game sessions, local worlds, dedicated
 
 **Explore** opens a local world's generated-area library. Cave and outdoor generation is shown only when supported by that host. Generation requires a supported signed-in model CLI and explicit cost confirmation. Saved areas do not make a model call. Native entry is START → WORLD → Explore generated area, outdoors on foot with a conscious non-Egg Pokémon.
 
+**Area library** searches saved names and filters caves, outdoors and published adventures. Preview map reads the selected local world’s validated archive without activating it or making a model call. The zoomable schematic shows the stored base layout, entrance, exit and fixed character positions. It does not show live terrain edits, player positions, dialogue or story progress. Custom wildlife lists the stored species and levels using the archive’s actual Vanilla or Expansion catalogue, not guessed encounter chances. A preview is not a compatibility or live-play check.
+
+Saved areas appear before the generator. Switching still requires review, and the authority rejects replacement while anyone is inside. Closing a preview, changing worlds or receiving an obsolete response cannot activate an area. The archive is owner-local only; this does not add remote server browsing or a new generation format.
+
 Closing a game, disconnecting a session and stopping a host are separate operations. Disconnect leaves owned local hosts running, and they remain visible under Local worlds. Stop host requires confirmation and affects only that local world. Quit closes this launcher's games and owned hosts; it does not stop remote servers.
 
 **Local worlds → Invite friends** exposes the existing local TLS sharing flow. Open the host without starting the game, enter a numeric listen address and port, then review before enabling it. The default is loopback, so nothing becomes remotely reachable automatically. For LAN play, use this computer's LAN address and an address your friend can reach. Router/firewall/relay setup is not automated, and an active listener is not proof of Internet reachability. TLS identity creation requires OpenSSL; an existing world identity is reused.
@@ -54,7 +58,7 @@ When the online game is running, the launcher can show connection status and nea
 ## Checks
 
 ```sh
-python3 -m unittest test.world.test_hosting_ui test.world.test_hosting_ui_contract test.world.test_web_launcher test.world.test_rules_ui test.world.test_personal_settings test.world.test_local_sharing_ui
+python3 -m unittest test.world.test_hosting_ui test.world.test_hosting_ui_contract test.world.test_web_launcher test.world.test_rules_ui test.world.test_personal_settings test.world.test_local_sharing_ui test.world.test_area_library_ui
 cd launcher-web && npm test && npm run test:ui && npm run build
 ```
 

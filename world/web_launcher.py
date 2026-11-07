@@ -439,6 +439,9 @@ class LauncherBridge:
                     raise
                 except Exception:
                     raise SessionError('Area generation could not complete. Check model login and local host setup before retrying.') from None
+            elif action == 'inspect_area':
+                from .area_library_ui import inspect_area
+                return inspect_area(self.session, self.local_expeditions(), payload)
             elif action == 'activate_area':
                 if payload.get('confirmed') is not True:
                     raise SessionError('Confirm changing the active generated area.')
