@@ -75,6 +75,25 @@ class WorldClient:
         bounded(str(seq), 0, 2**63-1)
         self.sock.sendall(f'INTERACT {seq} {object_id}\n'.encode('ascii'))
 
+    def subscribe_wildlife(self):
+        """Explicit opt-in; legacy/native clients receive no new snapshot fields."""
+        if not self.social or self.control:
+            raise ValueError('wildlife requires social presence')
+        from .shared_wildlife import catalogue
+        self.sock.sendall(('WILDLIFE SUBSCRIBE ' + catalogue()[1] + '\n').encode('ascii'))
+        self.shared_wildlife = True
+
+    def reserve_wildlife(self, seq, epoch, spawn_id, lease=None):
+        """Reserve, or release with a lease. This never starts a native battle."""
+        from .shared_wildlife import HEX
+        if (not getattr(self, 'shared_wildlife', False) or type(seq) is not int
+                or not 0 <= seq <= 2**63 - 1 or type(epoch) is not str or not HEX.fullmatch(epoch)
+                or type(spawn_id) is not str or not HEX.fullmatch(spawn_id)
+                or (lease is not None and (type(lease) is not str or not HEX.fullmatch(lease)))):
+            raise ValueError('invalid wildlife reservation')
+        command = f'WILDLIFE CLAIM {seq} {epoch} {spawn_id}' if lease is None else f'WILDLIFE RELEASE {seq} {epoch} {spawn_id} {lease}'
+        self.sock.sendall((command + '\n').encode('ascii'))
+
     def meet(self, seq, trainer_id):
         """Signal 'explore together' to a ready adjacent trainer. SOCIAL only."""
         from .server import ID, bounded
@@ -89,6 +108,7 @@ class WorldClient:
             raise ValueError('missing BEGIN')
         peers, tiles, objects = {}, [], []
         meeting = None
+        wildlife_header, wildlife_rows, wildlife_lease = None, [], None
         total = 0
         while True:
             text = self._line()
@@ -98,7 +118,18 @@ class WorldClient:
             if text == 'END':
                 break
             fields = text.split()
-            if fields and fields[0] == 'PEER' and len(fields) == 9 and len(peers) < 8:
+            if fields and fields[0] in ('WILDLIFE', 'WILDMON', 'WILDLEASE'):
+                if not getattr(self, 'shared_wildlife', False):
+                    raise ValueError('unnegotiated wildlife snapshot')
+                if fields[0] == 'WILDLIFE' and wildlife_header is None:
+                    wildlife_header = fields
+                elif fields[0] == 'WILDMON' and wildlife_header is not None and len(wildlife_rows) < 8:
+                    wildlife_rows.append(fields)
+                elif fields[0] == 'WILDLEASE' and wildlife_header is not None and wildlife_lease is None:
+                    wildlife_lease = fields
+                else:
+                    raise ValueError('invalid wildlife ordering')
+            elif fields and fields[0] == 'PEER' and len(fields) == 9 and len(peers) < 8:
                 peers[fields[1]] = dict(zip(('group','num','x','y','facing','gfx','ready'), map(int, fields[2:])))
             elif fields and fields[0] == 'TILE' and len(fields) == 7 and len(tiles) < 128:
                 tiles.append(list(map(int, fields[1:])))
@@ -122,8 +153,17 @@ class WorldClient:
                 meeting = dict(zip(('seq','group','num','x','y'),values), player=fields[2],target=fields[3],signal='explore')
             else:
                 raise ValueError('invalid snapshot entry')
+        if wildlife_header is not None:
+            from .shared_wildlife import parse_snapshot
+            wildlife = parse_snapshot(wildlife_header, wildlife_rows, wildlife_lease)
+        else:
+            if wildlife_rows or wildlife_lease:
+                raise ValueError('wildlife entries without header')
+            wildlife = None
         self.revision = int(begin[1])
         result = dict(revision=self.revision, peers=peers, tiles=tiles, objects=objects)
+        if wildlife is not None:
+            result['wildlife'] = wildlife
         if self.social:
             result['meeting'] = meeting
         return result
