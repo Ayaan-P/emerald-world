@@ -172,7 +172,7 @@ index 000000000..3c29f9d77
 +void XLProgressStore_Close(void);
 +#endif
 diff --git a/platform/main.c b/platform/main.c
-index 65a27a752..d6d1bd218 100644
+index 7bbb27dfb..963723bb4 100644
 --- a/platform/main.c
 +++ b/platform/main.c
 @@ -92,6 +92,7 @@
@@ -183,7 +183,7 @@ index 65a27a752..d6d1bd218 100644
  #include "main.h"
  #include "palette.h"
  #include "script.h"
-@@ -777,6 +778,12 @@ static int play(struct start *start)
+@@ -782,6 +783,12 @@ static int play(struct start *start)
          return MAIN_EXIT_FAILURE;
      }
      start->started = true;

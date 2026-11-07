@@ -1,9 +1,9 @@
 {
   "description": "Current source-only incremental engine checkpoint; not a complete-game acceptance",
   "base_engine_commit": "e406cf82922e9c3a5bfee746f9a97f67f3916a4c",
-  "target_engine_commit": "fb9e7bde1a6895b4a1a9dfe9ff47f94a7e67e212",
+  "target_engine_commit": "dd4cbc90f985735097d21dc202bc4cc3fe9b0f46",
   "patch": "native-world-integration-current.patch",
-  "patch_sha256": "3959760486af9681d22bf54ac7094487616fbf766b845ba237863997d69dc868",
+  "patch_sha256": "e88d2303f51bcf238d53b10a541b92512437b7b0735359fe288bfe10dd335721",
   "files": [
     {
       "path": "data/battle_scripts_2.s",
@@ -74,8 +74,12 @@
       "sha256": "c3a50976a1c6c56ea9e4a4df5318cab96aaeb6699720fb6a74b10e5958b8a88c"
     },
     {
+      "path": "platform/inspect.c",
+      "sha256": "3477a84ed81c74b5cec04f3bd54ea21f18e96c92dd1e8349b6d5caad4a3300ec"
+    },
+    {
       "path": "platform/main.c",
-      "sha256": "c7ceffea139e424dc5f4a8803be59434f098d28ad281c1fdafbf1193be8e040b"
+      "sha256": "2a2a5cb14b0ace2003017fe8c9a1facd88d037f05705849a86ebb5989624b063"
     },
     {
       "path": "platform/options.c",
@@ -103,7 +107,7 @@
     },
     {
       "path": "src/battle_controllers.c",
-      "sha256": "e7514030251007808ff616ad5cf2f7593cfefccd3072b69597373f7a95b2efe9"
+      "sha256": "f9e5755cd80d9dbce87e2c30763e37a0fff65714a37139be789cf3823ea155d2"
     },
     {
       "path": "src/battle_gfx_sfx_util.c",
@@ -123,7 +127,7 @@
     },
     {
       "path": "src/battle_main.c",
-      "sha256": "737e91640afc2e23c3bdb29c9ed9e63363b14806e44e992eb5c7c6bbf66c5161"
+      "sha256": "330a79bd72bbc32a97ebe3519c7183720edcb9b9202259a14a9af81757c3d77c"
     },
     {
       "path": "src/battle_script_commands.c",
@@ -226,8 +230,8 @@
       "native-world-wip.patch",
       "native-world-integration-current.patch"
     ],
-    "result_tree": "289ad25553d2de1a8e6e57cb4cb110ee5841e108",
-    "expected_checkpoint_tree": "289ad25553d2de1a8e6e57cb4cb110ee5841e108",
+    "result_tree": "0026146184b0eb0fe003742f6d4095aff3dc4fbc",
+    "expected_checkpoint_tree": "0026146184b0eb0fe003742f6d4095aff3dc4fbc",
     "identical": true,
     "fresh_clone_build_verified": false
   }

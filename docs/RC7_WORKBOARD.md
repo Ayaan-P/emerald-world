@@ -19,9 +19,9 @@ Recent instructions to exclude newer Dot work and trading remain controlling.
 ## Source of truth
 
 - App: `worktrees/rc7`, branch `integrate/rc7`, gameplay checkpoint `670d991d`.
-- Engine: `engines/expansion-native`, branch `integrate/rc7-world`, `fb9e7bde1a`.
+- Engine: `engines/expansion-native`, branch `integrate/rc7-world`, `dd4cbc90f9`.
 - The app branch tracks `origin/integrate/rc7`, NOT `origin/main`.
-- Latest native build: 20. Shared co-op acceptance: FAILED, not complete.
+- Latest native build: 22. Shared co-op acceptance: FAILED, not complete.
 - `docs/RC7_INTEGRATION_STATUS.md`: binary-specific acceptance boundaries.
 - `docs/rc7-evidence-summary.json`: extracted actual results readable by Dot.
 - `docs/attempt-handoffs/rc7/CURRENT.md`: current source-only reconstruction.
@@ -36,7 +36,7 @@ handoff deliberately shipped patches instead of publishing that entire history.
 The latest engine delta is now in the SAME app repository, extending the prior
 two patches. Applying all three against the pinned public base was verified
 using a temporary Git index: the resulting tree is exactly
-`289ad25553d2de1a8e6e57cb4cb110ee5841e108`, the engine checkpoint's tree.
+`0026146184b0eb0fe003742f6d4095aff3dc4fbc`, the engine checkpoint's tree.
 No source worktree was reset or replaced to perform that check.
 
 This proves source reconstruction, NOT fresh-clone dependency availability or
@@ -97,9 +97,17 @@ human saves, destructive cleanup or unrelated publication during organization.
 
 ## Current source after build19 diagnosis
 
-Engine `fb9e7bde1a` fixes the second four-console assumption in
+Engine `dd4cbc90f9` fixes the second four-console assumption in
 `Task_HandleSendLinkBuffersData` / `SENDTASK_STATE_COUNT_PLAYERS`.
 WorldCoop's two transport participants can now release queued intro commands,
 replies and DONE packets. Ordinary four-human Multi Battle behavior is unchanged.
 Canonical build20 passed before the commit; actual `coop-build20` is pending.
 The source-only handoff and verified reconstruction tree are updated with it.
+
+## Original-system contract adaptation
+
+See `docs/RC7_PORT_CONTRACT.md`: explicit original/target source paths and
+startup, ownership, party ABI, FIFO request/reply, ACK and private-return contracts.
+Build22 restores co-op intro full ACK barriers, owner-only replies and safe
+completion padding. It is built, not gameplay-accepted; native dispatcher
+validation/pending-request port remains incomplete.
