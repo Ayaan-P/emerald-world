@@ -2,11 +2,17 @@
 
 The Linux browser launcher manages native game sessions, local worlds, dedicated-hosted worlds and separate offline saves. It uses the Python `DesktopSession`; the game runs in its own native window. The Tk launcher remains an operator fallback.
 
-**Play** separates Local and Hosted. **Local worlds** lists local authorities and solo saves. **Hosted worlds** joins private player invitations or manages an owner account. A configured management service is required for owner actions; a standalone dedicated server can still be joined with its player invitation. The launcher does not deploy Hetzner or enable local Internet sharing.
+**Play** separates Local and Hosted. **Local worlds** lists local authorities and solo saves. **Hosted worlds** joins private player invitations or manages an owner account. A configured management service is required for owner actions; a standalone dedicated server can still be joined with its player invitation. The launcher does not deploy Hetzner or configure Internet routing.
 
 **Explore** opens a local world's generated-area library. Cave and outdoor generation is shown only when supported by that host. Generation requires a supported signed-in model CLI and explicit cost confirmation. Saved areas do not make a model call. Native entry is START → WORLD → Explore generated area, outdoors on foot with a conscious non-Egg Pokémon.
 
 Closing a game, disconnecting a session and stopping a host are separate operations. Disconnect leaves owned local hosts running, and they remain visible under Local worlds. Stop host requires confirmation and affects only that local world. Quit closes this launcher's games and owned hosts; it does not stop remote servers.
+
+**Local worlds → Invite friends** exposes the existing local TLS sharing flow. Open the host without starting the game, enter a numeric listen address and port, then review before enabling it. The default is loopback, so nothing becomes remotely reachable automatically. For LAN play, use this computer's LAN address and an address your friend can reach. Router/firewall/relay setup is not automated, and an active listener is not proof of Internet reachability. TLS identity creation requires OpenSSL; an existing world identity is reused.
+
+Create a separate trainer profile per player and review the advertised endpoint and fingerprint before creating its private invitation. The file grants reusable access to the named trainer, unlike the hosted service's redeemable invitations. Existing-trainer export must be selected explicitly and never rotates or revokes older credentials. Confirm the fingerprint separately and send the file through a trusted channel. Nothing is sent automatically. Browser downloads may have ordinary folder permissions; store invitations privately.
+
+Disconnect leaves the local TLS listener running, including when another world is selected. Reopen its host to manage sharing. Stop sharing disconnects its TLS friends but leaves the authority and local game running. Stop host or Quit also closes sharing. An uncertain export may already have created the trainer: refresh, then explicitly review an existing-trainer export to recover access. No automatic retries occur.
 
 **World options** is under each Local worlds entry. Open the host without launching the game, edit a draft, then review and apply. A running background host can be edited without changing your selected session. All players must leave before applying changes. No one is disconnected automatically. Loading options never changes existing worlds. Display and key bindings remain personal native settings, applied when the game starts.
 
@@ -48,11 +54,13 @@ When the online game is running, the launcher can show connection status and nea
 ## Checks
 
 ```sh
-python3 -m unittest test.world.test_hosting_ui test.world.test_hosting_ui_contract test.world.test_web_launcher test.world.test_rules_ui test.world.test_personal_settings
+python3 -m unittest test.world.test_hosting_ui test.world.test_hosting_ui_contract test.world.test_web_launcher test.world.test_rules_ui test.world.test_personal_settings test.world.test_local_sharing_ui
 cd launcher-web && npm test && npm run test:ui && npm run build
 ```
 
 These checks do not run a real multiplayer session or exercise the native game. A graphical Linux desktop and native prerequisites are required for an end-to-end run. Windows and macOS are not supported by this experimental launcher.
+
+The local-sharing suite uses actual session invitation files and in-memory trainer identities, with the TLS broker substituted and socket creation blocked. It does not test a live TLS connection, certificate creation, WAN reachability or native multiplayer.
 
 The world-options suite mocks transport and never opens sockets. Its optional compatibility cases exercise the actual world-rules authority in memory when that backend is integrated; they are explicitly skipped on branches without it.
 

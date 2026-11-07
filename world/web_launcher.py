@@ -302,9 +302,11 @@ class LauncherBridge:
                 if code is not None:
                     game_exit = {'trainer': name, 'code': code, 'unexpected': code != 0}
             from .rules_ui import options_snapshot
+            from .local_sharing_ui import sharing_snapshot
             local_worlds = self.local_expeditions()
             return {'local_worlds': local_worlds,
                     'world_options': options_snapshot(self.session, local_worlds),
+                    'local_sharing': sharing_snapshot(self.session, local_worlds),
                     'local_hosts': self.session.hosted_worlds(),
                     'game_exit': game_exit,
                     'generated_areas': areas, 'active_generated_area': active_area, 'area_archive': archive_enabled,
@@ -470,6 +472,21 @@ class LauncherBridge:
                 if not isinstance(name, str):
                     raise SessionError('Choose a saved world.')
                 self.remote_paths = self.session.rejoin_friend(name)
+            elif action in ('local_share_start', 'local_share_stop', 'local_invite'):
+                from .local_sharing_ui import start_sharing, stop_sharing, export_friend
+                worlds = self.local_expeditions()
+                if action == 'local_share_start':
+                    start_sharing(self.session, worlds, payload)
+                elif action == 'local_share_stop':
+                    stop_sharing(self.session, worlds, payload)
+                else:
+                    invitation = export_friend(self.session, worlds, payload)
+                    result = self.snapshot()
+                    result['download'] = invitation
+                    result['download_kind'] = 'local_friend'
+                    return result
+            elif action == 'local_share_refresh':
+                pass
             elif action == 'personal_settings_info':
                 from .personal_settings import DEFAULTS, KEYS
                 return {'available': self.engine == 'expansion-native', 'profiles': self.personal_profiles(),
