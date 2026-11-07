@@ -1,0 +1,50 @@
+{
+  "description": "Source-only opt-in solo visible encounter candidate; native build blocked by missing libpng headers.",
+  "base_engine_commit": "2024a83db5242783c0f9ae93f8381271045e7037",
+  "public_base_commit": "bb3fd057061cdd7e6a9e79b76abb41924ee44ecc",
+  "ordered_patches": [
+    "native-foundation.patch",
+    "native-world-wip.patch",
+    "native-world-integration-current.patch",
+    "native-player-ui.patch",
+    "native-collecting-ui.patch",
+    "native-overworld-encounters.patch"
+  ],
+  "base_tree": "5d82cc0edc6259f7847be0d97a4b0692e11c62e4",
+  "result_tree": "12d84dc7c054e48c8e87f9dcab8631b5d8f1a4a9",
+  "patch": "native-overworld-encounters.patch",
+  "patch_sha256": "ecf349ae2c46d30afd359752c0df90d17ecd04e1b7aa5f6994c1e3d7c03e5952",
+  "files": [
+    {
+      "path": "include/config/wild_encounter.h",
+      "sha256": "4dc53c3473a364a2143e9c9d002d252a6a6535d2343bb8cda821c22307bc893b"
+    },
+    {
+      "path": "include/platform/overworld_encounters.h",
+      "sha256": "4d2bbdf326a52cfdbb1820635f84dc1ed96be8082303a8fa8d6e45863b61aa52"
+    },
+    {
+      "path": "src/load_save.c",
+      "sha256": "5abd14873733dd4306ccea8f5eb814f31b35e076dad0e43d7405c07af2c328e3"
+    },
+    {
+      "path": "src/wild_encounter_ow.c",
+      "sha256": "535ec7533cdbbaa1c13b288d17fa47bccd306d4da1cb06d237822bd59241d599"
+    },
+    {
+      "path": "src/world/overworld_encounters.c",
+      "sha256": "b68dbc6c3d146b955f2a6d237fed4f3604b649e17af65bf62069b140aca70945"
+    },
+    {
+      "path": "src/world/world_menu.c",
+      "sha256": "1c77334cdef94ae3093843aec0d5c94ddacdfd55f1bd318db2245ab122725c3b"
+    }
+  ],
+  "verification": {
+    "exact_tree_reconstruction": true,
+    "policy_compile_and_run": true,
+    "native_build": false,
+    "native_gameplay": false,
+    "visual_inspection": false
+  }
+}
