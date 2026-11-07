@@ -8,8 +8,10 @@ on:
       - 'world/web_launcher.py'
       - 'world/rules_ui.py'
       - 'world/personal_settings.py'
+      - 'world/local_sharing_ui.py'
       - 'test/world/test_rules_ui.py'
       - 'test/world/test_personal_settings.py'
+      - 'test/world/test_local_sharing_ui.py'
       - 'world/save_backup.py'
       - 'test/world/test_save_backup.py'
       - 'world/hosting_ui.py'
@@ -31,8 +33,10 @@ on:
       - 'world/web_launcher.py'
       - 'world/rules_ui.py'
       - 'world/personal_settings.py'
+      - 'world/local_sharing_ui.py'
       - 'test/world/test_rules_ui.py'
       - 'test/world/test_personal_settings.py'
+      - 'test/world/test_local_sharing_ui.py'
       - 'world/save_backup.py'
       - 'test/world/test_save_backup.py'
       - 'world/hosting_ui.py'
@@ -66,7 +70,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes bubblewrap
       - name: Check Python bridge
-        run: python3 -m unittest test.world.test_hosting_ui test.world.test_hosting_ui_contract test.world.test_web_launcher test.world.test_rules_ui test.world.test_personal_settings test.world.test_offline test.world.test_offline_desktop -q
+        run: python3 -m unittest test.world.test_hosting_ui test.world.test_hosting_ui_contract test.world.test_web_launcher test.world.test_rules_ui test.world.test_personal_settings test.world.test_local_sharing_ui test.world.test_offline test.world.test_offline_desktop -q
       - name: Install locked frontend dependencies
         working-directory: launcher-web
         run: npm ci
