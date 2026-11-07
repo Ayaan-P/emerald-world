@@ -15,6 +15,7 @@
 #include "platform/test_state.h"
 #include "platform/generated_map.h"
 #include "platform/world_bridge.h"
+#include "platform/wild_shuffle.h"
 #include "platform/world_activity.h"
 #include "platform/native_link.h"
 #include "platform/link_transport.h"
@@ -179,6 +180,8 @@ void WriteTestState(FILE *file, u32 frame)
     fprintf(file, "]");
     WriteOwnParty(file);
     WritePublicBattle(file);
+    fprintf(file, ", \"wild_shuffle\": {\"enabled\": %s, \"seed\": %u}",
+            WildShuffle_Enabled() ? "true" : "false", WildShuffle_Seed());
     // Tag names have already passed the identifier-only transport grammar.
     fprintf(file, ", \"activity\": {\"phase\": \"%s\", \"mode\": %u, \"status\": \"%s\", \"link_connected\": %s, \"generation\": %u, \"trade_phase\": \"%s\", \"tag_peer\": \"%s\", \"tag_in_range\": %s, \"coop\": %s}",
             WorldActivity_Phase(), WorldActivity_Mode(), WorldActivity_Status(),
@@ -205,3 +208,4 @@ void WriteTestState(FILE *file, u32 frame)
     fflush(file);
 }
 #endif // PORTABLE
+

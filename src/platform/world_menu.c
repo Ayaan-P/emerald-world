@@ -1,4 +1,5 @@
 #ifdef PORTABLE
+#include "platform/world_chat.h"
 #include "global.h"
 #include "main.h"
 #include "overworld.h"
@@ -20,6 +21,7 @@
 #include "platform/world_activity.h"
 #include "platform/world_bridge.h"
 #include "platform/world_menu.h"
+#include "platform/wild_shuffle.h"
 #include "platform/generated_map.h"
 #include "platform/world_rally.h"
 #include "platform/world_travel.h"
@@ -32,10 +34,10 @@
 
 /* One field window, not another Start-menu row or another input consumer.
  * Lists are rebuilt from live state, but focus is an action identity. */
-enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, RALLY, DISPATCH };
+enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, SHUFFLE_MENU, RALLY, DISPATCH };
 #define GEN_EXPLORE_LABEL "Explore generated area"
 #define GEN_LEAVE_LABEL "Leave generated area"
-enum Action { FRIENDS, STORY, DEXNAV, BACK, MODE, SCOPE, REQUEST, READY,
+enum Action { FRIENDS, STORY, DEXNAV, GUILDS, SHUFFLE, SHUFFLE_TOGGLE, SHUFFLE_SEED, BACK, MODE, SCOPE, REQUEST, READY,
     LATER, CANCEL, GO, FINISH, RETURN, STAY,
 #if GENERATED_MAP_READY
     GEN_CAVE,
@@ -183,12 +185,23 @@ static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 onlin
         }
 #endif
         AddRow(rows, &n, FRIENDS, "Friends", WorldBridge_Enabled() ? NULL : "Connect to a world to visit friends.");
+        AddRow(rows, &n, GUILDS, "Guilds", WorldBridge_Enabled() && WORLD_CHAT_HEIGHT ? NULL : "Connect to a world with chat available.");
+        AddRow(rows, &n, SHUFFLE, "Wild shuffle", NULL);
         AddRow(rows, &n, STORY, "Story rally", NULL);
         AddRow(rows, &n, DEXNAV, "DexNav", DexNavNative_Available() ? NULL :
             "DexNav needs a Pokedex and conscious party outside restricted or link areas.");
 #if GENERATED_MAP_READY
         AddRow(rows, &n, GEN_CAVE, GEN_EXPLORE_LABEL, GeneratedAreaReason());
 #endif
+        AddRow(rows, &n, BACK, "Back", NULL);
+        return n;
+    }
+    if (sMenu.state == SHUFFLE_MENU)
+    {
+        static char seedLabel[32];
+        snprintf(seedLabel, sizeof(seedLabel), "Seed: %u", WildShuffle_Seed());
+        AddRow(rows, &n, SHUFFLE_TOGGLE, WildShuffle_Enabled() ? "Wild shuffle: ON" : "Wild shuffle: OFF", NULL);
+        AddRow(rows, &n, SHUFFLE_SEED, seedLabel, NULL);
         AddRow(rows, &n, BACK, "Back", NULL);
         return n;
     }
@@ -297,13 +310,18 @@ static void Draw(const struct Row *rows, unsigned count, unsigned selected,
         Line(&screen, 0, "WORLD");
         Line(&screen, 1, "Up/Down choose. A open. B close.");
     }
+    else if (sMenu.state == SHUFFLE_MENU)
+    {
+        Line(&screen, 0, "WILD SHUFFLE");
+        Line(&screen, 1, "Up/Down choose. A change. B back.");
+    }
     else
     {
         snprintf(text, sizeof(text), "Roxanne   %s", online ? phases[r->phase <= WORLD_RALLY_RETURN ? r->phase : 0] : "Offline");
         Line(&screen, 0, text);
         Line(&screen, 1, "Left/Right controls roster status");
     }
-    if (sMenu.state == FEATURES || sMenu.page == CONTROLS)
+    if (sMenu.state == FEATURES || sMenu.state == SHUFFLE_MENU || sMenu.page == CONTROLS)
     {
         for (i = 0; i < count; i++)
         {
@@ -318,6 +336,7 @@ static void Draw(const struct Row *rows, unsigned count, unsigned selected,
             sMenu.focus == FINISH ? "Ends the visit. Only the encounter owner earns boss credit." :
             sMenu.focus == STAY ? "Keep this position and discard your pre-rally return point." :
             sMenu.focus == STORY ? "Roxanne visit for up to four trainers. Normal two-player battles. Boss credit stays personal." :
+            (sMenu.focus == SHUFFLE || sMenu.state == SHUFFLE_MENU) ? "Shuffle ordinary wild species. Same seed, same mapping. New game process starts OFF." :
 #if GENERATED_MAP_READY
             sMenu.focus == GEN_CAVE ? (GeneratedMap_IsInside() ?
                 "Return to where you entered. Save after returning. Adventure conversations restart on a new visit." :
@@ -401,6 +420,12 @@ static void Dispatch(void)
     }
 #endif
     if (sMenu.pending == FRIENDS) { WorldTravel_RequestMenu(); return; }
+    if (sMenu.pending == GUILDS)
+    {
+        accepted = WorldChat_OpenGuild();
+        sMenu.notice = accepted ? NULL : "Guild chat is unavailable right now.";
+        return;
+    }
     if (sMenu.pending == DEXNAV)
     {
         accepted = DexNav_RequestOpen();
@@ -495,8 +520,8 @@ void WorldMenu_Update(void)
     if (JOY_NEW(B_BUTTON))
     {
         if (sMenu.state == FEATURES) { Close(); return; }
+        sMenu.focus = sMenu.state == SHUFFLE_MENU ? SHUFFLE : STORY;
         sMenu.state = FEATURES;
-        sMenu.focus = STORY;
         sMenu.dirty = TRUE;
         return;
     }
@@ -505,7 +530,7 @@ void WorldMenu_Update(void)
         sMenu.page = (sMenu.page + (JOY_NEW(DPAD_LEFT) ? PAGE_COUNT - 1 : 1)) % PAGE_COUNT;
         sMenu.dirty = TRUE;
     }
-    if (sMenu.state == FEATURES || sMenu.page == CONTROLS)
+    if (sMenu.state == FEATURES || sMenu.state == SHUFFLE_MENU || sMenu.page == CONTROLS)
     {
         if (JOY_REPEAT(DPAD_UP) && selected) selected--;
         if (JOY_REPEAT(DPAD_DOWN) && selected + 1 < count) selected++;
@@ -516,11 +541,22 @@ void WorldMenu_Update(void)
             else if (sMenu.focus == BACK)
             {
                 if (sMenu.state == FEATURES) { Close(); return; }
+                sMenu.focus = sMenu.state == SHUFFLE_MENU ? SHUFFLE : STORY;
                 sMenu.state = FEATURES;
-                sMenu.focus = STORY;
                 sMenu.dirty = TRUE;
                 return;
             }
+            else if (sMenu.focus == SHUFFLE)
+            {
+                sMenu.state = SHUFFLE_MENU;
+                sMenu.page = CONTROLS;
+                sMenu.focus = SHUFFLE_TOGGLE;
+                sMenu.notice = NULL;
+                sMenu.dirty = TRUE;
+                return;
+            }
+            else if (sMenu.focus == SHUFFLE_TOGGLE) { WildShuffle_Toggle(); sMenu.notice = NULL; }
+            else if (sMenu.focus == SHUFFLE_SEED) { WildShuffle_NextSeed(); sMenu.notice = NULL; }
             else if (sMenu.focus == STORY)
             {
                 sMenu.state = RALLY;
@@ -539,3 +575,4 @@ void WorldMenu_Update(void)
     Draw(rows, count, selected, &r, online);
 }
 #endif
+

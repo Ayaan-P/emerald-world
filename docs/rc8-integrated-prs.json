@@ -1,0 +1,187 @@
+{
+  "baseline": "c576f5dd",
+  "integrated_prs": [
+    {
+      "headRefOid": "3cf0f727926b408acb22558a84148adcd27a6d84",
+      "number": 201,
+      "title": "Add agent control of live walkable terrain",
+      "included_exact_head": true,
+      "resolution": "Exact PR head included by Git ancestry; source reconciled on RC8."
+    },
+    {
+      "headRefOid": "61d9e3238d66950f9513aaae1f1876e3cf67e726",
+      "number": 202,
+      "title": "Let agents apply atomic terrain patches",
+      "included_exact_head": true,
+      "resolution": "Exact PR head included by Git ancestry; source reconciled on RC8."
+    },
+    {
+      "headRefOid": "90cfe300d35f7b9dbe5c2451c2e6e70925df567e",
+      "number": 203,
+      "title": "Add durable shared agent-controlled terrain",
+      "included_exact_head": true,
+      "resolution": "Exact PR head included by Git ancestry; source reconciled on RC8."
+    },
+    {
+      "headRefOid": "1fc8267711bb1e1e4efe15346cff5b1dffd34b8c",
+      "number": 204,
+      "title": "Let agents inspect shared terrain and client reports",
+      "included_exact_head": true,
+      "resolution": "Exact PR head included by Git ancestry; source reconciled on RC8."
+    },
+    {
+      "headRefOid": "bc45603ec1039c96e15a5c2af343bed373cf9600",
+      "number": 206,
+      "title": "Add agent-authored connected shared geometry",
+      "included_exact_head": true,
+      "resolution": "Exact PR head included by Git ancestry; source reconciled on RC8."
+    },
+    {
+      "headRefOid": "5d1c6ba79cf47432be3434fff0fbfdaf3f49cfed",
+      "number": 207,
+      "title": "Allow agents to replace or reset shared geometry",
+      "included_exact_head": true,
+      "resolution": "Exact PR head included by Git ancestry; source reconciled on RC8."
+    },
+    {
+      "headRefOid": "cdfb0680bc5bd2d27d2c69953b135caf7296b41f",
+      "number": 209,
+      "title": "Expand agent-authored shared terrain overlays",
+      "included_exact_head": true,
+      "resolution": "Exact PR head included by Git ancestry; source reconciled on RC8."
+    },
+    {
+      "headRefOid": "2fe9247d7ab16a2338ec2ed4a9d76980977b67a9",
+      "number": 210,
+      "title": "Add 127\u00d7127 agent-authored outdoor areas",
+      "included_exact_head": true,
+      "resolution": "Exact PR head included by Git ancestry; source reconciled on RC8."
+    },
+    {
+      "headRefOid": "0c118cd16ce80e030a7cdb8eddec58566d76cdcf",
+      "number": 211,
+      "title": "Add shared 127\u00d7127 generated wilds",
+      "included_exact_head": true,
+      "resolution": "Exact PR head included by Git ancestry; source reconciled on RC8."
+    },
+    {
+      "headRefOid": "982ad78933d368dec891750b6173ee0e25d4106e",
+      "number": 212,
+      "title": "Enable agent-authored XL world geometry",
+      "included_exact_head": false,
+      "resolution": "Deferred: separate shared XL terrain extension; not part of RC8."
+    },
+    {
+      "headRefOid": "430c917b8665afb27520f62561ebb7026011972d",
+      "number": 213,
+      "title": "Let a model author XL outdoor worlds",
+      "included_exact_head": true,
+      "resolution": "Exact PR head included by Git ancestry; source reconciled on RC8."
+    },
+    {
+      "headRefOid": "b9867206b8ec65901982734ecef8ab1b519425a0",
+      "number": 214,
+      "title": "Add agent-placed XL world characters",
+      "included_exact_head": true,
+      "resolution": "Exact PR head included by Git ancestry; source reconciled on RC8."
+    },
+    {
+      "headRefOid": "f3405c027b3d81dab072391099cb64de84fcc8ea",
+      "number": 215,
+      "title": "Generate XL world characters from themes",
+      "included_exact_head": true,
+      "resolution": "Exact PR head included by Git ancestry; source reconciled on RC8."
+    },
+    {
+      "headRefOid": "0eff06ad89b8a8aede5b059cb8339451a4046311",
+      "number": 216,
+      "title": "Run authored interaction graphs in XL worlds",
+      "included_exact_head": true,
+      "resolution": "Exact PR head included by Git ancestry; source reconciled on RC8."
+    },
+    {
+      "headRefOid": "ddd8dce04f99da62cd3c9d9fe7ba9164862deda9",
+      "number": 217,
+      "title": "Generate XL interaction graphs from themes",
+      "included_exact_head": true,
+      "resolution": "Exact PR head included by Git ancestry; source reconciled on RC8."
+    },
+    {
+      "headRefOid": "0b7213084a2bc6cc53c009db9dc1e15947dacc9f",
+      "number": 218,
+      "title": "Refresh agent-authored worlds without restarting",
+      "included_exact_head": true,
+      "resolution": "Exact PR head included by Git ancestry; source reconciled on RC8."
+    },
+    {
+      "headRefOid": "4cfa7e3e590703005cd69afd032b8b89f88dc371",
+      "number": 219,
+      "title": "Remember XL story state across re-entry",
+      "included_exact_head": false,
+      "resolution": "Not an exact ancestor. Persistence/session/64-slot designs are present in the newer painted/versioned successor stack, exercised by the combined versioned-story journey and focused persistence tests."
+    },
+    {
+      "headRefOid": "1cb469b93e933eab9dc589788f7f77668275deaf",
+      "number": 220,
+      "title": "Persist offline XL story progress",
+      "included_exact_head": false,
+      "resolution": "Not an exact ancestor. Persistence/session/64-slot designs are present in the newer painted/versioned successor stack, exercised by the combined versioned-story journey and focused persistence tests."
+    },
+    {
+      "headRefOid": "0bace90b48399b52ade780e33bbbe5820f99a5fa",
+      "number": 221,
+      "title": "Scale offline story progress to 64 worlds",
+      "included_exact_head": false,
+      "resolution": "Not an exact ancestor. Persistence/session/64-slot designs are present in the newer painted/versioned successor stack, exercised by the combined versioned-story journey and focused persistence tests."
+    },
+    {
+      "headRefOid": "e913c2be2350060ff0d3361b4669d4305d8802a2",
+      "number": 222,
+      "title": "Let agents paint XL outdoor terrain",
+      "included_exact_head": true,
+      "resolution": "Exact PR head included by Git ancestry; source reconciled on RC8."
+    },
+    {
+      "headRefOid": "c281b97c2726eb0cd8713b8a26f206e7bcf90c6e",
+      "number": 223,
+      "title": "Combine painted XL worlds with stories",
+      "included_exact_head": true,
+      "resolution": "Exact PR head included by Git ancestry; source reconciled on RC8."
+    },
+    {
+      "headRefOid": "4f0c0ae83f5f8e53cd0a2fc3c3c5c624bc1371f0",
+      "number": 224,
+      "title": "Generate painted story worlds from themes",
+      "included_exact_head": true,
+      "resolution": "Exact PR head included by Git ancestry; source reconciled on RC8."
+    },
+    {
+      "headRefOid": "bc04428577ef2ec786c25b7f8c1f5f30ff1be90a",
+      "number": 225,
+      "title": "Retry invalid model world candidates safely",
+      "included_exact_head": true,
+      "resolution": "Exact PR head included by Git ancestry; source reconciled on RC8."
+    },
+    {
+      "headRefOid": "2c89442a28420c108945d75aee671de5bd09e87e",
+      "number": 226,
+      "title": "Persist painted XL story progress",
+      "included_exact_head": true,
+      "resolution": "Exact PR head included by Git ancestry; source reconciled on RC8."
+    },
+    {
+      "headRefOid": "628ad24371c126e69bff2adbcfcb46cd50454628",
+      "number": 227,
+      "title": "Preserve story across world revisions",
+      "included_exact_head": true,
+      "resolution": "Exact PR head included by Git ancestry; source reconciled on RC8."
+    },
+    {
+      "headRefOid": "7e76b6e09066b3ea8a794771aa09a748750e2ef3",
+      "number": 228,
+      "title": "Revise persistent worlds from a theme",
+      "included_exact_head": true,
+      "resolution": "Exact PR head included by Git ancestry; source reconciled on RC8."
+    }
+  ]
+}
