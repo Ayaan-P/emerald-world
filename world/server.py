@@ -925,16 +925,19 @@ class WorldServer:
         with self.lock:
             if conn.get('closing') or self.peers.get(conn['id']) is not conn:
                 raise ValueError('wildlife presence changed')
-            if len(fields) == 3 and fields[1] == 'SUBSCRIBE':
-                if fields[2] != wildlife_catalogue()[1]:
+            if len(fields) in (3,4) and fields[1] == 'SUBSCRIBE':
+                if (len(fields) == 4 and fields[3] != '2') or fields[2] != wildlife_catalogue()[1]:
                     raise ValueError('wildlife species cohort mismatch')
                 conn['shared_wildlife'] = True
+                conn['wildlife_version'] = 2 if len(fields) == 4 else 1
                 self._queue(conn, self._snapshot(conn))
                 return
             if not conn.get('shared_wildlife') or len(fields) not in (5, 6):
                 raise ValueError('invalid wildlife command')
             seq = bounded(fields[2], 0, 2**63 - 1)
-            if fields[1] not in ('CLAIM', 'RELEASE') or len(fields) != (5 if fields[1] == 'CLAIM' else 6):
+            if (fields[1] not in ('CLAIM', 'RELEASE', 'COMMIT', 'ACK')
+                    or len(fields) != (5 if fields[1] == 'CLAIM' else 6)
+                    or (fields[1] in ('COMMIT', 'ACK') and conn.get('wildlife_version') != 2)):
                 raise ValueError('invalid wildlife operation')
             if seq <= conn['seq']:
                 self._queue(conn, self._snapshot(conn))
@@ -943,8 +946,12 @@ class WorldServer:
             self.wildlife.expire(time.monotonic())
             if fields[1] == 'CLAIM':
                 changed = self.wildlife.claim(conn, fields[3], fields[4], time.monotonic())
-            else:
+            elif fields[1] == 'RELEASE':
                 changed = self.wildlife.release(conn, fields[3], fields[4], fields[5])
+            elif fields[1] == 'COMMIT':
+                changed = self.wildlife.commit(conn, fields[3], fields[4], fields[5], time.monotonic())
+            else:
+                changed = self.wildlife.acknowledge(conn, fields[3], fields[4], fields[5])
             if changed:
                 self._broadcast()
             else:

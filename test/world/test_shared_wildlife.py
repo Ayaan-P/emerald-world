@@ -51,11 +51,96 @@ class SharedWildlifeTests(unittest.TestCase):
         client = Client.__new__(Client)
         client.control = False; client.social = True; client.trainer_id = conn['id']
         client.shared_wildlife = conn.get('shared_wildlife', False)
+        client.wildlife_battles = conn.get('wildlife_version') == 2
         client.stream = io.BytesIO(self.server._snapshot(conn).encode())
         return client.snapshot()
 
     def claim(self, conn, seq=1):
         self.send(conn, f'WILDLIFE CLAIM {seq} {self.epoch} {self.spawn}')
+
+    def commit(self):
+        self.send(self.a, 'WILDLIFE SUBSCRIBE ' + catalogue()[1] + ' 2')
+        self.claim(self.a)
+        lease = self.snapshot(self.a)['wildlife']['lease']['lease']
+        self.a['state'][6] = 0  # Native input lock while awaiting admission.
+        self.send(self.a, f'WILDLIFE COMMIT 2 {self.epoch} {self.spawn} {lease}')
+        return lease
+
+    def test_committed_battle_is_private_and_never_reoffered(self):
+        lease = self.commit()
+        own = self.snapshot(self.a)['wildlife']
+        self.assertEqual(own['battle']['lease'], lease)
+        self.assertIsNone(own['lease'])
+        self.assertEqual(own['spawns'], [])
+        self.assertIsNone(self.snapshot(self.b)['wildlife']['battle'])
+        self.server.wildlife.expire(time.monotonic() + 1000)
+        self.claim(self.b)
+        self.assertFalse(self.server.wildlife.claims)
+        self.assertIn(self.spawn, self.server.wildlife.consumed)
+
+    def test_commit_ack_exact_owner_replay_and_disconnect(self):
+        lease = self.commit()
+        before = self.server.wildlife.revision
+        self.send(self.a, f'WILDLIFE COMMIT 3 {self.epoch} {self.spawn} {lease}')
+        self.assertEqual(self.server.wildlife.revision, before)
+        self.assertFalse(self.server.wildlife.acknowledge(self.b, self.epoch, self.spawn, lease))
+        self.assertFalse(self.server.wildlife.acknowledge(self.a, self.epoch, self.spawn, '0'*32))
+        self.send(self.a, f'WILDLIFE ACK 4 {self.epoch} {self.spawn} {lease}')
+        self.assertFalse(self.server.wildlife.commits)
+        self.assertIn(self.spawn, self.server.wildlife.consumed)
+        self.send(self.a, f'WILDLIFE COMMIT 5 {self.epoch} {self.spawn} {lease}')
+        self.assertFalse(self.server.wildlife.commits)
+        self.server.wildlife.drop(self.a)
+        self.claim(self.b)
+        self.assertFalse(self.server.wildlife.claims)
+
+    def test_disconnect_discards_receipt_not_consumption(self):
+        self.commit()
+        self.assertTrue(self.server.wildlife.drop(self.a))
+        self.assertFalse(self.server.wildlife.commits)
+        self.assertIn(self.spawn, self.server.wildlife.consumed)
+        self.assertEqual(self.snapshot(self.b)['wildlife']['spawns'], [])
+
+    def test_commit_requires_current_position_freshness_and_lease(self):
+        self.claim(self.a)
+        lease = self.snapshot(self.a)['wildlife']['lease']['lease']
+        now = time.monotonic()
+        self.assertFalse(self.server.wildlife.commit(self.b, self.epoch, self.spawn, lease, now))
+        self.assertFalse(self.server.wildlife.commit(self.a, self.epoch, self.spawn, '0'*32, now))
+        self.a['state'][2] += 1
+        self.assertFalse(self.server.wildlife.commit(self.a, self.epoch, self.spawn, lease, now))
+        self.a['state'][2] -= 1
+        self.assertFalse(self.server.wildlife.commit(self.a, self.epoch, self.spawn, lease, now+3))
+        self.assertFalse(self.server.wildlife.commits)
+
+    def test_python_commit_commands_and_receipt_parser_guards(self):
+        client = Client.__new__(Client)
+        client.control = False; client.social = True; client.sock = Mock()
+        with self.assertRaises(ValueError):
+            client.commit_wildlife(1, self.epoch, self.spawn, 'c'*32)
+        client.subscribe_wildlife(battles=True)
+        client.commit_wildlife(1, self.epoch, self.spawn, 'c'*32)
+        self.assertEqual(client.sock.sendall.call_args.args[0],
+                         f'WILDLIFE COMMIT 1 {self.epoch} {self.spawn} {"c"*32}\n'.encode())
+        client.commit_wildlife(2, self.epoch, self.spawn, 'c'*32, acknowledge=True)
+        self.assertTrue(client.sock.sendall.call_args.args[0].startswith(b'WILDLIFE ACK 2 '))
+        header = ['WILDLIFE2', self.epoch, '1', '0']
+        battle = ['WILDBATTLE',self.spawn,'c'*32,*map(str,[self.row[k] for k in ('group','num','x','y','species','level')])]
+        self.assertEqual(parse_snapshot(header,[],None,battle)['battle']['species'],25)
+        with self.assertRaises(ValueError):
+            parse_snapshot(header,[],['WILDLEASE',self.spawn,'c'*32],battle)
+        with self.assertRaises(ValueError):
+            parse_snapshot(['WILDLIFE',*header[1:]],[],None,battle)
+        with self.assertRaises(ValueError):
+            client.commit_wildlife(True,self.epoch,self.spawn,'c'*32)
+
+    def test_legacy_cannot_commit(self):
+        self.claim(self.a)
+        lease = self.snapshot(self.a)['wildlife']['lease']['lease']
+        with self.assertRaises(ValueError):
+            text = f'WILDLIFE COMMIT 2 {self.epoch} {self.spawn} {lease}'
+            self.server._wildlife_line(self.a, text.encode(), text.split())
+        self.assertFalse(self.server.wildlife.commits)
 
     def test_same_spawn_identity_and_legacy_isolation(self):
         self.assertEqual(self.snapshot(self.a)['wildlife'], self.snapshot(self.b)['wildlife'])

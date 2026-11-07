@@ -1,0 +1,51 @@
+{
+  "description": "Opt-in host-published shared native encounters with at-most-once committed admission. Native build and two-client gameplay remain unverified.",
+  "base_engine_commit": "2024a83db5242783c0f9ae93f8381271045e7037",
+  "public_base_commit": "bb3fd057061cdd7e6a9e79b76abb41924ee44ecc",
+  "ordered_patches": [
+    "native-foundation.patch",
+    "native-world-wip.patch",
+    "native-world-integration-current.patch",
+    "native-player-ui.patch",
+    "native-collecting-ui.patch",
+    "native-overworld-encounters.patch",
+    "native-shared-wildlife.patch"
+  ],
+  "base_tree": "cd1254767b1bbaba4731b0c22af3ca2ea34f0de4",
+  "result_tree": "425da8ae6e4f621bc3febfbf5384f51956a59aab",
+  "patch": "native-shared-wildlife.patch",
+  "patch_sha256": "16e7cebf81cb5596a9dbf075e30607267775dbd7faccc2aa09d69eb129a76fe6",
+  "partial_context_files": [
+    "src/wild_encounter_ow.c"
+  ],
+  "files": [
+    {
+      "path": "include/platform/shared_wildlife.h",
+      "sha256": "accdfd9b70d08ec73f44111f4d747057e1ce23e1279ccf42c9c0014188ad65e5"
+    },
+    {
+      "path": "include/platform/shared_wildlife_wire.h",
+      "sha256": "adb5ca0e2f523c71873ff8e6b3744f7f3fa144b786689cea58cd88da11f4f1d9"
+    },
+    {
+      "path": "src/wild_encounter_ow.c",
+      "sha256": "338abbca8f6ad8604b4ca5598a7adf7b8fe251f2f92714e9d60d86aa5141cce8"
+    },
+    {
+      "path": "src/world/shared_wildlife.c",
+      "sha256": "2f6009e4797f9fd4bbd2ea63f6406ddd26abb0c2eab26324fdd6589bf1297dcc"
+    },
+    {
+      "path": "src/world/shared_wildlife_wire.c",
+      "sha256": "9defdb5af6aa7fb3bcf689e2c844a95b90c79676b7944175dc571326be924b48"
+    },
+    {
+      "path": "src/world/world_bridge.c",
+      "sha256": "46475b801a950071b591fdd548f1aa4c5f70e985c7a20082973d98e9b31696e8"
+    },
+    {
+      "path": "src/world/world_menu.c",
+      "sha256": "e91b620b60011df69f0f623277768391a586ac38f547b9b17a8fd7ce19f5451d"
+    }
+  ]
+}
