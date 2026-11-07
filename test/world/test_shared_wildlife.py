@@ -134,6 +134,27 @@ class SharedWildlifeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             client.commit_wildlife(True,self.epoch,self.spawn,'c'*32)
 
+    def test_explicit_prebattle_abort_returns_spawn_with_new_lease(self):
+        lease = self.commit()
+        self.assertFalse(self.server.wildlife.abort(self.b,self.epoch,self.spawn,lease))
+        self.assertFalse(self.server.wildlife.abort(self.a,self.epoch,self.spawn,'0'*32))
+        self.send(self.a,f'WILDLIFE ABORT 3 {self.epoch} {self.spawn} {lease}')
+        self.assertFalse(self.server.wildlife.commits)
+        self.assertNotIn(self.spawn,self.server.wildlife.consumed)
+        self.assertEqual(self.snapshot(self.b)['wildlife']['spawns'][0]['status'],'available')
+        self.a['state'][6] = 1
+        self.claim(self.a,4)
+        new_lease = self.snapshot(self.a)['wildlife']['lease']['lease']
+        self.assertNotEqual(lease,new_lease)
+        self.send(self.a,f'WILDLIFE COMMIT 5 {self.epoch} {self.spawn} {lease}')
+        self.assertFalse(self.server.wildlife.commits)
+        self.send(self.a,f'WILDLIFE COMMIT 6 {self.epoch} {self.spawn} {new_lease}')
+        self.send(self.a,f'WILDLIFE ABORT 7 {self.epoch} {self.spawn} {lease}')
+        self.assertIn(self.spawn,self.server.wildlife.commits)
+        self.send(self.a,f'WILDLIFE ACK 8 {self.epoch} {self.spawn} {new_lease}')
+        self.send(self.a,f'WILDLIFE ABORT 9 {self.epoch} {self.spawn} {new_lease}')
+        self.assertIn(self.spawn,self.server.wildlife.consumed)
+
     def test_legacy_cannot_commit(self):
         self.claim(self.a)
         lease = self.snapshot(self.a)['wildlife']['lease']['lease']

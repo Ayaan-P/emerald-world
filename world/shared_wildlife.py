@@ -1,7 +1,8 @@
 """Session-only shared encounters with reservation and committed admission.
 
 A lease alone never authorizes battle entry. Version-two clients must commit it
-first. Committed spawns stay consumed even after disconnect or acknowledgment.
+first. Committed spawns stay consumed after disconnect or acknowledgment. Only an
+explicit owner abort before native battle entry returns a spawn.
 Battle rewards and catches still belong to the existing native battle flow.
 """
 import hashlib
@@ -135,6 +136,17 @@ class SharedWildlife:
         del self.claims[spawn_id]
         self.consumed.add(spawn_id)
         self.commits[spawn_id] = (conn, lease, dict(spawn))
+        self.revision += 1
+        return True
+
+    def abort(self, conn, epoch, spawn_id, lease):
+        # Only the requesting native client knows it has NOT handed this receipt
+        # to battle. Never infer abort from silence, expiry or disconnection.
+        committed = self.commits.get(spawn_id)
+        if epoch != self.epoch or not committed or committed[0] is not conn or committed[1] != lease:
+            return False
+        del self.commits[spawn_id]
+        self.consumed.remove(spawn_id)
         self.revision += 1
         return True
 

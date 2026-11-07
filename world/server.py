@@ -935,9 +935,9 @@ class WorldServer:
             if not conn.get('shared_wildlife') or len(fields) not in (5, 6):
                 raise ValueError('invalid wildlife command')
             seq = bounded(fields[2], 0, 2**63 - 1)
-            if (fields[1] not in ('CLAIM', 'RELEASE', 'COMMIT', 'ACK')
+            if (fields[1] not in ('CLAIM', 'RELEASE', 'COMMIT', 'ACK', 'ABORT')
                     or len(fields) != (5 if fields[1] == 'CLAIM' else 6)
-                    or (fields[1] in ('COMMIT', 'ACK') and conn.get('wildlife_version') != 2)):
+                    or (fields[1] in ('COMMIT', 'ACK', 'ABORT') and conn.get('wildlife_version') != 2)):
                 raise ValueError('invalid wildlife operation')
             if seq <= conn['seq']:
                 self._queue(conn, self._snapshot(conn))
@@ -950,6 +950,8 @@ class WorldServer:
                 changed = self.wildlife.release(conn, fields[3], fields[4], fields[5])
             elif fields[1] == 'COMMIT':
                 changed = self.wildlife.commit(conn, fields[3], fields[4], fields[5], time.monotonic())
+            elif fields[1] == 'ABORT':
+                changed = self.wildlife.abort(conn, fields[3], fields[4], fields[5])
             else:
                 changed = self.wildlife.acknowledge(conn, fields[3], fields[4], fields[5])
             if changed:

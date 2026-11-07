@@ -12,9 +12,9 @@
     "native-shared-wildlife.patch"
   ],
   "base_tree": "cd1254767b1bbaba4731b0c22af3ca2ea34f0de4",
-  "result_tree": "425da8ae6e4f621bc3febfbf5384f51956a59aab",
+  "result_tree": "168df94a6fb7c98b951d20fa3e0fd3fb955e65b1",
   "patch": "native-shared-wildlife.patch",
-  "patch_sha256": "16e7cebf81cb5596a9dbf075e30607267775dbd7faccc2aa09d69eb129a76fe6",
+  "patch_sha256": "a7653cc3b5a1e25d8725acc1ec8f381027861a0c2c54d5bfe4791da4984b9956",
   "partial_context_files": [
     "src/wild_encounter_ow.c"
   ],
@@ -33,7 +33,7 @@
     },
     {
       "path": "src/world/shared_wildlife.c",
-      "sha256": "2f6009e4797f9fd4bbd2ea63f6406ddd26abb0c2eab26324fdd6589bf1297dcc"
+      "sha256": "3a10836d8eb468c752953d769067736f6809d7efbe1aacdec8e1f19d46672cc8"
     },
     {
       "path": "src/world/shared_wildlife_wire.c",
@@ -41,7 +41,7 @@
     },
     {
       "path": "src/world/world_bridge.c",
-      "sha256": "46475b801a950071b591fdd548f1aa4c5f70e985c7a20082973d98e9b31696e8"
+      "sha256": "b6053e9134dabbbdd55b2ff62d95e044b6f142f57dce617fa95497065f6ff783"
     },
     {
       "path": "src/world/world_menu.c",

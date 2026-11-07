@@ -123,7 +123,7 @@ struct {struct Events *events;} gMapHeader;
 void CB1_Overworld(void){} void CB2_Overworld(void){}
 struct {void (*callback1)(void),(*callback2)(void); unsigned inBattle;} gMain;
 struct {unsigned active;} gPaletteFade;
-static int locked,freeze,removed,started,have=1,allow=1,requests[4],blocked,unavailable;
+static int locked,freeze,removed,started,have=1,allow=1,requests[5],blocked,unavailable,startOk=1;
 int ScriptContext_IsEnabled(void){return 0;}
 int WorldActivity_OwnsFieldInput(void){return 0;}
 void RemoveObjectEvent(struct ObjectEvent *o){o->active=0; removed++;}
@@ -141,7 +141,7 @@ static struct SharedWildlifeSnapshot snapshot;
 bool8 WorldBridge_SharedWildlifeSnapshot(struct SharedWildlifeSnapshot *out){*out=snapshot;return have;}
 bool8 WorldBridge_SharedWildlifeRequest(unsigned a,const char *e,const char *id,const char *l){(void)e;(void)id;(void)l;requests[a]++;return allow;}
 u32 SpawnSharedWildlifeObject(u32 local,u32 species,int x,int y){(void)species;gObjectEvents[1]=(struct ObjectEvent){1,0,local,0,16,1,{x+7,y+7}};gSprites[1].inUse=1;gSprites[1].data[0]=1;return 1;}
-bool8 StartSharedWildlifeBattle(u32 species,u32 level){assert(species==25&&level==5);started++;gMain.inBattle=1;return 1;}
+bool8 StartSharedWildlifeBattle(u32 species,u32 level){assert(species==25&&level==5);if(!startOk)return 0;started++;gMain.inBattle=1;return 1;}
 '''
 RUNTIME_MAIN = r'''
 int main(void){
@@ -167,12 +167,21 @@ int main(void){
  gObjectEvents[1].active=0;SharedWildlife_Update(7);assert(Owned(0));
  SharedWildlife_FilterInput(A_BUTTON);assert(sPhase==1);
  SharedWildlife_FilterInput(B_BUTTON);assert(!sPhase&&!locked&&!freeze);
+ strcpy(snapshot.battleLease,"dddddddddddddddddddddddddddddddd");
  snapshot.battleSeen=1;snapshot.count=snapshot.expected=0;
- SharedWildlife_Update(8);assert(started==1); /* Late receipt cannot start battle. */
+ SharedWildlife_Update(8);assert(started==1&&requests[4]==1); /* Late receipt cannot start battle. */
  snapshot.battleSeen=0;snapshot.count=snapshot.expected=1;
  SharedWildlife_FilterInput(0);SharedWildlife_Update(9);
  SharedWildlife_FilterInput(A_BUTTON);have=0;SharedWildlife_Update(10);
  assert(!sPhase&&!locked&&!freeze&&!gObjectEvents[1].active);
+ /* Failure before battle side effects must abort, not acknowledge a catch. */
+ have=1; snapshot.count=snapshot.expected=1;snapshot.battleSeen=0;snapshot.leaseId[0]=0;
+ SharedWildlife_FilterInput(0);SharedWildlife_Update(11);SharedWildlife_FilterInput(A_BUTTON);
+ strcpy(snapshot.leaseId,snapshot.mons[0].id);strcpy(snapshot.lease,"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
+ SharedWildlife_Update(12);snapshot.leaseId[0]=0;snapshot.count=snapshot.expected=0;
+ snapshot.battleSeen=1;strcpy(snapshot.battleLease,snapshot.lease);startOk=0;
+ {int ack=requests[2],abort=requests[4];SharedWildlife_Update(13);
+ assert(started==1&&requests[2]==ack&&requests[4]==abort+1&&!locked&&!freeze);}
  return 0;
 }
 '''

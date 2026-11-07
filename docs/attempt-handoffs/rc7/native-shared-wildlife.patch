@@ -44,10 +44,10 @@ index 0000000000000000000000000000000000000000..015d2d92ea302ea9bbd659a4f127863c
 +#endif
 diff --git a/src/world/shared_wildlife.c b/src/world/shared_wildlife.c
 new file mode 100644
-index 0000000000000000000000000000000000000000..ebabdc18207df537e36d5703bad3291e635870a3
+index 0000000000000000000000000000000000000000..b4c26cca50cfc6fd3b6c58ec12695e46570ee961
 --- /dev/null
 +++ b/src/world/shared_wildlife.c
-@@ -0,0 +1,210 @@
+@@ -0,0 +1,219 @@
 +#ifdef PORTABLE
 +#include "global.h"
 +#include "main.h"
@@ -114,7 +114,7 @@ index 0000000000000000000000000000000000000000..ebabdc18207df537e36d5703bad3291e
 +static void Cancel(const char *status)
 +{
 +    if (sPhase && sLease[0])
-+        WorldBridge_SharedWildlifeRequest(3,sEpoch,sId,sLease);
++        WorldBridge_SharedWildlifeRequest(sPhase==2 ? 4 : 3,sEpoch,sId,sLease);
 +    if (sLocked && Field()) {
 +        UnlockPlayerFieldControls();
 +        UnfreezeObjectEvents();
@@ -189,7 +189,8 @@ index 0000000000000000000000000000000000000000..ebabdc18207df537e36d5703bad3291e
 +    sFrame=frame;
 +    have=WorldBridge_SharedWildlifeSnapshot(&sView);
 +    if(!have || !Field()) {
-+        if(sPhase) Cancel("Shared encounter stopped. No battle was started.");
++        if(sPhase) Cancel(have ? "Shared encounter stopped before battle."
++            : "Connection lost. The host may retain this encounter.");
 +        SharedWildlife_ClearSprites();
 +        return;
 +    }
@@ -206,11 +207,15 @@ index 0000000000000000000000000000000000000000..ebabdc18207df537e36d5703bad3291e
 +            strcpy(sHandled,sView.battleLease);
 +            SharedWildlife_ClearSprites();
 +            sPhase=sWait=0; sLocked=FALSE;
-+            WorldBridge_SharedWildlifeRequest(2,sEpoch,sId,sLease);
 +            if(!StartSharedWildlifeBattle(sView.battle.species,sView.battle.level)) {
++                sHandled[0]=0;
++                WorldBridge_SharedWildlifeRequest(4,sEpoch,sId,sLease);
 +                UnlockPlayerFieldControls(); UnfreezeObjectEvents();
-+                sStatus="Shared encounter could not start.";
-+            } else sStatus="Shared encounter started.";
++                sStatus="Battle could not start. Returning the shared encounter.";
++            } else {
++                WorldBridge_SharedWildlifeRequest(2,sEpoch,sId,sLease);
++                sStatus="Shared encounter started.";
++            }
 +            return;
 +        }
 +        if(sPhase==1 && !strcmp(sId,sView.leaseId)) {
@@ -220,12 +225,16 @@ index 0000000000000000000000000000000000000000..ebabdc18207df537e36d5703bad3291e
 +        return;
 +    }
 +    if(sView.battleSeen) {
-+        /* A late receipt after cancellation is acknowledged without entering a
-+         * battle. Committed spawns never respawn on timeout or disconnect. */
-+        if(strcmp(sHandled,sView.battleLease)) sStatus="Shared encounter ended before it could start.";
-+        strcpy(sHandled,sView.battleLease);
-+        WorldBridge_SharedWildlifeRequest(2,sView.epoch,sView.battle.id,sView.battleLease);
++        /* Only receipts already handed to battle are acknowledged as consumed.
++         * Late admission after cancellation can be returned explicitly. Silence
++         * or disconnect alone never grants the server permission to reoffer it. */
++        if(strcmp(sHandled,sView.battleLease)) {
++            sStatus="Canceled before battle. Returning the shared encounter.";
++            WorldBridge_SharedWildlifeRequest(4,sView.epoch,sView.battle.id,sView.battleLease);
++        } else WorldBridge_SharedWildlifeRequest(2,sView.epoch,sView.battle.id,sView.battleLease);
 +    }
++    else if(sView.leaseId[0])
++        WorldBridge_SharedWildlifeRequest(3,sView.epoch,sView.leaseId,sView.lease);
 +    if(ArePlayerFieldControlsLocked() || gPlayerAvatar.tileTransitionState) return;
 +    Project();
 +}
@@ -348,7 +357,7 @@ index 0000000000000000000000000000000000000000..fb535ccd04e8d54ac613622b0cea8e6c
 +}
 +#endif
 diff --git a/src/world/world_bridge.c b/src/world/world_bridge.c
-index f84f38d6069d46247329ade2f79ab75ef7cf8aca..b4e25cf7bf7d1f677af19b0bb99a330bff237d80 100644
+index f84f38d6069d46247329ade2f79ab75ef7cf8aca..13bf0511ff022d4ee1fbaf0384c1ef6a211bed1b 100644
 --- a/src/world/world_bridge.c
 +++ b/src/world/world_bridge.c
 @@ -1,2413 +1,2481 @@
@@ -2029,9 +2038,9 @@ index f84f38d6069d46247329ade2f79ab75ef7cf8aca..b4e25cf7bf7d1f677af19b0bb99a330b
 +
 +bool8 WorldBridge_SharedWildlifeRequest(unsigned action, const char *epoch, const char *id, const char *lease)
 +{
-+    static const char *const commands[] = {"CLAIM", "COMMIT", "ACK", "RELEASE"};
++    static const char *const commands[] = {"CLAIM", "COMMIT", "ACK", "RELEASE", "ABORT"};
 +    if (!sWorld.wildlifeRequested || !WorldBridge_ConnectionActive() || sWorld.outputSize
-+        || action > 3 || sWorld.seq >= UINT_MAX-2 || !epoch || !id
++        || action > 4 || sWorld.seq >= UINT_MAX-2 || !epoch || !id
 +        || strlen(epoch)!=32 || strspn(epoch,"0123456789abcdef")!=32
 +        || strlen(id)!=32 || strspn(id,"0123456789abcdef")!=32
 +        || (action && (!lease || strlen(lease)!=32 || strspn(lease,"0123456789abcdef")!=32))) return FALSE;
