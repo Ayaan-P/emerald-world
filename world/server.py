@@ -24,6 +24,7 @@ from .mechanics import validate_objects
 from .link_protocol import LinkProtocol
 from .guilds import Guilds
 from .guild_chat import GuildChat
+from .world_rules import WorldRules
 from .rally import RallyCoordinator
 
 MAX_QUEUE = 65536
@@ -134,6 +135,7 @@ class WorldServer:
                 seq INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, data TEXT);
             CREATE INDEX IF NOT EXISTS events_kind_seq ON events(kind,seq);
         ''')
+        self.world_rules = WorldRules(self.db)
         self.guilds = Guilds(self.db, catalog_maps())
         self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
         self.db.executescript('''
@@ -484,10 +486,20 @@ class WorldServer:
             self._broadcast()
 
     def _line(self, conn, raw):
+        # Serialize admission with owner rule updates, including the capability check.
+        if conn['id'] is None:
+            with self.lock:
+                return self._line_impl(conn, raw)
+        return self._line_impl(conn, raw)
+
+    def _line_impl(self, conn, raw):
         try:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                rules_capable = role.endswith('RULES1')
+                if rules_capable:
+                    role = role[:-6]
                 cave_xl = role.endswith('CAVE10')
                 cave_large_terrain = cave_xl or role.endswith('CAVE9H')
                 cave_geometry = cave_large_terrain or role.endswith('CAVE9G')
@@ -516,6 +528,9 @@ class WorldServer:
                 travel = role in ('SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
                 social = role in ('SOCIAL', 'SOCIALCHAT', 'SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
                 link = role == 'LINK'
+                if rules_capable and not social:
+                    self._error(conn, 'AUTH')
+                    return
                 if cave_capable and not social:
                     self._error(conn, 'AUTH')
                     return
@@ -545,6 +560,9 @@ class WorldServer:
                     self.link_channels[name] = conn
                     self._queue(conn, f'WELCOME 1 {name} {self.revision} LINK\n')
                     return
+                if not (control or link or rules_capable) and self.world_rules.requires_capability():
+                    self._error(conn, 'RULES_REQUIRED')
+                    return
                 rejection = self.host_controls.rejection(name)
                 if rejection:
                     self._error(conn, rejection)
@@ -565,6 +583,7 @@ class WorldServer:
                     return
                 conn['id'] = name
                 conn['social'] = social
+                conn['rules_capable'] = rules_capable
                 conn['cave_capable'] = cave_capable
                 conn['cave_profile'] = cave_profile
                 conn['cave_wildlife'] = cave_wildlife
@@ -592,6 +611,8 @@ class WorldServer:
                 with self.db:
                     self._event('join', name)
                 self._queue(conn, f'WELCOME 1 {name} {self.revision}\n')
+                if social and rules_capable:
+                    self._queue(conn, self.world_rules.line())
                 self._broadcast()
                 return
             if conn.get('link'):
@@ -1354,6 +1375,20 @@ class WorldServer:
                 result = dict(ok=True, invitation=dict(self.sharing, trainer=identity['id'], token=identity['token']))
             elif request.get('command') == 'inspect':
                 result = self.inspect()
+            elif request.get('command') == 'world_rules':
+                try:
+                    action = request.get('action')
+                    with self.lock:
+                        if action == 'status' and set(request) == {'command', 'action'}:
+                            result = self.world_rules.status()
+                        elif action == 'replace' and set(request) == {'command', 'action', 'rules', 'expected_revision'}:
+                            if any(not p.get('closing') for p in self.peers.values()):
+                                raise ValueError('All players must leave before changing world rules.')
+                            result = self.world_rules.replace(request['rules'], request['expected_revision'])
+                        else:
+                            raise ValueError('invalid world rules request')
+                except ValueError as exc:
+                    result = dict(ok=False, error=str(exc))
             elif request.get('command') == 'host_controls':
                 try:
                     result = self.host_controls.request(request, self)
