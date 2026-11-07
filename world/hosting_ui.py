@@ -34,6 +34,72 @@ class HostedLauncher:
         self.loaded = False
         self.invite_requests = {}
         self.completed_request = None
+        self.area_world = None
+        self._area_cache = None
+        self._area_cached_at = 0.0
+
+    def select_area_world(self, world_id):
+        self.refresh()
+        world = next((w for w in self.worlds if w['id'] == world_id), None)
+        if world is None:
+            raise SessionError('Choose a hosted world owned by your account.')
+        self.area_world = dict(world)
+        self._area_cache = None
+        self.area_status(refresh=True)
+
+    def area_status(self, refresh=False):
+        import time
+        from .hosting_client import HostingClient
+        self._ready()
+        if self.area_world is None:
+            raise SessionError('Choose a world for generation.')
+        if refresh or self._area_cache is None or time.monotonic() - self._area_cached_at > 2:
+            self._area_cache = HostingClient.from_file(self.profile).generated_areas(self.area_world['id'])
+            self._area_cached_at = time.monotonic()
+        return dict(self._area_cache)
+
+    def author_area(self, theme, kind, cohort):
+        from .author_cave import author, MAX_THEME
+        from .hosting_client import HostingClient
+        if type(theme) is not str or not theme.strip() or len(theme.encode('utf-8')) > MAX_THEME:
+            raise SessionError('Enter an area description of at most 2,000 UTF-8 bytes.')
+        capabilities = {'cave': 'cave_authoring', 'wilds': 'wilds_authoring',
+            'guided_wilds': 'guided_wilds_authoring', 'cast_wilds': 'cast_wilds_authoring',
+            'xl_wilds': 'xl_wilds_authoring'}
+        status = self.area_status(refresh=True)
+        if kind not in capabilities or not status.get(capabilities[kind]):
+            raise SessionError('This world does not support that area type.')
+        if (status.get('active_generated_area') or {}).get('occupants', 0):
+            raise SessionError('Everyone must leave the active generated area before generation.')
+        world_id = self.area_world['id']
+        kwargs = {'large': True}
+        if kind == 'cave':
+            kwargs.update(custom_wildlife=True, cohort=cohort)
+        else:
+            kwargs['wilds'] = True
+            if kind == 'guided_wilds': kwargs['guide'] = True
+            if kind == 'cast_wilds': kwargs['cast'] = True
+            if kind == 'xl_wilds': kwargs['xl'] = True
+        try:
+            _, blob = author(theme, **kwargs)
+        except (OSError, ValueError, TypeError, TimeoutError, UnicodeError):
+            raise SessionError('Area generation failed before publication. Check model CLI login and configuration. A new attempt may incur another charge.') from None
+        if self.area_world is None or self.area_world['id'] != world_id:
+            raise SessionError('The selected world changed. Nothing was published.')
+        label = ' '.join(''.join(' ' if ord(c) < 32 or ord(c) == 127 else c for c in theme).split())[:80]
+        result = HostingClient.from_file(self.profile).publish_generated_area(world_id, blob, label=label)
+        self._area_cache = None
+        self.session.status = 'Generated area published to your hosted world.'
+        return result
+
+    def activate_area(self, identity):
+        from .hosting_client import HostingClient
+        self._ready()
+        if self.area_world is None:
+            raise SessionError('Choose a world for generation.')
+        result = HostingClient.from_file(self.profile).activate_generated_area(self.area_world['id'], identity)
+        self._area_cache = None
+        return result
 
     def _private(self, path):
         from .hosting_client import read_private

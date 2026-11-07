@@ -3,6 +3,8 @@
 All game endpoints use the existing v1 invitation and WorldServer protocol.
 The operator supplies a separate state root, existing TLS key/cert and port pool.
 """
+import base64
+import binascii
 import fcntl
 import hashlib
 import json
@@ -119,7 +121,8 @@ class HostedWorldManager:
         if ready and not (root/'world.sqlite3').is_file():
             raise RuntimeError('registered world database missing')
         root.parent.mkdir(mode=0o700, exist_ok=True)
-        server = WorldServer(root/'transport/world.sock', root)
+        server = WorldServer(root/'transport/world.sock', root,
+                             persist_generated_cave=True, archive_generated_areas=True)
         broker = None
         try:
             for member in self.db.execute('SELECT * FROM members WHERE world=?', (row['id'],)):
@@ -256,6 +259,75 @@ class HostedWorldManager:
             row = self._owned(token, world_id)
             return self._result(row, row['trainer'])
 
+    def generated_area_status(self, token, world_id):
+        """Owner-only metadata. Never return templates, paths or provider state."""
+        with self.lock:
+            server = self._start_world(self._owned(token, world_id))
+            with server.lock:
+                kinds = {6: 'wilds', 7: 'guided_wilds', 8: 'cast_wilds',
+                         9: 'event_wilds', 16: 'xl_wilds'}
+                formats = {b'EWGMAP06': 'wilds', b'EWGMAP07': 'guided_wilds',
+                           b'EWGMAP08': 'cast_wilds', b'EWGMAP09': 'event_wilds',
+                           b'EWGMAP0A': 'xl_wilds'}
+                headers = dict(server.db.execute(
+                    'SELECT identity, substr(template, 1, 8) FROM generated_area_archive'))
+                areas = [dict(area, kind=formats.get(headers.get(area['identity'], b''), area['kind']))
+                         for area in server.list_generated_areas()]
+                cave = server.shared_cave
+                active = None
+                if cave is not None:
+                    archived = next((a for a in areas if a['identity'] == cave.identity), {})
+                    occupants = sum(1 for peer in server.peers.values()
+                        if not peer.get('closing') and (peer.get('in_generated_cave') or
+                            (peer.get('state') is not None and
+                             tuple(peer['state'][:2]) in (server.cave_map, server.wilds_map))))
+                    active = dict(identity=cave.identity, kind=kinds.get(cave.version, 'cave'),
+                                  side=cave.side, label=archived.get('label', 'Current generated area'),
+                                  occupants=occupants)
+                wilds = server.wilds_map is not None
+                return dict(cave_authoring=server.cave_map is not None,
+                            wilds_authoring=wilds, guided_wilds_authoring=wilds,
+                            cast_wilds_authoring=wilds, xl_wilds_authoring=wilds,
+                            cave_persistent=server.persist_generated_cave,
+                            area_archive=server.archive_generated_areas,
+                            generated_areas=areas, active_generated_area=active)
+
+    def publish_generated_area(self, token, world_id, template, *, label):
+        """Accept canonical base64 of inert SharedCave bytes, never source or paths."""
+        from .shared_cave import SharedCave, MAX_SIZE
+        with self.lock:
+            server = self._start_world(self._owned(token, world_id))
+            if type(template) is not str or len(template) > 4 * ((MAX_SIZE + 2) // 3):
+                raise HostingError()
+            try:
+                blob = base64.b64decode(template, validate=True)
+            except (ValueError, binascii.Error):
+                raise HostingError() from None
+            if len(blob) > MAX_SIZE or base64.b64encode(blob).decode('ascii') != template:
+                raise HostingError()
+            try:
+                SharedCave(blob)
+            except ValueError:
+                raise HostingError() from None
+            if (type(label) is not str or not label.strip() or len(label) > 80
+                    or any(ord(c) < 32 or ord(c) == 127 for c in label)):
+                raise HostingError()
+            try:
+                identity = server._replace_cave(blob, label=label)
+            except ValueError:
+                raise HostingError(409, 'conflict') from None
+            return dict(identity=identity)
+
+    def activate_generated_area(self, token, world_id, identity):
+        with self.lock:
+            server = self._start_world(self._owned(token, world_id))
+            if type(identity) is not str or not re.fullmatch('[0-9a-f]{64}', identity):
+                raise HostingError()
+            try:
+                return dict(identity=server.activate_generated_area(identity))
+            except ValueError:
+                raise HostingError(409, 'conflict') from None
+
     def invite(self, token, world_id, request_id):
         """Owner issues one private, single-identity bearer. Retry by request_id."""
         with self.lock, self.db:
@@ -328,6 +400,10 @@ class HostingService:
     POST /v1/worlds {name,trainer,request_id}, account bearer
     POST /v1/worlds/ID/resume {}, account bearer
     POST /v1/worlds/ID/invites {request_id}, account bearer
+    GET /v1/worlds/ID/generated-areas, owner bearer -> capabilities/current/archive
+    POST /v1/worlds/ID/generated-areas {template,label}, owner bearer -> {identity}
+      template is canonical base64 of production-validated inert SharedCave bytes.
+    POST /v1/worlds/ID/generated-areas/activate {identity}, owner bearer -> {identity}
     POST /v1/join {trainer}, world-join bearer
     Create/resume/join -> {world:{id,name,trainer},invitation:<native v1>}.
     Errors are {error:<fixed code>}. No admin socket or private paths are served.
@@ -408,8 +484,11 @@ class HostingService:
                     if headers.get('Transfer-Encoding') is not None:
                         raise HostingError()
                     if self.command == 'POST':
-                        if (len(lengths) != 1 or not re.fullmatch('[0-9]{1,4}', lengths[0])
-                                or not 2 <= int(lengths[0]) <= 4096
+                        from .shared_cave import MAX_SIZE
+                        upload = re.fullmatch('/v1/worlds/[0-9a-f]{16}/generated-areas', self.path)
+                        limit = 4 * ((MAX_SIZE + 2) // 3) + 1024 if upload else 4096
+                        if (len(lengths) != 1 or not re.fullmatch('[0-9]{1,6}', lengths[0])
+                                or not 2 <= int(lengths[0]) <= limit
                                 or headers.get('Content-Type') != 'application/json'):
                             raise HostingError()
                         body = _json_object(self.rfile.read(int(lengths[0])))
@@ -431,6 +510,19 @@ class HostingService:
                     elif self.command == 'POST' and path == '/v1/join' and set(body) == {'trainer'}:
                         result = manager.join(token, body['trainer'])
                     else:
+                        area_match = re.fullmatch('/v1/worlds/([0-9a-f]{16})/generated-areas(/activate)?', path)
+                        if area_match is not None:
+                            world_id, activate = area_match.groups()
+                            if self.command == 'GET' and not activate:
+                                result = manager.generated_area_status(token, world_id)
+                            elif self.command == 'POST' and not activate and set(body) == {'template', 'label'}:
+                                result = manager.publish_generated_area(token, world_id, body['template'], label=body['label'])
+                            elif self.command == 'POST' and activate and set(body) == {'identity'}:
+                                result = manager.activate_generated_area(token, world_id, body['identity'])
+                            else:
+                                raise HostingError()
+                            self._reply(200, result)
+                            return
                         match = re.fullmatch('/v1/worlds/([0-9a-f]{16})/(resume|invites)', path)
                         if self.command != 'POST' or match is None:
                             raise HostingError()

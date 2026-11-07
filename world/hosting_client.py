@@ -3,6 +3,7 @@
 No method reads game saves. Native invitations are ordinary unchanged v1 files.
 Never pass credentials on argv or stdout. Obtain HOST ACCESS files privately.
 """
+import base64
 import hashlib
 import hmac
 import http.client
@@ -92,7 +93,10 @@ class HostingClient:
                 raise ValueError('TLS trust failed')
             # Absolutely no HTTP request, body or authorization before the pin.
             raw = None if body is None else json.dumps(body, separators=(',', ':')).encode('utf-8')
-            if raw is not None and len(raw) > 4096:
+            from .shared_cave import MAX_SIZE
+            upload = method == 'POST' and re.fullmatch('/v1/worlds/[0-9a-f]{16}/generated-areas', path)
+            limit = 4 * ((MAX_SIZE + 2) // 3) + 1024 if upload else 4096
+            if raw is not None and len(raw) > limit:
                 raise ValueError('request too large')
             connection.request(method, path, body=raw, headers={
                 'Authorization': 'Bearer ' + credentials['token'], 'Content-Type': 'application/json'})
@@ -144,6 +148,31 @@ class HostingClient:
 
     def resume(self, world_id):
         return self._request(self.profile, 'POST', '/v1/worlds/' + self._world_id(world_id) + '/resume', {})
+
+    def generated_area_status(self, world_id):
+        """Return owner-only capabilities, archive metadata and current occupancy."""
+        return self._request(self.profile, 'GET',
+                             '/v1/worlds/' + self._world_id(world_id) + '/generated-areas')
+
+    generated_areas = generated_area_status
+
+    def publish_generated_area(self, world_id, blob, *, label):
+        """Publish locally authored inert bytes. This never invokes a provider."""
+        from .shared_cave import SharedCave
+        SharedCave(blob)
+        if (type(label) is not str or not label.strip() or len(label) > 80
+                or any(ord(c) < 32 or ord(c) == 127 for c in label)):
+            raise ValueError('invalid generated area label')
+        return self._request(self.profile, 'POST',
+                             '/v1/worlds/' + self._world_id(world_id) + '/generated-areas',
+                             dict(template=base64.b64encode(blob).decode('ascii'), label=label))
+
+    def activate_generated_area(self, world_id, identity):
+        if type(identity) is not str or not re.fullmatch('[0-9a-f]{64}', identity):
+            raise ValueError('invalid generated area identity')
+        return self._request(self.profile, 'POST',
+                             '/v1/worlds/' + self._world_id(world_id) + '/generated-areas/activate',
+                             dict(identity=identity))
 
     def invite_account(self, invitation_out, *, request_id=None):
         """Bootstrap sponsor issues a private HOST ACCESS file for another owner."""

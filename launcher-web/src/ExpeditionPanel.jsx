@@ -9,7 +9,7 @@ const areaTypes = {
 };
 const areaLabels = { ...Object.fromEntries(Object.entries(areaTypes).map(([key, type]) => [key, type.label])), event_wilds: 'Interactive adventure' };
 
-export default function ExpeditionPanel({ state, ready, busy, onOpen, onAuthor, onActivate }) {
+export default function ExpeditionPanel({ state, ready, busy, onOpen, onAuthor, onActivate, onSelectHostedArea, onRefreshHosted, onHostedWorlds }) {
   const [name, setName] = useState('');
   const [trainer, setTrainer] = useState('Player');
   const [theme, setTheme] = useState('');
@@ -21,19 +21,21 @@ export default function ExpeditionPanel({ state, ready, busy, onOpen, onAuthor, 
   const confirmationPanel = useRef(null);
   const confirmationOpener = useRef(null);
   const hadConfirmation = useRef(false);
-  useEffect(() => { setConfirmation(null); setResult(''); }, [state.world_key, state.local_host]);
+  const areaWorldKey = state.area_world_key || state.world_key;
+  useEffect(() => { setConfirmation(null); setResult(''); }, [areaWorldKey, state.local_host, state.area_authoring]);
+  const authoring = Boolean(state.local_host || state.area_authoring);
   const disabled = busy || submitting || !ready;
   const validTrainer = /^[A-Za-z0-9_-]{1,24}$/.test(trainer);
   const themeBytes = new TextEncoder().encode(theme).length;
   const localWorlds = state.local_worlds || [];
-  const current = localWorlds.find(world => world.key === state.world_key);
+  const current = state.hosted_area_world || localWorlds.find(world => world.key === areaWorldKey);
   const areas = [...(state.generated_areas || [])].sort((a, b) => Number(b.active) - Number(a.active));
   const adventures = areas.filter(area => area.kind === 'event_wilds');
   const library = areas.filter(area => area.kind !== 'event_wilds');
   const activeArea = state.active_generated_area;
   const occupied = (activeArea?.occupants || 0) > 0;
   const gameRunning = state.games?.includes(state.trainer);
-  const pending = confirmation?.world === state.world_key ? confirmation : null;
+  const pending = authoring && confirmation?.world === areaWorldKey ? confirmation : null;
   const canAuthor = state[areaTypes[kind].capability];
   useEffect(() => {
     if (pending) {
@@ -53,7 +55,7 @@ export default function ExpeditionPanel({ state, ready, busy, onOpen, onAuthor, 
   }
 
   async function confirm() {
-    if (disabled || occupied || !pending || submittingRef.current) return;
+    if (disabled || !authoring || occupied || !pending || submittingRef.current) return;
     submittingRef.current = true;
     setSubmitting(true);
     setResult('');
@@ -75,9 +77,9 @@ export default function ExpeditionPanel({ state, ready, busy, onOpen, onAuthor, 
 
   return <section className="worlds-section expedition-panel" aria-labelledby="expedition-title">
     <div className="section-heading"><div><h2 id="expedition-title">Generated areas</h2></div></div>
-    {state.local_host ? <>
+    {authoring && <>
       <div className="expedition-session"><h3>{current?.name || 'Local world'}</h3>
-        <p>Trainer {current?.trainer || state.trainer}. {gameRunning ? 'Game running.' : 'Game stopped.'}</p>
+        <p>Trainer {current?.trainer || state.trainer}. {state.hosted_area_world ? 'Owned hosted world. Generation changes this persistent world, not your solo save.' : gameRunning ? 'Game running.' : 'Game stopped.'}</p>
         {!activeArea && <p>Choose a saved area or generate a new one.</p>}
       </div>
       {activeArea && <section className="settings-card expedition-current-area" aria-label="Current exploration area"><div>
@@ -88,24 +90,25 @@ export default function ExpeditionPanel({ state, ready, busy, onOpen, onAuthor, 
         {occupied ? <p role="status">{activeArea.occupants} {activeArea.occupants === 1 ? 'trainer' : 'trainers'} inside. Everyone must leave before replacing this area.</p>
           : <p className="field-hint">No trainers inside.</p>}
       </div></section>}
+    </>}
       <section className="expedition-generator" aria-labelledby="generate-title">
         <h3 id="generate-title">Generate an area</h3>
         <div className="expedition-details-content">
           <label className="field-label" htmlFor="expedition-kind">Area type</label>
-          <select id="expedition-kind" className="text-input" value={kind} disabled={disabled || Boolean(pending)} onChange={event => setKind(event.target.value)}>
+          <select id="expedition-kind" className="text-input" value={kind} disabled={disabled || !authoring || Boolean(pending)} onChange={event => setKind(event.target.value)}>
             {Object.entries(areaTypes).map(([value, type]) => <option key={value} value={value} disabled={!state[type.capability]}>{type.label}</option>)}
           </select>
           <p className="field-hint">{areaTypes[kind].description}</p>
           {(kind === 'guided_wilds' || kind === 'cast_wilds') && <p className="field-hint">Face a character and press A (default Z). Dialogue is fixed text, not live chat.</p>}
-          {!canAuthor ? <p role="status">This local host does not support this area type. Check the game setup and reopen the local world.</p> : <>
+          {!authoring ? <p role="status">Generation is not available in solo or offline story mode. Open or create a local world below, or select an owned hosted world.</p> : !canAuthor && <p role="status">This world does not support this area type. Check the game setup or choose another world.</p>}
             <label className="field-label" htmlFor="expedition-theme">Area theme</label>
-            <textarea id="expedition-theme" className="text-input invite-paste" value={theme} disabled={disabled || Boolean(pending)} onChange={event => setTheme(event.target.value)} placeholder="Describe the landscape or cavern you want to explore." aria-describedby="expedition-theme-help" />
+            <textarea id="expedition-theme" className="text-input invite-paste" value={theme} disabled={disabled || !authoring || !canAuthor || Boolean(pending)} onChange={event => setTheme(event.target.value)} placeholder="Describe the landscape or cavern you want to explore." aria-describedby="expedition-theme-help" />
             <p id="expedition-theme-help" className="field-hint">{themeBytes} / 2,000 bytes. Requires a supported, signed-in model CLI. Your provider receives the theme and may charge for generation.</p>
-            <p className="field-hint">{state.cave_persistent ? 'Generated areas are saved in this world.' : 'This host does not save areas across restarts.'}</p>
-            {!pending && <button className="button small ghost" disabled={disabled || occupied || !theme.trim() || themeBytes > 2000} onClick={() => review({ type: 'generate', world: state.world_key, kind, theme })}>Review generation</button>}
-          </>}
+            <p className="field-hint">{!authoring ? 'Select a world before generating. Offline story saves are not changed.' : state.cave_persistent ? 'Generated areas are saved in this world.' : 'This host does not save areas across restarts.'}</p>
+            {!pending && <button className="button small ghost" disabled={disabled || !authoring || !canAuthor || occupied || !theme.trim() || themeBytes > 2000} onClick={() => review({ type: 'generate', world: areaWorldKey, kind, theme })}>Review generation</button>}
         </div>
       </section>
+    {authoring && <>
       {pending && <section className="settings-card generation-confirmation" ref={confirmationPanel} tabIndex={-1} aria-label="Review area change"><div>
         <h3>{pending.type === 'activate' ? (pending.adventure ? 'Open this adventure?' : 'Make this the active area?') : 'Generate this area?'}</h3>
         {pending.type === 'generate' && <p>{areaLabels[pending.kind] || 'Generated area'}</p>}
@@ -118,7 +121,7 @@ export default function ExpeditionPanel({ state, ready, busy, onOpen, onAuthor, 
         {!adventures.length && <p className="muted-copy">{state.area_archive_error ? 'Published adventures could not be checked. See the library error below.' : 'No published adventures.'}</p>}
         {adventures.map(area => <article className={`settings-card${area.active ? ' expedition-active-area' : ''}`} key={area.identity}><div>
           <h3>{area.label}</h3><p>Interactive adventure · {area.active ? 'Active now' : 'Published'}</p>
-          {area.active ? <p className="field-hint">Choose Play now if needed, then START → WORLD → Explore generated area. Face a character and press A (default Z). Leave through WORLD → Leave generated area and save after returning.</p> : <button className="button small ghost" disabled={disabled || occupied || Boolean(pending)} onClick={() => review({ type: 'activate', world: state.world_key, identity: area.identity, label: area.label, adventure: true })}>Open adventure</button>}
+          {area.active ? <p className="field-hint">Choose Play now if needed, then START → WORLD → Explore generated area. Face a character and press A (default Z). Leave through WORLD → Leave generated area and save after returning.</p> : <button className="button small ghost" disabled={disabled || occupied || Boolean(pending)} onClick={() => review({ type: 'activate', world: areaWorldKey, identity: area.identity, label: area.label, adventure: true })}>Open adventure</button>}
         </div></article>)}
       </section>
       <div className="generated-area-library">
@@ -128,18 +131,33 @@ export default function ExpeditionPanel({ state, ready, busy, onOpen, onAuthor, 
         {!library.length && !state.area_archive_error && <p className="muted-copy">No saved areas.</p>}
         {library.map(area => <div className={`settings-card${area.active ? ' expedition-active-area' : ''}`} key={area.identity}><div>
           <h3>{area.label}</h3><p>{areaLabels[area.kind] || 'Generated area'} · {area.active ? 'Active now' : 'Saved'}</p>
-          {area.active ? <p className="field-hint">Enter from START → WORLD → Explore generated area. Face characters and press A (default Z). Leave through WORLD → Leave generated area, then save after returning.</p> : <button className="button small ghost" disabled={disabled || occupied || Boolean(pending)} onClick={() => review({ type: 'activate', world: state.world_key, identity: area.identity, label: area.label })}>Use this area</button>}
+          {area.active ? <p className="field-hint">Enter from START → WORLD → Explore generated area. Face characters and press A (default Z). Leave through WORLD → Leave generated area, then save after returning.</p> : <button className="button small ghost" disabled={disabled || occupied || Boolean(pending)} onClick={() => review({ type: 'activate', world: areaWorldKey, identity: area.identity, label: area.label })}>Use this area</button>}
         </div></div>)}
       </div>
       {result && <p className="expedition-result" role="status">{result}</p>}
       {(busy || submitting) && <p role="status">Working. Your game can keep running.</p>}
-    </> : <>
+    </>}
+    {!state.local_host && <>
       {localWorlds.length ? <div className="expedition-world-list">{localWorlds.map(world => <div className="settings-card" key={world.key}><div>
         <h3>{world.name}</h3><p>Trainer {world.trainer} · {world.has_save ? 'Saved game available' : 'No trainer save yet'}</p>
         <button className="button small ghost" disabled={disabled || !world.trainer} onClick={() => onOpen('local_resume', { world: world.key, trainer: world.trainer }, world.key, { playAfter: false })}>Open local world</button>
-      </div></div>)}</div> : <p className="muted-copy">Open a local world to generate caves and outdoor areas. Remote servers cannot be edited here.</p>}
+      </div></div>)}</div> : <p className="muted-copy">Open a local world below, or choose an owned hosted world for generation.</p>}
       {localWorlds.length > 0 && <p className="field-hint">Opening a local world makes no model call.</p>}
     </>}
+    <section aria-label="Owned hosted worlds for generation">
+      <h3>Generate in an owned hosted world</h3>
+      <p className="field-hint">Selecting a world does not connect or start a game, stop your current game, or call a model. Only worlds owned by your account can be edited.</p>
+      {state.hosted_area_error && <p role="alert">{state.hosted_area_error}</p>}
+      {state.hosting?.enrolled ? <>
+        <button className="text-button" disabled={disabled || !onRefreshHosted} onClick={onRefreshHosted}>{state.hosting.loaded ? 'Refresh owned worlds' : 'Load owned worlds'}</button>
+        {(state.hosting.worlds || []).map(world => <div className="settings-card" key={world.id}><div>
+          <h4>{world.name}</h4><p>Hosted · Trainer {world.trainer}</p>
+          <button className="button small ghost" aria-label={`Select ${world.name} for generation`} disabled={disabled || !onSelectHostedArea || state.hosted_area_world?.id === world.id} onClick={() => onSelectHostedArea(world)}>{state.hosted_area_world?.id === world.id ? 'Selected for generation' : 'Select for generation'}</button>
+        </div></div>)}
+        {state.hosting.loaded && !state.hosting.worlds?.length && <p className="muted-copy">No owned hosted worlds. Create one in Hosted worlds.</p>}
+      </> : <p className="muted-copy">Add or restore owner access in Hosted worlds to select a persistent world.</p>}
+      {onHostedWorlds && <button className="text-button" disabled={disabled} onClick={onHostedWorlds}>Open Hosted worlds</button>}
+    </section>
     {!state.local_host && <details className="expedition-details expedition-new-save">
       <summary>Create a local world</summary>
       <div className="expedition-details-content">

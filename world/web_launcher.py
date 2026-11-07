@@ -261,6 +261,18 @@ class LauncherBridge:
                                 (peer.get('state') is not None and tuple(peer['state'][:2]) in (server.cave_map, server.wilds_map))))
                         active_area = {'kind': kinds.get(cave.version, 'cave'), 'side': cave.side,
                             'label': archived.get('label', 'Current generated area'), 'occupants': occupants}
+            area_projection = {'area_authoring': local_host,
+                'area_world_key': self.session.state.name if local_host and self.session.state else None,
+                'hosted_area_world': None, 'hosted_area_error': None}
+            if not local_host and self.hosted.area_world is not None:
+                area_projection['hosted_area_world'] = dict(self.hosted.area_world)
+                area_projection['area_world_key'] = 'hosted-' + self.hosted.area_world['id']
+                try:
+                    area_projection.update(self.hosted.area_status())
+                    area_projection['area_authoring'] = True
+                except Exception:
+                    area_projection['area_authoring'] = False
+                    area_projection['hosted_area_error'] = 'Could not read generated areas from this hosted world. Check the connection and select it again.'
             live_games = [name for name, (process, _paths) in self.session.games.items()
                           if process.poll() is None]
             game_exit = None
@@ -288,7 +300,7 @@ class LauncherBridge:
                     'trainer': self.session.remote_trainer,
                     'world_key': self.session.state.name if self.session.state is not None else None,
                     'offline_world_key': offline_world_key,
-                    'games': live_games, 'status': self.session.status, 'engine': self.engine}
+                    'games': live_games, 'status': self.session.status, 'engine': self.engine, **area_projection}
 
     def stop_browser_input(self):
         # Also used by launcher shutdown. Serialize teardown with HTTP lifecycle
@@ -312,7 +324,9 @@ class LauncherBridge:
                     raise SessionError('The hosted-world backend is not installed yet.')
                 from .hosting_protocol import HostingError
                 try:
-                    if action == 'host_enroll':
+                    if action == 'host_select_area':
+                        self.hosted.select_area_world(payload.get('world'))
+                    elif action == 'host_enroll':
                         self.hosted.enroll(payload.get('access'))
                     elif action == 'host_restore':
                         self.hosted.restore_profile(payload.get('profile'))
@@ -392,13 +406,20 @@ class LauncherBridge:
                 # hold the world server lock while waiting for the provider.
                 if payload.get('confirmed') is not True:
                     raise SessionError('Confirm provider usage and area replacement before generating.')
-                if (self.session.state is None or payload.get('world') != self.session.state.name
+                remote_area = self.session.server is None and self.hosted.area_world is not None
+                if remote_area:
+                    if payload.get('world') != 'hosted-' + self.hosted.area_world['id']:
+                        raise SessionError('The selected generation world changed. Choose it again.')
+                elif (self.session.state is None or payload.get('world') != self.session.state.name
                         or self.session.server is None):
-                    raise SessionError('Open the selected local world before generating an area.')
+                    raise SessionError('Choose a world in Explore before generating an area.')
                 kind = payload.get('kind', 'cave')
                 if kind not in ('cave', 'wilds', 'guided_wilds', 'cast_wilds', 'xl_wilds'):
                     raise SessionError('Choose a cave, outdoor wilds, wilds with a guide or wilds with a cast.')
                 try:
+                    if remote_area:
+                        self.hosted.author_area(payload.get('theme'), kind, self.engine)
+                        return self.snapshot()
                     self.session.author_shared_cave(payload.get('theme'), cohort=self.engine, wilds=kind != 'cave',
                         guide=kind == 'guided_wilds', cast=kind == 'cast_wilds', **({'xl': True} if kind == 'xl_wilds' else {}))
                 except SessionError:
@@ -408,6 +429,14 @@ class LauncherBridge:
             elif action == 'activate_area':
                 if payload.get('confirmed') is not True:
                     raise SessionError('Confirm changing the active generated area.')
+                if self.session.server is None and self.hosted.area_world is not None:
+                    if payload.get('world') != 'hosted-' + self.hosted.area_world['id']:
+                        raise SessionError('The selected generation world changed. Choose it again.')
+                    try:
+                        self.hosted.activate_area(payload.get('identity'))
+                    except Exception:
+                        raise SessionError('Could not activate the saved area. Check the connection and that everyone has left.') from None
+                    return self.snapshot()
                 if (self.session.server is None or self.session.state is None
                         or payload.get('world') != self.session.state.name):
                     raise SessionError('The hosted world changed. Choose a saved area from the current local host.')

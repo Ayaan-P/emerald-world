@@ -107,9 +107,12 @@ class ProfileLock:
     """
     def __init__(self, state_dir, trainer, *, engine='vanilla'):
         from world.world_library import WorldActivityLock
-        state_dir = engine_state(state_dir, engine)
+        # Protect the whole world before creating its engine-specific parents.
+        # The lifecycle barrier lives outside the world so fresh remote profiles
+        # need no pre-existing engines directory and cannot race a library move.
         self.activity = WorldActivityLock(state_dir)
         try:
+            state_dir = engine_state(state_dir, engine)
             self._acquire(state_dir, trainer)
         except BaseException:
             self.activity.close()

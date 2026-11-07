@@ -14,6 +14,23 @@ async function localDialog() {
   fireEvent.change(within(dialog).getByLabelText('World name'), { target: { value: 'Cave lab' } });
   return dialog;
 }
+it('selects a hosted generation target while keeping a solo game untouched', async () => {
+  const world = { id: 'owned', name: 'Cloud grove', trainer: 'Owner' };
+  const solo = { ...base, world_key: 'solo', games: ['offline/Player'], trainer: 'Player', hosting: { ...base.hosting, enrolled: true, loaded: true, worlds: [world] } };
+  loadState.mockResolvedValue(solo);
+  perform.mockImplementation(async () => {
+    const selected = { ...solo, area_world_key: 'hosted-owned', area_authoring: true, cave_authoring: true, cave_persistent: true, hosted_area_world: world };
+    loadState.mockResolvedValue(selected);
+    return selected;
+  });
+  render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Explore' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Select Cloud grove for generation' }));
+  await waitFor(() => expect(screen.getByLabelText('Area theme').disabled).toBe(false));
+  expect(perform.mock.calls).toEqual([['host_select_area', { world: 'owned' }]]);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByRole('heading', { name: 'Explore' })).toBeTruthy();
+});
 it('separates Local and Hosted and keeps release notes and generation forms off Play', async () => {
   render(<App />);
   await screen.findByText('Expansion · Native PC');
