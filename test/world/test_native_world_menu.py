@@ -121,6 +121,7 @@ int WorldBridge_ConnectionActive(void) {return fresh;}
 int WorldBridge_GeneratedCaveReady(void) {return caveReady;}
 const char *WorldBridge_TrainerName(void) {return enabled?"Alice":NULL;}
 int DexNavNative_Available(void) {return dexReady;}
+const char *DexNavNative_UnavailableReason(void) {return dexReady?NULL:"Receive your Pokedex first.";}
 int DexNav_RequestOpen(void) {calls++;return dexResult;}
 void WorldTravel_RequestMenu(void) {calls++;}
 int WorldChat_OpenGuild(void) {calls++;return guildResult;}
