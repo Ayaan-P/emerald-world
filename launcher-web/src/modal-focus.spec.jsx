@@ -16,6 +16,8 @@ it('focuses replacement dialog content and restores the original opener', async 
   URL.createObjectURL = vi.fn(() => 'blob:owner'); URL.revokeObjectURL = vi.fn();
   try {
     render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /^hosted worlds$/i }));
+    fireEvent.click(screen.getByText('Owner account', { selector: 'summary' }));
     const opener = await screen.findByRole('button', { name: /back up account/i });
     opener.focus(); fireEvent.click(opener);
     const first = screen.getByRole('dialog');
@@ -31,7 +33,7 @@ it('keeps dialog focus stable while a request runs and restores its opener', asy
   let reject;
   perform.mockImplementation(() => new Promise((resolve, fail) => { reject = fail; }));
   render(<App />);
-  const opener = await screen.findByRole('button', { name: /play solo/i });
+  const opener = await screen.findByRole('button', { name: /new solo save/i });
   opener.focus(); fireEvent.click(opener);
   const dialog = screen.getByRole('dialog'), input = within(dialog).getByLabelText('Trainer profile');
   input.focus();

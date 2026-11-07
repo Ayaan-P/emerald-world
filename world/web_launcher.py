@@ -165,7 +165,7 @@ class LauncherBridge:
             try:
                 label = _read_metadata(path)['display_name']
             except (OSError, ValueError, TypeError, KeyError):
-                label = 'Local expedition · ' + path.name[-4:]
+                label = 'Local world · ' + path.name[-4:]
             profiles = []
             trainers = self.session._world(path.name) / 'trainers'
             if self.engine != 'vanilla':
@@ -273,6 +273,7 @@ class LauncherBridge:
                 if code is not None:
                     game_exit = {'trainer': name, 'code': code, 'unexpected': code != 0}
             return {'local_worlds': self.local_expeditions(),
+                    'local_hosts': self.session.hosted_worlds(),
                     'game_exit': game_exit,
                     'generated_areas': areas, 'active_generated_area': active_area, 'area_archive': archive_enabled,
                     'area_archive_error': archive_error,
@@ -365,14 +366,14 @@ class LauncherBridge:
                     label = payload.get('name')
                     if (not isinstance(label, str) or not 1 <= len(label.strip()) <= 80
                             or any(ord(c) < 32 for c in label)):
-                        raise SessionError('Use 1 to 80 printable characters for the expedition name.')
+                        raise SessionError('Use 1 to 80 printable characters for the world name.')
                     name = 'e-' + secrets.token_urlsafe(9)
                     self.session.create_world(name)
                     self.session.rename_world(name, label.strip(), [])
                 else:
                     name = payload.get('world')
                     if not any(item['key'] == name for item in self.local_expeditions()):
-                        raise SessionError('Choose an existing local expedition.')
+                        raise SessionError('Choose an existing local world.')
                 try:
                     self.session.host(name)
                     self.remote_paths = self.session.local_profile(trainer)
@@ -385,7 +386,7 @@ class LauncherBridge:
                 except (OSError, ValueError):
                     self.remote_paths = None
                     self.session.disconnect()
-                    raise SessionError('Could not open the local expedition. Check the local world and trainer setup, then retry.') from None
+                    raise SessionError('Could not open the local world. Check the local world and trainer setup, then retry.') from None
             elif action == 'author_cave':
                 # Keep bridge mutations serialized throughout authoring, but never
                 # hold the world server lock while waiting for the provider.
@@ -393,7 +394,7 @@ class LauncherBridge:
                     raise SessionError('Confirm provider usage and area replacement before generating.')
                 if (self.session.state is None or payload.get('world') != self.session.state.name
                         or self.session.server is None):
-                    raise SessionError('Host the selected local expedition before generating an area.')
+                    raise SessionError('Open the selected local world before generating an area.')
                 kind = payload.get('kind', 'cave')
                 if kind not in ('cave', 'wilds', 'guided_wilds', 'cast_wilds', 'xl_wilds'):
                     raise SessionError('Choose a cave, outdoor wilds, wilds with a guide or wilds with a cast.')
@@ -525,6 +526,17 @@ class LauncherBridge:
                 if not trainer:
                     raise SessionError('No connected trainer is selected.')
                 self.session.leave_game(trainer)
+            elif action == 'local_stop':
+                name = payload.get('world')
+                if (not isinstance(name, str) or name not in self.session.hosted_worlds()
+                        or not any(world['key'] == name for world in self.local_expeditions())):
+                    raise SessionError('Choose a local world hosted by this launcher.')
+                current = self.session.state is not None and self.session.state.name == name
+                if current:
+                    self.stop_browser_input()
+                self.session.shutdown_world(name)
+                if current:
+                    self.remote_paths = None
             elif action == 'disconnect':
                 self.stop_browser_input()
                 self.session.disconnect()

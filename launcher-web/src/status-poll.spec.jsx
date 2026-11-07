@@ -17,7 +17,7 @@ it('does not overlap slow state reads and resumes polling after one completes', 
   await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
   expect(loadState).toHaveBeenCalledTimes(1);
   await act(async () => { resolve(state); await Promise.resolve(); });
-  expect(screen.getByText('Ready')).toBeTruthy();
+  expect(screen.getByText('Launcher ready')).toBeTruthy();
   await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
   expect(loadState).toHaveBeenCalledTimes(2);
 });
@@ -29,7 +29,7 @@ it('retries polling after a state read fails', async () => {
   expect(screen.getByRole('alert').textContent).toContain('temporary failure');
   await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
   expect(loadState).toHaveBeenCalledTimes(2);
-  expect(screen.getByText('Ready')).toBeTruthy();
+  expect(screen.getByText('Launcher ready')).toBeTruthy();
 });
 
 it('times out a hung status read, retries, and clears only its own error', async () => {
@@ -42,7 +42,7 @@ it('times out a hung status read, retries, and clears only its own error', async
   expect(screen.getByRole('alert').textContent).toMatch(/took too long/i);
   await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
   expect(loadState).toHaveBeenCalledTimes(2);
-  expect(screen.getByText('Ready')).toBeTruthy();
+  expect(screen.getByText('Launcher ready')).toBeTruthy();
   expect(screen.queryByRole('alert')).toBeNull();
 });
 it('keeps an action error when a later status read succeeds', async () => {
@@ -51,7 +51,7 @@ it('keeps an action error when a later status read succeeds', async () => {
   perform.mockRejectedValueOnce(new Error('Could not launch adventure'));
   render(<App />);
   await act(async () => { await Promise.resolve(); });
-  await act(async () => { screen.getByRole('button', { name: /play solo/i }).click(); });
+  await act(async () => { screen.getByRole('button', { name: /new solo save/i }).click(); });
   await act(async () => { screen.getByRole('button', { name: /start adventure/i }).click(); await Promise.resolve(); });
   expect(screen.getByRole('alert').textContent).toContain('Could not launch adventure');
   await act(async () => { await vi.advanceTimersByTimeAsync(5000); });

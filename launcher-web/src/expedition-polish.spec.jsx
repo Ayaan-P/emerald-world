@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import ExpeditionPanel from './ExpeditionPanel';
 import PlayerHome from './PlayerHome';
+import ReleaseModes from './ReleaseModes';
 
 afterEach(cleanup);
 it('shows unexpected exit recovery from the last save only and hides it for a live game', () => {
@@ -29,14 +30,15 @@ it('identifies the active area and blocks replacement while trainers are inside'
   expect(area.textContent).toContain('2 trainers inside');
   expect(screen.getByRole('button', { name: 'Use this area' }).disabled).toBe(true);
   fireEvent.change(screen.getByLabelText('Area theme'), { target: { value: 'Another cave' } });
-  expect(screen.getByRole('button', { name: 'Review generation and cost', hidden: true }).disabled).toBe(true);
+  expect(screen.getByRole('button', { name: 'Review generation', hidden: true }).disabled).toBe(true);
   expect(onActivate).not.toHaveBeenCalled();
 });
 
-it('explains the separate RC8 play modes without advertising offline stories as multiplayer', () => {
-  render(<PlayerHome state={{ ...state, games: [], worlds: [], offline_saves: [], hosting: { worlds: [] } }} ready busy={false} />);
-  const modes = screen.getByRole('region', { name: 'RC8 play modes' });
-  expect(modes.textContent).toContain('Shared exploration');
+it('keeps area help accurate without release labels', () => {
+  render(<ReleaseModes />);
+  const modes = screen.getByRole('region', { name: 'Generated areas' });
+  expect(modes.textContent).toContain('Caves and outdoor worlds');
+  expect(modes.textContent).not.toContain('RC8');
   expect(modes.textContent).toContain('Offline story tools');
   expect(modes.textContent).toContain('not shared multiplayer quests');
   expect(modes.textContent).toContain('does not start a director');
@@ -48,7 +50,7 @@ it('offers shared XL generation only after explicit paid-generation confirmation
   fireEvent.change(screen.getByLabelText('Area type'), { target: { value: 'xl_wilds' } });
   fireEvent.change(screen.getByLabelText('Area theme'), { target: { value: 'Wide islands' } });
   expect(screen.getByText(/no generated characters, story graphs or editable overlays/)).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Review generation and cost', hidden: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Review generation', hidden: true }));
   expect(onAuthor).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Confirm generation' }));
   await waitFor(() => expect(onAuthor).toHaveBeenCalledWith({ world: 'local-one', theme: 'Wide islands', kind: 'xl_wilds', confirmed: true }));
@@ -56,7 +58,7 @@ it('offers shared XL generation only after explicit paid-generation confirmation
 
 it('separates published adventures from fixed scenery without inventing an adventure', () => {
   const { rerender } = render(<ExpeditionPanel {...props} state={state} />);
-  expect(screen.getByText('Your director has not published an adventure')).toBeTruthy();
+  expect(screen.getByText('No published adventures.')).toBeTruthy();
   rerender(<ExpeditionPanel {...props} state={{ ...state, generated_areas: [
     { identity: 'event', label: 'Forest mystery', kind: 'event_wilds', active: false },
     { identity: 'cast', label: 'Quiet grove', kind: 'cast_wilds', active: true },
@@ -88,7 +90,7 @@ it('retains the paid-generation draft and prevents duplicate submissions while p
   const onAuthor = vi.fn(() => new Promise(resolve => { finish = resolve; }));
   render(<ExpeditionPanel {...props} onAuthor={onAuthor} state={state} />);
   fireEvent.change(screen.getByLabelText('Area theme'), { target: { value: 'A mossy cave' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Review generation and cost', hidden: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Review generation', hidden: true }));
   const confirm = screen.getByRole('button', { name: 'Confirm generation' });
   fireEvent.click(confirm);
   fireEvent.click(confirm);
@@ -99,14 +101,14 @@ it('retains the paid-generation draft and prevents duplicate submissions while p
   expect(screen.getByLabelText('Area theme').value).toBe('A mossy cave');
 });
 
-it('continues an existing local world with launch enabled and creates a new save host-only', () => {
+it('continues an existing local world for editing without launching and creates a new save host-only', () => {
   const onOpen = vi.fn();
   render(<ExpeditionPanel {...props} onOpen={onOpen} state={{ ...state, local_host: false, local_worlds: [
     { key: 'local-one', name: 'My expedition', trainer: 'Player', has_save: true },
   ] }} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Continue expedition' }));
-  expect(onOpen).toHaveBeenLastCalledWith('local_resume', { world: 'local-one', trainer: 'Player' }, 'local-one', { playAfter: true });
-  fireEvent.change(screen.getByLabelText('New expedition name'), { target: { value: 'Fresh world' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Create new expedition and save', hidden: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Open local world' }));
+  expect(onOpen).toHaveBeenLastCalledWith('local_resume', { world: 'local-one', trainer: 'Player' }, 'local-one', { playAfter: false });
+  fireEvent.change(screen.getByLabelText('World name'), { target: { value: 'Fresh world' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create local world', hidden: true }));
   expect(onOpen).toHaveBeenLastCalledWith('local_create', { name: 'Fresh world', trainer: 'Player' });
 });

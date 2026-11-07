@@ -2,6 +2,34 @@
 
 Latest target engine: `2024a83db5242783c0f9ae93f8381271045e7037`; exact three-patch tree reconstruction verified. Earlier RC7 milestones below remain historical. The patch now includes Dot PR237 XL/guild/shuffle on top of the final RC7 ownership/presentation fixes, native-only host map backing storage (fixed 256KiB EWRAM checks unchanged), and owned native journal IO.
 
+## Player UI source candidate
+
+`native-player-ui.patch` is an additional source-only patch for the launcher/UI
+redesign. Apply it after the three RC9 patches below, or directly to the exact
+RC9 engine checkpoint, using `git apply --check` before `git apply`.
+`player-ui-source-manifest.json` records the base tree, resulting tree, patch
+hash and changed-file hashes. The four-patch reconstruction was verified in a
+separate temporary Git index. The existing RC9 gitlink and its provenance are
+unchanged. Applying this patch does not replace an installed game binary.
+
+The candidate changes WORLD navigation, connection status, generated-area entry
+and exit guidance, feature explanations and action-specific messages. It does
+not change battle, save, travel or rally acceptance backends. The matching root
+port changes are in `src/platform/world_menu.c` and `world_bridge.c`.
+
+Run `PYTHONPATH=.:test/world python3 -m unittest test_native_world_menu test_native_world_menu_source`
+from the app repository. Set
+`EW_RC7_ENGINE=/path/to/reconstructed/engine` for the compiled fixture to use
+Expansion's actual WORLD source and font widths. The fixture uses simulated
+backends, not a game session. It requires working AddressSanitizer,
+UndefinedBehaviorSanitizer and LeakSanitizer. In the development sandbox,
+LeakSanitizer could not finish under ptrace; that gate is not reported as passed.
+
+Native build, visual inspection and gameplay acceptance are still required.
+Build only from the trusted engine ancestry with its normal mandatory checks;
+source reconstruction is not permission to bypass those checks. No native
+binary, game save or ROM is included in this handoff.
+
 # Current RC7 Expansion source handoff
 
 ## Current source

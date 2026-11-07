@@ -179,9 +179,9 @@ describe('player launcher', () => {
     await waitFor(() => expect(perform).toHaveBeenCalledWith('join', { invitation: raw }));
   });
 
-  it('makes the last saved adventure playable directly from the home page', async () => {
+  it('opens the explicitly named saved game from the home page', async () => {
     render(<App />);
-    const play = await screen.findByRole('button', { name: /^continue adventure$/i });
+    const play = await screen.findByRole('button', { name: /^play our hoenn$/i });
     fireEvent.click(play);
     await waitFor(() => expect(perform).toHaveBeenCalledWith('launch', {}));
     expect(perform.mock.calls.map(call => call[0]).slice(-2)).toEqual(['rejoin', 'launch']);
@@ -257,7 +257,8 @@ describe('player launcher', () => {
   it('creates a hosted world when an owner account is ready', async () => {
     loadState.mockResolvedValue({ ...snapshot(), hosting: { available: true, enrolled: true, loaded: false, worlds: [], pending: null } });
     render(<App />);
-    fireEvent.click(await screen.findByRole('button', { name: /new world \/ save/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^hosted worlds$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create hosted world|add host access/i }));
     const modal = screen.getByRole('dialog');
     fireEvent.change(within(modal).getByLabelText(/world name/i), { target: { value: 'Our Hoenn' } });
     fireEvent.change(within(modal).getByLabelText(/trainer profile/i), { target: { value: 'May' } });
@@ -269,7 +270,8 @@ describe('player launcher', () => {
     const hosting = { available: true, backup_available: true, enrolled: false, loaded: false, worlds: [], pending: null };
     loadState.mockResolvedValue({ ...snapshot(), hosting });
     const { container } = render(<App />);
-    fireEvent.click(await screen.findByRole('button', { name: /new world \/ save/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^hosted worlds$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create hosted world|add host access/i }));
     const modal = screen.getByRole('dialog');
     fireEvent.click(within(modal).getByRole('button', { name: /^use backup$/i }));
     const raw = JSON.stringify({ kind: 'host-profile', pin: 'a'.repeat(64) });
@@ -284,6 +286,8 @@ describe('player launcher', () => {
     const hosting = { available: true, backup_available: true, enrolled: true, loaded: true, worlds: [], pending: null };
     loadState.mockResolvedValue({ ...snapshot(), hosting });
     render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /^hosted worlds$/i }));
+    fireEvent.click(screen.getByText('Owner account', { selector: 'summary' }));
     fireEvent.click(await screen.findByRole('button', { name: /back up account/i }));
     const modal = screen.getByRole('dialog');
     expect(modal.textContent).toMatch(/anyone with it can manage/i);
@@ -296,6 +300,8 @@ describe('player launcher', () => {
     const hosted = { available: true, enrolled: true, loaded: true, worlds: [], pending: null };
     loadState.mockResolvedValue({ ...snapshot(), hosting: hosted });
     render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /^hosted worlds$/i }));
+    fireEvent.click(screen.getByText('Owner account', { selector: 'summary' }));
     fireEvent.click(await screen.findByRole('button', { name: /invite an owner/i }));
     const modal = screen.getByRole('dialog');
     expect(modal.textContent).toMatch(/own hosted-world account/i);
@@ -314,6 +320,7 @@ describe('player launcher', () => {
     URL.revokeObjectURL = vi.fn();
     try {
       render(<App />);
+      fireEvent.click(await screen.findByRole('button', { name: /^hosted worlds$/i }));
       fireEvent.click(await screen.findByRole('button', { name: /invite friend/i }));
       const modal = await screen.findByRole('dialog');
       expect(modal.textContent).not.toContain('private-test-token');
@@ -338,7 +345,7 @@ describe('player launcher', () => {
 
   it('makes the separate offline copy choice explicit', async () => {
     render(<App />);
-    fireEvent.click(await screen.findByRole('button', { name: /your worlds/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^hosted worlds$/i }));
     fireEvent.click(await screen.findByRole('button', { name: /play offline/i }));
     const modal = screen.getByRole('dialog');
     expect(modal.textContent).toMatch(/never merges back/i);
@@ -362,7 +369,7 @@ describe('player launcher', () => {
       presence: { state: 'connected', nearby: [{ trainer: 'Brendan', ready: true, rendered: true }] } });
     render(<App />);
     expect(await screen.findByText('Brendan')).toBeTruthy();
-    expect(screen.getByText('Game connected')).toBeTruthy();
+    expect(within(screen.getByRole('region', { name: 'Current session' })).getByText(/Game connected/)).toBeTruthy();
     expect(screen.getByText('Available')).toBeTruthy();
   });
 
@@ -396,7 +403,7 @@ describe('player launcher', () => {
 
   it('lets players search and favorite saved worlds', async () => {
     render(<App />);
-    fireEvent.click(await screen.findByRole('button', { name: /your worlds/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^hosted worlds$/i }));
     const search = screen.getByRole('searchbox', { name: /search saved worlds/i });
     fireEvent.change(search, { target: { value: 'unmatched' } });
     expect(screen.getByText(/no worlds match/i)).toBeTruthy();
@@ -407,7 +414,7 @@ describe('player launcher', () => {
 
   it('renames a saved world locally', async () => {
     render(<App />);
-    fireEvent.click(await screen.findByRole('button', { name: /your worlds/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^hosted worlds$/i }));
     fireEvent.click(await screen.findByRole('button', { name: /^rename$/i }));
     const modal = screen.getByRole('dialog');
     fireEvent.change(within(modal).getByLabelText(/world name/i), { target: { value: 'Our Hoenn' } });

@@ -12,6 +12,8 @@
  * Public telemetry roster includes relevant peers even without a sprite. */
 bool8 WorldBridge_Init(const char *configPath);
 bool8 WorldBridge_Enabled(void);
+/* Authenticated transport within the normal snapshot timeout, not feature approval. */
+bool8 WorldBridge_ConnectionActive(void);
 /* True only after an authenticated authority template has been validated and acknowledged. */
 bool8 WorldBridge_GeneratedCaveReady(void);
 struct ObjectEvent;
