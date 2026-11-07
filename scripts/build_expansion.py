@@ -22,10 +22,14 @@ def main():
                         help='existing extracted libc/GCC multilib root for mandatory ABI probes')
     parser.add_argument('--development', action='store_true',
                         help='build explicit local RC7 integration changes on top of the verified engine pin')
+    parser.add_argument('--regional-state', action='store_true',
+                        help='enable experimental native Kanto progression storage (requires --development)')
     parser.add_argument('--jobs', type=int, default=4)
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error('--jobs must be positive')
+    if args.regional_state and not args.development:
+        parser.error('--regional-state requires --development and is not a release cohort')
     source = ROOT / 'engines/expansion-native'
     import sys
     sys.path.insert(0, str(ROOT))
@@ -77,6 +81,7 @@ def main():
     for key, value in env.items():
         command += ['--setenv', key, value]
     command += ['--', 'make', '-f', str(ROOT / 'engines/expansion.mk'), f'-j{args.jobs}',
+                f'EW_REGION_STATE={int(args.regional_state)}',
                 'native', 'BITS=64', f'TARGET_CC={compiler}', f'NATIVE_VERSION={PIN[:12]}-rc7',
                 'build/native64/data_relocations.checked', 'build/native64/data_layout.checked',
                 'build/native64/battle_script_operands.checked']
