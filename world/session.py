@@ -456,8 +456,9 @@ class DesktopSession:
                             or info.st_uid != os.geteuid()):
                         raise SessionError('Native log must be an owned single-link regular file.')
                     os.ftruncate(output.fileno(), 0)
-                    process = subprocess.Popen(command, stdin=subprocess.DEVNULL,
-                                               stdout=output, stderr=subprocess.STDOUT)
+                    from .launcher import start_owned_process
+                    process = start_owned_process(command, stdin=subprocess.DEVNULL,
+                                                  stdout=output, stderr=subprocess.STDOUT)
             except BaseException:
                 lock.close()
                 raise

@@ -16,6 +16,33 @@ import sys
 REPO = Path(__file__).resolve().parents[1]
 
 
+def start_owned_process(command, **kwargs):
+    """Keep the spawning thread alive for the sandbox's complete lifetime.
+
+    Linux parent-death signals track the spawning thread, not only its process.
+    A short-lived HTTP handler must not be Bubblewrap's lifetime parent.
+    """
+    import threading
+    ready = threading.Event()
+    result = {}
+
+    def run():
+        try:
+            result['process'] = subprocess.Popen(command, **kwargs)
+        except BaseException as error:
+            result['error'] = error
+        finally:
+            ready.set()
+        if 'process' in result:
+            result['process'].wait()
+
+    threading.Thread(target=run, name='native-sandbox-parent', daemon=True).start()
+    ready.wait()
+    if 'error' in result:
+        raise result['error']
+    return result['process']
+
+
 class ManagedDisplay:
     """Own only a newly started nested X server, never an existing display."""
     def __init__(self, display):
