@@ -84,16 +84,19 @@ index e62b08658..be22f3ead 100644
  bool8 GeneratedMap_MatchesPreparedCastWilds(const u8 *metadata, u32 metaSize, const u8 *cells, u32 size);
 diff --git a/include/platform/wild_shuffle.h b/include/platform/wild_shuffle.h
 new file mode 100644
-index 000000000..cf40a848e
+index 000000000..624fbe524
 --- /dev/null
 +++ b/include/platform/wild_shuffle.h
-@@ -0,0 +1,13 @@
+@@ -0,0 +1,16 @@
 +#ifndef GUARD_PLATFORM_WILD_SHUFFLE_H
 +#define GUARD_PLATFORM_WILD_SHUFFLE_H
 +#ifdef PORTABLE
 +#include "gba/types.h"
 +/* Session-only opt-in. Seeds 1..20 are stable presets shared across engines. */
 +int WildShuffle_Enabled(void);
++int WildShuffle_WorldManaged(void);
++void WildShuffle_SetWorldRule(int enabled, unsigned seed);
++void WildShuffle_ClearWorldRule(void);
 +unsigned WildShuffle_Seed(void);
 +void WildShuffle_Toggle(void);
 +void WildShuffle_NextSeed(void);
@@ -101,6 +104,18 @@ index 000000000..cf40a848e
 +u16 WildShuffle_MapSpecies(u16 species);
 +#endif
 +#endif
+diff --git a/include/platform/world_bridge.h b/include/platform/world_bridge.h
+index a8f39d361..9667c5989 100644
+--- a/include/platform/world_bridge.h
++++ b/include/platform/world_bridge.h
+@@ -12,6 +12,7 @@
+  * Public telemetry roster includes relevant peers even without a sprite. */
+ bool8 WorldBridge_Init(const char *configPath);
+ bool8 WorldBridge_Enabled(void);
++bool8 WorldBridge_RulesPending(void);
+ /* True only after an authenticated authority template has been validated and acknowledged. */
+ bool8 WorldBridge_GeneratedCaveReady(void);
+ struct ObjectEvent;
 diff --git a/include/platform/world_cave_wire.h b/include/platform/world_cave_wire.h
 index 1654b28c7..3f9148041 100644
 --- a/include/platform/world_cave_wire.h
@@ -175,6 +190,19 @@ index b3161865b..7f77fde90 100644
  int WorldChat_Event(const SDL_Event *event);
  int WorldChat_BlocksInput(unsigned keys);
  void WorldChat_Draw(SDL_Renderer *renderer);
+diff --git a/include/platform/world_rules_wire.h b/include/platform/world_rules_wire.h
+new file mode 100644
+index 000000000..b58dbe0ab
+--- /dev/null
++++ b/include/platform/world_rules_wire.h
+@@ -0,0 +1,7 @@
++#ifndef GUARD_PLATFORM_WORLD_RULES_WIRE_H
++#define GUARD_PLATFORM_WORLD_RULES_WIRE_H
++#ifdef PORTABLE
++#include "gba/types.h"
++bool8 WorldRules_ParseWire(unsigned count, char **tokens, unsigned *revision, unsigned *enabled, unsigned *seed);
++#endif
++#endif
 diff --git a/include/platform/world_runtime.h b/include/platform/world_runtime.h
 index 8983d53a7..0c47f94e4 100644
 --- a/include/platform/world_runtime.h
@@ -276,18 +304,19 @@ index 44fb5fff1..a18781b6f 100644
      const char *screenshot_path;
      const char *replay_path; /* NULL: play normally */
 diff --git a/src/wild_encounter.c b/src/wild_encounter.c
-index f11f92e22..d12367161 100644
+index f11f92e22..786277618 100644
 --- a/src/wild_encounter.c
 +++ b/src/wild_encounter.c
-@@ -24,6 +24,7 @@
+@@ -24,6 +24,8 @@
  #include "wild_encounter.h"
  #ifdef PORTABLE
  #include "platform/generated_map.h"
 +#include "platform/wild_shuffle.h"
++#include "platform/world_bridge.h"
  #endif
  #include "battle_debug.h"
  #include "battle_pike.h"
-@@ -541,6 +542,22 @@ void CreateWildMon(enum Species species, u8 level)
+@@ -541,6 +543,22 @@ void CreateWildMon(enum Species species, u8 level)
  #define TRY_GET_ABILITY_INFLUENCED_WILD_MON_INDEX(wildPokemon, type, ability, ptr, count) TryGetAbilityInfluencedWildMonIndex(wildPokemon, type, ability, ptr)
  #endif
  
@@ -310,7 +339,7 @@ index f11f92e22..d12367161 100644
  bool8 TryGenerateWildMon(const struct WildPokemonInfo *wildMonInfo, enum WildPokemonArea area, u8 flags)
  {
      u8 wildMonIndex = 0;
-@@ -595,7 +612,7 @@ bool8 TryGenerateWildMon(const struct WildPokemonInfo *wildMonInfo, enum WildPok
+@@ -595,7 +613,7 @@ bool8 TryGenerateWildMon(const struct WildPokemonInfo *wildMonInfo, enum WildPok
      if (gMapHeader.mapLayoutId != LAYOUT_BATTLE_FRONTIER_BATTLE_PIKE_ROOM_WILD_MONS && flags & WILD_CHECK_KEEN_EYE && !IsAbilityAllowingEncounter(level))
          return FALSE;
  
@@ -319,7 +348,7 @@ index f11f92e22..d12367161 100644
      return TRUE;
  }
  
-@@ -606,6 +623,7 @@ static u16 GenerateFishingWildMon(const struct WildPokemonInfo *wildMonInfo, u8
+@@ -606,6 +624,7 @@ static u16 GenerateFishingWildMon(const struct WildPokemonInfo *wildMonInfo, u8
      u8 level = ChooseWildMonLevel(wildMonInfo->wildPokemon, wildMonIndex, WILD_AREA_FISHING);
  
      UpdateChainFishingStreak();
@@ -327,6 +356,46 @@ index f11f92e22..d12367161 100644
      CreateWildMon(wildMonSpecies, level);
      return wildMonSpecies;
  }
+@@ -703,6 +722,9 @@ static s8 TryGeneratedCaveSweetScent(void)
+ 
+ bool8 StandardWildEncounter(u16 curMetatileBehavior, u16 prevMetatileBehavior)
+ {
++#ifdef PORTABLE
++    if (WorldBridge_RulesPending()) return FALSE;
++#endif
+     u32 headerId;
+     enum TimeOfDay timeOfDay;
+     struct Roamer *roamer;
+@@ -859,6 +881,9 @@ bool8 StandardWildEncounter(u16 curMetatileBehavior, u16 prevMetatileBehavior)
+ 
+ void RockSmashWildEncounter(void)
+ {
++#ifdef PORTABLE
++    if (WorldBridge_RulesPending()) { gSpecialVar_Result = FALSE; return; }
++#endif
+     u32 headerId = GetCurrentMapWildMonHeaderId();
+     enum TimeOfDay timeOfDay;
+ 
+@@ -901,6 +926,9 @@ void RockSmashWildEncounter(void)
+ 
+ bool8 SweetScentWildEncounter(void)
+ {
++#ifdef PORTABLE
++    if (WorldBridge_RulesPending()) return FALSE;
++#endif
+ #if defined(PORTABLE) && GENERATED_MAP_READY
+     if (GeneratedMap_IsInside() && !GeneratedMap_HasUsableParty()) return FALSE;
+ #endif
+@@ -993,6 +1021,9 @@ bool8 SweetScentWildEncounter(void)
+ 
+ bool8 DoesCurrentMapHaveFishingMons(void)
+ {
++#ifdef PORTABLE
++    if (WorldBridge_RulesPending()) return FALSE;
++#endif
+     u32 headerId = GetCurrentMapWildMonHeaderId();
+     enum TimeOfDay timeOfDay = GetTimeOfDayForEncounters(headerId, WILD_AREA_FISHING);
+ 
 diff --git a/src/world/generated_map.c b/src/world/generated_map.c
 index 886c7f316..13156b675 100644
 --- a/src/world/generated_map.c
@@ -1047,10 +1116,10 @@ index 000000000..4aa1892a6
 +#endif
 diff --git a/src/world/wild_shuffle.c b/src/world/wild_shuffle.c
 new file mode 100644
-index 000000000..d2959d45f
+index 000000000..ef04f77c4
 --- /dev/null
 +++ b/src/world/wild_shuffle.c
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,54 @@
 +#ifdef PORTABLE
 +#include "global.h"
 +#include "pokemon.h"
@@ -1060,7 +1129,8 @@ index 000000000..d2959d45f
 + * Keep the permutation algorithm version stable: a seed names the same map. */
 +#define SHUFFLE_DEX 386
 +#define SHUFFLE_SEEDS 20
-+static bool8 sEnabled;
++static bool8 sEnabled, sWorldManaged, sWorldEnabled;
++static unsigned sWorldSeed = 1;
 +static unsigned sSeed=1, sBuiltSeed;
 +static u16 sMapping[SHUFFLE_DEX+1];
 +
@@ -1073,28 +1143,31 @@ index 000000000..d2959d45f
 +}
 +static void Build(void)
 +{
-+    unsigned i;u32 rng=(u32)sSeed;
++    unsigned i; unsigned seed = sWorldManaged ? sWorldSeed : sSeed; u32 rng=(u32)seed;
 +    for (i=1;i<=SHUFFLE_DEX;i++) sMapping[i]=(u16)i;
 +    for (i=SHUFFLE_DEX;i>1;i--) {
 +        unsigned j=1+Next(&rng)%i;
 +        u16 temporary=sMapping[i];sMapping[i]=sMapping[j];sMapping[j]=temporary;
 +    }
-+    sBuiltSeed=sSeed;
++    sBuiltSeed=seed;
 +}
-+int WildShuffle_Enabled(void){return sEnabled;}
-+unsigned WildShuffle_Seed(void){return sSeed;}
-+void WildShuffle_Toggle(void){sEnabled=!sEnabled;}
-+void WildShuffle_NextSeed(void){sSeed=sSeed%SHUFFLE_SEEDS+1;}
++int WildShuffle_Enabled(void){return sWorldManaged ? sWorldEnabled : sEnabled;}
++unsigned WildShuffle_Seed(void){return sWorldManaged ? sWorldSeed : sSeed;}
++int WildShuffle_WorldManaged(void){return sWorldManaged;}
++void WildShuffle_SetWorldRule(int enabled, unsigned seed){if(seed<1 || seed>SHUFFLE_SEEDS)return;sWorldManaged=1;sWorldEnabled=enabled != 0;sWorldSeed=seed;}
++void WildShuffle_ClearWorldRule(void){sWorldManaged=0;}
++void WildShuffle_Toggle(void){if(!sWorldManaged)sEnabled=!sEnabled;}
++void WildShuffle_NextSeed(void){if(!sWorldManaged)sSeed=sSeed%SHUFFLE_SEEDS+1;}
 +u16 WildShuffle_MapNational(u16 national)
 +{
-+    if (!sEnabled || !national || national>SHUFFLE_DEX) return national;
-+    if (sBuiltSeed!=sSeed) Build();
++    if (!WildShuffle_Enabled() || !national || national>SHUFFLE_DEX) return national;
++    if (sBuiltSeed!=WildShuffle_Seed()) Build();
 +    return sMapping[national];
 +}
 +u16 WildShuffle_MapSpecies(u16 species)
 +{
 +    u16 national,mapped;
-+    if (!sEnabled) return species;
++    if (!WildShuffle_Enabled()) return species;
 +    national=SpeciesToNationalPokedexNum(species);
 +    if (!national || national>SHUFFLE_DEX) return species;
 +    mapped=NationalPokedexNumToSpecies(WildShuffle_MapNational(national));
@@ -1102,10 +1175,24 @@ index 000000000..d2959d45f
 +}
 +#endif
 diff --git a/src/world/world_bridge.c b/src/world/world_bridge.c
-index 34d3cf210..a3ef14824 100644
+index 34d3cf210..2cd3b9575 100644
 --- a/src/world/world_bridge.c
 +++ b/src/world/world_bridge.c
-@@ -113,6 +113,10 @@ static struct {
+@@ -34,6 +34,8 @@
+ #include "constants/event_objects.h"
+ #include "constants/map_groups.h"
+ #include "platform/world_bridge.h"
++#include "platform/wild_shuffle.h"
++#include "platform/world_rules_wire.h"
+ #include "platform/generated_map.h"
+ #if GENERATED_MAP_READY
+ #include "platform/world_cave_wire.h"
+@@ -109,10 +111,15 @@ struct Remote { char id[26]; u8 object, sprite, group, num;
+ struct Applied { struct Tile tile; u16 original, raw; };
+ static struct {
+     bool8 enabled, connected, connecting, staging, chatProbe, chatLegacy, chatAvailable;
++    bool8 rulesProbe, rulesLegacy, rulesPending;
+     bool8 travelProbe, travelLegacy, travelAvailable;
      bool8 rallyProbe, rallyLegacy, rallyAvailable;
  #if GENERATED_MAP_READY
      bool8 caveProbe, caveLegacy, caveAvailable, caveReturning;
@@ -1116,7 +1203,7 @@ index 34d3cf210..a3ef14824 100644
  #if GENERATED_CAVE_PROFILES
      bool8 caveV2Probe, caveV2Legacy;
  #if GENERATED_CAVE_WILDLIFE
-@@ -128,8 +132,18 @@ static struct {
+@@ -128,8 +135,18 @@ static struct {
      bool8 caveV8Probe, caveV8Legacy;
  #if GENERATED_WILDS_EVENTS
      bool8 caveV9Probe, caveV9Legacy;
@@ -1136,7 +1223,7 @@ index 34d3cf210..a3ef14824 100644
  #endif
  #endif
  #endif
-@@ -265,7 +279,7 @@ static bool8 MapCoords(unsigned group, unsigned num, unsigned x, unsigned y)
+@@ -265,7 +282,7 @@ static bool8 MapCoords(unsigned group, unsigned num, unsigned x, unsigned y)
      if (IsGeneratedCaveMap(group, num))
          return sWorld.connected && sWorld.caveAvailable && sWorld.caveState == CAVE_READY
  #if GENERATED_MAP_WILDS
@@ -1145,7 +1232,13 @@ index 34d3cf210..a3ef14824 100644
                                                  && num == MAP_NUM(MAP_GENERATED_WORLD_WILDS)))
  #endif
              && GeneratedMap_SharedCoordValid(x, y);
-@@ -444,6 +458,10 @@ static void Disconnect(void)
+@@ -440,10 +457,16 @@ static void Disconnect(void)
+     sWorld.fd = -1;
+ #endif
+     sWorld.connected = sWorld.connecting = sWorld.staging = FALSE;
++    sWorld.rulesProbe = sWorld.rulesPending = FALSE;
++    WildShuffle_ClearWorldRule();
+     sWorld.chatProbe = sWorld.chatAvailable = FALSE;
      sWorld.travelProbe = sWorld.travelAvailable = FALSE;
  #if GENERATED_MAP_READY
      sWorld.caveProbe = sWorld.caveAvailable = sWorld.caveReturning = FALSE;
@@ -1156,7 +1249,7 @@ index 34d3cf210..a3ef14824 100644
  #if GENERATED_CAVE_PROFILES
      sWorld.caveV2Probe = FALSE;
  #if GENERATED_CAVE_WILDLIFE
-@@ -459,6 +477,16 @@ static void Disconnect(void)
+@@ -459,6 +482,16 @@ static void Disconnect(void)
      sWorld.caveV8Probe = FALSE;
  #if GENERATED_WILDS_EVENTS
      sWorld.caveV9Probe = FALSE;
@@ -1173,7 +1266,16 @@ index 34d3cf210..a3ef14824 100644
      sWorld.eventHead = sWorld.eventCount = 0; sWorld.eventSetSeq = 0;
  #endif
  #endif
-@@ -685,6 +713,21 @@ invalid:
+@@ -484,6 +517,8 @@ static void Disconnect(void)
+     sWorld.generation++;
+ }
+ 
++bool8 WorldBridge_RulesPending(void) { return sWorld.connected && sWorld.rulesPending; }
++
+ bool8 WorldBridge_Enabled(void) { return sWorld.enabled; }
+ bool8 WorldBridge_GeneratedCaveReady(void)
+ {
+@@ -685,6 +720,21 @@ invalid:
  static bool8 CaveProbeRejected(unsigned n, char **tokens)
  {
      if (sWorld.caveProbe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
@@ -1195,7 +1297,7 @@ index 34d3cf210..a3ef14824 100644
  #if GENERATED_WILDS_EVENTS && GENERATED_CAVE_WILDLIFE
          if (sWorld.caveV9Probe) {sWorld.caveV9Legacy=TRUE;return TRUE;}
  #endif
-@@ -735,6 +778,48 @@ static bool8 CaveLine(unsigned n, char **tokens)
+@@ -735,6 +785,48 @@ static bool8 CaveLine(unsigned n, char **tokens)
  {
      int result;
      if (!sWorld.caveAvailable || sWorld.staging) return FALSE;
@@ -1244,7 +1346,7 @@ index 34d3cf210..a3ef14824 100644
  #if GENERATED_WILDS_EVENTS
      if (n == 5 && !strcmp(tokens[1], "EVENTSET")) {
          unsigned sequence,state;
-@@ -766,11 +851,48 @@ static bool8 CaveLine(unsigned n, char **tokens)
+@@ -766,11 +858,48 @@ static bool8 CaveLine(unsigned n, char **tokens)
          }
          return TRUE;
      }
@@ -1293,7 +1395,7 @@ index 34d3cf210..a3ef14824 100644
  #endif
          WorldCaveWire_Reset(&sWorld.caveWire);
          memcpy(sWorld.caveExpected, tokens[2], sizeof(sWorld.caveExpected));
-@@ -856,18 +978,54 @@ static bool8 CaveLine(unsigned n, char **tokens)
+@@ -856,18 +985,54 @@ static bool8 CaveLine(unsigned n, char **tokens)
          return FALSE;
  #endif
      }
@@ -1350,7 +1452,64 @@ index 34d3cf210..a3ef14824 100644
              return TRUE;
          }
  #endif
-@@ -1244,7 +1402,18 @@ static void QueueHello(bool8 headless)
+@@ -948,6 +1113,24 @@ static bool8 CaveLine(unsigned n, char **tokens)
+ }
+ #endif
+ 
++static bool8 RulesProbeRejected(unsigned count, char **tokens)
++{
++    if (!sWorld.rulesProbe || count != 2 || strcmp(tokens[0], "ERROR") || strcmp(tokens[1], "AUTH"))
++        return FALSE;
++    sWorld.rulesLegacy = TRUE;
++    return TRUE;
++}
++
++static bool8 HandleRulesLine(unsigned count, char **tokens)
++{
++    unsigned revision, enabled, seed;
++    if (!sWorld.rulesProbe || !sWorld.rulesPending
++     || !WorldRules_ParseWire(count, tokens, &revision, &enabled, &seed)) return FALSE;
++    WildShuffle_SetWorldRule(enabled, seed);
++    sWorld.rulesPending = FALSE;
++    return TRUE;
++}
++
+ static bool8 Line(char *line)
+ {
+     char *tokens[12], *save, *p;
+@@ -958,6 +1141,7 @@ static bool8 Line(char *line)
+     }
+     if (!n) return FALSE;
+     if (!sWorld.connected) {
++        if (RulesProbeRejected(n, tokens)) return FALSE;
+ #if WORLD_EXTENDED_OBJECTS
+         if (sWorld.peer32Probe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
+             sWorld.peer32Legacy = TRUE;
+@@ -994,6 +1178,7 @@ static bool8 Line(char *line)
+         if (n != 4 || strcmp(tokens[0], "WELCOME") || strcmp(tokens[1], "1")
+          || strcmp(tokens[2], sWorld.trainer) || !Decimal(tokens[3], &v[0])) return FALSE;
+         sWorld.connected = TRUE;
++        sWorld.rulesPending = sWorld.rulesProbe;
+         sWorld.rallyAvailable = sWorld.rallyProbe;
+         sWorld.chatAvailable = sWorld.chatProbe;
+         sWorld.travelAvailable = sWorld.travelProbe;
+@@ -1006,6 +1191,7 @@ static bool8 Line(char *line)
+         sWorld.live.revision = v[0];
+         return TRUE;
+     }
++    if (!strcmp(tokens[0], "RULES")) return HandleRulesLine(n, tokens);
+ #if GENERATED_MAP_READY
+     if (!strcmp(tokens[0], "CAVE")) return CaveLine(n, tokens);
+ #endif
+@@ -1217,6 +1403,7 @@ static void QueueHello(bool8 headless)
+ {
+     const char *role;
+     const char *suffix = "";
++    sWorld.rulesProbe = !sWorld.rulesLegacy;
+     sWorld.rallyProbe = !sWorld.rallyLegacy;
+ #if GENERATED_MAP_READY
+     sWorld.caveProbe = !sWorld.caveLegacy;
+@@ -1244,7 +1431,18 @@ static void QueueHello(bool8 headless)
  #if GENERATED_WILDS_EVENTS
          sWorld.caveV9Probe = sWorld.caveV8Probe && !sWorld.caveV9Legacy;
          if (sWorld.caveV9Probe) suffix = "CAVE9";
@@ -1370,7 +1529,7 @@ index 34d3cf210..a3ef14824 100644
  #endif
  #endif
  #endif
-@@ -1253,6 +1422,14 @@ static void QueueHello(bool8 headless)
+@@ -1253,6 +1451,14 @@ static void QueueHello(bool8 headless)
  #endif
  #else
          suffix = "CAVE";
@@ -1385,7 +1544,25 @@ index 34d3cf210..a3ef14824 100644
  #endif
      }
  #endif
-@@ -1513,11 +1690,31 @@ static void CavePump(void)
+@@ -1269,7 +1475,7 @@ static void QueueHello(bool8 headless)
+     sWorld.travelProbe = !sWorld.travelLegacy;
+     role = sWorld.rallyProbe ? "SOCIALTRAVELRALLY" : sWorld.travelProbe ? "SOCIALTRAVEL" : "SOCIAL";
+     sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
+-        "EWLOCAL1 %s\nHELLO 1 %s %s %s%s%s\n", sWorld.loopbackToken, sWorld.trainer, sWorld.token, role, WB_PEER_SUFFIX, suffix);
++        "EWLOCAL1 %s\nHELLO 1 %s %s %s%s%s%s\n", sWorld.loopbackToken, sWorld.trainer, sWorld.token, role, WB_PEER_SUFFIX, suffix, sWorld.rulesProbe ? "RULES1" : "");
+ #else
+     sWorld.chatProbe = !headless && !sWorld.chatLegacy;
+     sWorld.travelProbe = !sWorld.travelLegacy;
+@@ -1277,7 +1483,7 @@ static void QueueHello(bool8 headless)
+         : sWorld.travelProbe ? (sWorld.chatProbe ? "SOCIALTRAVELCHAT" : "SOCIALTRAVEL")
+         : (sWorld.chatProbe ? "SOCIALCHAT" : "SOCIAL");
+     sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
+-        "HELLO 1 %s %s %s%s%s\n", sWorld.trainer, sWorld.token, role, WB_PEER_SUFFIX, suffix);
++        "HELLO 1 %s %s %s%s%s%s\n", sWorld.trainer, sWorld.token, role, WB_PEER_SUFFIX, suffix, sWorld.rulesProbe ? "RULES1" : "");
+ #endif
+ #undef WB_PEER_SUFFIX
+ }
+@@ -1513,11 +1719,31 @@ static void CavePump(void)
  {
      if (!sWorld.connected) return;
  #if GENERATED_WILDS_EVENTS
@@ -1417,7 +1594,7 @@ index 34d3cf210..a3ef14824 100644
              sWorld.outputSize=snprintf(sWorld.output,sizeof(sWorld.output),"CAVE EVENTACK %s %u %s\n",sWorld.caveWire.id,sWorld.eventQueue[i].sequence,applied ? "APPLIED" : "REJECTED");
              sWorld.eventHead=(i+1)%8;sWorld.eventCount--;Flush();
          }
-@@ -1533,9 +1730,24 @@ static void CavePump(void)
+@@ -1533,9 +1759,24 @@ static void CavePump(void)
          }
          sWorld.caveReturning = FALSE;
          if (sWorld.caveState == CAVE_MISMATCH) {
@@ -1442,6 +1619,15 @@ index 34d3cf210..a3ef14824 100644
              } else
  #endif
  #if GENERATED_WILDS_CAST && GENERATED_CAVE_WILDLIFE
+@@ -1601,7 +1842,7 @@ static void SendState(void)
+      * Never revive a revoked or unsafe field position. */
+     ready = sWorld.fieldKnown && Overworld()
+         && (PresenceReady() || WorldActivity_IsEncounterPending());
+-    Fingerprint(gPlayerParty, sizeof(gPlayerParty), party);
++    Fingerprint(gParties[B_TRAINER_PLAYER], sizeof(gParties[B_TRAINER_PLAYER]), party);
+     if (gSaveBlock1Ptr)
+         Fingerprint(&gSaveBlock1Ptr->bag, sizeof(gSaveBlock1Ptr->bag), bag);
+     else Fingerprint(NULL, 0, bag);
 diff --git a/src/world/world_cave_wire.c b/src/world/world_cave_wire.c
 index aeff88be1..3f2af9522 100644
 --- a/src/world/world_cave_wire.c
@@ -1657,7 +1843,7 @@ index 3de1c0096..01ad96125 100644
  #endif /* PORTABLE */
 +
 diff --git a/src/world/world_menu.c b/src/world/world_menu.c
-index c4b69cd9d..e338fa92f 100644
+index c4b69cd9d..e8e076146 100644
 --- a/src/world/world_menu.c
 +++ b/src/world/world_menu.c
 @@ -1,4 +1,5 @@
@@ -1704,8 +1890,8 @@ index c4b69cd9d..e338fa92f 100644
 +    {
 +        static char seedLabel[32];
 +        snprintf(seedLabel, sizeof(seedLabel), "Seed: %u", WildShuffle_Seed());
-+        AddRow(rows, &n, SHUFFLE_TOGGLE, WildShuffle_Enabled() ? "Wild shuffle: ON" : "Wild shuffle: OFF", NULL);
-+        AddRow(rows, &n, SHUFFLE_SEED, seedLabel, NULL);
++        AddRow(rows, &n, SHUFFLE_TOGGLE, WildShuffle_Enabled() ? "Wild shuffle: ON" : "Wild shuffle: OFF", (WildShuffle_WorldManaged() || WorldBridge_RulesPending()) ? "The host sets this rule for the world." : NULL);
++        AddRow(rows, &n, SHUFFLE_SEED, seedLabel, (WildShuffle_WorldManaged() || WorldBridge_RulesPending()) ? "The host sets this rule for the world." : NULL);
 +        AddRow(rows, &n, BACK, "Back", NULL);
 +        return n;
 +    }
@@ -1801,6 +1987,44 @@ index c4b69cd9d..e338fa92f 100644
  }
  #endif
 +
+diff --git a/src/world/world_rules_wire.c b/src/world/world_rules_wire.c
+new file mode 100644
+index 000000000..d63952f21
+--- /dev/null
++++ b/src/world/world_rules_wire.c
+@@ -0,0 +1,32 @@
++#ifdef PORTABLE
++#include "global.h"
++#include "platform/world_rules_wire.h"
++#include <string.h>
++
++static bool8 ParseUnsigned(const char *text, unsigned maximum, unsigned *value)
++{
++    unsigned n = 0;
++    if (!text || !*text) return FALSE;
++    while (*text) {
++        unsigned d;
++        if (*text < '0' || *text > '9') return FALSE;
++        d = (unsigned)(*text++ - '0');
++        if (d > maximum || n > (maximum - d) / 10) return FALSE;
++        n = n * 10 + d;
++    }
++    *value = n;
++    return TRUE;
++}
++
++bool8 WorldRules_ParseWire(unsigned count, char **tokens, unsigned *revision, unsigned *enabled, unsigned *seed)
++{
++    unsigned r, e, s;
++    if (count != 5 || !tokens || !revision || !enabled || !seed || !tokens[0] || !tokens[1]
++     || strcmp(tokens[0], "RULES") || strcmp(tokens[1], "1")
++     || !ParseUnsigned(tokens[2], 2147483647U, &r)
++     || !ParseUnsigned(tokens[3], 1, &e)
++     || !ParseUnsigned(tokens[4], 20, &s) || s == 0) return FALSE;
++    *revision = r; *enabled = e; *seed = s;
++    return TRUE;
++}
++#endif
 diff --git a/src/world/world_runtime.c b/src/world/world_runtime.c
 index e48277589..8da27e8e0 100644
 --- a/src/world/world_runtime.c
