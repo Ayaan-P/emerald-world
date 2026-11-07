@@ -10,6 +10,10 @@ Closing a game, disconnecting a session and stopping a host are separate operati
 
 **World options** is under each Local worlds entry. Open the host without launching the game, edit a draft, then review and apply. A running background host can be edited without changing your selected session. All players must leave before applying changes. No one is disconnected automatically. Loading options never changes existing worlds. Display and key bindings remain personal native settings, applied when the game starts.
 
+**Settings → Display & controls** edits existing Expansion trainer profiles. Choose the world or solo profile, change window scale, fullscreen or keyboard buttons, then save with that trainer's game closed. These are real startup options in the profile's `settings.ini` under the game's `--data-dir`, not the legacy vanilla `pokeemerald.ini`. The launcher leaves that legacy file alone. Defaults are loaded without creating a file; Use defaults only changes the draft. F1 shows the bindings active in the running game.
+
+Only explicitly changed display/keyboard fields are rewritten. Unrelated settings and comments remain, including controller and fast-forward settings. Custom SDL keys outside the editor's offered set remain unchanged unless replaced. Existing world/profile locks prevent writing while another game or launcher holds the profile. File revision checks reject stale drafts. Atomic replacement uses a private temporary file, refuses symlinks/nonregular files and retains the native 16 KiB limit. No trainer save, account credential, gameplay flag or shared world rule is edited.
+
 The editor connects to the existing world-rules version-one authority: wild shuffle on/off and seed 1–20. It requires the world-rules host and matching native-client update; older RC9 hosts show an unavailable state. This UI does not install the authority or change game eligibility. Hosted owner services do not yet expose world-options editing. Additional RC10 categories and Expansion playground remain unavailable until they have matching host and runtime support.
 
 ### World-options integration
@@ -44,7 +48,7 @@ When the online game is running, the launcher can show connection status and nea
 ## Checks
 
 ```sh
-python3 -m unittest test.world.test_hosting_ui test.world.test_hosting_ui_contract test.world.test_web_launcher test.world.test_rules_ui
+python3 -m unittest test.world.test_hosting_ui test.world.test_hosting_ui_contract test.world.test_web_launcher test.world.test_rules_ui test.world.test_personal_settings
 cd launcher-web && npm test && npm run test:ui && npm run build
 ```
 

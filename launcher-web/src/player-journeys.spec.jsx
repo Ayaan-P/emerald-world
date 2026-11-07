@@ -114,7 +114,7 @@ it('stops polling after a successful quit and does not label it an error', async
   fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
   fireEvent.click(screen.getByRole('button', { name: 'Quit launcher' }));
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Quit launcher' }));
-  expect(await screen.findByRole('status')).toHaveProperty('textContent', 'Launcher closed. You can close this tab.');
+  expect((await screen.findByText('Launcher closed.')).closest('[role="status"]')).toHaveProperty('textContent', 'Launcher closed. You can close this tab.');
   expect(screen.queryByRole('alert')).toBeNull();
 });
 
