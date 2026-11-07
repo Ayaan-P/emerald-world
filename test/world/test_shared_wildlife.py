@@ -51,7 +51,7 @@ class SharedWildlifeTests(unittest.TestCase):
         client = Client.__new__(Client)
         client.control = False; client.social = True; client.trainer_id = conn['id']
         client.shared_wildlife = conn.get('shared_wildlife', False)
-        client.wildlife_battles = conn.get('wildlife_version') == 2
+        client.wildlife_battles = conn.get('wildlife_version') == 3
         client.stream = io.BytesIO(self.server._snapshot(conn).encode())
         return client.snapshot()
 
@@ -59,7 +59,7 @@ class SharedWildlifeTests(unittest.TestCase):
         self.send(conn, f'WILDLIFE CLAIM {seq} {self.epoch} {self.spawn}')
 
     def commit(self):
-        self.send(self.a, 'WILDLIFE SUBSCRIBE ' + catalogue()[1] + ' 2')
+        self.send(self.a, 'WILDLIFE SUBSCRIBE ' + catalogue()[1] + ' 3')
         self.claim(self.a)
         lease = self.snapshot(self.a)['wildlife']['lease']['lease']
         self.a['state'][6] = 0  # Native input lock while awaiting admission.
@@ -124,8 +124,8 @@ class SharedWildlifeTests(unittest.TestCase):
                          f'WILDLIFE COMMIT 1 {self.epoch} {self.spawn} {"c"*32}\n'.encode())
         client.commit_wildlife(2, self.epoch, self.spawn, 'c'*32, acknowledge=True)
         self.assertTrue(client.sock.sendall.call_args.args[0].startswith(b'WILDLIFE ACK 2 '))
-        header = ['WILDLIFE2', self.epoch, '1', '0']
-        battle = ['WILDBATTLE',self.spawn,'c'*32,*map(str,[self.row[k] for k in ('group','num','x','y','species','level')])]
+        header = ['WILDLIFE3', self.epoch, '1', '0']
+        battle = ['WILDBATTLE',self.spawn,'c'*32,*map(str,[self.row[k] for k in ('group','num','x','y','species','level')]),'4294967295','1']
         self.assertEqual(parse_snapshot(header,[],None,battle)['battle']['species'],25)
         with self.assertRaises(ValueError):
             parse_snapshot(header,[],['WILDLEASE',self.spawn,'c'*32],battle)
@@ -154,6 +154,39 @@ class SharedWildlifeTests(unittest.TestCase):
         self.send(self.a,f'WILDLIFE ACK 8 {self.epoch} {self.spawn} {new_lease}')
         self.send(self.a,f'WILDLIFE ABORT 9 {self.epoch} {self.spawn} {new_lease}')
         self.assertIn(self.spawn,self.server.wildlife.consumed)
+
+    def test_appearance_assigned_once_shared_and_preserved_through_commit(self):
+        for peer in (self.a,self.b):
+            self.send(peer,'WILDLIFE SUBSCRIBE '+catalogue()[1]+' 3')
+        with patch('world.shared_wildlife.secrets.randbits', return_value=4294967295) as random:
+            view = self.server.replace_shared_wildlife(self.epoch,self.server.wildlife.revision,[dict(self.row,shiny=True)])
+            random.assert_called_once_with(32)
+        self.spawn = view['spawns'][0]['id']
+        a,b = [self.snapshot(peer)['wildlife']['spawns'][0] for peer in (self.a,self.b)]
+        self.assertEqual(a,b)
+        self.assertEqual((a['personality'],a['shiny']),(4294967295,1))
+        self.commit()
+        battle = self.snapshot(self.a)['wildlife']['battle']
+        self.assertEqual((battle['personality'],battle['shiny']),(a['personality'],a['shiny']))
+        self.assertIsNone(self.snapshot(self.b)['wildlife']['battle'])
+
+    def test_default_normal_appearance_and_old_battle_protocol_rejected(self):
+        self.assertEqual(self.view['spawns'][0]['shiny'],0)
+        self.assertTrue(0 <= self.view['spawns'][0]['personality'] <= 2**32-1)
+        text = 'WILDLIFE SUBSCRIBE '+catalogue()[1]+' 2'
+        with self.assertRaises(ValueError):
+            self.server._wildlife_line(self.a,text.encode(),text.split())
+        for bad in (1,'yes',None):
+            with self.assertRaises(ValueError):
+                self.server.replace_shared_wildlife(self.epoch,self.server.wildlife.revision,[dict(self.row,shiny=bad)])
+
+    def test_appearance_wire_bounds_and_legacy_shape(self):
+        row=['WILDMON',self.spawn,*map(str,[self.row[k] for k in ('group','num','x','y','species','level')])]
+        header=['WILDLIFE3',self.epoch,'1','1']
+        for personality,shiny in [('4294967296','0'),('1','2'),('-1','0')]:
+            with self.assertRaises(ValueError): parse_snapshot(header,[row+[personality,shiny,'available']],None)
+        with self.assertRaises(ValueError): parse_snapshot(header,[row+['available']],None)
+        self.assertNotIn('personality',self.snapshot(self.a)['wildlife']['spawns'][0])
 
     def test_legacy_cannot_commit(self):
         self.claim(self.a)

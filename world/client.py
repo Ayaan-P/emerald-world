@@ -83,7 +83,7 @@ class WorldClient:
         if type(battles) is not bool:
             raise ValueError('invalid wildlife capability')
         self.wildlife_battles = battles
-        self.sock.sendall(('WILDLIFE SUBSCRIBE ' + catalogue()[1] + (' 2' if battles else '') + '\n').encode('ascii'))
+        self.sock.sendall(('WILDLIFE SUBSCRIBE ' + catalogue()[1] + (' 3' if battles else '') + '\n').encode('ascii'))
         self.shared_wildlife = True
 
     def reserve_wildlife(self, seq, epoch, spawn_id, lease=None):
@@ -132,11 +132,11 @@ class WorldClient:
             if text == 'END':
                 break
             fields = text.split()
-            if fields and fields[0] in ('WILDLIFE', 'WILDLIFE2', 'WILDMON', 'WILDLEASE', 'WILDBATTLE'):
+            if fields and fields[0] in ('WILDLIFE', 'WILDLIFE3', 'WILDMON', 'WILDLEASE', 'WILDBATTLE'):
                 if not getattr(self, 'shared_wildlife', False):
                     raise ValueError('unnegotiated wildlife snapshot')
-                if fields[0] in ('WILDLIFE', 'WILDLIFE2') and wildlife_header is None:
-                    if (fields[0] == 'WILDLIFE2') != getattr(self, 'wildlife_battles', False):
+                if fields[0] in ('WILDLIFE', 'WILDLIFE3') and wildlife_header is None:
+                    if (fields[0] == 'WILDLIFE3') != getattr(self, 'wildlife_battles', False):
                         raise ValueError('wildlife capability mismatch')
                     wildlife_header = fields
                 elif fields[0] == 'WILDMON' and wildlife_header is not None and len(wildlife_rows) < 8:

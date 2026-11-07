@@ -57,6 +57,19 @@ class NativeSharedWildlifeTests(unittest.TestCase):
         source = '\n'.join(line for line in source.splitlines() if not line.startswith('#include'))
         self.compile_run([RUNTIME_STUB + source + '\n' + RUNTIME_MAIN])
 
+    def test_appearance_constructor_and_private_catch_rekey(self):
+        wild = (ENGINE/'src/wild_encounter_ow.c').read_text()
+        constructors = wild[wild.index('u32 SpawnSharedWildlifeObject'):].split('#endif')[0]
+        coop = (ENGINE/'src/world/world_coop.c').read_text()
+        start = coop.index('static void RekeyCaughtMon(')
+        rekey = coop[start:coop.index('\n}\n',start)+3]
+        rewards = coop.split('bool8 WorldCoop_BeginCatchRewards(void)')[1].split('\n}')[0]
+        self.assertIn('RekeyCaughtMon(&gEnemyParty[0]);',rewards)
+        self.compile_run([APPEARANCE_STUB + NATIVE_GENDER + constructors + rekey + APPEARANCE_MAIN])
+        if 'EW_RC7_ENGINE' in os.environ:
+            pokemon=(ENGINE/'src/pokemon.c').read_text()
+            self.assertIn(NATIVE_GENDER.strip(),pokemon)
+
     def test_bridge_atomic_publication_and_teardown(self):
         source = (ENGINE/'src/world/world_bridge.c').read_text()
         validation = source.index('!SharedWildlifeWire_Complete')
@@ -64,7 +77,7 @@ class NativeSharedWildlifeTests(unittest.TestCase):
         self.assertLess(source.index('!IsSpeciesEnabled(mon->species)',validation), publish)
         self.assertIn('SharedWildlife_ClearSprites();',source.split('void WorldBridge_PrepareSave(void)')[1])
         self.assertIn('SharedWildlife_ClearSprites();',source.split('void WorldBridge_Close(void)')[1])
-        self.assertIn('WILDLIFE SUBSCRIBE %s 2',source)
+        self.assertIn('WILDLIFE SUBSCRIBE %s 3',source)
         self.assertIn('sWorld.wildlifeRequested = FALSE',source)
         battle=(ENGINE/'src/wild_encounter_ow.c').read_text().split('bool8 StartSharedWildlifeBattle')[1]
         self.assertIn('ClearNativeOWEEncounter(NULL)',battle)
@@ -77,21 +90,26 @@ WIRE_MAIN = r'''
 #include "platform/shared_wildlife_wire.h"
 static int line(struct SharedWildlifeSnapshot *s,const char *text){char buf[300],*tokens[20],*p;unsigned n=0;strcpy(buf,text);p=strtok(buf," ");while(p){tokens[n++]=p;p=strtok(NULL," ");}return SharedWildlifeWire_Line(s,n,tokens);}
 int main(void){struct SharedWildlifeSnapshot s={0};
+ assert(!line(&s,"WILDMON bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 0 16 5 5 25 5 4294967295 1 available"));
+ assert(!line(&s,"WILDLIFE2 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 1 1"));
+ assert(line(&s,"WILDLIFE3 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 1 1"));
+ assert(!line(&s,"WILDMON bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 0 16 5 5 25 5 4294967296 0 available"));
+ assert(!line(&s,"WILDMON bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 0 16 5 5 25 5 1 2 available"));
  assert(!line(&s,"WILDMON bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 0 16 5 5 25 5 available"));
- assert(line(&s,"WILDLIFE2 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 1 1"));
  assert(!SharedWildlifeWire_Complete(&s));
- assert(!line(&s,"WILDMON bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 0 16 5 5 25 101 available"));
- assert(!line(&s,"WILDMON bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 0 16 5 5 025 5 available"));
- assert(line(&s,"WILDMON bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 0 16 5 5 25 5 available"));
+ assert(!line(&s,"WILDMON bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 0 16 5 5 25 101 0 0 available"));
+ assert(!line(&s,"WILDMON bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 0 16 5 5 025 5 4294967295 1 available"));
+ assert(line(&s,"WILDMON bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 0 16 5 5 25 5 4294967295 1 available"));
  assert(SharedWildlifeWire_Complete(&s));
- assert(!line(&s,"WILDMON bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 0 16 5 5 25 5 available"));
- assert(line(&s,"WILDBATTLE bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb cccccccccccccccccccccccccccccccc 0 16 5 5 25 5"));
+ assert(s.mons[0].personality==4294967295U && s.mons[0].shiny==1);
+ assert(!line(&s,"WILDMON bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 0 16 5 5 25 5 4294967295 1 available"));
+ assert(line(&s,"WILDBATTLE bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb cccccccccccccccccccccccccccccccc 0 16 5 5 25 5 4294967295 1"));
  assert(!SharedWildlifeWire_Complete(&s));
- memset(&s,0,sizeof(s));assert(!line(&s,"WILDLIFE2 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 4294967296 0"));
- memset(&s,0,sizeof(s));assert(line(&s,"WILDLIFE2 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 2 0"));
- assert(line(&s,"WILDBATTLE bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb cccccccccccccccccccccccccccccccc 0 16 5 5 25 5"));
+ memset(&s,0,sizeof(s));assert(!line(&s,"WILDLIFE3 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 4294967296 0"));
+ memset(&s,0,sizeof(s));assert(line(&s,"WILDLIFE3 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 2 0"));
+ assert(line(&s,"WILDBATTLE bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb cccccccccccccccccccccccccccccccc 0 16 5 5 25 5 4294967295 1"));
  assert(SharedWildlifeWire_Complete(&s));
- assert(!line(&s,"WILDBATTLE bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb cccccccccccccccccccccccccccccccc 0 16 5 5 25 5"));
+ assert(!line(&s,"WILDBATTLE bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb cccccccccccccccccccccccccccccccc 0 16 5 5 25 5 4294967295 1"));
  assert(line(&s,"WILDLEASE bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb cccccccccccccccccccccccccccccccc"));
  assert(!SharedWildlifeWire_Complete(&s));return 0;}
 '''
@@ -140,8 +158,8 @@ const char *OverworldEncounters_UnavailableReason(void){return unavailable?"busy
 static struct SharedWildlifeSnapshot snapshot;
 bool8 WorldBridge_SharedWildlifeSnapshot(struct SharedWildlifeSnapshot *out){*out=snapshot;return have;}
 bool8 WorldBridge_SharedWildlifeRequest(unsigned a,const char *e,const char *id,const char *l){(void)e;(void)id;(void)l;requests[a]++;return allow;}
-u32 SpawnSharedWildlifeObject(u32 local,u32 species,int x,int y){(void)species;gObjectEvents[1]=(struct ObjectEvent){1,0,local,0,16,1,{x+7,y+7}};gSprites[1].inUse=1;gSprites[1].data[0]=1;return 1;}
-bool8 StartSharedWildlifeBattle(u32 species,u32 level){assert(species==25&&level==5);if(!startOk)return 0;started++;gMain.inBattle=1;return 1;}
+u32 SpawnSharedWildlifeObject(u32 local,u32 species,int x,int y,u32 personality,u32 shiny){assert(personality==123&&shiny==1);(void)species;gObjectEvents[1]=(struct ObjectEvent){1,0,local,0,16,1,{x+7,y+7}};gSprites[1].inUse=1;gSprites[1].data[0]=1;return 1;}
+bool8 StartSharedWildlifeBattle(u32 species,u32 level,u32 personality,u32 shiny){assert(species==25&&level==5&&personality==123&&shiny==1);if(!startOk)return 0;started++;gMain.inBattle=1;return 1;}
 '''
 RUNTIME_MAIN = r'''
 int main(void){
@@ -149,7 +167,7 @@ int main(void){
  save.location.mapNum=16; gObjectEvents[0]=(struct ObjectEvent){1,1,255,0,16,0,{12,11}};
  strcpy(snapshot.epoch,"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
  snapshot.seen=1;snapshot.count=snapshot.expected=1;
- snapshot.mons[0]=(struct SharedWildlifeMon){.group=0,.num=16,.x=5,.y=5,.species=25,.level=5};
+ snapshot.mons[0]=(struct SharedWildlifeMon){.group=0,.num=16,.x=5,.y=5,.species=25,.level=5,.personality=123,.shiny=1};
  strcpy(snapshot.mons[0].id,"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
  SharedWildlife_Update(1);assert(Owned(0));
  assert(!(SharedWildlife_FilterInput(A_BUTTON)&A_BUTTON));assert(requests[0]==1&&locked&&freeze);
@@ -184,4 +202,92 @@ int main(void){
  assert(started==1&&requests[2]==ack&&requests[4]==abort+1&&!locked&&!freeze);}
  return 0;
 }
+'''
+
+APPEARANCE_STUB = r'''
+#include <assert.h>
+#include <string.h>
+#include <stddef.h>
+typedef unsigned u32; typedef int s32; typedef unsigned char u8; typedef unsigned bool32; typedef unsigned char bool8;
+#define TRUE 1
+#define FALSE 0
+#define MON_MALE 0
+#define MON_FEMALE 254
+#define MON_GENDERLESS 255
+#define MIN_LEVEL 1
+#define MAX_LEVEL 100
+#define MAP_OFFSET 7
+#define OBJECT_EVENTS_COUNT 16
+#define MOVEMENT_TYPE_NONE 0
+#define TRAINER_TYPE_NONE 0
+#define B_TRAINER_OPPONENT_A 0
+#define OTID_STRUCT_PLAYER_ID 0
+#define USE_RANDOM_IVS 32
+#define MON_DATA_IS_SHINY 1
+#define MON_DATA_OT_ID 2
+#define ARRAY_COUNT(x) (sizeof(x)/sizeof((x)[0]))
+enum Species { MIXED, FEMALE_ONLY, MALE_ONLY, GENDERLESS };
+struct {u8 genderRatio;} gSpeciesInfo[]={{127},{254},{0},{255}};
+struct Pokemon {struct {u32 personality,otId,shinyModifier;struct {u32 raw[2];} secure;} box;u32 species,level;};
+struct Pokemon gParties[1][1];
+struct {u32 playerTrainerId[1];} save,*gSaveBlock2Ptr=&save;
+struct ObjectEventTemplate {u32 localId,graphicsId; s32 x,y;u32 elevation,movementType,trainerType;};
+static struct ObjectEventTemplate projected;
+static unsigned battles;
+static unsigned BaseShiny(struct Pokemon *mon){u32 x=mon->box.otId^mon->box.personality;return ((x&65535)^(x>>16))<8;}
+u32 GetMonData(struct Pokemon *mon,u32 field){assert(field==MON_DATA_IS_SHINY);return BaseShiny(mon)^mon->box.shinyModifier;}
+void SetMonData(struct Pokemon *mon,u32 field,const void *value){u32 v;memcpy(&v,value,4);if(field==MON_DATA_OT_ID)mon->box.otId=v;else{assert(field==MON_DATA_IS_SHINY);mon->box.shinyModifier=BaseShiny(mon)^v;}}
+int CheckValidOWESpecies(u32 species){return species<4;}
+int CheckCanLoadOWE(u32 species,bool32 female,bool32 shiny,int x,int y){(void)species;(void)female;(void)shiny;(void)x;(void)y;return 1;}
+u32 GetGraphicsIdForMon(u32 species,bool32 shiny,bool32 female){return species|shiny<<8|female<<9;}
+u32 MapGridGetElevationAt(int x,int y){(void)x;(void)y;return 1;}
+u32 SpawnSpecialObjectEvent(struct ObjectEventTemplate *t){projected=*t;return 1;}
+void ClearNativeOWEEncounter(void *p){assert(p==NULL);}
+void ZeroEnemyPartyMons(void){memset(gParties,0,sizeof(gParties));}
+void CreateMonWithIVs(struct Pokemon *mon,u32 species,u32 level,u32 personality,u32 ot,u32 ivs){(void)ot;(void)ivs;mon->species=species;mon->level=level;mon->box.personality=personality;mon->box.otId=save.playerTrainerId[0];}
+void GiveMonInitialMoveset(struct Pokemon *mon){(void)mon;}
+void BattleSetup_StartWildBattle(void){battles++;}
+'''
+
+NATIVE_GENDER = r'''
+u8 GetGenderFromSpeciesAndPersonality(enum Species species, u32 personality)
+{
+    switch (gSpeciesInfo[species].genderRatio)
+    {
+    case MON_MALE:
+    case MON_FEMALE:
+    case MON_GENDERLESS:
+        return gSpeciesInfo[species].genderRatio;
+    }
+
+    if (gSpeciesInfo[species].genderRatio > (personality & 0xFF))
+        return MON_FEMALE;
+    else
+        return MON_MALE;
+}
+'''
+
+APPEARANCE_MAIN = r'''
+int main(void){unsigned species,shiny,i;u32 personalities[]={0,255,4294967295U};
+ for(species=0;species<4;species++)for(shiny=0;shiny<2;shiny++)for(i=0;i<3;i++){
+  u32 p=personalities[i];unsigned female=species==FEMALE_ONLY||(species==MIXED&&i==0);
+  save.playerTrainerId[0]=p;
+  assert(SpawnSharedWildlifeObject(200,species,5,5,p,shiny)==1);
+  assert(projected.graphicsId==(species|shiny<<8|female<<9));
+  assert(StartSharedWildlifeBattle(species,5,p,shiny));
+  struct Pokemon *mon=&gParties[0][0];
+  assert(mon->box.personality==p&&GetMonData(mon,MON_DATA_IS_SHINY)==shiny);
+  assert((GetGenderFromSpeciesAndPersonality(species,p)==MON_FEMALE)==female);
+  u32 old=mon->box.otId;mon->box.secure.raw[0]=0x12345678U^old;
+  /* Recipient OT makes the base shiny result flip; committed appearance must not. */
+  save.playerTrainerId[0]=p^0xffffU;RekeyCaughtMon(mon);
+  assert(GetMonData(mon,MON_DATA_IS_SHINY)==shiny&&mon->box.personality==p);
+  assert((mon->box.secure.raw[0]^mon->box.otId)==0x12345678U);
+  struct Pokemon captured=*mon;assert(GetMonData(&captured,MON_DATA_IS_SHINY)==shiny);
+ }
+ assert(battles==24);
+ assert(SpawnSharedWildlifeObject(200,99,5,5,0,0)==OBJECT_EVENTS_COUNT);
+ assert(!StartSharedWildlifeBattle(99,5,0,0));
+ assert(!StartSharedWildlifeBattle(0,5,0,2));
+ return 0;}
 '''

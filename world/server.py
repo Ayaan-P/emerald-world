@@ -926,10 +926,10 @@ class WorldServer:
             if conn.get('closing') or self.peers.get(conn['id']) is not conn:
                 raise ValueError('wildlife presence changed')
             if len(fields) in (3,4) and fields[1] == 'SUBSCRIBE':
-                if (len(fields) == 4 and fields[3] != '2') or fields[2] != wildlife_catalogue()[1]:
+                if (len(fields) == 4 and fields[3] != '3') or fields[2] != wildlife_catalogue()[1]:
                     raise ValueError('wildlife species cohort mismatch')
                 conn['shared_wildlife'] = True
-                conn['wildlife_version'] = 2 if len(fields) == 4 else 1
+                conn['wildlife_version'] = 3 if len(fields) == 4 else 1
                 self._queue(conn, self._snapshot(conn))
                 return
             if not conn.get('shared_wildlife') or len(fields) not in (5, 6):
@@ -937,7 +937,7 @@ class WorldServer:
             seq = bounded(fields[2], 0, 2**63 - 1)
             if (fields[1] not in ('CLAIM', 'RELEASE', 'COMMIT', 'ACK', 'ABORT')
                     or len(fields) != (5 if fields[1] == 'CLAIM' else 6)
-                    or (fields[1] in ('COMMIT', 'ACK', 'ABORT') and conn.get('wildlife_version') != 2)):
+                    or (fields[1] in ('COMMIT', 'ACK', 'ABORT') and conn.get('wildlife_version') != 3)):
                 raise ValueError('invalid wildlife operation')
             if seq <= conn['seq']:
                 self._queue(conn, self._snapshot(conn))

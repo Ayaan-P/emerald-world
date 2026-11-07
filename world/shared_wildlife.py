@@ -1,6 +1,6 @@
 """Session-only shared encounters with reservation and committed admission.
 
-A lease alone never authorizes battle entry. Version-two clients must commit it
+A lease alone never authorizes battle entry. Version-three clients must commit it
 first. Committed spawns stay consumed after disconnect or acknowledgment. Only an
 explicit owner abort before native battle entry returns a spawn.
 Battle rewards and catches still belong to the existing native battle flow.
@@ -49,9 +49,11 @@ class SharedWildlife:
         enabled, _ = catalogue()
         positions, result = set(), []
         for row in rows:
-            if type(row) is not dict or set(row) != {'group', 'num', 'x', 'y', 'species', 'level'}:
+            if type(row) is not dict or set(row) not in ({'group', 'num', 'x', 'y', 'species', 'level'},
+                                                  {'group', 'num', 'x', 'y', 'species', 'level', 'shiny'}):
                 raise ValueError('invalid wildlife fields')
-            if any(type(v) is not int for v in row.values()):
+            if (any(type(v) is not int for k,v in row.items() if k != 'shiny')
+                    or ('shiny' in row and type(row['shiny']) is not bool)):
                 raise ValueError('wildlife fields must be integers')
             position = tuple(row[k] for k in ('group', 'num', 'x', 'y'))
             validate_coords(*position)
@@ -60,7 +62,9 @@ class SharedWildlife:
             if row['species'] not in enabled or not 1 <= row['level'] <= 100:
                 raise ValueError('invalid wildlife species or level')
             positions.add(position)
-            result.append(dict(row, id=secrets.token_hex(16)))
+            # Personality is assigned once, not rerolled by each viewer or claimant.
+            result.append(dict(row, id=secrets.token_hex(16), personality=secrets.randbits(32),
+                               shiny=int(row.get('shiny', False))))
         self.spawns = result
         self.consumed.clear()
         self.revision += 1
@@ -169,37 +173,45 @@ class SharedWildlife:
 
     def lines(self, conn):
         view = self.view(conn)
-        tag = "WILDLIFE2" if conn.get("wildlife_version") == 2 else "WILDLIFE"
+        tag = "WILDLIFE3" if conn.get("wildlife_version") == 3 else "WILDLIFE"
         lines = [f"{tag} {self.epoch} {self.revision} {len(view['spawns'])}"]
+        mon_fields = ('group','num','x','y','species','level')
+        if conn.get('wildlife_version') == 3:
+            mon_fields += ('personality','shiny')
         for row in view['spawns']:
             lines.append('WILDMON ' + row['id'] + ' ' + ' '.join(str(row[k]) for k in
-                         ('group', 'num', 'x', 'y', 'species', 'level', 'status')))
+                         (*mon_fields, 'status')))
         if view['lease']:
             lines.append('WILDLEASE ' + view['lease']['id'] + ' ' + view['lease']['lease'])
-        if view['battle'] and conn.get('wildlife_version') == 2:
+        if view['battle'] and conn.get('wildlife_version') == 3:
             row = view['battle']
             lines.append('WILDBATTLE ' + row['id'] + ' ' + row['lease'] + ' '
-                         + ' '.join(str(row[k]) for k in ('group','num','x','y','species','level')))
+                         + ' '.join(str(row[k]) for k in mon_fields))
         return lines
 
 
 def parse_snapshot(header, rows, lease, battle=None):
-    if (len(header) != 4 or header[0] not in ('WILDLIFE', 'WILDLIFE2') or not HEX.fullmatch(header[1]) or not header[2].isdigit()
+    if (len(header) != 4 or header[0] not in ('WILDLIFE', 'WILDLIFE3') or not HEX.fullmatch(header[1]) or not header[2].isdigit()
             or not header[3].isdigit() or int(header[2]) > 2**63 - 1
             or int(header[3]) != len(rows) or len(rows) > MAX_SPAWNS):
         raise ValueError('invalid wildlife snapshot')
     parsed, seen, positions = [], set(), set()
     enabled, _ = catalogue()
+    mon_fields = ('group','num','x','y','species','level')
+    if header[0] == 'WILDLIFE3': mon_fields += ('personality','shiny')
+    end = 2 + len(mon_fields)
     for fields in rows:
-        if len(fields) != 9 or not HEX.fullmatch(fields[1]) or fields[1] in seen:
+        if len(fields) != end + 1 or not HEX.fullmatch(fields[1]) or fields[1] in seen:
             raise ValueError('invalid wildlife spawn')
-        if any(not v.isdigit() for v in fields[2:8]):
+        if any(not v.isdigit() for v in fields[2:end]):
             raise ValueError('invalid wildlife numbers')
-        values = list(map(int, fields[2:8])); position = tuple(values[:4])
+        values = list(map(int, fields[2:end])); position = tuple(values[:4])
         validate_coords(*position)
-        if position in positions or values[4] not in enabled or not 1 <= values[5] <= 100 or fields[8] not in ('available', 'reserved'):
+        if position in positions or values[4] not in enabled or not 1 <= values[5] <= 100 or fields[end] not in ('available', 'reserved'):
             raise ValueError('invalid wildlife content')
-        parsed.append(dict(zip(('group', 'num', 'x', 'y', 'species', 'level'), values), id=fields[1], status=fields[8]))
+        if len(values) == 8 and (values[6] > 2**32-1 or values[7] not in (0,1)):
+            raise ValueError('invalid wildlife appearance')
+        parsed.append(dict(zip(mon_fields, values), id=fields[1], status=fields[end]))
         seen.add(fields[1]); positions.add(position)
     result = dict(epoch=header[1], revision=int(header[2]), spawns=parsed, lease=None, battle=None)
     if lease:
@@ -208,7 +220,7 @@ def parse_snapshot(header, rows, lease, battle=None):
         # The owner can have moved to another map; its held spawn need not be visible.
         result['lease'] = dict(id=lease[1], lease=lease[2])
     if battle:
-        if (header[0] != 'WILDLIFE2' or lease or len(battle) != 9
+        if (header[0] != 'WILDLIFE3' or lease or len(battle) != 11
                 or battle[1] in seen
                 or not HEX.fullmatch(battle[1]) or not HEX.fullmatch(battle[2])
                 or any(not v.isdigit() for v in battle[3:])):
@@ -217,5 +229,7 @@ def parse_snapshot(header, rows, lease, battle=None):
         validate_coords(*values[:4])
         if values[4] not in enabled or not 1 <= values[5] <= 100:
             raise ValueError('invalid committed wildlife species')
-        result['battle'] = dict(zip(('group','num','x','y','species','level'),values), id=battle[1],lease=battle[2])
+        if values[6] > 2**32-1 or values[7] not in (0,1):
+            raise ValueError('invalid committed wildlife appearance')
+        result['battle'] = dict(zip(mon_fields,values), id=battle[1],lease=battle[2])
     return result
