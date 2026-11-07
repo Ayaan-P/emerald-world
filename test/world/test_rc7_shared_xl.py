@@ -20,7 +20,7 @@ class SharedXL(unittest.TestCase):
     def connect(name,cap):
      ident=s.create_identity(name);c={'id':None,'out':bytearray(),'closing':False,'state':None,'seq':0,'sock':object()}
      s._line(c,f"HELLO 1 {name} {ident['token']} SOCIALTRAVELCHATRALLY{cap}".encode());self.assertIn(b'WELCOME 1',c['out']);c['out'].clear();return c
-    a=connect('Alice','CAVE10');b=connect('Bob','CAVE10');old=connect('Old','CAVE9H')
+    a=connect('Alice','CAVE16');b=connect('Bob','CAVE16');old=connect('Old','CAVE10')
     for c in (a,b):
      s._line(c,b'CAVE GET');self.assertEqual(c['out'].decode(),cave.frames());c['out'].clear()
      s._line(c,('CAVE ACK '+cave.identity).encode());self.assertIn(b'CAVE OK',c['out']);c['out'].clear()
@@ -43,7 +43,7 @@ class SharedXL(unittest.TestCase):
 #include "global.h"
 #include "platform/world_cave_wire.h"
 int main(void){char line[256];struct WorldCaveWire w={0};int r=0;
-while(fgets(line,sizeof(line),stdin)){char *t[5],*save,*p;unsigned n=0;line[strcspn(line,"\n")]=0;for(p=strtok_r(line," ",&save);p&&n<5;p=strtok_r(NULL," ",&save))t[n++]=p;r=WorldCaveWire_Feed(&w,n,(const char *const*)t);if(r<0)return 2;}return r==1&&w.version==10&&w.nextRow==127?0:3;}'''
+while(fgets(line,sizeof(line),stdin)){char *t[5],*save,*p;unsigned n=0;line[strcspn(line,"\n")]=0;for(p=strtok_r(line," ",&save);p&&n<5;p=strtok_r(NULL," ",&save))t[n++]=p;r=WorldCaveWire_Feed(&w,n,(const char *const*)t);if(r<0)return 2;}return r==1&&w.version==16&&w.nextRow==127?0:3;}'''
   with tempfile.TemporaryDirectory() as t:
    p=Path(t);(p/'global.h').write_text('#include <stdint.h>\ntypedef uint8_t u8;typedef uint32_t u32;typedef int bool8;\n#define TRUE 1\n#define FALSE 0\n');(p/'test.c').write_text(code)
    cmd=['cc','-std=gnu99','-Wall','-Wextra','-Werror','-DPORTABLE','-DGENERATED_WORLD_XL=1','-iquote',str(p),'-iquote',str(ROOT/'include'),str(ENGINE/'src/world/world_cave_wire.c'),str(p/'test.c'),'-o',str(p/'test')]
@@ -61,7 +61,7 @@ while(fgets(line,sizeof(line),stdin)){char *t[5],*save,*p;unsigned n=0;line[strc
 #include "global.h"
 #include "platform/world_cave_wire.h"
 enum CaveState {CAVE_DISABLED,CAVE_IDLE,CAVE_WAIT,CAVE_WAIT_RESET,CAVE_ACK,CAVE_WAIT_OK,CAVE_READY,CAVE_MISMATCH,CAVE_RETURN_NONE};
-static struct {bool8 caveAvailable,staging,caveV10Probe;enum CaveState caveState;unsigned caveTimeout,caveRetry;char caveExpected[65];struct WorldCaveWire caveWire;} sWorld;
+static struct {bool8 caveAvailable,staging,caveV16Probe;enum CaveState caveState;unsigned caveTimeout,caveRetry;char caveExpected[65];struct WorldCaveWire caveWire;} sWorld;
 static int inside,matched,stageCount;
 static int GeneratedMap_IsInside(void){return inside;}static int GeneratedMap_EntryPending(void){return 0;}
 static int GeneratedMap_MatchesPreparedXLWilds(const u8 *p,unsigned n){(void)p;(void)n;return matched;}
@@ -69,7 +69,7 @@ static int GeneratedMap_StageSharedXLWilds(const u8 *p,unsigned n){(void)p;if(n!
 static int GeneratedMap_MatchesPrepared(const u8 *p,unsigned n){(void)p;(void)n;return 0;}
 static int GeneratedMap_StageTemplate(const u8 *p,unsigned n){(void)p;(void)n;return 0;}
 ''' + function(bridge,'CaveLine') + r'''
-int main(int argc,char **argv){char line[256];int r=0;sWorld.caveAvailable=1;sWorld.caveState=CAVE_WAIT;sWorld.caveV10Probe=atoi(argv[1]);inside=atoi(argv[2]);matched=atoi(argv[3]);
+int main(int argc,char **argv){char line[256];int r=0;sWorld.caveAvailable=1;sWorld.caveState=CAVE_WAIT;sWorld.caveV16Probe=atoi(argv[1]);inside=atoi(argv[2]);matched=atoi(argv[3]);
 while(fgets(line,sizeof(line),stdin)){char *t[5],*save,*p;unsigned n=0;line[strcspn(line,"\n")]=0;for(p=strtok_r(line," ",&save);p&&n<5;p=strtok_r(NULL," ",&save))t[n++]=p;r=CaveLine(n,t);if(!r)return 2;}return (int)sWorld.caveState==atoi(argv[4]) && stageCount==atoi(argv[5])?0:3;}
 '''
   with tempfile.TemporaryDirectory() as t:

@@ -20,6 +20,59 @@ BLUEPRINT={'rooms':[[2,2,12,12],[16,16,12,12]],'links':[[0,1]],'entrance_room':0
 PROPOSAL=cave_blueprint.proposal_from_blueprint(BLUEPRINT)
 
 class SharedCaveEcology(unittest.TestCase):
+    def test_wildlife_get_is_cohort_isolated_but_v9_events_remain_cumulative(self):
+        legacy_blob = offline_cave.encode_wildlife(PROPOSAL, 'ice', 25,
+            [{'species': 'TREECKO', 'level': 5}] * 12)
+        modern_blob = offline_cave.encode_wildlife(PROPOSAL, 'ice', 25,
+            [{'species': 'TREECKO', 'level': 5}] * 12, cohort='expansion-native')
+        from world import large_cave
+        large_proposal = {'rows': ['#' * 63] + ['#' + '.' * 61 + '#' for _ in range(61)] + ['#' * 63],
+                          'spawn': [1, 1], 'exit': [61, 61]}
+        legacy_large = large_cave.encode_wildlife(large_proposal, 'ice', 25,
+            [{'species': 'TREECKO', 'level': 5}] * 12)
+        modern_large = large_cave.encode_wildlife(large_proposal, 'ice', 25,
+            [{'species': 'TREECKO', 'level': 5}] * 12, cohort='expansion-native')
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            cases = ((legacy_blob, 'SOCIALTRAVELCHATRALLYCAVE5', b'CAVE BEGIN '),
+                     (legacy_large, 'SOCIALTRAVELCHATRALLYCAVE5', b'CAVE BEGIN '),
+                     (modern_blob, 'SOCIALTRAVELCHATRALLYCAVE5', b'CAVE NONE'),
+                     (modern_large, 'SOCIALTRAVELCHATRALLYCAVE5', b'CAVE NONE'),
+                     (legacy_blob, 'SOCIALTRAVELCHATRALLYCAVE11', b'CAVE NONE'),
+                     (legacy_large, 'SOCIALTRAVELCHATRALLYCAVE11', b'CAVE NONE'),
+                     (modern_blob, 'SOCIALTRAVELCHATRALLYCAVE11', b'CAVE BEGIN '),
+                     (modern_large, 'SOCIALTRAVELCHATRALLYCAVE11', b'CAVE BEGIN '))
+            for index, (blob, role, expected) in enumerate(cases):
+                server = MemoryAuthority(root/'socket', root/f'world{index}', cave_template=blob)
+                try:
+                    identity = server.create_identity('Alice')
+                    conn = {'id': None, 'out': bytearray(), 'closing': False, 'state': None,
+                            'seq': 0, 'sock': object()}
+                    server._line(conn, ('HELLO 1 %s %s %s' %
+                        (identity['id'], identity['token'], role)).encode())
+                    conn['out'].clear(); server._line(conn, b'CAVE GET')
+                    self.assertTrue(bytes(conn['out']).startswith(expected),
+                                    (blob[:8], role, bytes(conn['out'][:40])))
+                finally:
+                    server.close()
+            from test_large_generated_cave import DOC
+            from world import wilds_events
+            journey_blob = wilds_events.compile_document({'blueprint': DOC,
+                'cast': [{'gfx': 7, 'text': 'Welcome!'}],
+                'events': {'initial': 0, 'rules': [{'state': 0, 'npc': 1, 'next': 1, 'text': 'Hello!'}]}})
+            journey_server = MemoryAuthority(root/'journey.sock', root/'journey-world', cave_template=journey_blob)
+            try:
+                identity = journey_server.create_identity('Journey')
+                conn = {'id': None, 'out': bytearray(), 'closing': False, 'state': None,
+                        'seq': 0, 'sock': object()}
+                journey_server._line(conn, ('HELLO 1 %s %s SOCIALTRAVELCHATRALLYCAVE9' %
+                    (identity['id'], identity['token'])).encode())
+                conn['out'].clear(); journey_server._line(conn, b'CAVE GET')
+                self.assertTrue(bytes(conn['out']).startswith(b'CAVE BEGIN '))
+                self.assertIn(b' EVENTS\n', conn['out'])
+            finally:
+                journey_server.close()
+
     def test_authority_v2_negotiation_legacy_and_profile_identity(self):
         blob=offline_cave.encode_profile(PROPOSAL,'meteor')
         v2=SharedCave(blob)

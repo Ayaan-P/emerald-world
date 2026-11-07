@@ -1,5 +1,5 @@
 diff --git a/data/battle_scripts_2.s b/data/battle_scripts_2.s
-index 9475895a5579e062dad253789752a878ef7b463a..d6c9382c74b26d0fac3fddb3cc096de26548c144 100755
+index 9475895a55..d6c9382c74 100755
 --- a/data/battle_scripts_2.s
 +++ b/data/battle_scripts_2.s
 @@ -59,6 +59,21 @@ BattleScript_ItemRestoreHPRet:
@@ -62,7 +62,7 @@ index 9475895a5579e062dad253789752a878ef7b463a..d6c9382c74b26d0fac3fddb3cc096de2
  	setbyte sMON_CAUGHT, TRUE
  	incrementgamestat GAME_STAT_POKEMON_CAPTURES
 diff --git a/data/scripts/repel.inc b/data/scripts/repel.inc
-index 7240c3fb47e5049bfe6e9df4d16beaf9f8f06130..8b11999e5646b7e3f4c87884e08c6450611c1488 100644
+index 7240c3fb47..8b11999e56 100644
 --- a/data/scripts/repel.inc
 +++ b/data/scripts/repel.inc
 @@ -67,7 +67,8 @@ RepeatRepel_Text_Used:
@@ -82,7 +82,7 @@ index 7240c3fb47e5049bfe6e9df4d16beaf9f8f06130..8b11999e5646b7e3f4c87884e08c6450
 -
 -#endif
 diff --git a/include/battle_controllers.h b/include/battle_controllers.h
-index 253584b93906cbd81d3a4966fbf695f2a2e1544d..1fc6a02b15915245bdf944853e7076313d651fd7 100644
+index 253584b939..1fc6a02b15 100644
 --- a/include/battle_controllers.h
 +++ b/include/battle_controllers.h
 @@ -83,6 +83,10 @@ enum BattleController
@@ -97,7 +97,7 @@ index 253584b93906cbd81d3a4966fbf695f2a2e1544d..1fc6a02b15915245bdf944853e707631
  //
  // These are provided for documentation purposes, to make the battle
 diff --git a/include/battle_gfx_sfx_util.h b/include/battle_gfx_sfx_util.h
-index 2cfd41192e37c2d77baa77c489cb389f33bb090a..58b1bb9dca58819eb60453c3a0a532225f3cc1cb 100644
+index 2cfd41192e..58b1bb9dca 100644
 --- a/include/battle_gfx_sfx_util.h
 +++ b/include/battle_gfx_sfx_util.h
 @@ -17,6 +17,10 @@ void BattleGfxSfxDummy2(enum Species species);
@@ -112,7 +112,7 @@ index 2cfd41192e37c2d77baa77c489cb389f33bb090a..58b1bb9dca58819eb60453c3a0a53222
  bool8 BattleInitAllSprites(u8 *state1, u8 *battler);
  void ClearSpritesHealthboxAnimData(void);
 diff --git a/include/battle_gimmick.h b/include/battle_gimmick.h
-index 4b96422465bf48ee593b8e1e6944a0ec3c464eda..e4a38bb35158ffe1a798abe48a5e00e69277c7f4 100644
+index 4b96422465..e4a38bb351 100644
 --- a/include/battle_gimmick.h
 +++ b/include/battle_gimmick.h
 @@ -49,6 +49,9 @@ void UpdateIndicatorVisibilityAndType(u32 healthboxId, bool32 invisible);
@@ -126,7 +126,7 @@ index 4b96422465bf48ee593b8e1e6944a0ec3c464eda..e4a38bb35158ffe1a798abe48a5e00e6
  extern const struct GimmickInfo gGimmicksInfo[];
  
 diff --git a/include/battle_interface.h b/include/battle_interface.h
-index 6d64f58ab38a6e950e09e925c3eba97e0196bb6f..ee8a74687f2076456c19b608ef87c833299919ab 100644
+index 6d64f58ab3..ee8a74687f 100644
 --- a/include/battle_interface.h
 +++ b/include/battle_interface.h
 @@ -114,6 +114,9 @@ u8 CreateSafariPlayerHealthboxSprites(void);
@@ -140,7 +140,7 @@ index 6d64f58ab38a6e950e09e925c3eba97e0196bb6f..ee8a74687f2076456c19b608ef87c833
  void UpdateOamPriorityInAllHealthboxes(u8 priority, bool32 hideHpBoxes);
  void InitBattlerHealthboxCoords(enum BattlerId battler);
 diff --git a/include/battle_scripts.h b/include/battle_scripts.h
-index f52800dbced51a5172399ba3579dd2907badebaa..a5d62ce0399fd541267808eb1ede47c2cc356d61 100644
+index f52800dbce..a5d62ce039 100644
 --- a/include/battle_scripts.h
 +++ b/include/battle_scripts.h
 @@ -9,6 +9,9 @@ extern const u8 BattleScript_MoveEnd[];
@@ -174,7 +174,7 @@ index f52800dbced51a5172399ba3579dd2907badebaa..a5d62ce0399fd541267808eb1ede47c2
  extern const u8 BattleScript_ShakeBallThrow[];
  extern const u8 BattleScript_TrainerBallBlock[];
 diff --git a/include/librfu.h b/include/librfu.h
-index 98cc70a587670f92b2c0178bd6c7b500734f4ca2..38ac5c50b2932b078e1204e979d1856f1004f616 100644
+index 98cc70a587..38ac5c50b2 100644
 --- a/include/librfu.h
 +++ b/include/librfu.h
 @@ -90,7 +90,6 @@
@@ -198,7 +198,7 @@ index 98cc70a587670f92b2c0178bd6c7b500734f4ca2..38ac5c50b2932b078e1204e979d1856f
  
  #define RFU_CHILD_MAX                   4                  // Maximum number of slaves that can be connected to one parent device
 diff --git a/include/party_menu.h b/include/party_menu.h
-index 50ed3c1d341409851f26e0386c75433b09150d9a..60a2e52969c5bd2d7f12967b4df8612a8cf56185 100644
+index 50ed3c1d34..60a2e52969 100644
 --- a/include/party_menu.h
 +++ b/include/party_menu.h
 @@ -89,6 +89,9 @@ void CB2_ShowPartyMenuForItemUse(void);
@@ -212,7 +212,7 @@ index 50ed3c1d341409851f26e0386c75433b09150d9a..60a2e52969c5bd2d7f12967b4df8612a
  void ItemUseCB_AbilityPatch(u8 taskId, TaskFunc task);
  void ItemUseCB_Mint(u8 taskId, TaskFunc task);
 diff --git a/include/platform/player_control.h b/include/platform/player_control.h
-index fea98974abafe5e3306091651d857bd97efaf3c6..f2bfb3e22de7162b05015d9ea73b677c81fa3783 100644
+index fea98974ab..f2bfb3e22d 100644
 --- a/include/platform/player_control.h
 +++ b/include/platform/player_control.h
 @@ -1,6 +1,5 @@
@@ -228,7 +228,7 @@ index fea98974abafe5e3306091651d857bd97efaf3c6..f2bfb3e22de7162b05015d9ea73b677c
  #endif
 -#endif
 diff --git a/include/platform/world_chat.h b/include/platform/world_chat.h
-index 73df02d2e5c4069ad8d652c8ca0a30ed2f3e3e1e..b3161865bf8f0ddda7ed33e10ef2e624d8d9adcb 100644
+index 73df02d2e5..b3161865bf 100644
 --- a/include/platform/world_chat.h
 +++ b/include/platform/world_chat.h
 @@ -1,6 +1,5 @@
@@ -253,7 +253,7 @@ index 73df02d2e5c4069ad8d652c8ca0a30ed2f3e3e1e..b3161865bf8f0ddda7ed33e10ef2e624
  #endif
 -#endif
 diff --git a/include/platform/world_coop.h b/include/platform/world_coop.h
-index 1f5de9ef49ac027b6b2263a76368416c221ec6e2..ca4f93d56c8e01d7ad9735888eb779dfa64990f7 100644
+index 1f5de9ef49..ca4f93d56c 100644
 --- a/include/platform/world_coop.h
 +++ b/include/platform/world_coop.h
 @@ -47,15 +47,16 @@ bool8 WorldCoop_ApplyRosterMirror(u8 battler, const u8 *data);
@@ -324,7 +324,7 @@ index 1f5de9ef49ac027b6b2263a76368416c221ec6e2..ca4f93d56c8e01d7ad9735888eb779df
  #endif
  #endif
 diff --git a/platform/Makefile b/platform/Makefile
-index d6ae2b995a9ac2096adc9a008469a81ad2fc8cc3..a858ca75e497947e961685df95d9fe647488ad01 100644
+index d6ae2b995a..a858ca75e4 100644
 --- a/platform/Makefile
 +++ b/platform/Makefile
 @@ -146,7 +146,7 @@ endif
@@ -355,7 +355,7 @@ index d6ae2b995a9ac2096adc9a008469a81ad2fc8cc3..a858ca75e497947e961685df95d9fe64
  	$(CC) $(CFLAGS_ALL) -c $< -o $@
  
 diff --git a/platform/frame.c b/platform/frame.c
-index f5a284bd5eac3d1d00b64626faa6aabe9011e5e4..0b954847dc5ec0bdd8534be2c4c859ff5809765e 100644
+index f5a284bd5e..0b954847dc 100644
 --- a/platform/frame.c
 +++ b/platform/frame.c
 @@ -37,6 +37,15 @@
@@ -419,7 +419,7 @@ index f5a284bd5eac3d1d00b64626faa6aabe9011e5e4..0b954847dc5ec0bdd8534be2c4c859ff
          (void)fprintf(stderr, "frame: the interrupt controller halted on a Game Pak interrupt, as the GBA hangs; "
                                "stopping\n");
 diff --git a/platform/frame.h b/platform/frame.h
-index a8288b14f859f5a63f5a5890ee0e076b70bb35bb..e3bde0926a7f0060ed0a55ae7f0ecb7144d23402 100644
+index a8288b14f8..e3bde0926a 100644
 --- a/platform/frame.h
 +++ b/platform/frame.h
 @@ -135,6 +135,10 @@ int frame_init(const struct frame_config *config);
@@ -434,7 +434,7 @@ index a8288b14f859f5a63f5a5890ee0e076b70bb35bb..e3bde0926a7f0060ed0a55ae7f0ecb71
  void frame_shutdown(void);
  
 diff --git a/platform/input.c b/platform/input.c
-index d4cea199df733cbd2df118e921279e925f4a26d5..b596544d0c78fd2a47da1ba9df5792e3c7c3b5d1 100644
+index d4cea199df..b596544d0c 100644
 --- a/platform/input.c
 +++ b/platform/input.c
 @@ -19,6 +19,12 @@
@@ -489,7 +489,7 @@ index d4cea199df733cbd2df118e921279e925f4a26d5..b596544d0c78fd2a47da1ba9df5792e3
  }
 -#endif
 diff --git a/platform/input.h b/platform/input.h
-index 9d9f19862ac90a56c2c7f9690899868ea85844dc..b87f1f4bf6565be808091c461c8759d03deb4cbf 100644
+index 9d9f19862a..b87f1f4bf6 100644
 --- a/platform/input.h
 +++ b/platform/input.h
 @@ -122,6 +122,9 @@ void input_shutdown(void);
@@ -503,13 +503,41 @@ index 9d9f19862ac90a56c2c7f9690899868ea85844dc..b87f1f4bf6565be808091c461c8759d0
   * bit order; bits above INPUT_KEYS_MASK are ignored. */
  void input_script_set(uint16_t keys_active_high);
 diff --git a/platform/inspect.c b/platform/inspect.c
-index 34a713638c2b63864542a2a98d51b96b698fb25f..5d52b2ef01626b308cbf22dc33b9b842fa00a600 100644
+index 34a713638c..5fc6d8cbf3 100644
 --- a/platform/inspect.c
 +++ b/platform/inspect.c
-@@ -294,6 +294,42 @@ static void fact_party0_name(char *out, size_t size)
+@@ -294,6 +294,70 @@ static void fact_party0_name(char *out, size_t size)
      (void)inspect_decode_text(gSpeciesInfo[species].speciesName, sizeof gSpeciesInfo[species].speciesName, out, size);
  }
  
++static void fact_party0_progress(char *out, size_t size)
++{
++    /* Observe the restored private party, never a staged co-op mirror. */
++    if (gMain.inBattle || inspect_party_count() == 0)
++    {
++        (void)snprintf(out, size, "unavailable");
++        return;
++    }
++    struct Pokemon *mon = &gParties[B_TRAINER_PLAYER][0];
++    (void)snprintf(out, size,
++        "species=%u personality=%u ot=%u exp=%u hp=%u max_hp=%u level=%u status=%u outcome=%u",
++        (unsigned)GetMonData(mon, MON_DATA_SPECIES),
++        (unsigned)GetMonData(mon, MON_DATA_PERSONALITY),
++        (unsigned)GetMonData(mon, MON_DATA_OT_ID),
++        (unsigned)GetMonData(mon, MON_DATA_EXP),
++        (unsigned)GetMonData(mon, MON_DATA_HP),
++        (unsigned)GetMonData(mon, MON_DATA_MAX_HP),
++        (unsigned)GetMonData(mon, MON_DATA_LEVEL),
++        (unsigned)GetMonData(mon, MON_DATA_STATUS), (unsigned)gBattleOutcome);
++}
++
++static void fact_battle_opponent_species(char *out, size_t size)
++{
++    unsigned species = gMain.inBattle && gPartiesCount[B_TRAINER_OPPONENT_A]
++        ? GetMonData(&gParties[B_TRAINER_OPPONENT_A][0], MON_DATA_SPECIES) : SPECIES_NONE;
++    (void)snprintf(out, size, "%u", species);
++}
++
 +static void fact_battle_link_debug(char *out, size_t size)
 +{
 +    int sendState = -1, sendStart = -1, sendEnd = -1;
@@ -549,16 +577,20 @@ index 34a713638c2b63864542a2a98d51b96b698fb25f..5d52b2ef01626b308cbf22dc33b9b842
  static void fact_in_battle(char *out, size_t size)
  {
      (void)snprintf(out, size, "%u", gMain.inBattle ? 1u : 0u);
-@@ -368,6 +404,7 @@ static const struct inspect_fact facts[] = {
+@@ -366,8 +430,11 @@ static const struct inspect_fact facts[] = {
+     {"pos", fact_pos, inspect_none_text},
+     {"party_count", fact_party_count, NULL},
      {"party0_species", fact_party0_species, NULL},
++    {"party0_progress", fact_party0_progress, NULL},
      {"party0_name", fact_party0_name, NULL},
      {"in_battle", fact_in_battle, NULL},
++    {"battle_opponent_species", fact_battle_opponent_species, NULL},
 +    {"battle_link_debug", fact_battle_link_debug, NULL},
      {"battle_main", fact_battle_main, NULL},
      {"script_running", fact_script_running, NULL},
      {"controls_locked", fact_controls_locked, NULL},
 diff --git a/platform/main.c b/platform/main.c
-index 93dc52a87e401d7f64de7bcfcddf9ecf602b974e..7bbb27dfba563400dcab546b36bc92d2080dc1f1 100644
+index 93dc52a87e..fac8168c61 100644
 --- a/platform/main.c
 +++ b/platform/main.c
 @@ -89,6 +89,17 @@
@@ -579,7 +611,7 @@ index 93dc52a87e401d7f64de7bcfcddf9ecf602b974e..7bbb27dfba563400dcab546b36bc92d2
  
  /* Expansion's entry point and IRQ handler table (src/main.c). */
  void AgbMain(void);
-@@ -377,6 +388,160 @@ static int start_frame(const struct options *o)
+@@ -377,6 +388,165 @@ static int start_frame(const struct options *o)
      return frame_init(&config);
  }
  
@@ -662,6 +694,11 @@ index 93dc52a87e401d7f64de7bcfcddf9ecf602b974e..7bbb27dfba563400dcab546b36bc92d2
 +    fprintf(out, ",\"map\":[%d,%d],\"pos\":[%d,%d],\"task_count\":%u,\"party_count\":%u,\"party0_species\":%u,\"party0_name\":",
 +            map_group, map_num, pos_x, pos_y, task_count, party_count, party_species);
 +    player_control_json_string(out, party_name);
++    fputs(",\"party0_progress\":", out);
++    if (inspect_get("party0_progress", value, sizeof value) == 0)
++        player_control_json_string(out, value);
++    else
++        player_control_json_string(out, "unavailable");
 +    fputs(",\"battle_link_debug\":", out);
 +    if (inspect_get("battle_link_debug", value, sizeof value) == 0)
 +        player_control_json_string(out, value);
@@ -740,7 +777,7 @@ index 93dc52a87e401d7f64de7bcfcddf9ecf602b974e..7bbb27dfba563400dcab546b36bc92d2
  static int start_replay(const struct options *o)
  {
      if (o->replay_path == NULL)
-@@ -420,6 +585,7 @@ static const struct module_step module_steps[] = {
+@@ -420,6 +590,7 @@ static const struct module_step module_steps[] = {
      {"flash", start_flash, flash_shutdown},
      {"save_file", start_save_file, save_file_shutdown},
      {"frame", start_frame, frame_shutdown},
@@ -749,7 +786,7 @@ index 93dc52a87e401d7f64de7bcfcddf9ecf602b974e..7bbb27dfba563400dcab546b36bc92d2
      {"replay", start_replay, replay_session_stop},
  };
 diff --git a/platform/options.c b/platform/options.c
-index 3b1899108a28ec333d784cd380e4d6dab98a3ea7..1986569fa026e9bc9d000e283039e7a950dfc2aa 100644
+index 3b1899108a..1986569fa0 100644
 --- a/platform/options.c
 +++ b/platform/options.c
 @@ -43,6 +43,8 @@ void options_print_usage(FILE *out)
@@ -782,7 +819,7 @@ index 3b1899108a28ec333d784cd380e4d6dab98a3ea7..1986569fa026e9bc9d000e283039e7a9
          out->data_dir = NULL;
          out->save_path = NULL;
 diff --git a/platform/options.h b/platform/options.h
-index 9bcc20416ecb0ad481aca460b3b266bdd8dfcae6..44fb5fff1f9c8d2bf4827eee6d02ab46c8947c7f 100644
+index 9bcc20416e..44fb5fff1f 100644
 --- a/platform/options.h
 +++ b/platform/options.h
 @@ -57,6 +57,7 @@ struct options {
@@ -794,7 +831,7 @@ index 9bcc20416ecb0ad481aca460b3b266bdd8dfcae6..44fb5fff1f9c8d2bf4827eee6d02ab46
      bool rtc_fixed;
      int64_t rtc_fixed_epoch;
 diff --git a/platform/video.c b/platform/video.c
-index 3fdeac6e5201ed9fb80678d242cbabbca84f8577..7e7752fc9229a5c7a7e59d81302c57daf9120954 100644
+index 3fdeac6e52..7e7752fc92 100644
 --- a/platform/video.c
 +++ b/platform/video.c
 @@ -38,6 +38,12 @@
@@ -945,7 +982,7 @@ index 3fdeac6e5201ed9fb80678d242cbabbca84f8577..7e7752fc9229a5c7a7e59d81302c57da
  
  /* 5 bits to 8 by replicating the top bits, so 0 -> 0 and 31 -> 255. */
 diff --git a/platform/video.h b/platform/video.h
-index b99a5270e15239c0eba020fb54586470a582e419..e77270c60a0d32ce7cd1e31b6825534caec64acc 100644
+index b99a5270e1..e77270c60a 100644
 --- a/platform/video.h
 +++ b/platform/video.h
 @@ -55,6 +55,9 @@ struct video_config {
@@ -960,7 +997,7 @@ index b99a5270e15239c0eba020fb54586470a582e419..e77270c60a0d32ce7cd1e31b6825534c
  int video_present(const uint16_t *frame);
 diff --git a/platform/video_mode.h b/platform/video_mode.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..7d9531fa98233e6a35277cc87f0bfe8bc6856e23
+index 0000000000..7d9531fa98
 --- /dev/null
 +++ b/platform/video_mode.h
 @@ -0,0 +1,10 @@
@@ -975,20 +1012,21 @@ index 0000000000000000000000000000000000000000..7d9531fa98233e6a35277cc87f0bfe8b
 +
 +#endif /* VIDEO_MODE_H */
 diff --git a/src/battle_controller_player.c b/src/battle_controller_player.c
-index 7553ca6144b9420df325f6d7a03ffbb548b4dcf8..1e13791f51797551b68d54eda3ddfae01578212e 100644
+index 7553ca6144..bc0cfa98df 100644
 --- a/src/battle_controller_player.c
 +++ b/src/battle_controller_player.c
-@@ -48,6 +48,9 @@
+@@ -48,6 +48,10 @@
  #include "type_icons.h"
  #include "pokedex.h"
  #include "test/battle.h"
 +#ifdef PORTABLE
 +#include "platform/world_coop.h"
++#include "platform/native_link.h"
 +#endif
  
  static void PlayerHandleLoadMonSprite(enum BattlerId battler);
  static void PlayerHandleDrawTrainerPic(enum BattlerId battler);
-@@ -1223,6 +1226,15 @@ static void SetLinkBattleEndCallbacks(enum BattlerId battler)
+@@ -1223,6 +1227,15 @@ static void SetLinkBattleEndCallbacks(enum BattlerId battler)
  // Despite handling link battles separately, this is only ever used by link battles
  void SetBattleEndCallbacks(enum BattlerId battler)
  {
@@ -1004,7 +1042,7 @@ index 7553ca6144b9420df325f6d7a03ffbb548b4dcf8..1e13791f51797551b68d54eda3ddfae0
      if (!gPaletteFade.active)
      {
          if (gBattleTypeFlags & BATTLE_TYPE_LINK)
-@@ -1610,7 +1622,12 @@ static void CompleteWhenChoseItem(enum BattlerId battler)
+@@ -1610,7 +1623,12 @@ static void CompleteWhenChoseItem(enum BattlerId battler)
  {
      if (gMain.callback2 == BattleMainCB2 && !gPaletteFade.active)
      {
@@ -1018,7 +1056,7 @@ index 7553ca6144b9420df325f6d7a03ffbb548b4dcf8..1e13791f51797551b68d54eda3ddfae0
          BtlController_Complete(battler);
      }
  }
-@@ -2099,6 +2116,12 @@ static void PlayerChooseMoveInBattlePalace(enum BattlerId battler)
+@@ -2099,6 +2117,12 @@ static void PlayerChooseMoveInBattlePalace(enum BattlerId battler)
  
  void PlayerHandleChooseMove(enum BattlerId battler)
  {
@@ -1031,8 +1069,58 @@ index 7553ca6144b9420df325f6d7a03ffbb548b4dcf8..1e13791f51797551b68d54eda3ddfae0
      if (gBattleTypeFlags & BATTLE_TYPE_PALACE)
      {
          gBattleStruct->arenaMindPoints[battler] = 8;
+@@ -2193,6 +2217,49 @@ void PlayerHandleExpUpdate(enum BattlerId battler)
+     u8 monId = gBattleResources->bufferA[battler][1];
+     s32 taskId, expPointsToGive;
+ 
++#ifdef PORTABLE
++    /* The original co-op protocol multiplexes transaction commands through
++     * EXPUPDATE. A defeat carries species/level, NOT an experience amount.
++     * Settle EXP only after restoring the owner's private party and closing
++     * the link; never run the ordinary EXP controller on these wire bytes. */
++    if (WorldCoop_IsBattle())
++    {
++        const u8 *data = gBattleResources->bufferA[battler];
++#if COOP_FULL_SIX_READY
++        if (data[1] == WORLD_COOP_ROSTER_REQUEST_TAG)
++        {
++            u8 reply[WORLD_COOP_ROSTER_REPLY_SIZE];
++            if (!WorldCoop_ApplyRosterRequest(battler, data, reply))
++                NativeLink_Abort();
++            else
++                BtlController_EmitDataTransfer(battler, B_COMM_TO_ENGINE, sizeof(reply), reply);
++            BtlController_Complete(battler);
++            return;
++        }
++        if (data[1] == WORLD_COOP_ROSTER_MIRROR_TAG)
++        {
++            if (!WorldCoop_ApplyRosterMirror(battler, data))
++                NativeLink_Abort();
++            BtlController_Complete(battler);
++            return;
++        }
++#endif
++        if (data[1] == WORLD_COOP_MEDICINE_TAG)
++        {
++            bool8 consumed = WorldCoop_ConsumeMedicine(battler, data);
++            BtlController_EmitTwoReturnValues(battler, B_COMM_TO_ENGINE, consumed ? 1 : 0, 0);
++            BtlController_Complete(battler);
++            return;
++        }
++        if (data[1] >= 254)
++            WorldCoop_RecordCatchEvent(battler, data);
++        else
++            WorldCoop_RecordDefeat(data);
++        BtlController_Complete(battler);
++        return;
++    }
++#endif
++
+     if (GetMonData(&gParties[B_TRAINER_PLAYER][monId], MON_DATA_LEVEL) >= MAX_LEVEL)
+     {
+         BtlController_Complete(battler);
 diff --git a/src/battle_controllers.c b/src/battle_controllers.c
-index 466fd5481dcdb4ba0d65985526d08e1858aef84e..f1ecdebddd520832ad951153ed6b236aa958a222 100644
+index 466fd5481d..f1ecdebddd 100644
 --- a/src/battle_controllers.c
 +++ b/src/battle_controllers.c
 @@ -1,6 +1,7 @@
@@ -1332,7 +1420,7 @@ index 466fd5481dcdb4ba0d65985526d08e1858aef84e..f1ecdebddd520832ad951153ed6b236a
                      u8 *dest, *src;
                      u16 dataSize = gBlockRecvBuffer[i][2];
 diff --git a/src/battle_gfx_sfx_util.c b/src/battle_gfx_sfx_util.c
-index 9494cb6b730bc2bbaeaed4e51073a9a86276f4e3..6018ce9e38d8abf093ae761e2c5d9d521465b86a 100644
+index 9494cb6b73..6018ce9e38 100644
 --- a/src/battle_gfx_sfx_util.c
 +++ b/src/battle_gfx_sfx_util.c
 @@ -709,6 +709,98 @@ void FreeTrainerFrontPicPalette(enum TrainerPicID trainerPicId)
@@ -1435,7 +1523,7 @@ index 9494cb6b730bc2bbaeaed4e51073a9a86276f4e3..6018ce9e38d8abf093ae761e2c5d9d52
  {
      if (state == 1)
 diff --git a/src/battle_gimmick.c b/src/battle_gimmick.c
-index ebe6d5cc12df1bb0d5ae4cbcaca1e3df4e7c6982..5efd1119f6575fc35c9f6b95d7a68b87655096a8 100644
+index ebe6d5cc12..5efd1119f6 100644
 --- a/src/battle_gimmick.c
 +++ b/src/battle_gimmick.c
 @@ -392,6 +392,19 @@ void CreateIndicatorSprite(enum BattlerId battler)
@@ -1459,7 +1547,7 @@ index ebe6d5cc12df1bb0d5ae4cbcaca1e3df4e7c6982..5efd1119f6575fc35c9f6b95d7a68b87
  #undef tPosX
  #undef tLevelXDelta
 diff --git a/src/battle_hold_effects.c b/src/battle_hold_effects.c
-index 5d775a35add39fbd87a5a2c331fd53aba45f9900..c3b9d0382795b9fb3373b923e2623b32c749b0e6 100644
+index 5d775a35ad..c3b9d03827 100644
 --- a/src/battle_hold_effects.c
 +++ b/src/battle_hold_effects.c
 @@ -1,4 +1,7 @@
@@ -1484,7 +1572,7 @@ index 5d775a35add39fbd87a5a2c331fd53aba45f9900..c3b9d0382795b9fb3373b923e2623b32
      {
          gBattleStruct->moneyMultiplier *= 2;
 diff --git a/src/battle_interface.c b/src/battle_interface.c
-index f802c98d62e39e31024c9b57ae6159f94ba416c4..782e67fd31e5292636b739f8ae1f862bbe8a8ca3 100644
+index f802c98d62..782e67fd31 100644
 --- a/src/battle_interface.c
 +++ b/src/battle_interface.c
 @@ -5,6 +5,9 @@
@@ -1526,7 +1614,7 @@ index f802c98d62e39e31024c9b57ae6159f94ba416c4..782e67fd31e5292636b739f8ae1f862b
  {
      gSprites[spriteId].x = x;
 diff --git a/src/battle_main.c b/src/battle_main.c
-index 5ac7d92dc66136f1533fae4ce7c51734c15fa2b5..6532479259bba440246ab2e37475ba1173438dc3 100644
+index 5ac7d92dc6..51d5aabbeb 100644
 --- a/src/battle_main.c
 +++ b/src/battle_main.c
 @@ -63,6 +63,13 @@
@@ -1711,7 +1799,36 @@ index 5ac7d92dc66136f1533fae4ce7c51734c15fa2b5..6532479259bba440246ab2e37475ba11
              }
  
              // Draw sprite.
-@@ -5473,6 +5558,93 @@ void RunBattleScriptCommands_PopCallbacksStack(void)
+@@ -5229,6 +5314,28 @@ static void HandleEndTurn_FinishBattle(void)
+ {
+     if (gCurrentActionFuncId == B_ACTION_TRY_FINISH || gCurrentActionFuncId == B_ACTION_FINISHED)
+     {
++#ifdef PORTABLE
++        if (WorldCoop_IsBattle())
++        {
++            /* Preserve the original co-op handoff: the stock cleanup frees
++             * message windows before private EXP/catch scripts can use them.
++             * Capture/escape paths also need their final end-link record. */
++            if (gBattleControllerExecFlags)
++                return;
++            if (gBattleOutcome == B_OUTCOME_RAN
++             || gBattleOutcome == B_OUTCOME_CAUGHT
++             || gBattleOutcome == B_OUTCOME_PLAYER_TELEPORTED
++             || gBattleOutcome == B_OUTCOME_MON_FLED
++             || gBattleOutcome == B_OUTCOME_MON_TELEPORTED)
++            {
++                enum BattlerId battler = GetBattlerAtPosition(B_POSITION_PLAYER_LEFT);
++                BtlController_EmitEndLinkBattle(battler, B_COMM_TO_CONTROLLER, gBattleOutcome);
++                MarkBattlerForControllerExec(battler);
++            }
++            gBattleMainFunc = BeginBattleIntroDummy;
++            return;
++        }
++#endif
+         if (!(gBattleTypeFlags & (BATTLE_TYPE_LINK
+                                   | BATTLE_TYPE_RECORDED_LINK
+                                   | BATTLE_TYPE_FIRST_BATTLE
+@@ -5473,6 +5580,93 @@ void RunBattleScriptCommands_PopCallbacksStack(void)
      }
  }
  
@@ -1806,7 +1923,7 @@ index 5ac7d92dc66136f1533fae4ce7c51734c15fa2b5..6532479259bba440246ab2e37475ba11
  {
      if (gBattleControllerExecFlags == 0)
 diff --git a/src/battle_script_commands.c b/src/battle_script_commands.c
-index 78e37b57a8ce44807b6976f56eb891624e4cb443..a4f066f36edb3a893dbdee7f1d8d52de5d765362 100644
+index 78e37b57a8..a4f066f36e 100644
 --- a/src/battle_script_commands.c
 +++ b/src/battle_script_commands.c
 @@ -1,4 +1,8 @@
@@ -2164,7 +2281,7 @@ index 78e37b57a8ce44807b6976f56eb891624e4cb443..a4f066f36edb3a893dbdee7f1d8d52de
      // Restore players party in order to handle properly the case when a wild mon is caught.
      if (IsNPCFollowerWildBattle())
 diff --git a/src/battle_set_effect.c b/src/battle_set_effect.c
-index 8300eb720218a081d367aa125c34dcef6bb749f1..be0e01a831a4a80de4878c1c7e16407f15ddc751 100644
+index 8300eb7202..be0e01a831 100644
 --- a/src/battle_set_effect.c
 +++ b/src/battle_set_effect.c
 @@ -1,4 +1,7 @@
@@ -2187,7 +2304,7 @@ index 8300eb720218a081d367aa125c34dcef6bb749f1..be0e01a831a4a80de4878c1c7e16407f
          enum MoveTarget moveTarget = GetBattlerMoveTargetType(cv->battlerAtk, cv->move);
          gPaydayMoney += (gBattleMons[cv->battlerAtk].level * 5);
 diff --git a/src/battle_setup.c b/src/battle_setup.c
-index 218515884544cc612d6b94fb09483238398d8886..43f8e3a8ced7b3ef8b983aac7eb6dcdddb0329a4 100644
+index 2185158845..43f8e3a8ce 100644
 --- a/src/battle_setup.c
 +++ b/src/battle_setup.c
 @@ -1523,7 +1523,12 @@ void BattleSetup_StartTrainerBattle(void)
@@ -2273,7 +2390,7 @@ index 218515884544cc612d6b94fb09483238398d8886..43f8e3a8ced7b3ef8b983aac7eb6dcdd
          gSelectedObjectEvent = i;
          gSpecialVar_LastTalked = gObjectEvents[i].localId;
 diff --git a/src/battle_util.c b/src/battle_util.c
-index 0f07d4f8e1dcf3ed73194f1f3c2aee310c4257f3..1c26a8b2953ce3dabe2e6ef5322005af0ec14df7 100644
+index 0f07d4f8e1..1c26a8b295 100644
 --- a/src/battle_util.c
 +++ b/src/battle_util.c
 @@ -1,4 +1,8 @@
@@ -2439,7 +2556,7 @@ index 0f07d4f8e1dcf3ed73194f1f3c2aee310c4257f3..1c26a8b2953ce3dabe2e6ef5322005af
          }
          break;
 diff --git a/src/data/party_menu.h b/src/data/party_menu.h
-index 9d65313c6e90ecbf915a74a5804aa7b35c253544..97a038c2a15e201fc5ed62acd070dd31871d966e 100644
+index 9d65313c6e..97a038c2a1 100644
 --- a/src/data/party_menu.h
 +++ b/src/data/party_menu.h
 @@ -786,6 +786,9 @@ static const u16 sUnusedData[] =
@@ -2463,7 +2580,7 @@ index 9d65313c6e90ecbf915a74a5804aa7b35c253544..97a038c2a15e201fc5ed62acd070dd31
  
  static const u8 sPartyMenuAction_SummarySwitchCancel[] = {MENU_SUMMARY, MENU_SWITCH, MENU_CANCEL1};
 diff --git a/src/event_object_movement.c b/src/event_object_movement.c
-index 036965644d9a4abad12f8abda30d22aede8a5dd1..8a94fbbc3b0ef6f1f9812cd8d8bfe4799e6290c1 100644
+index 036965644d..8a94fbbc3b 100644
 --- a/src/event_object_movement.c
 +++ b/src/event_object_movement.c
 @@ -1,4 +1,8 @@
@@ -2490,7 +2607,7 @@ index 036965644d9a4abad12f8abda30d22aede8a5dd1..8a94fbbc3b0ef6f1f9812cd8d8bfe479
              if ((curObject->currentCoords.x == x && curObject->currentCoords.y == y) || (curObject->previousCoords.x == x && curObject->previousCoords.y == y))
              {
 diff --git a/src/field_effect.c b/src/field_effect.c
-index 1965faa42d22d66e99fe8af9784c42b02a077251..b8310dccd8974e700a255173546164a68bfec69e 100644
+index 1965faa42d..b8310dccd8 100644
 --- a/src/field_effect.c
 +++ b/src/field_effect.c
 @@ -41,6 +41,10 @@
@@ -2527,7 +2644,7 @@ index 1965faa42d22d66e99fe8af9784c42b02a077251..b8310dccd8974e700a255173546164a6
                  FollowerNPCReappearAfterLeaveMap(follower, player);
  
 diff --git a/src/item_menu.c b/src/item_menu.c
-index 84c87a3ab6da762cf9311e4f58f1b6bb7be7a8fb..32a0eb70f4a326cfb3175fd97bf5ed6f04272e48 100755
+index 84c87a3ab6..32a0eb70f4 100755
 --- a/src/item_menu.c
 +++ b/src/item_menu.c
 @@ -1,4 +1,7 @@
@@ -2552,7 +2669,7 @@ index 84c87a3ab6da762cf9311e4f58f1b6bb7be7a8fb..32a0eb70f4a326cfb3175fd97bf5ed6f
              gBagMenu->contextMenuItemsPtr = sContextMenuItems_BattleUse;
              gBagMenu->contextMenuNumItems = ARRAY_COUNT(sContextMenuItems_BattleUse);
 diff --git a/src/item_use.c b/src/item_use.c
-index d6ab79713e0eaab293a8146db2d78bd3b20c80f6..2774def1fb4b77392d56ff583d3e01dfd5c8b96b 100644
+index d6ab79713e..2774def1fb 100644
 --- a/src/item_use.c
 +++ b/src/item_use.c
 @@ -1,4 +1,8 @@
@@ -2591,7 +2708,7 @@ index d6ab79713e0eaab293a8146db2d78bd3b20c80f6..2774def1fb4b77392d56ff583d3e01df
  }
  
 diff --git a/src/librfu_rfu.c b/src/librfu_rfu.c
-index f9686288f1888cbc9bb3def52448dac1f4ff8aa7..b5f7c870da50b7c0bf712557976e89baeeafa7b6 100644
+index f9686288f1..b5f7c870da 100644
 --- a/src/librfu_rfu.c
 +++ b/src/librfu_rfu.c
 @@ -137,10 +137,16 @@ u16 rfu_initializeAPI(u32 *APIBuffer, u16 buffByteSize, IntrFunc *sioIntrTable_p
@@ -2622,7 +2739,7 @@ index f9686288f1888cbc9bb3def52448dac1f4ff8aa7..b5f7c870da50b7c0bf712557976e89ba
  #line 160
      gRfuLinkStatus = (void *)APIBuffer + 0;
 diff --git a/src/link.c b/src/link.c
-index 1ec4047b63ca93cc204953b89ee7f3eea8a9af99..901faddaf2353098efc7fc53ac42818b8c01a0fb 100644
+index 1ec4047b63..901faddaf2 100644
 --- a/src/link.c
 +++ b/src/link.c
 @@ -317,6 +317,10 @@ void SetLocalLinkPlayerId(u8 playerId)
@@ -2648,7 +2765,7 @@ index 1ec4047b63ca93cc204953b89ee7f3eea8a9af99..901faddaf2353098efc7fc53ac42818b
          return Rfu_GetMultiplayerId();
  
 diff --git a/src/link_rfu_2.c b/src/link_rfu_2.c
-index 2b6fb66514ec002f44813583198c2d8748d8fdc7..b28d60feeb5e0b0d28bd611ecfa232535d513b66 100644
+index 2b6fb66514..b28d60feeb 100644
 --- a/src/link_rfu_2.c
 +++ b/src/link_rfu_2.c
 @@ -72,7 +72,7 @@ struct RfuDebug
@@ -2661,7 +2778,7 @@ index 2b6fb66514ec002f44813583198c2d8748d8fdc7..b28d60feeb5e0b0d28bd611ecfa23253
  #line 75
  COMMON_DATA u32 gRfuAPIBuffer[RFU_API_BUFF_SIZE_RAM / 4] = {0};
 diff --git a/src/overworld.c b/src/overworld.c
-index f1c246a1ffc3be9cc89b48b5d08395a9d42fe0f1..f5008e5ad24d5572c53d96078bfc74fb230f0403 100644
+index f1c246a1ff..f5008e5ad2 100644
 --- a/src/overworld.c
 +++ b/src/overworld.c
 @@ -84,6 +84,9 @@
@@ -2689,7 +2806,7 @@ index f1c246a1ffc3be9cc89b48b5d08395a9d42fe0f1..f5008e5ad24d5572c53d96078bfc74fb
  
  void ApplyCurrentWarp(void)
 diff --git a/src/party_menu.c b/src/party_menu.c
-index a11fd377265ed963f29ca353f7bb7b503fabcef4..b9745ad589aa019fa86a98c8892d7a37ef369adf 100644
+index a11fd37726..b9745ad589 100644
 --- a/src/party_menu.c
 +++ b/src/party_menu.c
 @@ -1,4 +1,12 @@
@@ -3003,7 +3120,7 @@ index a11fd377265ed963f29ca353f7bb7b503fabcef4..b9745ad589aa019fa86a98c8892d7a37
      GetPartyAndSlotFromPartyMenuId(slot, &party, &partySlot);
      battlePartyId = GetPartyIdFromBattleSlot(slot);
 diff --git a/src/script_movement.c b/src/script_movement.c
-index bc10a64ef029f6b8b46051e6f42c41d1ab381219..812456baeb5b87dffb1469dce988c59bb98c25b0 100644
+index bc10a64ef0..812456baeb 100644
 --- a/src/script_movement.c
 +++ b/src/script_movement.c
 @@ -18,6 +18,22 @@ static void ScriptMovement_MoveObjects(u8 taskId);
@@ -3125,7 +3242,7 @@ index bc10a64ef029f6b8b46051e6f42c41d1ab381219..812456baeb5b87dffb1469dce988c59b
      {
          if (*pObjEventId != 0xFF)
 diff --git a/src/sprite.c b/src/sprite.c
-index 6dd75182a2c5a07102457623927781bc14e5bfe7..28dded18aed5e588609190dfd4acdb98f60392b1 100644
+index 6dd75182a2..28dded18ae 100644
 --- a/src/sprite.c
 +++ b/src/sprite.c
 @@ -711,10 +711,15 @@ u32 CreateSpriteAt(u32 index, const struct SpriteTemplate *template, s16 x, s16
@@ -3148,7 +3265,7 @@ index 6dd75182a2c5a07102457623927781bc14e5bfe7..28dded18aed5e588609190dfd4acdb98
          {
              ResetSprite(sprite);
 diff --git a/src/trade.c b/src/trade.c
-index ece527d2838226fdf512c596a9e48d6888c759f7..0f9d34c1425adc7ff506ced506923031179b5e1a 100644
+index ece527d283..0f9d34c142 100644
 --- a/src/trade.c
 +++ b/src/trade.c
 @@ -1194,6 +1194,8 @@ static void PrintIsThisTradeOkay(void)
@@ -3196,7 +3313,7 @@ index ece527d2838226fdf512c596a9e48d6888c759f7..0f9d34c1425adc7ff506ced506923031
              rbox_fill_rectangle(0);
              SetSelectedMon(sTradeMenu->cursorPosition);
 diff --git a/src/wild_encounter.c b/src/wild_encounter.c
-index dd6a0c8893d468cb7fddc4160f121b91ac2baa05..f11f92e229966d8c805c0b8b1ca9585184ad7d98 100644
+index dd6a0c8893..f11f92e229 100644
 --- a/src/wild_encounter.c
 +++ b/src/wild_encounter.c
 @@ -22,6 +22,9 @@
@@ -3303,8 +3420,159 @@ index dd6a0c8893d468cb7fddc4160f121b91ac2baa05..f11f92e229966d8c805c0b8b1ca95851
      s16 x, y;
      u32 headerId;
      enum TimeOfDay timeOfDay;
+diff --git a/src/world/world_bridge.c b/src/world/world_bridge.c
+index b2efe0e28b..34d3cf2109 100644
+--- a/src/world/world_bridge.c
++++ b/src/world/world_bridge.c
+@@ -905,15 +905,15 @@ static bool8 CaveLine(unsigned n, char **tokens)
+         }
+ #endif
+ #if GENERATED_MAP_LARGE && GENERATED_CAVE_WILDLIFE
+-        if (sWorld.caveWire.version == 4 || sWorld.caveWire.version == 5) {
+-            if (sWorld.caveWire.version == 5 && !GeneratedMap_ValidateWildlife(sWorld.caveWire.wildlife, WORLD_CAVE_WILDLIFE_BYTES)) return FALSE;
++        if (sWorld.caveWire.version == 4 || sWorld.caveWire.version == 5 || sWorld.caveWire.version == 11) {
++            if ((sWorld.caveWire.version == 5 || sWorld.caveWire.version == 11) && !GeneratedMap_ValidateWildlife(sWorld.caveWire.wildlife, WORLD_CAVE_WILDLIFE_BYTES)) return FALSE;
+             if ((GeneratedMap_IsInside() || GeneratedMap_EntryPending())
+-             && !(sWorld.caveWire.version == 5
++             && !((sWorld.caveWire.version == 5 || sWorld.caveWire.version == 11)
+                  ? GeneratedMap_MatchesPreparedLargeWildlife(sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS, sWorld.caveWire.profile, sWorld.caveWire.wildlife, WORLD_CAVE_WILDLIFE_BYTES)
+                  : GeneratedMap_MatchesPreparedLarge(sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS)))
+                 sWorld.caveState = CAVE_MISMATCH;
+             else if (GeneratedMap_StageSharedLargeTemplate(sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS)) {
+-                if (sWorld.caveWire.version == 5 && (!GeneratedMap_SetSharedEncounterProfile(sWorld.caveWire.profile)
++                if ((sWorld.caveWire.version == 5 || sWorld.caveWire.version == 11) && (!GeneratedMap_SetSharedEncounterProfile(sWorld.caveWire.profile)
+                  || !GeneratedMap_SetSharedWildlife(sWorld.caveWire.wildlife, WORLD_CAVE_WILDLIFE_BYTES))) return FALSE;
+                 sWorld.caveState = CAVE_ACK;
+             } else return FALSE;
+@@ -921,11 +921,11 @@ static bool8 CaveLine(unsigned n, char **tokens)
+         }
+ #endif
+ #if GENERATED_CAVE_WILDLIFE
+-        if (sWorld.caveWire.version == 3 && !GeneratedMap_ValidateWildlife(sWorld.caveWire.wildlife, WORLD_CAVE_WILDLIFE_BYTES)) return FALSE;
++        if ((sWorld.caveWire.version == 3 || sWorld.caveWire.version == 10) && !GeneratedMap_ValidateWildlife(sWorld.caveWire.wildlife, WORLD_CAVE_WILDLIFE_BYTES)) return FALSE;
+ #endif
+         if ((GeneratedMap_IsInside() || GeneratedMap_EntryPending())
+ #if GENERATED_CAVE_WILDLIFE
+-         && !(sWorld.caveWire.version == 3
++         && !((sWorld.caveWire.version == 3 || sWorld.caveWire.version == 10)
+               ? GeneratedMap_MatchesPreparedWildlife(sWorld.caveWire.cells, WORLD_CAVE_CELLS, sWorld.caveWire.profile, sWorld.caveWire.wildlife, WORLD_CAVE_WILDLIFE_BYTES)
+               : GeneratedMap_MatchesPreparedProfile(sWorld.caveWire.cells, WORLD_CAVE_CELLS, sWorld.caveWire.profile)))
+ #elif GENERATED_CAVE_PROFILES
+@@ -936,10 +936,10 @@ static bool8 CaveLine(unsigned n, char **tokens)
+             sWorld.caveState = CAVE_MISMATCH;
+         else if (GeneratedMap_StageTemplate(sWorld.caveWire.cells, WORLD_CAVE_CELLS)) {
+ #if GENERATED_CAVE_PROFILES
+-            if ((sWorld.caveWire.version == 2 || sWorld.caveWire.version == 3 || sWorld.caveWire.version == 5) && !GeneratedMap_SetSharedEncounterProfile(sWorld.caveWire.profile)) return FALSE;
++            if ((sWorld.caveWire.version == 2 || sWorld.caveWire.version == 3 || sWorld.caveWire.version == 5 || sWorld.caveWire.version == 10 || sWorld.caveWire.version == 11) && !GeneratedMap_SetSharedEncounterProfile(sWorld.caveWire.profile)) return FALSE;
+ #endif
+ #if GENERATED_CAVE_WILDLIFE
+-            if ((sWorld.caveWire.version == 3 || sWorld.caveWire.version == 5) && !GeneratedMap_SetSharedWildlife(sWorld.caveWire.wildlife, WORLD_CAVE_WILDLIFE_BYTES)) return FALSE;
++            if ((sWorld.caveWire.version == 3 || sWorld.caveWire.version == 5 || sWorld.caveWire.version == 10 || sWorld.caveWire.version == 11) && !GeneratedMap_SetSharedWildlife(sWorld.caveWire.wildlife, WORLD_CAVE_WILDLIFE_BYTES)) return FALSE;
+ #endif
+             sWorld.caveState = CAVE_ACK;
+         } else return FALSE;
+@@ -1244,6 +1244,7 @@ static void QueueHello(bool8 headless)
+ #if GENERATED_WILDS_EVENTS
+         sWorld.caveV9Probe = sWorld.caveV8Probe && !sWorld.caveV9Legacy;
+         if (sWorld.caveV9Probe) suffix = "CAVE9";
++        if (sWorld.caveV9Probe) suffix = "CAVE11";
+ #endif
+ #endif
+ #endif
+@@ -1553,16 +1554,16 @@ static void CavePump(void)
+             } else
+ #endif
+ #if GENERATED_MAP_LARGE && GENERATED_CAVE_WILDLIFE
+-            if (sWorld.caveWire.version == 4 || sWorld.caveWire.version == 5) {
++            if (sWorld.caveWire.version == 4 || sWorld.caveWire.version == 5 || sWorld.caveWire.version == 11) {
+                 if (!GeneratedMap_StageSharedLargeTemplate(sWorld.caveWire.cells, WORLD_CAVE_LARGE_CELLS)) { Disconnect(); return; }
+             } else
+ #endif
+             if (!GeneratedMap_StageTemplate(sWorld.caveWire.cells, WORLD_CAVE_CELLS)) { Disconnect(); return; }
+ #if GENERATED_CAVE_PROFILES
+-            if ((sWorld.caveWire.version == 2 || sWorld.caveWire.version == 3 || sWorld.caveWire.version == 5) && !GeneratedMap_SetSharedEncounterProfile(sWorld.caveWire.profile)) { Disconnect(); return; }
++            if ((sWorld.caveWire.version == 2 || sWorld.caveWire.version == 3 || sWorld.caveWire.version == 5 || sWorld.caveWire.version == 10 || sWorld.caveWire.version == 11) && !GeneratedMap_SetSharedEncounterProfile(sWorld.caveWire.profile)) { Disconnect(); return; }
+ #endif
+ #if GENERATED_CAVE_WILDLIFE
+-            if ((sWorld.caveWire.version == 3 || sWorld.caveWire.version == 5) && !GeneratedMap_SetSharedWildlife(sWorld.caveWire.wildlife, WORLD_CAVE_WILDLIFE_BYTES)) { Disconnect(); return; }
++            if ((sWorld.caveWire.version == 3 || sWorld.caveWire.version == 5 || sWorld.caveWire.version == 10 || sWorld.caveWire.version == 11) && !GeneratedMap_SetSharedWildlife(sWorld.caveWire.wildlife, WORLD_CAVE_WILDLIFE_BYTES)) { Disconnect(); return; }
+ #endif
+             sWorld.caveState = CAVE_ACK;
+         } else sWorld.caveState = CAVE_DISABLED;
+diff --git a/src/world/world_cave_wire.c b/src/world/world_cave_wire.c
+index 7b96c12167..aeff88be1f 100644
+--- a/src/world/world_cave_wire.c
++++ b/src/world/world_cave_wire.c
+@@ -36,20 +36,20 @@ static void Digest(const u8 *cells, u8 version, u8 profile, const u8 *wildlife,
+     static const u8 magic[8]={'E','W','G','M','A','P','0','1'};
+     static const char alphabet[]="0123456789abcdef";
+     u32 state[8]={0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
+-    u8 block[64]; unsigned i,j,offset; const unsigned extra = version == 9 ? WORLD_CAVE_EVENT_BYTES + WORLD_CAVE_CAST_BYTES : version == 8 ? WORLD_CAVE_CAST_BYTES : version == 7 ? WORLD_CAVE_GUIDE_BYTES : (version == 3 || version == 5) ? 38 : version == 2 ? 1 : 0;
+-    const unsigned count = version >= 4 ? WORLD_CAVE_LARGE_CELLS : WORLD_CAVE_CELLS;
++    u8 block[64]; unsigned i,j,offset; const unsigned extra = version == 9 ? WORLD_CAVE_EVENT_BYTES + WORLD_CAVE_CAST_BYTES : version == 8 ? WORLD_CAVE_CAST_BYTES : version == 7 ? WORLD_CAVE_GUIDE_BYTES : (version == 3 || version == 5 || version == 10 || version == 11) ? 38 : version == 2 ? 1 : 0;
++    const unsigned count = (version >= 4 && version != 10) ? WORLD_CAVE_LARGE_CELLS : WORLD_CAVE_CELLS;
+     const unsigned length=8+extra+count, padded=((length+9+63)/64)*64;
+     for(offset=0;offset<padded;offset+=64) {
+         memset(block,0,sizeof(block));
+         for(i=0;i<64;i++) {
+             unsigned p=offset+i;
+-            if(p<8) block[i]=(p==7 && version>=2) ? ('0' + version) : magic[p];
++            if(p<8) block[i]=(p==6 && version>=10) ? '1' : (p==7 && version>=2) ? ('0' + version % 10) : magic[p];
+             else if(version==9 && p<8+WORLD_CAVE_EVENT_BYTES) block[i]=events[p-8];
+             else if(version==9 && p<8+WORLD_CAVE_EVENT_BYTES+WORLD_CAVE_CAST_BYTES) block[i]=cast[p-8-WORLD_CAVE_EVENT_BYTES];
+             else if(version==8 && p<8+WORLD_CAVE_CAST_BYTES) block[i]=cast[p-8];
+             else if(version==7 && p<8+WORLD_CAVE_GUIDE_BYTES) block[i]=guide[p-8];
+             else if(extra && p==8) block[i]=profile;
+-            else if((version==3 || version==5) && p<46) block[i]=wildlife[p-9];
++            else if((version==3 || version==5 || version==10 || version==11) && p<46) block[i]=wildlife[p-9];
+             else if(p<length) block[i]=cells[p-8-extra];
+             else if(p==length) block[i]=0x80;
+         }
+@@ -123,18 +123,18 @@ int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned n, const char *const
+ #if GENERATED_CAVE_WILDLIFE
+     if (n==5 && !strcmp(t[1],"BEGIN")) {
+         if(wire->active || !WorldCaveWire_ValidId(t[2]) || strlen(t[3])!=1 || t[3][0]<'0' || t[3][0]>'3') return -1;
+-        if (strcmp(t[4],"3")
++        if (strcmp(t[4],"3") && strcmp(t[4],"10")
+ #if GENERATED_MAP_LARGE
+-         && strcmp(t[4],"5")
++         && strcmp(t[4],"5") && strcmp(t[4],"11")
+ #endif
+         ) return -1;
+-        memcpy(wire->id,t[2],65);wire->nextRow=0;wire->version=t[4][0]-'0';wire->profile=t[3][0]-'0';wire->wildlifeSeen=FALSE;wire->active=TRUE;return 0;
++        memcpy(wire->id,t[2],65);wire->nextRow=0;wire->version=!strcmp(t[4],"10")?10:!strcmp(t[4],"11")?11:(u8)(t[4][0]-'0');wire->profile=t[3][0]-'0';wire->wildlifeSeen=FALSE;wire->active=TRUE;return 0;
+     }
+ #endif
+     if(!wire->active || n<3 || strcmp(wire->id,t[2])) return -1;
+ #if GENERATED_CAVE_WILDLIFE
+     if(n==4 && !strcmp(t[1],"WILD")) {
+-        if((wire->version!=3 && wire->version!=5) || wire->wildlifeSeen || wire->nextRow || strlen(t[3])!=WORLD_CAVE_WILDLIFE_BYTES*2) return -1;
++        if((wire->version!=3 && wire->version!=5 && wire->version!=10 && wire->version!=11) || wire->wildlifeSeen || wire->nextRow || strlen(t[3])!=WORLD_CAVE_WILDLIFE_BYTES*2) return -1;
+         for(i=0;i<WORLD_CAVE_WILDLIFE_BYTES*2;i++) {
+             char c=t[3][i]; unsigned v;
+             if(c>='0' && c<='9') v=c-'0'; else if(c>='a' && c<='f') v=c-'a'+10; else return -1;
+@@ -178,8 +178,8 @@ int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned n, const char *const
+ #endif
+     if(n==5 && !strcmp(t[1],"ROW")) {
+         const char *p=t[3];
+-        const unsigned side = wire->version>=4 ? WORLD_CAVE_LARGE_SIDE : WORLD_CAVE_SIDE;
+-        if((wire->version==3 || wire->version==5) && !wire->wildlifeSeen) return -1;
++        const unsigned side = (wire->version>=4 && wire->version!=10) ? WORLD_CAVE_LARGE_SIDE : WORLD_CAVE_SIDE;
++        if((wire->version==3 || wire->version==5 || wire->version==10 || wire->version==11) && !wire->wildlifeSeen) return -1;
+         if(wire->version==7 && !wire->guideSeen) return -1;
+ #if GENERATED_WILDS_CAST
+         if(wire->version==8 && !wire->castSeen) return -1;
+@@ -194,7 +194,7 @@ int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned n, const char *const
+         memcpy(wire->cells+index*side,t[4],side);wire->nextRow++;return 0;
+     }
+     if(n==3 && !strcmp(t[1],"END")) {
+-        if(wire->nextRow!=(wire->version>=4 ? WORLD_CAVE_LARGE_SIDE : WORLD_CAVE_SIDE) || ((wire->version==3 || wire->version==5) && !wire->wildlifeSeen) || (wire->version==7 && !wire->guideSeen)) return -1;
++        if(wire->nextRow!=((wire->version>=4 && wire->version!=10) ? WORLD_CAVE_LARGE_SIDE : WORLD_CAVE_SIDE) || ((wire->version==3 || wire->version==5 || wire->version==10 || wire->version==11) && !wire->wildlifeSeen) || (wire->version==7 && !wire->guideSeen)) return -1;
+ #if GENERATED_WILDS_CAST
+         if(wire->version==8 && !wire->castSeen) return -1;
+ #if GENERATED_WILDS_EVENTS
 diff --git a/src/world/world_chat.c b/src/world/world_chat.c
-index b9ca6721697d1ec2d266311d1bf2e704c84cddd6..3de1c0096d2390495b321035f0dc65f3089b2cbf 100644
+index b9ca672169..3de1c0096d 100644
 --- a/src/world/world_chat.c
 +++ b/src/world/world_chat.c
 @@ -14,6 +14,11 @@ static struct {
@@ -3350,7 +3618,7 @@ index b9ca6721697d1ec2d266311d1bf2e704c84cddd6..3de1c0096d2390495b321035f0dc65f3
      return 0;
  }
 diff --git a/src/world/world_coop.c b/src/world/world_coop.c
-index 5bbb04afe7b67312fac78a66e47c8e28e46b61a7..b2e63c3ede26761aafcc662a1e33909664edf1ea 100644
+index 5bbb04afe7..b2e63c3ede 100644
 --- a/src/world/world_coop.c
 +++ b/src/world/world_coop.c
 @@ -6,11 +6,14 @@
@@ -4342,7 +4610,7 @@ index 5bbb04afe7b67312fac78a66e47c8e28e46b61a7..b2e63c3ede26761aafcc662a1e339096
      if ((!sCoop.readySent || (sCoop.peerReady && !sCoop.commitSent))
       && SendBlock(BitmaskAllOtherLinkPlayers(), &packet, sizeof(packet)))
 diff --git a/src/world/world_coop_potion.c b/src/world/world_coop_potion.c
-index f5e606e972d11985fa57735d56c173540847a079..0c967c1f494d211ed66cded5e8035ce34c496d7e 100644
+index f5e606e972..0c967c1f49 100644
 --- a/src/world/world_coop_potion.c
 +++ b/src/world/world_coop_potion.c
 @@ -1,79 +1,135 @@
@@ -4527,7 +4795,7 @@ index f5e606e972d11985fa57735d56c173540847a079..0c967c1f494d211ed66cded5e8035ce3
      *newStatus = status & ~mask;
      *clearConfusion = cureConfusion;
 diff --git a/src/world/world_runtime.c b/src/world/world_runtime.c
-index 27c1dd2d4afffe50618c1ca0e62ad29c19bb37f9..e48277589cc943afdbe093bc18cd05cc03f4f312 100644
+index 27c1dd2d4a..e48277589c 100644
 --- a/src/world/world_runtime.c
 +++ b/src/world/world_runtime.c
 @@ -13,6 +13,7 @@
@@ -4572,7 +4840,7 @@ index 27c1dd2d4afffe50618c1ca0e62ad29c19bb37f9..e48277589cc943afdbe093bc18cd05cc
  void WorldRuntime_AfterFrame(void)
 diff --git a/tests/check_coop_private_completion_cleanup.py b/tests/check_coop_private_completion_cleanup.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..b2f4a366f3660a3256a9f1bba5d429a4f993c8fa
+index 0000000000..b2f4a366f3
 --- /dev/null
 +++ b/tests/check_coop_private_completion_cleanup.py
 @@ -0,0 +1,52 @@

@@ -70,6 +70,9 @@ class LinuxPackageTests(unittest.TestCase):
         self.assertEqual((bundle / 'credits/expansion/CREDITS.md').read_bytes(),
                          (REPO / 'vendor/expansion-dexnav/upstream/CREDITS.md').read_bytes())
         self.assertTrue((bundle / 'credits/expansion/provenance.json').is_file())
+        self.assertTrue((bundle / 'world/expansion_species.json').is_file())
+        self.assertEqual((bundle / 'world/expansion_species.json').read_bytes(),
+                         (REPO / 'world/expansion_species.json').read_bytes())
         self.assertTrue((bundle / 'launcher-web/dist/index.html').is_file())
         self.assertTrue(os.access(bundle / 'build/pokeemerald64', os.X_OK))
         for name, metadata in manifest['files'].items():

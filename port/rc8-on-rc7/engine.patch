@@ -231,7 +231,7 @@ index 000000000..3c29f9d77
 +void XLProgressStore_Close(void);
 +#endif
 diff --git a/platform/main.c b/platform/main.c
-index 7bbb27dfb..963723bb4 100644
+index fac8168c6..457326c76 100644
 --- a/platform/main.c
 +++ b/platform/main.c
 @@ -92,6 +92,7 @@
@@ -242,7 +242,7 @@ index 7bbb27dfb..963723bb4 100644
  #include "main.h"
  #include "palette.h"
  #include "script.h"
-@@ -782,6 +783,12 @@ static int play(struct start *start)
+@@ -787,6 +788,12 @@ static int play(struct start *start)
          return MAIN_EXIT_FAILURE;
      }
      start->started = true;
@@ -1175,7 +1175,7 @@ index 000000000..ef04f77c4
 +}
 +#endif
 diff --git a/src/world/world_bridge.c b/src/world/world_bridge.c
-index b2efe0e28..a18f5562a 100644
+index 34d3cf210..2cd3b9575 100644
 --- a/src/world/world_bridge.c
 +++ b/src/world/world_bridge.c
 @@ -34,6 +34,8 @@
@@ -1187,7 +1187,7 @@ index b2efe0e28..a18f5562a 100644
  #include "platform/generated_map.h"
  #if GENERATED_MAP_READY
  #include "platform/world_cave_wire.h"
-@@ -109,10 +111,14 @@ struct Remote { char id[26]; u8 object, sprite, group, num;
+@@ -109,10 +111,15 @@ struct Remote { char id[26]; u8 object, sprite, group, num;
  struct Applied { struct Tile tile; u16 original, raw; };
  static struct {
      bool8 enabled, connected, connecting, staging, chatProbe, chatLegacy, chatAvailable;
@@ -1196,13 +1196,14 @@ index b2efe0e28..a18f5562a 100644
      bool8 rallyProbe, rallyLegacy, rallyAvailable;
  #if GENERATED_MAP_READY
      bool8 caveProbe, caveLegacy, caveAvailable, caveReturning;
++    bool8 caveV11Probe, caveV11Legacy;
 +#if GENERATED_WORLD_XL
-+    bool8 caveV10Probe, caveV10Legacy;
++    bool8 caveV16Probe, caveV16Legacy;
 +#endif
  #if GENERATED_CAVE_PROFILES
      bool8 caveV2Probe, caveV2Legacy;
  #if GENERATED_CAVE_WILDLIFE
-@@ -128,8 +134,18 @@ static struct {
+@@ -128,8 +135,18 @@ static struct {
      bool8 caveV8Probe, caveV8Legacy;
  #if GENERATED_WILDS_EVENTS
      bool8 caveV9Probe, caveV9Legacy;
@@ -1222,16 +1223,16 @@ index b2efe0e28..a18f5562a 100644
  #endif
  #endif
  #endif
-@@ -265,7 +281,7 @@ static bool8 MapCoords(unsigned group, unsigned num, unsigned x, unsigned y)
+@@ -265,7 +282,7 @@ static bool8 MapCoords(unsigned group, unsigned num, unsigned x, unsigned y)
      if (IsGeneratedCaveMap(group, num))
          return sWorld.connected && sWorld.caveAvailable && sWorld.caveState == CAVE_READY
  #if GENERATED_MAP_WILDS
 -            && ((sWorld.caveWire.version == 6 || sWorld.caveWire.version == 7 || sWorld.caveWire.version == 8 || sWorld.caveWire.version == 9) == (group == MAP_GROUP(MAP_GENERATED_WORLD_WILDS)
-+            && ((sWorld.caveWire.version == 6 || sWorld.caveWire.version == 7 || sWorld.caveWire.version == 8 || sWorld.caveWire.version == 9 || sWorld.caveWire.version == 10) == (group == MAP_GROUP(MAP_GENERATED_WORLD_WILDS)
++            && ((sWorld.caveWire.version == 6 || sWorld.caveWire.version == 7 || sWorld.caveWire.version == 8 || sWorld.caveWire.version == 9 || sWorld.caveWire.version == 16) == (group == MAP_GROUP(MAP_GENERATED_WORLD_WILDS)
                                                  && num == MAP_NUM(MAP_GENERATED_WORLD_WILDS)))
  #endif
              && GeneratedMap_SharedCoordValid(x, y);
-@@ -440,10 +456,15 @@ static void Disconnect(void)
+@@ -440,10 +457,16 @@ static void Disconnect(void)
      sWorld.fd = -1;
  #endif
      sWorld.connected = sWorld.connecting = sWorld.staging = FALSE;
@@ -1241,13 +1242,14 @@ index b2efe0e28..a18f5562a 100644
      sWorld.travelProbe = sWorld.travelAvailable = FALSE;
  #if GENERATED_MAP_READY
      sWorld.caveProbe = sWorld.caveAvailable = sWorld.caveReturning = FALSE;
++    sWorld.caveV11Probe = FALSE;
 +#if GENERATED_WORLD_XL
-+    sWorld.caveV10Probe=FALSE;
++    sWorld.caveV16Probe=FALSE;
 +#endif
  #if GENERATED_CAVE_PROFILES
      sWorld.caveV2Probe = FALSE;
  #if GENERATED_CAVE_WILDLIFE
-@@ -459,6 +480,16 @@ static void Disconnect(void)
+@@ -459,6 +482,16 @@ static void Disconnect(void)
      sWorld.caveV8Probe = FALSE;
  #if GENERATED_WILDS_EVENTS
      sWorld.caveV9Probe = FALSE;
@@ -1264,7 +1266,7 @@ index b2efe0e28..a18f5562a 100644
      sWorld.eventHead = sWorld.eventCount = 0; sWorld.eventSetSeq = 0;
  #endif
  #endif
-@@ -484,6 +515,8 @@ static void Disconnect(void)
+@@ -484,6 +517,8 @@ static void Disconnect(void)
      sWorld.generation++;
  }
  
@@ -1273,12 +1275,15 @@ index b2efe0e28..a18f5562a 100644
  bool8 WorldBridge_Enabled(void) { return sWorld.enabled; }
  bool8 WorldBridge_GeneratedCaveReady(void)
  {
-@@ -685,6 +718,18 @@ invalid:
+@@ -685,6 +720,21 @@ invalid:
  static bool8 CaveProbeRejected(unsigned n, char **tokens)
  {
      if (sWorld.caveProbe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
 +#if GENERATED_WORLD_XL
-+        if(sWorld.caveV10Probe){sWorld.caveV10Legacy=TRUE;return TRUE;}
++        if(sWorld.caveV16Probe){sWorld.caveV16Legacy=TRUE;return TRUE;}
++#endif
++#if GENERATED_WILDS_EVENTS && GENERATED_CAVE_WILDLIFE
++        if(sWorld.caveV11Probe){sWorld.caveV11Legacy=TRUE;return TRUE;}
 +#endif
 +#if GENERATED_WILDS_LARGE_TERRAIN && GENERATED_CAVE_WILDLIFE
 +        if(sWorld.caveV9HProbe){sWorld.caveV9HLegacy=TRUE;return TRUE;}
@@ -1292,7 +1297,7 @@ index b2efe0e28..a18f5562a 100644
  #if GENERATED_WILDS_EVENTS && GENERATED_CAVE_WILDLIFE
          if (sWorld.caveV9Probe) {sWorld.caveV9Legacy=TRUE;return TRUE;}
  #endif
-@@ -735,6 +780,48 @@ static bool8 CaveLine(unsigned n, char **tokens)
+@@ -735,6 +785,48 @@ static bool8 CaveLine(unsigned n, char **tokens)
  {
      int result;
      if (!sWorld.caveAvailable || sWorld.staging) return FALSE;
@@ -1341,7 +1346,7 @@ index b2efe0e28..a18f5562a 100644
  #if GENERATED_WILDS_EVENTS
      if (n == 5 && !strcmp(tokens[1], "EVENTSET")) {
          unsigned sequence,state;
-@@ -766,11 +853,48 @@ static bool8 CaveLine(unsigned n, char **tokens)
+@@ -766,11 +858,48 @@ static bool8 CaveLine(unsigned n, char **tokens)
          }
          return TRUE;
      }
@@ -1390,19 +1395,22 @@ index b2efe0e28..a18f5562a 100644
  #endif
          WorldCaveWire_Reset(&sWorld.caveWire);
          memcpy(sWorld.caveExpected, tokens[2], sizeof(sWorld.caveExpected));
-@@ -856,18 +980,51 @@ static bool8 CaveLine(unsigned n, char **tokens)
+@@ -856,18 +985,54 @@ static bool8 CaveLine(unsigned n, char **tokens)
          return FALSE;
  #endif
      }
 +#endif
 +#if GENERATED_WORLD_XL
-+    if(n==4 && !strcmp(tokens[1],"BEGIN") && !strcmp(tokens[3],"XLWILDS") && !sWorld.caveV10Probe) return FALSE;
++    if(n==4 && !strcmp(tokens[1],"BEGIN") && !strcmp(tokens[3],"XLWILDS") && !sWorld.caveV16Probe) return FALSE;
++#endif
++#if GENERATED_WILDS_EVENTS && GENERATED_CAVE_WILDLIFE
++    if(n==5 && !strcmp(tokens[1],"BEGIN") && (!strcmp(tokens[4],"10") || !strcmp(tokens[4],"11")) && !sWorld.caveV11Probe) return FALSE;
  #endif
      result = WorldCaveWire_Feed(&sWorld.caveWire, n, (const char *const *)tokens);
      if (result < 0) return FALSE;
      if (result == 1) {
 +#if GENERATED_WORLD_XL
-+        if(sWorld.caveWire.version==10) {
++        if(sWorld.caveWire.version==16) {
 +            if ((GeneratedMap_IsInside() || GeneratedMap_EntryPending()) && !GeneratedMap_MatchesPreparedXLWilds(sWorld.caveWire.cells,WORLD_CAVE_XL_CELLS)) sWorld.caveState=CAVE_MISMATCH;
 +            else if(GeneratedMap_MatchesPreparedXLWilds(sWorld.caveWire.cells,WORLD_CAVE_XL_CELLS) || GeneratedMap_StageSharedXLWilds(sWorld.caveWire.cells,WORLD_CAVE_XL_CELLS)) sWorld.caveState=CAVE_ACK;
 +            else return FALSE;
@@ -1444,7 +1452,7 @@ index b2efe0e28..a18f5562a 100644
              return TRUE;
          }
  #endif
-@@ -948,6 +1105,24 @@ static bool8 CaveLine(unsigned n, char **tokens)
+@@ -948,6 +1113,24 @@ static bool8 CaveLine(unsigned n, char **tokens)
  }
  #endif
  
@@ -1469,7 +1477,7 @@ index b2efe0e28..a18f5562a 100644
  static bool8 Line(char *line)
  {
      char *tokens[12], *save, *p;
-@@ -958,6 +1133,7 @@ static bool8 Line(char *line)
+@@ -958,6 +1141,7 @@ static bool8 Line(char *line)
      }
      if (!n) return FALSE;
      if (!sWorld.connected) {
@@ -1477,7 +1485,7 @@ index b2efe0e28..a18f5562a 100644
  #if WORLD_EXTENDED_OBJECTS
          if (sWorld.peer32Probe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
              sWorld.peer32Legacy = TRUE;
-@@ -994,6 +1170,7 @@ static bool8 Line(char *line)
+@@ -994,6 +1178,7 @@ static bool8 Line(char *line)
          if (n != 4 || strcmp(tokens[0], "WELCOME") || strcmp(tokens[1], "1")
           || strcmp(tokens[2], sWorld.trainer) || !Decimal(tokens[3], &v[0])) return FALSE;
          sWorld.connected = TRUE;
@@ -1485,7 +1493,7 @@ index b2efe0e28..a18f5562a 100644
          sWorld.rallyAvailable = sWorld.rallyProbe;
          sWorld.chatAvailable = sWorld.chatProbe;
          sWorld.travelAvailable = sWorld.travelProbe;
-@@ -1006,6 +1183,7 @@ static bool8 Line(char *line)
+@@ -1006,6 +1191,7 @@ static bool8 Line(char *line)
          sWorld.live.revision = v[0];
          return TRUE;
      }
@@ -1493,7 +1501,7 @@ index b2efe0e28..a18f5562a 100644
  #if GENERATED_MAP_READY
      if (!strcmp(tokens[0], "CAVE")) return CaveLine(n, tokens);
  #endif
-@@ -1217,6 +1395,7 @@ static void QueueHello(bool8 headless)
+@@ -1217,6 +1403,7 @@ static void QueueHello(bool8 headless)
  {
      const char *role;
      const char *suffix = "";
@@ -1501,10 +1509,11 @@ index b2efe0e28..a18f5562a 100644
      sWorld.rallyProbe = !sWorld.rallyLegacy;
  #if GENERATED_MAP_READY
      sWorld.caveProbe = !sWorld.caveLegacy;
-@@ -1244,6 +1423,18 @@ static void QueueHello(bool8 headless)
+@@ -1244,7 +1431,18 @@ static void QueueHello(bool8 headless)
  #if GENERATED_WILDS_EVENTS
          sWorld.caveV9Probe = sWorld.caveV8Probe && !sWorld.caveV9Legacy;
          if (sWorld.caveV9Probe) suffix = "CAVE9";
+-        if (sWorld.caveV9Probe) suffix = "CAVE11";
 +#if GENERATED_WILDS_SHARED_TERRAIN
 +        sWorld.caveV9TProbe=sWorld.caveV9Probe && !sWorld.caveV9TLegacy;
 +        if(sWorld.caveV9TProbe)suffix="CAVE9T";
@@ -1520,18 +1529,22 @@ index b2efe0e28..a18f5562a 100644
  #endif
  #endif
  #endif
-@@ -1252,6 +1443,10 @@ static void QueueHello(bool8 headless)
+@@ -1253,6 +1451,14 @@ static void QueueHello(bool8 headless)
  #endif
  #else
          suffix = "CAVE";
 +#endif
++#if GENERATED_WILDS_EVENTS && GENERATED_CAVE_WILDLIFE
++        sWorld.caveV11Probe=sWorld.caveV9Probe && !sWorld.caveV11Legacy;
++        if(sWorld.caveV11Probe)suffix="CAVE11";
++#endif
 +#if GENERATED_WORLD_XL && GENERATED_WILDS_LARGE_TERRAIN && GENERATED_CAVE_WILDLIFE
-+        sWorld.caveV10Probe=sWorld.caveV9HProbe && !sWorld.caveV10Legacy;
-+        if(sWorld.caveV10Probe)suffix="CAVE10";
++        sWorld.caveV16Probe=sWorld.caveV9HProbe && sWorld.caveV11Probe && !sWorld.caveV16Legacy;
++        if(sWorld.caveV16Probe)suffix="CAVE16";
  #endif
      }
  #endif
-@@ -1268,7 +1463,7 @@ static void QueueHello(bool8 headless)
+@@ -1269,7 +1475,7 @@ static void QueueHello(bool8 headless)
      sWorld.travelProbe = !sWorld.travelLegacy;
      role = sWorld.rallyProbe ? "SOCIALTRAVELRALLY" : sWorld.travelProbe ? "SOCIALTRAVEL" : "SOCIAL";
      sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
@@ -1540,7 +1553,7 @@ index b2efe0e28..a18f5562a 100644
  #else
      sWorld.chatProbe = !headless && !sWorld.chatLegacy;
      sWorld.travelProbe = !sWorld.travelLegacy;
-@@ -1276,7 +1471,7 @@ static void QueueHello(bool8 headless)
+@@ -1277,7 +1483,7 @@ static void QueueHello(bool8 headless)
          : sWorld.travelProbe ? (sWorld.chatProbe ? "SOCIALTRAVELCHAT" : "SOCIALTRAVEL")
          : (sWorld.chatProbe ? "SOCIALCHAT" : "SOCIAL");
      sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
@@ -1549,7 +1562,7 @@ index b2efe0e28..a18f5562a 100644
  #endif
  #undef WB_PEER_SUFFIX
  }
-@@ -1512,11 +1707,31 @@ static void CavePump(void)
+@@ -1513,11 +1719,31 @@ static void CavePump(void)
  {
      if (!sWorld.connected) return;
  #if GENERATED_WILDS_EVENTS
@@ -1581,12 +1594,12 @@ index b2efe0e28..a18f5562a 100644
              sWorld.outputSize=snprintf(sWorld.output,sizeof(sWorld.output),"CAVE EVENTACK %s %u %s\n",sWorld.caveWire.id,sWorld.eventQueue[i].sequence,applied ? "APPLIED" : "REJECTED");
              sWorld.eventHead=(i+1)%8;sWorld.eventCount--;Flush();
          }
-@@ -1532,9 +1747,24 @@ static void CavePump(void)
+@@ -1533,9 +1759,24 @@ static void CavePump(void)
          }
          sWorld.caveReturning = FALSE;
          if (sWorld.caveState == CAVE_MISMATCH) {
 +#if GENERATED_WORLD_XL
-+            if (sWorld.caveWire.version == 10) {
++            if (sWorld.caveWire.version == 16) {
 +                if (!GeneratedMap_StageSharedXLWilds(sWorld.caveWire.cells, WORLD_CAVE_XL_CELLS)) { Disconnect(); return; }
 +            } else
 +#endif
@@ -1606,7 +1619,7 @@ index b2efe0e28..a18f5562a 100644
              } else
  #endif
  #if GENERATED_WILDS_CAST && GENERATED_CAVE_WILDLIFE
-@@ -1600,7 +1830,7 @@ static void SendState(void)
+@@ -1601,7 +1842,7 @@ static void SendState(void)
       * Never revive a revoked or unsafe field position. */
      ready = sWorld.fieldKnown && Overworld()
          && (PresenceReady() || WorldActivity_IsEncounterPending());
@@ -1616,26 +1629,26 @@ index b2efe0e28..a18f5562a 100644
          Fingerprint(&gSaveBlock1Ptr->bag, sizeof(gSaveBlock1Ptr->bag), bag);
      else Fingerprint(NULL, 0, bag);
 diff --git a/src/world/world_cave_wire.c b/src/world/world_cave_wire.c
-index 7b96c1216..7332e8a70 100644
+index aeff88be1..3f2af9522 100644
 --- a/src/world/world_cave_wire.c
 +++ b/src/world/world_cave_wire.c
 @@ -36,16 +36,16 @@ static void Digest(const u8 *cells, u8 version, u8 profile, const u8 *wildlife,
      static const u8 magic[8]={'E','W','G','M','A','P','0','1'};
      static const char alphabet[]="0123456789abcdef";
      u32 state[8]={0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
--    u8 block[64]; unsigned i,j,offset; const unsigned extra = version == 9 ? WORLD_CAVE_EVENT_BYTES + WORLD_CAVE_CAST_BYTES : version == 8 ? WORLD_CAVE_CAST_BYTES : version == 7 ? WORLD_CAVE_GUIDE_BYTES : (version == 3 || version == 5) ? 38 : version == 2 ? 1 : 0;
--    const unsigned count = version >= 4 ? WORLD_CAVE_LARGE_CELLS : WORLD_CAVE_CELLS;
-+    u8 block[64]; unsigned i,j,offset; const unsigned extra = (version == 9 || version == 12 || version == 14 || version == 15) ? WORLD_CAVE_EVENT_BYTES + WORLD_CAVE_CAST_BYTES : version == 8 ? WORLD_CAVE_CAST_BYTES : version == 7 ? WORLD_CAVE_GUIDE_BYTES : (version == 3 || version == 5) ? 38 : version == 2 ? 1 : 0;
-+    const unsigned count = version == 15 ? 16 : (version == 10 || version == 12 || version == 14) ? WORLD_CAVE_XL_CELLS : version >= 4 ? WORLD_CAVE_LARGE_CELLS : WORLD_CAVE_CELLS;
+-    u8 block[64]; unsigned i,j,offset; const unsigned extra = version == 9 ? WORLD_CAVE_EVENT_BYTES + WORLD_CAVE_CAST_BYTES : version == 8 ? WORLD_CAVE_CAST_BYTES : version == 7 ? WORLD_CAVE_GUIDE_BYTES : (version == 3 || version == 5 || version == 10 || version == 11) ? 38 : version == 2 ? 1 : 0;
+-    const unsigned count = (version >= 4 && version != 10) ? WORLD_CAVE_LARGE_CELLS : WORLD_CAVE_CELLS;
++    u8 block[64]; unsigned i,j,offset; const unsigned extra = (version == 9 || version == 12 || version == 14 || version == 15) ? WORLD_CAVE_EVENT_BYTES + WORLD_CAVE_CAST_BYTES : version == 8 ? WORLD_CAVE_CAST_BYTES : version == 7 ? WORLD_CAVE_GUIDE_BYTES : (version == 3 || version == 5 || version == 10 || version == 11) ? 38 : version == 2 ? 1 : 0;
++    const unsigned count = version == 15 ? 16 : (version == 16 || version == 12 || version == 14) ? WORLD_CAVE_XL_CELLS : (version >= 4 && version != 10) ? WORLD_CAVE_LARGE_CELLS : WORLD_CAVE_CELLS;
      const unsigned length=8+extra+count, padded=((length+9+63)/64)*64;
      for(offset=0;offset<padded;offset+=64) {
          memset(block,0,sizeof(block));
          for(i=0;i<64;i++) {
              unsigned p=offset+i;
--            if(p<8) block[i]=(p==7 && version>=2) ? ('0' + version) : magic[p];
+-            if(p<8) block[i]=(p==6 && version>=10) ? '1' : (p==7 && version>=2) ? ('0' + version % 10) : magic[p];
 -            else if(version==9 && p<8+WORLD_CAVE_EVENT_BYTES) block[i]=events[p-8];
 -            else if(version==9 && p<8+WORLD_CAVE_EVENT_BYTES+WORLD_CAVE_CAST_BYTES) block[i]=cast[p-8-WORLD_CAVE_EVENT_BYTES];
-+            if(p<8) block[i]=(p==7 && version>=2) ? (version==15 ? 'F' : version==14 ? 'E' : version==12 ? 'C' : version==10 ? 'A' : '0' + version) : magic[p];
++            if(p<8) block[i]=(p==6 && (version==10 || version==11)) ? '1' : (p==7 && version>=2) ? (version==16 ? 'A' : version==15 ? 'F' : version==14 ? 'E' : version==12 ? 'C' : '0' + version % 10) : magic[p];
 +            else if((version==9 || version==12 || version==14 || version==15) && p<8+WORLD_CAVE_EVENT_BYTES) block[i]=events[p-8];
 +            else if((version==9 || version==12 || version==14 || version==15) && p<8+WORLD_CAVE_EVENT_BYTES+WORLD_CAVE_CAST_BYTES) block[i]=cast[p-8-WORLD_CAVE_EVENT_BYTES];
              else if(version==8 && p<8+WORLD_CAVE_CAST_BYTES) block[i]=cast[p-8];
@@ -1675,7 +1688,7 @@ index 7b96c1216..7332e8a70 100644
 +#if GENERATED_WORLD_XL
 +    if (n==4 && !strcmp(t[1],"BEGIN") && !strcmp(t[3],"XLWILDS")) {
 +        if(wire->active || !WorldCaveWire_ValidId(t[2])) return -1;
-+        memcpy(wire->id,t[2],65);wire->nextRow=0;wire->version=10;wire->profile=0;wire->active=TRUE;return 0;
++        memcpy(wire->id,t[2],65);wire->nextRow=0;wire->version=16;wire->profile=0;wire->active=TRUE;return 0;
 +    }
 +#endif
  #if GENERATED_WILDS_EVENTS
@@ -1741,9 +1754,9 @@ index 7b96c1216..7332e8a70 100644
  #endif
      if(n==5 && !strcmp(t[1],"ROW")) {
          const char *p=t[3];
--        const unsigned side = wire->version>=4 ? WORLD_CAVE_LARGE_SIDE : WORLD_CAVE_SIDE;
-+        const unsigned side = wire->version==10 ? WORLD_CAVE_XL_SIDE : wire->version>=4 ? WORLD_CAVE_LARGE_SIDE : WORLD_CAVE_SIDE;
-         if((wire->version==3 || wire->version==5) && !wire->wildlifeSeen) return -1;
+-        const unsigned side = (wire->version>=4 && wire->version!=10) ? WORLD_CAVE_LARGE_SIDE : WORLD_CAVE_SIDE;
++        const unsigned side = wire->version==16 ? WORLD_CAVE_XL_SIDE : (wire->version>=4 && wire->version!=10) ? WORLD_CAVE_LARGE_SIDE : WORLD_CAVE_SIDE;
+         if((wire->version==3 || wire->version==5 || wire->version==10 || wire->version==11) && !wire->wildlifeSeen) return -1;
          if(wire->version==7 && !wire->guideSeen) return -1;
  #if GENERATED_WILDS_CAST
 @@ -188,13 +250,13 @@ int WorldCaveWire_Feed(struct WorldCaveWire *wire, unsigned n, const char *const
@@ -1757,8 +1770,8 @@ index 7b96c1216..7332e8a70 100644
          memcpy(wire->cells+index*side,t[4],side);wire->nextRow++;return 0;
      }
      if(n==3 && !strcmp(t[1],"END")) {
--        if(wire->nextRow!=(wire->version>=4 ? WORLD_CAVE_LARGE_SIDE : WORLD_CAVE_SIDE) || ((wire->version==3 || wire->version==5) && !wire->wildlifeSeen) || (wire->version==7 && !wire->guideSeen)) return -1;
-+        if(wire->nextRow!=(wire->version==10 ? WORLD_CAVE_XL_SIDE : wire->version>=4 ? WORLD_CAVE_LARGE_SIDE : WORLD_CAVE_SIDE) || ((wire->version==3 || wire->version==5) && !wire->wildlifeSeen) || (wire->version==7 && !wire->guideSeen)) return -1;
+-        if(wire->nextRow!=((wire->version>=4 && wire->version!=10) ? WORLD_CAVE_LARGE_SIDE : WORLD_CAVE_SIDE) || ((wire->version==3 || wire->version==5 || wire->version==10 || wire->version==11) && !wire->wildlifeSeen) || (wire->version==7 && !wire->guideSeen)) return -1;
++        if(wire->nextRow!=(wire->version==16 ? WORLD_CAVE_XL_SIDE : (wire->version>=4 && wire->version!=10) ? WORLD_CAVE_LARGE_SIDE : WORLD_CAVE_SIDE) || ((wire->version==3 || wire->version==5 || wire->version==10 || wire->version==11) && !wire->wildlifeSeen) || (wire->version==7 && !wire->guideSeen)) return -1;
  #if GENERATED_WILDS_CAST
          if(wire->version==8 && !wire->castSeen) return -1;
  #if GENERATED_WILDS_EVENTS

@@ -26,7 +26,7 @@ class HostCaveAuthoring(unittest.TestCase):
     def test_local_host_explicitly_authors_and_publishes(self):
         with patch('world.author_cave.author',return_value=(self.proposal,self.blob)) as author:
             self.assertEqual(self.session.author_shared_cave('an icy cave'),'id')
-            author.assert_called_once_with('an icy cave',large=True,custom_wildlife=True)
+            author.assert_called_once_with('an icy cave',large=True,custom_wildlife=True,cohort='vanilla')
             self.server._replace_cave.assert_called_once_with(self.blob,label='an icy cave')
             self.assertIn('host session',self.session.status)
 
@@ -81,7 +81,7 @@ class HostCaveAuthoring(unittest.TestCase):
             with patch('world.author_cave.author', return_value=(proposal, blob)) as author:
                 self.assertEqual(self.session.author_shared_cave('large islands', wilds=True, xl=True), SharedCave(blob).identity)
                 author.assert_called_once_with('large islands', large=True, wilds=True, xl=True)
-            self.assertEqual(server.shared_cave.version, 10)
+            self.assertEqual(server.shared_cave.version, 16)
             self.assertEqual(server.list_generated_areas()[0]['kind'], 'wilds')
         finally:
             server.close()
