@@ -49,7 +49,16 @@ This is NOT a finished multiplayer release. No newer Dot branch is merged.
 - Failure: `TimeoutError: tagged wild battle field return`.
 - Both clients remained at `CB2_HandleStartMultiBattle` / `BeginBattleIntroDummy`.
 
-## Latest integrated change: built, NOT gameplay-verified
+## Actual tagged grass co-op — build 19: FAIL (newer evidence)
+
+- Report: `/home/ayaan/projects/emerald-world-research/rc7-rescue/coop-build19/acceptance.json`.
+- Executable SHA-256: `fef6228ce3c6af8d23697a92b8b255cc6bc38144f4a60ddc28dac43c9b07a73e`.
+- Both clients now advance past `CB2_HandleStartMultiBattle` into `BattleMainCB2`.
+- Host stalls in `DoBattleIntro`; guest remains in `BeginBattleIntroDummy`.
+- Failure remains `TimeoutError: tagged wild battle field return`.
+- The startup correction advances gameplay but does not complete co-op.
+
+## Latest integrated change: built and exercised, co-op still fails
 
 `engines/expansion-native/src/battle_main.c` now has a PORTABLE,
 WorldCoop-specific startup branch. The stock startup waits for four humans,
@@ -69,5 +78,6 @@ this change. No completed co-op gameplay run of this source is claimed.
 - Gameplay regression of the exact build-19 checkpoint.
 
 Worker reports, source integration, compilation and gameplay acceptance are
-separate evidence levels. No publication or installed desktop replacement is
-claimed by this checkpoint.
+separate evidence levels. No game release or installed desktop replacement is
+claimed by this checkpoint. App/source handoff commits are published separately;
+see `docs/attempt-handoffs/rc7/CURRENT.md` for source reconstruction limits.

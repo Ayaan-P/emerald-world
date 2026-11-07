@@ -1,0 +1,4491 @@
+diff --git a/data/battle_scripts_2.s b/data/battle_scripts_2.s
+index 9475895a5579e062dad253789752a878ef7b463a..d6c9382c74b26d0fac3fddb3cc096de26548c144 100755
+--- a/data/battle_scripts_2.s
++++ b/data/battle_scripts_2.s
+@@ -59,6 +59,21 @@ BattleScript_ItemRestoreHPRet:
+ 	waitmessage B_WAIT_TIME_LONG
+ 	return
+ 
++BattleScript_CoopMedicineHeal::
++	call BattleScript_UseItemMessage
++	updatestatusicon BS_SCRIPTING
++	call BattleScript_ItemRestoreHPRet
++	end
++
++BattleScript_CoopMedicineStatus::
++	call BattleScript_UseItemMessage
++	updatestatusicon BS_SCRIPTING
++	end
++
++BattleScript_CoopMedicineUsed::
++	call BattleScript_UseItemMessage
++	end
++
+ BattleScript_ItemRestoreHP::
+ 	call BattleScript_UseItemMessage
+ 	itemrestorehp BattleScript_ItemRestoreHPEnd, BattleScript_ItemRestoreHP_Battler
+@@ -182,6 +197,36 @@ BattleScript_SafariBallThrow::
+ 	updatestatusicon BS_ATTACKER
+ 	handleballthrow
+ 
++	.if PLATFORM_NATIVE
++@ Shared combat never opens the private dex or nickname flow.
++BattleScript_CoopSharedCatch::
++	givecaughtmon BattleScript_CoopSharedCatchEnd
++BattleScript_CoopSharedCatchEnd::
++	setbyte gBattleOutcome, B_OUTCOME_CAUGHT
++	finishturn
++
++@ Only the catcher runs this after bilateral commit and private restoration.
++BattleScript_CoopPrivateCatch::
++	incrementgamestat GAME_STAT_POKEMON_CAPTURES
++	printstring STRINGID_GOTCHAPKMNCAUGHTPLAYER
++	trysetcaughtmondexflags BattleScript_CoopPrivateNickname
++	printstring STRINGID_PKMNDATAADDEDTODEX
++	waitstate
++	setbyte gBattleCommunication, 0
++	displaydexinfo
++BattleScript_CoopPrivateNickname:
++	printstring STRINGID_GIVENICKNAMECAPTURED
++	waitstate
++	setbyte gBattleCommunication, 0
++	trygivecaughtmonnick
++	givecaughtmon BattleScript_CoopPrivateCatchEnd
++	printfromtable gCaughtMonStringIds
++	waitmessage B_WAIT_TIME_LONG
++	goto BattleScript_CoopPrivateCatchEnd
++BattleScript_CoopPrivateCatchEnd::
++	end3
++	.endif
++
+ BattleScript_SuccessBallThrow::
+ 	setbyte sMON_CAUGHT, TRUE
+ 	incrementgamestat GAME_STAT_POKEMON_CAPTURES
+diff --git a/data/scripts/repel.inc b/data/scripts/repel.inc
+index 7240c3fb47e5049bfe6e9df4d16beaf9f8f06130..8b11999e5646b7e3f4c87884e08c6450611c1488 100644
+--- a/data/scripts/repel.inc
++++ b/data/scripts/repel.inc
+@@ -67,7 +67,8 @@ RepeatRepel_Text_Used:
+ 	.string "{STR_VAR_2}.$"
+ #endif
+ 
+-#else
++#endif
++
+ .set LOCAL_VAR_SPRAY, VAR_0x8004
+ .set LOCAL_VAR_NUM_SPRAY_STRENGTH, VAR_0x8005
+ .set LOCAL_VAR_SPRAY_TYPE, VAR_0x8009
+@@ -220,5 +221,3 @@ Text_SprayWoreOffAskUseX::
+ Text_SprayWoreOffUseX::
+ 	.string "{PLAYER} used the\n"
+ 	.string "{STR_VAR_2}.$"
+-
+-#endif
+diff --git a/include/battle_controllers.h b/include/battle_controllers.h
+index 253584b93906cbd81d3a4966fbf695f2a2e1544d..1fc6a02b15915245bdf944853e7076313d651fd7 100644
+--- a/include/battle_controllers.h
++++ b/include/battle_controllers.h
+@@ -83,6 +83,10 @@ enum BattleController
+     BATTLE_CONTROLLERS_COUNT,
+ };
+ 
++#ifdef PORTABLE
++bool8 NativeBattle_MoveStateReady(enum BattlerId battler);
++#endif
++
+ // Accessors for gBattleControllerExecFlags.
+ //
+ // These are provided for documentation purposes, to make the battle
+diff --git a/include/battle_gfx_sfx_util.h b/include/battle_gfx_sfx_util.h
+index 2cfd41192e37c2d77baa77c489cb389f33bb090a..58b1bb9dca58819eb60453c3a0a532225f3cc1cb 100644
+--- a/include/battle_gfx_sfx_util.h
++++ b/include/battle_gfx_sfx_util.h
+@@ -17,6 +17,10 @@ void BattleGfxSfxDummy2(enum Species species);
+ void DecompressTrainerFrontPic(enum TrainerPicID trainerPicId, enum BattlerId battler);
+ void FreeTrainerFrontPicPalette(enum TrainerPicID trainerPicId);
+ bool8 BattleLoadAllHealthBoxesGfx(u8 state);
++#ifdef PORTABLE
++void BattleRebuildPrivateRewardHealthbox(void);
++void BattleUpdatePrivateRewardHealthboxes(void);
++#endif
+ void LoadBattleBarGfx(u8 unused);
+ bool8 BattleInitAllSprites(u8 *state1, u8 *battler);
+ void ClearSpritesHealthboxAnimData(void);
+diff --git a/include/battle_gimmick.h b/include/battle_gimmick.h
+index 4b96422465bf48ee593b8e1e6944a0ec3c464eda..e4a38bb35158ffe1a798abe48a5e00e69277c7f4 100644
+--- a/include/battle_gimmick.h
++++ b/include/battle_gimmick.h
+@@ -49,6 +49,9 @@ void UpdateIndicatorVisibilityAndType(u32 healthboxId, bool32 invisible);
+ void UpdateIndicatorOamPriority(u32 healthboxId, u32 oamPriority);
+ void UpdateIndicatorLevelData(u32 healthboxId, u32 level);
+ void CreateIndicatorSprite(enum BattlerId battler);
++#ifdef PORTABLE
++void DestroyIndicatorSprite(enum BattlerId battler);
++#endif
+ 
+ extern const struct GimmickInfo gGimmicksInfo[];
+ 
+diff --git a/include/battle_interface.h b/include/battle_interface.h
+index 6d64f58ab38a6e950e09e925c3eba97e0196bb6f..ee8a74687f2076456c19b608ef87c833299919ab 100644
+--- a/include/battle_interface.h
++++ b/include/battle_interface.h
+@@ -114,6 +114,9 @@ u8 CreateSafariPlayerHealthboxSprites(void);
+ void SetBattleBarStruct(enum BattlerId battler, u8 healthboxSpriteId, s32 maxVal, s32 oldVal, s32 receivedValue);
+ void SetHealthboxSpriteInvisible(u8 healthboxSpriteId);
+ void SetHealthboxSpriteVisible(u8 healthboxSpriteId);
++#ifdef PORTABLE
++void DestroyHealthboxSprite(u8 healthboxSpriteId);
++#endif
+ void DummyBattleInterfaceFunc(u8 healthboxSpriteId, bool8 isDoubleBattleBattlerOnly);
+ void UpdateOamPriorityInAllHealthboxes(u8 priority, bool32 hideHpBoxes);
+ void InitBattlerHealthboxCoords(enum BattlerId battler);
+diff --git a/include/battle_scripts.h b/include/battle_scripts.h
+index f52800dbced51a5172399ba3579dd2907badebaa..a5d62ce0399fd541267808eb1ede47c2cc356d61 100644
+--- a/include/battle_scripts.h
++++ b/include/battle_scripts.h
+@@ -9,6 +9,9 @@ extern const u8 BattleScript_MoveEnd[];
+ extern const u8 BattleScript_MoveAnimation[];
+ extern const u8 BattleScript_MoveMissed[];
+ extern const u8 BattleScript_FlingMessage[];
++extern const u8 BattleScript_CoopMedicineHeal[];
++extern const u8 BattleScript_CoopMedicineStatus[];
++extern const u8 BattleScript_CoopMedicineUsed[];
+ extern const u8 BattleScript_FlingFailConsumeItem[];
+ extern const u8 BattleScript_RemoveItem[];
+ extern const u8 BattleScript_FlingBlockedByShieldDust[];
+@@ -28,6 +31,9 @@ extern const u8 BattleScript_LocalTwoTrainersDefeated[];
+ extern const u8 BattleScript_LocalBattleWonLoseTexts[];
+ extern const u8 BattleScript_LocalBattleWonReward[];
+ extern const u8 BattleScript_PayDayMoneyAndPickUpItems[];
++#ifdef PORTABLE
++extern const u8 BattleScript_CoopPrivateCatch[];
++#endif
+ extern const u8 BattleScript_LocalBattleLost[];
+ extern const u8 BattleScript_LocalBattleLostPrintWhiteOut[];
+ extern const u8 BattleScript_LocalBattleLostEnd[];
+@@ -231,6 +237,9 @@ extern const u8 BattleScript_BallThrow[];
+ extern const u8 BattleScript_BallThrowByWally[];
+ extern const u8 BattleScript_SafariBallThrow[];
+ extern const u8 BattleScript_SuccessBallThrow[];
++#ifdef PORTABLE
++extern const u8 BattleScript_CoopSharedCatch[];
++#endif
+ extern const u8 BattleScript_WallyBallThrow[];
+ extern const u8 BattleScript_ShakeBallThrow[];
+ extern const u8 BattleScript_TrainerBallBlock[];
+diff --git a/include/librfu.h b/include/librfu.h
+index 98cc70a587670f92b2c0178bd6c7b500734f4ca2..38ac5c50b2932b078e1204e979d1856f1004f616 100644
+--- a/include/librfu.h
++++ b/include/librfu.h
+@@ -90,7 +90,6 @@
+ 
+ #define RFU_MBOOT_DOWNLOADER_SERIAL_NO  0x0000             // The game serial number of the multi-boot downloader (programs that boot without a Game Pak)
+ 
+-#if PLATFORM_NATIVE
+ #if __SIZEOF_POINTER__ != 8
+ #line 93
+ #define RFU_API_BUFF_SIZE_RAM           0x0e64             // Necessary size for buffer specified by rfu_initializeAPI (fast communication version that operates the library SIO interrupt routines in RAM)
+@@ -100,11 +99,6 @@
+ #define RFU_API_BUFF_SIZE_RAM           0x0fc0             // Necessary size for buffer specified by rfu_initializeAPI (RAM interrupt routines)
+ #define RFU_API_BUFF_SIZE_ROM           0x0660             // Necessary size for buffer specified by rfu_initializeAPI (ROM interrupt routines)
+ #endif
+-#else
+-#line 93
+-#define RFU_API_BUFF_SIZE_RAM           0x0e64             // Necessary size for buffer specified by rfu_initializeAPI (fast communication version that operates the library SIO interrupt routines in RAM)
+-#define RFU_API_BUFF_SIZE_ROM           0x0504             // Necessary size for buffer specified by rfu_initializeAPI (fast communication version that operates the library SIO interrupt routines in ROM)
+-#endif
+ #line 95
+ 
+ #define RFU_CHILD_MAX                   4                  // Maximum number of slaves that can be connected to one parent device
+diff --git a/include/party_menu.h b/include/party_menu.h
+index 50ed3c1d341409851f26e0386c75433b09150d9a..60a2e52969c5bd2d7f12967b4df8612a8cf56185 100644
+--- a/include/party_menu.h
++++ b/include/party_menu.h
+@@ -89,6 +89,9 @@ void CB2_ShowPartyMenuForItemUse(void);
+ void ItemUseCB_BattleScript(u8 taskId, TaskFunc task);
+ void ItemUseCB_BattleChooseMove(u8 taskId, TaskFunc task);
+ void ItemUseCB_Medicine(u8 taskId, TaskFunc task);
++#ifdef PORTABLE
++void ItemUseCB_WorldCoopMedicine(u8 taskId, TaskFunc task);
++#endif
+ void ItemUseCB_AbilityCapsule(u8 taskId, TaskFunc task);
+ void ItemUseCB_AbilityPatch(u8 taskId, TaskFunc task);
+ void ItemUseCB_Mint(u8 taskId, TaskFunc task);
+diff --git a/include/platform/player_control.h b/include/platform/player_control.h
+index fea98974abafe5e3306091651d857bd97efaf3c6..f2bfb3e22de7162b05015d9ea73b677c81fa3783 100644
+--- a/include/platform/player_control.h
++++ b/include/platform/player_control.h
+@@ -1,6 +1,5 @@
+ #ifndef GUARD_PLATFORM_PLAYER_CONTROL_H
+ #define GUARD_PLATFORM_PLAYER_CONTROL_H
+-#ifdef PORTABLE
+ #include <stdbool.h>
+ #include <stdint.h>
+ #include <stdio.h>
+@@ -12,4 +11,3 @@ void PlayerControl_BeforeFrame(void);
+ void PlayerControl_AfterFrame(uint32_t frame);
+ uint16_t PlayerControl_Buttons(void);
+ #endif
+-#endif
+diff --git a/include/platform/world_chat.h b/include/platform/world_chat.h
+index 73df02d2e5c4069ad8d652c8ca0a30ed2f3e3e1e..b3161865bf8f0ddda7ed33e10ef2e624d8d9adcb 100644
+--- a/include/platform/world_chat.h
++++ b/include/platform/world_chat.h
+@@ -1,6 +1,5 @@
+ #ifndef GUARD_PLATFORM_WORLD_CHAT_H
+ #define GUARD_PLATFORM_WORLD_CHAT_H
+-#ifdef PORTABLE
+ #include <SDL2/SDL.h>
+ #ifdef _WIN32
+ /* Windows client integration remains separately owned. */
+@@ -8,9 +7,10 @@
+ #else
+ #define WORLD_CHAT_HEIGHT 64
+ #endif
+-/* Graphical thread only. Rendering is outside the deterministic GBA image. */
++/* Optional native hooks: the standalone platform library is linked before
++ * the game objects and must remain usable without the world module. */
++unsigned WorldChat_Height(void);
+ int WorldChat_Event(const SDL_Event *event);
+-int WorldChat_BlocksInput(void);
++int WorldChat_BlocksInput(unsigned keys);
+ void WorldChat_Draw(SDL_Renderer *renderer);
+ #endif
+-#endif
+diff --git a/include/platform/world_coop.h b/include/platform/world_coop.h
+index 1f5de9ef49ac027b6b2263a76368416c221ec6e2..ca4f93d56c8e01d7ad9735888eb779dfa64990f7 100644
+--- a/include/platform/world_coop.h
++++ b/include/platform/world_coop.h
+@@ -47,15 +47,16 @@ bool8 WorldCoop_ApplyRosterMirror(u8 battler, const u8 *data);
+ bool8 WorldCoop_RosterActionActive(u8 battler);
+ int WorldCoop_BeginRosterAction(u8 battler, u8 choice, const u8 order[3]);
+ int WorldCoop_AdvanceRosterAction(u8 battler);
++void WorldCoop_FailRosterAction(void);
+ #endif
+ void WorldCoop_SetPartyMenuOrder(bool8 inMenuOrder);
+ u8 WorldCoop_Environment(void);
+ u8 WorldCoop_FieldWeather(void);
+ void WorldCoop_InitControllers(void);
+ u8 WorldCoop_StageSlot(u8 battler);
+-/* A display-only projection, not a slave combat engine. The dispatcher calls
+- * these observers only after authenticating and validating controller data.
+- * Never pass multi-mon reserve responses to ObserveMonData. */
++/* Display projection remains species/level/HP/status only. The separate
++ * guest combat-ready state is seeded only from the authenticated master's
++ * requested active-mon BattlePokemon response and ordered SetMonData updates. */
+ struct BattlePokemon;
+ struct WorldCoopPublicMon
+ {
+@@ -63,15 +64,27 @@ struct WorldCoopPublicMon
+     u32 status;
+     u8 level;
+ };
++struct WorldCoopCaptureInfo
++{
++    u8 badgeCount;
++    u8 dexTier;
++    bool8 catchingCharm;
++    bool8 speciesCaught;
++};
+ void WorldCoop_ObserveMonData(u8 battler, u8 partySlot, const struct BattlePokemon *mon);
+ void WorldCoop_ObserveController(u8 battler, const u8 *data);
++int WorldCoop_ReceivePublicBattleMon(u8 battler, u8 sender, const u8 *data, u16 size);
++bool8 WorldCoop_PublicBattleReady(u8 battler);
++void WorldCoop_ApplyPublicBattleController(u8 battler, u8 sender, const u8 *data, u16 size);
+ bool8 WorldCoop_GetPublicMon(u8 battler, struct WorldCoopPublicMon *mon);
+ #define WORLD_COOP_MEDICINE_TAG 253
+-#define WORLD_COOP_MEDICINE_REPLY 0x8000
++#define WORLD_COOP_MEDICINE_REPLY 0xD800 // 0xD8..0xDF reserve eight target slots; ball codes stop at 0xD7.
+ bool8 WorldCoop_CanSelectBattleItem(u16 item);
+ void WorldCoop_SetMenuConfusion(bool8 confused);
+ bool8 WorldCoop_SelectMedicineTarget(u16 item, u8 slot, struct Pokemon *mon);
++bool8 WorldCoop_SelectMedicineMenuTarget(u16 item, struct Pokemon *party, u8 nativeSlot, struct Pokemon *mon);
+ bool8 WorldCoop_CanUseMedicine(u16 item);
++bool8 WorldCoop_IsMedicineReply(u16 reply);
+ bool8 WorldCoop_ItemReplyValid(u16 reply);
+ u16 WorldCoop_SelectBattleItem(u16 item);
+ bool8 WorldCoop_MedicinePacketValid(const u8 *data, u16 size);
+@@ -83,6 +96,8 @@ u8 WorldCoop_MedicineTarget(void);
+ bool8 WorldCoop_CanSelectBall(u16 item);
+ bool8 WorldCoop_BallReplyValid(u16 reply);
+ u16 WorldCoop_SelectBall(u16 item);
++bool8 WorldCoop_GetCaptureInfo(struct WorldCoopCaptureInfo *info);
++bool8 WorldCoop_IsDiveBallBoosted(void);
+ void WorldCoop_EmitBallUse(u16 reply);
+ bool8 WorldCoop_EmitCatch(void);
+ bool8 WorldCoop_CatchPacketValid(const u8 *data, u16 size);
+@@ -102,7 +117,7 @@ bool8 WorldCoop_PreparePrivateRewards(void);
+ bool8 WorldCoop_IsPrivateRewards(void);
+ bool8 WorldCoop_NextReward(void);
+ void WorldCoop_Abort(void);
+-/* battle_main owns its static native engine/evolution callbacks. */
++void BattleMain_InitializeBattlerData(enum BattlerId battler, const struct BattlePokemon *mon);
+ void WorldCoop_BeginPrivateRewards(void);
+ #endif
+ #endif
+diff --git a/platform/Makefile b/platform/Makefile
+index d6ae2b995a9ac2096adc9a008469a81ad2fc8cc3..a858ca75e497947e961685df95d9fe647488ad01 100644
+--- a/platform/Makefile
++++ b/platform/Makefile
+@@ -146,7 +146,7 @@ endif
+ LARGE_TYPES := -D_FILE_OFFSET_BITS=64 -D_TIME_BITS=64
+ 
+ CFLAGS_ALL := -m$(BITS) -std=gnu17 $(WARNINGS) $(OPTIMISATION) $(SANITIZERS) $(INCLUDES) $(LARGE_TYPES) \
+-              $(SDL_CFLAGS) $(TARGET_CFLAGS) -MMD -MP
++              $(SDL_CFLAGS) $(TARGET_CFLAGS) $(NATIVE_EXTRA_CPPFLAGS) -MMD -MP
+ 
+ # The GBA memory regions exist because the ELF loader maps them: gba_regions.ld
+ # adds them as sections at their GBA addresses (see gba_memmap.c), which needs
+@@ -216,7 +216,16 @@ $(LIB): $(MODULE_OBJS)
+ 	rm -f $@
+ 	$(AR) rcs $@ $^
+ 
+-$(OBJ_DIR)/%.o: %.c
++# The World feature cohort changes memory bounds and rendering code in this
++# library as well as the game. Recompile when that exported cohort changes.
++FEATURE_FLAGS := $(BUILD_DIR)/world_feature_flags.txt
++.PHONY: force-world-feature-check
++$(FEATURE_FLAGS): force-world-feature-check
++	@mkdir -p $(@D)
++	@printf '%s\n' '$(NATIVE_EXTRA_CPPFLAGS)' > $@.tmp
++	@cmp -s $@.tmp $@ && rm -f $@.tmp || mv -f $@.tmp $@
++
++$(OBJ_DIR)/%.o: %.c $(FEATURE_FLAGS)
+ 	@mkdir -p $(@D)
+ 	$(CC) $(CFLAGS_ALL) -c $< -o $@
+ 
+diff --git a/platform/frame.c b/platform/frame.c
+index f5a284bd5eac3d1d00b64626faa6aabe9011e5e4..0b954847dc5ec0bdd8534be2c4c859ff5809765e 100644
+--- a/platform/frame.c
++++ b/platform/frame.c
+@@ -37,6 +37,15 @@
+ #include "sound_speedup.h"
+ #include "timer.h"
+ #include "video.h"
++#include "platform/world_chat.h"
++#if defined(__GNUC__) || defined(__clang__)
++#pragma weak WorldChat_Event
++#endif
++
++/* Optional native control endpoint callbacks, installed by main. */
++static void (*player_control_before)(void *);
++static void (*player_control_after)(uint32_t, void *);
++static void *player_control_context;
+ 
+ /* The LCD's size is gba_timing.h's; the PPU and the panel restate it. */
+ _Static_assert(PPU_SCREEN_WIDTH == GBA_LCD_VISIBLE_DOTS && PPU_SCREEN_HEIGHT == GBA_LCD_VISIBLE_LINES,
+@@ -102,6 +111,14 @@ void frame_set_step_hook(frame_step_hook hook, void *context)
+     frame.step_hook_context = context;
+ }
+ 
++void frame_set_player_control_hooks(void (*before)(void *),
++                                   void (*after)(uint32_t, void *), void *context)
++{
++    player_control_before = before;
++    player_control_after = after;
++    player_control_context = context;
++}
++
+ void frame_shutdown(void)
+ {
+     frame.initialised = false;
+@@ -283,7 +300,10 @@ static void toggle_fullscreen(void)
+ static void on_sdl_event(const union SDL_Event *event, void *context)
+ {
+     (void)context;
++    const bool chat_consumed = WorldChat_Event != NULL && WorldChat_Event(event);
+     (void)input_handle_event(event);
++    if (chat_consumed)
++        return;
+     const struct controller_edge edge = controller_handle_event(event);
+     if (overlay_handle_event(event) == OVERLAY_QUIT || overlay_handle_controller(&edge) == OVERLAY_QUIT)
+         frame.exit_requested = true;
+@@ -319,6 +339,8 @@ static void present_and_read_keys(void)
+     }
+     if (!video_poll_events(on_sdl_event, NULL))
+         frame.exit_requested = true;
++    if (player_control_before != NULL)
++        player_control_before(player_control_context);
+     apply_speed();
+     run_step_hook();
+     input_update_keyinput();
+@@ -361,6 +383,8 @@ int frame_flush_save(void)
+ static void finish_frame(void)
+ {
+     frame.frames++;
++    if (player_control_after != NULL)
++        player_control_after(frame.frames, player_control_context);
+     if (interrupt_halted()) {
+         (void)fprintf(stderr, "frame: the interrupt controller halted on a Game Pak interrupt, as the GBA hangs; "
+                               "stopping\n");
+diff --git a/platform/frame.h b/platform/frame.h
+index a8288b14f859f5a63f5a5890ee0e076b70bb35bb..e3bde0926a7f0060ed0a55ae7f0ecb7144d23402 100644
+--- a/platform/frame.h
++++ b/platform/frame.h
+@@ -135,6 +135,10 @@ int frame_init(const struct frame_config *config);
+  * which clears it. */
+ void frame_set_step_hook(frame_step_hook hook, void *context);
+ 
++/* Optional native player-control polling and per-frame completion callbacks. */
++void frame_set_player_control_hooks(void (*before)(void *),
++                                    void (*after)(uint32_t frame, void *), void *context);
++
+ /* Forgets everything. Safe at any time and twice. */
+ void frame_shutdown(void);
+ 
+diff --git a/platform/input.c b/platform/input.c
+index d4cea199df733cbd2df118e921279e925f4a26d5..b596544d0c78fd2a47da1ba9df5792e3c7c3b5d1 100644
+--- a/platform/input.c
++++ b/platform/input.c
+@@ -19,6 +19,12 @@
+ 
+ #include "gba_memmap.h"
+ #include "overlay.h"
++#include "platform/world_chat.h"
++#if defined(__GNUC__) || defined(__clang__)
++#pragma weak WorldChat_BlocksInput
++#endif
++
++static uint16_t (*player_control_buttons)(void);
+ 
+ /* GBATEK "GBA Keypad Input": KEYINPUT is at 4000130h, a halfword. */
+ #define KEYINPUT_OFFSET UINT32_C(0x130)
+@@ -304,11 +310,19 @@ void input_script_set(uint16_t keys_active_high)
+     state.script_keys = (uint16_t)(keys_active_high & INPUT_KEYS_MASK);
+ }
+ 
++void input_set_player_control_buttons(uint16_t (*button_source)(void))
++{
++    player_control_buttons = button_source;
++}
++
+ void input_update_keyinput(void)
+ {
+     if (!state.initialised)
+         return;
+-    const uint16_t keys = state.source == INPUT_SOURCE_HOST ? read_host_keys() : state.script_keys;
++    uint16_t keys = (state.source == INPUT_SOURCE_HOST ? read_host_keys() : state.script_keys)
++                  | (player_control_buttons != NULL ? player_control_buttons() : 0);
++    if (WorldChat_BlocksInput != NULL && WorldChat_BlocksInput(keys))
++        keys = 0;
+     write_keyinput(overlay_game_keys(keys));
+ }
+ 
+@@ -327,13 +341,13 @@ int input_handle_event(const union SDL_Event *event)
+     return 0;
+ }
+ 
+-#ifdef PORTABLE
++/* This translation unit belongs to the native platform library. Its build
++ * does not inherit the game's PORTABLE feature macro. */
+ bool Input_KeyIsBound(SDL_Scancode key)
+ {
+     if (key <= SDL_SCANCODE_UNKNOWN || key >= SDL_NUM_SCANCODES) return false;
+     struct input_keymap map = state.initialised ? state.keymap : input_default_keymap();
+     for (size_t i = 0; i < INPUT_BUTTON_COUNT; ++i)
+-        if (map.scancodes[i] == key) return true;
++        if (map.scancodes[i] == (int)key) return true;
+     return false;
+ }
+-#endif
+diff --git a/platform/input.h b/platform/input.h
+index 9d9f19862ac90a56c2c7f9690899868ea85844dc..b87f1f4bf6565be808091c461c8759d03deb4cbf 100644
+--- a/platform/input.h
++++ b/platform/input.h
+@@ -122,6 +122,9 @@ void input_shutdown(void);
+  * key pressed while the help overlay is shown (overlay_game_keys). */
+ void input_update_keyinput(void);
+ 
++/* The optional native player-control button source; NULL disables it. */
++void input_set_player_control_buttons(uint16_t (*button_source)(void));
++
+ /* SCRIPT source: the active-high key bits for the next update, in KEYINPUT
+  * bit order; bits above INPUT_KEYS_MASK are ignored. */
+ void input_script_set(uint16_t keys_active_high);
+diff --git a/platform/main.c b/platform/main.c
+index 93dc52a87e401d7f64de7bcfcddf9ecf602b974e..65a27a752e53d989f9784693949791643bcbd8ec 100644
+--- a/platform/main.c
++++ b/platform/main.c
+@@ -89,6 +89,17 @@
+ #include "transfer_bounds.h"
+ #include "version.h"
+ #include "video.h"
++#include "inspect.h"
++#include "platform/player_control.h"
++#include "global.h"
++#include "main.h"
++#include "palette.h"
++#include "script.h"
++#include "event_object_movement.h"
++#include "overworld.h"
++#include "task.h"
++#include "platform/world_bridge.h"
++#include "platform/world_activity.h"
+ 
+ /* Expansion's entry point and IRQ handler table (src/main.c). */
+ void AgbMain(void);
+@@ -377,6 +388,155 @@ static int start_frame(const struct options *o)
+     return frame_init(&config);
+ }
+ 
++static void player_control_json_string(FILE *out, const char *text)
++{
++    fputc('"', out);
++    for (const unsigned char *p = (const unsigned char *)text; *p; ++p) {
++        switch (*p) {
++        case '"': fputs("\\\"", out); break;
++        case '\\': fputs("\\\\", out); break;
++        case '\b': fputs("\\b", out); break;
++        case '\f': fputs("\\f", out); break;
++        case '\n': fputs("\\n", out); break;
++        case '\r': fputs("\\r", out); break;
++        case '\t': fputs("\\t", out); break;
++        default:
++            if (*p < 0x20) fprintf(out, "\\u%04x", *p);
++            else fputc(*p, out);
++        }
++    }
++    fputc('"', out);
++}
++
++static unsigned player_control_decimal(const char *text, unsigned maximum, unsigned fallback)
++{
++    unsigned value = 0;
++    if (!text || !*text) return fallback;
++    for (const unsigned char *p = (const unsigned char *)text; *p; ++p) {
++        unsigned digit;
++        if (*p < '0' || *p > '9') return fallback;
++        digit = *p - '0';
++        if (digit > maximum || value > (maximum - digit) / 10) return fallback;
++        value = value * 10 + digit;
++    }
++    return value;
++}
++
++static void player_control_state(FILE *out, uint32_t frame)
++{
++    char callback[INSPECT_VALUE_SIZE] = "unknown";
++    char battle_main[INSPECT_VALUE_SIZE] = "unknown";
++    char map_name[INSPECT_VALUE_SIZE] = "unknown";
++    char party_name[INSPECT_VALUE_SIZE] = "none";
++    char value[INSPECT_VALUE_SIZE];
++    unsigned party_count = 0, task_count = 0, party_species = 0;
++    int map_group = -1, map_num = -1, pos_x = 0, pos_y = 0;
++    const struct ObjectEvent *player = NULL;
++    bool overworld = gMain.callback1 == CB1_Overworld && gMain.callback2 == CB2_Overworld;
++    bool locked = ArePlayerFieldControlsLocked();
++    bool script = ScriptContext_IsEnabled();
++    bool battle = gMain.inBattle;
++    bool fade = gPaletteFade.active;
++
++    if (inspect_get("callback2", callback, sizeof callback) != 0) strcpy(callback, "unknown");
++    if (inspect_get("battle_main", battle_main, sizeof battle_main) != 0) strcpy(battle_main, "unknown");
++    if (inspect_get("map_name", map_name, sizeof map_name) != 0) strcpy(map_name, "unknown");
++    if (inspect_get("task_count", value, sizeof value) == 0)
++        task_count = player_control_decimal(value, NUM_TASKS, 0);
++    if (inspect_get("party_count", value, sizeof value) == 0)
++        party_count = player_control_decimal(value, PARTY_SIZE, 0);
++    if (inspect_get("party0_species", value, sizeof value) == 0)
++        party_species = player_control_decimal(value, NUM_SPECIES - 1, 0);
++    if (inspect_get("party0_name", party_name, sizeof party_name) != 0) strcpy(party_name, "none");
++    if (gSaveBlock1Ptr) {
++        map_group = gSaveBlock1Ptr->location.mapGroup;
++        map_num = gSaveBlock1Ptr->location.mapNum;
++        pos_x = gSaveBlock1Ptr->pos.x;
++        pos_y = gSaveBlock1Ptr->pos.y;
++    }
++    if (gSaveBlock1Ptr && gPlayerAvatar.objectEventId < OBJECT_EVENTS_COUNT
++        && gObjectEvents[gPlayerAvatar.objectEventId].active && gObjectEvents[gPlayerAvatar.objectEventId].isPlayer)
++        player = &gObjectEvents[gPlayerAvatar.objectEventId];
++
++    fprintf(out, "{\"frame\":%u,\"callback2\":", frame);
++    player_control_json_string(out, callback);
++    fputs(",\"battle_main\":", out);
++    player_control_json_string(out, battle_main);
++    fputs(",\"map_name\":", out);
++    player_control_json_string(out, map_name);
++    fprintf(out, ",\"map\":[%d,%d],\"pos\":[%d,%d],\"task_count\":%u,\"party_count\":%u,\"party0_species\":%u,\"party0_name\":",
++            map_group, map_num, pos_x, pos_y, task_count, party_count, party_species);
++    player_control_json_string(out, party_name);
++    fprintf(out, ",\"in_battle\":%s,\"script_running\":%s,\"controls_locked\":%s,"
++                 "\"overworld\":%s,\"locked\":%s,\"script\":%s,\"battle\":%s,\"fade\":%s,"
++                 "\"facing\":%u,\"moving\":%s,\"world\":",
++        battle ? "true" : "false", script ? "true" : "false", locked ? "true" : "false",
++        overworld ? "true" : "false", locked ? "true" : "false", script ? "true" : "false",
++        battle ? "true" : "false", fade ? "true" : "false",
++        player ? player->facingDirection : 0,
++        player && gPlayerAvatar.tileTransitionState == T_TILE_TRANSITION
++            ? "true" : "false");
++    WorldBridge_WriteJSON(out, frame);
++    fputs(",\"activity\":{\"phase\":", out);
++    player_control_json_string(out, WorldActivity_Phase());
++    fputs(",\"status\":", out);
++    player_control_json_string(out, WorldActivity_Status());
++    fprintf(out, ",\"mode\":%u}}", WorldActivity_Mode());
++}
++
++static bool player_control_screenshot(FILE *out)
++{
++    const uint16_t *pixels = frame_pixels();
++    if (fprintf(out, "P6\n240 160\n255\n") < 0) return false;
++    for (size_t i = 0; i < 240u * 160u; ++i) {
++        const uint16_t pixel = pixels[i];
++        const unsigned r = pixel & 31u;
++        const unsigned g = (pixel >> 5) & 31u;
++        const unsigned b = (pixel >> 10) & 31u;
++        const unsigned char rgb[3] = {
++            (unsigned char)((r << 3) | (r >> 2)),
++            (unsigned char)((g << 3) | (g >> 2)),
++            (unsigned char)((b << 3) | (b >> 2)),
++        };
++        if (fwrite(rgb, 1, sizeof rgb, out) != sizeof rgb) return false;
++    }
++    return !ferror(out);
++}
++
++static void player_control_before_frame(void *context)
++{
++    (void)context;
++    PlayerControl_BeforeFrame();
++}
++
++static void player_control_after_frame(uint32_t frame, void *context)
++{
++    (void)context;
++    PlayerControl_AfterFrame(frame);
++}
++
++static int start_player_control(const struct options *o)
++{
++    if (!o->player_control_path) return 0;
++    (void)inspect_init();
++    if (!PlayerControl_Init(o->player_control_path, player_save_path(),
++                            player_control_state, player_control_screenshot)) {
++        inspect_shutdown();
++        return -1;
++    }
++    frame_set_player_control_hooks(player_control_before_frame, player_control_after_frame, NULL);
++    input_set_player_control_buttons(PlayerControl_Buttons);
++    return 0;
++}
++
++static void stop_player_control(void)
++{
++    frame_set_player_control_hooks(NULL, NULL, NULL);
++    input_set_player_control_buttons(NULL);
++    PlayerControl_Close();
++    inspect_shutdown();
++}
++
+ static int start_replay(const struct options *o)
+ {
+     if (o->replay_path == NULL)
+@@ -420,6 +580,7 @@ static const struct module_step module_steps[] = {
+     {"flash", start_flash, flash_shutdown},
+     {"save_file", start_save_file, save_file_shutdown},
+     {"frame", start_frame, frame_shutdown},
++    {"player_control", start_player_control, stop_player_control},
+     {"frame_pacer", start_frame_pacer, frame_pacer_shutdown},
+     {"replay", start_replay, replay_session_stop},
+ };
+diff --git a/platform/options.c b/platform/options.c
+index 3b1899108a28ec333d784cd380e4d6dab98a3ea7..1986569fa026e9bc9d000e283039e7a950dfc2aa 100644
+--- a/platform/options.c
++++ b/platform/options.c
+@@ -43,6 +43,8 @@ void options_print_usage(FILE *out)
+         "  --unthrottled      do not hold the GBA frame rate\n"
+         "  --frames N         exit after N frames (exit status 0)\n"
+         "  --screenshot PATH  write the last frame to PATH as a PPM when the game ends\n"
++        "  --player-control SOCKET\n"
++        "                     enable local control beside an explicit save in a private profile\n"
+         "  --test-runner      run expansion's test runner as mgba-rom-test does for its hydra:\n"
+         "                     debug output on stdout, the runner's exit status, reboot on a\n"
+         "                     crash; no save or clock file is read or written\n"
+@@ -128,6 +130,8 @@ static bool parse_string_option(const char *arg, const char *value, struct optio
+         out->rtc_offset_path = value;
+     else if (strcmp(arg, "--screenshot") == 0)
+         out->screenshot_path = value;
++    else if (strcmp(arg, "--player-control") == 0)
++        out->player_control_path = value;
+     else if (strcmp(arg, "--replay") == 0)
+         out->replay_path = value;
+     else if (strcmp(arg, "--out") == 0)
+@@ -207,6 +211,10 @@ enum options_error options_parse(int argc, char **argv, struct options *out)
+         (void)fprintf(stderr, "options: --keys shows a player's keys and files, and --test-runner has neither\n");
+         return OPTIONS_ERR_USAGE;
+     }
++    if (out->player_control_path && (out->test_runner || out->replay_path || !out->save_path)) {
++        (void)fprintf(stderr, "options: --player-control requires normal play with an explicit --save and cannot be combined with --replay or --test-runner\n");
++        return OPTIONS_ERR_USAGE;
++    }
+     if (out->test_runner) {
+         out->data_dir = NULL;
+         out->save_path = NULL;
+diff --git a/platform/options.h b/platform/options.h
+index 9bcc20416ecb0ad481aca460b3b266bdd8dfcae6..44fb5fff1f9c8d2bf4827eee6d02ab46c8947c7f 100644
+--- a/platform/options.h
++++ b/platform/options.h
+@@ -57,6 +57,7 @@ struct options {
+     const char *replay_path; /* NULL: play normally */
+     const char *out_dir;
+     const char *audio_dump_path; /* NULL: the sound output is not recorded */
++    const char *player_control_path; /* NULL: no local player-control socket */
+     uint32_t resume_after_line;  /* --resume-at, set by a restart */
+     bool rtc_fixed;
+     int64_t rtc_fixed_epoch;
+diff --git a/platform/video.c b/platform/video.c
+index 3fdeac6e5201ed9fb80678d242cbabbca84f8577..7e7752fc9229a5c7a7e59d81302c57daf9120954 100644
+--- a/platform/video.c
++++ b/platform/video.c
+@@ -38,6 +38,12 @@
+ #include "fastforward.h"
+ #include "font.h"
+ #include "overlay.h"
++#include "platform/world_chat.h"
++
++#if defined(__GNUC__) || defined(__clang__)
++#pragma weak WorldChat_Height
++#pragma weak WorldChat_Draw
++#endif
+ 
+ #define MODULE "video"
+ #define TEXTURE_PITCH ((int)(VIDEO_WIDTH * sizeof(uint16_t)))
+@@ -58,6 +64,11 @@
+ #define OVERLAY_TEXTURE_FORMAT SDL_PIXELFORMAT_ARGB8888
+ #define OVERLAY_BYTES_PER_PIXEL ((int)sizeof(uint32_t))
+ 
++static unsigned chat_height(void)
++{
++    return WorldChat_Height != NULL ? WorldChat_Height() : 0;
++}
++
+ static struct {
+     bool initialised;
+     bool headless;
+@@ -70,6 +81,7 @@ static struct {
+     SDL_Rect indicator_place;
+     SDL_Point overlay_size;       /* the overlay texture's pixels */
+     bool overlay_painted_for_pad; /* which hint it shows (overlay_hint_for_pad) */
++    unsigned chat_height;         /* logical strip currently included in the canvas */
+ } state;
+ 
+ static int sdl_error(const char *call)
+@@ -153,16 +165,18 @@ static int create_indicator(void)
+ 
+ static int create_window_objects(const struct video_config *cfg)
+ {
++    const unsigned chat = chat_height();
+     state.window = SDL_CreateWindow(cfg->title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+-                                    (int)VIDEO_WIDTH * cfg->scale, (int)VIDEO_HEIGHT * cfg->scale,
++                                    (int)VIDEO_WIDTH * cfg->scale, ((int)VIDEO_HEIGHT + (int)chat) * cfg->scale,
+                                     SDL_WINDOW_RESIZABLE | (cfg->fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0u));
+     if (state.window == NULL)
+         return sdl_error("SDL_CreateWindow");
+     state.renderer = SDL_CreateRenderer(state.window, -1, 0);
+     if (state.renderer == NULL)
+         return sdl_error("SDL_CreateRenderer");
+-    if (SDL_RenderSetLogicalSize(state.renderer, (int)VIDEO_WIDTH, (int)VIDEO_HEIGHT) != 0)
++    if (SDL_RenderSetLogicalSize(state.renderer, (int)VIDEO_WIDTH, (int)VIDEO_HEIGHT + (int)chat) != 0)
+         return sdl_error("SDL_RenderSetLogicalSize");
++    state.chat_height = chat;
+     if (SDL_RenderSetIntegerScale(state.renderer, SDL_TRUE) != 0)
+         return sdl_error("SDL_RenderSetIntegerScale");
+     state.texture = SDL_CreateTexture(state.renderer, VIDEO_TEXTURE_FORMAT, SDL_TEXTUREACCESS_STREAMING,
+@@ -174,6 +188,37 @@ static int create_window_objects(const struct video_config *cfg)
+     return fastforward_enabled() ? create_indicator() : 0;
+ }
+ 
++/* WorldBridge is initialized after video_init. Reconcile its later chat
++ * availability with the renderer's logical canvas before drawing. */
++static int sync_chat_layout(void)
++{
++    const unsigned chat = chat_height();
++    if (chat == state.chat_height)
++        return 0;
++
++    const unsigned old_logical_height = VIDEO_HEIGHT + state.chat_height;
++    const unsigned new_logical_height = VIDEO_HEIGHT + chat;
++    const Uint32 flags = SDL_GetWindowFlags(state.window);
++    const bool fullscreen = (flags & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP)) != 0;
++    int window_width = 0, window_height = 0;
++    if (!fullscreen)
++        SDL_GetWindowSize(state.window, &window_width, &window_height);
++
++    if (SDL_RenderSetLogicalSize(state.renderer, (int)VIDEO_WIDTH, (int)new_logical_height) != 0)
++        return sdl_error("SDL_RenderSetLogicalSize(chat layout)");
++
++    if (!fullscreen) {
++        unsigned scale_x = window_width > 0 ? (unsigned)window_width / VIDEO_WIDTH : 1;
++        unsigned scale_y = window_height > 0 ? (unsigned)window_height / old_logical_height : 1;
++        unsigned scale = scale_x < scale_y ? scale_x : scale_y;
++        if (scale == 0) scale = 1;
++        const int resized_height = window_height + ((int)chat - (int)state.chat_height) * (int)scale;
++        SDL_SetWindowSize(state.window, window_width, resized_height);
++    }
++    state.chat_height = chat;
++    return 0;
++}
++
+ int video_init(const struct video_config *cfg)
+ {
+     if (cfg == NULL || cfg->title == NULL || cfg->scale < 1 || cfg->scale > VIDEO_MAX_SCALE) {
+@@ -200,6 +245,11 @@ int video_init(const struct video_config *cfg)
+     return 0;
+ }
+ 
++bool video_is_headless(void)
++{
++    return state.initialised && state.headless;
++}
++
+ int video_present(const uint16_t *frame)
+ {
+     if (!state.initialised || frame == NULL) {
+@@ -208,19 +258,29 @@ int video_present(const uint16_t *frame)
+     }
+     if (state.headless)
+         return 0;
++    if (sync_chat_layout() != 0)
++        return -1;
+     if (SDL_UpdateTexture(state.texture, NULL, frame, TEXTURE_PITCH) != 0)
+         return sdl_error("SDL_UpdateTexture");
++    const unsigned chat = chat_height();
++    const SDL_Rect game_rect = {0, (int)chat, (int)VIDEO_WIDTH, (int)VIDEO_HEIGHT};
+     if (SDL_RenderClear(state.renderer) != 0)
+         return sdl_error("SDL_RenderClear");
+-    if (SDL_RenderCopy(state.renderer, state.texture, NULL, NULL) != 0)
++    if (SDL_RenderCopy(state.renderer, state.texture, NULL, &game_rect) != 0)
+         return sdl_error("SDL_RenderCopy");
+-    if (state.indicator != NULL && fastforward_indicator_shown()
+-        && SDL_RenderCopy(state.renderer, state.indicator, NULL, &state.indicator_place) != 0)
+-        return sdl_error_on("SDL_RenderCopy", "indicator");
++    if (state.indicator != NULL && fastforward_indicator_shown()) {
++        SDL_Rect place = state.indicator_place;
++        place.y += (int)chat;
++        if (SDL_RenderCopy(state.renderer, state.indicator, NULL, &place) != 0)
++            return sdl_error_on("SDL_RenderCopy", "indicator");
++    }
+     if (state.overlay != NULL && overlay_shown() && repaint_overlay_hint() != 0)
+         return -1;
+-    if (state.overlay != NULL && overlay_shown() && SDL_RenderCopy(state.renderer, state.overlay, NULL, NULL) != 0)
++    if (state.overlay != NULL && overlay_shown()
++        && SDL_RenderCopy(state.renderer, state.overlay, NULL, &game_rect) != 0)
+         return sdl_error_on("SDL_RenderCopy", "overlay");
++    if (WorldChat_Draw != NULL)
++        WorldChat_Draw(state.renderer);
+     SDL_RenderPresent(state.renderer); /* returns void */
+     return 0;
+ }
+@@ -283,6 +343,7 @@ void video_shutdown(void)
+     state.initialised = false;
+     state.headless = false;
+     state.overlay_painted_for_pad = false;
++    state.chat_height = 0;
+ }
+ 
+ /* 5 bits to 8 by replicating the top bits, so 0 -> 0 and 31 -> 255. */
+diff --git a/platform/video.h b/platform/video.h
+index b99a5270e15239c0eba020fb54586470a582e419..e77270c60a0d32ce7cd1e31b6825534caec64acc 100644
+--- a/platform/video.h
++++ b/platform/video.h
+@@ -55,6 +55,9 @@ struct video_config {
+  * fast-forward is. */
+ int video_init(const struct video_config *cfg);
+ 
++/* SDL-free video mode state is also consumed by the game runtime. */
++#include "video_mode.h"
++
+ /* frame: VIDEO_PIXEL_COUNT uint16_t in GBATEK BGR555 (bits 0-4 red, 5-9
+  * green, 10-14 blue, bit 15 ignored), row-major. Returns 0 on success. */
+ int video_present(const uint16_t *frame);
+diff --git a/platform/video_mode.h b/platform/video_mode.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..7d9531fa98233e6a35277cc87f0bfe8bc6856e23
+--- /dev/null
++++ b/platform/video_mode.h
+@@ -0,0 +1,10 @@
++/* Video mode state shared with game-side runtime code, without SDL headers. */
++#ifndef VIDEO_MODE_H
++#define VIDEO_MODE_H
++
++#include <stdbool.h>
++
++/* False before video_init; true when no window was configured. */
++bool video_is_headless(void);
++
++#endif /* VIDEO_MODE_H */
+diff --git a/src/battle_controller_player.c b/src/battle_controller_player.c
+index 7553ca6144b9420df325f6d7a03ffbb548b4dcf8..1e13791f51797551b68d54eda3ddfae01578212e 100644
+--- a/src/battle_controller_player.c
++++ b/src/battle_controller_player.c
+@@ -48,6 +48,9 @@
+ #include "type_icons.h"
+ #include "pokedex.h"
+ #include "test/battle.h"
++#ifdef PORTABLE
++#include "platform/world_coop.h"
++#endif
+ 
+ static void PlayerHandleLoadMonSprite(enum BattlerId battler);
+ static void PlayerHandleDrawTrainerPic(enum BattlerId battler);
+@@ -1223,6 +1226,15 @@ static void SetLinkBattleEndCallbacks(enum BattlerId battler)
+ // Despite handling link battles separately, this is only ever used by link battles
+ void SetBattleEndCallbacks(enum BattlerId battler)
+ {
++#ifdef PORTABLE
++    if (WorldCoop_IsBattle())
++    {
++        if (!gPaletteFade.active && gBattleControllerExecFlags == 0 && IsLinkTaskFinished()
++         && WorldCoop_ReadyForPrivateRewards())
++            WorldCoop_BeginPrivateRewards();
++        return;
++    }
++#endif
+     if (!gPaletteFade.active)
+     {
+         if (gBattleTypeFlags & BATTLE_TYPE_LINK)
+@@ -1610,7 +1622,12 @@ static void CompleteWhenChoseItem(enum BattlerId battler)
+ {
+     if (gMain.callback2 == BattleMainCB2 && !gPaletteFade.active)
+     {
+-        BtlController_EmitOneReturnValue(battler, B_COMM_TO_ENGINE, gSpecialVar_ItemId);
++#ifdef PORTABLE
++        if (WorldCoop_IsBattle())
++            BtlController_EmitOneReturnValue(battler, B_COMM_TO_ENGINE, WorldCoop_SelectBattleItem(gSpecialVar_ItemId));
++        else
++#endif
++            BtlController_EmitOneReturnValue(battler, B_COMM_TO_ENGINE, gSpecialVar_ItemId);
+         BtlController_Complete(battler);
+     }
+ }
+@@ -2099,6 +2116,12 @@ static void PlayerChooseMoveInBattlePalace(enum BattlerId battler)
+ 
+ void PlayerHandleChooseMove(enum BattlerId battler)
+ {
++#ifdef PORTABLE
++    if (WorldCoop_IsBattle() && !WorldCoop_PublicBattleReady(battler))
++        return;
++    if (!NativeBattle_MoveStateReady(battler))
++        return;
++#endif
+     if (gBattleTypeFlags & BATTLE_TYPE_PALACE)
+     {
+         gBattleStruct->arenaMindPoints[battler] = 8;
+diff --git a/src/battle_controllers.c b/src/battle_controllers.c
+index 466fd5481dcdb4ba0d65985526d08e1858aef84e..e27ff745470e4331291f9551a55e2d676fb9a947 100644
+--- a/src/battle_controllers.c
++++ b/src/battle_controllers.c
+@@ -1,6 +1,7 @@
+ #include "global.h"
+ #ifdef PORTABLE
+ #include "platform/world_coop.h"
++#include "platform/native_link.h"
+ #endif
+ #include "battle.h"
+ #include "battle_ai_main.h"
+@@ -201,10 +202,109 @@ static void SetBattlerControllerFunc(enum BattlerPosition position, BattleContro
+     gBattlerControllerFuncs[position] = func;
+ }
+ 
++#ifdef PORTABLE
++/* The native slave runs controllers, not DoBattleIntro. Reconstruct its UI
++ * state from the authenticated REQUEST_ALL_BATTLE exchange instead of reading
++ * the zeroed master-only gBattleMons array during move selection. */
++static u32 sNativePublicGeneration;
++static u8 sNativePublicPending;
++static u8 sNativePublicReady;
++static u8 sNativePublicPartyIndex[MAX_BATTLERS_COUNT];
++
++static bool8 NativeBattle_IsStateGuest(void)
++{
++    return NativeLink_IsActive() && !WorldCoop_IsBattle()
++        && (gBattleTypeFlags & BATTLE_TYPE_LINK)
++        && !(gBattleTypeFlags & BATTLE_TYPE_IS_MASTER)
++        && NativeLink_LocalId() == 1;
++}
++
++static void NativeBattle_RecordStateRequest(enum BattlerId battler, u8 sender,
++                                           const u8 *data, u16 size)
++{
++    u8 mask, slot;
++    if (!NativeBattle_IsStateGuest() || sender != 0
++     || sNativePublicGeneration != NativeLink_Generation()
++     || battler >= gBattlersCount || battler >= MAX_BATTLERS_COUNT
++     || size < 3 || data[0] != CONTROLLER_GETMONDATA
++     || data[1] != REQUEST_ALL_BATTLE)
++        return;
++    mask = data[2];
++    slot = gBattlerPartyIndexes[battler];
++    if (mask)
++    {
++        if (mask & (mask - 1))
++            return;
++        slot = 0;
++        while (!(mask & 1)) { mask >>= 1; ++slot; }
++        /* A reserve query must not replace the visible active battler. */
++        if (slot != gBattlerPartyIndexes[battler])
++            return;
++    }
++    if (slot >= PARTY_SIZE)
++        return;
++    sNativePublicPartyIndex[battler] = slot;
++    sNativePublicPending |= 1u << battler;
++    sNativePublicReady &= ~(1u << battler);
++}
++
++static int NativeBattle_ApplyStateResponse(enum BattlerId battler, u8 sender,
++                                          const u8 *data, u16 size)
++{
++    struct BattlePokemon mon;
++    u16 bodySize;
++    u8 owner, move;
++    if (!NativeBattle_IsStateGuest()
++     || sNativePublicGeneration != NativeLink_Generation()
++     || battler >= gBattlersCount || battler >= MAX_BATTLERS_COUNT
++     || !(sNativePublicPending & (1u << battler))
++     || size < 4 || data[0] != CONTROLLER_DATATRANSFER
++     || data[1] != CONTROLLER_DATATRANSFER)
++        return 0;
++    owner = IsOnPlayerSide(battler) ? NativeLink_LocalId() : 0;
++    if (sender != owner)
++        return 0;
++    bodySize = data[2] | ((u16)data[3] << 8);
++    /* The local emitter is unpadded; the link emitter appends 1..4 bytes. */
++    if (bodySize != sizeof(mon) || size < bodySize + 4 || size > bodySize + 8)
++        return -1;
++    memcpy(&mon, data + 4, sizeof(mon));
++    if (mon.species <= SPECIES_NONE || mon.species >= NUM_SPECIES
++     || !mon.level || mon.level > MAX_LEVEL || mon.abilityNum >= NUM_ABILITY_SLOTS
++     || !mon.maxHP || mon.hp > mon.maxHP || mon.item >= ITEMS_COUNT
++     || (mon.status1 & ~(STATUS1_ANY | STATUS1_TOXIC_COUNTER)))
++        return -1;
++    for (move = 0; move < MAX_MON_MOVES; ++move)
++        if (mon.moves[move] >= MOVES_COUNT)
++            return -1;
++    /* Same derived initialization as the master's DoBattleIntro. These are
++     * display/controller mirrors, never writes to either private party. */
++    BattleMain_InitializeBattlerData(battler, &mon);
++    gBattlerPartyIndexes[battler] = sNativePublicPartyIndex[battler];
++    sNativePublicPending &= ~(1u << battler);
++    sNativePublicReady |= 1u << battler;
++    return 1;
++}
++
++bool8 NativeBattle_MoveStateReady(enum BattlerId battler)
++{
++    u8 required;
++    if (!NativeBattle_IsStateGuest())
++        return TRUE;
++    if (battler >= gBattlersCount || sNativePublicGeneration != NativeLink_Generation())
++        return FALSE;
++    required = ((1u << gBattlersCount) - 1) & ~gAbsentBattlerFlags;
++    return (sNativePublicReady & required) == required;
++}
++#endif
++
+ static void InitBtlControllersInternal(void)
+ {
+ #ifdef PORTABLE
+     if (WorldCoop_IsBattle()) { WorldCoop_InitControllers(); return; }
++    sNativePublicGeneration = NativeLink_Generation();
++    sNativePublicPending = sNativePublicReady = 0;
++    memset(sNativePublicPartyIndex, 0, sizeof(sNativePublicPartyIndex));
+ #endif
+     s32 i;
+     bool32 isLink = (gBattleTypeFlags & BATTLE_TYPE_LINK);
+@@ -548,6 +648,18 @@ static void SetBattlePartyIds(void)
+ static void PrepareBufferDataTransfer(enum BattlerId battler, u32 bufferId, u8 *data, u16 size)
+ {
+     s32 i;
++#ifdef PORTABLE
++    /* The guest's own response is emitted locally, not received from master. */
++    if (bufferId == B_COMM_TO_ENGINE
++     && (WorldCoop_IsBattle()
++         ? WorldCoop_ReceivePublicBattleMon(battler, NativeLink_LocalId(), data, size)
++         : NativeBattle_ApplyStateResponse(battler, NativeLink_LocalId(), data, size)) < 0)
++    {
++        NativeLink_Abort();
++        gLinkErrorOccurred = TRUE;
++        return;
++    }
++#endif
+ 
+     if (gBattleTypeFlags & BATTLE_TYPE_LINK)
+     {
+@@ -769,10 +881,92 @@ void TryReceiveLinkBattleData(void)
+         DestroyTask_RfuIdle();
+         for (i = 0; i < GetLinkPlayerCount(); i++)
+         {
+-            if (GetBlockReceivedStatus() & (1 << (i)))
++            if (GetBlockReceivedStatus() & (1 << i))
+             {
+-                ResetBlockReceivedFlag(i);
+                 recvBuffer = (u8 *)gBlockRecvBuffer[i];
++#ifdef PORTABLE
++                if (NativeLink_IsActive() && WorldCoop_IsBattle())
++                {
++                    extern u16 GetBlockReceivedSize(u8 player);
++                    u16 packetSize = GetBlockReceivedSize(i);
++                    int completion = WorldCoop_ReceiveCompletion(recvBuffer, packetSize, i);
++                    if (completion < 0)
++                    {
++                        NativeLink_Abort();
++                        gLinkErrorOccurred = TRUE;
++                        ResetBlockReceivedFlag(i);
++                        continue;
++                    }
++                    if (completion > 0)
++                    {
++                        ResetBlockReceivedFlag(i);
++                        continue;
++                    }
++                    /* Ordinary native PvP has its own state mirror below. Co-op
++                     * routes only validated controller frames into its mirror. */
++                    if (packetSize < LINK_BUFF_DATA + 4 || packetSize >= BLOCK_BUFFER_SIZE
++                     || (recvBuffer[LINK_BUFF_SIZE_LO] | ((u16)recvBuffer[LINK_BUFF_SIZE_HI] << 8)) != packetSize - LINK_BUFF_DATA
++                     || recvBuffer[LINK_BUFF_ACTIVE_BATTLER] >= MAX_BATTLERS_COUNT
++                     || recvBuffer[LINK_BUFF_BUFFER_ID] > B_COMM_CONTROLLER_IS_DONE)
++                    {
++                        NativeLink_Abort();
++                        gLinkErrorOccurred = TRUE;
++                        ResetBlockReceivedFlag(i);
++                        continue;
++                    }
++                    if (recvBuffer[LINK_BUFF_BUFFER_ID] == B_COMM_TO_CONTROLLER && i == 0)
++                    {
++                        WorldCoop_ObserveController(recvBuffer[LINK_BUFF_ACTIVE_BATTLER], recvBuffer + LINK_BUFF_DATA);
++                        WorldCoop_ApplyPublicBattleController(recvBuffer[LINK_BUFF_ACTIVE_BATTLER], i,
++                            recvBuffer + LINK_BUFF_DATA, packetSize - LINK_BUFF_DATA);
++                    }
++                    if (recvBuffer[LINK_BUFF_BUFFER_ID] == B_COMM_TO_ENGINE
++                     && WorldCoop_ReceivePublicBattleMon(recvBuffer[LINK_BUFF_ACTIVE_BATTLER], i,
++                            recvBuffer + LINK_BUFF_DATA, packetSize - LINK_BUFF_DATA) < 0)
++                    {
++                        NativeLink_Abort();
++                        gLinkErrorOccurred = TRUE;
++                        ResetBlockReceivedFlag(i);
++                        continue;
++                    }
++                }
++#endif
++#ifdef PORTABLE
++                if (NativeBattle_IsStateGuest())
++                {
++                    extern u16 GetBlockReceivedSize(u8 player);
++                    u16 packetSize = GetBlockReceivedSize(i);
++                    u16 payloadSize;
++                    enum BattlerId battler;
++                    int result = 0;
++                    if (packetSize < LINK_BUFF_DATA + 4 || packetSize >= BLOCK_BUFFER_SIZE)
++                    {
++                        NativeLink_Abort();
++                        gLinkErrorOccurred = TRUE;
++                        ResetBlockReceivedFlag(i);
++                        continue;
++                    }
++                    payloadSize = recvBuffer[LINK_BUFF_SIZE_LO]
++                                | ((u16)recvBuffer[LINK_BUFF_SIZE_HI] << 8);
++                    battler = recvBuffer[LINK_BUFF_ACTIVE_BATTLER];
++                    if (payloadSize != packetSize - LINK_BUFF_DATA
++                     || battler >= gBattlersCount || battler >= MAX_BATTLERS_COUNT
++                     || recvBuffer[LINK_BUFF_BUFFER_ID] > B_COMM_CONTROLLER_IS_DONE)
++                        result = -1;
++                    else if (recvBuffer[LINK_BUFF_BUFFER_ID] == B_COMM_TO_CONTROLLER)
++                        NativeBattle_RecordStateRequest(battler, i, recvBuffer + LINK_BUFF_DATA, payloadSize);
++                    else if (recvBuffer[LINK_BUFF_BUFFER_ID] == B_COMM_TO_ENGINE)
++                        result = NativeBattle_ApplyStateResponse(battler, i, recvBuffer + LINK_BUFF_DATA, payloadSize);
++                    if (result < 0)
++                    {
++                        NativeLink_Abort();
++                        gLinkErrorOccurred = TRUE;
++                        ResetBlockReceivedFlag(i);
++                        continue;
++                    }
++                }
++#endif
++                ResetBlockReceivedFlag(i);
+                 {
+                     u8 *dest, *src;
+                     u16 dataSize = gBlockRecvBuffer[i][2];
+diff --git a/src/battle_gfx_sfx_util.c b/src/battle_gfx_sfx_util.c
+index 9494cb6b730bc2bbaeaed4e51073a9a86276f4e3..6018ce9e38d8abf093ae761e2c5d9d521465b86a 100644
+--- a/src/battle_gfx_sfx_util.c
++++ b/src/battle_gfx_sfx_util.c
+@@ -709,6 +709,98 @@ void FreeTrainerFrontPicPalette(enum TrainerPicID trainerPicId)
+     FreeSpritePaletteByTag(GetTrainerPicTag(trainerPicId, TRUE));
+ }
+ 
++#ifdef PORTABLE
++static void HidePrivateRewardShadows(enum BattlerId battler)
++{
++    u8 shadowSpriteId = gBattleSpritesDataPtr->healthBoxesData[battler].shadowSpriteIdPrimary;
++    u8 secondaryShadowSpriteId = gBattleSpritesDataPtr->healthBoxesData[battler].shadowSpriteIdSecondary;
++
++    if (shadowSpriteId < MAX_SPRITES)
++        gSprites[shadowSpriteId].invisible = TRUE;
++    if (secondaryShadowSpriteId < MAX_SPRITES)
++        gSprites[secondaryShadowSpriteId].invisible = TRUE;
++}
++
++static void HidePrivateRewardBattler(enum BattlerId battler)
++{
++    u8 spriteId = gBattlerSpriteIds[battler];
++
++    if (spriteId < MAX_SPRITES)
++        gSprites[spriteId].invisible = TRUE;
++    HidePrivateRewardShadows(battler);
++}
++
++static void PositionPrivateRewardBattler(enum BattlerId battler)
++{
++    u8 spriteId = gBattlerSpriteIds[battler];
++
++    if (spriteId >= MAX_SPRITES)
++        return;
++
++    gSprites[spriteId].x = GetBattlerSpriteCoord(battler, BATTLER_COORD_X_2);
++    gSprites[spriteId].y = GetBattlerSpriteDefault_Y(battler);
++    gSprites[spriteId].x2 = 0;
++    gSprites[spriteId].y2 = 0;
++}
++
++void BattleRebuildPrivateRewardHealthbox(void)
++{
++    u8 battler;
++
++    // The shared co-op battle always allocated four double-format battlers.
++    // Retire each composite (including its Expansion gimmick indicator) before
++    // releasing its tagged sheets; then rebuild the local, single-battle HUD.
++    for (battler = 0; battler < MAX_BATTLERS_COUNT; battler++)
++    {
++        HidePrivateRewardShadows(battler);
++        DestroyHealthboxSprite(gHealthboxSpriteIds[battler]);
++        gHealthboxSpriteIds[battler] = MAX_SPRITES;
++    }
++
++    FreeSpriteTilesByTag(TAG_HEALTHBOX_PLAYER1_TILE);
++    FreeSpriteTilesByTag(TAG_HEALTHBOX_PLAYER2_TILE);
++    FreeSpriteTilesByTag(TAG_HEALTHBOX_OPPONENT1_TILE);
++    FreeSpriteTilesByTag(TAG_HEALTHBOX_OPPONENT2_TILE);
++    FreeSpriteTilesByTag(TAG_HEALTHBAR_PLAYER1_TILE);
++    FreeSpriteTilesByTag(TAG_HEALTHBAR_PLAYER2_TILE);
++    FreeSpriteTilesByTag(TAG_HEALTHBAR_OPPONENT1_TILE);
++    FreeSpriteTilesByTag(TAG_HEALTHBAR_OPPONENT2_TILE);
++
++    LoadCompressedSpriteSheet(&sSpriteSheet_SinglesPlayerHealthbox);
++#if B_HP_PERCENTAGE_DISPLAY
++    LoadCompressedSpriteSheet(&sSpriteSheet_SinglesOpponentLargeHealthbox);
++#else
++    LoadCompressedSpriteSheet(&sSpriteSheet_SinglesOpponentHealthbox);
++#endif
++    LoadCompressedSpriteSheet(&sSpriteSheets_HealthBar[B_POSITION_PLAYER_LEFT]);
++    LoadCompressedSpriteSheet(&sSpriteSheets_HealthBar[B_POSITION_OPPONENT_LEFT]);
++
++    HidePrivateRewardBattler(3);
++    PositionPrivateRewardBattler(0);
++    PositionPrivateRewardBattler(1);
++
++    gHealthboxSpriteIds[0] = CreateBattlerHealthboxSprites(0);
++    gHealthboxSpriteIds[1] = CreateBattlerHealthboxSprites(1);
++    if (gHealthboxSpriteIds[0] < MAX_SPRITES)
++        InitBattlerHealthboxCoords(0);
++    if (gHealthboxSpriteIds[1] < MAX_SPRITES)
++        InitBattlerHealthboxCoords(1);
++    BattleUpdatePrivateRewardHealthboxes();
++    if (gHealthboxSpriteIds[0] < MAX_SPRITES)
++        SetHealthboxSpriteVisible(gHealthboxSpriteIds[0]);
++    if (gHealthboxSpriteIds[1] < MAX_SPRITES)
++        SetHealthboxSpriteVisible(gHealthboxSpriteIds[1]);
++}
++
++void BattleUpdatePrivateRewardHealthboxes(void)
++{
++    if (gHealthboxSpriteIds[0] < MAX_SPRITES && gBattlerPartyIndexes[0] < PARTY_SIZE)
++        UpdateHealthboxAttribute(gHealthboxSpriteIds[0], &gParties[B_TRAINER_PLAYER][gBattlerPartyIndexes[0]], HEALTHBOX_ALL);
++    if (gHealthboxSpriteIds[1] < MAX_SPRITES && gBattlerPartyIndexes[1] < PARTY_SIZE)
++        UpdateHealthboxAttribute(gHealthboxSpriteIds[1], &gParties[B_TRAINER_OPPONENT_A][gBattlerPartyIndexes[1]], HEALTHBOX_ALL);
++}
++#endif
++
+ bool8 BattleLoadAllHealthBoxesGfx(u8 state)
+ {
+     if (state == 1)
+diff --git a/src/battle_gimmick.c b/src/battle_gimmick.c
+index ebe6d5cc12df1bb0d5ae4cbcaca1e3df4e7c6982..5efd1119f6575fc35c9f6b95d7a68b87655096a8 100644
+--- a/src/battle_gimmick.c
++++ b/src/battle_gimmick.c
+@@ -392,6 +392,19 @@ void CreateIndicatorSprite(enum BattlerId battler)
+     gSprites[spriteId].invisible = FALSE;
+ }
+ 
++#ifdef PORTABLE
++void DestroyIndicatorSprite(enum BattlerId battler)
++{
++    u8 spriteId = gBattleStruct->gimmick.indicatorSpriteId[battler];
++
++    if (spriteId != 0 && spriteId < MAX_SPRITES)
++        DestroySprite(&gSprites[spriteId]);
++
++    FreeSpriteTilesByTag(BATTLER_INDICATOR_TAG + battler);
++    gBattleStruct->gimmick.indicatorSpriteId[battler] = 0;
++}
++#endif
++
+ #undef tBattler
+ #undef tPosX
+ #undef tLevelXDelta
+diff --git a/src/battle_hold_effects.c b/src/battle_hold_effects.c
+index 5d775a35add39fbd87a5a2c331fd53aba45f9900..c3b9d0382795b9fb3373b923e2623b32c749b0e6 100644
+--- a/src/battle_hold_effects.c
++++ b/src/battle_hold_effects.c
+@@ -1,4 +1,7 @@
+ #include "global.h"
++#ifdef PORTABLE
++#include "platform/world_coop.h"
++#endif
+ #include "battle.h"
+ #include "battle_anim.h"
+ #include "battle_ai_record.h"
+@@ -42,6 +45,12 @@ static enum ItemEffect TryDoublePrize(enum BattlerId battler)
+ {
+     enum ItemEffect effect = ITEM_NO_EFFECT;
+ 
++#ifdef PORTABLE
++    /* Record each trainer's own prize item even after the shared engine has
++     * applied its once-per-battle multiplier for the other ally. */
++    if (WorldCoop_IsBattle() && IsOnPlayerSide(battler))
++        WorldCoop_DoublePrize(battler);
++#endif
+     if (IsOnPlayerSide(battler) && !gBattleStruct->moneyMultiplierItem)
+     {
+         gBattleStruct->moneyMultiplier *= 2;
+diff --git a/src/battle_interface.c b/src/battle_interface.c
+index f802c98d62e39e31024c9b57ae6159f94ba416c4..782e67fd31e5292636b739f8ae1f862bbe8a8ca3 100644
+--- a/src/battle_interface.c
++++ b/src/battle_interface.c
+@@ -5,6 +5,9 @@
+ #include "battle_controllers.h"
+ #include "battle_interface.h"
+ #include "battle_z_move.h"
++#ifdef PORTABLE
++#include "battle_gimmick.h"
++#endif
+ #include "graphics.h"
+ #include "sprite.h"
+ #include "window.h"
+@@ -792,6 +795,27 @@ void SetHealthboxSpriteVisible(u8 healthboxSpriteId)
+     UpdateIndicatorVisibilityAndType(healthboxSpriteId, FALSE);
+ }
+ 
++#ifdef PORTABLE
++void DestroyHealthboxSprite(u8 healthboxSpriteId)
++{
++    u8 battler;
++    u8 rightSpriteId;
++    u8 healthbarSpriteId;
++
++    if (healthboxSpriteId >= MAX_SPRITES)
++        return;
++
++    battler = gSprites[healthboxSpriteId].hMain_Battler;
++    rightSpriteId = gSprites[healthboxSpriteId].oam.affineParam;
++    healthbarSpriteId = gSprites[healthboxSpriteId].hMain_HealthBarSpriteId;
++
++    DestroyIndicatorSprite(battler);
++    DestroySprite(&gSprites[rightSpriteId]);
++    DestroySprite(&gSprites[healthbarSpriteId]);
++    DestroySprite(&gSprites[healthboxSpriteId]);
++}
++#endif
++
+ static void UpdateSpritePos(u8 spriteId, s16 x, s16 y)
+ {
+     gSprites[spriteId].x = x;
+diff --git a/src/battle_main.c b/src/battle_main.c
+index 5ac7d92dc66136f1533fae4ce7c51734c15fa2b5..49d42982a9bafb4eba4a01786455be3127a10bd3 100644
+--- a/src/battle_main.c
++++ b/src/battle_main.c
+@@ -63,6 +63,13 @@
+ #include "tv.h"
+ #include "util.h"
+ #include "wild_encounter.h"
++#ifdef PORTABLE
++#include "platform/world_coop.h"
++#include "platform/native_link.h"
++#include "platform/world_activity.h"
++#include "battle_gfx_sfx_util.h"
++#include "constants/battle_script_commands.h"
++#endif
+ #include "window.h"
+ #include "constants/abilities.h"
+ #include "constants/battle_ai.h"
+@@ -116,6 +123,7 @@ static void TryChangeTurnOrder(void);
+ static void TryChangingTurnOrderEffects(struct BattleCalcValues *calcValues, u32 *quickClawRandom, u32 *quickDrawRandom);
+ static void CheckChangingTurnOrderEffects(void);
+ static void FreeResetData_ReturnToOvOrDoEvolutions(void);
++static void FreeRestoreBattleData(void);
+ static void ReturnFromBattleToOverworld(void);
+ static void TryEvolvePokemon(void);
+ static void WaitForEvoSceneToFinish(void);
+@@ -577,6 +585,11 @@ static void CB2_InitBattleInternal(void)
+ #line 565
+     if (gBattleTypeFlags & BATTLE_TYPE_RECORDED)
+         gBattleEnvironment = BATTLE_ENVIRONMENT_BUILDING;
++#ifdef PORTABLE
++    // Co-op battles use the encounter owner's captured field, not the link-battle venue.
++    if (WorldCoop_IsBattle())
++        gBattleEnvironment = WorldCoop_Environment();
++#endif
+     if (TestRunner_Battle_GetForcedEnvironment())
+         gBattleEnvironment = TestRunner_Battle_GetForcedEnvironment() - 1;
+ 
+@@ -764,6 +777,11 @@ static void SetAllPlayersBerryData(void)
+ 
+         if (gBattleTypeFlags & BATTLE_TYPE_MULTI)
+         {
++#ifdef PORTABLE
++            if (WorldCoop_IsBattle())
++                numPlayers = 2; /* Allied native owners 0/2, not four consoles. */
++            else
++#endif
+             if (gBattleTypeFlags & BATTLE_TYPE_BATTLE_TOWER)
+                 numPlayers = 2;
+             else
+@@ -1569,6 +1587,41 @@ static void CB2_HandleStartMultiBattle(void)
+         }
+         break;
+     case 2:
++#ifdef PORTABLE
++        if (WorldCoop_IsBattle())
++        {
++            /* WorldCoop's authenticated two-owner exchange already staged both
++             * allied parties and the encounter owner's NPCs. The stock path
++             * below waits for four humans, elects a PvP master and overwrites
++             * those staged parties. Exchange only the remaining berry header. */
++            if ((GetBlockReceivedStatus() & 3) == 3 && IsLinkTaskFinished())
++            {
++                extern u16 GetBlockReceivedSize(u8 player);
++                bool8 valid = GetLinkPlayerCount() == 2 && NativeLink_IsActive();
++                for (id = 0; id < 2; ++id)
++                    if (GetBlockReceivedSize(id) != sizeof(gBattleStruct->multiBuffer.linkBattlerHeader)
++                     || gBlockRecvBuffer[id][0] != 0x300)
++                        valid = FALSE;
++                if (!valid)
++                {
++                    NativeLink_Abort();
++                    WorldCoop_Abort();
++                    FreeAllWindowBuffers();
++                    FreeRestoreBattleData();
++                    WorldActivity_ReturnToField();
++                    return;
++                }
++                memset(gEnigmaBerries, 0, sizeof(gEnigmaBerries));
++                SetAllPlayersBerryData();
++                ResetBlockReceivedFlags();
++                InitBattleControllers();
++                gBattleCommunication[SPRITES_INIT_STATE1] = 0;
++                gBattleCommunication[SPRITES_INIT_STATE2] = 0;
++                gBattleCommunication[MULTIUSE_STATE] = 10;
++            }
++            break;
++        }
++#endif
+         if ((GetBlockReceivedStatus() & 0xF) == 0xF)
+         {
+             ResetBlockReceivedFlags();
+@@ -1742,6 +1795,21 @@ static void CB2_HandleStartMultiBattle(void)
+ 
+ void BattleMainCB2(void)
+ {
++#ifdef PORTABLE
++    if (WorldCoop_IsBattle() && !NativeLink_IsActive())
++    {
++        if (WorldCoop_CompletionCommitted())
++        {
++            WorldCoop_BeginPrivateRewards();
++            return;
++        }
++        WorldCoop_Abort();
++        FreeAllWindowBuffers();
++        FreeRestoreBattleData();
++        WorldActivity_ReturnToField();
++        return;
++    }
++#endif
+     AnimateSprites();
+     BuildOamBuffer();
+     RunTextPrinters();
+@@ -3100,6 +3168,30 @@ void FaintClearSetData(enum BattlerId battler)
+     TryBattleFormChange(battler, FORM_CHANGE_FAINT, GetBattlerAbility(battler));
+ }
+ 
++void BattleMain_InitializeBattlerData(enum BattlerId battler, const struct BattlePokemon *mon)
++{
++    s32 i;
++
++    memcpy(&gBattleMons[battler], mon, sizeof(gBattleMons[battler]));
++    gBattleMons[battler].types[0] = GetSpeciesType(gBattleMons[battler].species, 0);
++    gBattleMons[battler].types[1] = GetSpeciesType(gBattleMons[battler].species, 1);
++    gBattleMons[battler].types[2] = TYPE_MYSTERY;
++    gBattleMons[battler].ability = GetAbilityBySpecies(gBattleMons[battler].species, gBattleMons[battler].abilityNum);
++    gBattleStruct->battlerState[battler].hpOnSwitchout = gBattleMons[battler].hp;
++    memset(&gBattleMons[battler].volatiles, 0, sizeof(struct Volatiles));
++    for (i = 0; i < NUM_BATTLE_STATS; i++)
++        gBattleMons[battler].statStages[i] = DEFAULT_STAT_STAGE;
++#if TESTING
++    if (gTestRunnerEnabled)
++    {
++        enum BattleTrainer trainer = GetBattlerTrainer(battler);
++        u32 partyIndex = gBattlerPartyIndexes[battler];
++        if (TestRunner_Battle_GetForcedAbility(trainer, partyIndex))
++            gBattleMons[battler].ability = TestRunner_Battle_GetForcedAbility(trainer, partyIndex);
++    }
++#endif
++}
++
+ static void DoBattleIntro(void)
+ {
+     s32 i;
+@@ -3146,24 +3238,7 @@ static void DoBattleIntro(void)
+             }
+             else
+             {
+-                memcpy(&gBattleMons[battler], &gBattleResources->bufferB[battler][4], sizeof(struct BattlePokemon));
+-                gBattleMons[battler].types[0] = GetSpeciesType(gBattleMons[battler].species, 0);
+-                gBattleMons[battler].types[1] = GetSpeciesType(gBattleMons[battler].species, 1);
+-                gBattleMons[battler].types[2] = TYPE_MYSTERY;
+-                gBattleMons[battler].ability = GetAbilityBySpecies(gBattleMons[battler].species, gBattleMons[battler].abilityNum);
+-                gBattleStruct->battlerState[battler].hpOnSwitchout = gBattleMons[battler].hp;
+-                memset(&gBattleMons[battler].volatiles, 0, sizeof(struct Volatiles));
+-                for (i = 0; i < NUM_BATTLE_STATS; i++)
+-                    gBattleMons[battler].statStages[i] = DEFAULT_STAT_STAGE;
+-                #if TESTING
+-                if (gTestRunnerEnabled)
+-                {
+-                    enum BattleTrainer trainer = GetBattlerTrainer(battler);
+-                    u32 partyIndex = gBattlerPartyIndexes[battler];
+-                    if (TestRunner_Battle_GetForcedAbility(trainer, partyIndex))
+-                        gBattleMons[battler].ability = TestRunner_Battle_GetForcedAbility(trainer, partyIndex);
+-                }
+-                #endif
++                BattleMain_InitializeBattlerData(battler, (struct BattlePokemon *)&gBattleResources->bufferB[battler][4]);
+             }
+ 
+             // Draw sprite.
+@@ -5473,6 +5548,93 @@ void RunBattleScriptCommands_PopCallbacksStack(void)
+     }
+ }
+ 
++#ifdef PORTABLE
++static const u8 sCoopTrainerPrizeScript[] =
++{
++    B_SCR_OP_GETMONEYREWARD,
++    B_SCR_OP_END3,
++};
++static const u8 sCoopExpScript[] =
++{
++    B_SCR_OP_GETEXP, BS_OPPONENT1,
++    B_SCR_OP_END3,
++};
++static bool8 sCoopTrainerPrizeDone;
++static bool8 sCoopPayoffDone;
++
++static void CoopPrivateRewards(void)
++{
++    if (gPaletteFade.active || gBattleControllerExecFlags)
++        return;
++    if (WorldCoop_BeginCatchRewards())
++    {
++        BattleUpdatePrivateRewardHealthboxes();
++        BattleScriptExecute(BattleScript_CoopPrivateCatch);
++    }
++    else if (WorldCoop_NextReward())
++    {
++        BattleUpdatePrivateRewardHealthboxes();
++        BattleScriptExecute(sCoopExpScript);
++    }
++    else if (!sCoopTrainerPrizeDone && gBattleOutcome == B_OUTCOME_WON)
++    {
++        sCoopTrainerPrizeDone = TRUE;
++        BattleScriptExecute(sCoopTrainerPrizeScript);
++    }
++    else if (!sCoopPayoffDone && gBattleOutcome == B_OUTCOME_WON)
++    {
++        sCoopPayoffDone = TRUE;
++        BattleScriptExecute(BattleScript_PayDayMoneyAndPickUpItems);
++    }
++    else
++    {
++        BeginFastPaletteFade(3);
++        gBattleMainFunc = FreeResetData_ReturnToOvOrDoEvolutions;
++        gCB2_AfterEvolution = BattleMainCB2;
++    }
++}
++
++void WorldCoop_BeginPrivateRewards(void)
++{
++    u8 localBattler = gBattleScripting.multiplayerId * 2;
++    u8 partnerBattler = localBattler ^ 2;
++    u8 partnerSpriteId = gBattlerSpriteIds[partnerBattler];
++    u8 shadowSpriteId = gBattleSpritesDataPtr->healthBoxesData[partnerBattler].shadowSpriteIdPrimary;
++    u8 secondaryShadowSpriteId = gBattleSpritesDataPtr->healthBoxesData[partnerBattler].shadowSpriteIdSecondary;
++
++    // Each client keeps only its own co-op battler visible for private rewards.
++    if (partnerSpriteId < MAX_SPRITES)
++        gSprites[partnerSpriteId].invisible = TRUE;
++    if (shadowSpriteId < MAX_SPRITES)
++        gSprites[shadowSpriteId].invisible = TRUE;
++    if (secondaryShadowSpriteId < MAX_SPRITES)
++        gSprites[secondaryShadowSpriteId].invisible = TRUE;
++    gBattlerSpriteIds[0] = gBattlerSpriteIds[localBattler];
++
++    sCoopTrainerPrizeDone = !WorldCoop_IsTrainer();
++    sCoopPayoffDone = !WorldCoop_PreparePrivateRewards();
++    if (sCoopPayoffDone)
++        sCoopTrainerPrizeDone = TRUE;
++    ResetTasks();
++    gBattlersCount = 2;
++    gBattlerPositions[0] = B_POSITION_PLAYER_LEFT;
++    gBattlerPositions[1] = B_POSITION_OPPONENT_LEFT;
++    gAbsentBattlerFlags = 0;
++    gLeveledUpInBattle = 0;
++    BattleRebuildPrivateRewardHealthbox();
++    /* Expansion controllers receive the explicit battler argument below. */
++    gBattlerAttacker = 0;
++    SetControllerToPlayer(0);
++    gBattlerControllerFuncs[1] = BattleControllerDummy;
++    gBattleResources->battleScriptsStack->size = 0;
++    gBattleResources->battleCallbackStack->size = 0;
++    gMain.callback1 = BattleMainCB1;
++    gBattleMainFunc = CoopPrivateRewards;
++    BeginNormalPaletteFade(PALETTES_ALL, 0, 16, 0, RGB_BLACK);
++    SetMainCallback2(BattleMainCB2);
++}
++#endif
++
+ void RunBattleScriptCommands(void)
+ {
+     if (gBattleControllerExecFlags == 0)
+diff --git a/src/battle_script_commands.c b/src/battle_script_commands.c
+index 78e37b57a8ce44807b6976f56eb891624e4cb443..a4f066f36edb3a893dbdee7f1d8d52de5d765362 100644
+--- a/src/battle_script_commands.c
++++ b/src/battle_script_commands.c
+@@ -1,4 +1,8 @@
+ #include "global.h"
++#ifdef PORTABLE
++#include "platform/world_coop.h"
++#include "platform/native_link.h"
++#endif
+ #include "battle.h"
+ #include "battle_hold_effects.h"
+ #include "battle_message.h"
+@@ -2143,6 +2147,19 @@ static void Cmd_getexp(void)
+ 
+     gBattlerFainted = GetBattlerForBattleScript(cmd->battler);
+ 
++#ifdef PORTABLE
++    /* Co-op defeat rewards are recorded for private settlement after battle. */
++    if (WorldCoop_IsBattle())
++    {
++        if (gBattleControllerExecFlags)
++            return;
++        if (GetBattlerSide(gBattlerFainted) == B_SIDE_OPPONENT)
++            WorldCoop_EmitDefeat();
++        gBattlescriptCurrInstr = cmd->nextInstr;
++        return;
++    }
++#endif
++
+     enum Species faintedSpecies;
+     if (!gBattleMons[gBattlerFainted].volatiles.transformed)
+         faintedSpecies = gBattleMons[gBattlerFainted].species;
+@@ -2506,6 +2523,12 @@ static bool32 WillPlayerWhiteOutIfPartnerWinsAlone()
+ 
+ bool32 NoAliveMonsForPlayer(void)
+ {
++#ifdef PORTABLE
++    if (WorldCoop_IsBattle()
++     && (WorldCoop_HasHiddenUsable(B_POSITION_PLAYER_LEFT)
++      || WorldCoop_HasHiddenUsable(B_POSITION_PLAYER_RIGHT)))
++        return FALSE;
++#endif
+     if (DoesPartyHaveBattleReadyMons(B_TRAINER_PLAYER))
+         return FALSE;
+ 
+@@ -3387,6 +3410,43 @@ static void ChooseMonToSendOut(enum BattlerId battler, u8 slotId)
+     MarkBattlerForControllerExec(battler);
+ }
+ 
++#if defined(PORTABLE) && COOP_FULL_SIX_READY
++/* A full-six menu choice is deliberately not a native party index. Resolve
++ * its authenticated rotation before any switch/send-out script consumes it. */
++static bool8 HandleCoopRosterChoice(enum BattlerId battler, u8 choice)
++{
++    int result;
++
++    if (!(gBattleTypeFlags & BATTLE_TYPE_LINK) || !(gBattleTypeFlags & BATTLE_TYPE_MULTI))
++        return FALSE;
++
++    if (WorldCoop_RosterActionActive(battler))
++    {
++        result = WorldCoop_AdvanceRosterAction(battler);
++        if (result == 0)
++            return TRUE; // Authenticated exchange still pending.
++        if (result < 0)
++        {
++            WorldCoop_FailRosterAction();
++            return TRUE; // Abort the co-op link; BattleMainCB2 performs full teardown.
++        }
++
++        gBattleStruct->monToSwitchIntoId[battler] = gBattleResources->bufferB[battler][1];
++        return FALSE;
++    }
++
++    if ((choice & 0xC0) != 0x80)
++        return FALSE;
++    if (!WorldCoop_RosterChoiceValid(battler, choice)
++     || WorldCoop_BeginRosterAction(battler, choice, &gBattleResources->bufferB[battler][2]) != 0)
++    {
++        WorldCoop_FailRosterAction();
++        return TRUE; // Do not reinterpret an invalid wire choice as a party index.
++    }
++    return TRUE;
++}
++#endif
++
+ static void Cmd_openpartyscreen(void)
+ {
+     CMD_ARGS(u8 battler:7, u8 partyScreenOptional:1, const u8 *failInstr);
+@@ -3611,6 +3671,18 @@ static void Cmd_switchhandleorder(void)
+     switch (cmd->state)
+     {
+     case 0:
++#if defined(PORTABLE) && COOP_FULL_SIX_READY
++        for (i = 0; i < gBattlersCount; i++)
++        {
++            if (WorldCoop_RosterActionActive(i)
++             || (gBattleResources->bufferB[i][0] == CONTROLLER_CHOSENMONRETURNVALUE
++                 && (gBattleResources->bufferB[i][1] & 0xC0) == 0x80))
++            {
++                if (HandleCoopRosterChoice(i, gBattleResources->bufferB[i][1]))
++                    return;
++            }
++        }
++#endif
+         for (i = 0; i < gBattlersCount; i++)
+         {
+             if (gBattleResources->bufferB[i][0] == CONTROLLER_CHOSENMONRETURNVALUE)
+@@ -3625,10 +3697,18 @@ static void Cmd_switchhandleorder(void)
+         }
+         break;
+     case 1:
++#if defined(PORTABLE) && COOP_FULL_SIX_READY
++        if (HandleCoopRosterChoice(battler, gBattleStruct->monToSwitchIntoId[battler]))
++            return;
++#endif
+         if (!(gBattleTypeFlags & BATTLE_TYPE_MULTI))
+             SwitchPartyOrder(battler);
+         break;
+     case 2:
++#if defined(PORTABLE) && COOP_FULL_SIX_READY
++        if (HandleCoopRosterChoice(battler, gBattleResources->bufferB[battler][1]))
++            return;
++#endif
+         if (!(gBattleStruct->recordedActionSet & (1u << battler)))
+         {
+             RecordedBattle_SetBattlerAction(battler, gBattleResources->bufferB[battler][1]);
+@@ -3636,6 +3716,10 @@ static void Cmd_switchhandleorder(void)
+         }
+         // fall through
+     case 3:
++#if defined(PORTABLE) && COOP_FULL_SIX_READY
++        if (HandleCoopRosterChoice(battler, gBattleResources->bufferB[battler][1]))
++            return;
++#endif
+         gBattleCommunication[0] = gBattleResources->bufferB[battler][1];
+         gBattleStruct->monToSwitchIntoId[battler] = gBattleResources->bufferB[battler][1];
+ 
+@@ -7821,7 +7905,22 @@ static void FinalizeCapture(void)
+ {
+     enum PokeBall ballId = ItemIdToBallId(gLastThrownBall);
+     enum NationalDexOrder natDexNo = SpeciesToNationalPokedexNum(gBattleMons[gBattlerTarget].species);
+-    if ((GetConfig(B_CRITICAL_CAPTURE_IF_OWNED) >= GEN_9 && GetSetPokedexFlag(natDexNo, FLAG_GET_CAUGHT))
++    bool8 speciesCaught;
++#ifdef PORTABLE
++    struct WorldCoopCaptureInfo captureInfo;
++    if (WorldCoop_IsBattle())
++    {
++        if (!WorldCoop_GetCaptureInfo(&captureInfo))
++        {
++            NativeLink_Abort();
++            return;
++        }
++        speciesCaught = captureInfo.speciesCaught;
++    }
++    else
++#endif
++        speciesCaught = GetSetPokedexFlag(natDexNo, FLAG_GET_CAUGHT);
++    if ((GetConfig(B_CRITICAL_CAPTURE_IF_OWNED) >= GEN_9 && speciesCaught)
+         || IsCriticalCapture())
+     {
+         gBattleSpritesDataPtr->animationData->isCriticalCapture = TRUE;
+@@ -7831,12 +7930,20 @@ static void FinalizeCapture(void)
+     BtlController_EmitBallThrowAnim(gBattlerAttacker, B_COMM_TO_CONTROLLER, BALL_3_SHAKES_SUCCESS);
+     MarkBattlerForControllerExec(gBattlerAttacker);
+     TryBattleFormChange(gBattlerTarget, FORM_CHANGE_END_BATTLE, GetBattlerAbility(gBattlerTarget));
++#ifdef PORTABLE
++    gBattlescriptCurrInstr = WorldCoop_IsBattle() ? BattleScript_CoopSharedCatch : BattleScript_SuccessBallThrow;
++#else
+     gBattlescriptCurrInstr = BattleScript_SuccessBallThrow;
++#endif
+     struct Pokemon *caughtMon = GetBattlerMon(gBattlerTarget);
+     SetMonData(caughtMon, MON_DATA_POKEBALL, &ballId);
+     RestoreCaughtWildMonHeldItem(caughtMon, gBattlerTarget);
+ 
+-    if (CalculatePlayerPartyCount() == PARTY_SIZE)
++    if (
++#ifdef PORTABLE
++        WorldCoop_IsBattle() ? WorldCoop_GetOwnPartyCount() == PARTY_SIZE :
++#endif
++        CalculatePlayerPartyCount() == PARTY_SIZE)
+         gBattleCommunication[MULTISTRING_CHOOSER] = 0;
+     else
+         gBattleCommunication[MULTISTRING_CHOOSER] = 1;
+@@ -7870,6 +7977,10 @@ static void ComputeBallData(u32 wildMonBattler, u32 playerBattler, struct BallDa
+     u32 i;
+     enum PokeBall ballId = ItemIdToBallId(gLastUsedItem);
+     struct BattlePokemon *battleMon = &gBattleMons[wildMonBattler];
++#ifdef PORTABLE
++    struct WorldCoopCaptureInfo captureInfo;
++    bool8 haveCaptureInfo = WorldCoop_IsBattle() && WorldCoop_GetCaptureInfo(&captureInfo);
++#endif
+ 
+     ball->multiplier = 100;
+     ball->divider = 100;
+@@ -7916,8 +8027,14 @@ static void ComputeBallData(u32 wildMonBattler, u32 playerBattler, struct BallDa
+         }
+         break;
+     case BALL_DIVE:
++#ifdef PORTABLE
++        if ((WorldCoop_IsBattle() && WorldCoop_IsDiveBallBoosted())
++            || (!WorldCoop_IsBattle() && (GetCurrentMapType() == MAP_TYPE_UNDERWATER
++                || (B_DIVE_BALL_MODIFIER >= GEN_4 && (gIsFishingEncounter || gIsSurfingEncounter)))))
++#else
+         if (GetCurrentMapType() == MAP_TYPE_UNDERWATER
+             || (B_DIVE_BALL_MODIFIER >= GEN_4 && (gIsFishingEncounter || gIsSurfingEncounter)))
++#endif
+         {
+             ball->multiplier = 350;
+         }
+@@ -7945,7 +8062,12 @@ static void ComputeBallData(u32 wildMonBattler, u32 playerBattler, struct BallDa
+             ball->multiplier = (B_QUICK_BALL_MODIFIER >= GEN_5 ? 500 : 400);
+         break;
+     case BALL_REPEAT:
++#ifdef PORTABLE
++        if ((WorldCoop_IsBattle() && haveCaptureInfo && captureInfo.speciesCaught)
++            || (!WorldCoop_IsBattle() && GetSetPokedexFlag(SpeciesToNationalPokedexNum(battleMon->species), FLAG_GET_CAUGHT)))
++#else
+         if (GetSetPokedexFlag(SpeciesToNationalPokedexNum(battleMon->species), FLAG_GET_CAUGHT))
++#endif
+             ball->multiplier = (B_REPEAT_BALL_MODIFIER >= GEN_7 ? 350 : 300);
+         break;
+     case BALL_LEVEL:
+@@ -8104,10 +8226,25 @@ static u32 ComputeCaptureOdds(u32 wildMonBattler, u32 playerBattler)
+     odds = odds * ball.multiplier / ball.divider;
+ 
+     u8 badgeCount = 0;
+-    for (u32 i = FLAG_BADGE01_GET; i < FLAG_BADGE01_GET + NUM_BADGES; i++)
++#ifdef PORTABLE
++    if (WorldCoop_IsBattle())
+     {
+-        if (FlagGet(i))
+-            badgeCount++;
++        struct WorldCoopCaptureInfo captureInfo;
++        if (!WorldCoop_GetCaptureInfo(&captureInfo))
++        {
++            NativeLink_Abort();
++            return 1;
++        }
++        badgeCount = captureInfo.badgeCount;
++    }
++    else
++#endif
++    {
++        for (u32 i = FLAG_BADGE01_GET; i < FLAG_BADGE01_GET + NUM_BADGES; i++)
++        {
++            if (FlagGet(i))
++                badgeCount++;
++        }
+     }
+     if (GetConfig(B_MISSING_BADGE_CATCH_MALUS) == GEN_8 && badgeCount < NUM_BADGES && gBattleMons[playerBattler].level < battleMon->level)
+         odds = odds * 410 / 4096;
+@@ -8144,27 +8281,52 @@ static bool32 CriticalCapture(u32 odds)
+     if (B_CRITICAL_CAPTURE == FALSE)
+         return FALSE;
+ 
+-    if (B_CRITICAL_CAPTURE_LOCAL_DEX == TRUE)
+-        totalDexCount = REGIONAL_DEX_COUNT;
+-    else
+-        totalDexCount = NATIONAL_DEX_COUNT;
+-
+-    if (CheckBagHasItem(ITEM_CATCHING_CHARM, 1))
+-        charmBoost = (100 + B_CATCHING_CHARM_BOOST) / 100;
+-
+-    numCaught = GetNationalPokedexCount(FLAG_GET_CAUGHT);
+-    if (numCaught > (totalDexCount * 600) / 650)
+-        odds = (odds * (250 * charmBoost)) / 100;
+-    else if (numCaught > (totalDexCount * 450) / 650)
+-        odds = (odds * (200 * charmBoost)) / 100;
+-    else if (numCaught > (totalDexCount * 300) / 650)
+-        odds = (odds * (150 * charmBoost)) / 100;
+-    else if (numCaught > (totalDexCount * 150) / 650)
+-        odds = (odds * (100 * charmBoost)) / 100;
+-    else if (numCaught > (totalDexCount * 30) / 650)
+-        odds = (odds * (50 * charmBoost)) / 100;
++#ifdef PORTABLE
++    if (WorldCoop_IsBattle())
++    {
++        struct WorldCoopCaptureInfo captureInfo;
++        if (!WorldCoop_GetCaptureInfo(&captureInfo))
++        {
++            NativeLink_Abort();
++            return FALSE;
++        }
++        if (captureInfo.catchingCharm)
++            charmBoost = (100 + B_CATCHING_CHARM_BOOST) / 100;
++        switch (captureInfo.dexTier)
++        {
++        case 5: odds = (odds * (250 * charmBoost)) / 100; break;
++        case 4: odds = (odds * (200 * charmBoost)) / 100; break;
++        case 3: odds = (odds * (150 * charmBoost)) / 100; break;
++        case 2: odds = (odds * (100 * charmBoost)) / 100; break;
++        case 1: odds = (odds * (50 * charmBoost)) / 100; break;
++        default: return FALSE;
++        }
++    }
+     else
+-        return FALSE;
++#endif
++    {
++        if (B_CRITICAL_CAPTURE_LOCAL_DEX == TRUE)
++            totalDexCount = REGIONAL_DEX_COUNT;
++        else
++            totalDexCount = NATIONAL_DEX_COUNT;
++
++        if (CheckBagHasItem(ITEM_CATCHING_CHARM, 1))
++            charmBoost = (100 + B_CATCHING_CHARM_BOOST) / 100;
++
++        numCaught = GetNationalPokedexCount(FLAG_GET_CAUGHT);
++        if (numCaught > (totalDexCount * 600) / 650)
++            odds = (odds * (250 * charmBoost)) / 100;
++        else if (numCaught > (totalDexCount * 450) / 650)
++            odds = (odds * (200 * charmBoost)) / 100;
++        else if (numCaught > (totalDexCount * 300) / 650)
++            odds = (odds * (150 * charmBoost)) / 100;
++        else if (numCaught > (totalDexCount * 150) / 650)
++            odds = (odds * (100 * charmBoost)) / 100;
++        else if (numCaught > (totalDexCount * 30) / 650)
++            odds = (odds * (50 * charmBoost)) / 100;
++        else
++            return FALSE;
++    }
+ 
+     if (odds > 255)
+         odds = 255;
+@@ -8259,6 +8421,10 @@ static void Cmd_handleballthrow(void)
+         return;
+ 
+     gBattlerTarget = GetCatchingBattler();
++#ifdef PORTABLE
++    if (WorldCoop_IsBattle())
++        gBattlerTarget = GetBattlerAtPosition(B_POSITION_OPPONENT_LEFT);
++#endif
+ 
+     if (gBattleTypeFlags & BATTLE_TYPE_GHOST)
+     {
+@@ -8287,6 +8453,20 @@ static void Cmd_handleballthrow(void)
+ static void Cmd_givecaughtmon(void)
+ {
+     CMD_ARGS(const u8 *passInstr);
++#ifdef PORTABLE
++    if (WorldCoop_IsBattle())
++    {
++        if (gBattleControllerExecFlags)
++            return;
++        if (!WorldCoop_EmitCatch())
++        {
++            NativeLink_Abort();
++            return;
++        }
++        gBattlescriptCurrInstr = cmd->nextInstr;
++        return;
++    }
++#endif
+     enum GiveCaughtMonStates state = gBattleCommunication[MULTIUSE_STATE];
+     // Restore players party in order to handle properly the case when a wild mon is caught.
+     if (IsNPCFollowerWildBattle())
+diff --git a/src/battle_set_effect.c b/src/battle_set_effect.c
+index 8300eb720218a081d367aa125c34dcef6bb749f1..be0e01a831a4a80de4878c1c7e16407f15ddc751 100644
+--- a/src/battle_set_effect.c
++++ b/src/battle_set_effect.c
+@@ -1,4 +1,7 @@
+ #include "global.h"
++#ifdef PORTABLE
++#include "platform/world_coop.h"
++#endif
+ #include "battle.h"
+ #include "battle_set_effect.h"
+ #include "battle_util.h"
+@@ -182,6 +185,10 @@ static void HandleSetEffectPayday(struct BattleCalcValues *cv, struct SetEffect
+ {
+     if (IsOnPlayerSide(cv->battlerAtk))
+     {
++#ifdef PORTABLE
++        if (WorldCoop_IsBattle())
++            WorldCoop_AddPayday(cv->battlerAtk, gBattleMons[cv->battlerAtk].level * 5);
++#endif
+         u16 payday = gPaydayMoney;
+         enum MoveTarget moveTarget = GetBattlerMoveTargetType(cv->battlerAtk, cv->move);
+         gPaydayMoney += (gBattleMons[cv->battlerAtk].level * 5);
+diff --git a/src/battle_setup.c b/src/battle_setup.c
+index 218515884544cc612d6b94fb09483238398d8886..43f8e3a8ced7b3ef8b983aac7eb6dcdddb0329a4 100644
+--- a/src/battle_setup.c
++++ b/src/battle_setup.c
+@@ -1523,7 +1523,12 @@ void BattleSetup_StartTrainerBattle(void)
+     if (CurrentBattlePyramidLocation() != PYRAMID_LOCATION_NONE || InTrainerHillChallenge())
+         DoBattlePyramidTrainerHillBattle();
+     else
+-        DoTrainerBattle();
++    {
++#ifdef PORTABLE
++        if (!WorldActivity_TryCoopTrainerBattle())
++#endif
++            DoTrainerBattle();
++    }
+ 
+     ScriptContext_Stop();
+ }
+@@ -1668,7 +1673,10 @@ void BattleSetup_StartRematchBattle(void)
+         gBattleTypeFlags |= BATTLE_TYPE_DOUBLE;
+     
+     gMain.savedCallback = CB2_EndRematchBattle;
+-    DoTrainerBattle();
++#ifdef PORTABLE
++    if (!WorldActivity_TryCoopTrainerBattle())
++#endif
++        DoTrainerBattle();
+     ScriptContext_Stop();
+ }
+ 
+@@ -2269,6 +2277,7 @@ void BattleSetup_ResumeWorldWildBattle(void)
+ 
+ bool8 BattleSetup_CanShareWorldTrainerCredit(u16 trainerId)
+ {
++    u8 i;
+     if (trainerId <= TRAINER_NONE || trainerId >= TRAINERS_COUNT)
+         return FALSE;
+ 
+@@ -2282,8 +2291,31 @@ bool8 BattleSetup_CanShareWorldTrainerCredit(u16 trainerId)
+     case TRAINER_CLASS_CHAMPION:
+         return FALSE;
+     default:
+-        return TRUE;
++        break;
++    }
++
++    /* A passive guest does not own the trainerbattle command's callback.
++     * Do not grant its ordinary flag if that local command carries special
++     * rival/rematch/two-opponent progression which the fallback cannot run. */
++    for (i = 0; i < OBJECT_EVENTS_COUNT; i++)
++    {
++        const u8 *script;
++        TrainerBattleParameter candidate;
++        if (!gObjectEvents[i].active || gObjectEvents[i].isPlayer
++         || gObjectEvents[i].mapNum != gSaveBlock1Ptr->location.mapNum
++         || gObjectEvents[i].mapGroup != gSaveBlock1Ptr->location.mapGroup)
++            continue;
++        script = GetObjectEventScriptPointerByObjectEventId(i);
++        if (script == NULL || script[0] != 0x5C /* trainerbattle */
++         || (script[2] | ((u16)script[3] << 8)) != trainerId)
++            continue;
++        memcpy(candidate.data, script + TRAINERBATTLE_OPCODE_OFFSET, sizeof(candidate));
++        if (candidate.params.earlyRival || candidate.params.isRematch
++         || candidate.params.skipFlagCheck || candidate.params.opponentB
++         || candidate.params.rivalBattleFlags)
++            return FALSE;
+     }
++    return TRUE;
+ }
+ 
+ bool8 BattleSetup_ResumeWorldTrainerScript(u16 trainerId)
+@@ -2310,9 +2342,14 @@ bool8 BattleSetup_ResumeWorldTrainerScript(u16 trainerId)
+         // variable-length trainer-mode byte. This is trusted local map data.
+         memcpy(candidate.data, script + TRAINERBATTLE_OPCODE_OFFSET, sizeof(candidate));
+         if (!candidate.params.continueScript || candidate.params.isRematch
++            || candidate.params.earlyRival || candidate.params.rivalBattleFlags
+             || candidate.params.skipFlagCheck || candidate.params.opponentB
+             || candidate.params.battleScriptRetAddrA == NULL)
+             continue;
++        /* The normal trainer end callback downgrades bad poison before it
++         * resumes this local post-battle continuation. A passive co-op guest
++         * resumes the script directly, so retain that private battle effect. */
++        DowngradeBadPoison();
+         gApproachingTrainerId = gNoOfApproachingTrainers = 0;
+         gSelectedObjectEvent = i;
+         gSpecialVar_LastTalked = gObjectEvents[i].localId;
+diff --git a/src/battle_util.c b/src/battle_util.c
+index 0f07d4f8e1dcf3ed73194f1f3c2aee310c4257f3..1c26a8b2953ce3dabe2e6ef5322005af0ec14df7 100644
+--- a/src/battle_util.c
++++ b/src/battle_util.c
+@@ -1,4 +1,8 @@
+ #include "global.h"
++#ifdef PORTABLE
++#include "platform/world_coop.h"
++#include "platform/native_link.h"
++#endif
+ #include "battle.h"
+ #include "battle_anim.h"
+ #include "battle_anim_scripts.h"
+@@ -41,6 +45,9 @@
+ #include "pokedex.h"
+ #include "mail.h"
+ #include "field_weather.h"
++#ifdef PORTABLE
++#include "platform/world_coop.h"
++#endif
+ #include "constants/abilities.h"
+ #include "constants/battle_anim.h"
+ #include "constants/battle_move_effects.h"
+@@ -629,12 +636,59 @@ void HandleAction_Switch(void)
+ 
+ void HandleAction_UseItem(void)
+ {
++    u16 itemReply;
++#ifdef PORTABLE
++    int medicineResult;
++    bool8 medicineActionActive;
++#endif
+     gBattlerAttacker = gBattlerByTurnOrder[gCurrentTurnActionNumber];
+     gBattle_BG0_X = 0;
+     gBattle_BG0_Y = 0;
+     ClearVariousBattlerFlags(gBattlerAttacker);
+ 
+-    gLastUsedItem = gBattleResources->bufferB[gBattlerAttacker][1] | (gBattleResources->bufferB[gBattlerAttacker][2] << 8);
++    itemReply = gBattleResources->bufferB[gBattlerAttacker][1] | (gBattleResources->bufferB[gBattlerAttacker][2] << 8);
++#ifdef PORTABLE
++    medicineActionActive = WorldCoop_MedicineActionActive(gBattlerAttacker);
++    if (WorldCoop_IsBattle() && (medicineActionActive || WorldCoop_IsMedicineReply(itemReply)))
++    {
++        if (medicineActionActive)
++            medicineResult = WorldCoop_AdvanceMedicineAction(gBattlerAttacker);
++        else
++            medicineResult = WorldCoop_BeginMedicineAction(gBattlerAttacker, itemReply);
++        if (medicineResult == 0)
++            return;
++        if (medicineResult < 0)
++        {
++            gCurrentActionFuncId = B_ACTION_FINISHED;
++            return;
++        }
++        /* The controller ACK overwrites bufferB; Advance restores the saved item. */
++        gBattleScripting.battler = gBattlerAttacker;
++        gBattleStruct->itemPartyIndex[gBattlerAttacker] = WorldCoop_MedicineTarget() % MULTI_PARTY_SIZE;
++        if (medicineResult == 1)
++            gBattlescriptCurrInstr = BattleScript_CoopMedicineHeal;
++        else if (medicineResult == 2)
++            gBattlescriptCurrInstr = BattleScript_CoopMedicineStatus;
++        else
++            gBattlescriptCurrInstr = BattleScript_CoopMedicineUsed;
++        gCurrentActionFuncId = B_ACTION_EXEC_SCRIPT;
++        return;
++    }
++#endif
++    gLastUsedItem = itemReply;
++#ifdef PORTABLE
++    if (WorldCoop_IsBattle() && GetItemPocket(gLastUsedItem & 0xFF) == POCKET_POKE_BALLS)
++    {
++        if (!WorldCoop_BallReplyValid(gLastUsedItem) || !gLastUsedItem || (gBattlerAttacker & BIT_SIDE))
++        {
++            gCurrentActionFuncId = B_ACTION_FINISHED;
++            return;
++        }
++        WorldCoop_EmitBallUse(gLastUsedItem);
++        gBattleResources->bufferB[gBattlerAttacker][2] = (gLastUsedItem >> 8) & 3;
++        gLastUsedItem &= 0xFF;
++    }
++#endif
+     if (X_ITEM_FRIENDSHIP_INCREASE > 0
+         && GetItemEffectType(gLastUsedItem) == ITEM_EFFECT_X_ITEM
+         && !ShouldSkipFriendshipChange())
+@@ -862,6 +916,9 @@ void HandleAction_ThrowBall(void)
+     gBattle_BG0_X = 0;
+     gBattle_BG0_Y = 0;
+     gLastUsedItem = gBallToDisplay;
++#ifdef PORTABLE
++    if (!WorldCoop_IsBattle())
++#endif
+     if (!GetItemImportance(gLastUsedItem))
+         RemoveBagItem(gLastUsedItem, 1);
+     gBattlescriptCurrInstr = BattleScript_BallThrow;
+@@ -1280,6 +1337,17 @@ void PrepareStringBattle(enum StringID stringId, enum BattlerId battler)
+     MarkBattlerForControllerExec(battler);
+ }
+ 
++/* Ordinary Expansion parties use trainer-local indexes. Co-op reward and
++ * roster packets instead distinguish each trainer's three staged slots. */
++static u8 ParticipationPartySlot(enum BattlerId battler)
++{
++#ifdef PORTABLE
++    if (WorldCoop_IsBattle())
++        return WorldCoop_StageSlot(battler);
++#endif
++    return gBattlerPartyIndexes[battler];
++}
++
+ void ResetSentPokesToOpponentValue(void)
+ {
+     s32 i;
+@@ -1289,7 +1357,7 @@ void ResetSentPokesToOpponentValue(void)
+     gSentPokesToOpponent[1] = 0;
+ 
+     for (i = 0; i < gBattlersCount; i += 2)
+-        bits |= 1u << gBattlerPartyIndexes[i];
++        bits |= 1u << ParticipationPartySlot(i);
+ 
+     for (i = 1; i < gBattlersCount; i += 2)
+         gSentPokesToOpponent[(i & BIT_FLANK) >> 1] = bits;
+@@ -1308,7 +1376,7 @@ void OpponentSwitchInResetSentPokesToOpponentValue(enum BattlerId battler)
+         for (i = 0; i < gBattlersCount; i += 2)
+         {
+             if (!(gAbsentBattlerFlags & (1u << i)))
+-                bits |= 1u << gBattlerPartyIndexes[i];
++                bits |= 1u << ParticipationPartySlot(i);
+         }
+         gSentPokesToOpponent[flank] = bits;
+     }
+@@ -1324,7 +1392,7 @@ void UpdateSentPokesToOpponentValue(enum BattlerId battler)
+     {
+         s32 i;
+         for (i = 1; i < gBattlersCount; i++)
+-            gSentPokesToOpponent[(i & BIT_FLANK) >> 1] |= 1u << gBattlerPartyIndexes[battler];
++            gSentPokesToOpponent[(i & BIT_FLANK) >> 1] |= 1u << ParticipationPartySlot(battler);
+     }
+ }
+ 
+@@ -2912,7 +2980,12 @@ bool32 TryFieldEffects(enum FieldEffectCases caseId)
+     case FIELD_EFFECT_OVERWORLD_WEATHER:
+         if (!(gBattleTypeFlags & BATTLE_TYPE_RECORDED))
+         {
+-            switch (GetCurrentWeather())
++            enum OverworldWeather weather =
++#ifdef PORTABLE
++                WorldCoop_IsBattle() ? WorldCoop_FieldWeather() :
++#endif
++                GetCurrentWeather();
++            switch (weather)
+             {
+             case WEATHER_RAIN:
+             case WEATHER_RAIN_THUNDERSTORM:
+@@ -2971,7 +3044,11 @@ bool32 TryFieldEffects(enum FieldEffectCases caseId)
+         {
+             if (GetConfig(B_OVERWORLD_WEATHER_OVERRIDE) >= GEN_9)
+                 gBattleStruct->overworldWeatherPresent = TRUE;
+-            gBattleCommunication[MULTISTRING_CHOOSER] = GetCurrentWeather();
++            gBattleCommunication[MULTISTRING_CHOOSER] =
++#ifdef PORTABLE
++                WorldCoop_IsBattle() ? WorldCoop_FieldWeather() :
++#endif
++                GetCurrentWeather();
+             BattleScriptPushCursorAndCallback(BattleScript_OverworldWeatherStarts);
+         }
+         break;
+diff --git a/src/data/party_menu.h b/src/data/party_menu.h
+index 9d65313c6e90ecbf915a74a5804aa7b35c253544..97a038c2a15e201fc5ed62acd070dd31871d966e 100644
+--- a/src/data/party_menu.h
++++ b/src/data/party_menu.h
+@@ -786,6 +786,9 @@ static const u16 sUnusedData[] =
+ };
+ 
+ static const u8 sText_Trade4[] = _("TRADE");
++#ifdef PORTABLE
++static const u8 sText_AutoHeal[] = _("AUTO HEAL");
++#endif
+ 
+ struct
+ {
+@@ -821,6 +824,9 @@ struct
+     [MENU_CATALOG_MOWER]   = {COMPOUND_STRING("Lawn mower"),      CursorCb_CatalogMower},
+     [MENU_CHANGE_FORM]     = {COMPOUND_STRING("Change form"),     CursorCb_ChangeForm},
+     [MENU_CHANGE_ABILITY]  = {COMPOUND_STRING("Change Ability"),  CursorCb_ChangeAbility},
++#ifdef PORTABLE
++    [MENU_AUTO_HEAL]       = {sText_AutoHeal,                      CursorCb_AutoHeal},
++#endif
+ };
+ 
+ static const u8 sPartyMenuAction_SummarySwitchCancel[] = {MENU_SUMMARY, MENU_SWITCH, MENU_CANCEL1};
+diff --git a/src/event_object_movement.c b/src/event_object_movement.c
+index 036965644d9a4abad12f8abda30d22aede8a5dd1..8a94fbbc3b0ef6f1f9812cd8d8bfe4799e6290c1 100644
+--- a/src/event_object_movement.c
++++ b/src/event_object_movement.c
+@@ -1,4 +1,8 @@
+ #include "global.h"
++#if defined(PORTABLE) && GENERATED_MAP_READY
++#include "platform/generated_map.h"
++#include "platform/world_bridge.h"
++#endif
+ #include "malloc.h"
+ #include "battle_anim.h"
+ #include "battle_pyramid.h"
+@@ -6621,6 +6625,13 @@ u32 GetObjectObjectCollidesWith(struct ObjectEvent *objectEvent, s16 x, s16 y, b
+          && !FollowerNPC_IsCollisionExempt(curObject, objectEvent)
+          )
+         {
++#if defined(PORTABLE) && GENERATED_MAP_READY
++            /* Preserve shared-area corridor/entrance passability without
++             * changing ordinary NPC, follower or overworld-wild collisions. */
++            if (objectEvent->isPlayer && GeneratedMap_IsInside()
++             && WorldBridge_IsRemoteObject(curObject))
++                continue;
++#endif
+             // check for collision if curObject is active, not the object in question, and not exempt from collisions
+             if ((curObject->currentCoords.x == x && curObject->currentCoords.y == y) || (curObject->previousCoords.x == x && curObject->previousCoords.y == y))
+             {
+diff --git a/src/field_effect.c b/src/field_effect.c
+index 1965faa42d22d66e99fe8af9784c42b02a077251..b8310dccd8974e700a255173546164a68bfec69e 100644
+--- a/src/field_effect.c
++++ b/src/field_effect.c
+@@ -41,6 +41,10 @@
+ #include "constants/rgb.h"
+ #include "constants/songs.h"
+ 
++#ifdef PORTABLE
++#include "platform/world_travel.h"
++#endif
++
+ #define subsprite_table(ptr) {.subsprites = ptr, .subspriteCount = (sizeof ptr) / (sizeof(struct Subsprite))}
+ 
+ EWRAM_DATA s32 gFieldEffectArguments[8] = {0};
+@@ -1592,6 +1596,21 @@ static void Task_FlyIntoMap(u8 taskId)
+     {
+         if (!FieldEffectActiveListContains(FLDEFF_FLY_IN))
+         {
++#ifdef PORTABLE
++            /* Validate the custom landing after the native Fly-in effect but
++             * before releasing field control. Redirect stale arrivals through
++             * Emerald's ordinary heal-location Fly warp. */
++            unsigned fallback = WorldTravel_ArrivalFallback();
++            if (fallback)
++            {
++                SetWarpDestinationToHealLocation(fallback);
++                WarpIntoMap();
++                SetMainCallback2(CB2_LoadMap);
++                gFieldCallback = FieldCallback_FlyIntoMap;
++                DestroyTask(taskId);
++                return;
++            }
++#endif
+             if (FNPC_NPC_FOLLOWER_SHOW_AFTER_LEAVE_ROUTE)
+                 FollowerNPCReappearAfterLeaveMap(follower, player);
+ 
+diff --git a/src/item_menu.c b/src/item_menu.c
+index 84c87a3ab6da762cf9311e4f58f1b6bb7be7a8fb..32a0eb70f4a326cfb3175fd97bf5ed6f04272e48 100755
+--- a/src/item_menu.c
++++ b/src/item_menu.c
+@@ -1,4 +1,7 @@
+ #include "global.h"
++#ifdef PORTABLE
++#include "platform/world_coop.h"
++#endif
+ #include "item_menu.h"
+ #include "battle.h"
+ #include "battle_controllers.h"
+@@ -1631,7 +1634,11 @@ static void OpenContextMenu(u8 taskId)
+     case ITEMMENULOCATION_BATTLE:
+     case ITEMMENULOCATION_WALLY:
+     case ITEMMENULOCATION_RAIDEND:
+-        if (GetItemBattleUsage(gSpecialVar_ItemId))
++        if (GetItemBattleUsage(gSpecialVar_ItemId)
++#ifdef PORTABLE
++         && (!WorldCoop_IsBattle() || WorldCoop_CanSelectBattleItem(gSpecialVar_ItemId))
++#endif
++           )
+         {
+             gBagMenu->contextMenuItemsPtr = sContextMenuItems_BattleUse;
+             gBagMenu->contextMenuNumItems = ARRAY_COUNT(sContextMenuItems_BattleUse);
+diff --git a/src/item_use.c b/src/item_use.c
+index d6ab79713e0eaab293a8146db2d78bd3b20c80f6..2774def1fb4b77392d56ff583d3e01dfd5c8b96b 100644
+--- a/src/item_use.c
++++ b/src/item_use.c
+@@ -1,4 +1,8 @@
+ #include "global.h"
++#ifdef PORTABLE
++#include "platform/world_coop.h"
++#include "platform/world_coop_potion.h"
++#endif
+ #include "item_use.h"
+ #include "battle.h"
+ #include "battle_anim.h"
+@@ -26,6 +30,10 @@
+ #include "item_menu.h"
+ #include "item_use.h"
+ #include "mail.h"
++#ifdef PORTABLE
++#include "platform/world_coop.h"
++#include "platform/world_coop_potion.h"
++#endif
+ #include "main.h"
+ #include "menu.h"
+ #include "menu_helpers.h"
+@@ -1159,7 +1167,13 @@ static void ItemUseInBattle_ShowPartyMenu(u8 taskId)
+ 
+ void ItemUseInBattle_PartyMenu(u8 taskId)
+ {
+-    gItemUseCB = ItemUseCB_BattleScript;
++#ifdef PORTABLE
++    if (WorldCoop_IsBattle() && WorldCoop_CanSelectBattleItem(gSpecialVar_ItemId)
++     && WorldCoop_IsMedicine(gSpecialVar_ItemId))
++        gItemUseCB = ItemUseCB_WorldCoopMedicine;
++    else
++#endif
++        gItemUseCB = ItemUseCB_BattleScript;
+     ItemUseInBattle_ShowPartyMenu(taskId);
+ }
+ 
+diff --git a/src/librfu_rfu.c b/src/librfu_rfu.c
+index f9686288f1888cbc9bb3def52448dac1f4ff8aa7..b5f7c870da50b7c0bf712557976e89baeeafa7b6 100644
+--- a/src/librfu_rfu.c
++++ b/src/librfu_rfu.c
+@@ -137,10 +137,16 @@ u16 rfu_initializeAPI(u32 *APIBuffer, u16 buffByteSize, IntrFunc *sioIntrTable_p
+     u16 buffByteSizeMax;
+ 
+     // is in EWRAM?
++#if PLATFORM_NATIVE || defined(PORTABLE)
++    /* Host globals can share the GBA bank bits without being mapped EWRAM. */
++    if ((uintptr_t)APIBuffer >= EWRAM_START
++        && (uintptr_t)APIBuffer < EWRAM_END && copyInterruptToRam)
++#else
+     if (((uintptr_t)APIBuffer & 0xF000000) == EWRAM_START && copyInterruptToRam)
++#endif
+         return ERR_RFU_API_BUFF_ADR;
+     // is not 4-byte aligned?
+-#if PLATFORM_NATIVE
++#if __SIZEOF_POINTER__ == 8
+ #if __SIZEOF_POINTER__ != 8
+ #line 143
+     if ((u32)APIBuffer & 3)
+@@ -171,7 +177,7 @@ u16 rfu_initializeAPI(u32 *APIBuffer, u16 buffByteSize, IntrFunc *sioIntrTable_p
+         if (buffByteSize < buffByteSizeMax)
+             return ERR_RFU_API_BUFF_SIZE;
+     }
+-#if PLATFORM_NATIVE
++#if __SIZEOF_POINTER__ == 8
+ #if __SIZEOF_POINTER__ != 8
+ #line 160
+     gRfuLinkStatus = (void *)APIBuffer + 0;
+diff --git a/src/link.c b/src/link.c
+index 1ec4047b63ca93cc204953b89ee7f3eea8a9af99..901faddaf2353098efc7fc53ac42818b8c01a0fb 100644
+--- a/src/link.c
++++ b/src/link.c
+@@ -317,6 +317,10 @@ void SetLocalLinkPlayerId(u8 playerId)
+ 
+ static void InitLocalLinkPlayer(void)
+ {
++#ifdef PORTABLE
++    if (NativeLink_IsActive())
++        SetLocalLinkPlayerId(NativeLink_LocalId());
++#endif
+     gLocalLinkPlayer.trainerId = READ_OTID_FROM_SAVE;
+     StringCopy(gLocalLinkPlayer.name, gSaveBlock2Ptr->playerName);
+     gLocalLinkPlayer.gender = gSaveBlock2Ptr->playerGender;
+@@ -1264,6 +1268,10 @@ static void UNUSED SendBerryBlenderNoSpaceForPokeblocks(void)
+ 
+ u8 GetMultiplayerId(void)
+ {
++#ifdef PORTABLE
++    if (NativeLink_IsActive())
++        return NativeLink_LocalId();
++#endif
+     if (gWirelessCommType == TRUE)
+         return Rfu_GetMultiplayerId();
+ 
+diff --git a/src/link_rfu_2.c b/src/link_rfu_2.c
+index 2b6fb66514ec002f44813583198c2d8748d8fdc7..b28d60feeb5e0b0d28bd611ecfa232535d513b66 100644
+--- a/src/link_rfu_2.c
++++ b/src/link_rfu_2.c
+@@ -72,7 +72,7 @@ struct RfuDebug
+     u8 padding[2];
+ };
+ 
+-#if PLATFORM_NATIVE
++#if __SIZEOF_POINTER__ == 8
+ #if __SIZEOF_POINTER__ != 8
+ #line 75
+ COMMON_DATA u32 gRfuAPIBuffer[RFU_API_BUFF_SIZE_RAM / 4] = {0};
+diff --git a/src/overworld.c b/src/overworld.c
+index f1c246a1ffc3be9cc89b48b5d08395a9d42fe0f1..f5008e5ad24d5572c53d96078bfc74fb230f0403 100644
+--- a/src/overworld.c
++++ b/src/overworld.c
+@@ -84,6 +84,9 @@
+ #include "constants/songs.h"
+ #include "constants/trainer_hill.h"
+ #include "constants/weather.h"
++#ifdef PORTABLE
++#include "platform/generated_map.h"
++#endif
+ 
+ STATIC_ASSERT((B_FLAG_FOLLOWERS_DISABLED == 0 || OW_FOLLOWERS_ENABLED), FollowersFlagAssignedWithoutEnablingThem);
+ 
+@@ -613,7 +616,12 @@ static void InitMapView(void)
+ 
+ const struct MapLayout *GetMapLayout(u16 mapLayoutId)
+ {
+-    return gMapLayouts[mapLayoutId - 1];
++    const struct MapLayout *layout = gMapLayouts[mapLayoutId - 1];
++#ifdef PORTABLE
++    return GeneratedMap_ResolveLayout(layout);
++#else
++    return layout;
++#endif
+ }
+ 
+ void ApplyCurrentWarp(void)
+diff --git a/src/party_menu.c b/src/party_menu.c
+index a11fd377265ed963f29ca353f7bb7b503fabcef4..b9745ad589aa019fa86a98c8892d7a37ef369adf 100644
+--- a/src/party_menu.c
++++ b/src/party_menu.c
+@@ -1,4 +1,12 @@
+ #include "global.h"
++#ifdef PORTABLE
++#include "platform/world_coop.h"
++#include "platform/world_coop_potion.h"
++#include "platform/party_autoheal.h"
++static const u8 sText_AutoHealUsed[] = _("Your party was healed.");
++static const u8 sText_AutoHealNothing[] = _("Your party needs no healing.");
++static const u8 sText_AutoHealRefused[] = _("Auto Heal couldn't be used.");
++#endif
+ #include "malloc.h"
+ #include "battle.h"
+ #include "battle_anim.h"
+@@ -80,6 +88,9 @@
+ #include "constants/party_menu.h"
+ #include "constants/rgb.h"
+ #include "constants/songs.h"
++#ifdef PORTABLE
++#include "platform/world_coop.h"
++#endif
+ 
+ enum {
+     MENU_SUMMARY,
+@@ -110,6 +121,9 @@ enum {
+     MENU_CATALOG_MOWER,
+     MENU_CHANGE_FORM,
+     MENU_CHANGE_ABILITY,
++#ifdef PORTABLE
++    MENU_AUTO_HEAL,
++#endif
+     MENU_FIELD_MOVES
+ };
+ 
+@@ -219,6 +233,9 @@ static EWRAM_DATA u16 *sSlot1TilemapBuffer = 0; // for switching party slots
+ static EWRAM_DATA u16 *sSlot2TilemapBuffer = 0; //
+ EWRAM_DATA u8 gSelectedOrderFromParty[MAX_FRONTIER_PARTY_SIZE] = {0};
+ static EWRAM_DATA enum Item sPartyMenuItemId = 0;
++#ifdef PORTABLE
++static EWRAM_DATA bool8 sCoopFullMenuPartyView;
++#endif
+ EWRAM_DATA u8 gBattlePartyCurrentOrder[PARTY_SIZE / 2] = {0}; // bits 0-3 are the current pos of Slot 1, 4-7 are Slot 2, and so on
+ static EWRAM_DATA u8 sInitialLevel = 0;
+ static EWRAM_DATA u8 sFinalLevel = 0;
+@@ -457,6 +474,10 @@ static void BlitBitmapToPartyWindow_RightColumn(u8, u8, u8, u8, u8, bool8);
+ static void CursorCb_Summary(u8);
+ static void CursorCb_Switch(u8);
+ static void CursorCb_Cancel1(u8);
++#ifdef PORTABLE
++static void CursorCb_AutoHeal(u8);
++static void Task_AutoHealMessage(u8);
++#endif
+ static void CursorCb_Item(u8);
+ static void CursorCb_Give(u8);
+ static void CursorCb_TakeItem(u8);
+@@ -519,10 +540,23 @@ static void InitPartyMenu(enum PartyMenuType menuType, enum PartyMenuLayout layo
+ {
+     u16 i;
+ 
++#ifdef PORTABLE
++    if (sCoopFullMenuPartyView && !WorldCoop_FullPartyMenuActive())
++    {
++        sCoopFullMenuPartyView = FALSE;
++        WorldCoop_SetPartyMenuOrder(FALSE);
++    }
++#endif
+     ResetPartyMenu();
+     sPartyMenuInternal = Alloc(sizeof(struct PartyMenuInternal));
+     if (sPartyMenuInternal == NULL)
+     {
++#ifdef PORTABLE
++        if (sCoopFullMenuPartyView && WorldCoop_FullPartyMenuActive())
++            WorldCoop_EndFullPartyMenu();
++        sCoopFullMenuPartyView = FALSE;
++        WorldCoop_SetPartyMenuOrder(FALSE);
++#endif
+         SetMainCallback2(callback);
+     }
+     else
+@@ -876,6 +910,15 @@ static void Task_ExitPartyMenu(u8 taskId)
+ {
+     if (!gPaletteFade.active)
+     {
++#ifdef PORTABLE
++        if (sCoopFullMenuPartyView)
++        {
++            if (WorldCoop_FullPartyMenuActive())
++                WorldCoop_EndFullPartyMenu();
++            sCoopFullMenuPartyView = FALSE;
++            WorldCoop_SetPartyMenuOrder(FALSE);
++        }
++#endif
+         SetMainCallback2(gPartyMenu.exitCallback);
+         FreePartyPointers();
+         DestroyTask(taskId);
+@@ -1458,7 +1501,26 @@ static void Task_ClosePartyMenuAndSetCB2(u8 taskId)
+ {
+     if (!gPaletteFade.active)
+     {
+-        if (gPartyMenu.menuType == PARTY_MENU_TYPE_IN_BATTLE)
++#ifdef PORTABLE
++        if (sCoopFullMenuPartyView && !WorldCoop_FullPartyMenuActive())
++        {
++            sCoopFullMenuPartyView = FALSE;
++            WorldCoop_SetPartyMenuOrder(FALSE);
++        }
++        bool8 closingCoopFullMenu = sCoopFullMenuPartyView
++            && sPartyMenuInternal->exitCallback != CB2_ShowPokemonSummaryScreen;
++        if (closingCoopFullMenu)
++        {
++            WorldCoop_EndFullPartyMenu();
++            sCoopFullMenuPartyView = FALSE;
++            WorldCoop_SetPartyMenuOrder(FALSE);
++        }
++#endif
++        if (gPartyMenu.menuType == PARTY_MENU_TYPE_IN_BATTLE
++#ifdef PORTABLE
++         && !closingCoopFullMenu
++#endif
++           )
+             UpdatePartyToFieldOrder();
+ 
+         if (sPartyMenuInternal->exitCallback != NULL)
+@@ -2901,14 +2963,14 @@ static u8 DisplaySelectionWindow(u8 windowType)
+         const u8 *text;
+         u8 fontColorsId = 3;
+ 
+-        if (sPartyMenuInternal->actions[i] >= MENU_FIELD_MOVES)
+-            fontColorsId = 4;
+-
+         if (sPartyMenuInternal->actions[i] >= MENU_FIELD_MOVES)
+             text = GetMoveName(FieldMove_GetMoveId(sPartyMenuInternal->actions[i] - MENU_FIELD_MOVES));
+         else
+             text = sCursorOptions[sPartyMenuInternal->actions[i]].text;
+ 
++        if (sPartyMenuInternal->actions[i] >= MENU_FIELD_MOVES)
++            fontColorsId = 4;
++
+         AddTextPrinterParameterized4(sPartyMenuInternal->windowId[0], FONT_NORMAL, cursorDimension, (i * 16) + 1, letterSpacing, 0, sFontColorTable[fontColorsId], 0, text);
+     }
+ 
+@@ -2991,6 +3053,13 @@ static void SetPartyMonFieldSelectionActions(struct Pokemon *mons, u8 slotId)
+         else
+             AppendToList(sPartyMenuInternal->actions, &sPartyMenuInternal->numActions, MENU_ITEM);
+     }
++#ifdef PORTABLE
++    if (sPartyMenuInternal->numActions < ARRAY_COUNT(sPartyMenuInternal->actions) - 1
++        && gPartyMenu.menuType == PARTY_MENU_TYPE_FIELD
++        && gPartyMenu.exitCallback == CB2_ReturnToFieldWithOpenMenu
++        && WorldAutoHeal_Available())
++        AppendToList(sPartyMenuInternal->actions, &sPartyMenuInternal->numActions, MENU_AUTO_HEAL);
++#endif
+     AppendToList(sPartyMenuInternal->actions, &sPartyMenuInternal->numActions, MENU_CANCEL1);
+ }
+ 
+@@ -3135,6 +3204,51 @@ static void Task_HandleSelectionMenuInput(u8 taskId)
+     }
+ }
+ 
++#ifdef PORTABLE
++static void Task_AutoHealMessage(u8 taskId)
++{
++    if (!IsPartyMenuTextPrinterActive() && JOY_NEW(A_BUTTON | B_BUTTON))
++    {
++        ClearStdWindowAndFrameToTransparent(WIN_MSG, FALSE);
++        ClearWindowTilemap(WIN_MSG);
++        CursorCb_Cancel1(taskId);
++        ScheduleBgCopyTilemapToVram(2);
++    }
++}
++
++static void CursorCb_AutoHeal(u8 taskId)
++{
++    enum AutoHealResult result = AUTO_HEAL_REFUSED;
++    u8 slot;
++
++    PlaySE(SE_SELECT);
++    if (gMain.callback2 == CB2_UpdatePartyMenu
++        && gTasks[taskId].func == Task_HandleSelectionMenuInput
++        && gPartyMenu.menuType == PARTY_MENU_TYPE_FIELD
++        && gPartyMenu.exitCallback == CB2_ReturnToFieldWithOpenMenu
++        && WorldAutoHeal_Available())
++        result = WorldAutoHeal_Run();
++
++    PartyMenuRemoveWindow(&sPartyMenuInternal->windowId[0]);
++    PartyMenuRemoveWindow(&sPartyMenuInternal->windowId[1]);
++    if (result == AUTO_HEAL_USED)
++    {
++        for (slot = 0; slot < gPlayerPartyCount; slot++)
++        {
++            DisplayPartyPokemonData(slot);
++            SetPartyMonAilmentGfx(&gPlayerParty[slot], &sPartyMenuBoxes[slot]);
++            UpdatePartyMonHPBar(sPartyMenuBoxes[slot].monSpriteId, &gPlayerParty[slot]);
++            CopyWindowToVram(sPartyMenuBoxes[slot].windowId, COPYWIN_GFX);
++        }
++        ScheduleBgCopyTilemapToVram(0);
++    }
++    DisplayPartyMenuMessage(result == AUTO_HEAL_USED ? sText_AutoHealUsed
++        : result == AUTO_HEAL_NOTHING ? sText_AutoHealNothing : sText_AutoHealRefused, TRUE);
++    ScheduleBgCopyTilemapToVram(2);
++    gTasks[taskId].func = Task_AutoHealMessage;
++}
++#endif
++
+ static void CursorCb_Summary(u8 taskId)
+ {
+     PlaySE(SE_SELECT);
+@@ -4852,7 +4966,51 @@ static bool32 IsItemFlute(enum Item item)
+     return FALSE;
+ }
+ 
+-// Battle scripts called in HandleAction_UseItem
++#ifdef PORTABLE
++void ItemUseCB_WorldCoopMedicine(u8 taskId, TaskFunc task)
++{
++    struct Pokemon *party = NULL;
++    struct Pokemon *mon;
++    s8 partySlot = -1;
++    u8 nativeSlot;
++    bool8 canUse = FALSE;
++    u16 item = gSpecialVar_ItemId;
++
++    GetPartyAndSlotFromPartyMenuId(gPartyMenu.slotId, &party, &partySlot);
++    if (party == gPlayerParty && partySlot >= 0 && partySlot < MULTI_PARTY_SIZE
++     && gPartyMenu.slotId >= 0 && gPartyMenu.slotId < PARTY_SIZE)
++    {
++        u8 combinedPartyId = GetPartyIdFromBattleSlot(gPartyMenu.slotId);
++        nativeSlot = CombinedToIndividualPartyId(combinedPartyId);
++        /* partySlot addresses the selected monster in current battle order;
++         * nativeSlot is its stable slot in the owner's field-order party. */
++        if (nativeSlot < MULTI_PARTY_SIZE)
++        {
++            mon = &party[partySlot];
++            canUse = WorldCoop_SelectMedicineMenuTarget(item, party, nativeSlot, mon);
++        }
++    }
++
++    if (!canUse)
++    {
++        gPartyMenuUseExitCallback = FALSE;
++        PlaySE(SE_SELECT);
++        DisplayPartyMenuMessage(gText_WontHaveEffect, TRUE);
++        ScheduleBgCopyTilemapToVram(2);
++        gTasks[taskId].func = task;
++        return;
++    }
++
++    /* Store only the target. The local owner controller consumes the private
++     * bag item after the authenticated battle action accepts it. Closing this
++     * normal in-battle menu restores field order before action dispatch. */
++    gPartyMenuUseExitCallback = TRUE;
++    PlaySE(SE_SELECT);
++    ScheduleBgCopyTilemapToVram(2);
++    gTasks[taskId].func = task;
++}
++#endif
++
+ void ItemUseCB_BattleScript(u8 taskId, TaskFunc task)
+ {
+     struct Pokemon *mon = GetPartyMonFromPartyMenuId(gPartyMenu.slotId);
+@@ -7504,6 +7662,27 @@ static u8 GetPartyLayoutFromBattleType(void)
+ 
+ void OpenPartyMenuInBattle(u8 partyAction)
+ {
++#ifdef PORTABLE
++    if (WorldCoop_IsBattle()
++     && (partyAction == PARTY_ACTION_CHOOSE_MON || partyAction == PARTY_ACTION_SEND_OUT)
++     && WorldCoop_BeginFullPartyMenu())
++    {
++        sCoopFullMenuPartyView = TRUE;
++        WorldCoop_SetPartyMenuOrder(TRUE);
++        InitPartyMenu(PARTY_MENU_TYPE_IN_BATTLE, PARTY_LAYOUT_SINGLE, partyAction, FALSE,
++                      PARTY_MSG_CHOOSE_MON, Task_HandleChooseMonInput, CB2_SetUpReshowBattleScreenAfterMenu);
++        if (!sPartyMenuInternal)
++        {
++            sCoopFullMenuPartyView = FALSE;
++            WorldCoop_SetPartyMenuOrder(FALSE);
++        }
++        else
++        {
++            ReshowBattleScreenDummy();
++        }
++        return;
++    }
++#endif
+     if (IS_FRLG && !BtlCtrl_OakOldMan_TestState2Flag(FIRST_BATTLE_MSG_FLAG_PARTY_MENU) && (gBattleTypeFlags & BATTLE_TYPE_FIRST_BATTLE))
+     {
+         InitPartyMenu(PARTY_MENU_TYPE_IN_BATTLE, GetPartyLayoutFromBattleType(), partyAction, FALSE, PARTY_MSG_NONE, Task_FirstBattleEnterParty_WaitFadeIn, CB2_SetUpReshowBattleScreenAfterMenu);
+@@ -7547,7 +7726,21 @@ static bool8 TrySwitchInPokemon(void)
+     struct Pokemon *party = NULL;
+     s8 partySlot = 0, newPartySlot = 0;
+     u8 newSlot;
+-    u8 battlePartyId = 0;
++    u8 battlePartyId;
++#ifdef PORTABLE
++    if (sCoopFullMenuPartyView)
++    {
++        if (!WorldCoop_ChooseFullPartyMenu(slot))
++        {
++            GetMonNickname(&gPlayerParty[slot], gStringVar1);
++            StringExpandPlaceholders(gStringVar4, gText_PkmnCantSwitchOut);
++            return FALSE;
++        }
++        gSelectedMonPartyId = WorldCoop_FullPartyChoiceReply();
++        gPartyMenuUseExitCallback = TRUE;
++        return TRUE;
++    }
++#endif
+ 
+     GetPartyAndSlotFromPartyMenuId(slot, &party, &partySlot);
+     battlePartyId = GetPartyIdFromBattleSlot(slot);
+diff --git a/src/script_movement.c b/src/script_movement.c
+index bc10a64ef029f6b8b46051e6f42c41d1ab381219..812456baeb5b87dffb1469dce988c59bb98c25b0 100644
+--- a/src/script_movement.c
++++ b/src/script_movement.c
+@@ -18,6 +18,22 @@ static void ScriptMovement_MoveObjects(u8 taskId);
+ static void ScriptMovement_TakeStep(u8 taskId, u8 moveScrId, u8 objEventId, const u8 *movementScript);
+ 
+ static EWRAM_DATA const u8 *sMovementScripts[OBJECT_EVENTS_COUNT] = {0};
++#if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
++/* The original task stores 16 completion bits and object IDs inline. Native
++ * peers expand the object pool, not the fixed task-data storage. */
++static EWRAM_DATA u8 sMovementObjectIds[OBJECT_EVENTS_COUNT];
++static EWRAM_DATA bool8 sMovementFinished[OBJECT_EVENTS_COUNT];
++#endif
++
++static u8 *GetMovementObjectIds(u8 taskId)
++{
++#if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
++    (void)taskId;
++    return sMovementObjectIds;
++#else
++    return (u8 *)&gTasks[taskId].data[1];
++#endif
++}
+ 
+ bool8 ScriptMovement_StartObjectMovementScript(u8 localId, u8 mapNum, u8 mapGroup, const u8 *movementScript)
+ {
+@@ -50,11 +66,10 @@ bool32 ScriptMovement_IsAllObjectMovementFinished(void)
+     u8 taskId = GetMoveObjectsTaskId();
+     if (taskId != TASK_NONE)
+     {
+-        u32 finishedMovements = gTasks[taskId].data[0];
+-        const u8 *objEventIds = (u8 *)&gTasks[taskId].data[1];
++        const u8 *objEventIds = GetMovementObjectIds(taskId);
+         for (u32 i = 0; i < OBJECT_EVENTS_COUNT; i++)
+         {
+-            if (objEventIds[i] != 0xFF && !(finishedMovements & (1 << i)))
++            if (objEventIds[i] != 0xFF && !IsMovementScriptFinished(taskId, i))
+                 return FALSE;
+         }
+     }
+@@ -82,6 +97,13 @@ static void ScriptMovement_StartMoveObjects(u8 priority)
+ 
+     for (i = 1; i < NUM_TASK_DATA; i++)
+         gTasks[taskId].data[i] = 0xFFFF;
++#if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
++    for (i = 0; i < OBJECT_EVENTS_COUNT; i++)
++    {
++        sMovementObjectIds[i] = 0xFF;
++        sMovementFinished[i] = FALSE;
++    }
++#endif
+ }
+ 
+ static u8 GetMoveObjectsTaskId(void)
+@@ -123,7 +145,7 @@ static u8 GetMovementScriptIdFromObjectEventId(u8 taskId, u8 objEventId)
+     u8 *moveScriptId;
+     u8 i;
+ 
+-    moveScriptId = (u8 *)&gTasks[taskId].data[1];
++    moveScriptId = GetMovementObjectIds(taskId);
+     for (i = 0; i < OBJECT_EVENTS_COUNT; i++, moveScriptId++)
+     {
+         if (*moveScriptId == objEventId)
+@@ -136,7 +158,7 @@ static void LoadObjectEventIdPtrFromMovementScript(u8 taskId, u8 moveScrId, u8 *
+ {
+     u8 i;
+ 
+-    *pObjEventId = (u8 *)&gTasks[taskId].data[1];
++    *pObjEventId = GetMovementObjectIds(taskId);
+     for (i = 0; i < moveScrId; i++, (*pObjEventId)++)
+         ;
+ }
+@@ -159,24 +181,39 @@ static void LoadObjectEventIdFromMovementScript(u8 taskId, u8 moveScrId, u8 *obj
+ 
+ static void ClearMovementScriptFinished(u8 taskId, u8 moveScrId)
+ {
++#if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
++    (void)taskId;
++    sMovementFinished[moveScrId] = FALSE;
++#else
+     u16 mask = ~(1u << moveScrId);
+ 
+     gTasks[taskId].data[0] &= mask;
++#endif
+ }
+ 
+ static void SetMovementScriptFinished(u8 taskId, u8 moveScrId)
+ {
++#if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
++    (void)taskId;
++    sMovementFinished[moveScrId] = TRUE;
++#else
+     gTasks[taskId].data[0] |= (1u << moveScrId);
++#endif
+ }
+ 
+ static bool8 IsMovementScriptFinished(u8 taskId, u8 moveScrId)
+ {
++#if defined(PORTABLE) && WORLD_EXTENDED_OBJECTS
++    (void)taskId;
++    return sMovementFinished[moveScrId];
++#else
+     u16 moveScriptFinished = (u16)gTasks[taskId].data[0] & (1u << moveScrId);
+ 
+     if (moveScriptFinished != 0)
+         return TRUE;
+     else
+         return FALSE;
++#endif
+ }
+ 
+ static void SetMovementScript(u8 moveScrId, const u8 *movementScript)
+@@ -201,7 +238,7 @@ static void ScriptMovement_UnfreezeActiveObjects(u8 taskId)
+     u8 *pObjEventId;
+     u8 i;
+ 
+-    pObjEventId = (u8 *)&gTasks[taskId].data[1];
++    pObjEventId = GetMovementObjectIds(taskId);
+     for (i = 0; i < OBJECT_EVENTS_COUNT; i++, pObjEventId++)
+     {
+         if (*pObjEventId != 0xFF)
+diff --git a/src/sprite.c b/src/sprite.c
+index 6dd75182a2c5a07102457623927781bc14e5bfe7..28dded18aed5e588609190dfd4acdb98f60392b1 100644
+--- a/src/sprite.c
++++ b/src/sprite.c
+@@ -711,10 +711,15 @@ u32 CreateSpriteAt(u32 index, const struct SpriteTemplate *template, s16 x, s16
+         s16 tileNum;
+         sprite->images = template->images;
+ #if defined(PORTABLE) && WORLD_NATIVE_TILEBANK
+-        tileNum = NativeSpriteTileAllocate(sprite, (u8)(sprite->images->size / TILE_SIZE_4BPP));
+-        if (tileNum == -1)
++        u16 tileCount = sprite->images->size / TILE_SIZE_4BPP;
++        tileNum = NativeSpriteTileAllocate(sprite, tileCount);
++        /* The stock allocator takes u8. A failed extra-bank allocation must
++         * not wrap a larger frame into a smaller stock allocation. */
++        if (tileNum == -1 && tileCount <= 255)
++            tileNum = AllocSpriteTiles((u8)tileCount);
++#else
++        tileNum = AllocSpriteTiles((u8)(sprite->images->size / TILE_SIZE_4BPP));
+ #endif
+-            tileNum = AllocSpriteTiles((u8)(sprite->images->size / TILE_SIZE_4BPP));
+         if (tileNum == -1)
+         {
+             ResetSprite(sprite);
+diff --git a/src/trade.c b/src/trade.c
+index ece527d2838226fdf512c596a9e48d6888c759f7..0f9d34c1425adc7ff506ced506923031179b5e1a 100644
+--- a/src/trade.c
++++ b/src/trade.c
+@@ -1194,6 +1194,8 @@ static void PrintIsThisTradeOkay(void)
+     DrawBottomRowText(sText_IsThisTradeOkay, (void *)(OBJ_VRAM0 + (sTradeMenu->bottomTextTileStart * 32)), 24);
+ }
+ 
++static void SetLinkData(u16 linkCmd, u16 cursorPosition);
++
+ static void Leader_ReadLinkBuffer(u8 mpId, u8 status)
+ {
+     if (status & 1)
+@@ -1224,8 +1226,17 @@ static void Leader_ReadLinkBuffer(u8 mpId, u8 status)
+             sTradeMenu->partnerSelectStatus = STATUS_CANCEL;
+             break;
+         case LINKCMD_READY_TO_TRADE:
+-            sTradeMenu->partnerCursorPosition = gBlockRecvBuffer[1][1] + PARTY_SIZE;
+-            sTradeMenu->partnerSelectStatus = STATUS_READY;
++            /* The peer controls this byte. Never turn an invalid party slot
++             * into a menu index (or let it reach the selected-mon routines). */
++            if (gBlockRecvBuffer[1][1] < sTradeMenu->partyCounts[TRADE_PARTNER])
++            {
++                sTradeMenu->partnerCursorPosition = gBlockRecvBuffer[1][1] + PARTY_SIZE;
++                sTradeMenu->partnerSelectStatus = STATUS_READY;
++            }
++            else
++            {
++                sTradeMenu->partnerSelectStatus = STATUS_CANCEL;
++            }
+             break;
+         case LINKCMD_INIT_BLOCK:
+             sTradeMenu->partnerConfirmStatus = STATUS_READY;
+@@ -1254,6 +1265,14 @@ static void Follower_ReadLinkBuffer(u8 mpId, u8 status)
+             sTradeMenu->callbackId = CB_HANDLE_TRADE_CANCELED;
+             break;
+         case LINKCMD_SET_MONS_TO_TRADE:
++            /* This command is the leader's selection. Validate it against the
++             * received party count before the UI or trade animation indexes it. */
++            if (gBlockRecvBuffer[0][1] >= sTradeMenu->partyCounts[TRADE_PARTNER])
++            {
++                SetLinkData(LINKCMD_PLAYER_CANCEL_TRADE, 0);
++                sTradeMenu->callbackId = CB_IDLE;
++                break;
++            }
+             sTradeMenu->partnerCursorPosition = gBlockRecvBuffer[0][1] + PARTY_SIZE;
+             rbox_fill_rectangle(0);
+             SetSelectedMon(sTradeMenu->cursorPosition);
+diff --git a/src/wild_encounter.c b/src/wild_encounter.c
+index dd6a0c8893d468cb7fddc4160f121b91ac2baa05..f11f92e229966d8c805c0b8b1ca9585184ad7d98 100644
+--- a/src/wild_encounter.c
++++ b/src/wild_encounter.c
+@@ -22,6 +22,9 @@
+ #include "script.h"
+ #include "tv.h"
+ #include "wild_encounter.h"
++#ifdef PORTABLE
++#include "platform/generated_map.h"
++#endif
+ #include "battle_debug.h"
+ #include "battle_pike.h"
+ #include "battle_pyramid.h"
+@@ -421,6 +424,16 @@ u8 ChooseWildMonLevel(const struct WildPokemon *wildPokemon, u8 wildMonIndex, en
+ u16 GetCurrentMapWildMonHeaderId(void)
+ {
+     u16 i;
++#if defined(PORTABLE) && GENERATED_CAVE_PROFILES
++    u8 group = gSaveBlock1Ptr->location.mapGroup;
++    u8 num = gSaveBlock1Ptr->location.mapNum;
++    switch (GeneratedMap_EncounterProfile())
++    {
++    case 1: group = MAP_GROUP(MAP_METEOR_FALLS_1F_1R); num = MAP_NUM(MAP_METEOR_FALLS_1F_1R); break;
++    case 2: group = MAP_GROUP(MAP_SHOAL_CAVE_LOW_TIDE_ICE_ROOM); num = MAP_NUM(MAP_SHOAL_CAVE_LOW_TIDE_ICE_ROOM); break;
++    case 3: group = MAP_GROUP(MAP_VICTORY_ROAD_1F); num = MAP_NUM(MAP_VICTORY_ROAD_1F); break;
++    }
++#endif
+ 
+     for (i = 0; ; i++)
+     {
+@@ -428,8 +441,12 @@ u16 GetCurrentMapWildMonHeaderId(void)
+         if (wildHeader->mapGroup == MAP_GROUP(MAP_UNDEFINED))
+             break;
+ 
++#if defined(PORTABLE) && GENERATED_CAVE_PROFILES
++        if (gWildMonHeaders[i].mapGroup == group && gWildMonHeaders[i].mapNum == num)
++#else
+         if (gWildMonHeaders[i].mapGroup == gSaveBlock1Ptr->location.mapGroup &&
+             gWildMonHeaders[i].mapNum == gSaveBlock1Ptr->location.mapNum)
++#endif
+         {
+             if (gSaveBlock1Ptr->location.mapGroup == MAP_GROUP(MAP_ALTERING_CAVE) &&
+                 gSaveBlock1Ptr->location.mapNum == MAP_NUM(MAP_ALTERING_CAVE))
+@@ -662,14 +679,46 @@ bool8 AreLegendariesInSootopolisPreventingEncounters(void)
+     return FlagGet(FLAG_LEGENDARIES_IN_SOOTOPOLIS);
+ }
+ 
++#if defined(PORTABLE) && GENERATED_CAVE_WILDLIFE
++static s8 TryGeneratedCaveWildEncounter(u16 cur, u16 prev)
++{
++    const struct WildPokemonInfo *custom = GeneratedMap_Wildlife();
++    if (custom == NULL) return -1;
++    if (prev != cur && !AllowWildCheckOnNewMetatile()) return 0;
++    if (WildEncounterCheck(custom->encounterRate, FALSE) != TRUE) return 0;
++    if (TryGenerateWildMon(custom, WILD_AREA_LAND, WILD_CHECK_REPEL | WILD_CHECK_KEEN_EYE) != TRUE) return 0;
++    BattleSetup_StartWildBattle();
++    return 1;
++}
++
++static s8 TryGeneratedCaveSweetScent(void)
++{
++    const struct WildPokemonInfo *custom = GeneratedMap_Wildlife();
++    if (custom == NULL) return -1;
++    if (TryGenerateWildMon(custom, WILD_AREA_LAND, 0) != TRUE) return 0;
++    BattleSetup_StartWildBattle();
++    return 1;
++}
++#endif
++
+ bool8 StandardWildEncounter(u16 curMetatileBehavior, u16 prevMetatileBehavior)
+ {
+     u32 headerId;
+     enum TimeOfDay timeOfDay;
+     struct Roamer *roamer;
+ 
++#if defined(PORTABLE) && GENERATED_MAP_READY
++    if (GeneratedMap_IsInside() && !GeneratedMap_HasUsableParty()) return FALSE;
++#endif
+     if (sWildEncountersDisabled == TRUE)
+         return FALSE;
++#if defined(PORTABLE) && GENERATED_CAVE_WILDLIFE
++    if (GeneratedMap_IsInside())
++    {
++        s8 generated = TryGeneratedCaveWildEncounter(curMetatileBehavior, prevMetatileBehavior);
++        if (generated >= 0) return generated;
++    }
++#endif
+ 
+     headerId = GetCurrentMapWildMonHeaderId();
+     if (headerId == HEADER_NONE)
+@@ -852,6 +901,16 @@ void RockSmashWildEncounter(void)
+ 
+ bool8 SweetScentWildEncounter(void)
+ {
++#if defined(PORTABLE) && GENERATED_MAP_READY
++    if (GeneratedMap_IsInside() && !GeneratedMap_HasUsableParty()) return FALSE;
++#endif
++#if defined(PORTABLE) && GENERATED_CAVE_WILDLIFE
++    if (GeneratedMap_IsInside())
++    {
++        s8 generated = TryGeneratedCaveSweetScent();
++        if (generated >= 0) return generated;
++    }
++#endif
+     s16 x, y;
+     u32 headerId;
+     enum TimeOfDay timeOfDay;
+diff --git a/src/world/world_chat.c b/src/world/world_chat.c
+index b9ca6721697d1ec2d266311d1bf2e704c84cddd6..3de1c0096d2390495b321035f0dc65f3089b2cbf 100644
+--- a/src/world/world_chat.c
++++ b/src/world/world_chat.c
+@@ -14,6 +14,11 @@ static struct {
+     char draft[152], hint[96];
+ } sChat;
+ 
++unsigned WorldChat_Height(void)
++{
++    return WorldBridge_Enabled() ? WORLD_CHAT_HEIGHT : 0;
++}
++
+ static int Identifier(const char *text)
+ {
+     size_t i, length = strlen(text);
+@@ -59,6 +64,7 @@ int WorldChat_Event(const SDL_Event *event)
+     if (!WORLD_CHAT_HEIGHT || !WorldBridge_Enabled()) return 0;
+     if (event->type == SDL_WINDOWEVENT && event->window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+         sChat.editing = 0;
++        sChat.draft[0] = 0;
+         sChat.releaseKeys = 1;
+         SDL_StopTextInput();
+         return 0;
+@@ -123,17 +129,13 @@ int WorldChat_Event(const SDL_Event *event)
+     return 1;
+ }
+ 
+-int WorldChat_BlocksInput(void)
++int WorldChat_BlocksInput(unsigned keys)
+ {
+-    int count, i;
+-    const Uint8 *keys;
+     if (sChat.editing) return 1;
+     if (!sChat.releaseKeys) return 0;
+-    keys = SDL_GetKeyboardState(&count);
+-    /* Only game-bound keys can leak a typing action into gameplay. Lock keys
+-     * (notably Num Lock in Xephyr) may remain reported as down indefinitely. */
+-    for (i = 0; i < count; i++)
+-        if (keys[i] && Input_KeyIsBound((SDL_Scancode)i)) return 1;
++    /* The native input module supplies the combined keyboard/controller state.
++     * Hold everything until every game control has actually been released. */
++    if (keys) return 1;
+     sChat.releaseKeys = 0;
+     return 0;
+ }
+diff --git a/src/world/world_coop.c b/src/world/world_coop.c
+index 5bbb04afe7b67312fac78a66e47c8e28e46b61a7..b2e63c3ede26761aafcc662a1e33909664edf1ea 100644
+--- a/src/world/world_coop.c
++++ b/src/world/world_coop.c
+@@ -6,11 +6,14 @@
+ #include "battle_main.h"
+ #include "battle_setup.h"
+ #include "battle_util.h"
++#include "event_data.h"
+ #include "link.h"
+ #include "main.h"
+ #include "overworld.h"
+ #include "field_weather.h"
+ #include "pokemon.h"
++#include "item.h"
++#include "wild_encounter.h"
+ #include "random.h"
+ #include "difficulty.h"
+ #include "trainer.h"
+@@ -38,9 +41,9 @@
+ STATIC_ASSERT(sizeof(struct Pokemon) == 100, CoopPokemonWireSize);
+ enum { COOP_IDLE, COOP_EXCHANGE, COOP_BATTLE, COOP_REWARDS };
+ #if COOP_FULL_SIX_READY
+-#define COOP_VERSION 9
++#define COOP_VERSION 10
+ #else
+-#define COOP_VERSION 7
++#define COOP_VERSION 8
+ #endif
+ enum { COOP_MAGIC = 0x4357, COOP_TIMEOUT = 1800,
+        COOP_CONFIRM = 4 + PARTY_SIZE, COOP_READY = COOP_CONFIRM + 1, COOP_COMMIT = COOP_CONFIRM + 2 };
+@@ -55,6 +58,7 @@ struct CoopHeader
+ #if COOP_FULL_SIX_READY
+     u8 hiddenUsable, reserved[3];
+ #endif
++    u8 diveBallBoosted;
+ };
+ struct CoopMonBlock
+ {
+@@ -63,10 +67,11 @@ struct CoopMonBlock
+     struct Pokemon mon;
+ };
+ STATIC_ASSERT(sizeof(struct CoopMonBlock) <= 256, CoopBlockBound);
++STATIC_ASSERT(NUM_BADGES == 8, CoopCaptureBadgeCodeNeedsEightBadges);
+ #if COOP_FULL_SIX_READY
+-STATIC_ASSERT(sizeof(struct CoopHeader) == 20, CoopHeaderWireSize);
++STATIC_ASSERT(sizeof(struct CoopHeader) == 24, CoopHeaderWireSize);
+ #else
+-STATIC_ASSERT(sizeof(struct CoopHeader) == 16, CoopHeaderWireSize);
++STATIC_ASSERT(sizeof(struct CoopHeader) == 20, CoopHeaderWireSize);
+ #endif
+ struct CoopCompletion
+ {
+@@ -74,8 +79,9 @@ struct CoopCompletion
+     u8 version, phase;
+     u32 generation, seed;
+     u8 sender, outcome, reward, catchOwner;
++    u8 restoreItemMask, reserved[3];
+ };
+-STATIC_ASSERT(sizeof(struct CoopCompletion) == 16, CoopCompletionWireSize);
++STATIC_ASSERT(sizeof(struct CoopCompletion) == 20, CoopCompletionWireSize);
+ /* Catch events use the authenticated master-to-controller FIFO, not saves. */
+ struct CoopCatchPacket
+ {
+@@ -89,15 +95,16 @@ static struct
+ {
+     u8 catchOwner;
+     bool8 catchDelivered;
+-    u16 pendingBall, pendingMedicine;
++    u16 pendingBall, pendingMedicine, activeBallReply;
+     u16 medicineSpent[17];
+     u16 medicineHeal, medicineItem;
+     u32 medicineStatusBefore, medicineStatusAfter;
+     u16 medicineHPAfter;
+     u8 medicineAction, medicineBattler, medicineTarget;
+-    bool8 menuConfused, medicineClearConfusion;
++    bool8 menuConfused, menuConfusionKnown, medicineClearConfusion;
+     struct Pokemon caughtMon;
+     u8 readySent, commitSent, commitEchoed, peerReady, peerCommit, peerOutcome, peerReward;
++    u8 peerRestoreItemMask;
+     u8 state, phase, local, ownerPeer, count, originalCount;
+     u8 slots[MULTI_PARTY_SIZE];
+     struct CoopRoster roster;
+@@ -118,6 +125,7 @@ static struct
+     bool8 owner, sent, staged, captured, reward, partyMenuOrder;
+     u16 timer;
+     u8 environment, capturedEnvironment, weather, capturedWeather;
++    bool8 diveBallBoosted, capturedDiveBallBoosted;
+     u32 seed, capturedSeed, generation;
+     struct Pokemon original[PARTY_SIZE];
+     struct Pokemon selected[MULTI_PARTY_SIZE];
+@@ -128,6 +136,10 @@ static struct
+     struct WorldCoopPublicMon publicMons[MAX_BATTLERS_COUNT];
+     u8 publicSlots[MAX_BATTLERS_COUNT];
+     bool8 publicValid[MAX_BATTLERS_COUNT];
++    bool8 publicBattleReady[MAX_BATTLERS_COUNT];
++    bool8 publicBattleSnapshotPending[MAX_BATTLERS_COUNT];
++    u8 publicBattlePendingPartyIndex[MAX_BATTLERS_COUNT];
++    u32 publicBattleGeneration;
+ } sCoop;
+ 
+ /* The RC7 wire protocol numbers selected allies in two three-slot ranges.
+@@ -190,7 +202,7 @@ static bool8 MonValid(struct Pokemon *mon, bool8 allowEmpty)
+      || GetMonData(mon, MON_DATA_IS_EGG)
+      || mon->box.language < LANGUAGE_JAPANESE || mon->box.language > LANGUAGE_SPANISH
+      || mon->box.language == 6 || mon->level == 0 || mon->level > MAX_LEVEL
+-     || !mon->maxHP || mon->maxHP > 999 || mon->hp > mon->maxHP || (mon->status & ~0xFFFu)
++     || !mon->maxHP || mon->maxHP > 999 || mon->hp > mon->maxHP || (mon->status & ~(STATUS1_ANY | STATUS1_TOXIC_COUNTER))
+      || !mon->attack || mon->attack > 999 || !mon->defense || mon->defense > 999
+      || !mon->speed || mon->speed > 999 || !mon->spAttack || mon->spAttack > 999
+      || !mon->spDefense || mon->spDefense > 999
+@@ -220,6 +232,7 @@ bool8 WorldCoop_CanSelectBall(u16 item)
+ {
+     return sCoop.state == COOP_BATTLE && !sCoop.kind
+         && item >= ITEM_POKE_BALL && item <= ITEM_CHERISH_BALL && item != ITEM_SAFARI_BALL
++        && GetItemPocket(item) == POCKET_POKE_BALLS
+         && (sCoop.originalCount < PARTY_SIZE || !IsPokemonStorageFull());
+ }
+ 
+@@ -232,6 +245,8 @@ void WorldCoop_CaptureWild(void)
+     sCoop.capturedKind = sCoop.capturedTrainer = 0;
+     sCoop.capturedCount = 1;
+     sCoop.capturedEnvironment = BattleSetup_GetEnvironmentId();
++    sCoop.capturedDiveBallBoosted = sCoop.capturedEnvironment == BATTLE_ENVIRONMENT_UNDERWATER
++        || (B_DIVE_BALL_MODIFIER >= GEN_4 && (gIsFishingEncounter || gIsSurfingEncounter));
+     sCoop.capturedWeather = GetCurrentWeather();
+     sCoop.capturedSeed = Random32();
+     sCoop.captured = MonValid(&sCoop.capturedEnemies[0], FALSE)
+@@ -258,6 +273,7 @@ bool8 WorldCoop_CaptureTrainer(void)
+     sCoop.capturedKind = (gBattleTypeFlags & BATTLE_TYPE_DOUBLE) ? 2 : 1;
+     sCoop.capturedTrainer = TRAINER_BATTLE_PARAM.opponentA;
+     sCoop.capturedEnvironment = BattleSetup_GetEnvironmentId();
++    sCoop.capturedDiveBallBoosted = FALSE;
+     sCoop.capturedWeather = GetCurrentWeather();
+     sCoop.capturedSeed = Random32();
+     sCoop.captured = TRUE;
+@@ -599,11 +615,22 @@ int WorldCoop_AdvanceRosterAction(u8 battler)
+     for (flank = 0; flank < 2; flank++)
+         gSentPokesToOpponent[flank] &= ~(1u << sCoop.rosterStage);
+     gBattleResources->bufferB[battler][0] = CONTROLLER_CHOSENMONRETURNVALUE;
+-    gBattleResources->bufferB[battler][1] = sCoop.rosterStage;
++    /* Wire stages span both owners (0..5); this native trainer party is
++     * owner-local (0..2). Keep the global stage only in roster protocol state. */
++    gBattleResources->bufferB[battler][1] = sCoop.rosterStage % MULTI_PARTY_SIZE;
+     memcpy(&gBattleResources->bufferB[battler][2], sCoop.rosterOrder, sizeof(sCoop.rosterOrder));
+     sCoop.rosterAction = 0;
+     return 1;
+ }
++
++void WorldCoop_FailRosterAction(void)
++{
++    if (sCoop.state != COOP_BATTLE)
++        return;
++    sCoop.rosterAction = 0;
++    /* BattleMainCB2 owns teardown/restoration after observing the failed link. */
++    NativeLink_Abort();
++}
+ #endif
+ 
+ void WorldCoop_SetPartyMenuOrder(bool8 inMenuOrder)
+@@ -663,7 +690,8 @@ static bool8 HeaderValid(const struct CoopHeader *header, u8 phase)
+     return header->magic == COOP_MAGIC && header->version == COOP_VERSION
+         && header->phase == phase && header->owner <= 1 && header->count > 0
+         && header->count <= MULTI_PARTY_SIZE && header->weather <= WEATHER_ABNORMAL
+-        && header->environment <= BATTLE_ENVIRONMENT_PLAIN && header->kind <= 2
++        && header->environment < BATTLE_ENVIRONMENT_COUNT && header->kind <= 2
++        && header->diveBallBoosted <= 1 && (header->owner || !header->diveBallBoosted)
+ #if COOP_FULL_SIX_READY
+         && header->hiddenUsable <= 1 && !header->reserved[0] && !header->reserved[1] && !header->reserved[2]
+ #endif
+@@ -778,6 +806,7 @@ static void CB2_Exchange(void)
+         }
+         sCoop.ownerPeer = sCoop.headers[0].owner ? 0 : 1;
+         sCoop.environment = sCoop.headers[sCoop.ownerPeer].environment;
++        sCoop.diveBallBoosted = sCoop.headers[sCoop.ownerPeer].diveBallBoosted;
+         sCoop.weather = sCoop.headers[sCoop.ownerPeer].weather;
+         sCoop.seed = sCoop.headers[sCoop.ownerPeer].seed;
+         sCoop.kind = sCoop.headers[sCoop.ownerPeer].kind;
+@@ -840,7 +869,9 @@ int WorldCoop_StartBattle(bool8 encounterOwner)
+     if (!WorldCoop_RefundMedicine()) return 0;
+     sCoop.readySent = sCoop.commitSent = sCoop.commitEchoed = sCoop.peerReady = sCoop.peerCommit = FALSE;
+     sCoop.catchOwner = sCoop.catchDelivered = sCoop.pendingBall = 0;
++    sCoop.activeBallReply = 0;
+     sCoop.pendingMedicine = sCoop.medicineAction = 0;
++    sCoop.menuConfused = sCoop.menuConfusionKnown = FALSE;
+ #if COOP_FULL_SIX_READY
+     sCoop.rosterAction = 0;
+ #endif
+@@ -891,6 +922,7 @@ int WorldCoop_StartBattle(bool8 encounterOwner)
+     header->count = sCoop.count;
+     header->environment = sCoop.owner ? sCoop.capturedEnvironment : 0;
+     header->weather = sCoop.owner ? sCoop.capturedWeather : 0;
++    header->diveBallBoosted = sCoop.owner ? sCoop.capturedDiveBallBoosted : FALSE;
+     header->seed = sCoop.owner ? sCoop.capturedSeed : 0;
+     header->kind = sCoop.owner ? sCoop.capturedKind : 0;
+     header->trainer = sCoop.owner ? sCoop.capturedTrainer : 0;
+@@ -909,6 +941,10 @@ void WorldCoop_InitControllers(void)
+ {
+     u8 i;
+     memset(sCoop.publicValid, 0, sizeof(sCoop.publicValid));
++    memset(sCoop.publicBattleReady, 0, sizeof(sCoop.publicBattleReady));
++    memset(sCoop.publicBattleSnapshotPending, 0, sizeof(sCoop.publicBattleSnapshotPending));
++    memset(sCoop.publicBattlePendingPartyIndex, 0, sizeof(sCoop.publicBattlePendingPartyIndex));
++    sCoop.publicBattleGeneration = sCoop.generation;
+     gBattleScripting.multiplayerId = sCoop.local;
+     gBattlersCount = MAX_BATTLERS_COUNT;
+     gAbsentBattlerFlags = WorldCoop_HasSecondOpponent() ? 0 : 1 << B_POSITION_OPPONENT_RIGHT;
+@@ -929,6 +965,214 @@ void WorldCoop_InitControllers(void)
+         gBattleMainFunc = BeginBattleIntro;
+ }
+ 
++static bool8 WorldCoop_PublicBattleMonValid(const struct BattlePokemon *mon)
++{
++    u8 i;
++    if (mon->species <= SPECIES_NONE || mon->species >= NUM_SPECIES
++     || mon->level == 0 || mon->level > MAX_LEVEL || mon->abilityNum >= NUM_ABILITY_SLOTS
++     || mon->maxHP == 0 || mon->hp > mon->maxHP
++     || mon->item >= ITEMS_COUNT
++     || (mon->status1 & ~(STATUS1_ANY | STATUS1_TOXIC_COUNTER)))
++        return FALSE;
++    for (i = 0; i < MAX_MON_MOVES; ++i)
++        if (mon->moves[i] >= MOVES_COUNT)
++            return FALSE;
++    return TRUE;
++}
++
++int WorldCoop_ReceivePublicBattleMon(u8 battler, u8 sender, const u8 *data, u16 size)
++{
++    struct BattlePokemon mon;
++    u16 dataSize;
++    if (sCoop.state != COOP_BATTLE || sCoop.generation != NativeLink_Generation()
++     || sCoop.publicBattleGeneration != sCoop.generation || sCoop.local != 1
++     || battler >= MAX_BATTLERS_COUNT
++     || sender != ((battler & BIT_SIDE) ? 0 : battler / 2)
++     || !sCoop.publicBattleSnapshotPending[battler]
++     || (gAbsentBattlerFlags & (1u << battler)) || data == NULL || size < 4
++     || data[0] != CONTROLLER_DATATRANSFER || data[1] != CONTROLLER_DATATRANSFER)
++        return 0;
++    dataSize = data[2] | (data[3] << 8);
++    if (dataSize != sizeof(mon))
++        return -1;
++    /* The request mask names the party slot the master intended to expose.
++     * Reject a delayed response after a switch rather than assigning stale
++     * combat state to the newly active battler. */
++    if (sCoop.publicBattlePendingPartyIndex[battler] >= PARTY_SIZE
++     || gBattlerPartyIndexes[battler] != sCoop.publicBattlePendingPartyIndex[battler])
++    {
++        sCoop.publicBattleSnapshotPending[battler] = FALSE;
++        sCoop.publicBattleReady[battler] = FALSE;
++        return 0;
++    }
++    /* Accept native controller block alignment padding (1..4 bytes) only
++     * after validating the nested transfer length and exact BattlePokemon. */
++    if (size < dataSize + 4 || size > dataSize + 8)
++        return -1;
++    memcpy(&mon, data + 4, sizeof(mon));
++    if (!WorldCoop_PublicBattleMonValid(&mon))
++        return -1;
++
++    /* The master-only intro receives this same REQUEST_ALL_BATTLE reply and
++     * performs this canonical derived-field initialization locally. */
++    BattleMain_InitializeBattlerData(battler, &mon);
++    sCoop.publicBattleSnapshotPending[battler] = FALSE;
++    sCoop.publicBattleReady[battler] = TRUE;
++    WorldCoop_ObserveMonData(battler, sCoop.publicBattlePendingPartyIndex[battler], &mon);
++    return 1;
++}
++
++bool8 WorldCoop_PublicBattleReady(u8 battler)
++{
++    u8 target;
++    if (sCoop.state != COOP_BATTLE || sCoop.local != 1 || battler != sCoop.local * 2)
++        return TRUE;
++    if (sCoop.generation != NativeLink_Generation()
++     || sCoop.publicBattleGeneration != sCoop.generation)
++        return FALSE;
++    for (target = 0; target < MAX_BATTLERS_COUNT; ++target)
++        if (!(gAbsentBattlerFlags & (1u << target)) && !sCoop.publicBattleReady[target])
++            return FALSE;
++    return TRUE;
++}
++
++void WorldCoop_ApplyPublicBattleController(u8 battler, u8 sender, const u8 *data, u16 size)
++{
++    struct BattlePokemon *mon;
++    u8 slot, request;
++    u16 value;
++    if (sCoop.state != COOP_BATTLE || sCoop.generation != NativeLink_Generation()
++     || sCoop.publicBattleGeneration != sCoop.generation || sCoop.local != 1 || sender != 0
++     || battler >= MAX_BATTLERS_COUNT
++     || data == NULL || size < 3)
++        return;
++    if (data[0] == CONTROLLER_GETMONDATA)
++    {
++        if (data[1] == REQUEST_ALL_BATTLE)
++        {
++            u8 mask = data[2];
++            u8 requestedSlot = gBattlerPartyIndexes[battler];
++            if (mask != 0)
++            {
++                if (mask & (mask - 1)) return;
++                requestedSlot = 0;
++                while (!(mask & 1)) { mask >>= 1; requestedSlot++; }
++            }
++            if (requestedSlot < PARTY_SIZE && requestedSlot == gBattlerPartyIndexes[battler])
++            {
++                sCoop.publicBattlePendingPartyIndex[battler] = requestedSlot;
++                sCoop.publicBattleSnapshotPending[battler] = TRUE;
++                sCoop.publicBattleReady[battler] = FALSE;
++            }
++        }
++        return;
++    }
++    if (!sCoop.publicBattleReady[battler] || data[0] != CONTROLLER_SETMONDATA)
++        return;
++    slot = gBattlerPartyIndexes[battler];
++    if (slot >= PARTY_SIZE || (data[2] && !(data[2] & (1u << slot))))
++        return;
++    request = data[1];
++    mon = &gBattleMons[battler];
++    switch (request)
++    {
++    case REQUEST_ALL_BATTLE:
++        if (size == 3 + sizeof(*mon))
++        {
++            struct BattlePokemon update;
++            memcpy(&update, data + 3, sizeof(update));
++            if (WorldCoop_PublicBattleMonValid(&update))
++            {
++                /* Keep volatile battle state; the data-transfer snapshot owns
++                 * canonical defaults, while this is an ordered party delta. */
++                enum Species oldSpecies = mon->species;
++                u8 oldAbilityNum = mon->abilityNum;
++                mon->species = update.species;
++                mon->item = update.item;
++                mon->abilityNum = update.abilityNum;
++                mon->hp = update.hp;
++                mon->maxHP = update.maxHP;
++                mon->status1 = update.status1;
++                mon->level = update.level;
++                mon->attack = update.attack; mon->defense = update.defense;
++                mon->speed = update.speed; mon->spAttack = update.spAttack;
++                mon->spDefense = update.spDefense;
++                memcpy(mon->moves, update.moves, sizeof(mon->moves));
++                memcpy(mon->pp, update.pp, sizeof(mon->pp));
++                if (oldSpecies != update.species || oldAbilityNum != update.abilityNum)
++                {
++                    mon->types[0] = GetSpeciesType(mon->species, 0);
++                    mon->types[1] = GetSpeciesType(mon->species, 1);
++                    mon->types[2] = TYPE_MYSTERY;
++                    mon->ability = GetAbilityBySpecies(mon->species, mon->abilityNum);
++                }
++            }
++        }
++        break;
++    case REQUEST_SPECIES_BATTLE:
++    case REQUEST_HELDITEM_BATTLE:
++    case REQUEST_MOVE1_BATTLE: case REQUEST_MOVE2_BATTLE:
++    case REQUEST_MOVE3_BATTLE: case REQUEST_MOVE4_BATTLE:
++    case REQUEST_HP_BATTLE: case REQUEST_MAX_HP_BATTLE:
++    case REQUEST_ATK_BATTLE: case REQUEST_DEF_BATTLE:
++    case REQUEST_SPEED_BATTLE: case REQUEST_SPATK_BATTLE: case REQUEST_SPDEF_BATTLE:
++        if (size < 5) return;
++        value = data[3] | (data[4] << 8);
++        if (request == REQUEST_SPECIES_BATTLE)
++        {
++            if (value == SPECIES_NONE || value >= NUM_SPECIES) return;
++            mon->species = value;
++            mon->types[0] = GetSpeciesType(value, 0);
++            mon->types[1] = GetSpeciesType(value, 1);
++            mon->types[2] = TYPE_MYSTERY;
++            mon->ability = GetAbilityBySpecies(value, mon->abilityNum);
++        }
++        else if (request == REQUEST_HELDITEM_BATTLE)
++        {
++            if (value >= ITEMS_COUNT) return;
++            mon->item = value;
++        }
++        else if (request >= REQUEST_MOVE1_BATTLE && request <= REQUEST_MOVE4_BATTLE)
++        {
++            u8 index = request - REQUEST_MOVE1_BATTLE;
++            if (value >= MOVES_COUNT) return;
++            mon->moves[index] = value;
++        }
++        else if (request == REQUEST_HP_BATTLE) { if (value > mon->maxHP) return; mon->hp = value; }
++        else if (request == REQUEST_MAX_HP_BATTLE) { if (value < mon->hp) return; mon->maxHP = value; }
++        else if (request == REQUEST_ATK_BATTLE) mon->attack = value;
++        else if (request == REQUEST_DEF_BATTLE) mon->defense = value;
++        else if (request == REQUEST_SPEED_BATTLE) mon->speed = value;
++        else if (request == REQUEST_SPATK_BATTLE) mon->spAttack = value;
++        else if (request == REQUEST_SPDEF_BATTLE) mon->spDefense = value;
++        break;
++    case REQUEST_MOVES_PP_BATTLE:
++        if (size < 3 + sizeof(struct MovePPInfo)) return;
++        memcpy(mon->moves, data + 3, sizeof(mon->moves));
++        memcpy(mon->pp, data + 3 + sizeof(mon->moves), sizeof(mon->pp));
++        break;
++    case REQUEST_PP_DATA_BATTLE:
++        if (size < 3 + MAX_MON_MOVES + 1) return;
++        memcpy(mon->pp, data + 3, sizeof(mon->pp));
++        break;
++    case REQUEST_PPMOVE1_BATTLE: case REQUEST_PPMOVE2_BATTLE:
++    case REQUEST_PPMOVE3_BATTLE: case REQUEST_PPMOVE4_BATTLE:
++        if (size < 4) return;
++        mon->pp[request - REQUEST_PPMOVE1_BATTLE] = data[3];
++        break;
++    case REQUEST_STATUS_BATTLE:
++        if (size < 7) return;
++        mon->status1 = (u32)data[3] | ((u32)data[4] << 8) | ((u32)data[5] << 16) | ((u32)data[6] << 24);
++        break;
++    case REQUEST_LEVEL_BATTLE:
++        if (size < 4 || !data[3] || data[3] > MAX_LEVEL) return;
++        mon->level = data[3];
++        break;
++    default:
++        break;
++    }
++}
++
+ /* Only selected active-mon replies enter this display projection. It does not
+  * initialize gBattleMons, execute scripts, or inspect the partner's reserves. */
+ void WorldCoop_ObserveMonData(u8 battler, u8 partySlot, const struct BattlePokemon *mon)
+@@ -999,6 +1243,7 @@ bool8 WorldCoop_CanSelectBattleItem(u16 item)
+ void WorldCoop_SetMenuConfusion(bool8 confused)
+ {
+     sCoop.menuConfused = !!confused;
++    sCoop.menuConfusionKnown = TRUE;
+     sCoop.pendingMedicine = 0;
+     sCoop.medicineTarget = PARTY_SIZE;
+ }
+@@ -1006,32 +1251,81 @@ void WorldCoop_SetMenuConfusion(bool8 confused)
+ bool8 WorldCoop_SelectMedicineTarget(u16 item, u8 slot, struct Pokemon *mon)
+ {
+     u8 battler = gBattlerInMenuId;
+-    u16 heal; u32 status; bool8 cureConfusion, confused;
++    u16 heal; u32 status; bool8 cureConfusion, confused, confusionKnown = TRUE;
++    u8 i;
++    bool8 ownedMon = FALSE;
++    sCoop.pendingMedicine = 0;
++    sCoop.medicineTarget = PARTY_SIZE;
+     if (sCoop.state != COOP_BATTLE || !WorldCoop_IsMedicine(item)
+      || battler != sCoop.local * 2 || slot >= PARTY_SIZE
+-     || slot / MULTI_PARTY_SIZE != sCoop.local || !mon || !CheckBagHasItem(item, 1)) return FALSE;
+-    confused = slot == WorldCoop_StageSlot(battler) && sCoop.menuConfused;
++     || slot / MULTI_PARTY_SIZE != sCoop.local || !CheckBagHasItem(item, 1) || mon == NULL)
++        return FALSE;
++    for (i = 0; i < MULTI_PARTY_SIZE; i++)
++        if (mon == &gPlayerParty[i])
++            ownedMon = TRUE;
++    if (!ownedMon)
++        return FALSE;
++    confused = FALSE;
++    if (slot == WorldCoop_StageSlot(battler))
++    {
++        /* Only role 0 runs the authoritative battle engine. A slave may use
++         * an authenticated menu projection if present; never read its stale
++         * gBattleMons volatile array. */
++        if (sCoop.local == 0)
++            confused = !!GetBattlerVolatile(battler, VOLATILE_CONFUSION);
++        else
++        {
++            confused = sCoop.menuConfused;
++            confusionKnown = sCoop.menuConfusionKnown;
++        }
++    }
+     if (!WorldCoop_MedicineEffect(item, GetMonData(mon, MON_DATA_HP),
+          GetMonData(mon, MON_DATA_MAX_HP), GetMonData(mon, MON_DATA_STATUS), confused,
+-         &heal, &status, &cureConfusion)) return FALSE;
++         &heal, &status, &cureConfusion))
++    {
++        /* Only the guest's active battler may lack an authoritative confusion
++         * projection. A reserve never has volatile confusion to cure. */
++        if (sCoop.local == 0 || slot != WorldCoop_StageSlot(battler) || confusionKnown
++         || !WorldCoop_MedicineEffect(item, GetMonData(mon, MON_DATA_HP),
++             GetMonData(mon, MON_DATA_MAX_HP), GetMonData(mon, MON_DATA_STATUS), TRUE,
++             &heal, &status, &cureConfusion))
++            return FALSE;
++    }
+     sCoop.pendingMedicine = item;
+     sCoop.medicineTarget = slot;
+     return TRUE;
+ }
+ 
++bool8 WorldCoop_SelectMedicineMenuTarget(u16 item, struct Pokemon *party, u8 nativeSlot, struct Pokemon *mon)
++{
++    sCoop.pendingMedicine = 0;
++    sCoop.medicineTarget = PARTY_SIZE;
++    if (party != gPlayerParty || nativeSlot >= MULTI_PARTY_SIZE)
++        return FALSE;
++    return WorldCoop_SelectMedicineTarget(item,
++        sCoop.local * MULTI_PARTY_SIZE + nativeSlot, mon);
++}
++
+ bool8 WorldCoop_CanUseMedicine(u16 item)
+ {
+     u8 slot = sCoop.medicineTarget;
+     if (slot >= PARTY_SIZE || sCoop.pendingMedicine != item) return FALSE;
+-    return WorldCoop_SelectMedicineTarget(item, slot, &gPlayerParty[slot]);
++    return WorldCoop_SelectMedicineTarget(item, slot, StageMon(slot));
++}
++
++bool8 WorldCoop_IsMedicineReply(u16 reply)
++{
++    return (reply & 0xF800) == WORLD_COOP_MEDICINE_REPLY
++        && WorldCoop_IsMedicine(reply & 0xFF);
+ }
+ 
+ bool8 WorldCoop_ItemReplyValid(u16 reply)
+ {
+     if (sCoop.state != COOP_BATTLE) return FALSE;
+     if (!reply) return TRUE;
+-    if ((reply & 0xF800) == WORLD_COOP_MEDICINE_REPLY)
+-        return ((reply >> 8) & 7) < PARTY_SIZE && WorldCoop_IsMedicine(reply & 0xFF);
++    if ((reply & 0xF800) == WORLD_COOP_MEDICINE_REPLY
++     && WorldCoop_IsMedicine(reply & 0xFF))
++        return ((reply >> 8) & 7) < PARTY_SIZE;
+     return WorldCoop_BallReplyValid(reply);
+ }
+ 
+@@ -1051,15 +1345,16 @@ bool8 WorldCoop_MedicinePacketValid(const u8 *data, u16 size)
+ {
+     u32 generation, status, newStatus;
+     u16 hp, maxHP, heal; bool8 cureConfusion;
+-    if (sCoop.state != COOP_BATTLE || sCoop.generation != NativeLink_Generation()
++    if (data == NULL || sCoop.state != COOP_BATTLE || sCoop.generation != NativeLink_Generation()
+      || size != 20 || data[0] != CONTROLLER_EXPUPDATE || data[1] != WORLD_COOP_MEDICINE_TAG
+      || data[2] < 1 || data[2] > 2 || !WorldCoop_IsMedicine(data[3])
+      || data[17] >= PARTY_SIZE || data[17] / MULTI_PARTY_SIZE != data[2] - 1) return FALSE;
+     memcpy(&generation, data + 4, sizeof(generation));
+     hp = data[8] | (data[9] << 8); maxHP = data[10] | (data[11] << 8);
+     status = (u32)data[12] | ((u32)data[13] << 8) | ((u32)data[14] << 16) | ((u32)data[15] << 24);
+-    return generation == sCoop.generation && !(status & ~0xFFFu)
+-        && data[16] <= 1 && !data[18] && !data[19]
++    /* bytes 18-19 are link-buffer alignment padding, not packet fields. */
++    return generation == sCoop.generation && !(status & ~(STATUS1_ANY | STATUS1_TOXIC_COUNTER))
++        && data[16] <= 1
+         && WorldCoop_MedicineEffect(data[3], hp, maxHP, status, data[16], &heal, &newStatus, &cureConfusion);
+ }
+ 
+@@ -1075,13 +1370,16 @@ bool8 WorldCoop_ConsumeMedicine(u8 battler, const u8 *data)
+     item = data[3]; slot = data[17];
+     if (slot >= PARTY_SIZE || slot / MULTI_PARTY_SIZE != sCoop.local
+      || sCoop.pendingMedicine != item || sCoop.medicineTarget != slot) return FALSE;
+-    mon = &gPlayerParty[slot];
++    mon = StageMon(slot);
+     hp = data[8] | (data[9] << 8); maxHP = data[10] | (data[11] << 8);
+     status = (u32)data[12] | ((u32)data[13] << 8) | ((u32)data[14] << 16) | ((u32)data[15] << 24);
+-    confused = slot == WorldCoop_StageSlot(battler) && sCoop.menuConfused;
++    /* data[16] is produced by the role-0 battle engine in the authenticated
++     * request. Role 1 is a display/controller-only slave and its volatile
++     * gBattleMons state is not synchronized. */
++    confused = data[16];
++    if (sCoop.local == 0 && confused && slot != WorldCoop_StageSlot(battler)) return FALSE;
+     if (GetMonData(mon, MON_DATA_HP) != hp || GetMonData(mon, MON_DATA_MAX_HP) != maxHP
+-     || (GetMonData(mon, MON_DATA_STATUS) & STATUS1_ANY) != (status & STATUS1_ANY)
+-     || confused != data[16]) return FALSE;
++     || (GetMonData(mon, MON_DATA_STATUS) & STATUS1_ANY) != (status & STATUS1_ANY)) return FALSE;
+     for (i = 0; i < ARRAY_COUNT(sCoopMedicines) && sCoopMedicines[i] != item; i++);
+     if (i == ARRAY_COUNT(sCoopMedicines) || sCoop.medicineSpent[i] == 0xFFFF
+      || !RemoveBagItem(item, 1)) return FALSE;
+@@ -1096,7 +1394,7 @@ static bool8 WorldCoop_SendMedicineEvent(u8 battler, u16 hp, u16 maxHP, u32 stat
+ {
+     u8 packet[18] = { CONTROLLER_EXPUPDATE, WORLD_COOP_MEDICINE_TAG, 0, 0 };
+     u32 generation = sCoop.generation;
+-    if ((status & ~0xFFFu) || !WorldCoop_MedicineEffect(sCoop.medicineItem, hp, maxHP, status,
++    if ((status & ~(STATUS1_ANY | STATUS1_TOXIC_COUNTER)) || !WorldCoop_MedicineEffect(sCoop.medicineItem, hp, maxHP, status,
+          confused, &sCoop.medicineHeal, &sCoop.medicineStatusAfter, &sCoop.medicineClearConfusion)) return FALSE;
+     sCoop.medicineStatusBefore = status;
+     sCoop.medicineHPAfter = hp + sCoop.medicineHeal;
+@@ -1123,12 +1421,18 @@ int WorldCoop_BeginMedicineAction(u8 battler, u16 reply)
+     u8 target = (reply >> 8) & 7;
+     if (sCoop.state != COOP_BATTLE || sCoop.medicineAction || (battler & BIT_SIDE)
+      || battler >= MAX_BATTLERS_COUNT || !WorldCoop_ItemReplyValid(reply)
+-     || (reply & 0xF800) != WORLD_COOP_MEDICINE_REPLY
++     || !WorldCoop_IsMedicineReply(reply)
+      || target / MULTI_PARTY_SIZE != battler / 2) return -1;
+     sCoop.medicineBattler = battler; sCoop.medicineTarget = target; sCoop.medicineItem = reply & 0xFF;
+     if (target == WorldCoop_StageSlot(battler))
+-        return WorldCoop_SendMedicineEvent(battler, gBattleMons[battler].hp, gBattleMons[battler].maxHP,
+-            gBattleMons[battler].status1, !!GetBattlerVolatile(battler, VOLATILE_CONFUSION)) ? 0 : -1;
++    {
++        if (WorldCoop_SendMedicineEvent(battler, gBattleMons[battler].hp, gBattleMons[battler].maxHP,
++                gBattleMons[battler].status1, !!GetBattlerVolatile(battler, VOLATILE_CONFUSION)))
++            return 0;
++        sCoop.pendingMedicine = 0;
++        sCoop.medicineTarget = PARTY_SIZE;
++        return -1;
++    }
+     /* Query only the selected staged slot from its owner. The reply is
+      * authenticated and validated by the existing GETMONDATA boundary. */
+     sCoop.medicineAction = MEDICINE_WAIT_MON;
+@@ -1145,20 +1449,42 @@ int WorldCoop_AdvanceMedicineAction(u8 battler)
+     {
+         struct BattlePokemon mon;
+         if (gBattleResources->bufferB[battler][0] != CONTROLLER_DATATRANSFER
+-         || (gBattleResources->bufferB[battler][2] | (gBattleResources->bufferB[battler][3] << 8)) != sizeof(mon)) return -1;
++         || (gBattleResources->bufferB[battler][2] | (gBattleResources->bufferB[battler][3] << 8)) != sizeof(mon))
++        {
++            sCoop.medicineAction = 0;
++            sCoop.pendingMedicine = 0;
++            sCoop.medicineTarget = PARTY_SIZE;
++            return -1;
++        }
+         memcpy(&mon, &gBattleResources->bufferB[battler][4], sizeof(mon));
+-        return WorldCoop_SendMedicineEvent(battler, mon.hp, mon.maxHP, mon.status1, FALSE) ? 0 : -1;
++        if (WorldCoop_SendMedicineEvent(battler, mon.hp, mon.maxHP, mon.status1, FALSE))
++            return 0;
++        sCoop.medicineAction = 0;
++        sCoop.pendingMedicine = 0;
++        sCoop.medicineTarget = PARTY_SIZE;
++        return -1;
+     }
+     if (sCoop.medicineAction == MEDICINE_WAIT_OWNER)
+     {
+         if (gBattleResources->bufferB[battler][0] != CONTROLLER_TWORETURNVALUES
+-         || gBattleResources->bufferB[battler][1] != 1 || gBattleResources->bufferB[battler][2] || gBattleResources->bufferB[battler][3]) return -1;
++         || gBattleResources->bufferB[battler][2] || gBattleResources->bufferB[battler][3])
++        {
++            sCoop.medicineAction = 0;
++            sCoop.pendingMedicine = 0;
++            return -1;
++        }
++        if (gBattleResources->bufferB[battler][1] != 1)
++        {
++            sCoop.medicineAction = 0;
++            sCoop.pendingMedicine = 0;
++            return -1;
++        }
+         gLastUsedItem = sCoop.medicineItem;
+-        gBattleStruct->passiveHpUpdate[battler] = -(s32)sCoop.medicineHeal;
+         if (sCoop.medicineTarget == WorldCoop_StageSlot(battler))
+         {
+-            sCoop.medicineAction = 0;
+-            if (sCoop.medicineClearConfusion) SetMonVolatile(battler, VOLATILE_CONFUSION, 0);
++            gBattleStruct->passiveHpUpdate[battler] = -(s32)sCoop.medicineHeal;
++            if (sCoop.medicineClearConfusion)
++                SetMonVolatile(battler, VOLATILE_CONFUSION, 0);
+             if (sCoop.medicineStatusAfter != sCoop.medicineStatusBefore)
+             {
+                 gBattleMons[battler].status1 = sCoop.medicineStatusAfter;
+@@ -1168,13 +1494,15 @@ int WorldCoop_AdvanceMedicineAction(u8 battler)
+                                              sizeof(gBattleMons[battler].status1), &gBattleMons[battler].status1);
+                 MarkBattlerForControllerExec(battler);
+             }
++            sCoop.medicineAction = 0;
++            sCoop.pendingMedicine = 0;
+             return sCoop.medicineHeal ? 1 : 2;
+         }
+         sCoop.medicineAction = MEDICINE_WAIT_HP;
+         if (sCoop.medicineHeal)
+         {
+-            BtlController_EmitSetMonData(battler, B_COMM_TO_CONTROLLER, REQUEST_HP_BATTLE, 1u << (sCoop.medicineTarget % MULTI_PARTY_SIZE),
+-                                         sizeof(sCoop.medicineHPAfter), &sCoop.medicineHPAfter);
++            BtlController_EmitSetMonData(battler, B_COMM_TO_CONTROLLER, REQUEST_HP_BATTLE,
++                1u << (sCoop.medicineTarget % MULTI_PARTY_SIZE), sizeof(sCoop.medicineHPAfter), &sCoop.medicineHPAfter);
+             MarkBattlerForControllerExec(battler);
+             return 0;
+         }
+@@ -1184,8 +1512,8 @@ int WorldCoop_AdvanceMedicineAction(u8 battler)
+         sCoop.medicineAction = MEDICINE_WAIT_STATUS;
+         if (sCoop.medicineStatusAfter != sCoop.medicineStatusBefore)
+         {
+-            BtlController_EmitSetMonData(battler, B_COMM_TO_CONTROLLER, REQUEST_STATUS_BATTLE, 1u << (sCoop.medicineTarget % MULTI_PARTY_SIZE),
+-                                         sizeof(sCoop.medicineStatusAfter), &sCoop.medicineStatusAfter);
++            BtlController_EmitSetMonData(battler, B_COMM_TO_CONTROLLER, REQUEST_STATUS_BATTLE,
++                1u << (sCoop.medicineTarget % MULTI_PARTY_SIZE), sizeof(sCoop.medicineStatusAfter), &sCoop.medicineStatusAfter);
+             MarkBattlerForControllerExec(battler);
+             return 0;
+         }
+@@ -1193,8 +1521,12 @@ int WorldCoop_AdvanceMedicineAction(u8 battler)
+     if (sCoop.medicineAction == MEDICINE_WAIT_STATUS)
+     {
+         sCoop.medicineAction = 0;
++        sCoop.pendingMedicine = 0;
+         return 3;
+     }
++    sCoop.medicineAction = 0;
++    sCoop.pendingMedicine = 0;
++    sCoop.medicineTarget = PARTY_SIZE;
+     return -1;
+ }
+ 
+@@ -1203,33 +1535,80 @@ int WorldCoop_AdvanceMedicineAction(u8 battler)
+ bool8 WorldCoop_BallReplyValid(u16 reply)
+ {
+     u16 item = reply & 0xFF;
++    u8 modifiers = (u8)(reply >> 8);
+     return sCoop.state == COOP_BATTLE && !sCoop.kind
+         && (reply == 0 || (item >= ITEM_POKE_BALL && item <= ITEM_CHERISH_BALL
+-            && item != ITEM_SAFARI_BALL && !(reply & ~0x3FF)
+-            && (!(reply & 0x100) || item == ITEM_REPEAT_BALL)
+-            && (!(reply & 0x200) || item == ITEM_DIVE_BALL)));
++            && item != ITEM_SAFARI_BALL && GetItemPocket(item) == POCKET_POKE_BALLS
++            && modifiers < 216));
++}
++
++static u8 CoopCaptureDexTier(void)
++{
++    u32 totalDexCount = B_CRITICAL_CAPTURE_LOCAL_DEX == TRUE ? REGIONAL_DEX_COUNT : NATIONAL_DEX_COUNT;
++    u32 numCaught = GetNationalPokedexCount(FLAG_GET_CAUGHT);
++    if (numCaught > (totalDexCount * 600) / 650) return 5;
++    if (numCaught > (totalDexCount * 450) / 650) return 4;
++    if (numCaught > (totalDexCount * 300) / 650) return 3;
++    if (numCaught > (totalDexCount * 150) / 650) return 2;
++    if (numCaught > (totalDexCount * 30) / 650) return 1;
++    return 0;
+ }
+ 
+ u16 WorldCoop_SelectBall(u16 item)
+ {
+-    u16 reply = item;
++    u8 badgeCount = 0;
++    u8 dexTier;
++    bool8 speciesCaught;
++    u8 code;
++    u32 flag;
+     if (!item)
+         return 0;
+     if (!WorldCoop_CanSelectBall(item) || !CheckBagHasItem(item, 1))
+         return 0;
+     sCoop.pendingBall = item;
+-    if (item == ITEM_REPEAT_BALL && GetSetPokedexFlag(SpeciesToNationalPokedexNum(
+-            GetMonData(&sCoop.enemies[0], MON_DATA_SPECIES)), FLAG_GET_CAUGHT))
+-        reply |= 0x100;
+-    if (item == ITEM_DIVE_BALL && sCoop.environment == BATTLE_ENVIRONMENT_UNDERWATER)
+-        reply |= 0x200;
+-    return reply;
++    speciesCaught = GetSetPokedexFlag(SpeciesToNationalPokedexNum(
++        GetMonData(&sCoop.enemies[0], MON_DATA_SPECIES)), FLAG_GET_CAUGHT) != FALSE;
++    dexTier = CoopCaptureDexTier();
++    for (flag = FLAG_BADGE01_GET; flag < FLAG_BADGE01_GET + NUM_BADGES; flag++)
++        if (FlagGet(flag))
++            badgeCount++;
++    code = (u8)(badgeCount * 6 + dexTier);
++    code = (u8)(code * 2 + (CheckBagHasItem(ITEM_CATCHING_CHARM, 1) != FALSE));
++    code = (u8)(code * 2 + (speciesCaught != FALSE));
++    return item | ((u16)code << 8);
++}
++
++bool8 WorldCoop_GetCaptureInfo(struct WorldCoopCaptureInfo *info)
++{
++    u8 code;
++    if (sCoop.state != COOP_BATTLE || info == NULL
++     || !WorldCoop_BallReplyValid(sCoop.activeBallReply) || !(sCoop.activeBallReply & 0xFF))
++        return FALSE;
++    code = (u8)(sCoop.activeBallReply >> 8);
++    info->speciesCaught = code & 1;
++    code >>= 1;
++    info->catchingCharm = code & 1;
++    code >>= 1;
++    info->dexTier = code % 6;
++    info->badgeCount = code / 6;
++    return info->badgeCount <= NUM_BADGES;
++}
++
++bool8 WorldCoop_IsDiveBallBoosted(void)
++{
++    return sCoop.state == COOP_BATTLE && !sCoop.kind && sCoop.diveBallBoosted;
+ }
+ 
+ void WorldCoop_EmitBallUse(u16 reply)
+ {
+     u8 packet[9] = { CONTROLLER_EXPUPDATE, COOP_BALL_USE, 0, 0 };
+     u32 generation = sCoop.generation;
++    if (!WorldCoop_BallReplyValid(reply) || !(reply & 0xFF))
++    {
++        NativeLink_Abort();
++        return;
++    }
++    sCoop.activeBallReply = reply;
+     packet[2] = gBattlerAttacker / 2 + 1;
+     packet[3] = reply & 0xFF;
+     memcpy(packet + 4, &generation, sizeof(generation));
+@@ -1410,6 +1789,144 @@ void WorldCoop_RecordDefeat(const u8 *data)
+     sCoop.rewardMultiplier = data[8];
+ }
+ 
++static bool8 IsBattleFormChangeMethod(enum FormChanges method)
++{
++    switch (method)
++    {
++    case FORM_CHANGE_BEGIN_BATTLE:
++    case FORM_CHANGE_BATTLE_SWITCH_OUT:
++    case FORM_CHANGE_BATTLE_SWITCH_IN:
++    case FORM_CHANGE_BATTLE_HP_PERCENT_TURN_END:
++    case FORM_CHANGE_BATTLE_HP_PERCENT_SEND_OUT:
++    case FORM_CHANGE_BATTLE_HP_PERCENT_DURING_MOVE:
++    case FORM_CHANGE_BATTLE_MEGA_EVOLUTION_ITEM:
++    case FORM_CHANGE_BATTLE_MEGA_EVOLUTION_MOVE:
++    case FORM_CHANGE_BATTLE_PRIMAL_REVERSION:
++    case FORM_CHANGE_BATTLE_WEATHER:
++    case FORM_CHANGE_BATTLE_TURN_END:
++    case FORM_CHANGE_BATTLE_ULTRA_BURST:
++    case FORM_CHANGE_BATTLE_GIGANTAMAX:
++    case FORM_CHANGE_BATTLE_HIT_BY_MOVE_CATEGORY:
++    case FORM_CHANGE_BATTLE_HIT_BY_CONFUSION_SELF_DMG:
++    case FORM_CHANGE_BATTLE_TERASTALLIZATION:
++    case FORM_CHANGE_BATTLE_BEFORE_MOVE:
++    case FORM_CHANGE_BATTLE_AFTER_MOVE:
++    case FORM_CHANGE_BATTLE_BOND:
++    case FORM_CHANGE_BATTLE_BEFORE_MOVE_CATEGORY:
++        return TRUE;
++    default:
++        return FALSE;
++    }
++}
++
++/* Guest clients receive the active species through the player controller but
++ * do not run HandleEndTurn_FinishBattle. Reuse the native cleanup against a
++ * temporary staged copy, and only after proving the same owner-mon identity
++ * and a battle-form edge from the pre-battle species. */
++static bool8 RestoreCoopPrivatePartyMon(struct Pokemon *mon, const struct Pokemon *original, u8 stage, bool8 restoreItemFromPeer)
++{
++    enum Species originalSpecies;
++    enum Species currentSpecies;
++    const struct FormChange *formChanges;
++    struct Pokemon originalCopy;
++    enum Item originalItem;
++    u8 partySlot = stage % MULTI_PARTY_SIZE;
++
++    originalCopy = *original;
++    if (!MonValid(mon, FALSE) || !MonValid(&originalCopy, FALSE)
++     || mon->box.personality != original->box.personality
++     || mon->box.otId != original->box.otId)
++        return FALSE;
++
++    originalSpecies = GetMonData(&originalCopy, MON_DATA_SPECIES);
++    currentSpecies = GetMonData(mon, MON_DATA_SPECIES);
++    if (currentSpecies != originalSpecies)
++    {
++        bool8 validBattleForm = FALSE;
++        struct Pokemon *staged = StageMon(stage);
++        struct Pokemon stagedBefore;
++        enum Species oldChangedSpecies;
++        bool8 oldSentOut;
++        formChanges = GetSpeciesFormChanges(originalSpecies);
++        if (formChanges == NULL
++         || staged->box.personality != original->box.personality
++         || staged->box.otId != original->box.otId
++         || GetMonData(staged, MON_DATA_SPECIES) != currentSpecies)
++            return FALSE;
++
++        for (u32 i = 0; formChanges[i].method != FORM_CHANGE_TERMINATOR; i++)
++        {
++            if (formChanges[i].targetSpecies == currentSpecies && IsBattleFormChangeMethod(formChanges[i].method))
++            {
++                validBattleForm = TRUE;
++                break;
++            }
++        }
++        if (!validBattleForm)
++            return FALSE;
++
++        stagedBefore = *staged;
++        oldChangedSpecies = gBattleStruct->partyState[B_SIDE_PLAYER][partySlot].changedSpecies;
++        oldSentOut = gBattleStruct->partyState[B_SIDE_PLAYER][partySlot].sentOut;
++        gBattleStruct->partyState[B_SIDE_PLAYER][partySlot].changedSpecies = originalSpecies;
++        /* A controller species update can only describe the active battler. */
++        gBattleStruct->partyState[B_SIDE_PLAYER][partySlot].sentOut = TRUE;
++        TryRevertPartyMonFormChange(partySlot);
++
++        *mon = *staged;
++        *staged = stagedBefore;
++        gBattleStruct->partyState[B_SIDE_PLAYER][partySlot].changedSpecies = oldChangedSpecies;
++        gBattleStruct->partyState[B_SIDE_PLAYER][partySlot].sentOut = oldSentOut;
++        if (!MonValid(mon, FALSE)
++         || mon->box.personality != original->box.personality
++         || mon->box.otId != original->box.otId
++         || GetMonData(mon, MON_DATA_SPECIES) != originalSpecies)
++            return FALSE;
++    }
++
++    /* Match TryRestoreHeldItems: restore native-configured items locally, and
++     * restore stolen remote items only when the master reports that decision.
++     * Never infer restoration from an empty held slot; berries are consumed. */
++    originalItem = GetMonData(&originalCopy, MON_DATA_HELD_ITEM);
++    if (((B_RESTORE_HELD_BATTLE_ITEMS >= GEN_9 || B_TRAINERS_KNOCK_OFF_ITEMS) || restoreItemFromPeer)
++     && originalItem != ITEM_NONE && GetItemPocket(originalItem) != POCKET_BERRIES)
++        SetMonData(mon, MON_DATA_HELD_ITEM, &originalItem);
++
++    return MonValid(mon, FALSE)
++        && mon->box.personality == original->box.personality
++        && mon->box.otId == original->box.otId
++        && GetMonData(mon, MON_DATA_SPECIES) == originalSpecies;
++}
++
++/* The engine's end-of-battle restore has the authoritative stolen/restore
++ * flags for the remote owner's staged roster. Send only the decision; the
++ * receiver obtains the exact item from its identity-checked original mon. */
++static u8 GetRemoteHeldItemRestoreMask(void)
++{
++    u8 slot;
++    u8 count;
++    u8 mask = 0;
++
++    if (sCoop.local != 0 || gBattleStruct == NULL)
++        return 0;
++
++    count = sCoop.headers[1].count;
++    if (count > MULTI_PARTY_SIZE)
++        count = MULTI_PARTY_SIZE;
++    for (slot = 0; slot < count; slot++)
++    {
++        const struct LostItem *lostItem = &gBattleStruct->itemLost[B_TRAINER_PARTNER][slot];
++        enum Item originalItem = lostItem->originalItem;
++        bool8 restoreItem = lostItem->stolen || lostItem->restoreAfterBattle;
++
++        if (lostItem->wildItemPending || !restoreItem || originalItem == ITEM_NONE
++         || GetItemPocket(originalItem) == POCKET_BERRIES)
++            continue;
++        mask |= 1u << slot;
++    }
++    return mask;
++}
++
+ static bool8 BuildPrivateParty(struct Pokemon merged[PARTY_SIZE])
+ {
+     u8 i;
+@@ -1417,10 +1934,14 @@ static bool8 BuildPrivateParty(struct Pokemon merged[PARTY_SIZE])
+     memcpy(merged, sCoop.working, sizeof(sCoop.working));
+     for (i = 0; i < sCoop.count; i++)
+     {
+-        struct Pokemon mon = *StageMon(sCoop.local * MULTI_PARTY_SIZE + i);
++        u8 stage = sCoop.local * MULTI_PARTY_SIZE + i;
++        bool8 restoreItemFromPeer = sCoop.local == 1 && sCoop.peerReady
++                                 && (sCoop.peerRestoreItemMask & (1u << i));
++        struct Pokemon mon = *StageMon(stage);
+         struct Pokemon *original = &sCoop.original[sCoop.slots[i]];
+         if (!MonValid(&mon, FALSE) || mon.box.personality != original->box.personality
+          || mon.box.otId != original->box.otId
++         || !RestoreCoopPrivatePartyMon(&mon, original, stage, restoreItemFromPeer)
+          || GetMonData(&mon, MON_DATA_SPECIES) != GetMonData(original, MON_DATA_SPECIES))
+         {
+             valid = FALSE;
+@@ -1448,11 +1969,15 @@ int WorldCoop_ReceiveCompletion(const u8 *data, u16 size, u8 sender)
+      || (packet.catchOwner && (sCoop.kind || sCoop.enemyCount != 1 || packet.reward))
+      || packet.outcome == 0 || packet.outcome > B_OUTCOME_MON_TELEPORTED
+      || (packet.reward & ~((1 << sCoop.enemyCount) - 1))
++     || (packet.restoreItemMask & ~((1 << MULTI_PARTY_SIZE) - 1))
++     || (sender != 0 && packet.restoreItemMask)
++     || packet.reserved[0] || packet.reserved[1] || packet.reserved[2]
+      || (packet.phase != COOP_READY && packet.phase != COOP_COMMIT))
+         return -1;
+     if (sender == sCoop.local)
+     {
+-        if (!sCoop.readySent || packet.outcome != gBattleOutcome || packet.reward != sCoop.reward)
++        if (!sCoop.readySent || packet.outcome != gBattleOutcome || packet.reward != sCoop.reward
++         || packet.restoreItemMask != GetRemoteHeldItemRestoreMask())
+             return -1;
+         if (packet.phase == COOP_COMMIT)
+         {
+@@ -1464,16 +1989,19 @@ int WorldCoop_ReceiveCompletion(const u8 *data, u16 size, u8 sender)
+     }
+     if (packet.phase == COOP_READY)
+     {
+-        if (sCoop.peerReady && (sCoop.peerOutcome != packet.outcome || sCoop.peerReward != packet.reward))
++        if (sCoop.peerReady && (sCoop.peerOutcome != packet.outcome || sCoop.peerReward != packet.reward
++                             || sCoop.peerRestoreItemMask != packet.restoreItemMask))
+             return -1;
+         sCoop.peerReady = TRUE;
+         sCoop.peerOutcome = packet.outcome;
+         sCoop.peerReward = packet.reward;
++        sCoop.peerRestoreItemMask = packet.restoreItemMask;
+     }
+     else
+     {
+         if (!sCoop.peerReady || !sCoop.readySent
+-         || packet.outcome != sCoop.peerOutcome || packet.reward != sCoop.peerReward)
++         || packet.outcome != sCoop.peerOutcome || packet.reward != sCoop.peerReward
++         || packet.restoreItemMask != sCoop.peerRestoreItemMask)
+             return -1;
+         sCoop.peerCommit = TRUE;
+     }
+@@ -1514,6 +2042,10 @@ bool8 WorldCoop_ReadyForPrivateRewards(void)
+     }
+     if (!IsLinkTaskFinished())
+         return FALSE;
++    /* The master carries held-item restore decisions for stolen remote items.
++     * Do not advertise guest readiness until its private party can apply them. */
++    if (sCoop.local != 0 && !sCoop.peerReady)
++        return FALSE;
+     packet.magic = COOP_MAGIC;
+     packet.version = COOP_VERSION;
+     packet.generation = sCoop.generation;
+@@ -1522,6 +2054,7 @@ bool8 WorldCoop_ReadyForPrivateRewards(void)
+     packet.outcome = gBattleOutcome;
+     packet.reward = sCoop.reward;
+     packet.catchOwner = sCoop.catchOwner;
++    packet.restoreItemMask = GetRemoteHeldItemRestoreMask();
+     packet.phase = sCoop.readySent ? COOP_COMMIT : COOP_READY;
+     if ((!sCoop.readySent || (sCoop.peerReady && !sCoop.commitSent))
+      && SendBlock(BitmaskAllOtherLinkPlayers(), &packet, sizeof(packet)))
+diff --git a/src/world/world_coop_potion.c b/src/world/world_coop_potion.c
+index f5e606e972d11985fa57735d56c173540847a079..0c967c1f494d211ed66cded5e8035ce34c496d7e 100644
+--- a/src/world/world_coop_potion.c
++++ b/src/world/world_coop_potion.c
+@@ -1,79 +1,135 @@
+ #ifdef PORTABLE
+ #include "global.h"
++#include "item.h"
+ #include "constants/items.h"
+ #include "constants/battle.h"
++#include "constants/item_effects.h"
+ #include "platform/world_coop_potion.h"
+ 
+-bool8 WorldCoop_IsHpMedicine(u16 item)
++/* Keep the co-op medicine allow-list explicit: only these owned, battle-usable
++ * items are supported by the private-party protocol. Their mechanics, however,
++ * come from Expansion's canonical configured item-effect data. */
++static bool8 WorldCoop_IsMedicineItem(u16 item)
+ {
+     return item == ITEM_POTION || item == ITEM_SUPER_POTION
+         || item == ITEM_HYPER_POTION || item == ITEM_MAX_POTION
+-        || item == ITEM_FRESH_WATER || item == ITEM_SODA_POP || item == ITEM_LEMONADE || item == ITEM_MOOMOO_MILK;
++        || item == ITEM_FRESH_WATER || item == ITEM_SODA_POP
++        || item == ITEM_LEMONADE || item == ITEM_MOOMOO_MILK
++        || item == ITEM_ANTIDOTE || item == ITEM_BURN_HEAL
++        || item == ITEM_ICE_HEAL || item == ITEM_AWAKENING
++        || item == ITEM_PARALYZE_HEAL || item == ITEM_FULL_HEAL
++        || item == ITEM_FULL_RESTORE || item == ITEM_REVIVE
++        || item == ITEM_MAX_REVIVE;
++}
++
++bool8 WorldCoop_IsHpMedicine(u16 item)
++{
++    const u8 *effect;
++    if (!WorldCoop_IsMedicineItem(item))
++        return FALSE;
++    effect = GetItemEffect(item);
++    return effect != NULL && (effect[4] & ITEM4_HEAL_HP)
++        && !(effect[4] & ITEM4_REVIVE);
+ }
+ 
+ u16 WorldCoop_HpMedicineHeal(u16 item, u16 hp, u16 maxHP)
+ {
+-    u16 amount, missing;
+-    if (!hp || !maxHP || maxHP > 999 || hp >= maxHP) return 0;
+-    switch (item)
++    const u8 *effect;
++    u16 amount;
++    u8 param;
++    if (!WorldCoop_IsHpMedicine(item) || !hp || !maxHP || maxHP > 999 || hp >= maxHP)
++        return 0;
++    effect = GetItemEffect(item);
++    param = effect[6];
++    switch (param)
+     {
+-    case ITEM_POTION: amount = 20; break;
+-    case ITEM_SUPER_POTION: amount = 50; break;
+-    case ITEM_HYPER_POTION: amount = 200; break;
+-    case ITEM_MAX_POTION: amount = maxHP; break;
+-    case ITEM_FRESH_WATER: amount = 50; break;
+-    case ITEM_SODA_POP: amount = 60; break;
+-    case ITEM_LEMONADE: amount = 80; break;
+-    case ITEM_MOOMOO_MILK: amount = 100; break;
+-    default: return 0;
++    case ITEM6_HEAL_HP_FULL:
++        amount = maxHP - hp;
++        break;
++    case ITEM6_HEAL_HP_HALF:
++        amount = maxHP / 2;
++        break;
++    case ITEM6_HEAL_HP_QUARTER:
++        amount = maxHP / 4;
++        if (!amount) amount = 1;
++        break;
++    case ITEM6_HEAL_HP_LVL_UP:
++        /* Level-up HP is contextual battle-script state, unavailable here. */
++        return 0;
++    default:
++        amount = param;
++        break;
+     }
+-    missing = maxHP - hp;
+-    return amount < missing ? amount : missing;
++    if (amount > maxHP - hp)
++        amount = maxHP - hp;
++    return amount;
+ }
+ 
+ bool8 WorldCoop_IsMedicine(u16 item)
+ {
+-    return WorldCoop_IsHpMedicine(item) || item == ITEM_ANTIDOTE || item == ITEM_BURN_HEAL
+-        || item == ITEM_ICE_HEAL || item == ITEM_AWAKENING || item == ITEM_PARALYZE_HEAL
+-        || item == ITEM_FULL_HEAL || item == ITEM_FULL_RESTORE
+-        || item == ITEM_REVIVE || item == ITEM_MAX_REVIVE;
++    return WorldCoop_IsMedicineItem(item);
++}
++
++static u32 WorldCoop_StatusMaskFromEffect(u8 effect)
++{
++    u32 mask = 0;
++    if (effect & ITEM3_PARALYSIS) mask |= STATUS1_PARALYSIS;
++    if (effect & ITEM3_FREEZE) mask |= STATUS1_ICY_ANY;
++    if (effect & ITEM3_BURN) mask |= STATUS1_BURN;
++    if (effect & ITEM3_POISON) mask |= STATUS1_PSN_ANY | STATUS1_TOXIC_COUNTER;
++    if (effect & ITEM3_SLEEP) mask |= STATUS1_SLEEP;
++    return mask;
+ }
+ 
+ bool8 WorldCoop_MedicineEffect(u16 item, u16 hp, u16 maxHP, u32 status, bool8 confused, u16 *heal, u32 *newStatus, bool8 *clearConfusion)
+ {
++    const u8 *effect;
+     u16 amount = 0;
+-    u32 mask = 0;
+-    bool8 cureConfusion = FALSE;
+-    if (!heal || !newStatus || !clearConfusion || !maxHP || maxHP > 999 || hp > maxHP) return FALSE;
+-    if (!hp)
++    u32 mask;
++    bool8 cureConfusion;
++    bool8 revive;
++    if (!heal || !newStatus || !clearConfusion || !WorldCoop_IsMedicineItem(item)
++     || !maxHP || maxHP > 999 || hp > maxHP)
++        return FALSE;
++    effect = GetItemEffect(item);
++    if (effect == NULL)
++        return FALSE;
++    revive = !!(effect[4] & ITEM4_REVIVE);
++    if (revive)
+     {
+-        if (item != ITEM_REVIVE && item != ITEM_MAX_REVIVE) return FALSE;
+-        *heal = item == ITEM_MAX_REVIVE ? maxHP : (maxHP / 2 ? maxHP / 2 : 1);
++        if (hp != 0 || !(effect[4] & ITEM4_HEAL_HP)) return FALSE;
++        switch (effect[6])
++        {
++        case ITEM6_HEAL_HP_FULL:
++            amount = maxHP;
++            break;
++        case ITEM6_HEAL_HP_HALF:
++            /* Battle item effect uses floor(maxHP / 2), without min-one. */
++            amount = maxHP / 2;
++            break;
++        case ITEM6_HEAL_HP_QUARTER:
++            amount = maxHP / 4;
++            if (!amount) amount = 1;
++            break;
++        default:
++            amount = effect[6];
++            break;
++        }
++        *heal = amount;
+         *newStatus = status;
+         *clearConfusion = FALSE;
+         return TRUE;
+     }
+-    if (item == ITEM_REVIVE || item == ITEM_MAX_REVIVE) return FALSE;
+-    if (WorldCoop_IsHpMedicine(item)) amount = WorldCoop_HpMedicineHeal(item, hp, maxHP);
+-    switch (item)
++    if (!hp) return FALSE;
++    if ((effect[4] & ITEM4_HEAL_HP) && hp < maxHP)
+     {
+-    case ITEM_ANTIDOTE:
+-        if (status & STATUS1_PSN_ANY) mask = STATUS1_PSN_ANY | STATUS1_TOXIC_COUNTER;
+-        break;
+-    case ITEM_BURN_HEAL: mask = STATUS1_BURN; break;
+-    case ITEM_ICE_HEAL: mask = STATUS1_FREEZE; break;
+-    case ITEM_AWAKENING: mask = STATUS1_SLEEP; break;
+-    case ITEM_PARALYZE_HEAL: mask = STATUS1_PARALYSIS; break;
+-    case ITEM_FULL_HEAL:
+-    case ITEM_FULL_RESTORE:
+-        if (status & STATUS1_ANY) mask = STATUS1_ANY | STATUS1_TOXIC_COUNTER;
+-        cureConfusion = confused;
+-        if (item == ITEM_FULL_RESTORE) amount = maxHP - hp;
+-        break;
+-    default:
+-        if (!WorldCoop_IsHpMedicine(item)) return FALSE;
++        amount = WorldCoop_HpMedicineHeal(item, hp, maxHP);
++        if (!amount) return FALSE;
+     }
+-    if (!amount && !(status & mask) && !cureConfusion) return FALSE;
++    mask = WorldCoop_StatusMaskFromEffect(effect[3]);
++    cureConfusion = confused && !!(effect[3] & ITEM3_CONFUSION);
++    if (!amount && !(status & mask) && !cureConfusion)
++        return FALSE;
+     *heal = amount;
+     *newStatus = status & ~mask;
+     *clearConfusion = cureConfusion;
+diff --git a/src/world/world_runtime.c b/src/world/world_runtime.c
+index 27c1dd2d4afffe50618c1ca0e62ad29c19bb37f9..e48277589cc943afdbe093bc18cd05cc03f4f312 100644
+--- a/src/world/world_runtime.c
++++ b/src/world/world_runtime.c
+@@ -13,6 +13,7 @@
+ #include "platform/world_runtime.h"
+ #include "platform/generated_map.h"
+ #include "platform/native_file.h"
++#include "platform/video_mode.h"
+ 
+ static bool8 sWorldRuntimeStarted;
+ 
+@@ -30,21 +31,28 @@ void WorldRuntime_BeforeFrame(void)
+     if (!sWorldRuntimeStarted)
+     {
+         const char *config = getenv("EW_WORLD_CONFIG");
+-        if (!WorldBridge_Init(config) || !LinkTransport_Init(config))
++        if (!WorldBridge_Init(config))
+         {
+             fputs("RC7 world configuration could not be initialized\n", stderr);
+             PlatformTestRunnerExit(70);
+             return;
+         }
++        if (!LinkTransport_Init(config))
++        {
++            WorldBridge_Close();
++            fputs("RC7 link configuration could not be initialized\n", stderr);
++            PlatformTestRunnerExit(70);
++            return;
++        }
+         sWorldRuntimeStarted = TRUE;
+         atexit(WorldRuntime_Close);
+     }
+     // Preserve the original main-thread ordering. IO never mutates the game
+     // while link callbacks are consuming a native command matrix.
+-    WorldBridge_Poll(TRUE);
++    WorldBridge_Poll(video_is_headless());
+     LinkTransport_Pump();
+     NativeLink_BeforeFrame(gSendCmd);
+-    WorldBridge_BeforeFrame(frame_count(), TRUE);
++    WorldBridge_BeforeFrame(frame_count(), video_is_headless());
+ }
+ 
+ void WorldRuntime_AfterFrame(void)
+diff --git a/tests/check_coop_private_completion_cleanup.py b/tests/check_coop_private_completion_cleanup.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b2f4a366f3660a3256a9f1bba5d429a4f993c8fa
+--- /dev/null
++++ b/tests/check_coop_private_completion_cleanup.py
+@@ -0,0 +1,52 @@
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++WORLD = (ROOT / "src/world/world_coop.c").read_text()
++UTIL = (ROOT / "src/battle_util.c").read_text()
++
++
++def body(text: str, signature: str) -> str:
++    start = text.index(signature)
++    opening = text.index("{", start)
++    depth = 0
++    for end in range(opening, len(text)):
++        if text[end] == "{":
++            depth += 1
++        elif text[end] == "}":
++            depth -= 1
++            if depth == 0:
++                return text[opening + 1:end]
++    raise AssertionError(f"unterminated function: {signature}")
++
++
++build = body(WORLD, "static bool8 BuildPrivateParty(")
++assert "RestoreCoopPrivatePartyMon(" in WORLD, "missing identity-checked private completion cleanup"
++cleanup = body(WORLD, "static bool8 RestoreCoopPrivatePartyMon(")
++method_guard = body(WORLD, "static bool8 IsBattleFormChangeMethod(")
++revert = body(UTIL, "bool32 TryRevertPartyMonFormChange(")
++
++completion = body(WORLD, "int WorldCoop_ReceiveCompletion(")
++ready = body(WORLD, "bool8 WorldCoop_ReadyForPrivateRewards(")
++assert "restoreItemMask" in WORLD, "completion handshake must carry host-owned item restore decisions"
++assert "lostItem->stolen || lostItem->restoreAfterBattle" in WORLD
++assert "peerRestoreItemMask" in completion
++assert "packet.restoreItemMask & ~((1 << MULTI_PARTY_SIZE) - 1)" in completion
++assert "packet.restoreItemMask != sCoop.peerRestoreItemMask" in completion
++assert "if (sCoop.local != 0 && !sCoop.peerReady)" in ready, "guest must wait for the master's restore decision"
++assert ready.index("if (sCoop.local != 0 && !sCoop.peerReady)") < ready.index("SendBlock("), "guest must apply host restore mask before its READY"
++
++identity = build.index("mon.box.personality != original->box.personality")
++restore = build.index("RestoreCoopPrivatePartyMon(")
++final_species_check = build.index("GetMonData(&mon, MON_DATA_SPECIES) != GetMonData(original, MON_DATA_SPECIES)")
++assert identity < restore < final_species_check, "validate identity, clean temporary state, then validate final species"
++assert "MonValid(&originalCopy, FALSE)" in cleanup, "original snapshot must be valid before it authorizes repair"
++assert "GetSpeciesFormChanges(originalSpecies)" in cleanup, "form cleanup must use the baseline species' source form table"
++assert "formChanges[i].targetSpecies == currentSpecies" in cleanup, "only a form reachable from this original is eligible"
++assert "TryRevertPartyMonFormChange" in cleanup, "reuse native battle-end cleanup for moves and derived stats"
++assert "B_RESTORE_HELD_BATTLE_ITEMS >= GEN_9 || B_TRAINERS_KNOCK_OFF_ITEMS" in cleanup
++assert "GetItemPocket(originalItem) != POCKET_BERRIES" in cleanup
++assert "FORM_CHANGE_BATTLE_GIGANTAMAX" in method_guard
++assert "FORM_CHANGE_BATTLE_TERASTALLIZATION" in method_guard
++assert "FORM_CHANGE_ITEM_HOLD" not in method_guard, "non-battle form changes must not be treated as temporary battle forms"
++assert "partyState[B_SIDE_PLAYER][partyIndex].changedSpecies" in revert
++print("private completion cleanup source-contract checks passed")

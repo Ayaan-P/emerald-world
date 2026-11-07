@@ -1,0 +1,145 @@
+{
+  "purpose": "Extracted actual native results; these are historical binary-specific results, not blanket acceptance of current source",
+  "runs": [
+    {
+      "run": "single-build16",
+      "source_artifact": "/home/ayaan/projects/emerald-world-research/rc7-rescue/single-build16/acceptance.json",
+      "ok": true,
+      "scope": "real two-client ordinary single battle through peer menus and bilateral consent; no co-op/trade acceptance",
+      "binary_sha256": "ea9f37affc08f6124f4076a73d30d7609e2507b8ad34df03f454173636adf0d1",
+      "error": null,
+      "milestones": [
+        "both real native control endpoints connected",
+        "both clients connected to the disposable authority and reached ready overworld",
+        "native Bob position changed after actual GBA input",
+        "both native renderers report visible peer sprites at the other current position",
+        "real peer menu opened",
+        "real native invitation received",
+        "both clients entered native battle",
+        "both trainers returned after actual single battle"
+      ],
+      "final_observations": {
+        "alice": {
+          "callback2": "CB2_Overworld",
+          "battle_main": "ReturnFromBattleToOverworld",
+          "in_battle": false,
+          "controls_locked": false,
+          "overworld": true
+        },
+        "bob": {
+          "callback2": "CB2_Overworld",
+          "battle_main": "BeginBattleIntroDummy",
+          "in_battle": false,
+          "controls_locked": false,
+          "overworld": true
+        }
+      }
+    },
+    {
+      "run": "save-build18",
+      "source_artifact": "/home/ayaan/projects/emerald-world-research/rc7-rescue/save-build18/acceptance.json",
+      "ok": true,
+      "scope": "real two-client presence/movement plus independent in-game saves and cold Continue of distinct positions/party counts; no battle/trade reward acceptance",
+      "binary_sha256": "f0a891dea01d63a39242fff82597cf0c060e514e7df45568ca0df427b8285732",
+      "error": null,
+      "milestones": [
+        "both real native control endpoints connected",
+        "both clients connected to the disposable authority and reached ready overworld",
+        "native Bob position changed after actual GBA input",
+        "both native renderers report visible peer sprites at the other current position",
+        "both normal in-game saves changed only their own distinct private files",
+        "both independent native saves cold-Continued at their own distinct locations with matching party counts"
+      ],
+      "final_observations": {
+        "alice": {
+          "callback2": "CB2_Overworld",
+          "battle_main": "none",
+          "in_battle": false,
+          "controls_locked": false,
+          "overworld": true
+        },
+        "bob": {
+          "callback2": "CB2_Overworld",
+          "battle_main": "none",
+          "in_battle": false,
+          "controls_locked": false,
+          "overworld": true
+        }
+      }
+    },
+    {
+      "run": "coop-build18",
+      "source_artifact": "/home/ayaan/projects/emerald-world-research/rc7-rescue/coop-build18/acceptance.json",
+      "ok": false,
+      "scope": "real two-client tagged wild encounter from walking; native co-op entry and field return only; no capture, medicine, reward ownership or save/reload acceptance",
+      "binary_sha256": "f0a891dea01d63a39242fff82597cf0c060e514e7df45568ca0df427b8285732",
+      "error": "TimeoutError: tagged wild battle field return",
+      "milestones": [
+        "both real native control endpoints connected",
+        "both clients connected to the disposable authority and reached ready overworld",
+        "native Bob position changed after actual GBA input",
+        "both native renderers report visible peer sprites at the other current position",
+        "real tag peer menu opened",
+        "real tag invitation received",
+        "tag consent returned both trainers to field",
+        "left actual lab alice",
+        "left actual lab bob",
+        "walked into Route101 alice",
+        "walked into Route101 bob",
+        "both native clients entered tagged wild battle"
+      ],
+      "final_observations": {
+        "alice": {
+          "callback2": "CB2_HandleStartMultiBattle",
+          "battle_main": "BeginBattleIntroDummy",
+          "battle": true,
+          "locked": true
+        },
+        "bob": {
+          "callback2": "CB2_HandleStartMultiBattle",
+          "battle_main": "BeginBattleIntroDummy",
+          "battle": true,
+          "locked": true
+        }
+      },
+      "last_trace_label": "tagged battle did not complete"
+    },
+    {
+      "run": "coop-build19",
+      "source_artifact": "/home/ayaan/projects/emerald-world-research/rc7-rescue/coop-build19/acceptance.json",
+      "ok": false,
+      "scope": "real two-client tagged wild encounter from walking; native co-op entry and field return only; no capture, medicine, reward ownership or save/reload acceptance",
+      "binary_sha256": "fef6228ce3c6af8d23697a92b8b255cc6bc38144f4a60ddc28dac43c9b07a73e",
+      "error": "TimeoutError: tagged wild battle field return",
+      "milestones": [
+        "both real native control endpoints connected",
+        "both clients connected to the disposable authority and reached ready overworld",
+        "native Bob position changed after actual GBA input",
+        "both native renderers report visible peer sprites at the other current position",
+        "real tag peer menu opened",
+        "real tag invitation received",
+        "tag consent returned both trainers to field",
+        "left actual lab alice",
+        "left actual lab bob",
+        "walked into Route101 alice",
+        "walked into Route101 bob",
+        "both native clients entered tagged wild battle"
+      ],
+      "final_observations": {
+        "alice": {
+          "callback2": "BattleMainCB2",
+          "battle_main": "DoBattleIntro",
+          "battle": true,
+          "locked": true
+        },
+        "bob": {
+          "callback2": "BattleMainCB2",
+          "battle_main": "BeginBattleIntroDummy",
+          "battle": true,
+          "locked": true
+        }
+      },
+      "last_trace_label": "tagged battle did not complete"
+    }
+  ]
+}

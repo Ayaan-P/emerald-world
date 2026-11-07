@@ -1,0 +1,234 @@
+{
+  "description": "Current source-only incremental engine checkpoint; not a complete-game acceptance",
+  "base_engine_commit": "e406cf82922e9c3a5bfee746f9a97f67f3916a4c",
+  "target_engine_commit": "4ae9756faf18a9540758a95b8cec72bc7c808ceb",
+  "patch": "native-world-integration-current.patch",
+  "patch_sha256": "c00b9dfc063c92524ed638db79b943fe98eb0cee7e81f615de0ca20ca941300b",
+  "files": [
+    {
+      "path": "data/battle_scripts_2.s",
+      "sha256": "6328a8a6f402a0c243de6824b65669f560cac82fcbb2f7955c441a99de88793e"
+    },
+    {
+      "path": "data/scripts/repel.inc",
+      "sha256": "1cd88adf669b7daa404b7d6ed7d15a4aa0c83dfc09573ae45c3d154ca1542de4"
+    },
+    {
+      "path": "include/battle_controllers.h",
+      "sha256": "fc9dfdce32bd545d9e2da9c5cc05dd075f93291bae5d44ccbf4275a20e795342"
+    },
+    {
+      "path": "include/battle_gfx_sfx_util.h",
+      "sha256": "c6c8f31727a7e185f1d7a6d45f3e6f18d67a184a0427943a4d9d083e7f73fd6c"
+    },
+    {
+      "path": "include/battle_gimmick.h",
+      "sha256": "fc1418e5265a13fa4444908a8ee201ae067b2c151a2412c2d3f1ccca78e3322f"
+    },
+    {
+      "path": "include/battle_interface.h",
+      "sha256": "7be7d240493ac6f4e7c1514ed784535cd95a7b1ff40fe5c55c3f0b3c789a7caa"
+    },
+    {
+      "path": "include/battle_scripts.h",
+      "sha256": "41e067ede74a87fd9f28476d357e1322fe4e407ac73a79621cb74cfce1f574f3"
+    },
+    {
+      "path": "include/librfu.h",
+      "sha256": "8773fb05518f6d871db40baae8b05ae3567e264f1b5f3cbff0935dad79a27963"
+    },
+    {
+      "path": "include/party_menu.h",
+      "sha256": "4e0b51b799e19fd249ecd76dd69f30a994d279490e7d79be848bbf9c0bfb9fd2"
+    },
+    {
+      "path": "include/platform/player_control.h",
+      "sha256": "0126c458d599abb17dfd38a7cf3fb93c4aeea04d7c04b1a85e4689b4b67f5086"
+    },
+    {
+      "path": "include/platform/world_chat.h",
+      "sha256": "91506516a06fa32e5692cf812de3ff46484bef396eab661673ae791ac0bdbf40"
+    },
+    {
+      "path": "include/platform/world_coop.h",
+      "sha256": "85d60d43ffc0b5e1c65cf1821bd7d40869907c525c5ba46dca02d4c15b70f1fc"
+    },
+    {
+      "path": "platform/Makefile",
+      "sha256": "5d0af18ba9a02cf2772582495259e4070cbe553050fd89c8c3061eb2eef97402"
+    },
+    {
+      "path": "platform/frame.c",
+      "sha256": "927f7ee331077b40f17e07a3bf99df82b8aa432aa26ff5bebb411b4f502c3169"
+    },
+    {
+      "path": "platform/frame.h",
+      "sha256": "c8d4824adbd772ac457c042869393d50ae6686b6e91033aad337310e3d709d3f"
+    },
+    {
+      "path": "platform/input.c",
+      "sha256": "f17fdab28aeaf714df4d53cf780f0f88d13c6fc9c66253b2153cc464bc3bd83f"
+    },
+    {
+      "path": "platform/input.h",
+      "sha256": "c3a50976a1c6c56ea9e4a4df5318cab96aaeb6699720fb6a74b10e5958b8a88c"
+    },
+    {
+      "path": "platform/main.c",
+      "sha256": "c7ceffea139e424dc5f4a8803be59434f098d28ad281c1fdafbf1193be8e040b"
+    },
+    {
+      "path": "platform/options.c",
+      "sha256": "f7fed3498fdf4499b8b6bfba3f2c614df98aa7fe44f74e639cd35006e589f528"
+    },
+    {
+      "path": "platform/options.h",
+      "sha256": "61ede5d3997fcef844922a9e3ae9480d80180ad720d4f6b26bfc423ad95e262c"
+    },
+    {
+      "path": "platform/video.c",
+      "sha256": "fe08da2273925d229311249cdd2ba7d2aa268ce824fd5b2ed71a7479104b10d4"
+    },
+    {
+      "path": "platform/video.h",
+      "sha256": "070e2d2337addd95e8fa9248dc2f1f20cdc781d7b8d3d2411919f3591e94b277"
+    },
+    {
+      "path": "platform/video_mode.h",
+      "sha256": "22d258993828221948d5dd3475d27c3a2fd731875e86014f9e8205081c21fba7"
+    },
+    {
+      "path": "src/battle_controller_player.c",
+      "sha256": "e40e0872081db0ee6c76525fced546527fb2eaed7ae3068b95ff684870c7f3bc"
+    },
+    {
+      "path": "src/battle_controllers.c",
+      "sha256": "cd46cf783a5a9cd1cf7498eb365accfe04396c965e34347adfebebba76e5d34d"
+    },
+    {
+      "path": "src/battle_gfx_sfx_util.c",
+      "sha256": "b2566ca5401e633ef119301c6093f2e33cb719b077949fd5c68bcbd5d3e6ee7a"
+    },
+    {
+      "path": "src/battle_gimmick.c",
+      "sha256": "384d017a92d78ba2a0dd489cd617e3d4908a77d53e57feef8c5a72c5505d04a4"
+    },
+    {
+      "path": "src/battle_hold_effects.c",
+      "sha256": "0b23f8497059594f0266d5ec7bf0811a125eb81028ca51589878def083584c8c"
+    },
+    {
+      "path": "src/battle_interface.c",
+      "sha256": "f84c91bfcd9d2f095f98bb810a7f1c633cae30371e32e0c757dfc47bd5070e6b"
+    },
+    {
+      "path": "src/battle_main.c",
+      "sha256": "737e91640afc2e23c3bdb29c9ed9e63363b14806e44e992eb5c7c6bbf66c5161"
+    },
+    {
+      "path": "src/battle_script_commands.c",
+      "sha256": "d24f98e729fc6913b8a36cb8d7d212decde7670ce1b6ef0bf7c54f3a73cca6a4"
+    },
+    {
+      "path": "src/battle_set_effect.c",
+      "sha256": "31ff9d7022fec8f41fcb92fcf9515d2f94efc0564a34abdfbc741deeee40a25d"
+    },
+    {
+      "path": "src/battle_setup.c",
+      "sha256": "b3d970103b6bb85294c2a285e6b4d451a20d59b8c7ec6d45463b701738abefc4"
+    },
+    {
+      "path": "src/battle_util.c",
+      "sha256": "5ab26a54eab4e787c6b0df3f48430d9c0b4001efd5686be8daf95dbcd9ac594f"
+    },
+    {
+      "path": "src/data/party_menu.h",
+      "sha256": "3894b6143eb96c8d789a44ae609cf25d0f66be5a979e22fe622ef479fbc2ecfc"
+    },
+    {
+      "path": "src/event_object_movement.c",
+      "sha256": "196b8a652fed4dac2db5efb3f927d0d31d4338c4d3b764da8a317f2b383712df"
+    },
+    {
+      "path": "src/field_effect.c",
+      "sha256": "68d10a1bcdae64e2a99c939af5d5502032c60481207d522840466862c85cb156"
+    },
+    {
+      "path": "src/item_menu.c",
+      "sha256": "fcf94ffc08b109d9ea6549255381406d62f3dba57b444f62639565d0ee17a558"
+    },
+    {
+      "path": "src/item_use.c",
+      "sha256": "d47a77ea5d3bb40c446fa8be705bc1d5ca43b1781db0ce10461eb0624761e3b6"
+    },
+    {
+      "path": "src/librfu_rfu.c",
+      "sha256": "4f9692d57250699e6a7f624cbd207a84bd65aac6bae2dc870b6d727c8d8e58d5"
+    },
+    {
+      "path": "src/link.c",
+      "sha256": "fee62de0e41b44c354e5f90d229b6efbf734dbdf5a8d108134f8846bdcb166b4"
+    },
+    {
+      "path": "src/link_rfu_2.c",
+      "sha256": "cc23b4b730632d601eb5d25f1481f7412f0ab9472e70b8ba849f230c7f9f3e76"
+    },
+    {
+      "path": "src/overworld.c",
+      "sha256": "6bb6310b37c9b34cae93baae7041c61c229947f5416db961ab453a900706ccf4"
+    },
+    {
+      "path": "src/party_menu.c",
+      "sha256": "c565953dcbe46eb3ee8059c9128b0d930bd993c1615bd158165306d12d55e12d"
+    },
+    {
+      "path": "src/script_movement.c",
+      "sha256": "e71ec1ba8c16e621b9147ddd88c3609c4e10fc3801b33582604cc5d2d7d7810c"
+    },
+    {
+      "path": "src/sprite.c",
+      "sha256": "a2e388a5a07176324bdbbbce7d0c47b24aa22cf2d3c38e06bbd8d9014fbd7da2"
+    },
+    {
+      "path": "src/trade.c",
+      "sha256": "4252728f5c94fe7187e75016fba71d041f3c5056c717ec48899fda959477941a"
+    },
+    {
+      "path": "src/wild_encounter.c",
+      "sha256": "c5a00328f2f7daa04c9e9c34ced877dd13ebb21fc28774ddec917d85b83cc6f5"
+    },
+    {
+      "path": "src/world/world_chat.c",
+      "sha256": "288a1e725fb570b9673f9a37965bdad039913fc05ceb9e84a1c1ee9de795633c"
+    },
+    {
+      "path": "src/world/world_coop.c",
+      "sha256": "d189cb48d27d5af87562f574629a662b6e92ef05be02e6d3815989e255cc6905"
+    },
+    {
+      "path": "src/world/world_coop_potion.c",
+      "sha256": "19c029b31f6ba6a99f0b3d29f30245e002371dc0f8290155119ab4353c2cceab"
+    },
+    {
+      "path": "src/world/world_runtime.c",
+      "sha256": "579296f4908efb59d86a4cddf05c54ba7ee5fd5c36906c1efdfe71dbfaaa3f19"
+    },
+    {
+      "path": "tests/check_coop_private_completion_cleanup.py",
+      "sha256": "ebe41b11c98dd76b54e6845ea0eaae079b24d0b05afd60bcf0eb6db0b183426d"
+    }
+  ],
+  "reconstruction_verification": {
+    "method": "Temporary Git index read-tree at pinned public base then git apply --cached of all three source patches and git write-tree; source worktree untouched",
+    "public_base_commit": "bb3fd057061cdd7e6a9e79b76abb41924ee44ecc",
+    "ordered_patches": [
+      "native-foundation.patch",
+      "native-world-wip.patch",
+      "native-world-integration-current.patch"
+    ],
+    "result_tree": "657391ae99c79cb714ec82e76e324a471a47ae7b",
+    "expected_checkpoint_tree": "657391ae99c79cb714ec82e76e324a471a47ae7b",
+    "identical": true,
+    "fresh_clone_build_verified": false
+  }
+}

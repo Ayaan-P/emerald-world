@@ -1,5 +1,10 @@
 # RC7 full-engine replacement attempt: failed/WIP checkpoint
 
+> Historical initial checkpoint only. This file's failed-build/runtime statements
+> are not the current RC7 status. See [CURRENT.md](CURRENT.md) for the latest
+> source delta/reconstruction, and [the workboard](../../RC7_WORKBOARD.md) for
+> current gameplay evidence and ownership.
+
 Not a working release. The 17 selected RC7 world modules passed a syntax-only check against Expansion headers. The native extra-object tile-bank pixel fixture passed. Neither is multiplayer gameplay verification. No completed two-client Expansion battle/trade/co-op test exists.
 
 The native engine source was checkpointed locally as e406cf82922e9c3a5bfee746f9a97f67f3916a4c. Its last verified standalone foundation was c22527265e72236fb269937d9705bafa49cc02cc, incorporating Expansion 1.17.2 (79dd436920845ebc145577649de624f65298c209). The later world integration is incomplete.
