@@ -9,7 +9,7 @@ const state = { worlds: [], offline_saves: [], presence: null, hosting: { availa
 beforeEach(() => { loadState.mockResolvedValue(state); perform.mockResolvedValue(state); });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 it('validates the solo profile before starting the adventure', async () => {
-  render(<App />); fireEvent.click(await screen.findByRole('button', { name: /play solo/i }));
+  render(<App />); fireEvent.click(await screen.findByRole('button', { name: /new solo save/i }));
   const modal = screen.getByRole('dialog'), input = within(modal).getByLabelText('Trainer profile');
   const start = within(modal).getByRole('button', { name: /start adventure/i });
   for (const value of ['', 'A B', 'é', ' spaces ']) {
@@ -29,7 +29,7 @@ it('lets the player cancel a stalled save import without starting with a stale f
   let finish;
   const pending = new Promise(resolve => { finish = resolve; });
   const { container } = render(<App />);
-  fireEvent.click(await screen.findByRole('button', { name: /play solo/i }));
+  fireEvent.click(await screen.findByRole('button', { name: /new solo save/i }));
   const modal = screen.getByRole('dialog');
   const input = container.querySelector('input[accept^=".sav"]');
   fireEvent.change(input, { target: { files: [{ name: 'slow.sav', size: 3, arrayBuffer: () => pending }] } });

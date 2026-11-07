@@ -3,16 +3,17 @@ import './controls-help.css';
 
 const controls = [
   ['Move', 'Arrow keys'], ['A / confirm', 'Z'], ['B / back', 'X'],
-  ['Start / menu', 'Enter'], ['Select', 'Backspace or \\'], ['L / R', 'A / S'],
+  ['Start / menu', 'Enter'], ['Select', 'Backspace'], ['L / R', 'A / S'],
 ];
 
-export default function ControlsHelp() {
+export default function ControlsHelp({ engine }) {
   return <details className="controls-help">
     <summary>Game controls</summary>
     <p>Default keyboard controls for the native game. Click its window before playing; your own remapped keys may be different.</p>
     <dl>{controls.map(([action, keys]) => <div key={action}><dt>{action}</dt><dd>{keys}</dd></div>)}</dl>
+    {engine === 'expansion-native' && <p>F1 shows the native help overlay with your current key bindings and settings-file location.</p>}
     <p>For chat, press T in the game window. If T is remapped to a game control, use Ctrl+T. Press Esc to cancel chat.</p>
-    <p>To talk to an area character, face them and press A (default Z). Generated character dialogue is fixed text, not live chat. Return through START → WORLD → Leave generated area, then save your game after returning.</p>
+    <p>To talk to an area character, face them and press A (default Z). Fixed-dialogue characters are not live chat. Return through START → WORLD → Leave generated area, then save your game after returning.</p>
     <p>F11 toggles fullscreen in the native game window. Depending on your display setup, it may fill the game display rather than your monitor. Save in the game before closing it.</p>
   </details>;
 }

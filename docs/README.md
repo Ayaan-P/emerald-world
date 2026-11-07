@@ -3,13 +3,15 @@
 ## Current source and player guidance
 
 - [Project README](../README.md): current mainline, published-download distinction, quick start and implemented features versus acceptance.
-- [RC6 scope](RELEASE_RC6.md): inhabited expeditions, interactive adventures, temporary event state and owner controls.
+- [RC9 scope](RELEASE_RC9.md): current Expansion multiplayer and generated-world package.
+- [React launcher](../launcher-web/README.md): Local/Hosted sessions, generated caves, private saves and lifecycle controls.
+- [RC6 scope](RELEASE_RC6.md): earlier inhabited-area and interactive-adventure boundaries.
 - [RC5 release notes](RELEASE_RC5.md): scope of the published `v0.2.0-rc.5` player package.
 - [Linux packaging and installation](linux-packaging.md): player archive and user-local installation.
 - [Native source build](../INSTALL_PC.md): Linux, Windows and macOS toolchains and pinned local build inputs. A platform target is not multiplayer acceptance on that platform.
 - [Integration status](INTEGRATION_STATUS.md): accepted stacks, original PR reconciliation and unintegrated work.
 - [Development rules](../CLAUDE.md): portable guards, pointer widths, save conversion, deterministic frames and development conventions.
-- [Product direction](PRODUCT_DIRECTION.md): longer-term goals. It describes direction, not shipped RC6 capabilities.
+- [Product direction](PRODUCT_DIRECTION.md): longer-term goals. It describes direction, not a complete shipped-feature list.
 
 ## Runtime and repository map
 

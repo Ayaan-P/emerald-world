@@ -52,7 +52,7 @@ static const struct WindowTemplate sWindow = {0, 1, 1, WORLD_MENU_WIDTH, WORLD_M
 static struct {
     enum MenuState state;
     enum Page page;
-    enum Action focus, pending;
+    enum Action focus, pending, noticeAction;
     unsigned scope, pendingScope, pendingId, freeFrames, group, num;
     bool8 locked, delay, dirty, offerPending;
     u8 window;
@@ -161,7 +161,7 @@ static const char *GeneratedAreaReason(void)
     if (WorldRally_HasReturn() || (WorldRally_GetSnapshot(&rally) && rally.id))
         return "Finish your rally and return before exploring another area.";
     if (WorldBridge_Enabled() && !WorldBridge_GeneratedCaveReady())
-        return "No shared area is ready. Select an area in the launcher and wait for it to arrive.";
+        return "No area is ready. Select one in launcher Explore, then wait for it to load.";
     return "Finish the current activity and stand on safe ground before exploring.";
 }
 #endif
@@ -172,7 +172,9 @@ static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 onlin
     bool8 owner = online && r->id && !strcmp(r->owner, WorldBridge_TrainerName());
     bool8 anchor = WorldRally_HasReturn();
     const char *personal = PersonalReason();
-    const char *network = online ? NULL : "No fresh rally snapshot. Connect to a rally-enabled world.";
+    const char *connection = !WorldBridge_Enabled() ? "Connect to a world in the launcher." :
+        !WorldBridge_ConnectionActive() ? "Connection lost or waiting. Check the launcher." : NULL;
+    const char *network = online ? NULL : "Rally unavailable. Check the world connection and server support.";
     const char *eligible = network ? network : personal;
     const char *approach = eligible ? eligible : ApproachReason();
     if (sMenu.state == FEATURES)
@@ -184,15 +186,16 @@ static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 onlin
             return n;
         }
 #endif
-        AddRow(rows, &n, FRIENDS, "Friends", WorldBridge_Enabled() ? NULL : "Connect to a world to visit friends.");
-        AddRow(rows, &n, GUILDS, "Guilds", WorldBridge_Enabled() && WORLD_CHAT_HEIGHT ? NULL : "Connect to a world with chat available.");
-        AddRow(rows, &n, SHUFFLE, "Wild shuffle", NULL);
-        AddRow(rows, &n, STORY, "Story rally", NULL);
-        AddRow(rows, &n, DEXNAV, "DexNav", DexNavNative_Available() ? NULL :
-            "DexNav needs a Pokedex and conscious party outside restricted or link areas.");
 #if GENERATED_MAP_READY
         AddRow(rows, &n, GEN_CAVE, GEN_EXPLORE_LABEL, GeneratedAreaReason());
 #endif
+        AddRow(rows, &n, FRIENDS, "Fly to a friend", connection);
+        AddRow(rows, &n, GUILDS, "Guilds", connection ? connection :
+            WORLD_CHAT_HEIGHT ? NULL : "This build has no chat panel.");
+        AddRow(rows, &n, STORY, "Story rally", NULL);
+        AddRow(rows, &n, DEXNAV, "DexNav", DexNavNative_Available() ? NULL :
+            "Needs a Pokedex and conscious party outside restricted or link areas.");
+        AddRow(rows, &n, SHUFFLE, WildShuffle_Enabled() ? "Wild shuffle: ON" : "Wild shuffle: OFF", NULL);
         AddRow(rows, &n, BACK, "Back", NULL);
         return n;
     }
@@ -205,13 +208,13 @@ static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 onlin
         AddRow(rows, &n, BACK, "Back", NULL);
         return n;
     }
-    AddRow(rows, &n, MODE, WorldRally_GetAutoJoin() ? "Mode AUTO-JOIN" : "Mode ASK", NULL);
-    AddRow(rows, &n, SCOPE, sMenu.scope ? "Scope World" : "Scope Nearby", r->id ?
+    AddRow(rows, &n, MODE, WorldRally_GetAutoJoin() ? "Invites: Auto-join" : "Invites: Ask me", NULL);
+    AddRow(rows, &n, SCOPE, sMenu.scope ? "Invite: Whole world" : "Invite: Nearby", r->id ?
         "Scope applies to your next request. It cannot change a running rally." : NULL);
     if (!r->id)
     {
         AddRow(rows, &n, REQUEST, "Request Roxanne", sMenu.offerPending ?
-            "A local request was queued. Check backend status or cancel it before retrying." :
+            "Request queued. Check Status or cancel before trying again." :
             anchor ? "Return or Stay before requesting another rally." : approach);
         if (sMenu.offerPending) AddRow(rows, &n, CANCEL, "Cancel pending request", NULL);
     }
@@ -220,7 +223,7 @@ static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 onlin
         AddRow(rows, &n, READY, "Ready", anchor ? "A return is still pending." : eligible);
         AddRow(rows, &n, LATER, "Not yet", network);
         AddRow(rows, &n, CANCEL, owner ? "Cancel rally" : "Leave rally", network);
-        if (owner) AddRow(rows, &n, GO, "Go on", approach);
+        if (owner) AddRow(rows, &n, GO, "Start rally", approach);
     }
     else if (r->phase == WORLD_RALLY_TRAVEL || r->phase == WORLD_RALLY_ACTIVE)
     {
@@ -295,6 +298,55 @@ static void Wrap(struct Screen *screen, unsigned row, unsigned end, const char *
     }
 }
 
+static const char *ActionHelp(enum Action action)
+{
+    switch (action)
+    {
+    case FRIENDS:
+        return "Fly needs the Feather Badge and Fly. For co-op, face a nearby trainer and press A.";
+    case GUILDS:
+        return "Open guild commands in chat. Guild expeditions are map visits, not generated areas.";
+    case STORY:
+        return "Visit Roxanne together. Each trainer keeps their own story progress and battle rewards.";
+    case DEXNAV:
+        return "Search for wild Pokemon on this map.";
+    case SHUFFLE: case SHUFFLE_TOGGLE:
+        return "Shuffle wild species 1-386. Same seed, same encounters. Starts OFF each game launch.";
+    case SHUFFLE_SEED:
+        return "Change the encounter seed. Does not change your Pokemon or generate a map.";
+    case GO:
+        return "Start with ready guests. Busy and not-ready trainers stay behind.";
+    case MODE:
+        return "Ask me waits for your choice. Auto-join still checks your save and field state.";
+    case SCOPE:
+        return "Choose who receives your next rally invitation.";
+    case REQUEST:
+        return "Invite trainers to Roxanne. They must accept before joining.";
+    case READY:
+        return "Tell the host you are ready. Travel starts when the host starts the rally.";
+    case LATER:
+        return "Remain invited without travelling yet.";
+    case FINISH:
+        return "End the visit. Only the encounter owner earns boss credit.";
+    case RETURN:
+        return WorldRally_HasReturn() ? "Return to your recorded pre-rally position." : "Leave this rally.";
+    case STAY:
+        return "Stay here and discard your pre-rally return point.";
+    case CANCEL:
+        return "Cancel or leave this rally request.";
+#if GENERATED_MAP_READY
+    case GEN_CAVE:
+        return GeneratedMap_IsInside() ?
+            "Return to where you entered, then save normally." :
+            "Enter the area selected in launcher Explore. Create caves and outdoor areas there.";
+#endif
+    case BACK:
+        return sMenu.state == FEATURES ? "Close WORLD and return to the game." : "Return to WORLD.";
+    default:
+        return "A choose. B back.";
+    }
+}
+
 static void Draw(const struct Row *rows, unsigned count, unsigned selected,
                  const struct WorldRallySnapshot *r, bool8 online)
 {
@@ -307,7 +359,8 @@ static void Draw(const struct Row *rows, unsigned count, unsigned selected,
     unsigned i;
     if (sMenu.state == FEATURES)
     {
-        Line(&screen, 0, "WORLD");
+        Line(&screen, 0, !WorldBridge_Enabled() ? "WORLD    Solo" :
+            WorldBridge_ConnectionActive() ? "WORLD    Online" : "WORLD    No connection");
         Line(&screen, 1, "Up/Down choose. A open. B close.");
     }
     else if (sMenu.state == SHUFFLE_MENU)
@@ -317,9 +370,11 @@ static void Draw(const struct Row *rows, unsigned count, unsigned selected,
     }
     else
     {
-        snprintf(text, sizeof(text), "Roxanne   %s", online ? phases[r->phase <= WORLD_RALLY_RETURN ? r->phase : 0] : "Offline");
+        snprintf(text, sizeof(text), "Roxanne   %s", online ? phases[r->phase <= WORLD_RALLY_RETURN ? r->phase : 0] : "Unavailable");
         Line(&screen, 0, text);
-        Line(&screen, 1, "Left/Right controls roster status");
+        static const char *const pages[] = {"Actions", "Trainers", "Status"};
+        snprintf(text, sizeof(text), "%s  %u/3   Left/Right change page", pages[sMenu.page], sMenu.page + 1);
+        Line(&screen, 1, text);
     }
     if (sMenu.state == FEATURES || sMenu.state == SHUFFLE_MENU || sMenu.page == CONTROLS)
     {
@@ -330,19 +385,7 @@ static void Draw(const struct Row *rows, unsigned count, unsigned selected,
             Line(&screen, 2 + i, text);
         }
         Wrap(&screen, 9, SCREEN_LINES, rows[selected].reason ? rows[selected].reason :
-            sMenu.notice ? sMenu.notice : sMenu.focus == GO ?
-            "Go on leaves invited, not-yet and busy guests behind." :
-            sMenu.focus == MODE ? "AUTO-JOIN still checks your own save and free field. ASK never auto-accepts." :
-            sMenu.focus == FINISH ? "Ends the visit. Only the encounter owner earns boss credit." :
-            sMenu.focus == STAY ? "Keep this position and discard your pre-rally return point." :
-            sMenu.focus == STORY ? "Roxanne visit for up to four trainers. Normal two-player battles. Boss credit stays personal." :
-            (sMenu.focus == SHUFFLE || sMenu.state == SHUFFLE_MENU) ? "Shuffle ordinary wild species. Same seed, same mapping. New game process starts OFF." :
-#if GENERATED_MAP_READY
-            sMenu.focus == GEN_CAVE ? (GeneratedMap_IsInside() ?
-                "Return to where you entered. Save after returning. Adventure conversations restart on a new visit." :
-                "Explore the active area selected in your launcher. Face a character and press A to talk.") :
-#endif
-            "A choose. B back. Check status for local requirements.");
+            sMenu.notice && sMenu.noticeAction == sMenu.focus ? sMenu.notice : ActionHelp(sMenu.focus));
     }
     else if (sMenu.page == ROSTER)
     {
@@ -360,11 +403,12 @@ static void Draw(const struct Row *rows, unsigned count, unsigned selected,
     }
     else
     {
-        Line(&screen, 2, "Backend status");
+        Line(&screen, 2, "Rally status");
         Wrap(&screen, 3, 7, WorldRally_Status());
         Line(&screen, 7, WorldRally_HasReturn() ? "Your return point is recorded." : "No return point is recorded.");
-        Wrap(&screen, 8, SCREEN_LINES, sMenu.notice ? sMenu.notice : PersonalReason() ? PersonalReason() :
-            "Local story checks pass. Backend checks private return storage, safe ground and fresh presence after closing.");
+        Wrap(&screen, 8, SCREEN_LINES, sMenu.notice && sMenu.noticeAction >= MODE && sMenu.noticeAction <= STAY ?
+            sMenu.notice : PersonalReason() ? PersonalReason() :
+            "Your story checks pass. Joining still needs a valid return point, safe ground and a live connection.");
     }
     if (!sMenu.dirty && !memcmp(&screen, &sMenu.drawn, sizeof(screen))) return;
     FillWindowPixelBuffer(sMenu.window, PIXEL_FILL(1));
@@ -381,12 +425,13 @@ static void Draw(const struct Row *rows, unsigned count, unsigned selected,
 static void Queue(enum Action action, unsigned id)
 {
     sMenu.pending = action;
+    sMenu.noticeAction = action;
     sMenu.pendingId = id;
     sMenu.pendingScope = sMenu.scope;
     Close();
     sMenu.state = DISPATCH;
     sMenu.freeFrames = 0;
-    sMenu.notice = "Waiting for the free field. No rally approval has been received.";
+    sMenu.notice = "Waiting for the field. Not sent yet.";
 }
 
 static void Dispatch(void)
@@ -467,8 +512,8 @@ choose:
     default: break;
     }
     if (sMenu.pending == CANCEL) sMenu.offerPending = FALSE;
-    sMenu.notice = accepted ? "Choice queued locally. Check live roster and backend status for the result." :
-        "Choice not accepted. Check backend status, personal eligibility and private return storage. No approval is implied.";
+    sMenu.notice = accepted ? "Request queued. Check Trainers or Status for the result." :
+        "Request not accepted. Open Status to check the reason.";
 }
 
 void WorldMenu_RequestOpen(void)
@@ -501,7 +546,11 @@ void WorldMenu_Update(void)
         sMenu.locked = TRUE;
         SetStandardWindowBorderStyle(sMenu.window, FALSE);
         sMenu.state = FEATURES;
-        sMenu.focus = STORY;
+#if GENERATED_MAP_READY
+        sMenu.focus = GEN_CAVE;
+#else
+        sMenu.focus = FRIENDS;
+#endif
         sMenu.delay = sMenu.dirty = TRUE;
     }
     if (!FieldContext() || !ArePlayerFieldControlsLocked()
@@ -534,10 +583,11 @@ void WorldMenu_Update(void)
     {
         if (JOY_REPEAT(DPAD_UP) && selected) selected--;
         if (JOY_REPEAT(DPAD_DOWN) && selected + 1 < count) selected++;
+        if (sMenu.focus != rows[selected].action) sMenu.notice = NULL;
         sMenu.focus = rows[selected].action;
         if (JOY_NEW(A_BUTTON))
         {
-            if (rows[selected].reason) { sMenu.notice = rows[selected].reason; }
+            if (rows[selected].reason) { sMenu.notice = rows[selected].reason; sMenu.noticeAction = sMenu.focus; }
             else if (sMenu.focus == BACK)
             {
                 if (sMenu.state == FEATURES) { Close(); return; }

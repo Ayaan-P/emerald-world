@@ -22,6 +22,7 @@ class WebLauncherTests(unittest.TestCase):
         self.session.friend_worlds.return_value = []
         self.session.world_library.return_value = []
         self.session.worlds.return_value = []
+        self.session.hosted_worlds.return_value = []
         self.session.server = None
         self.session.managed_display = None
         self.session.state = None
@@ -29,6 +30,41 @@ class WebLauncherTests(unittest.TestCase):
         self.session.games = {}
         self.session.status = 'Ready'
         self.bridge = LauncherBridge(self.session, '/nonexistent/game')
+
+    def test_snapshot_keeps_detached_local_hosts_visible(self):
+        self.session.hosted_worlds.return_value = ['e-localworld12']
+        result = self.bridge.snapshot()
+        self.assertFalse(result['local_host'])
+        self.assertFalse(result['connected'])
+        self.assertEqual(result['local_hosts'], ['e-localworld12'])
+
+    def test_stop_local_host_rejects_remote_or_unknown_worlds(self):
+        self.session.hosted_worlds.return_value = ['e-localworld12']
+        with patch.object(self.bridge, 'local_expeditions', return_value=[{'key': 'e-localworld12'}]):
+            for name in ('remote-server', 'other-local', None):
+                with self.assertRaises(SessionError):
+                    self.bridge.action('local_stop', {'world': name})
+        self.session.shutdown_world.assert_not_called()
+
+    def test_stop_background_host_does_not_close_current_game(self):
+        self.session.hosted_worlds.return_value = ['e-localworld12']
+        self.session.state = Path('/tmp/remote-current')
+        self.bridge.remote_paths = {'profile': 'current-profile'}
+        with patch.object(self.bridge, 'local_expeditions', return_value=[{'key': 'e-localworld12'}]), patch.object(self.bridge, 'stop_browser_input') as stop:
+            self.bridge.action('local_stop', {'world': 'e-localworld12'})
+        self.session.shutdown_world.assert_called_once_with('e-localworld12')
+        stop.assert_not_called()
+        self.assertEqual(self.bridge.remote_paths, {'profile': 'current-profile'})
+
+    def test_stop_current_local_host_releases_its_input_and_launch_profile(self):
+        self.session.hosted_worlds.return_value = ['e-localworld12']
+        self.session.state = Path('/tmp/e-localworld12')
+        self.bridge.remote_paths = {'profile': 'local-profile'}
+        with patch.object(self.bridge, 'local_expeditions', return_value=[{'key': 'e-localworld12'}]), patch.object(self.bridge, 'stop_browser_input') as stop:
+            self.bridge.action('local_stop', {'world': 'e-localworld12'})
+        stop.assert_called_once()
+        self.session.shutdown_world.assert_called_once_with('e-localworld12')
+        self.assertIsNone(self.bridge.remote_paths)
 
     def live_display(self):
         # A reusable display now requires both a live process and its socket.
