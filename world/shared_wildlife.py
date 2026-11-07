@@ -1,8 +1,9 @@
-"""Session-only shared spawn identity and reservation authority.
+"""Session-only shared encounters with reservation and committed admission.
 
-This protocol prepares shared field encounters. A lease does not authorize a
-battle, a catch, rewards or save writes. Native encounter admission must consume
-it through the existing battle authority before those actions can be enabled.
+A lease alone never authorizes battle entry. Version-three clients must commit it
+first. Committed spawns stay consumed after disconnect or acknowledgment. Only an
+explicit owner abort before native battle entry returns a spawn.
+Battle rewards and catches still belong to the existing native battle flow.
 """
 import hashlib
 import json
@@ -34,21 +35,25 @@ class SharedWildlife:
         self.epoch = secrets.token_hex(16)
         self.revision = 0
         self.spawns = []
+        self.commits = {}
+        self.consumed = set()
         self.claims = {}  # Spawn ID -> exact presence connection and lease ID.
 
     def replace(self, epoch, revision, rows, excluded_maps, occupied):
         if epoch != self.epoch or type(revision) is not int or revision != self.revision:
             raise ValueError('wildlife changed; reload before publishing')
-        if self.claims:
+        if self.claims or self.commits:
             raise ValueError('wildlife has outstanding reservations')
         if type(rows) is not list or len(rows) > MAX_SPAWNS:
             raise ValueError('wildlife requires at most eight spawns')
         enabled, _ = catalogue()
         positions, result = set(), []
         for row in rows:
-            if type(row) is not dict or set(row) != {'group', 'num', 'x', 'y', 'species', 'level'}:
+            if type(row) is not dict or set(row) not in ({'group', 'num', 'x', 'y', 'species', 'level'},
+                                                  {'group', 'num', 'x', 'y', 'species', 'level', 'shiny'}):
                 raise ValueError('invalid wildlife fields')
-            if any(type(v) is not int for v in row.values()):
+            if (any(type(v) is not int for k,v in row.items() if k != 'shiny')
+                    or ('shiny' in row and type(row['shiny']) is not bool)):
                 raise ValueError('wildlife fields must be integers')
             position = tuple(row[k] for k in ('group', 'num', 'x', 'y'))
             validate_coords(*position)
@@ -57,8 +62,11 @@ class SharedWildlife:
             if row['species'] not in enabled or not 1 <= row['level'] <= 100:
                 raise ValueError('invalid wildlife species or level')
             positions.add(position)
-            result.append(dict(row, id=secrets.token_hex(16)))
+            # Personality is assigned once, not rerolled by each viewer or claimant.
+            result.append(dict(row, id=secrets.token_hex(16), personality=secrets.randbits(32),
+                               shiny=int(row.get('shiny', False))))
         self.spawns = result
+        self.consumed.clear()
         self.revision += 1
         return self.view(None)
 
@@ -66,9 +74,12 @@ class SharedWildlife:
         removed = [key for key, value in self.claims.items() if value[0] is conn]
         for key in removed:
             del self.claims[key]
-        if removed:
+        committed = [key for key, value in self.commits.items() if value[0] is conn]
+        for key in committed:
+            del self.commits[key]
+        if removed or committed:
             self.revision += 1
-        return bool(removed)
+        return bool(removed or committed)
 
     def expire(self, now):
         removed = [key for key, value in self.claims.items() if now >= value[2]]
@@ -80,13 +91,13 @@ class SharedWildlife:
 
     def claim(self, conn, epoch, spawn_id, now):
         self.expire(now)
-        if epoch != self.epoch or not HEX.fullmatch(spawn_id):
+        if epoch != self.epoch or not HEX.fullmatch(spawn_id) or spawn_id in self.consumed:
             return False
         spawn = next((s for s in self.spawns if s['id'] == spawn_id), None)
         existing = self.claims.get(spawn_id)
         if existing:
             return existing[0] is conn
-        if any(value[0] is conn for value in self.claims.values()):
+        if any(value[0] is conn for value in (*self.claims.values(), *self.commits.values())):
             return False
         state, stamp = conn.get('state'), conn.get('state_time')
         if (spawn is None or state is None or stamp is None or not 0 <= now - stamp <= FRESH_SECONDS
@@ -107,46 +118,118 @@ class SharedWildlife:
         self.revision += 1
         return True
 
+    def commit(self, conn, epoch, spawn_id, lease, now):
+        self.expire(now)
+        if epoch != self.epoch:
+            return False
+        previous = self.commits.get(spawn_id)
+        if previous:
+            return previous[0] is conn and previous[1] == lease
+        held = self.claims.get(spawn_id)
+        spawn = next((s for s in self.spawns if s['id'] == spawn_id), None)
+        state, stamp = conn.get('state'), conn.get('state_time')
+        if (not held or held[0] is not conn or held[1] != lease or not spawn
+                or not state or stamp is None or not 0 <= now - stamp <= FRESH_SECONDS
+                or tuple(state[:2]) != (spawn['group'], spawn['num'])):
+            return False
+        # Readiness may be zero because the requesting client locked its field
+        # while awaiting admission. Position/facing must still match the claim.
+        delta = {1:(0,1), 2:(0,-1), 3:(-1,0), 4:(1,0)}.get(state[4])
+        if not delta or (state[2]+delta[0], state[3]+delta[1]) != (spawn['x'], spawn['y']):
+            return False
+        del self.claims[spawn_id]
+        self.consumed.add(spawn_id)
+        self.commits[spawn_id] = (conn, lease, dict(spawn))
+        self.revision += 1
+        return True
+
+    def abort(self, conn, epoch, spawn_id, lease):
+        # Only the requesting native client knows it has NOT handed this receipt
+        # to battle. Never infer abort from silence, expiry or disconnection.
+        committed = self.commits.get(spawn_id)
+        if epoch != self.epoch or not committed or committed[0] is not conn or committed[1] != lease:
+            return False
+        del self.commits[spawn_id]
+        self.consumed.remove(spawn_id)
+        self.revision += 1
+        return True
+
+    def acknowledge(self, conn, epoch, spawn_id, lease):
+        committed = self.commits.get(spawn_id)
+        if epoch != self.epoch or not committed or committed[0] is not conn or committed[1] != lease:
+            return False
+        del self.commits[spawn_id]
+        self.revision += 1
+        return True
+
     def view(self, conn):
         state = conn.get('state') if conn is not None else None
         rows = [dict(row, status='reserved' if row['id'] in self.claims else 'available')
-                for row in self.spawns if conn is None or (state and tuple(state[:2]) == (row['group'], row['num']))]
+                for row in self.spawns if row['id'] not in self.consumed
+                and (conn is None or (state and tuple(state[:2]) == (row['group'], row['num'])))]
         lease = next((dict(id=key, lease=value[1]) for key, value in self.claims.items() if value[0] is conn), None)
-        return dict(epoch=self.epoch, revision=self.revision, spawns=rows, lease=lease)
+        battle = next((dict(value[2], lease=value[1]) for value in self.commits.values() if value[0] is conn), None)
+        return dict(epoch=self.epoch, revision=self.revision, spawns=rows, lease=lease, battle=battle)
 
     def lines(self, conn):
         view = self.view(conn)
-        lines = [f"WILDLIFE {self.epoch} {self.revision} {len(view['spawns'])}"]
+        tag = "WILDLIFE3" if conn.get("wildlife_version") == 3 else "WILDLIFE"
+        lines = [f"{tag} {self.epoch} {self.revision} {len(view['spawns'])}"]
+        mon_fields = ('group','num','x','y','species','level')
+        if conn.get('wildlife_version') == 3:
+            mon_fields += ('personality','shiny')
         for row in view['spawns']:
             lines.append('WILDMON ' + row['id'] + ' ' + ' '.join(str(row[k]) for k in
-                         ('group', 'num', 'x', 'y', 'species', 'level', 'status')))
+                         (*mon_fields, 'status')))
         if view['lease']:
             lines.append('WILDLEASE ' + view['lease']['id'] + ' ' + view['lease']['lease'])
+        if view['battle'] and conn.get('wildlife_version') == 3:
+            row = view['battle']
+            lines.append('WILDBATTLE ' + row['id'] + ' ' + row['lease'] + ' '
+                         + ' '.join(str(row[k]) for k in mon_fields))
         return lines
 
 
-def parse_snapshot(header, rows, lease):
-    if (len(header) != 4 or not HEX.fullmatch(header[1]) or not header[2].isdigit()
+def parse_snapshot(header, rows, lease, battle=None):
+    if (len(header) != 4 or header[0] not in ('WILDLIFE', 'WILDLIFE3') or not HEX.fullmatch(header[1]) or not header[2].isdigit()
             or not header[3].isdigit() or int(header[2]) > 2**63 - 1
             or int(header[3]) != len(rows) or len(rows) > MAX_SPAWNS):
         raise ValueError('invalid wildlife snapshot')
     parsed, seen, positions = [], set(), set()
     enabled, _ = catalogue()
+    mon_fields = ('group','num','x','y','species','level')
+    if header[0] == 'WILDLIFE3': mon_fields += ('personality','shiny')
+    end = 2 + len(mon_fields)
     for fields in rows:
-        if len(fields) != 9 or not HEX.fullmatch(fields[1]) or fields[1] in seen:
+        if len(fields) != end + 1 or not HEX.fullmatch(fields[1]) or fields[1] in seen:
             raise ValueError('invalid wildlife spawn')
-        if any(not v.isdigit() for v in fields[2:8]):
+        if any(not v.isdigit() for v in fields[2:end]):
             raise ValueError('invalid wildlife numbers')
-        values = list(map(int, fields[2:8])); position = tuple(values[:4])
+        values = list(map(int, fields[2:end])); position = tuple(values[:4])
         validate_coords(*position)
-        if position in positions or values[4] not in enabled or not 1 <= values[5] <= 100 or fields[8] not in ('available', 'reserved'):
+        if position in positions or values[4] not in enabled or not 1 <= values[5] <= 100 or fields[end] not in ('available', 'reserved'):
             raise ValueError('invalid wildlife content')
-        parsed.append(dict(zip(('group', 'num', 'x', 'y', 'species', 'level'), values), id=fields[1], status=fields[8]))
+        if len(values) == 8 and (values[6] > 2**32-1 or values[7] not in (0,1)):
+            raise ValueError('invalid wildlife appearance')
+        parsed.append(dict(zip(mon_fields, values), id=fields[1], status=fields[end]))
         seen.add(fields[1]); positions.add(position)
-    result = dict(epoch=header[1], revision=int(header[2]), spawns=parsed, lease=None)
+    result = dict(epoch=header[1], revision=int(header[2]), spawns=parsed, lease=None, battle=None)
     if lease:
         if (len(lease) != 3 or not HEX.fullmatch(lease[1]) or not HEX.fullmatch(lease[2])):
             raise ValueError('invalid wildlife lease')
         # The owner can have moved to another map; its held spawn need not be visible.
         result['lease'] = dict(id=lease[1], lease=lease[2])
+    if battle:
+        if (header[0] != 'WILDLIFE3' or lease or len(battle) != 11
+                or battle[1] in seen
+                or not HEX.fullmatch(battle[1]) or not HEX.fullmatch(battle[2])
+                or any(not v.isdigit() for v in battle[3:])):
+            raise ValueError('invalid committed wildlife battle')
+        values = list(map(int, battle[3:]))
+        validate_coords(*values[:4])
+        if values[4] not in enabled or not 1 <= values[5] <= 100:
+            raise ValueError('invalid committed wildlife species')
+        if values[6] > 2**32-1 or values[7] not in (0,1):
+            raise ValueError('invalid committed wildlife appearance')
+        result['battle'] = dict(zip(mon_fields,values), id=battle[1],lease=battle[2])
     return result

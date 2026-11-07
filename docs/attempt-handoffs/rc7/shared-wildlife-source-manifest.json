@@ -1,0 +1,55 @@
+{
+  "description": "Opt-in host-published shared native encounters with at-most-once committed admission. Native build and two-client gameplay remain unverified.",
+  "base_engine_commit": "2024a83db5242783c0f9ae93f8381271045e7037",
+  "public_base_commit": "bb3fd057061cdd7e6a9e79b76abb41924ee44ecc",
+  "ordered_patches": [
+    "native-foundation.patch",
+    "native-world-wip.patch",
+    "native-world-integration-current.patch",
+    "native-player-ui.patch",
+    "native-collecting-ui.patch",
+    "native-overworld-encounters.patch",
+    "native-shared-wildlife.patch"
+  ],
+  "base_tree": "cd1254767b1bbaba4731b0c22af3ca2ea34f0de4",
+  "result_tree": "421433aa93ca39cdfd638f96a558124fa5262286",
+  "patch": "native-shared-wildlife.patch",
+  "patch_sha256": "d0a610cc21b2737a3d2ecadc2fb5272a709f50f51202568e20673e0a97febf3c",
+  "partial_context_files": [
+    "src/wild_encounter_ow.c"
+  ],
+  "files": [
+    {
+      "path": "include/platform/shared_wildlife.h",
+      "sha256": "4b51a128ae06baba9b279b53ee94c6787a52cf80d06264de38f908501e7d058e"
+    },
+    {
+      "path": "include/platform/shared_wildlife_wire.h",
+      "sha256": "eb549cdf3ca3d380b7cd645fa25c68cddc19fd8659ba67d5a25312ba1eda6076"
+    },
+    {
+      "path": "src/wild_encounter_ow.c",
+      "sha256": "a2f9e7d771350f75deb54d4bc2026fe3e032ede3cbf90ae660d5d4a97db910f5"
+    },
+    {
+      "path": "src/world/shared_wildlife.c",
+      "sha256": "3eb59a178a0ef0a06d4c3d881a51a8bce84e78f0785d65e15c34886052933550"
+    },
+    {
+      "path": "src/world/shared_wildlife_wire.c",
+      "sha256": "6251726f5ec3a73ec596063f257b51da9773a067f52485ddeeeb95f79fb705d9"
+    },
+    {
+      "path": "src/world/world_bridge.c",
+      "sha256": "ebf80335ed4fe68fc73253ebeee45855e9cf29b71d28806e4936f404cbed2d6b"
+    },
+    {
+      "path": "src/world/world_coop.c",
+      "sha256": "c5ed73e077cb8b081692476ca511d286776911dca27bde2b738df32e807ccd70"
+    },
+    {
+      "path": "src/world/world_menu.c",
+      "sha256": "e91b620b60011df69f0f623277768391a586ac38f547b9b17a8fd7ce19f5451d"
+    }
+  ]
+}

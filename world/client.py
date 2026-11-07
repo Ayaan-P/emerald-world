@@ -75,12 +75,15 @@ class WorldClient:
         bounded(str(seq), 0, 2**63-1)
         self.sock.sendall(f'INTERACT {seq} {object_id}\n'.encode('ascii'))
 
-    def subscribe_wildlife(self):
+    def subscribe_wildlife(self, *, battles=False):
         """Explicit opt-in; legacy/native clients receive no new snapshot fields."""
         if not self.social or self.control:
             raise ValueError('wildlife requires social presence')
         from .shared_wildlife import catalogue
-        self.sock.sendall(('WILDLIFE SUBSCRIBE ' + catalogue()[1] + '\n').encode('ascii'))
+        if type(battles) is not bool:
+            raise ValueError('invalid wildlife capability')
+        self.wildlife_battles = battles
+        self.sock.sendall(('WILDLIFE SUBSCRIBE ' + catalogue()[1] + (' 3' if battles else '') + '\n').encode('ascii'))
         self.shared_wildlife = True
 
     def reserve_wildlife(self, seq, epoch, spawn_id, lease=None):
@@ -93,6 +96,17 @@ class WorldClient:
             raise ValueError('invalid wildlife reservation')
         command = f'WILDLIFE CLAIM {seq} {epoch} {spawn_id}' if lease is None else f'WILDLIFE RELEASE {seq} {epoch} {spawn_id} {lease}'
         self.sock.sendall((command + '\n').encode('ascii'))
+
+    def commit_wildlife(self, seq, epoch, spawn_id, lease, *, acknowledge=False):
+        """Commit admission or acknowledge its receipt. Neither runs a game battle."""
+        from .shared_wildlife import HEX
+        if (not getattr(self, 'wildlife_battles', False) or type(acknowledge) is not bool
+                or type(seq) is not int or not 0 <= seq <= 2**63 - 1
+                or any(type(value) is not str or not HEX.fullmatch(value)
+                       for value in (epoch, spawn_id, lease))):
+            raise ValueError('invalid wildlife admission')
+        action = 'ACK' if acknowledge else 'COMMIT'
+        self.sock.sendall(f'WILDLIFE {action} {seq} {epoch} {spawn_id} {lease}\n'.encode('ascii'))
 
     def meet(self, seq, trainer_id):
         """Signal 'explore together' to a ready adjacent trainer. SOCIAL only."""
@@ -108,7 +122,7 @@ class WorldClient:
             raise ValueError('missing BEGIN')
         peers, tiles, objects = {}, [], []
         meeting = None
-        wildlife_header, wildlife_rows, wildlife_lease = None, [], None
+        wildlife_header, wildlife_rows, wildlife_lease, wildlife_battle = None, [], None, None
         total = 0
         while True:
             text = self._line()
@@ -118,15 +132,19 @@ class WorldClient:
             if text == 'END':
                 break
             fields = text.split()
-            if fields and fields[0] in ('WILDLIFE', 'WILDMON', 'WILDLEASE'):
+            if fields and fields[0] in ('WILDLIFE', 'WILDLIFE3', 'WILDMON', 'WILDLEASE', 'WILDBATTLE'):
                 if not getattr(self, 'shared_wildlife', False):
                     raise ValueError('unnegotiated wildlife snapshot')
-                if fields[0] == 'WILDLIFE' and wildlife_header is None:
+                if fields[0] in ('WILDLIFE', 'WILDLIFE3') and wildlife_header is None:
+                    if (fields[0] == 'WILDLIFE3') != getattr(self, 'wildlife_battles', False):
+                        raise ValueError('wildlife capability mismatch')
                     wildlife_header = fields
                 elif fields[0] == 'WILDMON' and wildlife_header is not None and len(wildlife_rows) < 8:
                     wildlife_rows.append(fields)
                 elif fields[0] == 'WILDLEASE' and wildlife_header is not None and wildlife_lease is None:
                     wildlife_lease = fields
+                elif fields[0] == 'WILDBATTLE' and wildlife_header is not None and wildlife_battle is None:
+                    wildlife_battle = fields
                 else:
                     raise ValueError('invalid wildlife ordering')
             elif fields and fields[0] == 'PEER' and len(fields) == 9 and len(peers) < 8:
@@ -155,7 +173,7 @@ class WorldClient:
                 raise ValueError('invalid snapshot entry')
         if wildlife_header is not None:
             from .shared_wildlife import parse_snapshot
-            wildlife = parse_snapshot(wildlife_header, wildlife_rows, wildlife_lease)
+            wildlife = parse_snapshot(wildlife_header, wildlife_rows, wildlife_lease, wildlife_battle)
         else:
             if wildlife_rows or wildlife_lease:
                 raise ValueError('wildlife entries without header')
