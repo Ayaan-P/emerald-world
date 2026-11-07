@@ -33,6 +33,8 @@ class OverworldEncounterTests(unittest.TestCase):
                 sources[path] = []
             elif path and line.startswith((' ', '+')):
                 sources[path].append(line[1:])
+            elif path and line == '':
+                sources[path].append('')
         for entry in manifest['files']:
             content = '\n'.join(sources[entry['path']]) + '\n'
             assert hashlib.sha256(content.encode()).hexdigest() == entry['sha256']
@@ -73,7 +75,8 @@ extern void *gSaveBlock1Ptr, *gSaveBlock2Ptr;
 extern struct Main { bool8 inBattle; } gMain;
 extern struct Map { unsigned regionMapSectionId; } gMapHeader;
 unsigned GetMonData(struct Pokemon *, unsigned);
-bool8 WorldBridge_Enabled(void), GeneratedMap_IsInside(void), GeneratedMap_EntryPending(void);
+bool8 WorldBridge_Enabled(void), WorldBridge_ConnectionActive(void), GeneratedMap_IsInside(void), GeneratedMap_EntryPending(void);
+int WorldActivity_OwnsFieldInput(void);
 bool8 GetSafariZoneFlag(void), InBattlePike(void), IsOverworldLinkActive(void), NativeLink_IsActive(void);
 unsigned CurrentBattlePyramidLocation(void);
 #endif
@@ -81,7 +84,7 @@ unsigned CurrentBattlePyramidLocation(void);
             for header in ['battle_pike.h', 'battle_pyramid.h', 'event_data.h',
                            'link.h', 'main.h', 'overworld.h', 'pokemon.h', 'safari_zone.h',
                            'platform/generated_map.h', 'platform/native_link.h',
-                           'platform/world_bridge.h', 'constants/region_map_sections.h']:
+                           'platform/world_bridge.h', 'platform/world_activity.h', 'constants/region_map_sections.h']:
                 (p / header).write_text('#include "global.h"\n')
             (p / 'wild_encounter_ow.h').write_text('''
 #define OWE_GENERATED 1
@@ -97,10 +100,12 @@ struct Pokemon gPlayerParty[PARTY_SIZE];
 void *gSaveBlock1Ptr = (void *)1, *gSaveBlock2Ptr = (void *)1;
 struct Main gMain;
 struct Map gMapHeader;
-static unsigned world, inside, pending, safari, pike, pyramid, link, nativeLink;
+static unsigned world, connected, busy, inside, pending, safari, pike, pyramid, link, nativeLink;
 static unsigned timers, despawns;
 unsigned GetMonData(struct Pokemon *p, unsigned field) { return p->fields[field]; }
 bool8 WorldBridge_Enabled(void) { return world; }
+bool8 WorldBridge_ConnectionActive(void) { return connected; }
+int WorldActivity_OwnsFieldInput(void) { return busy; }
 bool8 GeneratedMap_IsInside(void) { return inside; }
 bool8 GeneratedMap_EntryPending(void) { return pending; }
 bool8 GetSafariZoneFlag(void) { return safari; }
@@ -133,7 +138,12 @@ int main(void) {
     assert(!OverworldEncounters_UnavailableReason());
     OverworldEncounters_Toggle();
     assert(OverworldEncounters_Allowed() && timers == 1);
-    blocked(&world); blocked(&inside); blocked(&pending); blocked(&safari);
+    blocked(&world); blocked(&busy);
+    world = connected = 1;
+    assert(OverworldEncounters_Allowed()); /* Authenticated personal encounters. */
+    connected = 0; assert(!OverworldEncounters_Allowed()); /* Connection lost. */
+    world = 0; assert(OverworldEncounters_Allowed()); /* Explicitly left world. */
+    blocked(&inside); blocked(&pending); blocked(&safari);
     blocked(&pike); blocked(&pyramid); blocked(&link); blocked(&nativeLink);
     gMain.inBattle = 1; assert(!OverworldEncounters_Allowed()); gMain.inBattle = 0;
     gMapHeader.regionMapSectionId = 99; assert(!OverworldEncounters_Allowed());
@@ -146,8 +156,8 @@ int main(void) {
     assert(!OverworldEncounters_Allowed()); gSaveBlock2Ptr = (void *)1;
     assert(OverworldEncounters_Allowed());
     OverworldEncounters_Toggle();
-    assert(!OverworldEncounters_Allowed() && despawns == 9);
-    assert(timers == 9);
+    assert(!OverworldEncounters_Allowed() && despawns == 10);
+    assert(timers == 10);
     return 0;
 }
 ''')
@@ -159,6 +169,105 @@ int main(void) {
                 '-o', str(binary)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             subprocess.run([str(binary)], check=True)
+
+    def test_real_coop_transition_and_cleanup(self):
+        # Compile the actual transition and despawn functions, not a Python model.
+        from test.world.test_save_isolation import function
+        activity = (ENGINE / 'src/world/world_activity.c').read_text()
+        encounter = (ENGINE / 'src/wild_encounter_ow.c').read_text()
+        start = function(activity, 'StartCoopBattle')
+        cleanup = function(encounter, 'DespawnOWEOnBattleStart')
+        preamble = r"""
+#include <assert.h>
+#include <stddef.h>
+#include <string.h>
+typedef unsigned char bool8;
+typedef unsigned u32;
+#define TRUE 1
+#define FALSE 0
+#define OBJECT_EVENTS_COUNT 4
+#define LOCALID_NONE 0
+#define OWE_ANY 0
+#define OWE_MANUAL 1
+struct ObjectEvent { unsigned active, wild, manual, localId, mapNum, mapGroup; };
+static struct ObjectEvent gObjectEvents[OBJECT_EVENTS_COUNT];
+static unsigned gSpecialVar_LastTalked, flags, cleared, timers, calls, prepared;
+static unsigned owner, started, preparedOwner, sequence;
+static struct { bool8 wildCaptured, encounterPending, trainerCaptured; } sActivity;
+static bool8 LinkTransport_CoopOwner(void) { return owner; }
+static void DexNavNative_PrepareNativeActivity(bool8 owns) {
+    prepared++; preparedOwner = owns;
+}
+static int WorldCoop_StartBattle(bool8 owns) {
+    assert(owns == owner); calls++; sequence = 1; return started;
+}
+static u32 GetObjectEventIdByLocalId(unsigned localId) {
+    for (unsigned i = 0; i < OBJECT_EVENTS_COUNT; i++)
+        if (gObjectEvents[i].active && gObjectEvents[i].localId == localId) return i;
+    return OBJECT_EVENTS_COUNT;
+}
+static int IsOverworldWildEncounter(struct ObjectEvent *o, unsigned type) {
+    assert(o >= gObjectEvents && o < gObjectEvents + OBJECT_EVENTS_COUNT);
+    return o->active && o->wild && (type == OWE_ANY || o->manual);
+}
+static unsigned GetObjectEventFlagIdByLocalIdAndMap(unsigned id, unsigned n, unsigned g) {
+    assert(id == 7 && n == 2 && g == 3); return 42;
+}
+static void FlagSet(unsigned flag) { assert(flag == 42); flags++; }
+static void ClearObjectEvent(struct ObjectEvent *o) {
+    assert(sequence == 1); cleared++; memset(o, 0, sizeof(*o));
+}
+static void SetNewOWESpawnCountdown(void) { timers++; }
+"""
+        body = r"""
+int main(void) {
+    // Random encounters, invalid IDs and ordinary NPCs cannot index/consume OWE.
+    DespawnOWEOnBattleStart(); assert(!cleared && !flags && !timers);
+    gSpecialVar_LastTalked = 65535; DespawnOWEOnBattleStart(); assert(!cleared);
+    gObjectEvents[0] = (struct ObjectEvent){1,0,0,7,2,3};
+    gSpecialVar_LastTalked = 7; DespawnOWEOnBattleStart(); assert(!cleared);
+    gObjectEvents[0].wild = 1;
+    // Failed native start preserves the selected wild object and fallback flags.
+    owner = 1; sActivity.wildCaptured = sActivity.encounterPending = 1;
+    assert(!StartCoopBattle());
+    assert(!cleared && gSpecialVar_LastTalked == 7 && sActivity.wildCaptured);
+    assert(sActivity.encounterPending && preparedOwner);
+    // Guest starts may have a locally selected object. Never consume it.
+    owner = 0; started = 1;
+    assert(StartCoopBattle());
+    assert(!cleared && !sActivity.encounterPending && !sActivity.wildCaptured);
+    assert(!preparedOwner);
+    // Trainer owners do not consume the wild object either.
+    owner = 1; sActivity.trainerCaptured = sActivity.encounterPending = 1;
+    assert(StartCoopBattle()); assert(!cleared && !sActivity.trainerCaptured);
+    assert(!preparedOwner);
+    // Successful owner wild start consumes exactly its selected object.
+    sActivity.wildCaptured = sActivity.encounterPending = 1;
+    assert(StartCoopBattle());
+    assert(cleared == 1 && timers == 1 && !flags && preparedOwner);
+    assert(!gObjectEvents[0].active && gSpecialVar_LastTalked == LOCALID_NONE);
+    assert(!sActivity.wildCaptured && !sActivity.encounterPending);
+    DespawnOWEOnBattleStart(); assert(cleared == 1 && timers == 1);
+    // Authored encounters retain Expansion's flag semantics on the owner only.
+    gObjectEvents[0] = (struct ObjectEvent){1,1,1,7,2,3};
+    gSpecialVar_LastTalked = 7; sActivity.wildCaptured = 1;
+    assert(StartCoopBattle()); assert(cleared == 2 && flags == 1 && timers == 2);
+    assert(calls == 5 && prepared == 5);
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            p = Path(directory)
+            source = p / 'transition.c'
+            source.write_text(preamble + cleanup + '\n' + start + body)
+            binary = p / 'transition'
+            build = subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror',
+                                    '-fsanitize=undefined', '-fno-sanitize-recover=all',
+                                    '-DPORTABLE', str(source), '-o', str(binary)],
+                                   capture_output=True, text=True)
+            self.assertEqual(build.returncode, 0, build.stderr)
+            subprocess.run([str(binary)], check=True)
+        self.assertIn('if (!StartCoopBattle())\n            { Stop("tagged battle unavailable"); return; }', activity)
 
     def test_spawn_and_battle_ownership_guards(self):
         source = (ENGINE / 'src/wild_encounter_ow.c').read_text()
@@ -182,7 +291,7 @@ int main(void) {
         menu = (ENGINE / 'src/world/world_menu.c').read_text()
         self.assertIn('Visible encounters: OFF', menu)
         self.assertIn('OverworldEncounters_Enabled() ? NULL : OverworldEncounters_UnavailableReason()', menu)
-        self.assertIn('Starts OFF each game launch.', menu)
+        self.assertIn('Starts OFF each launch.', menu)
 
 
 if __name__ == '__main__':

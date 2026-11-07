@@ -5,22 +5,22 @@ index ffbffd177..c1545b976 100644
 @@ -1,41 +1,46 @@
  #ifndef GUARD_CONFIG_WILD_ENCOUNTER_H
  #define GUARD_CONFIG_WILD_ENCOUNTER_H
- 
+
  // Vanilla
  #define WE_VANILLA_RANDOM           TRUE    // If TRUE, Pokémon can randomly spawn on tiles that can trigger wild encounters, as in vanilla.
  #define WE_FLAG_NO_ENCOUNTER        0       // If this flag is set, wild encounters will be disabled.
- 
+
  // Double Wild Battles
  #define WE_DOUBLE_WILD_CHANCE            0          // % chance of encountering two Pokémon in a Wild Encounter.
  #define WE_DOUBLE_WILD_REQUIRE_2_MONS    FALSE      // If set to TRUE, Wild Double Battles will default to Single Battles when the player only has 1 usable Pokémon, ignoring WE_DOUBLE_WILD_CHANCE and WE_FLAG_FORCE_DOUBLE_WILD.
  #define WE_WILD_NATURAL_ENEMIES          TRUE       // If set to TRUE, certain wild mon species will attack other species when partnered in double wild battles (eg. Zangoose vs Seviper)
- 
+
  // Wild Battle Flags
  #define WE_FLAG_FORCE_DOUBLE_WILD    0     // If this flag is set, all land and surfing wild battles will be double battles.
  #define WE_SMART_WILD_AI_FLAG        0     // If this flag is set, wild Pokémon will become smart, with all AI flags enabled.
  #define WE_FLAG_NO_CATCHING          0     // If this flag is set, the ability to catch wild Pokémon is disabled.
  #define WE_FLAG_NO_RUNNING           0     // If this flag is set, the ability to escape from wild battles is disabled. Also makes Roar/Whirlwind and Teleport (under Gen8) fail.
- 
+
  // Overworld Wild Encounters (OWEs)
 +#ifdef PORTABLE
 +// Compiled in for the native session option, with runtime ownership guards.
@@ -47,7 +47,7 @@ index ffbffd177..c1545b976 100644
  #define WE_OWE_PREVENT_SPECIAL_MOVEMENT_DESPAWN TRUE    // If TRUE, shiny OWEs (if WE_OWE_PREVENT_SHINY_DESPAWN is TRUE) or Feebas OWEs (if WE_OWE_PREVENT_FEEBAS_DESPAWN is TRUE) will not be despawned by their movement type (for example, OWE_DESPAWN_ON_NOTICE).
  #define WE_OWE_DESPAWN_ON_ENTER_TOWN            TRUE    // If TRUE, despawns all OWEs upon entering a city (MAP_TYPE_CITY) or town (MAP_TYPE_TOWN).
  #define WE_OWE_NO_REPEL_DEXNAV_COLLISION        FALSE   // If TRUE, OWEs cannot be triggered by a collision if a Repel or the DexNav is active.
- 
+
  #endif // GUARD_CONFIG_WILD_ENCOUNTER_H
 diff --git a/include/platform/overworld_encounters.h b/include/platform/overworld_encounters.h
 new file mode 100644
@@ -93,37 +93,37 @@ index f03e602a1..b82643d33 100644
  #include "agb_flash.h"
  #include "event_data.h"
  #include "constants/event_objects.h"
- 
+
  static void ApplyNewEncryptionKeyToAllEncryptedData(u32 encryptionKey);
- 
+
  #if !PLATFORM_NATIVE
  #line 25
  #define SAVEBLOCK_MOVE_RANGE    128
  #endif
  #line 26
- 
+
  struct LoadedSaveData
  {
   /*0x0000*/ struct Bag bag;
   /*0x02E8*/ struct Mail mail[MAIL_COUNT];
  };
- 
+
  // EWRAM DATA
  EWRAM_DATA struct SaveBlock3 gSaveblock3 = {};
  EWRAM_DATA struct SaveBlock2ASLR gSaveblock2 = {0};
  EWRAM_DATA struct SaveBlock1ASLR gSaveblock1 = {0};
  EWRAM_DATA struct PokemonStorageASLR gPokemonStorage = {0};
- 
+
  EWRAM_DATA struct LoadedSaveData gLoadedSaveData = {0};
  EWRAM_DATA u32 gLastEncryptionKey = 0;
- 
+
  // IWRAM common
  COMMON_DATA bool32 gFlashMemoryPresent = 0;
  COMMON_DATA struct SaveBlock1 *gSaveBlock1Ptr = NULL;
  COMMON_DATA struct SaveBlock2 *gSaveBlock2Ptr = NULL;
  IWRAM_INIT struct SaveBlock3 *gSaveBlock3Ptr = &gSaveblock3;
  COMMON_DATA struct PokemonStorage *gPokemonStoragePtr = NULL;
- 
+
  // code
  void CheckForFlashMemory(void)
  {
@@ -137,28 +137,28 @@ index f03e602a1..b82643d33 100644
          gFlashMemoryPresent = FALSE;
      }
  }
- 
+
  void ClearSav3(void)
  {
      CpuFill16(0, &gSaveblock3, sizeof(struct SaveBlock3));
      FakeRtc_Reset();
  }
- 
+
  void ClearSav2(void)
  {
      CpuFill16(0, &gSaveblock2, sizeof(struct SaveBlock2ASLR));
  }
- 
+
  void ClearSav1(void)
  {
      CpuFill16(0, &gSaveblock1, sizeof(struct SaveBlock1ASLR));
  }
- 
+
  // Offset is the sum of the trainer id bytes
  void SetSaveBlocksPointers(u16 offset)
  {
      struct SaveBlock1 **sav1_LocalVar = &gSaveBlock1Ptr;
- 
+
  #if PLATFORM_NATIVE
  #if __SIZEOF_POINTER__ != 8
  #line 84
@@ -174,15 +174,15 @@ index f03e602a1..b82643d33 100644
      offset = (offset + Random()) & (SAVEBLOCK_MOVE_RANGE - 4);
  #endif
  #line 85
- 
+
      gSaveBlock2Ptr = (void *)(&gSaveblock2) + offset;
      *sav1_LocalVar = (void *)(&gSaveblock1) + offset;
      gPokemonStoragePtr = (void *)(&gPokemonStorage) + offset;
- 
+
      SetBagItemsPointers();
      SetDecorationInventoriesPointers();
  }
- 
+
  void MoveSaveBlocks_ResetHeap(void)
  {
      void *vblankCB, *hblankCB;
@@ -190,23 +190,23 @@ index f03e602a1..b82643d33 100644
      struct SaveBlock2 *saveBlock2Copy;
      struct SaveBlock1 *saveBlock1Copy;
      struct PokemonStorage *pokemonStorageCopy;
- 
+
      // save interrupt functions and turn them off
      vblankCB = gMain.vblankCallback;
      hblankCB = gMain.hblankCallback;
      gMain.vblankCallback = NULL;
      gMain.hblankCallback = NULL;
      gTrainerHillVBlankCounter = NULL;
- 
+
      saveBlock2Copy = (struct SaveBlock2 *)(gHeap);
      saveBlock1Copy = (struct SaveBlock1 *)(gHeap + sizeof(struct SaveBlock2));
      pokemonStorageCopy = (struct PokemonStorage *)(gHeap + sizeof(struct SaveBlock2) + sizeof(struct SaveBlock1));
- 
+
      // backup the saves.
      *saveBlock2Copy = *gSaveBlock2Ptr;
      *saveBlock1Copy = *gSaveBlock1Ptr;
      *pokemonStorageCopy = *gPokemonStoragePtr;
- 
+
      // change saveblocks' pointers
      // argument is a sum of the individual trainerId bytes
      SetSaveBlocksPointers(
@@ -214,71 +214,71 @@ index f03e602a1..b82643d33 100644
        saveBlock2Copy->playerTrainerId[1] +
        saveBlock2Copy->playerTrainerId[2] +
        saveBlock2Copy->playerTrainerId[3]);
- 
+
      // restore saveblock data since the pointers changed
      *gSaveBlock2Ptr = *saveBlock2Copy;
      *gSaveBlock1Ptr = *saveBlock1Copy;
      *gPokemonStoragePtr = *pokemonStorageCopy;
- 
+
      // heap was destroyed in the copying process, so reset it
      InitHeap(gHeap, HEAP_SIZE);
- 
+
      // restore interrupt functions
      gMain.hblankCallback = hblankCB;
      gMain.vblankCallback = vblankCB;
- 
+
      // create a new encryption key
      encryptionKey = Random32();
      ApplyNewEncryptionKeyToAllEncryptedData(encryptionKey);
      gSaveBlock2Ptr->encryptionKey = encryptionKey;
  }
- 
+
  u32 UseContinueGameWarp(void)
  {
      return gSaveBlock2Ptr->specialSaveWarpFlags & CONTINUE_GAME_WARP;
  }
- 
+
  void ClearContinueGameWarpStatus(void)
  {
      gSaveBlock2Ptr->specialSaveWarpFlags &= ~CONTINUE_GAME_WARP;
  }
- 
+
  void SetContinueGameWarpStatus(void)
  {
      gSaveBlock2Ptr->specialSaveWarpFlags |= CONTINUE_GAME_WARP;
  }
- 
+
  void SetContinueGameWarpStatusToDynamicWarp(void)
  {
      SetContinueGameWarpToDynamicWarp(0);
      gSaveBlock2Ptr->specialSaveWarpFlags |= CONTINUE_GAME_WARP;
  }
- 
+
  void ClearContinueGameWarpStatus2(void)
  {
      gSaveBlock2Ptr->specialSaveWarpFlags &= ~CONTINUE_GAME_WARP;
  }
- 
+
  void SavePlayerParty(void)
  {
      int i;
      *GetSavedPlayerPartyCount() = gPartiesCount[B_TRAINER_PLAYER];
- 
+
      for (i = 0; i < PARTY_SIZE; i++)
          SavePlayerPartyMon(i, &gParties[B_TRAINER_PLAYER][i]);
  }
- 
+
  void LoadPlayerParty(void)
  {
      int i;
- 
+
      gPartiesCount[B_TRAINER_PLAYER] = *GetSavedPlayerPartyCount();
- 
+
      for (i = 0; i < PARTY_SIZE; i++)
      {
          u32 data;
          gParties[B_TRAINER_PLAYER][i] = *GetSavedPlayerPartyMon(i);
- 
+
          // TODO: Turn this into a save migration once those are available.
          // At which point we can remove hp and status from Pokemon entirely.
          data = gParties[B_TRAINER_PLAYER][i].maxHP - gParties[B_TRAINER_PLAYER][i].hp;
@@ -287,7 +287,7 @@ index f03e602a1..b82643d33 100644
          SetBoxMonData(&gParties[B_TRAINER_PLAYER][i].box, MON_DATA_STATUS, &data);
      }
  }
- 
+
  void SaveObjectEvents(void)
  {
  #ifdef PORTABLE
@@ -295,7 +295,7 @@ index f03e602a1..b82643d33 100644
  #endif
      int i;
      u16 graphicsId;
- 
+
      for (i = 0; i < SAVED_OBJECT_EVENTS_COUNT; i++)
      {
          gSaveBlock1Ptr->objectEvents[i] = gObjectEvents[i];
@@ -314,13 +314,13 @@ index f03e602a1..b82643d33 100644
              gSaveBlock1Ptr->objectEvents[i].active = FALSE;
      }
  }
- 
+
  void LoadObjectEvents(void)
  {
      memset(gObjectEvents, 0, sizeof(gObjectEvents));
      int i;
      u16 graphicsId;
- 
+
      for (i = 0; i < SAVED_OBJECT_EVENTS_COUNT; i++)
      {
          gObjectEvents[i] = gSaveBlock1Ptr->objectEvents[i];
@@ -340,63 +340,63 @@ index f03e602a1..b82643d33 100644
      }
      SetMinimumOWESpawnTimer();
  }
- 
+
  void CopyPartyAndObjectsToSave(void)
  {
      SavePlayerParty();
      SaveObjectEvents();
  }
- 
+
  void CopyPartyAndObjectsFromSave(void)
  {
      LoadPlayerParty();
      LoadObjectEvents();
  }
- 
+
  void LoadPlayerBag(void)
  {
      int i;
- 
+
      // load player bag.
      memcpy(&gLoadedSaveData.bag, &gSaveBlock1Ptr->bag, sizeof(struct Bag));
- 
+
      // load mail.
      for (i = 0; i < MAIL_COUNT; i++)
          gLoadedSaveData.mail[i] = gSaveBlock1Ptr->mail[i];
- 
+
      gLastEncryptionKey = gSaveBlock2Ptr->encryptionKey;
  }
- 
+
  void SavePlayerBag(void)
  {
      int i;
      u32 encryptionKeyBackup;
- 
+
      // save player bag.
      memcpy(&gSaveBlock1Ptr->bag, &gLoadedSaveData.bag, sizeof(struct Bag));
- 
+
      // save mail.
      for (i = 0; i < MAIL_COUNT; i++)
          gSaveBlock1Ptr->mail[i] = gLoadedSaveData.mail[i];
- 
+
      encryptionKeyBackup = gSaveBlock2Ptr->encryptionKey;
      gSaveBlock2Ptr->encryptionKey = gLastEncryptionKey;
      ApplyNewEncryptionKeyToBagItems(encryptionKeyBackup);
      gSaveBlock2Ptr->encryptionKey = encryptionKeyBackup; // updated twice?
  }
- 
+
  void ApplyNewEncryptionKeyToHword(u16 *hWord, u32 newKey)
  {
      *hWord ^= gSaveBlock2Ptr->encryptionKey;
      *hWord ^= newKey;
  }
- 
+
  void ApplyNewEncryptionKeyToWord(u32 *word, u32 newKey)
  {
      *word ^= gSaveBlock2Ptr->encryptionKey;
      *word ^= newKey;
  }
- 
+
  static void ApplyNewEncryptionKeyToAllEncryptedData(u32 encryptionKey)
  {
      ApplyNewEncryptionKeyToGameStats(encryptionKey);
@@ -406,10 +406,10 @@ index f03e602a1..b82643d33 100644
      ApplyNewEncryptionKeyToHword(&gSaveBlock1Ptr->coins, encryptionKey);
  }
 diff --git a/src/wild_encounter_ow.c b/src/wild_encounter_ow.c
-index 783546688..c1b5cbffc 100644
+index 783546688..c18f4bf4b 100644
 --- a/src/wild_encounter_ow.c
 +++ b/src/wild_encounter_ow.c
-@@ -1,1795 +1,1828 @@
+@@ -1,1795 +1,1837 @@
  #include "global.h"
  #include "wild_encounter_ow.h"
 +#ifdef PORTABLE
@@ -447,35 +447,35 @@ index 783546688..c1b5cbffc 100644
  #include "constants/songs.h"
  #include "constants/vars.h"
  #include "constants/wild_encounter.h"
- 
- 
+
+
  #define sOverworldEncounterLevel        trainerRange_berryTreeId
  #define sOverworldEncounterAge          playerCopyableMovement
  #define sOverworldEncounterCategory     warpArrowSpriteId
  #define OWE_MAX_ROAMERS                 UINT8_MAX - 3
- 
+
  #define OWE_FLAG_BIT                    (1 << 7)
  #define OWE_SAVED_MOVEMENT_STATE_FLAG   OWE_FLAG_BIT
  #define OWE_NO_DESPAWN_FLAG             OWE_FLAG_BIT
- 
+
  #define OWE_SPAWN_DISTANCE_LAND         1   // A spawn cannot happen within this many tiles of the player position.
  #define OWE_SPAWN_DISTANCE_WATER        3   // A spawn cannot happen within this many tiles of the player position (while surfing).
  #define OWE_SPAWN_WIDTH_TOTAL           15  // Width of the on-screen spawn area in tiles.
  #define OWE_SPAWN_HEIGHT_TOTAL          9   // Height of the on-screen spawn area in tiles.
  #define OWE_SPAWN_WIDTH_RADIUS          (OWE_SPAWN_WIDTH_TOTAL - 1) / 2     // Distance from center to left/right edge (not including center).
  #define OWE_SPAWN_HEIGHT_RADIUS         (OWE_SPAWN_HEIGHT_TOTAL - 1) / 2    // Distance from center to top/bottom edge (not including center).
- 
+
  #define OWE_SPAWN_TIME_REPLACEMENT      240 // The number of frames before an existing spawn will be replaced with a new one (requires WE_OWE_SPAWN_REPLACEMENT).
  #define OWE_SPAWN_TIME_LURE             0
  #define OWE_SPAWN_TIME_MINIMUM          30  // The minimum value the spawn wait time can be reset to. Prevents spawn attempts every frame.
  #define OWE_SPAWN_TIME_PER_ACTIVE       30  // The number of frames that will be added to the countdown per currently active spawn.
- 
+
  #define OWE_DEFAULT_CHASE_RANGE         5
  #define OWE_RESTORED_MOVEMENT_FUNC_ID   10
- 
+
  #define OWE_NO_ENCOUNTER_SET            0xFF
  #define OWE_INVALID_SPAWN_SLOT          0xFF
- 
+
  enum __attribute__((packed)) CategoryOWE
  {
      // If Roamers are used, they will exist as values, implicitly, within this enum.
@@ -484,7 +484,7 @@ index 783546688..c1b5cbffc 100644
      OWE_CATEGORY_WILD,
      OWE_CATEGORY_UNDEFINED
  };
- 
+
  struct InfoOWE
  {
      enum Species speciesId;
@@ -495,67 +495,67 @@ index 783546688..c1b5cbffc 100644
      bool8 isFemale;
      bool8 noDespawn;
  };
- 
- 
+
+
  #if WE_OW_ENCOUNTERS == TRUE && ROAMER_COUNT > OWE_MAX_ROAMERS
  #error "ROAMER_COUNT needs to be less than OWE_MAX_ROAMERS due to it being stored in the u8 field warpArrowSpriteId"
  #endif
- 
+
  #if OW_POKEMON_OBJECT_EVENTS == FALSE && WE_OW_ENCOUNTERS == TRUE
  #error "OW_POKEMON_OBJECT_EVENTS needs to be TRUE in order for WE_OW_ENCOUNTERS to work."
  #endif
- 
+
  #if OWE_SPAWN_DISTANCE_LAND >= OWE_SPAWN_WIDTH_RADIUS || OWE_SPAWN_DISTANCE_WATER >= OWE_SPAWN_WIDTH_RADIUS
  #error "OWE_SPAWN_DISTANCE_LAND and OWE_SPAWN_DISTANCE_WATER must both be less than OWE_SPAWN_WIDTH_RADIUS."
  #endif
- 
- 
+
+
  static inline u32 GetLocalIdByOWESpawnSlot(u32 spawnSlot)
  {
      return LOCALID_OW_ENCOUNTER_END - spawnSlot;
  }
- 
+
  static inline u32 GetSpawnSlotByOWELocalId(u32 localId)
  {
      return LOCALID_OW_ENCOUNTER_END - localId;
  }
- 
+
  static inline u32 GetOWECategory(const struct ObjectEvent *owe)
  {
      return owe->sOverworldEncounterCategory & ~OWE_SAVED_MOVEMENT_STATE_FLAG;
  }
- 
+
  static inline bool32 HasSavedOWEMovementState(const struct ObjectEvent *owe)
  {
      return owe->sOverworldEncounterCategory & OWE_SAVED_MOVEMENT_STATE_FLAG;
  }
- 
+
  void SetSavedOWEMovementState(struct ObjectEvent *owe)
  {
      owe->sOverworldEncounterCategory |= OWE_SAVED_MOVEMENT_STATE_FLAG;
  }
- 
+
  void ClearSavedOWEMovementState(struct ObjectEvent *owe)
  {
      owe->sOverworldEncounterCategory &= ~OWE_SAVED_MOVEMENT_STATE_FLAG;
  }
- 
+
  static inline bool32 HasOWENoDespawnFlag(const struct ObjectEvent *owe)
  {
      return owe->sOverworldEncounterLevel & OWE_NO_DESPAWN_FLAG;
  }
- 
+
  static inline bool32 ShouldSpawnWaterOWE(void)
  {
      return TestPlayerAvatarFlags(PLAYER_AVATAR_FLAG_SURFING | PLAYER_AVATAR_FLAG_UNDERWATER);
  }
- 
+
  // Helper function for IsOverworldWildEncounter and GetOverworldWildEncounterType
  static inline bool32 IsObjectActiveOWE(struct ObjectEvent *owe)
  {
      return (owe->active && owe->trainerType == TRAINER_TYPE_OW_WILD_ENCOUNTER);
  }
- 
+
  static bool32 CreateEnemyPartyOWE(struct InfoOWE *info, s32 x, s32 y);
  static bool32 OWE_DoesOWERoamerExist(void);
  static bool32 StartWildBattleWithOWE_CheckRoamer(enum CategoryOWE category);
@@ -589,15 +589,15 @@ index 783546688..c1b5cbffc 100644
  static enum Direction CheckOWEPathToPlayerFromCollision(struct ObjectEvent *owe, enum Direction newDirection);
  static void Task_OWEApproachForBattle(u8 taskId);
  static bool32 CheckValidOWESpecies(enum Species speciesId);
- 
+
  static EWRAM_DATA u8 sOWESpawnCountdown = 0;
- 
+
  struct AgeSort
  {
      u8 slot:4;
      u8 age:4;
  };
- 
+
  const struct FieldEffectInfoOWE gOverworldWildEncounterFieldEffectInfo[] =
  {
      [OWE_SPAWN_ANIM_GRASS] =
@@ -606,35 +606,35 @@ index 783546688..c1b5cbffc 100644
          .yOffset = 8,
          .visual = FLDEFFOBJ_JUMP_TALL_GRASS,
      },
- 
+
      [OWE_SPAWN_ANIM_LONG_GRASS] =
      {
          .xOffset = 0,
          .yOffset = 0,
          .visual = FLDEFFOBJ_JUMP_LONG_GRASS,
      },
- 
+
      [OWE_SPAWN_ANIM_WATER] =
      {
          .xOffset = 0,
          .yOffset = 8,
          .visual = FLDEFFOBJ_JUMP_BIG_SPLASH,
      },
- 
+
      [OWE_SPAWN_ANIM_UNDERWATER] =
      {
          .xOffset = 0,
          .yOffset = 0,
          .visual = FLDEFFOBJ_BUBBLES,
      },
- 
+
      [OWE_SPAWN_ANIM_CAVE] =
      {
          .xOffset = 0,
          .yOffset = 12,
          .visual = FLDEFFOBJ_GROUND_IMPACT_DUST,
      },
- 
+
      [OWE_SPAWN_ANIM_SHINY] =
      {
          .xOffset = 0,
@@ -642,8 +642,8 @@ index 783546688..c1b5cbffc 100644
          .visual = FLDEFFOBJ_SHINY_SPARKLE,
      },
  };
- 
- 
+
+
  void UpdateOverworldWildEncounter(void)
  {
 +#ifdef PORTABLE
@@ -659,12 +659,12 @@ index 783546688..c1b5cbffc 100644
 +    }
 +#endif
      //Check if possible to spawn.
- 
+
      bool32 shouldSpawnWaterMons = ShouldSpawnWaterOWE();
      
      if (ArePlayerFieldControlsLocked() || FlagGet(DN_FLAG_SEARCHING) || !CheckCurrentWildMonHeaderForOWE(shouldSpawnWaterMons))
          return;
- 
+
      if (!WE_OW_ENCOUNTERS
       || FlagGet(WE_OWE_FLAG_DISABLED)
       || FlagGet(WE_FLAG_NO_ENCOUNTER)
@@ -684,7 +684,7 @@ index 783546688..c1b5cbffc 100644
      {
          SetMinimumOWESpawnTimer();
      }
- 
+
      if (sOWESpawnCountdown)
      {
          sOWESpawnCountdown--;
@@ -695,9 +695,9 @@ index 783546688..c1b5cbffc 100644
      // Don't spawn if player is mid step.
      if (player->currentCoords.x != player->previousCoords.x || player->currentCoords.y != player->previousCoords.y)
          return;
- 
+
      // Check for a valid tile.
- 
+
      u32 spawnSlot = GetNextOWESpawnSlot();
      s32 x, y;
      if (spawnSlot == OWE_INVALID_SPAWN_SLOT
@@ -707,15 +707,15 @@ index 783546688..c1b5cbffc 100644
          SetMinimumOWESpawnTimer();
          return;
      }
- 
+
      // Check for a valid Pokemon.
- 
+
      struct InfoOWE infoOWE = {0};
- 
+
      infoOWE.localId = GetLocalIdByOWESpawnSlot(spawnSlot);
      infoOWE.category = OWE_CATEGORY_UNDEFINED;
      SetSpeciesInfoForOWE(&infoOWE, x, y);
- 
+
      if (infoOWE.speciesId == SPECIES_NONE
       || (WE_OWE_SPECIAL_ONLY && infoOWE.category >= OWE_CATEGORY_WILD)
       || !IsWildLevelAllowedByRepel(infoOWE.level)
@@ -725,7 +725,7 @@ index 783546688..c1b5cbffc 100644
          SetMinimumOWESpawnTimer();
          return;
      }
- 
+
      // Spawn the Pokemon.
      
      struct ObjectEventTemplate objectEventTemplate = {
@@ -742,27 +742,27 @@ index 783546688..c1b5cbffc 100644
      if (ShouldDespawnGeneratedForNewOWE(owe))
          RemoveObjectEvent(owe);
      objectEventId = SpawnSpecialObjectEvent(&objectEventTemplate);
- 
+
      assertf(objectEventId < OBJECT_EVENTS_COUNT, "could not spawn generated overworld encounter. too many object events exist")
      {
          SetMinimumOWESpawnTimer();
          return;
      }
- 
+
      owe = &gObjectEvents[objectEventId];
      owe->disableCoveringGroundEffects = TRUE;
      owe->sOverworldEncounterLevel = infoOWE.noDespawn ? (infoOWE.level | OWE_NO_DESPAWN_FLAG) : infoOWE.level;
      owe->sOverworldEncounterCategory = infoOWE.category;
- 
+
      ObjectEventTurn(owe, gStandardDirections[Random() & 3]);
      SetNewOWESpawnCountdown();
  }
- 
+
  bool32 IsOverworldWildEncounter(struct ObjectEvent *owe, enum TypeOWE oweType)
  {
      if (!IsObjectActiveOWE(owe))
          return FALSE;
- 
+
      switch (oweType)
      {
      default:
@@ -771,23 +771,23 @@ index 783546688..c1b5cbffc 100644
      
      case OWE_GENERATED:
          return IS_LOCALID_GENERATED_OWE(owe->localId);
- 
+
      case OWE_MANUAL:
          return !IS_LOCALID_GENERATED_OWE(owe->localId);
      }
  }
- 
+
  static enum TypeOWE GetOverworldWildEncounterType(struct ObjectEvent *owe)
  {
      if (!IsObjectActiveOWE(owe))
          return OWE_NONE;
- 
+
      if (IS_LOCALID_GENERATED_OWE(owe->localId))
          return OWE_GENERATED;
- 
+
      return OWE_MANUAL;
  }
- 
+
  void StartWildBattleWithOWE(struct ScriptContext *ctx)
  {
      u32 localId = VarGet(ScriptReadHalfword(ctx));
@@ -808,30 +808,30 @@ index 783546688..c1b5cbffc 100644
 +#endif
      struct ObjectEvent *owe = &gObjectEvents[objEventId];
      enum CategoryOWE category = GetOWECategory(owe);
- 
+
      Script_RequestEffects(SCREFF_V1 | SCREFF_HARDWARE);
- 
+
      assertf(objEventId < OBJECT_EVENTS_COUNT && IsOverworldWildEncounter(owe, OWE_ANY), "cannot start overworld wild enocunter as the selected object is invalid.\nlocalId: %d", localId)
      {
          UnlockPlayerFieldControls();
          UnfreezeObjectEvents();
          return;
      }
- 
+
      if (category < ROAMER_COUNT && StartWildBattleWithOWE_CheckRoamer(category))
          return;
- 
+
      enum Species speciesId = OW_SPECIES(owe);
      bool32 shiny = OW_SHINY(owe) ? TRUE : FALSE;
      u32 gender = OW_FEMALE(owe) ? MON_FEMALE : MON_MALE;
      u32 level = owe->sOverworldEncounterLevel & ~OWE_NO_DESPAWN_FLAG;
      u32 personality;
- 
+
      assertf(level >= MIN_LEVEL && level <= MAX_LEVEL, "overworld wild encounter does not have valid level.\nlocalId: %d", localId)
      {
          level = MIN_LEVEL;
      }
- 
+
      ZeroEnemyPartyMons();
      personality = GetMonPersonality(speciesId, gender, NATURE_RANDOM, RANDOM_UNOWN_LETTER);
      CreateMonWithIVs(&gParties[B_TRAINER_OPPONENT_A][0], speciesId, level, personality, OTID_STRUCT_PLAYER_ID, USE_RANDOM_IVS);
@@ -843,30 +843,30 @@ index 783546688..c1b5cbffc 100644
      
      if (StartWildBattleWithOWE_CheckMassOutbreak(category, speciesId, level))
          return;
- 
+
      if (StartWildBattleWithOWE_CheckDoubleBattle(owe, headerId))
          return;
- 
+
      BattleSetup_StartWildBattle();
  }
- 
+
  void SetOverworldObjectSpecies(struct ScriptContext *ctx)
  {
      u32 varId = ScriptReadHalfword(ctx);
      u32 localId = VarGet(ScriptReadHalfword(ctx));
      struct ObjectEvent *object = &gObjectEvents[GetObjectEventIdByLocalId(localId)];
      enum Species speciesId = SPECIES_NONE;
- 
+
      Script_RequestEffects(SCREFF_V1);
      Script_RequestWriteVar(varId);
- 
+
      if (IS_OW_MON_OBJ(object))
          speciesId = OW_SPECIES(object);
- 
+
      assertf(speciesId != SPECIES_NONE, "species was not found for specified object. localid: %d", localId);
      VarSet(varId, speciesId);
  }
- 
+
  static bool32 CreateEnemyPartyOWE(struct InfoOWE *info, s32 x, s32 y)
  {
      const struct WildPokemonInfo *wildMonInfo;
@@ -874,7 +874,7 @@ index 783546688..c1b5cbffc 100644
      enum TimeOfDay timeOfDay;
      u32 headerId = GetCurrentMapWildMonHeaderId();
      u32 metatileBehavior = MapGridGetMetatileBehaviorAt(x, y);
- 
+
      if (headerId == HEADER_NONE)
      {
          if (gMapHeader.mapLayoutId == LAYOUT_BATTLE_FRONTIER_BATTLE_PIKE_ROOM_WILD_MONS)
@@ -894,16 +894,16 @@ index 783546688..c1b5cbffc 100644
              timeOfDay = GetTimeOfDayForEncounters(headerId, WILD_AREA_LAND);
              if (TryGenerateWildMon(gBattlePyramidWildMonHeaders[headerId].encounterTypes[timeOfDay].landMonsInfo, WILD_AREA_LAND, 0) != TRUE)
                  return FALSE;
- 
+
              enum Species id = GetMonData(&gParties[B_TRAINER_OPPONENT_A][0], MON_DATA_SPECIES);
              GenerateBattlePyramidWildMon(SPECIES_NONE);
              SetMonData(&gParties[B_TRAINER_OPPONENT_A][0], MON_DATA_LEVEL, &id);
              return TRUE;
          }
- 
+
          return FALSE;
      }
- 
+
      if (MetatileBehavior_IsWaterWildEncounter(metatileBehavior))
      {
          wildArea = WILD_AREA_WATER;
@@ -916,10 +916,10 @@ index 783546688..c1b5cbffc 100644
          timeOfDay = GetTimeOfDayForEncounters(headerId, wildArea);
          wildMonInfo = gWildMonHeaders[headerId].encounterTypes[timeOfDay].landMonsInfo;
      }
- 
+
      if (wildMonInfo == NULL)
          return FALSE;
- 
+
      /*
      These functions perform checks of various encounter types in the following order:
          1. Attempt to generate a Roamer Encounter
@@ -931,7 +931,7 @@ index 783546688..c1b5cbffc 100644
      with the resultant wild mon being created in gParties[B_TRAINER_OPPONENT_A][0].
      If none of these checks succeed, speciesId is set to SPECIES_NONE and FALSE is returned.
      */
- 
+
      if (info->category == OWE_CATEGORY_UNDEFINED)
      {
          if (TryStartRoamerEncounter() && !OWE_DoesOWERoamerExist())
@@ -945,7 +945,7 @@ index 783546688..c1b5cbffc 100644
              info->category = OWE_CATEGORY_FEEBAS;
              if (WE_OWE_PREVENT_FEEBAS_DESPAWN)
                  info->noDespawn = TRUE;
- 
+
              return TRUE;
          }
          else if (DoMassOutbreakEncounterTest() && MetatileBehavior_IsLandWildEncounter(metatileBehavior))
@@ -959,10 +959,10 @@ index 783546688..c1b5cbffc 100644
              return TryGenerateWildMon(wildMonInfo, wildArea, 0);
          }
      }
- 
+
      return TryGenerateWildMon(wildMonInfo, wildArea, 0);
  }
- 
+
  static bool32 OWE_DoesOWERoamerExist(void)
  {
      for (u32 i = 0; i < OBJECT_EVENTS_COUNT; i++)
@@ -971,10 +971,10 @@ index 783546688..c1b5cbffc 100644
          if (IsOverworldWildEncounter(owe, OWE_ANY) && GetOWECategory(owe) == gEncounteredRoamerIndex)
              return TRUE;
      }
- 
+
      return FALSE;
  }
- 
+
  static bool32 StartWildBattleWithOWE_CheckRoamer(enum CategoryOWE category)
  {
      if (category < ROAMER_COUNT
@@ -985,10 +985,10 @@ index 783546688..c1b5cbffc 100644
          BattleSetup_StartRoamerBattle();
          return TRUE;
      }
- 
+
      return FALSE;
  }
- 
+
  static bool32 StartWildBattleWithOWE_CheckBattleFrontier(u32 headerId)
  {
      if (headerId == HEADER_NONE)
@@ -1011,15 +1011,15 @@ index 783546688..c1b5cbffc 100644
              return TRUE;
          }
      }
- 
+
      return FALSE;
  }
- 
+
  static bool32 StartWildBattleWithOWE_CheckMassOutbreak(enum CategoryOWE category, enum Species speciesId, u32 level)
  {
      if (category != OWE_CATEGORY_MASS_OUTBREAK)
          return FALSE;
- 
+
      assertf(gSaveBlock1Ptr->outbreakPokemonSpecies == speciesId && gSaveBlock1Ptr->outbreakPokemonLevel == level, "Outbreak OW encounter is not matching last active outbreak")
      {
          return FALSE;
@@ -1029,18 +1029,18 @@ index 783546688..c1b5cbffc 100644
      BattleSetup_StartWildBattle();
      return TRUE;
  }
- 
+
  static bool32 StartWildBattleWithOWE_CheckDoubleBattle(struct ObjectEvent *owe, u32 headerId)
  {
      enum WildPokemonArea wildArea;
      enum TimeOfDay timeOfDay;
      const struct WildPokemonInfo *wildMonInfo;
      u32 metatileBehavior = MapGridGetMetatileBehaviorAt(owe->currentCoords.x, owe->currentCoords.y);
- 
+
      if (TryDoDoubleWildBattle())
      {
          struct Pokemon mon1 = gParties[B_TRAINER_OPPONENT_A][0];
- 
+
          if (MetatileBehavior_IsWaterWildEncounter(metatileBehavior))
          {
              wildArea = WILD_AREA_WATER;
@@ -1053,7 +1053,7 @@ index 783546688..c1b5cbffc 100644
              timeOfDay = GetTimeOfDayForEncounters(headerId, wildArea);
              wildMonInfo = gWildMonHeaders[headerId].encounterTypes[timeOfDay].landMonsInfo;
          }
- 
+
          if (TryGenerateWildMon(wildMonInfo, wildArea, WILD_CHECK_REPEL | WILD_CHECK_KEEN_EYE))
          {
              gParties[B_TRAINER_OPPONENT_A][1] = mon1;
@@ -1061,33 +1061,33 @@ index 783546688..c1b5cbffc 100644
              return TRUE;
          }
      }
- 
+
      return FALSE;
  }
- 
+
  void SetMinimumOWESpawnTimer(void)
  {
      if (!WE_OW_ENCOUNTERS)
          return;
- 
+
      sOWESpawnCountdown = OWE_SPAWN_TIME_MINIMUM;
      if (LURE_STEP_COUNT && GetNumberOfActiveOWEs(OWE_GENERATED) < OWE_SPAWNS_MAX)
          sOWESpawnCountdown = OWE_SPAWN_TIME_LURE;
  }
- 
+
  void TryTriggerOverworldWildEncounter(struct ObjectEvent *obstacle, struct ObjectEvent *collider)
  {
      if (WE_OWE_NO_REPEL_DEXNAV_COLLISION && (FlagGet(DN_FLAG_SEARCHING) || REPEL_STEP_COUNT))
          return;
- 
+
      bool32 playerFollowerIsColliderOWE = ((collider->isPlayer || collider->localId == OBJ_EVENT_ID_FOLLOWER)
                                            && IsOverworldWildEncounter(obstacle, OWE_ANY));
      bool32 playerFollowerIsObstacleOWE = ((obstacle->isPlayer || obstacle->localId == OBJ_EVENT_ID_FOLLOWER)
                                            && IsOverworldWildEncounter(collider, OWE_ANY));
- 
+
      if (!playerFollowerIsColliderOWE && !playerFollowerIsObstacleOWE)
          return;
- 
+
      struct ObjectEvent *wildMon = playerFollowerIsColliderOWE ? obstacle : collider;
 +#ifdef PORTABLE
 +    if (IsOverworldWildEncounter(wildMon, OWE_GENERATED)
@@ -1101,17 +1101,17 @@ index 783546688..c1b5cbffc 100644
          RemoveObjectEvent(wildMon);
          return;
      }
- 
+
      gSpecialVar_LastTalked = wildMon->localId;
      gSelectedObjectEvent = GetObjectEventIdByLocalId(wildMon->localId);
- 
+
      // Stop the bobbing animation.
      if (wildMon->movementActionId >= MOVEMENT_ACTION_WALK_IN_PLACE_NORMAL_DOWN && wildMon->movementActionId <= MOVEMENT_ACTION_WALK_IN_PLACE_NORMAL_RIGHT)
          ClearObjectEventMovement(wildMon, &gSprites[wildMon->spriteId]);
- 
+
      ScriptContext_SetupScript(InteractWithOverworldWildEncounter);
  }
- 
+
  const u8 *GetOverworlWildEncounterScript(u32 objectEventId)
  {
      const u8 *script;
@@ -1121,12 +1121,12 @@ index 783546688..c1b5cbffc 100644
      
      return InteractWithOverworldWildEncounter;
  }
- 
+
  static bool32 CheckCurrentWildMonHeaderForOWE(bool32 shouldSpawnWaterMons)
  {
      u32 headerId = GetCurrentMapWildMonHeaderId();
      enum TimeOfDay timeOfDay;
- 
+
      if (headerId == HEADER_NONE)
      {
          if (gMapHeader.mapLayoutId == LAYOUT_BATTLE_FRONTIER_BATTLE_PIKE_ROOM_WILD_MONS)
@@ -1143,22 +1143,22 @@ index 783546688..c1b5cbffc 100644
          }
          return FALSE;
      }
- 
+
      if (shouldSpawnWaterMons)
      {
          timeOfDay = GetTimeOfDayForEncounters(headerId, WILD_AREA_WATER);
          return gWildMonHeaders[headerId].encounterTypes[timeOfDay].waterMonsInfo != NULL;
      }
- 
+
      timeOfDay = GetTimeOfDayForEncounters(headerId, WILD_AREA_LAND);
      return gWildMonHeaders[headerId].encounterTypes[timeOfDay].landMonsInfo != NULL;
  }
- 
+
  static u32 GetOldestActiveOWESlot(bool32 forceRemove)
  {
      struct ObjectEvent *slotMon, *oldest = &gObjectEvents[GetObjectEventIdByLocalId(LOCALID_OW_ENCOUNTER_END)];
      u32 spawnSlot;
- 
+
      for (spawnSlot = 0; spawnSlot < OWE_SPAWNS_MAX; spawnSlot++)
      {
          slotMon = &gObjectEvents[GetObjectEventIdByLocalId(GetLocalIdByOWESpawnSlot(spawnSlot))];
@@ -1168,10 +1168,10 @@ index 783546688..c1b5cbffc 100644
              break;
          }
      }
- 
+
      if (spawnSlot >= OWE_SPAWNS_MAX)
          return OWE_INVALID_SPAWN_SLOT;
- 
+
      for (u32 i = spawnSlot; i < OWE_SPAWNS_MAX; i++)
      {
          slotMon = &gObjectEvents[GetObjectEventIdByLocalId(GetLocalIdByOWESpawnSlot(i))];
@@ -1181,14 +1181,14 @@ index 783546688..c1b5cbffc 100644
                  oldest = slotMon;
          }
      }
- 
+
      return GetSpawnSlotByOWELocalId(oldest->localId);
  }
- 
+
  static u32 GetNextOWESpawnSlot(void)
  {
      u32 spawnSlot;
- 
+
      // All mon slots are in use
      if (GetNumberOfActiveOWEs(OWE_GENERATED) >= OWE_SPAWNS_MAX)
      {
@@ -1204,21 +1204,21 @@ index 783546688..c1b5cbffc 100644
          if (GetSpeciesByOWESpawnSlot(spawnSlot) == SPECIES_NONE)
              break;
      }
- 
+
      return spawnSlot;
  }
- 
+
  static enum Species GetSpeciesByOWESpawnSlot(u32 spawnSlot)
  {
      u32 objEventId = GetObjectEventIdByLocalId(GetLocalIdByOWESpawnSlot(spawnSlot));
      struct ObjectEvent *owe = &gObjectEvents[objEventId];
- 
+
      if (objEventId >= OBJECT_EVENTS_COUNT)
          return SPECIES_NONE;
- 
+
      return OW_SPECIES(owe);
  }
- 
+
  static bool32 TrySelectTileForOWE(s32* outX, s32* outY)
  {
      u32 elevation;
@@ -1227,13 +1227,13 @@ index 783546688..c1b5cbffc 100644
      s16 x, y;
      u32 closeDistance;
      bool32 isEncounterTile = FALSE;
- 
+
      // Spawn further away when surfing
      if (ShouldSpawnWaterOWE())
          closeDistance = OWE_SPAWN_DISTANCE_WATER;
      else
          closeDistance = OWE_SPAWN_DISTANCE_LAND;
- 
+
      // Select a random tile in [-OWE_SPAWN_WIDTH_RADIUS, -OWE_SPAWN_HEIGHT_RADIUS] [OWE_SPAWN_WIDTH_RADIUS, OWE_SPAWN_HEIGHT_RADIUS]
      // range while excluding tiles that are less than closeDistance away from the player.
      x = (s16)(Random() % (OWE_SPAWN_WIDTH_TOTAL - 2 * closeDistance) ) - (OWE_SPAWN_WIDTH_RADIUS - closeDistance);
@@ -1241,7 +1241,7 @@ index 783546688..c1b5cbffc 100644
          x -= closeDistance;
      else
          x += closeDistance;
- 
+
      y = (s16)(Random() % (OWE_SPAWN_HEIGHT_TOTAL - 2 * closeDistance) ) - (OWE_SPAWN_HEIGHT_RADIUS - closeDistance);
      if (y < 0)
          y -= closeDistance;
@@ -1251,43 +1251,43 @@ index 783546688..c1b5cbffc 100644
      PlayerGetDestCoords(&playerX, &playerY);
      x += playerX;
      y += playerY;
- 
+
      elevation = MapGridGetElevationAt(x, y);
- 
+
      if (!AreCoordsInsidePlayerMap(x, y))
          return FALSE;
- 
+
      // These elevations cause weird interactions, so spawns are prevented.
      if (elevation == ELEVATION_TRANSITION || elevation == ELEVATION_MULTI_LEVEL)
          return FALSE;
- 
+
      tileBehavior = MapGridGetMetatileBehaviorAt(x, y);
      if (ShouldSpawnWaterOWE() && MetatileBehavior_IsWaterWildEncounter(tileBehavior))
          isEncounterTile = TRUE;
- 
+
      if (!ShouldSpawnWaterOWE() && MetatileBehavior_IsLandWildEncounter(tileBehavior))
          isEncounterTile = TRUE;
- 
+
      if (gMapHeader.mapLayoutId == LAYOUT_BATTLE_FRONTIER_BATTLE_PIKE_ROOM_WILD_MONS
       || gMapHeader.mapLayoutId == LAYOUT_BATTLE_FRONTIER_BATTLE_PYRAMID_FLOOR)
          isEncounterTile = TRUE;
- 
+
      if (isEncounterTile && !MapGridGetCollisionAt(x, y))
      {
          *outX = x;
          *outY = y;
- 
+
          if (GetObjectEventIdByPosition(x, y, 0) == OBJECT_EVENTS_COUNT)
              return TRUE;
      }
- 
+
      return FALSE;
  }
- 
+
  static void SetSpeciesInfoForOWE(struct InfoOWE *info, u32 x, u32 y)
  {
      u32 personality;
- 
+
      if (!CreateEnemyPartyOWE(info, x, y))
      {
          ZeroEnemyPartyMons();
@@ -1298,56 +1298,56 @@ index 783546688..c1b5cbffc 100644
      info->speciesId = GetMonData(&gParties[B_TRAINER_OPPONENT_A][0], MON_DATA_SPECIES);
      info->level = GetMonData(&gParties[B_TRAINER_OPPONENT_A][0], MON_DATA_LEVEL);
      personality = GetMonData(&gParties[B_TRAINER_OPPONENT_A][0], MON_DATA_PERSONALITY);
- 
+
      if (info->speciesId == SPECIES_UNOWN)
          info->speciesId = GetUnownSpeciesId(personality);
- 
+
      info->isShiny = ComputePlayerShinyOdds(personality, READ_OTID_FROM_SAVE);
      if (GetGenderFromSpeciesAndPersonality(info->speciesId, personality) == MON_FEMALE)
          info->isFemale = TRUE;
      else
          info->isFemale = FALSE;
- 
+
      if (WE_OWE_PREVENT_SHINY_DESPAWN && info->isShiny)
          info->noDespawn = TRUE;
- 
+
      if (info->category == OWE_CATEGORY_UNDEFINED)
          info->category = OWE_CATEGORY_WILD;
- 
+
      ZeroEnemyPartyMons();
  }
- 
+
  static u32 GetGraphicsIdForOWE(const struct InfoOWE *info)
  {
      assertf(CheckValidOWESpecies(info->speciesId), "invalid generated overworld encounter\nspecies: %d\ncheck if valid wild mon header exists", info->speciesId);
      return GetGraphicsIdForMon(info->speciesId, info->isShiny, info->isFemale);
  }
- 
+
  static bool32 CheckCanLoadOWE(enum Species speciesId, bool32 isFemale, bool32 isShiny, s32 x, s32 y)
  {
      assertf(CheckCanLoadOWE_Palette(speciesId, isFemale, isShiny, x, y), "could not load palette for overworld encounter\nspecies: %d\nfemale: %d\nshiny: %d\ncoords: %d %d", speciesId, isFemale, isShiny, x, y)
      {
          return FALSE;
      }
- 
+
      assertf(CheckCanLoadOWE_Tiles(speciesId, isFemale, isShiny, x, y), "could not load sprite tiles for overworld encounter\nspecies: %d\nfemale: %d\nshiny: %d\ncoords: %d %d", speciesId, isFemale, isShiny, x, y)
      {
          return FALSE;
      }
- 
+
      return TRUE;
  }
- 
+
  static bool32 CheckCanLoadOWE_Palette(enum Species speciesId, bool32 isFemale, bool32 isShiny, s32 x, s32 y)
  {
      u32 numFreePalSlots = CountFreePaletteSlots();
      u32 tag = speciesId + OBJ_EVENT_MON + (isShiny ? OBJ_EVENT_MON_SHINY : 0);
- 
+
  #if P_GENDER_DIFFERENCES
      if (isFemale && gSpeciesInfo[speciesId].overworldShinyPaletteFemale != NULL)
          tag += OBJ_EVENT_MON_FEMALE;
  #endif
- 
+
      // We need at least 2 pal slots open. One for the object and one for the spawn field effect.
      // Add this and tiles to seperate graphics check function
      if (numFreePalSlots == 1)
@@ -1363,19 +1363,19 @@ index 783546688..c1b5cbffc 100644
      {
          return FALSE;
      }
- 
+
      return TRUE;
  }
- 
+
  static u32 GetNumberOfSpawnAnimTiles(s32 x, s32 y)
  {
      u32 metatileBehavior = MapGridGetMetatileBehaviorAt(x, y);
      enum SpawnDespawnTypeOWE spawnAnimType = GetOWESpawnDespawnAnimType(metatileBehavior);
      u32 visual = gOverworldWildEncounterFieldEffectInfo[spawnAnimType].visual;
- 
+
      return gFieldEffectObjectTemplatePointers[visual]->images->size / TILE_SIZE_4BPP;
  }
- 
+
  static bool32 CheckCanLoadOWE_Tiles(enum Species speciesId, bool32 isFemale, bool32 isShiny, s32 x, s32 y)
  {
      u32 graphicsId = GetGraphicsIdForMon(speciesId, isShiny, isFemale);
@@ -1404,7 +1404,7 @@ index 783546688..c1b5cbffc 100644
      
      return TRUE;
  }
- 
+
  static void SortOWEAges(void)
  {
      struct ObjectEvent *slotMon;
@@ -1413,10 +1413,10 @@ index 783546688..c1b5cbffc 100644
      u32 numActive = GetNumberOfActiveOWEs(OWE_GENERATED);
      u32 count = 0;
      s32 i, j;
- 
+
      if (OWE_SPAWNS_MAX <= 1)
          return;
- 
+
      for (i = 0; i < OWE_SPAWNS_MAX; i++)
      {
          slotMon = &gObjectEvents[GetObjectEventIdByLocalId(GetLocalIdByOWESpawnSlot(i))];
@@ -1430,18 +1430,18 @@ index 783546688..c1b5cbffc 100644
          if (count == numActive)
              break;
      }
- 
+
      for (i = 1; i < numActive; i++)
      {
          current = array[i];
          j = i - 1;
- 
+
          while (j >= 0 && array[j].age < current.age)
          {
              array[j + 1] = array[j];
              j--;
          }
- 
+
          array[j + 1] = current;
      }
      
@@ -1451,149 +1451,158 @@ index 783546688..c1b5cbffc 100644
          slotMon->sOverworldEncounterAge = numActive - i;
      }
  }
- 
+
  void OnOverworldWildEncounterSpawn(struct ObjectEvent *owe)
  {
      enum TypeOWE type = GetOverworldWildEncounterType(owe);
      if (type == OWE_NONE)
          return;
- 
+
      if (type == OWE_MANUAL)
          owe->sOverworldEncounterCategory = OWE_CATEGORY_WILD;
      
      if (type == OWE_GENERATED)
          SortOWEAges();
- 
+
      DoOWESpawnAnim(owe);
  }
- 
+
  void OnOverworldWildEncounterDespawn(struct ObjectEvent *owe)
  {
      enum TypeOWE type = GetOverworldWildEncounterType(owe);
      if (type == OWE_NONE)
          return;
- 
+
      if (owe->sOverworldEncounterCategory < ROAMER_COUNT)
          RoamerMove(owe->sOverworldEncounterCategory);
- 
+
      owe->sOverworldEncounterLevel = 0;
      owe->sOverworldEncounterAge = 0;
      owe->sOverworldEncounterCategory = 0;
      
      DoOWEDespawnAnim(owe);
  }
- 
+
  bool32 IsOWEDespawnExempt(struct ObjectEvent *owe)
  {
      if (!IsOverworldWildEncounter(owe, OWE_ANY))
          return FALSE;
- 
+
      if (HasOWENoDespawnFlag(owe) && AreCoordsInsidePlayerMap(owe->currentCoords.x, owe->currentCoords.y))
          return TRUE;
- 
+
      return FALSE;
  }
- 
+
  bool32 DespawnOWEDueToNPCCollision(struct ObjectEvent *obstacle, struct ObjectEvent *activeObject)
  {
      if (activeObject->isPlayer)
          return FALSE;
- 
+
      if (IsOverworldWildEncounter(activeObject, OWE_ANY))
          return FALSE;
      
      if (!IsOverworldWildEncounter(obstacle, OWE_GENERATED))
          return FALSE;
- 
+
      RemoveObjectEvent(obstacle);
      return TRUE;
  }
- 
+
  void DespawnAllOverworldWildEncounters(enum TypeOWE oweType, u32 flags)
  {
      for (u32 i = 0; i < OBJECT_EVENTS_COUNT; ++i)
      {
          struct ObjectEvent *owe = &gObjectEvents[i];
- 
+
          if (!owe->active)
              continue;
- 
+
          if (!IsOverworldWildEncounter(owe, oweType))
              continue;
- 
+
          if (flags & WILD_CHECK_REPEL)
          {
              if (!REPEL_STEP_COUNT)
                  continue;
- 
+
              if (HasOWENoDespawnFlag(owe))
                  continue;
- 
+
              if (IsWildLevelAllowedByRepel(owe->sOverworldEncounterLevel & ~OWE_NO_DESPAWN_FLAG))
                  continue;
          }
- 
+
          RemoveObjectEvent(owe);
      }
  }
- 
+
  u32 TryAndDespawnOldestGeneratedOWE_ToFreeObject(void)
  {
      if (!WE_OW_ENCOUNTERS)
          return OBJECT_EVENTS_COUNT;
- 
+
      return RemoveOldestGeneratedOWE();
  }
- 
+
  void DespawnOWEOnBattleStart(void)
  {
++#ifdef PORTABLE
++    // Random encounters and a co-op guest have no selected encounter object.
++    // Never index the not-found sentinel, including repeated cleanup calls.
++    u32 objectEventId = GetObjectEventIdByLocalId(gSpecialVar_LastTalked);
++    if (objectEventId >= OBJECT_EVENTS_COUNT)
++        return;
++    struct ObjectEvent *owe = &gObjectEvents[objectEventId];
++#else
      struct ObjectEvent *owe = &gObjectEvents[GetObjectEventIdByLocalId(gSpecialVar_LastTalked)];
++#endif
      if (!IsOverworldWildEncounter(owe, OWE_ANY))
          return;
- 
+
      if (IsOverworldWildEncounter(owe, OWE_MANUAL))
          FlagSet(GetObjectEventFlagIdByLocalIdAndMap(owe->localId, owe->mapNum, owe->mapGroup));
- 
+
      ClearObjectEvent(owe);
      SetNewOWESpawnCountdown();
      gSpecialVar_LastTalked = LOCALID_NONE;
  }
- 
+
  void TryDespawnOWEsCrossingMapConnection(void)
  {
      if (!WE_OWE_DESPAWN_ON_ENTER_TOWN)
          return;
- 
+
      if (gMapHeader.mapType != MAP_TYPE_CITY && gMapHeader.mapType != MAP_TYPE_TOWN)
          return;
- 
+
      DespawnAllOverworldWildEncounters(OWE_GENERATED, 0);
  }
- 
+
  u32 RemoveOldestGeneratedOWE(void)
  {
      u32 oldestSlot = GetOldestActiveOWESlot(TRUE);
- 
+
      if (oldestSlot == OWE_INVALID_SPAWN_SLOT)
          return OBJECT_EVENTS_COUNT;
- 
+
      u32 objectEventId = GetObjectEventIdByLocalId(GetLocalIdByOWESpawnSlot(oldestSlot));
      RemoveObjectEvent(&gObjectEvents[objectEventId]);
      return objectEventId;
  }
- 
+
  static bool32 ShouldDespawnGeneratedForNewOWE(struct ObjectEvent *owe)
  {
      if (!IsOverworldWildEncounter(owe, OWE_GENERATED))
          return FALSE;
- 
+
      return WE_OWE_SPAWN_REPLACEMENT && GetNumberOfActiveOWEs(OWE_GENERATED) >= OWE_SPAWNS_MAX;
  }
- 
+
  static void SetNewOWESpawnCountdown(void)
  {
      u32 numActive = GetNumberOfActiveOWEs(OWE_GENERATED);
- 
+
      if (WE_OWE_SPAWN_REPLACEMENT && numActive >= OWE_SPAWNS_MAX)
          sOWESpawnCountdown = OWE_SPAWN_TIME_REPLACEMENT;
      else if (LURE_STEP_COUNT && numActive < OWE_SPAWNS_MAX)
@@ -1601,12 +1610,12 @@ index 783546688..c1b5cbffc 100644
      else
          sOWESpawnCountdown = OWE_SPAWN_TIME_MINIMUM + (OWE_SPAWN_TIME_PER_ACTIVE * numActive);
  }
- 
+
  static void DoOWESpawnAnim(struct ObjectEvent *owe)
  {
      bool32 isShiny = OW_SHINY(owe) ? TRUE : FALSE;
      enum SpawnDespawnTypeOWE spawnAnimType;
- 
+
      if (WE_OWE_SHINY_SPARKLE && isShiny)
      {
          PlaySE(SE_SHINY);
@@ -1618,10 +1627,10 @@ index 783546688..c1b5cbffc 100644
          u32 metatileBehavior = MapGridGetMetatileBehaviorAt(owe->currentCoords.x, owe->currentCoords.y);
          spawnAnimType = GetOWESpawnDespawnAnimType(metatileBehavior);
      }
- 
+
      MovementAction_OverworldEncounterSpawn(spawnAnimType, owe);
  }
- 
+
  static void DoOWEDespawnAnim(struct ObjectEvent *owe)
  {
      u32 metatileBehavior = MapGridGetMetatileBehaviorAt(owe->currentCoords.x, owe->currentCoords.y);
@@ -1630,7 +1639,7 @@ index 783546688..c1b5cbffc 100644
      if (OWE_ShouldPlayOWEFleeSound(owe))
          PlaySE(SE_FLEE);
  }
- 
+
  static enum SpawnDespawnTypeOWE GetOWESpawnDespawnAnimType(u32 metatileBehavior)
  {
      if (MetatileBehavior_IsPokeGrass(metatileBehavior) || MetatileBehavior_IsAshGrass(metatileBehavior))
@@ -1644,7 +1653,7 @@ index 783546688..c1b5cbffc 100644
      else
          return OWE_SPAWN_ANIM_CAVE;
  }
- 
+
  static void PlayOWECry(struct ObjectEvent *owe)
  {
      if (!IsOverworldWildEncounter(owe, OWE_ANY))
@@ -1658,32 +1667,32 @@ index 783546688..c1b5cbffc 100644
      u32 distance;
      u32 volume;
      s32 pan;
- 
+
      if (distanceX > OWE_SPAWN_WIDTH_RADIUS)
          distanceX = OWE_SPAWN_WIDTH_RADIUS;
      else if (distanceX < -OWE_SPAWN_WIDTH_RADIUS)
          distanceX = -OWE_SPAWN_WIDTH_RADIUS;
- 
+
      distanceY = abs(distanceY);
      if (distanceY > OWE_SPAWN_HEIGHT_RADIUS)
          distanceY = OWE_SPAWN_HEIGHT_RADIUS;
- 
+
      distance = abs(distanceX) + distanceY;
      if (distance > distanceMax)
          distance = distanceMax;
- 
+
      volume = 80 - (distance * (80 - 50)) / distanceMax;
      pan = 212 + ((distanceX + OWE_SPAWN_WIDTH_RADIUS) * (300 - 212)) / (2 * OWE_SPAWN_WIDTH_RADIUS);
      
      PlayCry_NormalNoDucking(speciesId, pan, volume, CRY_PRIORITY_AMBIENT);
  }
- 
+
  static struct ObjectEvent *GetRandomOWEObjectEvent(void)
  {
      u32 counter = 0;
      struct ObjectEvent *owe;
      u32 tmpArray[OBJECT_EVENTS_COUNT] = {0};
- 
+
      for (u32 i = 0; i < OBJECT_EVENTS_COUNT; i++)
      {
          owe = &gObjectEvents[i];
@@ -1698,24 +1707,24 @@ index 783546688..c1b5cbffc 100644
          
      return NULL;
  }
- 
+
  static bool32 OWE_ShouldPlayOWEFleeSound(struct ObjectEvent *owe)
  {
      if (!IsOverworldWildEncounter(owe, OWE_ANY) || OW_SPECIES(owe) == SPECIES_NONE)
          return FALSE;
- 
+
      if (!AreCoordsInsidePlayerMap(owe->currentCoords.x, owe->currentCoords.y))
          return FALSE;
- 
+
      if (ShouldDespawnGeneratedForNewOWE(owe))
          return FALSE;
- 
+
      if (owe->offScreen)
          return FALSE;
- 
+
      return WE_OWE_DESPAWN_SOUND;
  }
- 
+
  #define sTypeFuncId data[1] // Same as in src/event_object_movement.c
  #define sJumpTimer  sprite->data[7] // Same as in src/event_object_movement.c
  void RestoreSavedOWEBehaviorState(struct ObjectEvent *owe, struct Sprite *sprite)
@@ -1729,69 +1738,69 @@ index 783546688..c1b5cbffc 100644
  }
  #undef sTypeFuncId
  #undef sJumpTimer
- 
+
  // Returns TRUE if movement is restricted.
  bool32 CheckRestrictedOWEMovement(struct ObjectEvent *owe, enum Direction direction)
  {
      if (GetCollisionInDirection(owe, direction))
          return TRUE;
- 
+
      if (WE_OWE_UNRESTRICT_SIGHT
       && owe->movementType != MOVEMENT_TYPE_WANDER_AROUND_OWE
       && CanAwareOWESeePlayer(owe))
          return FALSE;
- 
+
      s32 xCurrent = owe->currentCoords.x;
      s32 yCurrent = owe->currentCoords.y;
      s32 xNew = xCurrent + gDirectionToVectors[direction].x;
      s32 yNew = yCurrent + gDirectionToVectors[direction].y;
- 
+
      if (CheckRestrictedOWEMovementMetatile(xCurrent, yCurrent, xNew, yNew))
          return TRUE;
      
      if (CheckRestrictedOWEMovementMap(owe, xNew, yNew))
          return TRUE;
- 
+
      return FALSE;
  }
- 
+
  static bool32 CheckRestrictedOWEMovementAtCoords(struct ObjectEvent *owe, s32 xNew, s32 yNew, enum Direction newDirection, enum Direction collisionDirection)
  {
      if (CheckRestrictedOWEMovementMetatile(owe->currentCoords.x, owe->currentCoords.y, xNew, yNew))
          return FALSE;
- 
+
      if (CheckRestrictedOWEMovementMap(owe, xNew, yNew))
          return FALSE;
- 
+
      if (GetCollisionAtCoords(owe, xNew, yNew, collisionDirection))
          return FALSE;
- 
+
      return TRUE;
  }
- 
+
  static bool32 CheckRestrictedOWEMovementMetatile(s32 xCurrent, s32 yCurrent, s32 xNew, s32 yNew)
  {
      if (!WE_OWE_RESTRICT_METATILE)
          return FALSE;
- 
+
      u32 metatileBehaviourCurrent = MapGridGetMetatileBehaviorAt(xCurrent, yCurrent);
      u32 metatileBehaviourNew = MapGridGetMetatileBehaviorAt(xNew, yNew);
- 
+
      if (MetatileBehavior_IsLandWildEncounter(metatileBehaviourCurrent)
       && MetatileBehavior_IsLandWildEncounter(metatileBehaviourNew))
          return FALSE;
- 
+
      if (MetatileBehavior_IsWaterWildEncounter(metatileBehaviourCurrent)
       && MetatileBehavior_IsWaterWildEncounter(metatileBehaviourNew))
          return FALSE;
- 
+
      if (!MetatileBehavior_IsLandWildEncounter(metatileBehaviourCurrent)
       && !MetatileBehavior_IsWaterWildEncounter(metatileBehaviourCurrent))
          return FALSE;
- 
+
      return TRUE;
  }
- 
+
  static bool32 CheckRestrictedOWEMovementMap(struct ObjectEvent *owe, s32 xNew, s32 yNew)
  {
      if (!WE_OWE_RESTRICT_MAP)
@@ -1803,24 +1812,24 @@ index 783546688..c1b5cbffc 100644
      else
          return AreCoordsInsidePlayerMap(xNew, yNew);
  }
- 
+
  bool32 CanAwareOWESeePlayer(struct ObjectEvent *owe)
  {
      if (owe->movementType == MOVEMENT_TYPE_WANDER_AROUND_OWE)
          return FALSE;
- 
+
      if (gPlayerAvatar.runningState == MOVING
       && TestPlayerAvatarFlags(PLAYER_AVATAR_FLAG_DASH | PLAYER_AVATAR_FLAG_BIKE)
       && IsPlayerInsideOWEActiveDistance(owe))
          return TRUE;
- 
+
      struct ObjectEvent *player = &gObjectEvents[gPlayerAvatar.objectEventId];
      enum Species speciesId = OW_SPECIES(owe);
      u32 viewDistance = OWE_GetViewDistanceFromSpecies(speciesId);
      u32 viewWidth = OWE_GetViewWidthFromSpecies(speciesId);
      s32 halfWidth = (viewWidth - 1) / 2;
      enum Direction direction = owe->facingDirection;
- 
+
      switch (direction)
      {
      case DIR_NORTH:
@@ -1830,7 +1839,7 @@ index 783546688..c1b5cbffc 100644
           && player->currentCoords.x <= owe->currentCoords.x + halfWidth))
              return FALSE;
          break;
- 
+
      case DIR_SOUTH:
          if (!(player->currentCoords.y >= owe->currentCoords.y
           && player->currentCoords.y - owe->currentCoords.y <= viewDistance
@@ -1838,7 +1847,7 @@ index 783546688..c1b5cbffc 100644
           && player->currentCoords.x <= owe->currentCoords.x + halfWidth))
              return FALSE;
          break;
- 
+
      case DIR_EAST:
          if (!(player->currentCoords.x >= owe->currentCoords.x
           && player->currentCoords.x - owe->currentCoords.x <= viewDistance
@@ -1846,7 +1855,7 @@ index 783546688..c1b5cbffc 100644
           && player->currentCoords.y <= owe->currentCoords.y + halfWidth))
              return FALSE;
          break;
- 
+
      case DIR_WEST:
          if (!(player->currentCoords.x <= owe->currentCoords.x
           && owe->currentCoords.x - player->currentCoords.x <= viewDistance
@@ -1854,61 +1863,61 @@ index 783546688..c1b5cbffc 100644
           && player->currentCoords.y <= owe->currentCoords.y + halfWidth))
              return FALSE;
          break;
- 
+
      default:
          return FALSE;
      }
- 
+
      return CanOWEReachPlayer(owe);
  }
- 
+
  static bool32 CanOWEReachPlayer(struct ObjectEvent *owe)
  {
      // In future, checks similar to trainer_see.c can be included.
      struct ObjectEvent *player = &gObjectEvents[gPlayerAvatar.objectEventId];
      return !IsElevationMismatchAt(owe->currentElevation, player->currentCoords.x, player->currentCoords.y);
  }
- 
+
  bool32 IsPlayerInsideOWEActiveDistance(struct ObjectEvent *owe)
  {
      struct ObjectEvent *player = &gObjectEvents[gPlayerAvatar.objectEventId];
      u32 distance = OWE_DEFAULT_CHASE_RANGE;
      enum Species speciesId = OW_SPECIES(owe);
- 
+
      if (speciesId != SPECIES_NONE)
          distance = OWE_GetViewActiveDistanceFromSpecies(speciesId);
- 
+
      s32 absX = abs(player->currentCoords.x - owe->currentCoords.x);
      s32 absY = abs(player->currentCoords.y - owe->currentCoords.y);
- 
+
      if (absX > distance || absY > distance)
          return FALSE;
- 
+
      s32 diagonalDistance = (distance * 362) >> 8; // binary approximation of multiplying distance by sqrt(2)
      if ((absX + absY) > diagonalDistance)
          return FALSE;
- 
+
      return TRUE;
  }
- 
+
  bool32 IsOWENextToPlayer(struct ObjectEvent *owe)
  {
      struct ObjectEvent *player = &gObjectEvents[gPlayerAvatar.objectEventId];
      return IsOWENextToObject(owe, player);
  }
- 
+
  static bool32 IsOWENextToObject(struct ObjectEvent *owe, struct ObjectEvent *object)
  {
      if ((owe->currentCoords.x != object->currentCoords.x && owe->currentCoords.y != object->currentCoords.y) || (owe->currentCoords.x < object->currentCoords.x - 1 || owe->currentCoords.x > object->currentCoords.x + 1 || owe->currentCoords.y < object->currentCoords.y - 1 || owe->currentCoords.y > object->currentCoords.y + 1))
          return FALSE;
- 
+
      return TRUE;
  }
- 
+
  enum Direction DirectionOfOWEToPlayerFromCollision(struct ObjectEvent *owe)
  {
      struct ObjectEvent *player = &gObjectEvents[gPlayerAvatar.objectEventId];
- 
+
      switch (owe->movementDirection)
      {
      case DIR_NORTH:
@@ -1928,36 +1937,36 @@ index 783546688..c1b5cbffc 100644
          else
              return DIR_SOUTH;
      }
- 
+
      return owe->movementDirection;
  }
- 
+
  u32 GetApproachingOWEDistanceToPlayer(struct ObjectEvent *owe, bool32 *equalDistances)
  {
      struct ObjectEvent *player = &gObjectEvents[gPlayerAvatar.objectEventId];
      s32 absX, absY;
      s32 distanceX = player->currentCoords.x - owe->currentCoords.x;
      s32 distanceY = player->currentCoords.y - owe->currentCoords.y;
- 
+
      if (distanceX < 0)
          absX = distanceX * -1;
      else
          absX = distanceX;
- 
+
      if (distanceY < 0)
          absY = distanceY * -1;
      else
          absY = distanceY;
- 
+
      if (absY == absX)
          *equalDistances = TRUE;
- 
+
      if (absY > absX)
          return absY;
      else
          return absX;
  }
- 
+
  u32 GetOWEWalkMovementActionInDirectionWithSpeed(enum Direction direction, enum SpeedOWE speed)
  {
      switch (speed)
@@ -1973,23 +1982,23 @@ index 783546688..c1b5cbffc 100644
          return GetWalkNormalMovementAction(direction);
      }
  }
- 
+
  static enum Direction CheckOWEPathToPlayerFromCollision(struct ObjectEvent *owe, enum Direction newDirection)
  {
      s16 x = owe->currentCoords.x;
      s16 y = owe->currentCoords.y;
- 
+
      MoveCoords(newDirection, &x, &y);
      if (CheckRestrictedOWEMovementAtCoords(owe, x, y, newDirection, newDirection))
      {
          if (owe->movementType == MOVEMENT_TYPE_FLEE_PLAYER_OWE)
              return GetOppositeDirection(newDirection);
- 
+
          MoveCoords(owe->movementDirection, &x, &y);
          if (CheckRestrictedOWEMovementAtCoords(owe, x, y, newDirection, owe->movementDirection))
              return newDirection;
      }
- 
+
      x = owe->currentCoords.x;
      y = owe->currentCoords.y;
      MoveCoords(GetOppositeDirection(newDirection), &x, &y);
@@ -1997,22 +2006,22 @@ index 783546688..c1b5cbffc 100644
      {
          if (owe->movementType == MOVEMENT_TYPE_FLEE_PLAYER_OWE)
              return newDirection;
- 
+
          MoveCoords(owe->movementDirection, &x, &y);
          if (CheckRestrictedOWEMovementAtCoords(owe, x, y, newDirection, owe->movementDirection))
              return GetOppositeDirection(newDirection);
      }
- 
+
      return owe->movementDirection;
  }
- 
+
  #define tObjectId data[0]
  void OWEApproachForBattle(struct ScriptContext *ctx)
  {
      u32 localId = VarGet(ScriptReadHalfword(ctx));
      u32 objectEventId = GetObjectEventIdByLocalId(localId);
      struct ObjectEvent *owe = &gObjectEvents[objectEventId];
- 
+
      Script_RequestEffects(SCREFF_V1 | SCREFF_HARDWARE);
      
      if (!WE_OWE_APPROACH_FOR_BATTLE || !IsOverworldWildEncounter(owe, OWE_ANY))
@@ -2031,11 +2040,11 @@ index 783546688..c1b5cbffc 100644
      ScriptContext_Stop();
      gTasks[taskId].tObjectId = objectEventId;
  }
- 
+
  static void Task_OWEApproachForBattle(u8 taskId)
  {
      struct ObjectEvent *OWE = &gObjectEvents[gTasks[taskId].tObjectId];
- 
+
      // Let the mon continue to take steps until right next to the player.
      if (ObjectEventClearHeldMovementIfFinished(OWE))
      {
@@ -2043,7 +2052,7 @@ index 783546688..c1b5cbffc 100644
          struct ObjectEvent *followerMon = GetFollowerObject();
          bool32 oweNextToPlayer = IsOWENextToPlayer(OWE);
          bool32 oweNextToFollowerMon = IsOWENextToObject(OWE, followerMon);
- 
+
          if (oweNextToPlayer || oweNextToFollowerMon)
          {
              if (oweNextToPlayer)
@@ -2059,7 +2068,7 @@ index 783546688..c1b5cbffc 100644
              DestroyTask(taskId);
              return;
          }
- 
+
          enum Species speciesId = OW_SPECIES(OWE);
          enum Direction direction = DetermineObjectEventDirectionFromObject(player, OWE);
          u32 movementActionId;
@@ -2074,10 +2083,10 @@ index 783546688..c1b5cbffc 100644
              s16 x = OWE->currentCoords.x;
              s16 y = OWE->currentCoords.y;
              u32 collidingObject;
- 
+
              MoveCoords(OWE->movementDirection, &x, &y);
              collidingObject = GetObjectObjectCollidesWith(OWE, x, y, FALSE);
- 
+
              if (collidingObject == GetObjectEventIdByLocalId(followerMon->localId) && followerMon != NULL && !followerMon->invisible)
              {
                  ClearObjectEventMovement(followerMon, &gSprites[followerMon->spriteId]);
@@ -2108,7 +2117,7 @@ index 783546688..c1b5cbffc 100644
      
  }
  #undef tObjectId
- 
+
  bool32 TryPlayAmbientCryOWE(void)
  {
      struct ObjectEvent *owe = GetRandomOWEObjectEvent();
@@ -2118,7 +2127,7 @@ index 783546688..c1b5cbffc 100644
      PlayOWECry(owe);
      return TRUE;
  }
- 
+
  u32 GetNumberOfActiveOWEs(enum TypeOWE oweType)
  {
      u32 numActive = 0;
@@ -2129,13 +2138,13 @@ index 783546688..c1b5cbffc 100644
      }
      return numActive;
  }
- 
+
  const struct ObjectEventTemplate TryGetObjectEventTemplateForOWE(const struct ObjectEventTemplate *template)
  {
      if (template->trainerType != TRAINER_TYPE_OW_WILD_ENCOUNTER
       || IS_LOCALID_GENERATED_OWE(template->localId))
          return *template;
- 
+
      struct ObjectEventTemplate templateOWE = *template;
      struct InfoOWE info = {0};
      info.category = OWE_CATEGORY_WILD;
@@ -2145,14 +2154,14 @@ index 783546688..c1b5cbffc 100644
      u32 levelTemplate = templateOWE.sOverworldEncounterLevel;
      u32 x = template->x;
      u32 y = template->y;
- 
+
      SetSpeciesInfoForOWE(&info, x, y);
      if (speciesTemplate)
          info.speciesId = speciesTemplate;
- 
+
      if (levelTemplate)
          info.level = levelTemplate;
- 
+
      assertf((CheckValidOWESpecies(info.speciesId)
          && info.level >= MIN_LEVEL
          && info.level <= MAX_LEVEL)
@@ -2172,26 +2181,26 @@ index 783546688..c1b5cbffc 100644
              info.level = MIN_LEVEL;
          }
      }
- 
+
      if (isShinyTemplate)
          info.isShiny = isShinyTemplate;
- 
+
      if (templateOWE.graphicsId & OBJ_EVENT_MON && templateOWE.graphicsId & OBJ_EVENT_MON_FEMALE)
          info.isFemale = TRUE;
      else if (templateOWE.graphicsId & OBJ_EVENT_MON)
          info.isFemale = FALSE;
      else
          info.isFemale = GetGenderFromSpeciesAndPersonality(info.speciesId, Random32()) == MON_FEMALE;
- 
+
      if (templateOWE.movementType == MOVEMENT_TYPE_NONE)
          templateOWE.movementType = OWE_GetMovementTypeFromSpecies(info.speciesId);
- 
+
      templateOWE.graphicsId = GetGraphicsIdForOWE(&info);
      templateOWE.sOverworldEncounterLevel = info.level;
      
      return templateOWE;
  }
- 
+
  struct SpritePalette GetOWESpawnDespawnAnimFldEffPalette(enum SpawnDespawnTypeOWE spawnAnim)
  {
      struct SpritePalette palette = gSpritePalette_GeneralFieldEffect0;
@@ -2201,7 +2210,7 @@ index 783546688..c1b5cbffc 100644
      case OWE_SPAWN_ANIM_LONG_GRASS:
          palette = gSpritePalette_GeneralFieldEffect1;
          break;
- 
+
      case OWE_SPAWN_ANIM_WATER:
      case OWE_SPAWN_ANIM_UNDERWATER:
      case OWE_SPAWN_ANIM_CAVE:
@@ -2209,41 +2218,41 @@ index 783546688..c1b5cbffc 100644
      default:
          break;
      }
- 
+
      return palette;
  }
- 
+
  static bool32 CheckValidOWESpecies(enum Species speciesId)
  {
      if (speciesId == SPECIES_NONE)
          return FALSE;
- 
+
      if (speciesId >= NUM_SPECIES)
          return FALSE;
- 
+
      if (!IsSpeciesEnabled(speciesId))
          return FALSE;
- 
+
      return TRUE;
  }
- 
+
  bool32 CanRemoveObjectForOWEMovement(struct ObjectEvent *objectEvent)
  {
      if (WE_OWE_PREVENT_SPECIAL_MOVEMENT_DESPAWN && IsObjectActiveOWE(objectEvent) && HasOWENoDespawnFlag(objectEvent))
          return FALSE;
- 
+
      return TRUE;
  }
- 
+
  #undef sOverworldEncounterLevel
  #undef sOverworldEncounterAge
  #undef sOverworldEncounterCategory
 diff --git a/src/world/overworld_encounters.c b/src/world/overworld_encounters.c
 new file mode 100644
-index 000000000..f2bcb4b8d
+index 000000000..cd34e8168
 --- /dev/null
 +++ b/src/world/overworld_encounters.c
-@@ -0,0 +1,67 @@
+@@ -0,0 +1,70 @@
 +#ifdef PORTABLE
 +#include "global.h"
 +#include "battle_pike.h"
@@ -2259,6 +2268,7 @@ index 000000000..f2bcb4b8d
 +#include "platform/native_link.h"
 +#include "platform/overworld_encounters.h"
 +#include "platform/world_bridge.h"
++#include "platform/world_activity.h"
 +#include "constants/region_map_sections.h"
 +
 +/* Session-only opt-in. No save layout, world rule or multiplayer protocol changes.
@@ -2273,10 +2283,12 @@ index 000000000..f2bcb4b8d
 +const char *OverworldEncounters_UnavailableReason(void)
 +{
 +    u32 i;
-+    /* Enabled includes connecting and interrupted sessions, not just peers
-+     * currently visible. A disconnected client must not become a solo owner. */
-+    if (WorldBridge_Enabled())
-+        return "Visible encounters are solo only. Leave the world in the launcher first.";
++    /* These are personal encounters, like random encounters, not replicated
++     * world objects. The existing tag broker owns shared-battle admission. */
++    if (WorldBridge_Enabled() && !WorldBridge_ConnectionActive())
++        return "Wait for your world connection or leave the world first.";
++    if (WorldActivity_OwnsFieldInput())
++        return "Finish your current multiplayer activity first.";
 +    if (GeneratedMap_IsInside() || GeneratedMap_EntryPending())
 +        return "Return from the generated area first.";
 +    if (!gSaveBlock1Ptr || !gSaveBlock2Ptr)
@@ -2311,8 +2323,689 @@ index 000000000..f2bcb4b8d
 +        SetMinimumOWESpawnTimer();
 +}
 +#endif
+diff --git a/src/world/world_activity.c b/src/world/world_activity.c
+index 93cf0190f..fd737f35a 100644
+--- a/src/world/world_activity.c
++++ b/src/world/world_activity.c
+@@ -1,658 +1,672 @@
+ #ifdef PORTABLE
+ #include "global.h"
+ #include "main.h"
+ #include "link.h"
+ #include "menu.h"
+ #include "overworld.h"
+ #include "palette.h"
+ #include "pokemon.h"
+ #include "battle.h"
+ #include "battle_setup.h"
+ #include "event_data.h"
+ #include "constants/cable_club.h"
+ #include "script.h"
+ #include "task.h"
+ #include "trade.h"
+ #include "window.h"
+ #include "field_player_avatar.h"
+ #include "event_object_movement.h"
+ #include "field_screen_effect.h"
+ #include "constants/characters.h"
+ #include "constants/maps.h"
+ #include "platform/native_link.h"
+ #include "platform/link_transport.h"
+ #include "platform/world_activity.h"
+ #include "platform/generated_map.h"
+ #include "platform/world_bridge.h"
+ #include "platform/world_coop.h"
+ #include "platform/dexnav_native.h"
++#include "wild_encounter_ow.h"
+ #include <string.h>
+
+ enum { IDLE, MENU, INVITATION, WAIT_ADMIT, CONNECTING, NATIVE, RETURNING, WAIT_TAG };
+ static struct {
+     unsigned state, mode, timer;
+     u8 window, task;
+     bool8 locked;
+     bool8 tagInvitation, encounterPending, wildCaptured, trainerCaptured;
+     bool8 encounterOfferDeferred;
+     MainCallback trainerCallback;
+     char peer[25], talkPeer[25];
+     uint64_t invitation;
+     const char *status;
+ } sActivity = { .window = WINDOW_NONE, .task = TASK_NONE, .status = "idle" };
+
+ static int CopyPeer(char dest[25], const char *source)
+ {
+     unsigned i;
+     if (!source) return 0;
+     for (i = 0; i < 25; i++)
+     {
+         unsigned char c = source[i];
+         if (!c) { if (!i) return 0; memcpy(dest, source, i + 1); return 1; }
+         if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+            || (c >= '0' && c <= '9') || c == '_' || c == '-')) return 0;
+     }
+     return 0;
+ }
+
+ static bool8 FieldReady(void)
+ {
+     return gMain.callback1 == CB1_Overworld && gMain.callback2 == CB2_Overworld
+         && !gMain.inBattle && !gPaletteFade.active && !ScriptContext_IsEnabled()
+         && !ArePlayerFieldControlsLocked() && !gWirelessCommType;
+ }
+
+ static bool8 ActivityPartyReady(unsigned mode)
+ {
+     unsigned i, usable = 0;
+     if (mode == NATIVE_LINK_TRADE) return gPlayerPartyCount > 0;
+     for (i = 0; i < gPlayerPartyCount && i < PARTY_SIZE; i++)
+         if (GetMonData(&gPlayerParty[i], MON_DATA_SPECIES)
+             && !GetMonData(&gPlayerParty[i], MON_DATA_IS_EGG)
+             && GetMonData(&gPlayerParty[i], MON_DATA_HP)) usable++;
+     return usable >= (mode == NATIVE_LINK_DOUBLE ? 2 : 1);
+ }
+
+ /* Storage preparation is local and precedes consent. Never send box contents
+  * through the party-only trade exchange or open storage during that exchange. */
+ static bool8 TradeStorageLocation(u8 mapGroup, u8 mapNum)
+ {
+     switch ((mapGroup << 8) | mapNum)
+     {
+     case MAP_OLDALE_TOWN_POKEMON_CENTER_1F:
+     case MAP_DEWFORD_TOWN_POKEMON_CENTER_1F:
+     case MAP_LAVARIDGE_TOWN_POKEMON_CENTER_1F:
+     case MAP_FALLARBOR_TOWN_POKEMON_CENTER_1F:
+     case MAP_VERDANTURF_TOWN_POKEMON_CENTER_1F:
+     case MAP_PACIFIDLOG_TOWN_POKEMON_CENTER_1F:
+     case MAP_PETALBURG_CITY_POKEMON_CENTER_1F:
+     case MAP_SLATEPORT_CITY_POKEMON_CENTER_1F:
+     case MAP_MAUVILLE_CITY_POKEMON_CENTER_1F:
+     case MAP_RUSTBORO_CITY_POKEMON_CENTER_1F:
+     case MAP_FORTREE_CITY_POKEMON_CENTER_1F:
+     case MAP_LILYCOVE_CITY_POKEMON_CENTER_1F:
+     case MAP_MOSSDEEP_CITY_POKEMON_CENTER_1F:
+     case MAP_SOOTOPOLIS_CITY_POKEMON_CENTER_1F:
+     case MAP_EVER_GRANDE_CITY_POKEMON_CENTER_1F:
+     case MAP_BATTLE_FRONTIER_POKEMON_CENTER_1F:
+         return TRUE;
+     default:
+         return FALSE;
+     }
+ }
+
+ static bool8 TradeStorageFieldReady(void)
+ {
+     return sActivity.state == MENU && FieldReady() && !NativeLink_IsActive();
+ }
+
+ extern const u8 WorldActivity_EventScript_StoragePC[];
+
+ /* Native charmap, never feed wire bytes to the text control-code parser. */
+ static void Encode(u8 *dest, const char *src)
+ {
+     while (*src)
+     {
+         unsigned char c = *src++;
+         if (c >= 'A' && c <= 'Z') *dest++ = CHAR_A + c - 'A';
+         else if (c >= 'a' && c <= 'z') *dest++ = CHAR_a + c - 'a';
+         else if (c >= '0' && c <= '9') *dest++ = CHAR_0 + c - '0';
+         else if (c == '-') *dest++ = CHAR_HYPHEN;
+         else *dest++ = CHAR_SPACE;
+     }
+     *dest = EOS;
+ }
+
+ static void CloseMenu(void)
+ {
+     if (sActivity.task != TASK_NONE)
+     {
+         DestroyTask(sActivity.task);
+         sActivity.task = TASK_NONE;
+     }
+     if (sActivity.window != WINDOW_NONE)
+     {
+         ClearStdWindowAndFrame(sActivity.window, TRUE);
+         RemoveWindow(sActivity.window);
+         sActivity.window = WINDOW_NONE;
+     }
+ }
+
+ static void ShowWaiting(const char *message)
+ {
+     struct WindowTemplate window = { 0, 1, 1, 28, 6, 15, 0x125 };
+     u8 text[64];
+     CloseMenu();
+     sActivity.window = AddWindow(&window);
+     if (sActivity.window == WINDOW_NONE) return;
+     SetStandardWindowBorderStyle(sActivity.window, FALSE);
+     Encode(text, sActivity.peer);
+     AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 0, TEXT_SKIP_DRAW, NULL);
+     Encode(text, message);
+     AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 24, TEXT_SKIP_DRAW, NULL);
+     CopyWindowToVram(sActivity.window, COPYWIN_FULL);
+ }
+
+ static void Stop(const char *status)
+ {
+     bool8 resumeWild = sActivity.wildCaptured;
+     bool8 resumeTrainer = sActivity.trainerCaptured;
+     CloseMenu();
+     if (NativeLink_IsActive()) NativeLink_Abort();
+     if (sActivity.locked)
+     {
+         CloseLink();
+         if (!resumeTrainer)
+         {
+             UnlockPlayerFieldControls();
+             if (sActivity.encounterPending) UnfreezeObjectEvents();
+         }
+         sActivity.locked = FALSE;
+     }
+     sActivity.state = IDLE;
+     sActivity.status = status;
+     sActivity.encounterPending = sActivity.wildCaptured = sActivity.tagInvitation = FALSE;
+     sActivity.trainerCaptured = FALSE;
+     sActivity.encounterOfferDeferred = FALSE;
+     if (resumeTrainer)
+     {
+         gMain.savedCallback = sActivity.trainerCallback;
+         BattleSetup_ResumeWorldTrainerBattle();
+         sActivity.trainerCallback = NULL;
+     }
+     else if (resumeWild) BattleSetup_ResumeWorldWildBattle();
+ }
+
+ static void Task_Menu(u8 taskId)
+ {
+     s8 choice;
+     (void)taskId;
+     if (!sActivity.timer++) return; /* opening A is not a selection */
+     choice = Menu_ProcessInputNoWrap();
+     if (choice == MENU_NOTHING_CHOSEN) return;
+     if (sActivity.state == INVITATION)
+     {
+         uint64_t id = sActivity.invitation;
+         CloseMenu();
+         if (sActivity.tagInvitation)
+         {
+             if (choice != 0) { LinkTransport_TagReject(id); Stop("tag declined"); return; }
+             if (!FieldReady() || !ActivityPartyReady(NATIVE_LINK_COOP) || !LinkTransport_TagAccept(id))
+             { LinkTransport_TagReject(id); Stop("tag unavailable"); return; }
+             Stop("tag accepted");
+             return;
+         }
+         if (choice != 0) { LinkTransport_Reject(id); Stop("invitation declined"); return; }
+         if (!FieldReady() || !ActivityPartyReady(sActivity.mode) || !LinkTransport_Accept(id)) { Stop("invitation unavailable"); return; }
+     }
+     else
+     {
+         CloseMenu();
+         if (choice < 0 || choice == 5) { Stop("cancelled"); return; }
+ #if GENERATED_MAP_READY
+         if (GeneratedMap_IsInside()) {
+             if (choice == 1) choice = 4;
+             else if (choice == 2) choice = 5;
+             if (choice == 5) { Stop("cancelled"); return; }
+         }
+ #endif
+         if (choice == 6)
+         {
+             if (!TradeStorageFieldReady()
+                 || !TradeStorageLocation(gSaveBlock1Ptr->location.mapGroup, gSaveBlock1Ptr->location.mapNum))
+             { Stop("use the PC at a Pokemon Center"); return; }
+             Stop("preparing trade party at Center PC");
+             ScriptContext_SetupScript(WorldActivity_EventScript_StoragePC);
+             return;
+         }
+         if (choice == 4)
+         {
+             if (LinkTransport_TagPeer())
+             {
+                 LinkTransport_TagEnd();
+                 Stop("tag ended");
+                 return;
+             }
+             if (!FieldReady() || !ActivityPartyReady(NATIVE_LINK_COOP) || !LinkTransport_TagOffer(sActivity.peer))
+             { Stop("tag unavailable"); return; }
+             sActivity.mode = NATIVE_LINK_COOP;
+             sActivity.state = WAIT_TAG;
+             sActivity.timer = 0;
+             sActivity.status = "waiting for tag reply";
+             ShowWaiting("Waiting for tag reply");
+             return;
+         }
+         if (choice == 0)
+         {
+             Stop("world chat handoff");
+             strcpy(sActivity.talkPeer, sActivity.peer);
+             return;
+         }
+         sActivity.mode = choice; /* menu order matches NativeLinkMode */
+         if (!FieldReady() || !ActivityPartyReady(sActivity.mode) || !LinkTransport_Offer(sActivity.peer, sActivity.mode))
+         { Stop("peer unavailable"); return; }
+     }
+     sActivity.state = WAIT_ADMIT;
+     sActivity.timer = 0;
+     sActivity.status = "waiting for bilateral consent";
+ }
+
+ static bool8 ShowMenu(bool8 incoming)
+ {
+     struct WindowTemplate window = { 0, 1, 0, 28, 20, 15, 0x125 };
+     const char *labels[] = { "Talk", "Battle single", "Battle double", "Trade party", "Tag up (own six mons)", "Cancel", "Prepare party at Center PC" };
+     const char *modes[] = { "", "Single battle invitation", "Double battle invitation", "Trade invitation", "Tag up invitation" };
+     u8 text[64];
+     unsigned i, count = incoming ? 2 : 6;
+     if (!incoming && TradeStorageLocation(gSaveBlock1Ptr->location.mapGroup, gSaveBlock1Ptr->location.mapNum))
+         count = 7;
+     if (LinkTransport_TagPeer()) labels[4] = "End tag";
+ #if GENERATED_MAP_READY
+     if (!incoming && GeneratedMap_IsInside()) {
+         labels[1] = labels[4];
+         labels[2] = "Cancel";
+         count = 3;
+     }
+ #endif
+     sActivity.window = AddWindow(&window);
+     if (sActivity.window == WINDOW_NONE) return FALSE;
+     SetStandardWindowBorderStyle(sActivity.window, FALSE);
+     Encode(text, sActivity.peer);
+     AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 0, TEXT_SKIP_DRAW, NULL);
+     if (incoming)
+     {
+         Encode(text, modes[sActivity.mode]);
+         AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 16, TEXT_SKIP_DRAW, NULL);
+     }
+     for (i = 0; i < count; i++)
+     {
+         Encode(text, incoming ? (i ? "No" : "Yes") : labels[i]);
+         AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 32 + 16 * i, TEXT_SKIP_DRAW, NULL);
+     }
+     InitMenuNormal(sActivity.window, FONT_NORMAL, 0, 32, 16, count, incoming ? 1 : 0);
+     if (incoming && sActivity.tagInvitation)
+     {
+         Encode(text, "Use your own party");
+         AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 80, TEXT_SKIP_DRAW, NULL);
+         Encode(text, "Owned medicine supported");
+         AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 96, TEXT_SKIP_DRAW, NULL);
+     }
+     if (!incoming)
+     {
+         Encode(text, LinkTransport_TagPeer()
+             ? (LinkTransport_TagInRange() ? "Tag: nearby" : "Tag: get closer")
+             : "Tag: wild catches enabled");
+         AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, count == 7 ? 144 : 128, TEXT_SKIP_DRAW, NULL);
+         if (count == 6)
+         {
+             Encode(text, "PC mons at a Pokemon Center");
+             AddTextPrinterParameterized(sActivity.window, FONT_NORMAL, text, 8, 144, TEXT_SKIP_DRAW, NULL);
+         }
+     }
+     CopyWindowToVram(sActivity.window, COPYWIN_FULL);
+     sActivity.task = CreateTask(Task_Menu, 80);
+     if (sActivity.task == TASK_NONE) { CloseMenu(); return FALSE; }
+     sActivity.timer = 0;
+     return TRUE;
+ }
+
+ int WorldActivity_Interact(const char *peerName)
+ {
+ #if GENERATED_MAP_READY
+     if (GeneratedMap_IsInside() && !WorldBridge_GeneratedCaveReady()) return 0;
+ #endif
+     if (sActivity.state != IDLE || !FieldReady() || !LinkTransport_Ready()
+         || NativeLink_IsActive() || !CopyPeer(sActivity.peer, peerName)) return 0;
+     sActivity.mode = 0;
+     sActivity.tagInvitation = FALSE;
+     sActivity.state = MENU;
+     if (!ShowMenu(FALSE)) { Stop("native menu unavailable"); return 0; }
+     sActivity.status = "peer menu";
+     return 1;
+ }
+
+ int WorldActivity_OwnsFieldInput(void)
+ {
+     return sActivity.state != IDLE;
+ }
+ unsigned short WorldActivity_FilterFieldKeys(unsigned short keys)
+ {
+     return WorldActivity_OwnsFieldInput() ? 0 : keys;
+ }
+ const char *WorldActivity_Status(void) { return sActivity.status; }
+ const char *WorldActivity_Phase(void)
+ {
+     static const char *const phases[] = { "idle", "menu", "invitation", "waiting", "connecting", "native", "returning", "tag_waiting" };
+     return phases[sActivity.state];
+ }
+ unsigned WorldActivity_Mode(void) { return sActivity.state == IDLE ? 0 : sActivity.mode; }
+ int WorldActivity_TakeTalkRequest(char peer[25])
+ {
+     if (!sActivity.talkPeer[0]) return 0;
+     strcpy(peer, sActivity.talkPeer);
+     sActivity.talkPeer[0] = 0;
+     return 1;
+ }
+
+
+ void WorldActivity_ReturnToField(void)
+ {
+     DexNavNative_AbandonBattle();
+     /* An incomplete exchange is neither a victory nor a defeat. Discard the
+      * suspended trainer script, rather than invoking its ordinary result
+      * callback (which would white out or award local trainer progression). */
+     sActivity.trainerCallback = NULL;
+     sActivity.trainerCaptured = sActivity.encounterPending = FALSE;
+     sActivity.wildCaptured = sActivity.encounterOfferDeferred = FALSE;
+     CloseLink();
+     NativeLink_Abort();
+     gFieldLinkPlayerCount = 0;
+     SetMainCallback1(CB1_Overworld);
+     ScriptContext_Init();
+     UnlockPlayerFieldControls();
+     UnfreezeObjectEvents();
+     sActivity.locked = FALSE;
+     gFieldCallback = FieldCB_WarpExitFadeFromBlack;
+     gFieldCallback2 = NULL;
+     sActivity.state = RETURNING;
+     sActivity.status = "returning to field";
+     SetMainCallback2(CB2_ReturnToField);
+ }
+
+ int WorldActivity_IsEncounterPending(void)
+ {
+     return sActivity.encounterPending
+         && (sActivity.state == WAIT_ADMIT || sActivity.state == CONNECTING)
+         && gMain.callback1 == CB1_Overworld && gMain.callback2 == CB2_Overworld
+         && !gMain.inBattle && !gPaletteFade.active;
+ }
+
+ static int TryCoopBattle(bool8 trainer)
+ {
+     const char *peer = LinkTransport_TagPeer();
+     if (sActivity.state != IDLE || NativeLink_IsActive() || !peer
+         || (!trainer && !LinkTransport_TagInRange()) || !LinkTransport_Ready()
+         || !ActivityPartyReady(NATIVE_LINK_COOP)
+         || gMain.callback1 != CB1_Overworld || gMain.callback2 != CB2_Overworld
+         || gMain.inBattle || gPaletteFade.active || !CopyPeer(sActivity.peer, peer)) return 0;
+     if (trainer)
+     {
+         if (!WorldCoop_CaptureTrainer()) return 0;
+     }
+     else
+         WorldCoop_CaptureWild();
+     /* Trainer dialogue legitimately revokes field readiness before this hook.
+      * First suspend that recognized encounter so presence can refresh from the
+      * real field object. Only then may the existing broker range/consent gate
+      * authorize an offer; never treat a dialogue's cached RANGE 0 as solo play. */
+     if (!trainer && !LinkTransport_Offer(sActivity.peer, NATIVE_LINK_COOP)) return 0;
+     sActivity.encounterOfferDeferred = trainer;
+     sActivity.mode = NATIVE_LINK_COOP;
+     sActivity.encounterPending = TRUE;
+     sActivity.wildCaptured = !trainer;
+     sActivity.trainerCaptured = trainer;
+     sActivity.trainerCallback = trainer ? gMain.savedCallback : NULL;
+     sActivity.tagInvitation = FALSE;
+     sActivity.state = WAIT_ADMIT;
+     sActivity.timer = 0;
+     sActivity.status = "joining tagged encounter";
+     LockPlayerFieldControls();
+     FreezeObjectEvents();
+     StopPlayerAvatar();
+     sActivity.locked = TRUE;
+     ShowWaiting("Joining tagged encounter");
+     return 1;
+ }
+
++/* Only a successfully started owner encounter consumes its local field
++ * object. Failed admission/start retains it for the ordinary solo fallback.
++ * Guests and trainer battles must not consume an unrelated selected object. */
++static bool8 StartCoopBattle(void)
++{
++    bool8 owner = LinkTransport_CoopOwner();
++    DexNavNative_PrepareNativeActivity(owner && !sActivity.trainerCaptured);
++    if (!WorldCoop_StartBattle(owner))
++        return FALSE;
++    if (owner && sActivity.wildCaptured)
++        DespawnOWEOnBattleStart();
++    sActivity.wildCaptured = sActivity.encounterPending = FALSE;
++    sActivity.trainerCaptured = FALSE;
++    return TRUE;
++}
++
+ int WorldActivity_TryCoopWildBattle(void) { return TryCoopBattle(FALSE); }
+ int WorldActivity_TryCoopTrainerBattle(void) { return TryCoopBattle(TRUE); }
+
+ void WorldActivity_ReturnFromCoopWildBattle(void)
+ {
+     MainCallback trainerCallback = sActivity.trainerCallback;
+     bool8 trainer = WorldCoop_IsTrainer();
+     u16 trainerId = WorldCoop_TrainerId();
+     bool8 localScript;
+     bool8 guestCredit = trainerCallback == NULL && trainer && gBattleOutcome == B_OUTCOME_WON
+         && BattleSetup_CanShareWorldTrainerCredit(trainerId);
+     sActivity.trainerCallback = NULL;
+     WorldCoop_Abort();
+     CloseMenu();
+     CloseLink();
+     NativeLink_Abort();
+     gFieldLinkPlayerCount = 0;
+     SetMainCallback1(CB1_Overworld);
+     /* Only the owner resumes a Gym/League script. Gate the fallback defeat
+      * flag too, or skipping a badge script would still consume a guest's boss. */
+     localScript = guestCredit && BattleSetup_ResumeWorldTrainerScript(trainerId);
+     if (trainerCallback == NULL && !localScript)
+         ScriptContext_Init();
+     /* The owner's suspended script still owns its field lock and NPCs. */
+     if (trainerCallback == NULL && !localScript)
+     {
+         UnlockPlayerFieldControls();
+         UnfreezeObjectEvents();
+     }
+     sActivity.locked = FALSE;
+     sActivity.encounterPending = sActivity.wildCaptured = FALSE;
+     sActivity.state = RETURNING;
+     sActivity.status = "returning after tagged encounter";
+     sActivity.trainerCaptured = FALSE;
+     if (trainerCallback != NULL)
+         trainerCallback();
+     else if (!localScript)
+     {
+         if (guestCredit)
+         {
+             BattleSetup_RegisterWorldTrainerInMatchCall(trainerId);
+             SetTrainerFlag(trainerId);
+         }
+         BattleSetup_EndWorldWildBattle();
+     }
+ }
+
+ #if GENERATED_MAP_READY
+ static bool8 RejectGeneratedCaveInvitations(void)
+ {
+     const struct LinkTransportInvitation *pending;
+     if (!GeneratedMap_IsInside()) return FALSE;
+     pending = LinkTransport_PendingInvitation();
+     if (pending && pending->mode != NATIVE_LINK_COOP)
+         LinkTransport_Reject(pending->id);
+     return FALSE;
+ }
+ #endif
+
+ void WorldActivity_Update(void)
+ {
+     const struct LinkTransportInvitation *pending;
+ #if GENERATED_MAP_READY
+     if (RejectGeneratedCaveInvitations()) return;
+ #endif
+     if (sActivity.state == IDLE && NativeLink_IsActive() && LinkTransport_Mode() == NATIVE_LINK_COOP)
+     {
+         const char *peer = LinkTransport_TagPeer();
+         if (!peer || !FieldReady() || !ActivityPartyReady(NATIVE_LINK_COOP) || !CopyPeer(sActivity.peer, peer))
+         { Stop("tagged encounter unavailable"); return; }
+         sActivity.mode = NATIVE_LINK_COOP;
+         sActivity.encounterPending = TRUE;
+         sActivity.wildCaptured = sActivity.tagInvitation = FALSE;
+         sActivity.state = WAIT_ADMIT;
+         sActivity.timer = 0;
+         sActivity.status = "joining tagged encounter";
+         ShowWaiting("Joining tagged encounter");
+     }
+     /* The authority's first offer wins a crossing. Present its consent prompt
+      * even if the rejection of our outgoing request is in a later read. */
+     if ((sActivity.state == IDLE || sActivity.state == WAIT_TAG)
+         && (pending = LinkTransport_PendingTag()) != NULL)
+     {
+         if (!FieldReady() || !ActivityPartyReady(NATIVE_LINK_COOP) || !CopyPeer(sActivity.peer, pending->name))
+         { LinkTransport_TagReject(pending->id); return; }
+         CloseMenu();
+         sActivity.invitation = pending->id;
+         sActivity.mode = NATIVE_LINK_COOP;
+         sActivity.tagInvitation = TRUE;
+         sActivity.state = INVITATION;
+         sActivity.status = "incoming tag invitation";
+         if (!ShowMenu(TRUE)) { LinkTransport_TagReject(sActivity.invitation); Stop("native menu unavailable"); }
+         return;
+     }
+     if (sActivity.state == IDLE)
+     {
+         pending = LinkTransport_PendingInvitation();
+         if (!pending) return;
+         /* Tag consent already authorizes co-op. Its OFFER and ADMIT can be in
+          * different socket reads; do not turn the brief gap into a second UI. */
+         if (pending->mode == NATIVE_LINK_COOP) return;
+         if (!FieldReady() || pending->mode < NATIVE_LINK_SINGLE || pending->mode > NATIVE_LINK_TRADE
+             || !CopyPeer(sActivity.peer, pending->name))
+         { LinkTransport_Reject(pending->id); return; }
+         sActivity.invitation = pending->id;
+         sActivity.mode = pending->mode;
+         sActivity.tagInvitation = FALSE;
+         sActivity.state = INVITATION;
+         sActivity.status = "incoming invitation";
+         if (!ShowMenu(TRUE)) { LinkTransport_Reject(sActivity.invitation); Stop("native menu unavailable"); }
+         return;
+     }
+     if (sActivity.state == MENU || sActivity.state == INVITATION)
+     {
+         if (!FieldReady()) { Stop("field became unavailable"); return; }
+         if (sActivity.state == INVITATION)
+         {
+             pending = sActivity.tagInvitation ? LinkTransport_PendingTag() : LinkTransport_PendingInvitation();
+             if (!pending || pending->id != sActivity.invitation) Stop("invitation expired");
+         }
+         return;
+     }
+     if (sActivity.state == WAIT_TAG)
+     {
+         const char *peer = LinkTransport_TagPeer();
+         if (peer && !strcmp(peer, sActivity.peer)) { Stop("tag ready; stay nearby"); return; }
+         /* The broker expires tag consent in real time and sends END to both
+          * sides. A frame cap can retire only the proposer's UI too early. */
+         if (!LinkTransport_Ready() || !LinkTransport_TagOfferPending())
+             Stop("tag declined or expired");
+         return;
+     }
+     if (sActivity.state == WAIT_ADMIT)
+     {
+         bool8 coop = sActivity.mode == NATIVE_LINK_COOP;
+         if ((!FieldReady() && !(coop && WorldActivity_IsEncounterPending()))
+             || !ActivityPartyReady(sActivity.mode) || !LinkTransport_Ready() || ++sActivity.timer > 1800)
+         { Stop("consent unavailable"); return; }
+         if (sActivity.encounterOfferDeferred)
+         {
+             const char *peer = LinkTransport_TagPeer();
+             if (!peer || strcmp(peer, sActivity.peer))
+             { Stop("tag unavailable; continuing trainer encounter"); return; }
+             if (!NativeLink_IsActive())
+             {
+                 if (!LinkTransport_TagInRange()) return;
+                 if (!LinkTransport_Offer(sActivity.peer, NATIVE_LINK_COOP))
+                 { Stop("partner unavailable; continuing trainer encounter"); return; }
+             }
+             sActivity.encounterOfferDeferred = FALSE;
+         }
+         if (coop && !NativeLink_IsActive() && !LinkTransport_OfferPending())
+         { Stop("partner unavailable; continuing wild encounter"); return; }
+         if (!NativeLink_IsActive()) return;
+         /* Active means server ADMIT after BOTH decisions, not OFFER/ACCEPT. */
+         LockPlayerFieldControls();
+         if (coop) { FreezeObjectEvents(); StopPlayerAvatar(); }
+         sActivity.locked = TRUE;
+         gWirelessCommType = 0;
+         gLinkType = coop ? 0x2255 : sActivity.mode == NATIVE_LINK_TRADE ? LINKTYPE_TRADE_SETUP
+             : sActivity.mode == NATIVE_LINK_DOUBLE ? LINKTYPE_DOUBLE_BATTLE : LINKTYPE_SINGLE_BATTLE;
+         OpenLink();
+         ResetLinkPlayers();
+         sActivity.state = CONNECTING;
+         sActivity.timer = 0;
+         sActivity.status = "exchanging native link players";
+         return;
+     }
+     if (sActivity.state == CONNECTING)
+     {
+         if (!NativeLink_IsActive() || HasLinkErrorOccurred() || ++sActivity.timer > 1200)
+         { Stop("native connection aborted before activity"); return; }
+         if (GetLinkPlayerCount_2() == 2 && IsLinkMaster() && !gReceivedRemoteLinkPlayers)
+             CheckShouldAdvanceLinkState();
+         if (!gReceivedRemoteLinkPlayers || !IsLinkPlayerDataExchangeComplete()) return;
+         gFieldLinkPlayerCount = 2;
+         gLocalLinkPlayerId = GetMultiplayerId();
+         SaveLinkPlayers(2);
+         /* Native trade/battle saves use dynamicWarp for restart recovery. It
+          * must name THIS field, never an old Pokemon Center cable entrance. */
+         SetDynamicWarp(0, gSaveBlock1Ptr->location.mapGroup,
+             gSaveBlock1Ptr->location.mapNum, -1);
+         ClearLinkCallback_2();
+         CloseMenu();
+         sActivity.state = NATIVE;
+         sActivity.status = "native activity running";
+         if (sActivity.mode == NATIVE_LINK_COOP)
+         {
+-            DexNavNative_PrepareNativeActivity(LinkTransport_CoopOwner() && !sActivity.trainerCaptured);
+-            if (!WorldCoop_StartBattle(LinkTransport_CoopOwner()))
++            if (!StartCoopBattle())
+             { Stop("tagged battle unavailable"); return; }
+-            sActivity.wildCaptured = sActivity.encounterPending = FALSE;
+-            sActivity.trainerCaptured = FALSE;
+             /* The kind is authenticated by the exchange, not by overworld presence. */
+         }
+         else if (sActivity.mode == NATIVE_LINK_TRADE)
+         {
+             DexNavNative_PrepareNativeActivity(FALSE);
+             gBattleTypeFlags = 0;
+             gSpecialVar_0x8004 = USING_TRADE_CENTER;
+             gSelectedTradeMonPositions[TRADE_PLAYER] = 0;
+             gSelectedTradeMonPositions[TRADE_PARTNER] = 0;
+             CleanupOverworldWindowsAndTilemaps();
+             SetMainCallback2(CB2_StartCreateTradeMenu);
+         }
+         else
+         {
+             DexNavNative_PrepareNativeActivity(FALSE);
+             if (!WorldActivity_StartNativeBattle(sActivity.mode))
+                 Stop("native battle task unavailable");
+         }
+         return;
+     }
+     if (sActivity.state == NATIVE)
+     {
+         /* Trade's stock exit selects cable-map callback. Replace BEFORE it runs.
+          * Battle helper routes its native post-battle save to our local return. */
+         if (gMain.callback2 == CB2_ReturnToFieldFromMultiplayer)
+             WorldActivity_ReturnToField();
+         else if (sActivity.mode == NATIVE_LINK_COOP && WorldCoop_IsPrivateRewards())
+             sActivity.status = "tagged encounter complete; finishing private rewards";
+         else if (!NativeLink_IsActive())
+             sActivity.status = "native connection lost; reset required (no automatic save or rollback)";
+         return;
+     }
+     if (sActivity.state == RETURNING && FieldReady())
+     {
+         sActivity.state = IDLE;
+         sActivity.status = "native activity returned";
+     }
+ }
+ #endif
 diff --git a/src/world/world_menu.c b/src/world/world_menu.c
-index 234f6cc73..3845dea71 100644
+index 234f6cc73..86e2323de 100644
 --- a/src/world/world_menu.c
 +++ b/src/world/world_menu.c
 @@ -1,628 +1,635 @@
@@ -2350,7 +3043,7 @@ index 234f6cc73..3845dea71 100644
  #include "constants/opponents.h"
  #include <stdio.h>
  #include <string.h>
- 
+
  /* One field window, not another Start-menu row or another input consumer.
   * Lists are rebuilt from live state, but focus is an action identity. */
  enum MenuState { CLOSED, OPEN_REQUEST, FEATURES, SHUFFLE_MENU, RALLY, DISPATCH };
@@ -2379,7 +3072,7 @@ index 234f6cc73..3845dea71 100644
      const char *notice;
      struct Screen drawn;
  } sMenu = {.window = WINDOW_NONE};
- 
+
  static bool8 FieldContext(void)
  {
      return gSaveBlock1Ptr && gSaveBlock2Ptr && gMain.callback1 == CB1_Overworld
@@ -2389,12 +3082,12 @@ index 234f6cc73..3845dea71 100644
          && !WorldActivity_OwnsFieldInput() && !WorldTravel_OwnsFieldInput()
          && !WorldTravel_NativeFlyRunning();
  }
- 
+
  static bool8 FreeField(void)
  {
      return FieldContext() && !ArePlayerFieldControlsLocked();
  }
- 
+
  static void Forget(void)
  {
      /* A scene replacement can reuse both window IDs and the global field lock.
@@ -2403,7 +3096,7 @@ index 234f6cc73..3845dea71 100644
      sMenu.locked = FALSE;
      sMenu.state = CLOSED;
  }
- 
+
  static void Close(void)
  {
      if (sMenu.window != WINDOW_NONE)
@@ -2420,7 +3113,7 @@ index 234f6cc73..3845dea71 100644
      }
      sMenu.state = CLOSED;
  }
- 
+
  /* Explain only locally observable prerequisites. The backend still owns final
   * ledger, geometry, presence freshness and server acceptance checks. */
  static const char *PersonalReason(void)
@@ -2441,7 +3134,7 @@ index 234f6cc73..3845dea71 100644
              && GetMonData(&gPlayerParty[i], MON_DATA_HP)) return NULL;
      return "You need a conscious Pokemon that is not an Egg.";
  }
- 
+
  static const char *ApproachReason(void)
  {
      const struct ObjectEvent *player;
@@ -2455,7 +3148,7 @@ index 234f6cc73..3845dea71 100644
          return "Stand directly below Roxanne at Gym tile 5,3.";
      return NULL;
  }
- 
+
  static unsigned MemberState(const struct WorldRallySnapshot *r)
  {
      unsigned i;
@@ -2463,13 +3156,13 @@ index 234f6cc73..3845dea71 100644
          if (!strcmp(r->members[i].name, WorldBridge_TrainerName())) return r->members[i].state;
      return 0;
  }
- 
+
  static void AddRow(struct Row *rows, unsigned *count, enum Action action,
                     const char *label, const char *reason)
  {
      rows[(*count)++] = (struct Row){action, label, reason};
  }
- 
+
  #if GENERATED_MAP_READY
  static const char *GeneratedAreaReason(void)
  {
@@ -2485,7 +3178,7 @@ index 234f6cc73..3845dea71 100644
      return "Finish the current activity and stand on safe ground before exploring.";
  }
  #endif
- 
+
  static unsigned Rows(struct Row *rows, struct WorldRallySnapshot *r, bool8 online)
  {
      unsigned n = 0, member = MemberState(r);
@@ -2562,7 +3255,7 @@ index 234f6cc73..3845dea71 100644
      AddRow(rows, &n, BACK, "Back", NULL);
      return n;
  }
- 
+
  static u8 EncodeChar(unsigned char c)
  {
      if (c >= 'A' && c <= 'Z') return CHAR_A + c - 'A';
@@ -2581,18 +3274,18 @@ index 234f6cc73..3845dea71 100644
      default: return CHAR_SPACE;
      }
  }
- 
+
  static void Encode(u8 *dest, const char *text)
  {
      for (; *text; text++) *dest++ = EncodeChar(*text);
      *dest = EOS;
  }
- 
+
  static void Line(struct Screen *screen, unsigned row, const char *text)
  {
      if (row < SCREEN_LINES) snprintf(screen->lines[row], TEXT_BYTES, "%s", text);
  }
- 
+
  static void Wrap(struct Screen *screen, unsigned row, unsigned end, const char *text)
  {
      /* Measure actual native glyphs, including long unbroken trainer names.
@@ -2619,7 +3312,7 @@ index 234f6cc73..3845dea71 100644
          while (*text == ' ' || *text == '\n') text++;
      }
  }
- 
+
  static const char *ActionHelp(enum Action action)
  {
      switch (action)
@@ -2633,7 +3326,7 @@ index 234f6cc73..3845dea71 100644
      case DEXNAV:
          return "A searches. R registers. L selects the next seen, uncaught Pokemon on this map.";
 +    case VISIBLE_ENCOUNTERS:
-+        return "Solo visible Pokemon alongside random encounters. Starts OFF each game launch.";
++        return "Personal visible Pokemon. Tag partners share battles, not spawns. Starts OFF each launch.";
      case SHUFFLE: case SHUFFLE_TOGGLE:
          return "Shuffle wild species 1-386. Same seed, same encounters. Starts OFF each game launch.";
      case SHUFFLE_SEED:
@@ -2670,7 +3363,7 @@ index 234f6cc73..3845dea71 100644
          return "A choose. B back.";
      }
  }
- 
+
  static void Draw(const struct Row *rows, unsigned count, unsigned selected,
                   const struct WorldRallySnapshot *r, bool8 online)
  {
@@ -2745,7 +3438,7 @@ index 234f6cc73..3845dea71 100644
      sMenu.drawn = screen;
      sMenu.dirty = FALSE;
  }
- 
+
  static void Queue(enum Action action, unsigned id)
  {
      sMenu.pending = action;
@@ -2757,7 +3450,7 @@ index 234f6cc73..3845dea71 100644
      sMenu.freeFrames = 0;
      sMenu.notice = "Waiting for the field. Not sent yet.";
  }
- 
+
  static void Dispatch(void)
  {
      struct WorldRallySnapshot r = {0};
@@ -2841,17 +3534,17 @@ index 234f6cc73..3845dea71 100644
      sMenu.notice = accepted ? "Request queued. Check Trainers or Status for the result." :
          "Request not accepted. Open Status to check the reason.";
  }
- 
+
  void WorldMenu_RequestOpen(void)
  {
      if (sMenu.state == CLOSED) sMenu.state = OPEN_REQUEST;
  }
- 
+
  bool8 WorldMenu_OwnsFieldInput(void)
  {
      return sMenu.state != CLOSED;
  }
- 
+
  void WorldMenu_Update(void)
  {
      struct WorldRallySnapshot r = {0};

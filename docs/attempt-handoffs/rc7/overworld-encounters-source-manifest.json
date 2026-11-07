@@ -1,5 +1,5 @@
 {
-  "description": "Source-only opt-in solo visible encounter candidate; native build blocked by missing libpng headers.",
+  "description": "Opt-in personal visible encounters with existing tag co-op ownership integration. Native build and gameplay remain unverified.",
   "base_engine_commit": "2024a83db5242783c0f9ae93f8381271045e7037",
   "public_base_commit": "bb3fd057061cdd7e6a9e79b76abb41924ee44ecc",
   "ordered_patches": [
@@ -11,9 +11,9 @@
     "native-overworld-encounters.patch"
   ],
   "base_tree": "5d82cc0edc6259f7847be0d97a4b0692e11c62e4",
-  "result_tree": "12d84dc7c054e48c8e87f9dcab8631b5d8f1a4a9",
+  "result_tree": "c1dbd945348b6663dfe4c2b15efb28fb329ee57c",
   "patch": "native-overworld-encounters.patch",
-  "patch_sha256": "ecf349ae2c46d30afd359752c0df90d17ecd04e1b7aa5f6994c1e3d7c03e5952",
+  "patch_sha256": "43092f82a704fb40eb81439512c46978dc365087065d021f86ac6a477e7e0989",
   "files": [
     {
       "path": "include/config/wild_encounter.h",
@@ -29,15 +29,19 @@
     },
     {
       "path": "src/wild_encounter_ow.c",
-      "sha256": "535ec7533cdbbaa1c13b288d17fa47bccd306d4da1cb06d237822bd59241d599"
+      "sha256": "1dd3acea1a023d461cf64eb2ed073b41326df59c2de12c9ccff780dec160cc5d"
     },
     {
       "path": "src/world/overworld_encounters.c",
-      "sha256": "b68dbc6c3d146b955f2a6d237fed4f3604b649e17af65bf62069b140aca70945"
+      "sha256": "959e55834fac8ed794d211c75f415f4bef4cf2b97c14a8ebfee2af388727a12d"
+    },
+    {
+      "path": "src/world/world_activity.c",
+      "sha256": "a0ed33016f94aa0219fe6eda70d7a617b066811086522921660428c5986f5a5a"
     },
     {
       "path": "src/world/world_menu.c",
-      "sha256": "1c77334cdef94ae3093843aec0d5c94ddacdfd55f1bd318db2245ab122725c3b"
+      "sha256": "b444defabcb8269e88d5f3c4f7abee5474cdb6fa22780dffbca299e46f1bbbc7"
     }
   ],
   "verification": {
@@ -45,6 +49,7 @@
     "policy_compile_and_run": true,
     "native_build": false,
     "native_gameplay": false,
-    "visual_inspection": false
+    "visual_inspection": false,
+    "coop_transition_ubsan": true
   }
 }
