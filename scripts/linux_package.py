@@ -57,14 +57,31 @@ def elf_requirements(binary):
             'libraries': 'System loader resolves all native dependencies, including SDL2. No libraries bundled.'}
 
 
-def assemble(binary, web_dist, version, output):
+ENGINE_BINARIES = {
+    'vanilla': 'build/pokeemerald64',
+    'expansion-native': 'build/expansion-native/pokeemerald-native',
+}
+
+
+def assemble(binary, web_dist, version, output, engine='vanilla'):
+    if engine not in ENGINE_BINARIES:
+        raise ValueError('Engine must be vanilla or expansion-native')
     if not VERSION.fullmatch(version):
         raise ValueError('Version must be MAJOR.MINOR.PATCH with an optional safe prerelease')
+    if binary is None:
+        binary = REPO / ENGINE_BINARIES[engine]
     binary, web_dist, output = map(plain, (binary, web_dist, output))
     if output.exists() or output.is_relative_to(web_dist):
         raise ValueError('Output must be fresh and outside the web distribution')
     runtime = elf_requirements(binary)
-    frozen = {'build/pokeemerald64': (binary.read_bytes(), 0o755)}
+    binary_name = ENGINE_BINARIES[engine]
+    frozen = {binary_name: (binary.read_bytes(), 0o755)}
+    if engine == 'expansion-native':
+        # Exact generated sibling only: native named-state observations need
+        # it, and the sandbox never exposes the surrounding build directory.
+        symbols = plain(Path(str(binary) + '.symbols'))
+        if symbols.is_file():
+            frozen[binary_name + '.symbols'] = (symbols.read_bytes(), 0o644)
     # Only Git-tracked top-level world Python modules. Never recurse over a
     # checkout, private state, build tree, dependency sysroot or developer venv.
     tracked = subprocess.run(['git', '-C', str(REPO), 'ls-files', '-z', 'world/*.py'],
@@ -131,7 +148,8 @@ def assemble(binary, web_dist, version, output):
     notes = REPO / 'docs' / ('RELEASE_RC' + version.rsplit('-rc.', 1)[-1] + '.md') if '-rc.' in version else None
     if notes is not None and notes.is_file():
         frozen['RELEASE_NOTES.md'] = (plain(notes).read_bytes(), 0o644)
-    manifest = {'format': 1, 'version': version, 'architecture': 'x86_64', 'runtime': runtime,
+    manifest = {'format': 1, 'version': version, 'architecture': 'x86_64',
+                'engine': engine, 'binary': binary_name, 'runtime': runtime,
                 'files': {name: {'sha256': hashlib.sha256(data).hexdigest(), 'mode': mode}
                           for name, (data, mode) in sorted(frozen.items())}}
     frozen['manifest.json'] = ((json.dumps(manifest, indent=2, sort_keys=True) + '\n').encode(), 0o644)
@@ -151,13 +169,15 @@ def assemble(binary, web_dist, version, output):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--binary', type=Path, required=True)
+    parser.add_argument('--binary', type=Path, help='explicit trusted prebuilt executable; defaults to the selected engine build path')
+    parser.add_argument('--engine', choices=tuple(ENGINE_BINARIES), default='vanilla',
+                        help='release engine; vanilla remains the default')
     parser.add_argument('--web-dist', type=Path, required=True)
     parser.add_argument('--version', required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     try:
-        print(assemble(args.binary, args.web_dist, args.version, args.output))
+        print(assemble(args.binary, args.web_dist, args.version, args.output, args.engine))
     except (OSError, ValueError, subprocess.CalledProcessError) as exc:
         parser.exit(1, f'Package not created: {exc}\n')
 

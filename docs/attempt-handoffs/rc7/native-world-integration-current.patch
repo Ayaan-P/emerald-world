@@ -1011,6 +1011,83 @@ index 0000000000..7d9531fa98
 +bool video_is_headless(void);
 +
 +#endif /* VIDEO_MODE_H */
+diff --git a/src/battle_bg.c b/src/battle_bg.c
+index 49d91ce412..f3b0073910 100644
+--- a/src/battle_bg.c
++++ b/src/battle_bg.c
+@@ -29,6 +29,9 @@
+ #include "constants/battle_anim.h"
+ #include "constants/battle_partner.h"
+ #include "data/battle_environment.h"
++#ifdef PORTABLE
++#include "platform/world_coop.h"
++#endif
+ 
+ // .rodata
+ 
+@@ -1260,6 +1263,13 @@ void InitLinkBattleVsScreen(u8 taskId)
+ 
+ void DrawBattleEntryBackground(void)
+ {
++#ifdef PORTABLE
++    if (WorldCoop_IsBattle())
++    {
++        LoadBattleEnvironmentEntryGfx(gBattleEnvironment);
++        return;
++    }
++#endif
+     if (gBattleTypeFlags & BATTLE_TYPE_LINK)
+     {
+         DecompressDataWithHeaderVram(gBattleVSFrame_Gfx, (void *)(BG_CHAR_ADDR(1)));
+diff --git a/src/battle_controller_link_opponent.c b/src/battle_controller_link_opponent.c
+index d7f8e4f045..31979551a7 100644
+--- a/src/battle_controller_link_opponent.c
++++ b/src/battle_controller_link_opponent.c
+@@ -29,6 +29,9 @@
+ #include "constants/trainers.h"
+ #include "recorded_battle.h"
+ #include "random.h"
++#ifdef PORTABLE
++#include "platform/world_coop.h"
++#endif
+ 
+ static void LinkOpponentHandleDrawTrainerPic(enum BattlerId battler);
+ static void LinkOpponentHandleTrainerSlide(enum BattlerId battler);
+@@ -137,6 +140,19 @@ static void Intro_WaitForShinyAnimAndHealthbox(enum BattlerId battler)
+ 
+     if (healthboxAnimDone)
+     {
++#ifdef PORTABLE
++        if (WorldCoop_IsBattle()
++            && (gAbsentBattlerFlags & (1u << GetPartnerBattler(battler))))
++        {
++            /* The absent flank has no NPC sendout to complete this handshake. */
++            if (!gBattleSpritesDataPtr->healthBoxesData[battler].finishedShinyMonAnim)
++                return;
++            gBattleSpritesDataPtr->healthBoxesData[battler].triedShinyMonAnim = FALSE;
++            gBattleSpritesDataPtr->healthBoxesData[battler].finishedShinyMonAnim = FALSE;
++            FreeShinyStars();
++        }
++        else
++#endif
+         if (twoMons || !IsBattlerSpriteVisible(GetPartnerBattler(battler)))
+         {
+             if (!gBattleSpritesDataPtr->healthBoxesData[battler].finishedShinyMonAnim)
+@@ -279,6 +295,14 @@ static void LinkOpponentHandleDrawTrainerPic(enum BattlerId battler)
+     enum TrainerPicID trainerPicId;
+     enum BattlerPosition position = GetBattlerPosition(battler);
+ 
++#ifdef PORTABLE
++    if (WorldCoop_IsTrainer())
++    {
++        xPos = 200;
++        trainerPicId = GetTrainerPicFromId(TRAINER_BATTLE_PARAM.opponentA);
++    }
++    else
++#endif
+     if (gBattleTypeFlags & BATTLE_TYPE_MULTI)
+     {
+         if ((position & BIT_FLANK) != 0) // second mon
 diff --git a/src/battle_controller_link_partner.c b/src/battle_controller_link_partner.c
 index b17dca5a79..59b022b38c 100644
 --- a/src/battle_controller_link_partner.c
@@ -1513,10 +1590,20 @@ index 466fd5481d..62a4162b55 100644
  }
  
 diff --git a/src/battle_gfx_sfx_util.c b/src/battle_gfx_sfx_util.c
-index 9494cb6b73..6018ce9e38 100644
+index 9494cb6b73..b0fe457c8f 100644
 --- a/src/battle_gfx_sfx_util.c
 +++ b/src/battle_gfx_sfx_util.c
-@@ -709,6 +709,98 @@ void FreeTrainerFrontPicPalette(enum TrainerPicID trainerPicId)
+@@ -25,6 +25,9 @@
+ #include "contest.h"
+ #include "trainer.h"
+ #include "trainer_pokemon_sprites.h"
++#ifdef PORTABLE
++#include "platform/world_coop.h"
++#endif
+ #include "constants/songs.h"
+ #include "constants/rgb.h"
+ #include "constants/battle_palace.h"
+@@ -709,6 +712,98 @@ void FreeTrainerFrontPicPalette(enum TrainerPicID trainerPicId)
      FreeSpritePaletteByTag(GetTrainerPicTag(trainerPicId, TRUE));
  }
  
@@ -1615,6 +1702,24 @@ index 9494cb6b73..6018ce9e38 100644
  bool8 BattleLoadAllHealthBoxesGfx(u8 state)
  {
      if (state == 1)
+@@ -844,8 +939,15 @@ bool8 BattleInitAllSprites(u8 *state1, u8 *battler)
+         }
+         break;
+     case 5:
+-        if (!IsOnPlayerSide(*battler) || !(gBattleTypeFlags & BATTLE_TYPE_SAFARI))
+-            UpdateHealthboxAttribute(gHealthboxSpriteIds[*battler], GetBattlerMon(*battler), HEALTHBOX_ALL);
++#ifdef PORTABLE
++        /* An absent co-op flank can alias a valid NPC party slot. Keep its
++         * allocated box hidden without copying that other battler's data. */
++        if (!WorldCoop_IsBattle() || !(gAbsentBattlerFlags & (1u << *battler)))
++#endif
++        {
++            if (!IsOnPlayerSide(*battler) || !(gBattleTypeFlags & BATTLE_TYPE_SAFARI))
++                UpdateHealthboxAttribute(gHealthboxSpriteIds[*battler], GetBattlerMon(*battler), HEALTHBOX_ALL);
++        }
+         SetHealthboxSpriteInvisible(gHealthboxSpriteIds[*battler]);
+         (*battler)++;
+         if (*battler == gBattlersCount)
 diff --git a/src/battle_gimmick.c b/src/battle_gimmick.c
 index ebe6d5cc12..5efd1119f6 100644
 --- a/src/battle_gimmick.c
@@ -1720,6 +1825,33 @@ index f802c98d62..a5133a9c6f 100644
      if (B_LAST_USED_BALL == FALSE)
          return FALSE;
      if (!CanThrowBall())
+diff --git a/src/battle_intro.c b/src/battle_intro.c
+index f3a1186d35..e639ab5a72 100644
+--- a/src/battle_intro.c
++++ b/src/battle_intro.c
+@@ -13,6 +13,9 @@
+ #include "trig.h"
+ #include "constants/battle_partner.h"
+ #include "constants/trainers.h"
++#ifdef PORTABLE
++#include "platform/world_coop.h"
++#endif
+ 
+ void BattleIntroSlide1(u8);
+ void BattleIntroSlide2(u8);
+@@ -32,7 +35,11 @@ void HandleIntroSlide(u8 environment)
+     {
+         taskId = CreateTask(BattleIntroSlidePartner, 0);
+     }
+-    else if (gBattleTypeFlags & BATTLE_TYPE_LINK)
++    else if ((gBattleTypeFlags & BATTLE_TYPE_LINK)
++#ifdef PORTABLE
++             && !WorldCoop_IsBattle()
++#endif
++            )
+     {
+         taskId = CreateTask(BattleIntroSlideLink, 0);
+     }
 diff --git a/src/battle_main.c b/src/battle_main.c
 index 5ac7d92dc6..958b8e0afe 100644
 --- a/src/battle_main.c
@@ -2072,6 +2204,95 @@ index 5ac7d92dc6..958b8e0afe 100644
  void RunBattleScriptCommands(void)
  {
      if (gBattleControllerExecFlags == 0)
+diff --git a/src/battle_message.c b/src/battle_message.c
+index 680ea2d10b..a2d951a566 100644
+--- a/src/battle_message.c
++++ b/src/battle_message.c
+@@ -37,6 +37,9 @@
+ #include "constants/trainers.h"
+ #include "constants/trainer_hill.h"
+ #include "constants/weather.h"
++#ifdef PORTABLE
++#include "platform/world_coop.h"
++#endif
+ 
+ struct BattleWindowText
+ {
+@@ -2450,6 +2453,13 @@ void BufferStringBattle(enum StringID stringID, enum BattlerId battler)
+     switch (stringID)
+     {
+     case STRINGID_INTROMSG: // first battle msg
++#ifdef PORTABLE
++        if (WorldCoop_IsTrainer())
++        {
++            stringPtr = sText_Trainer1WantsToBattle;
++            break;
++        }
++#endif
+         if (gBattleTypeFlags & BATTLE_TYPE_TRAINER)
+         {
+             if (gBattleTypeFlags & (BATTLE_TYPE_LINK | BATTLE_TYPE_RECORDED_LINK))
+@@ -2510,7 +2520,11 @@ void BufferStringBattle(enum StringID stringID, enum BattlerId battler)
+                 stringPtr = sText_TheGhostAppeared;
+             else if (gBattleTypeFlags & BATTLE_TYPE_LEGENDARY)
+                 stringPtr = sText_LegendaryPkmnAppeared;
+-            else if (IsDoubleBattle() && IsValidForBattle(GetBattlerMon(GetBattlerAtPosition(B_POSITION_OPPONENT_RIGHT))))
++            else if (IsDoubleBattle()
++#ifdef PORTABLE
++                     && !WorldCoop_IsBattle()
++#endif
++                     && IsValidForBattle(GetBattlerMon(GetBattlerAtPosition(B_POSITION_OPPONENT_RIGHT))))
+                 stringPtr = sText_TwoWildPkmnAppeared;
+             else if (gBattleTypeFlags & BATTLE_TYPE_CATCH_TUTORIAL)
+                 stringPtr = sText_WildPkmnAppearedPause;
+@@ -2519,6 +2533,14 @@ void BufferStringBattle(enum StringID stringID, enum BattlerId battler)
+         }
+         break;
+     case STRINGID_INTROSENDOUT: // poke first send-out
++#ifdef PORTABLE
++        if (WorldCoop_IsTrainer() && !IsOnPlayerSide(battler))
++        {
++            stringPtr = WorldCoop_HasSecondOpponent()
++                ? sText_Trainer1SentOutTwoPkmn : sText_Trainer1SentOutPkmn;
++            break;
++        }
++#endif
+         if (IsOnPlayerSide(battler))
+         {
+             if (IsDoubleBattle() && IsValidForBattle(GetBattlerMon(GetPartnerBattler(battler))))
+@@ -2651,6 +2673,13 @@ void BufferStringBattle(enum StringID stringID, enum BattlerId battler)
+         }
+         break;
+     case STRINGID_SWITCHINMON: // switch-in msg
++#ifdef PORTABLE
++        if (WorldCoop_IsTrainer() && !IsOnPlayerSide(gBattleScripting.battler))
++        {
++            stringPtr = sText_Trainer1SentOutPkmn2;
++            break;
++        }
++#endif
+         if ((GetBattlerPosition(gBattleScripting.battler) & BIT_FLANK) == B_FLANK_LEFT) // battler 0 and 1
+         {
+             if (BattlerIsPlayer(gBattleScripting.battler)) // Player
+@@ -2729,6 +2758,18 @@ void BufferStringBattle(enum StringID stringID, enum BattlerId battler)
+         stringPtr = sText_AttackerUsedX;
+         break;
+     case STRINGID_BATTLEEND: // battle end
++#ifdef PORTABLE
++        if (WorldCoop_IsTrainer())
++        {
++            switch (gBattleTextBuff1[0])
++            {
++            case B_OUTCOME_WON: stringPtr = sText_PlayerDefeatedLinkTrainerTrainer1; break;
++            case B_OUTCOME_LOST: stringPtr = sText_PlayerLostAgainstTrainer1; break;
++            default: stringPtr = sText_PlayerBattledToDrawTrainer1; break;
++            }
++            break;
++        }
++#endif
+         if (gBattleTextBuff1[0] & B_OUTCOME_LINK_BATTLE_RAN)
+         {
+             gBattleTextBuff1[0] &= ~(B_OUTCOME_LINK_BATTLE_RAN);
 diff --git a/src/battle_script_commands.c b/src/battle_script_commands.c
 index 78e37b57a8..a4f066f36e 100644
 --- a/src/battle_script_commands.c
@@ -3385,6 +3606,118 @@ index a11fd37726..e91edb799e 100644
  
      GetPartyAndSlotFromPartyMenuId(slot, &party, &partySlot);
      battlePartyId = GetPartyIdFromBattleSlot(slot);
+diff --git a/src/pokemon_summary_screen.c b/src/pokemon_summary_screen.c
+index 680edaf8eb..d751e16b9c 100644
+--- a/src/pokemon_summary_screen.c
++++ b/src/pokemon_summary_screen.c
+@@ -51,6 +51,9 @@
+ #include "constants/region_map_sections.h"
+ #include "constants/rgb.h"
+ #include "constants/songs.h"
++#ifdef PORTABLE
++#include "platform/world_coop.h"
++#endif
+ 
+ // Screen titles (upper left)
+ #define PSS_LABEL_WINDOW_POKEMON_INFO_TITLE 0
+@@ -4772,8 +4775,47 @@ static inline bool32 ShouldShowRename(void)
+          && GetPlayerIDAsU32() == sMonSummaryScreen->summary.OTID);
+ }
+ 
++#ifdef PORTABLE
++static inline bool32 CanShowSummaryDetail(void)
++{
++    u8 box;
++
++    // Co-op staging is a mixed-owner projection; OT IDs cannot establish privacy.
++    if (WorldCoop_IsBattle() || WorldCoop_IsPrivateRewards() || gMain.inBattle
++        || InBattleFactory() || InSlateportBattleTent()
++        || sMonSummaryScreen->summary.isEgg || sMonSummaryScreen->summary.sanity
++        || GetMonData(&sMonSummaryScreen->currentMon, MON_DATA_SANITY_IS_BAD_EGG)
++        || sMonSummaryScreen->curMonIndex > sMonSummaryScreen->maxMonIndex)
++        return FALSE;
++
++    if (sMonSummaryScreen->mode == SUMMARY_MODE_NORMAL
++        && !sMonSummaryScreen->isBoxMon
++        && sMonSummaryScreen->monList.mons == gParties[B_TRAINER_PLAYER]
++        && sMonSummaryScreen->maxMonIndex < PARTY_SIZE)
++        return TRUE;
++
++    // Accept only a real local box array, never an arbitrary summary copy.
++    if ((sMonSummaryScreen->mode == SUMMARY_MODE_BOX
++         || sMonSummaryScreen->mode == SUMMARY_MODE_BOX_CURSOR)
++        && sMonSummaryScreen->isBoxMon
++        && sMonSummaryScreen->maxMonIndex < IN_BOX_COUNT)
++    {
++        for (box = 0; box < TOTAL_BOXES_COUNT; box++)
++        {
++            if (sMonSummaryScreen->monList.boxMons == GetBoxedMonPtr(box, 0))
++                return TRUE;
++        }
++    }
++    return FALSE;
++}
++#endif
++
+ static inline bool32 ShouldShowIvEvPrompt(void)
+ {
++#ifdef PORTABLE
++    if (!CanShowSummaryDetail())
++        return FALSE;
++#endif
+     if (P_SUMMARY_SCREEN_IV_EV_BOX_ONLY)
+     {
+         return (P_SUMMARY_SCREEN_IV_EV_INFO || FlagGet(P_FLAG_SUMMARY_SCREEN_IV_EV_INFO))
+diff --git a/src/reshow_battle_screen.c b/src/reshow_battle_screen.c
+index a1a9cc7159..7ea5ee8152 100644
+--- a/src/reshow_battle_screen.c
++++ b/src/reshow_battle_screen.c
+@@ -16,6 +16,9 @@
+ #include "battle_interface.h"
+ #include "battle_anim.h"
+ #include "data.h"
++#ifdef PORTABLE
++#include "platform/world_coop.h"
++#endif
+ 
+ // this file's functions
+ static void CB2_ReshowBattleScreenAfterMenu(void);
+@@ -271,6 +274,11 @@ static void ClearBattleBgCntBaseBlocks(void)
+ 
+ static bool8 LoadBattlerSpriteGfx(enum BattlerId battler)
+ {
++#ifdef PORTABLE
++    if (WorldCoop_IsBattle() && battler < MAX_BATTLERS_COUNT
++        && (gAbsentBattlerFlags & (1u << battler)))
++        return TRUE;
++#endif
+     if (battler < gBattlersCount)
+     {
+         enum BattlerPosition position = GetBattlerPosition(battler);
+@@ -302,6 +310,11 @@ static bool8 LoadBattlerSpriteGfx(enum BattlerId battler)
+ 
+ void CreateBattlerSprite(enum BattlerId battler)
+ {
++#ifdef PORTABLE
++    if (WorldCoop_IsBattle() && battler < MAX_BATTLERS_COUNT
++        && (gAbsentBattlerFlags & (1u << battler)))
++        return;
++#endif
+     if (battler < gBattlersCount)
+     {
+         u8 posY;
+@@ -383,6 +396,11 @@ void CreateBattlerSprite(enum BattlerId battler)
+ 
+ static void CreateHealthboxSprite(enum BattlerId battler)
+ {
++#ifdef PORTABLE
++    if (WorldCoop_IsBattle() && battler < MAX_BATTLERS_COUNT
++        && (gAbsentBattlerFlags & (1u << battler)))
++        return;
++#endif
+     if (battler < gBattlersCount)
+     {
+         u8 healthboxSpriteId;
 diff --git a/src/script_movement.c b/src/script_movement.c
 index bc10a64ef0..812456baeb 100644
 --- a/src/script_movement.c

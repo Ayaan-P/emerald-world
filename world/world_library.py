@@ -259,13 +259,14 @@ def restore(root, token, count):
     return destination
 
 
-def cards(root, worlds):
+def cards(root, worlds, engine='vanilla'):
+    from .launcher import engine_state
     _directory(root)
     result = []
     for item in worlds:
         path = _world(root, item['name'])
         value = {'key': item['name'], 'path': str(path), **_read_metadata(path), 'trainers': []}
-        directory = path/'trainers'
+        directory = engine_state(path, engine)/'trainers'
         if directory.exists() or directory.is_symlink():
             _directory(directory)
             for trainer in sorted(directory.iterdir()):

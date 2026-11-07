@@ -11,7 +11,7 @@ from pathlib import Path
 import stat
 import subprocess
 
-from .launcher import ProfileLock, game_command, profile_paths
+from .launcher import ProfileLock, engine_state, game_command, profile_paths
 from .world_library import WorldActivityLock
 
 
@@ -63,7 +63,7 @@ def _copy_seed(source, destination):
 
 class OfflineGameLock:
     """Keep the enclosing library world immovable while its offline child runs."""
-    def __init__(self, state_dir, trainer):
+    def __init__(self, state_dir, trainer, engine='vanilla'):
         import threading
         self._guard = threading.Lock()
         self.activity = None
@@ -73,7 +73,7 @@ class OfflineGameLock:
             self.activity = WorldActivityLock(state)
             if state.resolve() != state or not state.is_dir():
                 raise ValueError('World moved before offline play started. Select it again.')
-            self.profile = ProfileLock(state / '.offline', trainer)
+            self.profile = ProfileLock(state / '.offline', trainer, engine=engine)
         except BaseException:
             self.close()
             raise
@@ -89,13 +89,13 @@ class OfflineGameLock:
 
 
 @contextmanager
-def offline_profile(state_dir, trainer, seed_save=None, *, copy_online=False):
+def offline_profile(state_dir, trainer, seed_save=None, *, copy_online=False, engine='vanilla'):
     """Hold the destination for play, and the optional source only while copying."""
     state = Path(state_dir).absolute()
     if state.resolve() != state:
         raise ValueError('World paths cannot contain symlinks.')
     # Validate trainer before creating any profile directories.
-    profile_paths(state, trainer)
+    profile_paths(state, trainer, engine=engine)
     if copy_online and seed_save is not None:
         raise ValueError('Choose either an online copy or an explicit seed.')
     with ExitStack() as stack:
@@ -113,7 +113,8 @@ def offline_profile(state_dir, trainer, seed_save=None, *, copy_online=False):
             fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
             with os.fdopen(fd, 'w') as stream:
                 stream.write('Emerald offline copy v1\n')
-        lock = stack.enter_context(ProfileLock(offline, trainer))
+        _private_directory(engine_state(offline, engine))
+        lock = stack.enter_context(ProfileLock(offline, trainer, engine=engine))
         paths = lock.paths
         _private_directory(paths['profile'].parent)
         _private_directory(paths['profile'])
@@ -122,7 +123,7 @@ def offline_profile(state_dir, trainer, seed_save=None, *, copy_online=False):
         if (copy_online or seed_save is not None) and paths['save'].exists():
             raise ValueError('Offline save already exists. Resume without a seed instead of overwriting it.')
         if copy_online:
-            with ProfileLock(state, trainer) as source_lock:
+            with ProfileLock(state, trainer, engine=engine) as source_lock:
                 _copy_seed(source_lock.paths['save'], paths['save'])
         elif seed_save is not None:
             _copy_seed(seed_save, paths['save'])
@@ -134,9 +135,10 @@ def offline_profile(state_dir, trainer, seed_save=None, *, copy_online=False):
 
 
 def run_offline(args):
-    with offline_profile(args.state_dir, args.trainer, args.seed_save, copy_online=args.copy_online) as paths:
+    with offline_profile(args.state_dir, args.trainer, args.seed_save, copy_online=args.copy_online,
+                         engine=getattr(args, 'engine', 'vanilla')) as paths:
         command = game_command(args.binary, Path(args.state_dir) / '.offline', paths,
-                               args.display, online=False)
+                               args.display, online=False, engine=getattr(args, 'engine', 'vanilla'))
         if args.test_input:
             source = Path(args.test_input).absolute()
             target = paths['profile'] / 'input.txt'

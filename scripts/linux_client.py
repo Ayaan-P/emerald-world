@@ -10,12 +10,21 @@ import sys
 REPO = Path(__file__).resolve().parents[1]
 
 
-def discover_binary():
+ENGINE_BINARIES = {
+    'vanilla': ('build/pokeemerald64', 'pokeemerald64'),
+    'expansion-native': ('build/expansion-native/pokeemerald-native',),
+}
+
+
+def discover_binary(engine='vanilla'):
     """Only inspect the two documented checkout locations, in priority order."""
-    for path in (REPO / 'build/pokeemerald64', REPO / 'pokeemerald64'):
+    if engine not in ENGINE_BINARIES:
+        raise ValueError('engine must be vanilla or expansion-native')
+    for relative in ENGINE_BINARIES[engine]:
+        path = REPO / relative
         if path.exists() or path.is_symlink():
             return path
-    return REPO / 'build/pokeemerald64'
+    return REPO / ENGINE_BINARIES[engine][0]
 
 
 def discover_display(directory=Path('/tmp')):

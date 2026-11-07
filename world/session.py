@@ -23,10 +23,13 @@ class DesktopSession:
             raise ValueError('worlds root must be a directory')
         return root
 
-    def __init__(self, worlds_root):
+    def __init__(self, worlds_root, engine='vanilla'):
         root = Path(worlds_root)
         if not root.is_absolute() or root.resolve() != root or not root.is_dir():
             raise ValueError('choose an existing absolute worlds root without symlinks')
+        from .launcher import engine_state
+        engine_state(root, engine)  # Validate engine before retaining launcher state.
+        self.engine = engine
         self.root = root
         self.state = None
         self.server = None
@@ -46,11 +49,11 @@ class DesktopSession:
         self.status = 'Choose a world to host or join.'
 
     def worlds(self):
-        return discover_worlds(self.root)
+        return discover_worlds(self.root, self.engine)
 
     def world_library(self):
         from .world_library import cards
-        return cards(self.root, self.worlds())
+        return cards(self.root, self.worlds(), engine=self.engine)
 
     def friend_worlds(self):
         from .friend_worlds import worlds
@@ -124,7 +127,14 @@ class DesktopSession:
             if path.exists():
                 raise ValueError('world already exists; select it to resume')
             path.mkdir(mode=0o700)
-            server = WorldServer(path/'transport/world.sock', path)
+            from .launcher import engine_state
+            server_root = engine_state(path, self.engine)
+            server_root.mkdir(parents=True, mode=0o700, exist_ok=True)
+            if server_root.resolve() != server_root:
+                raise ValueError('engine state cannot contain symlinks')
+            server_root.chmod(0o700)
+            server = WorldServer(server_root/'transport/world.sock', path,
+                                 admin_path=server_root/'admin.sock')
             server.close()
             return path
 
@@ -142,7 +152,15 @@ class DesktopSession:
         with WorldActivityLock(path):
             if not any(item['path'] == str(path) for item in self.worlds()):
                 raise ValueError('select an existing world')
-            server = WorldServer(path/'transport/world.sock', path, persist_generated_cave=True, archive_generated_areas=True)
+            from .launcher import engine_state
+            server_root = engine_state(path, self.engine)
+            server_root.mkdir(parents=True, mode=0o700, exist_ok=True)
+            if server_root.resolve() != server_root:
+                raise ValueError('engine state cannot contain symlinks')
+            server_root.chmod(0o700)
+            server = WorldServer(server_root/'transport/world.sock', path,
+                                 persist_generated_cave=True, archive_generated_areas=True,
+                                 admin_path=server_root/'admin.sock')
             try:
                 server.start()
             except BaseException:
@@ -158,7 +176,8 @@ class DesktopSession:
         path = self._world(name)
         if not any(item['path'] == str(path) for item in self.worlds()):
             raise ValueError('select an existing world')
-        if not admin(path/'transport/world.sock', {'command': 'inspect'}).get('ok'):
+        from .launcher import engine_state
+        if not admin(engine_state(path, self.engine)/'transport/world.sock', {'command': 'inspect'}).get('ok'):
             raise ValueError('world is not available')
         self.state = path
         self.status = 'Joined local world ' + name
@@ -166,7 +185,7 @@ class DesktopSession:
     def local_profile(self, trainer, seed_save=None):
         if self.state is None or (self.broker is not None and self.server is None):
             raise ValueError('host or join a local world first')
-        return prepare_profile(self.state, trainer, seed_save)
+        return prepare_profile(self.state, trainer, seed_save, engine=self.engine)
 
     def tls_material(self):
         import os
@@ -215,7 +234,8 @@ class DesktopSession:
         import hashlib
         import ssl
         pin = hashlib.sha256(ssl.PEM_cert_to_DER_cert(Path(cert).read_text())).hexdigest()
-        broker = HostBroker(self.state/'transport/world.sock', cert, key, listen)
+        from .launcher import engine_state
+        broker = HostBroker(engine_state(self.state, self.engine)/'transport/world.sock', cert, key, listen)
         try:
             broker.start()
         except BaseException:
@@ -258,9 +278,11 @@ class DesktopSession:
             raise ValueError('only the host can issue trainer credentials')
         # Validate paths before the identity service creates the directory.
         from .launcher import profile_paths
-        profile_paths(self.state, trainer)
+        profile_paths(self.state, trainer, engine=self.engine)
         destination = Path(destination).absolute()
-        if destination.resolve().is_relative_to(self.state/'transport') or destination.resolve().is_relative_to(self.state/'trainers'):
+        from .launcher import engine_state
+        engine_root = engine_state(self.state, self.engine)
+        if destination.resolve().is_relative_to(engine_root/'transport') or destination.resolve().is_relative_to(engine_root/'trainers'):
             raise ValueError('keep invitations outside game-visible directories')
         if destination.exists() or destination.is_symlink():
             raise ValueError('refusing to replace an existing invitation')
@@ -284,7 +306,7 @@ class DesktopSession:
         path = self._world(name)
         from .world_library import WorldActivityLock
         with WorldActivityLock(path):
-            paths = profile_paths(path, identity['trainer'])
+            paths = profile_paths(path, identity['trainer'], engine=self.engine)
             if (path/'world.sqlite3').exists():
                 raise ValueError('remote saves need a separate local world name')
             marker = path/'remote.json'
@@ -292,11 +314,12 @@ class DesktopSession:
             if marker.is_symlink() or (marker.exists() and json.loads(marker.read_text()) != binding):
                 raise ValueError('this save directory belongs to a different remote host')
             path.mkdir(mode=0o700, exist_ok=True)
-            transport = path/'transport'
+            from .launcher import engine_state
+            transport = engine_state(path, self.engine)/'transport'
             if transport.resolve() != transport:
                 raise ValueError('transport cannot be a symlink')
             from .launcher import ProfileLock
-            with ProfileLock(path, identity['trainer']):
+            with ProfileLock(path, identity['trainer'], engine=self.engine):
                 broker = ClientBroker(transport/'world.sock', remote, fingerprint=fingerprint,
                                       handshake_timeout=3)
                 try:
@@ -347,21 +370,28 @@ class DesktopSession:
         self.status = f'Game display {display} ready. Return to Play and launch your trainer.'
         return display
 
-    def launch_offline(self, world, trainer, binary=REPO/'build/pokeemerald64', display=':93', copy_online=False, *, seed_save=None):
+    def launch_offline(self, world, trainer, binary=REPO/'build/pokeemerald64', display=':93', copy_online=False, *, seed_save=None, engine=None):
+        selected_engine = self.engine if engine is None else engine
+        if selected_engine != self.engine:
+            raise ValueError('Launcher engine does not match the selected world namespace')
         from .offline import offline_profile
         state = self._world(world)
         # Snapshot preparation and native play acquire the same destination lock.
         # A competing start between them fails closed instead of sharing a save.
         try:
-            with offline_profile(state, trainer, seed_save=seed_save, copy_online=copy_online) as paths:
+            with offline_profile(state, trainer, seed_save=seed_save, copy_online=copy_online,
+                                   engine=self.engine) as paths:
                 offline_paths = dict(paths)
         except ValueError as exc:
             raise SessionError(str(exc)) from None
         except OSError:
             raise SessionError('Offline copy could not be prepared. Stop its online game before copying and use Resume for an existing copy.') from None
-        return self.launch(offline_paths, binary, display, _offline_state=state/'.offline')
+        return self.launch(offline_paths, binary, display, _offline_state=state/'.offline', engine=selected_engine)
 
-    def launch(self, paths, binary=REPO/'build/pokeemerald64', display=':93', agent_control=False, *, _offline_state=None):
+    def launch(self, paths, binary=REPO/'build/pokeemerald64', display=':93', agent_control=False, *, _offline_state=None, engine=None):
+        selected_engine = self.engine if engine is None else engine
+        if selected_engine != self.engine:
+            raise ValueError('Launcher engine does not match the selected world namespace')
         from .launcher import ProfileLock, profile_paths
         state = _offline_state if _offline_state is not None else self.state
         if state is None:
@@ -370,7 +400,7 @@ class DesktopSession:
         if offline and (state.name != '.offline' or agent_control):
             raise ValueError('Choose a separate human offline profile.')
         trainer = paths['profile'].name
-        if paths != profile_paths(state, trainer):
+        if paths != profile_paths(state, trainer, engine=self.engine):
             raise ValueError('profile must belong to the selected world')
         if not offline and self.remote_trainer is not None and trainer != self.remote_trainer:
             raise SessionError('Trainer must match this session\'s assigned invitation.')
@@ -379,48 +409,58 @@ class DesktopSession:
             raise ValueError('this trainer already has a running game')
         if key in self.game_locks:
             self.game_locks.pop(key).close()
-        import os
-        import shutil
-        command = (game_command(binary, state, paths, display, online=False) if offline else
-                   game_command(binary, state, paths, display, agent_control=True) if agent_control else
-                   game_command(binary, state, paths, display))
-        if not shutil.which('bwrap'):
-            raise SessionError('Bubblewrap is required to isolate the native game.')
-        if not Path(binary).is_file() or not os.access(binary, os.X_OK):
-            raise SessionError('Native game binary is missing or not executable. Select a built game binary.')
-        if display and not Path('/tmp/.X11-unix/X' + display[1:]).is_socket():
-            raise SessionError('Dedicated Xephyr display is missing. Start Xephyr :93 or select an existing dedicated display.')
-        if offline:
-            from .offline import OfflineGameLock
-            lock = OfflineGameLock(state.parent, trainer)
-        else:
-            lock = ProfileLock(state, trainer)
-        try:
-            if agent_control:
-                from .launcher import check_player_endpoint
-                check_player_endpoint(paths)
-            logfile = paths['profile']/'native.log'
-            if logfile.is_symlink():
-                raise SessionError('Native log cannot be a symlink.')
-            paths['telemetry'].unlink(missing_ok=True)
-            # Validate the opened inode before truncation. A hardlinked log
-            # must never erase a save, and a FIFO must not block the UI thread.
-            import stat
+        if self.engine == 'expansion-native':
+            from .expansion import ExpansionSession
+            expansion_state = state.parent if offline else state
+            expansion = ExpansionSession(expansion_state, trainer, online=not offline)
+            if expansion.paths != paths:
+                raise ValueError('Expansion profile does not match selected engine state')
             try:
-                fd = os.open(logfile, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
-            except OSError as exc:
-                raise SessionError('Native log cannot be opened safely.') from exc
-            with os.fdopen(fd, 'wb') as output:
-                info = os.fstat(output.fileno())
-                if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
-                        or info.st_uid != os.geteuid()):
-                    raise SessionError('Native log must be an owned single-link regular file.')
-                os.ftruncate(output.fileno(), 0)
-                process = subprocess.Popen(command, stdin=subprocess.DEVNULL,
-                                           stdout=output, stderr=subprocess.STDOUT)
-        except BaseException:
-            lock.close()
-            raise
+                process, lock = expansion.start(binary, display, agent_control=agent_control,
+                                               provision_online=False)
+            except (OSError, ValueError) as exc:
+                raise SessionError(str(exc)) from None
+        else:
+            import os
+            import shutil
+            command = (game_command(binary, state, paths, display, online=False) if offline else
+                       game_command(binary, state, paths, display, agent_control=True) if agent_control else
+                       game_command(binary, state, paths, display))
+            if not shutil.which('bwrap'):
+                raise SessionError('Bubblewrap is required to isolate the native game.')
+            if not Path(binary).is_file() or not os.access(binary, os.X_OK):
+                raise SessionError('Native game binary is missing or not executable. Select a built game binary.')
+            if display and not Path('/tmp/.X11-unix/X' + display[1:]).is_socket():
+                raise SessionError('Dedicated Xephyr display is missing. Start Xephyr :93 or select an existing dedicated display.')
+            if offline:
+                from .offline import OfflineGameLock
+                lock = OfflineGameLock(state.parent, trainer, engine=self.engine)
+            else:
+                lock = ProfileLock(state, trainer, engine=self.engine)
+            try:
+                if agent_control:
+                    from .launcher import check_player_endpoint
+                    check_player_endpoint(paths)
+                logfile = paths['profile']/'native.log'
+                if logfile.is_symlink():
+                    raise SessionError('Native log cannot be a symlink.')
+                paths['telemetry'].unlink(missing_ok=True)
+                import stat
+                try:
+                    fd = os.open(logfile, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+                except OSError as exc:
+                    raise SessionError('Native log cannot be opened safely.') from exc
+                with os.fdopen(fd, 'wb') as output:
+                    info = os.fstat(output.fileno())
+                    if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                            or info.st_uid != os.geteuid()):
+                        raise SessionError('Native log must be an owned single-link regular file.')
+                    os.ftruncate(output.fileno(), 0)
+                    process = subprocess.Popen(command, stdin=subprocess.DEVNULL,
+                                               stdout=output, stderr=subprocess.STDOUT)
+            except BaseException:
+                lock.close()
+                raise
         self.games[key] = (process, paths)
         self.game_locks[key] = lock
         self.agent_games.discard(key)
@@ -533,7 +573,8 @@ class DesktopSession:
         self.gm_error = None
         def work():
             try:
-                with RuntimeGM(self.state, str(self.state/'transport/world.sock'), model=MODEL,
+                from .launcher import engine_state
+                with RuntimeGM(self.state, str(engine_state(self.state, self.engine)/'transport/world.sock'), model=MODEL,
                                timeout=30, poll_interval=1) as runtime:
                     ready.set()
                     runtime.run(self.gm_stop)
@@ -568,7 +609,8 @@ class DesktopSession:
         if paths['config'].stat().st_size > 4096:
             raise SessionError('Trainer connection configuration is invalid.')
         fields = dict(line.split(' ', 1) for line in paths['config'].read_text().splitlines())
-        if (fields.get('trainer') != trainer or fields.get('socket') != str(self.state/'transport/world.sock')
+        from .launcher import engine_state
+        if (fields.get('trainer') != trainer or fields.get('socket') != str(engine_state(self.state, self.engine)/'transport/world.sock')
                 or not re.fullmatch(r'[0-9a-fA-F]{64}', fields.get('token', ''))):
             raise SessionError('Choose a trainer provisioned for this connection.')
         return IntentClient(fields['socket'], trainer, fields['token'], timeout=3)
@@ -633,7 +675,8 @@ class DesktopSession:
         try:
             if self.server is not None or self.broker is None:
                 from .launcher import admin
-                value = admin(self.state/'transport/world.sock', {'command': 'inspect'})
+                from .launcher import engine_state
+                value = admin(engine_state(self.state, self.engine)/'transport/world.sock', {'command': 'inspect'})
                 return {'connected': value.get('ok') is True,
                         'players': [p['id'] for p in value.get('players', [])]}
             # Control role must never evict the native trainer presence.

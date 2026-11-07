@@ -1,9 +1,9 @@
 {
   "description": "Current source-only incremental engine checkpoint; not a complete-game acceptance",
   "base_engine_commit": "e406cf82922e9c3a5bfee746f9a97f67f3916a4c",
-  "target_engine_commit": "9f188f2c299535015759e1ed90a7b53655f4d049",
+  "target_engine_commit": "9506377d1fff0e1f553caaf66f99550cbd715f59",
   "patch": "native-world-integration-current.patch",
-  "patch_sha256": "f57008dc6ee32dd9486d802419c1aa217903ee675a7fc65dad44a937729e4b84",
+  "patch_sha256": "0c87f2f0809891e8670c471c619865198b6f470305e8030615d4484091186958",
   "files": [
     {
       "path": "data/battle_scripts_2.s",
@@ -102,6 +102,14 @@
       "sha256": "22d258993828221948d5dd3475d27c3a2fd731875e86014f9e8205081c21fba7"
     },
     {
+      "path": "src/battle_bg.c",
+      "sha256": "148cb2a0d390bcd91f49326f0bd7d79673de1809ac608c55263db7afca963de3"
+    },
+    {
+      "path": "src/battle_controller_link_opponent.c",
+      "sha256": "da43857ab864f52d3b05cf785934d3520fbb98f7582fb0d958884ad473a5fc83"
+    },
+    {
       "path": "src/battle_controller_link_partner.c",
       "sha256": "6b40c8c2a2a5578352490cd3e76cea4e0d9ed1de8af5c1558375517e2cc49213"
     },
@@ -115,7 +123,7 @@
     },
     {
       "path": "src/battle_gfx_sfx_util.c",
-      "sha256": "b2566ca5401e633ef119301c6093f2e33cb719b077949fd5c68bcbd5d3e6ee7a"
+      "sha256": "4563e519beb72dd9c2f0d183eb235dd54d28afdccdc554240c8e8600576ec706"
     },
     {
       "path": "src/battle_gimmick.c",
@@ -130,8 +138,16 @@
       "sha256": "c701a2fb9826156f90d35934dad16ffdb127770cbfe73f35f062305d9a0816de"
     },
     {
+      "path": "src/battle_intro.c",
+      "sha256": "d0495fe269945fff2bdd87fed2f98dd82c684b0e24ba96931cfd4d6d74b9192f"
+    },
+    {
       "path": "src/battle_main.c",
       "sha256": "44d0d5d8d6681f014b5858d4a46edc052f14d7d841d4f9a73710118b8342fb84"
+    },
+    {
+      "path": "src/battle_message.c",
+      "sha256": "2a1c3dd65266b65c489d30ccce1d9717209c2f6e3e097edb2a0a9a4cbfe4b330"
     },
     {
       "path": "src/battle_script_commands.c",
@@ -194,6 +210,14 @@
       "sha256": "ebd9a665498b5acd8f4822e7d7668da9d25730d6da678e3fff3729d569cabc67"
     },
     {
+      "path": "src/pokemon_summary_screen.c",
+      "sha256": "97d275c57c61f36532508b465213bb839e8c26b17edf3f8fdab65975b96f7149"
+    },
+    {
+      "path": "src/reshow_battle_screen.c",
+      "sha256": "f602a6c8799ef7371d0d0821093bb0bec5c879e0c98240b96c11187dddc63973"
+    },
+    {
       "path": "src/script_movement.c",
       "sha256": "e71ec1ba8c16e621b9147ddd88c3609c4e10fc3801b33582604cc5d2d7d7810c"
     },
@@ -251,5 +275,5 @@
     "identical": true,
     "fresh_clone_build_verified": false
   },
-  "reconstructed_tree": "374a5938af4354d1d24598ab175fc0692c2cb200"
+  "reconstructed_tree": "153a2167574ccef824ef1e688c99731adde1593c"
 }

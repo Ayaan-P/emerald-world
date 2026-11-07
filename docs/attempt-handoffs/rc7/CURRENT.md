@@ -3,7 +3,7 @@
 ## Current source
 
 - App branch: `integrate/rc7`. Engine gitlink and JSON manifest are authoritative.
-- Engine checkpoint: `9f188f2c299535015759e1ed90a7b53655f4d049` on local `integrate/rc7-world`.
+- Engine checkpoint: `9506377d1fff0e1f553caaf66f99550cbd715f59` on local `integrate/rc7-world`.
 - Engine is an existing submodule, not another product. Its local commit is not
   fetchable from the upstream URL in `.gitmodules`; the complete source deltas
   are published here so a parent push does not imply a missing object is public.
@@ -84,3 +84,7 @@ The original-to-Expansion contract map is `docs/RC7_PORT_CONTRACT.md`.
   Strict-dispatch draft is HELD: independent review found legitimate-action
   rejection, missing completion, premature correlation retirement and missing
   snapshot implementations. It is not integrated or accepted.
+
+## Final RC7 pre-RC9 checkpoint
+
+Engine 9506377d1fff0e1f553caaf66f99550cbd715f59 includes original menu-return, absent-NPC rendering, trainer presentation and private-summary guards. The actual extracted Linux package passed ordinary multiplayer battle, shared wild win/private EXP, independent normal saves and cold Continue. Packaged DesktopSession created and authenticated an Expansion profile and reached ready overworld. No separate RC7 release was published; user selected combined RC9 from this checkpoint plus Dot PR237. Capture/medicine are expected implemented behavior, not disabled features; their complete action journey is not asserted here.

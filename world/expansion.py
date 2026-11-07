@@ -4,7 +4,11 @@ The game owns its world/link connections and private ownership transactions.
 Expansion profiles and authority remain isolated from vanilla save/protocol data.
 """
 import json
+import os
 from pathlib import Path
+import re
+import socket
+import stat
 import subprocess
 
 from .launcher import (REPO, ProfileLock, check_player_endpoint, engine_state,
@@ -77,15 +81,130 @@ class ExpansionSession:
         self.trainer = trainer
         self.online = online
 
+    def _verify_prepared_profile(self):
+        """Validate host/join credentials already installed in this private profile."""
+        import os
+
+        path = self.paths['config']
+        try:
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        except OSError as exc:
+            raise ValueError('Expansion profile has no safe prepared authority config') from exc
+        with os.fdopen(fd, 'r') as source:
+            info = os.fstat(source.fileno())
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                    or info.st_uid != os.geteuid() or info.st_mode & 0o077):
+                raise ValueError('Expansion authority config must be a private owned file')
+            text = source.read(4097)
+        if len(text.encode()) > 4096:
+            raise ValueError('Expansion authority config is oversized')
+        fields = {}
+        for line in text.splitlines():
+            key, separator, value = line.partition(' ')
+            if not separator or key in fields:
+                raise ValueError('Expansion authority config is invalid')
+            fields[key] = value
+        if (set(fields) != {'socket', 'trainer', 'token', 'telemetry'}
+                or fields['socket'] != str(self.state/'transport/world.sock')
+                or fields['trainer'] != self.trainer
+                or fields['telemetry'] != str(self.paths['telemetry'])
+                or not re.fullmatch(r'[0-9a-fA-F]{64}', fields['token'])):
+            raise ValueError('Expansion profile is not prepared for this engine authority')
+
+    def start(self, binary=BINARY, display=None, *, agent_control=False, provision_online=True):
+        """Start one browser-managed native client and return its held profile lock."""
+        import shutil
+        import subprocess
+
+        if self.state.resolve() != self.state or self.base.resolve() != self.base:
+            raise ValueError('Expansion state cannot contain symlinks')
+        if self.online:
+            self._require_authority()
+        self.state.mkdir(parents=True, mode=0o700, exist_ok=True)
+        if self.online:
+            lock = ProfileLock(self.base, self.trainer, engine=ENGINE)
+            profile_lock = lock
+        else:
+            from .offline import OfflineGameLock
+            lock = OfflineGameLock(self.base.parent, self.trainer, engine=ENGINE)
+            profile_lock = lock.profile
+            if profile_lock is None:
+                lock.close()
+                raise ValueError('Expansion profile namespace mismatch')
+        try:
+            if profile_lock.paths != self.paths:
+                raise ValueError('Expansion profile namespace mismatch')
+            if self.online and provision_online:
+                _prepare_profile(self.base, self.trainer, None, self.paths, engine=ENGINE)
+            elif self.online:
+                self._verify_prepared_profile()
+            else:
+                self.paths['profile'].mkdir(parents=True, mode=0o700, exist_ok=True)
+            if agent_control:
+                check_player_endpoint(self.paths)
+            binary = Path(binary)
+            if not binary.is_file() or not os.access(binary, os.X_OK):
+                raise ValueError('Expansion native binary is missing or not executable')
+            if not shutil.which('bwrap'):
+                raise ValueError('Bubblewrap is required to isolate the Expansion client')
+            if display and not Path('/tmp/.X11-unix/X' + display[1:]).is_socket():
+                raise ValueError('Dedicated game display is missing')
+            command = game_command(binary, self.base, self.paths, display,
+                                   agent_control=agent_control, online=self.online, engine=ENGINE)
+            symbols = Path(str(binary.resolve()) + '.symbols')
+            if symbols.is_file():
+                boundary = command.index('--')
+                command[boundary:boundary] = ['--ro-bind', str(symbols), str(symbols)]
+            for filename in ('presence.json', 'telemetry.json'):
+                path = self.paths['profile'] / filename
+                if path.is_symlink():
+                    raise ValueError('Expansion telemetry cannot be a symlink')
+                path.unlink(missing_ok=True)
+            logfile = self.paths['profile'] / 'native.log'
+            if logfile.is_symlink():
+                raise ValueError('Native log cannot be a symlink')
+            fd = os.open(logfile, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+            with os.fdopen(fd, 'wb') as output:
+                info = os.fstat(output.fileno())
+                if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                        or info.st_uid != os.geteuid()):
+                    raise ValueError('Native log must be an owned single-link regular file')
+                os.ftruncate(output.fileno(), 0)
+                process = subprocess.Popen(command, stdin=subprocess.DEVNULL,
+                                           stdout=output, stderr=subprocess.STDOUT)
+            return process, lock
+        except BaseException:
+            lock.close()
+            raise
+
+    def _require_authority(self):
+        """Fail before profile provisioning if the matching host is absent."""
+        endpoint = self.state / 'transport' / 'world.sock'
+        try:
+            info = endpoint.lstat()
+        except FileNotFoundError:
+            raise ValueError('Expansion world authority is not running; start the expansion host first') from None
+        if (not stat.S_ISSOCK(info.st_mode) or info.st_uid != os.geteuid()
+                or info.st_mode & 0o077):
+            raise ValueError('Expansion world authority socket is unsafe or invalid')
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+            probe.settimeout(0.2)
+            try:
+                probe.connect(str(endpoint))
+            except OSError as exc:
+                raise ValueError('Expansion world authority is not accepting connections; start the expansion host first') from exc
+
     def run(self, binary=BINARY, display=None, *, replay=None, frames=None, agent_control=False, print_command=False):
         if self.state.resolve() != self.state:
             raise ValueError('Expansion state cannot contain symlinks')
+        if self.online:
+            self._require_authority()
         self.state.mkdir(parents=True, mode=0o700, exist_ok=True)
         with ProfileLock(self.base, self.trainer, engine=ENGINE) as lock:
             if lock.paths != self.paths:
                 raise ValueError('Expansion profile namespace mismatch')
             if self.online:
-                _prepare_profile(self.state, self.trainer, None, self.paths)
+                _prepare_profile(self.base, self.trainer, None, self.paths, engine=ENGINE)
             else:
                 self.paths['profile'].mkdir(parents=True, mode=0o700, exist_ok=True)
             if agent_control:

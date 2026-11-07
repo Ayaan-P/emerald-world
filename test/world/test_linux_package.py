@@ -29,10 +29,11 @@ class LinuxPackageTests(unittest.TestCase):
         (self.dist / 'index.html').write_text('<html><script src="/assets/main.js"></script></html>')
         (self.dist / 'assets/main.js').write_text('console.log("fixture");')
 
-    def package(self, version='1.2.3', output=None, success=True):
+    def package(self, version='1.2.3', output=None, success=True, engine='vanilla'):
         output = output or self.root / ('output-' + version)
         result = subprocess.run([sys.executable, str(PACKAGER), '--binary', str(self.binary),
-            '--web-dist', str(self.dist), '--version', version, '--output', str(output)],
+            '--web-dist', str(self.dist), '--version', version, '--output', str(output),
+            '--engine', engine],
             capture_output=True, text=True)
         self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
         return output / ('EmeraldWorld-' + version + '-linux-x86_64.tar.gz')

@@ -42,6 +42,13 @@ def verify(root):
             or not VERSION.fullmatch(manifest['version'])):
         raise ValueError('Unsupported release manifest')
     files = manifest['files']
+    engine = manifest.get('engine', 'vanilla')
+    binary = manifest.get('binary', 'build/pokeemerald64')
+    expected_binary = {'vanilla': 'build/pokeemerald64',
+                       'expansion-native': 'build/expansion-native/pokeemerald-native'}.get(engine)
+    if expected_binary is None or binary != expected_binary or binary not in files:
+        raise ValueError('Release engine and native binary do not match')
+    manifest['engine'], manifest['binary'] = engine, binary
     for name, metadata in files.items():
         relative = PurePosixPath(name)
         if (not relative.parts or relative.is_absolute() or '..' in relative.parts

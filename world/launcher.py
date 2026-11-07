@@ -206,6 +206,9 @@ def check_player_endpoint(paths):
 def game_command(binary, state_dir, paths, display=None, agent_control=False, *, online=True, engine='vanilla'):
     """Construct explicit allowlist mounts. Never mount whole HOME or /run."""
     engine_state(state_dir, engine)
+    mismatched_binary = 'pokeemerald-native' if engine == 'vanilla' else 'pokeemerald64'
+    if (Path(binary).name == mismatched_binary or Path(binary).resolve().name == mismatched_binary):
+        raise ValueError('Native binary does not match the selected engine state namespace')
     expanded = engine == 'expansion-native'
     if expanded and paths != profile_paths(state_dir, paths['profile'].name, engine=engine):
         raise ValueError('Expansion requires its own separate profile')
@@ -278,12 +281,12 @@ def require_online_state(state_dir):
         raise ValueError('Offline copies cannot connect to world services. Select the original online world.')
 
 
-def prepare_profile(state_dir, trainer, seed_save=None):
-    with ProfileLock(state_dir, trainer) as lock:
-        return _prepare_profile(state_dir, trainer, seed_save, lock.paths)
+def prepare_profile(state_dir, trainer, seed_save=None, *, engine='vanilla'):
+    with ProfileLock(state_dir, trainer, engine=engine) as lock:
+        return _prepare_profile(state_dir, trainer, seed_save, lock.paths, engine=engine)
 
 
-def _prepare_profile(state_dir, trainer, seed_save, paths):
+def _prepare_profile(state_dir, trainer, seed_save, paths, *, engine='vanilla'):
     """Prepare only while the caller owns the profile lock."""
     require_online_state(state_dir)
     from world.server import create_identity
@@ -302,7 +305,7 @@ def _prepare_profile(state_dir, trainer, seed_save, paths):
         if seed == paths['save']:
             raise ValueError('seed must differ from profile save')
         shutil.copyfile(seed, paths['save'])
-    socket_path = Path(state_dir).resolve() / 'transport/world.sock'
+    socket_path = engine_state(state_dir, engine) / 'transport/world.sock'
     paths['config'].write_text(f'socket {socket_path}\ntrainer {trainer}\ntoken {token}\ntelemetry {paths["telemetry"]}\n')
     os.chmod(paths['config'], 0o600)
     if not paths['settings'].exists():
@@ -315,10 +318,11 @@ def admin(socket_path, command):
     return admin_request(str(socket_path), command)
 
 
-def discover_worlds(worlds_root):
+def discover_worlds(worlds_root, engine='vanilla'):
     """List valid immediate child worlds without following links or opening saves."""
     from urllib.parse import quote
     root = Path(worlds_root).expanduser()
+    engine_state(root, engine)
     try:
         root.lstat()
     except OSError as exc:
@@ -359,6 +363,7 @@ def main(argv=None):
     desktop.add_argument('--ui-python', type=Path, default=Path('/usr/bin/python3'), help='UI interpreter used with --tk-runtime')
     worlds = sub.add_parser('list-worlds', help='discover worlds under an explicit directory')
     worlds.add_argument('--worlds-root', type=Path, required=True, help='directory whose immediate child worlds to list')
+    worlds.add_argument('--engine', choices=('vanilla', 'expansion-native'), default='vanilla')
     host = sub.add_parser('host', help='run persistent local world service in foreground')
     host.add_argument('--engine', choices=('vanilla', 'expansion-native'), default='vanilla')
     join = sub.add_parser('join', help='create/resume an independent trainer and launch the native game')
@@ -404,7 +409,7 @@ def main(argv=None):
         from world.session import run_desktop
         return run_desktop(args.worlds_root, args.binary, args.display)
     if args.command == 'list-worlds':
-        print(json.dumps({'worlds': discover_worlds(args.worlds_root)}, indent=2))
+        print(json.dumps({'worlds': discover_worlds(args.worlds_root, args.engine)}, indent=2))
         return 0
     if args.state_dir is None:
         p.error('--state-dir is required for this command')
