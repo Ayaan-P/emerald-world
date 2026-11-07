@@ -44,7 +44,9 @@ python3 -I entry.py
 ```
 
 Needs Linux x86_64, glibc 2.35+, SDL2, bubblewrap, Xephyr, X11/XWayland and a
-browser. No pip/npm installation is required to play the archive. See INSTALL.txt
+browser. No pip/npm installation is required to play the archive. The new
+Expansion library defaults to `~/.ew/x` to leave space for Linux Unix-socket
+addresses; existing vanilla libraries are unchanged. See INSTALL.txt
 and manifest.json. Do not import or overwrite older human saves. Existing RC8
 releases and installed desktop shortcuts are not replaced by downloading RC9.
 Windows binaries are not included.

@@ -722,7 +722,7 @@ def open_browser(url):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--worlds-root', type=Path, default=Path.home() / '.local/share/emerald-world/worlds')
+    parser.add_argument('--worlds-root', type=Path, help='explicit library root; Expansion uses a short private default for Unix sockets')
     parser.add_argument('--binary', type=Path)
     parser.add_argument('--engine', choices=('vanilla', 'expansion-native'), default='vanilla',
                         help='pin this web launcher to one engine and its private profiles')
@@ -744,9 +744,16 @@ def main(argv=None):
     previous = signal.signal(signal.SIGTERM, interrupted)
     try:
         with ExitStack() as cleanup:
-            worlds_root = args.worlds_root.absolute()
-            if args.engine != 'vanilla':
-                worlds_root = worlds_root / 'engines' / args.engine
+            if args.worlds_root is None:
+                # Native Unix socket addresses have a 107-byte limit. Keep the
+                # new Expansion library isolated without doubling long prefixes.
+                # The existing vanilla library is deliberately unchanged.
+                worlds_root = (Path.home() / '.ew/x' if args.engine == 'expansion-native'
+                               else Path.home() / '.local/share/emerald-world/worlds')
+            else:
+                worlds_root = args.worlds_root.absolute()
+                if args.engine != 'vanilla':
+                    worlds_root = worlds_root / 'engines' / args.engine
             root = DesktopSession.create_root(worlds_root)
             instance = LauncherInstance(root)
             cleanup.callback(instance.close)

@@ -200,8 +200,20 @@ def main(argv=None):
                                        stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         endpoint = player_endpoint(paths[name])
         deadline = min(overall, time.monotonic()+15)
-        while not endpoint.is_socket():
+        # A terminated prior process can leave its socket inode until native's
+        # guarded startup replaces it. Existence is not listener readiness.
+        # Probe only the connection; never retry a state-changing press.
+        import socket
+        import errno
+        while True:
             healthy()
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+                    probe.connect(str(endpoint))
+                break
+            except OSError as exc:
+                if exc.errno not in (errno.ENOENT, errno.ECONNREFUSED):
+                    raise
             if time.monotonic() > deadline:
                 raise TimeoutError(name+' native control startup')
             time.sleep(.05)
