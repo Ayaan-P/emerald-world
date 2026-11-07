@@ -94,7 +94,7 @@ int main(void){printf("%zu %zu %zu %d %d %d\n",sizeof(struct Main),offsetof(stru
    subprocess.run(['cc','-std=gnu11','-fsyntax-only','-iquote',str(ROOT/'include'),'-iquote',str(ROOT),'-DMODERN=1','-DNONMATCHING','-DUBFIX','-DWORLD_EXTENDED_SPRITES=1','-DWORLD_NATIVE_OAM=1',str(p)],check=True)
  def test_renderer_and_build_use_opt_in_native_count(self):
   renderer=(ROOT/'src/platform/gba_easy_draw.c').read_text();make=(ROOT/'Makefile').read_text()
-  self.assertIn('nativeCount = OAM_ENTRY_COUNT',renderer);self.assertIn('WORLD_NATIVE_OAM ?= 0',make)
+  self.assertIn('nativeCount = OAM_ENTRY_COUNT',renderer);self.assertIn('WORLD_NATIVE_OAM ?= $(RC5_FEATURES)',make);self.assertIn('RC5_FEATURES ?= 1',make)
   self.assertGreaterEqual(make.count('-DWORLD_NATIVE_OAM=$(WORLD_NATIVE_OAM)'),2)
 
  def test_actual_software_renderer_draws_extended_entry_and_keeps_priority(self):

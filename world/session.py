@@ -452,12 +452,12 @@ class DesktopSession:
                        else f'{trainer} starting. Use the native game window to play.')
         return process
 
-    def author_shared_cave(self, theme, *, wilds=False, guide=False, cast=False, cohort='vanilla'):
+    def author_shared_cave(self, theme, *, wilds=False, guide=False, cast=False, xl=False, cohort='vanilla'):
         """Explicit local-host action; never display provider or credential text."""
         from .author_cave import MAX_THEME, author
         if cohort not in ('vanilla', 'expansion-native'):
             raise SessionError('Choose a supported species cohort.')
-        if type(wilds) is not bool or type(guide) is not bool or type(cast) is not bool or ((guide or cast) and not wilds) or (guide and cast):
+        if type(xl) is not bool or (xl and (not wilds or guide or cast)) or type(wilds) is not bool or type(guide) is not bool or type(cast) is not bool or ((guide or cast) and not wilds) or (guide and cast):
             raise SessionError('Choose a cave or outdoor area.')
         if type(theme) is not str or not theme.strip() or len(theme.encode('utf-8')) > MAX_THEME:
             raise SessionError('Enter an area description of at most 2,000 UTF-8 bytes.')
@@ -470,7 +470,9 @@ class DesktopSession:
                    for peer in server.peers.values() if not peer.get('closing')):
                 raise SessionError('Everyone must leave the active generated area before you generate another.')
         try:
-            if cast:
+            if xl:
+                _, blob = author(theme, large=True, wilds=True, xl=True)
+            elif cast:
                 _, blob = author(theme, large=True, wilds=True, cast=True)
             elif guide:
                 _, blob = author(theme, large=True, wilds=True, guide=True)
