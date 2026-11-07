@@ -1,0 +1,35 @@
+{
+  "description": "Source-only WORLD usability candidate on RC9. Not a native build or gameplay acceptance.",
+  "base_engine_commit": "2024a83db5242783c0f9ae93f8381271045e7037",
+  "public_base_commit": "bb3fd057061cdd7e6a9e79b76abb41924ee44ecc",
+  "ordered_patches": [
+    "native-foundation.patch",
+    "native-world-wip.patch",
+    "native-world-integration-current.patch",
+    "native-player-ui.patch"
+  ],
+  "base_tree": "181a0eb3bdb9f9bc110c8c112a3d9109bf3e6cb6",
+  "result_tree": "77c00a6729f572b5ae549d3399026c9595b7874a",
+  "patch": "native-player-ui.patch",
+  "patch_sha256": "de6c5218a8cd823b944223241a2fdba7f61bb701f31e423760bd68152b15f771",
+  "files": [
+    {
+      "path": "include/platform/world_bridge.h",
+      "sha256": "35e63ac6496e2fa41c859c058cabf7b52c4f8797e28ca2ce7de67703f7d82c23"
+    },
+    {
+      "path": "src/world/world_bridge.c",
+      "sha256": "f0c0b8547c221f053d748c6107d1af401bcbfc641daaef8c33e5e5d832160787"
+    },
+    {
+      "path": "src/world/world_menu.c",
+      "sha256": "ef99fa140f8155c317231074d4f791db31657f1b937dd8cdcc21f2994a69e203"
+    }
+  ],
+  "verification": {
+    "exact_tree_reconstruction": true,
+    "native_build": false,
+    "native_gameplay": false,
+    "visual_inspection": false
+  }
+}

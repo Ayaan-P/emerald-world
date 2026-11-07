@@ -511,6 +511,10 @@ static void Disconnect(void)
 }
 
 bool8 WorldBridge_Enabled(void) { return sWorld.enabled; }
+bool8 WorldBridge_ConnectionActive(void)
+{
+    return sWorld.enabled && sWorld.connected && sWorld.snapshotAge <= 180;
+}
 bool8 WorldBridge_GeneratedCaveReady(void)
 {
 #if GENERATED_MAP_READY

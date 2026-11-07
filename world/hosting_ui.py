@@ -81,7 +81,18 @@ class HostedLauncher:
             pending = self.pending_create()
         except (OSError, ValueError, SessionError):
             pending = {'invalid': True}
-        return {'available': True, 'backup_available': backup_available(), 'enrolled': self.enrolled(), 'loaded': self.loaded,
+        enrolled = self.enrolled()
+        endpoint = None
+        if enrolled:
+            try:
+                from .hosting_client import HostingClient
+                address = HostingClient.from_file(self.profile).profile['endpoint']
+                endpoint = {'host': address['host'], 'port': address['port']}
+            except (OSError, ValueError, TypeError, KeyError):
+                # A changed profile must not turn a saved account into a health claim.
+                enrolled = False
+        return {'available': True, 'backup_available': backup_available(), 'enrolled': enrolled,
+                'endpoint': endpoint, 'loaded': self.loaded,
                 'worlds': self.worlds,
                 'pending': {'name': pending['name'], 'trainer': pending['trainer']} if pending and not pending.get('invalid') else pending}
 

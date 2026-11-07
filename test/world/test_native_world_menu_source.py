@@ -1,17 +1,18 @@
-"""Source contracts for the native handoff. Run with the integrated RC3 suite.
+"""Source contracts for the native WORLD menu and RC9 player UI handoff.
 
 Integrated controller scenarios (not run by this source-only worker):
-* At a full nine-row Start menu, WORLD opens Friends/Story rally/DexNav/Back.
+* At a full nine-row Start menu, WORLD opens its generated-area, Fly, guild,
+  rally, DexNav and shuffle actions.
   Check keyboard bindings and controller D-pad/A/B, including offline DexNav.
 * ASK invite: inspect roster/status with Left/Right, choose Not yet, then Ready.
-  Confirm menu-time presence stays busy and no guest moves before owner Go on.
+  Confirm menu-time presence stays busy and no guest moves before owner Start rally.
 * Owner at Roxanne (5,3): choose nearby/world, request, Cancel, re-request,
-  then Go on with an invited/not-yet guest. Only fresh ready guests travel.
+  then Start rally with an invited/not-yet guest. Only fresh ready guests travel.
 * Badge, uncleared Gym trainers, fainted party, wrong approach, offline server
   each produce an honest unavailable reason. No personal boss credit is shared.
 * Guest arrival: Return leaves the rally. Owner Finish exposes Return/Stay for
   returning guests. Stay clears only the spatial return record, not party/items.
-* While focused on Go on, change a remote roster/state. Focus must remain on
+* While focused on Start rally, change a remote roster/state. Focus must remain on
   that action or Back if it disappears, never jump onto a different command.
 * A queued command interrupted by Start, movement, script, battle, native link,
   trade or Fly must not consume input, unlock that owner, or warp through it.
@@ -19,12 +20,30 @@ Integrated controller scenarios (not run by this source-only worker):
   scene, disconnect, and restore a return anchor without touching another UI.
 """
 from pathlib import Path
+import hashlib
+import json
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 class NativeWorldMenuSource(unittest.TestCase):
+    def test_player_ui_handoff_is_bound_to_rc9_and_matching_menu(self):
+        handoff = ROOT / 'docs/attempt-handoffs/rc7'
+        manifest = json.loads((handoff / 'player-ui-source-manifest.json').read_text())
+        released = json.loads((handoff / 'current-source-manifest.json').read_text())
+        self.assertEqual(manifest['base_engine_commit'], released['target_engine_commit'])
+        self.assertEqual(manifest['base_tree'], released['reconstructed_tree'])
+        patch = (handoff / manifest['patch']).read_bytes()
+        self.assertEqual(hashlib.sha256(patch).hexdigest(), manifest['patch_sha256'])
+        files = {item['path']: item['sha256'] for item in manifest['files']}
+        self.assertEqual(set(files), {'include/platform/world_bridge.h',
+                                     'src/world/world_bridge.c', 'src/world/world_menu.c'})
+        for root_path, engine_path in [('src/platform/world_menu.c', 'src/world/world_menu.c'),
+                                       ('include/platform/world_bridge.h', 'include/platform/world_bridge.h')]:
+            source = (ROOT / root_path).read_text().rstrip() + '\n'
+            self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), files[engine_path])
+
     def test_start_menu_reuses_existing_row_capacity(self):
         source = (ROOT / 'src/start_menu.c').read_text()
         self.assertIn('sCurrentStartMenuActions[9]', source)
