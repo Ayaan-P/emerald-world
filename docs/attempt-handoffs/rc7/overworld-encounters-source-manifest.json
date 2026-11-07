@@ -1,0 +1,66 @@
+{
+  "description": "Opt-in personal visible encounters with existing tag co-op ownership integration. Native build and gameplay remain unverified.",
+  "base_engine_commit": "2024a83db5242783c0f9ae93f8381271045e7037",
+  "public_base_commit": "bb3fd057061cdd7e6a9e79b76abb41924ee44ecc",
+  "ordered_patches": [
+    "native-foundation.patch",
+    "native-world-wip.patch",
+    "native-world-integration-current.patch",
+    "native-player-ui.patch",
+    "native-collecting-ui.patch",
+    "native-overworld-encounters.patch"
+  ],
+  "base_tree": "5d82cc0edc6259f7847be0d97a4b0692e11c62e4",
+  "result_tree": "096faf4ef21293b9fadb7eebd3a835d81bd4fce6",
+  "patch": "native-overworld-encounters.patch",
+  "patch_sha256": "666af9a33cba1e5d2966a22dcec4748d416376f133da8ac0e7c54ec4004652c1",
+  "files": [
+    {
+      "path": "include/config/wild_encounter.h",
+      "sha256": "4dc53c3473a364a2143e9c9d002d252a6a6535d2343bb8cda821c22307bc893b"
+    },
+    {
+      "path": "include/platform/overworld_encounters.h",
+      "sha256": "4d2bbdf326a52cfdbb1820635f84dc1ed96be8082303a8fa8d6e45863b61aa52"
+    },
+    {
+      "path": "include/wild_encounter_ow.h",
+      "sha256": "4959871c40646063fae398e578d9a891bd295126ee5331fd114407bb9ba94651"
+    },
+    {
+      "path": "src/event_object_movement.c",
+      "sha256": "bb1892808da9aff486b69a75058718d36f36739e5dd1dd2badc3dbb6f565e984"
+    },
+    {
+      "path": "src/load_save.c",
+      "sha256": "ba3d96221b04ab259f240a83e3d16ac352881b819b2fb5a47cea932314825c58"
+    },
+    {
+      "path": "src/wild_encounter_ow.c",
+      "sha256": "c03200635e8feff404e9e4cdcf7f69715f0be9d980ba33b58de1c5d357cffb99"
+    },
+    {
+      "path": "src/world/overworld_encounters.c",
+      "sha256": "959e55834fac8ed794d211c75f415f4bef4cf2b97c14a8ebfee2af388727a12d"
+    },
+    {
+      "path": "src/world/world_activity.c",
+      "sha256": "18afc2eaa5d93a4f84061d0aa2e8c54621efc63f2cdfd163b35b31738c10eec1"
+    },
+    {
+      "path": "src/world/world_menu.c",
+      "sha256": "8b0cba8f7ab1e9c3cddd6a4537d5f20f72bc5b5d281be3418f83be279b13a26b"
+    }
+  ],
+  "verification": {
+    "exact_tree_reconstruction": true,
+    "policy_compile_and_run": true,
+    "native_build": false,
+    "native_gameplay": false,
+    "visual_inspection": false,
+    "coop_transition_ubsan": true
+  },
+  "partial_context_files": [
+    "src/event_object_movement.c"
+  ]
+}
