@@ -1,0 +1,331 @@
+{
+  "description": "Current source-only incremental engine checkpoint; not a complete-game acceptance",
+  "base_engine_commit": "e406cf82922e9c3a5bfee746f9a97f67f3916a4c",
+  "target_engine_commit": "2024a83db5242783c0f9ae93f8381271045e7037",
+  "patch": "native-world-integration-current.patch",
+  "patch_sha256": "56d1f12819a1c18abecb99e9250168c7966e8906edee6cc10a0d767640edcd7f",
+  "files": [
+    {
+      "path": "data/battle_scripts_2.s",
+      "sha256": "6328a8a6f402a0c243de6824b65669f560cac82fcbb2f7955c441a99de88793e"
+    },
+    {
+      "path": "data/scripts/repel.inc",
+      "sha256": "1cd88adf669b7daa404b7d6ed7d15a4aa0c83dfc09573ae45c3d154ca1542de4"
+    },
+    {
+      "path": "include/battle_controllers.h",
+      "sha256": "fc9dfdce32bd545d9e2da9c5cc05dd075f93291bae5d44ccbf4275a20e795342"
+    },
+    {
+      "path": "include/battle_gfx_sfx_util.h",
+      "sha256": "c6c8f31727a7e185f1d7a6d45f3e6f18d67a184a0427943a4d9d083e7f73fd6c"
+    },
+    {
+      "path": "include/battle_gimmick.h",
+      "sha256": "fc1418e5265a13fa4444908a8ee201ae067b2c151a2412c2d3f1ccca78e3322f"
+    },
+    {
+      "path": "include/battle_interface.h",
+      "sha256": "7be7d240493ac6f4e7c1514ed784535cd95a7b1ff40fe5c55c3f0b3c789a7caa"
+    },
+    {
+      "path": "include/battle_scripts.h",
+      "sha256": "41e067ede74a87fd9f28476d357e1322fe4e407ac73a79621cb74cfce1f574f3"
+    },
+    {
+      "path": "include/fieldmap.h",
+      "sha256": "69c8ebe15068502e3808ad51e2d4fb4aebf46be811e432d7a6edcbbe90054e1e"
+    },
+    {
+      "path": "include/librfu.h",
+      "sha256": "8773fb05518f6d871db40baae8b05ae3567e264f1b5f3cbff0935dad79a27963"
+    },
+    {
+      "path": "include/party_menu.h",
+      "sha256": "4e0b51b799e19fd249ecd76dd69f30a994d279490e7d79be848bbf9c0bfb9fd2"
+    },
+    {
+      "path": "include/platform/generated_map.h",
+      "sha256": "3fb22a801fdd597ef34c062887d62f122ce9b8e00b4e9c518232776433ce6004"
+    },
+    {
+      "path": "include/platform/player_control.h",
+      "sha256": "0126c458d599abb17dfd38a7cf3fb93c4aeea04d7c04b1a85e4689b4b67f5086"
+    },
+    {
+      "path": "include/platform/wild_shuffle.h",
+      "sha256": "a4573f7273a573c24b16b950bad62e4b6c09a9d94bbf3e00dda6ee5a61919b83"
+    },
+    {
+      "path": "include/platform/world_cave_wire.h",
+      "sha256": "0be1a9bd5b6a67c85d0502d12b55b33ea6f58b1215358e20ee77bdaeb5630f26"
+    },
+    {
+      "path": "include/platform/world_chat.h",
+      "sha256": "65377372914ce6fc15da81789aa3e90f0d5599834cf7e31c13106206c360cd05"
+    },
+    {
+      "path": "include/platform/world_coop.h",
+      "sha256": "85d60d43ffc0b5e1c65cf1821bd7d40869907c525c5ba46dca02d4c15b70f1fc"
+    },
+    {
+      "path": "include/platform/world_runtime.h",
+      "sha256": "dff34439be9aceae6ab04c8918141e44106abc9933ff1dcd7ea391f8d251e483"
+    },
+    {
+      "path": "include/platform/xl_progress_store.h",
+      "sha256": "396cbcb6c139720e3e816b5b4c5ee12dfc8f0fa5f22bdf29525517ba7c109802"
+    },
+    {
+      "path": "platform/Makefile",
+      "sha256": "5d0af18ba9a02cf2772582495259e4070cbe553050fd89c8c3061eb2eef97402"
+    },
+    {
+      "path": "platform/frame.c",
+      "sha256": "927f7ee331077b40f17e07a3bf99df82b8aa432aa26ff5bebb411b4f502c3169"
+    },
+    {
+      "path": "platform/frame.h",
+      "sha256": "c8d4824adbd772ac457c042869393d50ae6686b6e91033aad337310e3d709d3f"
+    },
+    {
+      "path": "platform/input.c",
+      "sha256": "f17fdab28aeaf714df4d53cf780f0f88d13c6fc9c66253b2153cc464bc3bd83f"
+    },
+    {
+      "path": "platform/input.h",
+      "sha256": "c3a50976a1c6c56ea9e4a4df5318cab96aaeb6699720fb6a74b10e5958b8a88c"
+    },
+    {
+      "path": "platform/inspect.c",
+      "sha256": "b8ebe4cb78c873ff8b198f3da6288ec9aa28dbf88515ffe3b814b1cc4e3c6eaf"
+    },
+    {
+      "path": "platform/main.c",
+      "sha256": "1d1eb58877ecf4e2aa0e0d4c2a561d86122264a6f710f7bed94466752deac16c"
+    },
+    {
+      "path": "platform/options.c",
+      "sha256": "a3fa9d01227c7ff95cdd4764436ed270ba2d988e10fd064786430e7e4710bcd2"
+    },
+    {
+      "path": "platform/options.h",
+      "sha256": "ac95078ba5d79cb3dd477d67742c5a6efb5120e0fde2d1f9340c2bda98103b24"
+    },
+    {
+      "path": "platform/video.c",
+      "sha256": "fe08da2273925d229311249cdd2ba7d2aa268ce824fd5b2ed71a7479104b10d4"
+    },
+    {
+      "path": "platform/video.h",
+      "sha256": "070e2d2337addd95e8fa9248dc2f1f20cdc781d7b8d3d2411919f3591e94b277"
+    },
+    {
+      "path": "platform/video_mode.h",
+      "sha256": "22d258993828221948d5dd3475d27c3a2fd731875e86014f9e8205081c21fba7"
+    },
+    {
+      "path": "src/battle_bg.c",
+      "sha256": "148cb2a0d390bcd91f49326f0bd7d79673de1809ac608c55263db7afca963de3"
+    },
+    {
+      "path": "src/battle_controller_link_opponent.c",
+      "sha256": "da43857ab864f52d3b05cf785934d3520fbb98f7582fb0d958884ad473a5fc83"
+    },
+    {
+      "path": "src/battle_controller_link_partner.c",
+      "sha256": "6b40c8c2a2a5578352490cd3e76cea4e0d9ed1de8af5c1558375517e2cc49213"
+    },
+    {
+      "path": "src/battle_controller_player.c",
+      "sha256": "692d06a58a764c00b438665deea395fc312167aa2eb3f69d2010e14dc94f43fa"
+    },
+    {
+      "path": "src/battle_controllers.c",
+      "sha256": "0e95dc233fc3b73914e7320522fe1d424d45c83b0549eed3f833e15cdd458b96"
+    },
+    {
+      "path": "src/battle_gfx_sfx_util.c",
+      "sha256": "4563e519beb72dd9c2f0d183eb235dd54d28afdccdc554240c8e8600576ec706"
+    },
+    {
+      "path": "src/battle_gimmick.c",
+      "sha256": "384d017a92d78ba2a0dd489cd617e3d4908a77d53e57feef8c5a72c5505d04a4"
+    },
+    {
+      "path": "src/battle_hold_effects.c",
+      "sha256": "0b23f8497059594f0266d5ec7bf0811a125eb81028ca51589878def083584c8c"
+    },
+    {
+      "path": "src/battle_interface.c",
+      "sha256": "c701a2fb9826156f90d35934dad16ffdb127770cbfe73f35f062305d9a0816de"
+    },
+    {
+      "path": "src/battle_intro.c",
+      "sha256": "d0495fe269945fff2bdd87fed2f98dd82c684b0e24ba96931cfd4d6d74b9192f"
+    },
+    {
+      "path": "src/battle_main.c",
+      "sha256": "44d0d5d8d6681f014b5858d4a46edc052f14d7d841d4f9a73710118b8342fb84"
+    },
+    {
+      "path": "src/battle_message.c",
+      "sha256": "2a1c3dd65266b65c489d30ccce1d9717209c2f6e3e097edb2a0a9a4cbfe4b330"
+    },
+    {
+      "path": "src/battle_script_commands.c",
+      "sha256": "d24f98e729fc6913b8a36cb8d7d212decde7670ce1b6ef0bf7c54f3a73cca6a4"
+    },
+    {
+      "path": "src/battle_set_effect.c",
+      "sha256": "31ff9d7022fec8f41fcb92fcf9515d2f94efc0564a34abdfbc741deeee40a25d"
+    },
+    {
+      "path": "src/battle_setup.c",
+      "sha256": "b3d970103b6bb85294c2a285e6b4d451a20d59b8c7ec6d45463b701738abefc4"
+    },
+    {
+      "path": "src/battle_util.c",
+      "sha256": "d0274f27a3414b7b7f8dd7fe1cbcc3d16c4cb8975427533c57169e731adf28fd"
+    },
+    {
+      "path": "src/battle_util2.c",
+      "sha256": "f755ba947ba7d3f1dc2c1939286c166f9f38b7de4ad99021a795a5c8af28d0a1"
+    },
+    {
+      "path": "src/data/party_menu.h",
+      "sha256": "3894b6143eb96c8d789a44ae609cf25d0f66be5a979e22fe622ef479fbc2ecfc"
+    },
+    {
+      "path": "src/event_object_movement.c",
+      "sha256": "196b8a652fed4dac2db5efb3f927d0d31d4338c4d3b764da8a317f2b383712df"
+    },
+    {
+      "path": "src/field_effect.c",
+      "sha256": "68d10a1bcdae64e2a99c939af5d5502032c60481207d522840466862c85cb156"
+    },
+    {
+      "path": "src/fieldmap.c",
+      "sha256": "fc778a05b9d4a506d576c4e0d5fac16fcd314d7b039e27a0a3a88e76de062075"
+    },
+    {
+      "path": "src/item_menu.c",
+      "sha256": "fcf94ffc08b109d9ea6549255381406d62f3dba57b444f62639565d0ee17a558"
+    },
+    {
+      "path": "src/item_use.c",
+      "sha256": "f69f6878db2479dbc3b71167e058f34f5ccd369babe65d3748f02ffdcdf604e8"
+    },
+    {
+      "path": "src/librfu_rfu.c",
+      "sha256": "4f9692d57250699e6a7f624cbd207a84bd65aac6bae2dc870b6d727c8d8e58d5"
+    },
+    {
+      "path": "src/link.c",
+      "sha256": "fee62de0e41b44c354e5f90d229b6efbf734dbdf5a8d108134f8846bdcb166b4"
+    },
+    {
+      "path": "src/link_rfu_2.c",
+      "sha256": "cc23b4b730632d601eb5d25f1481f7412f0ab9472e70b8ba849f230c7f9f3e76"
+    },
+    {
+      "path": "src/overworld.c",
+      "sha256": "6bb6310b37c9b34cae93baae7041c61c229947f5416db961ab453a900706ccf4"
+    },
+    {
+      "path": "src/party_menu.c",
+      "sha256": "ebd9a665498b5acd8f4822e7d7668da9d25730d6da678e3fff3729d569cabc67"
+    },
+    {
+      "path": "src/pokemon_summary_screen.c",
+      "sha256": "97d275c57c61f36532508b465213bb839e8c26b17edf3f8fdab65975b96f7149"
+    },
+    {
+      "path": "src/reshow_battle_screen.c",
+      "sha256": "f602a6c8799ef7371d0d0821093bb0bec5c879e0c98240b96c11187dddc63973"
+    },
+    {
+      "path": "src/script_movement.c",
+      "sha256": "e71ec1ba8c16e621b9147ddd88c3609c4e10fc3801b33582604cc5d2d7d7810c"
+    },
+    {
+      "path": "src/sprite.c",
+      "sha256": "a2e388a5a07176324bdbbbce7d0c47b24aa22cf2d3c38e06bbd8d9014fbd7da2"
+    },
+    {
+      "path": "src/trade.c",
+      "sha256": "4252728f5c94fe7187e75016fba71d041f3c5056c717ec48899fda959477941a"
+    },
+    {
+      "path": "src/wild_encounter.c",
+      "sha256": "99be70d467a109dcc942b13df780b234ea1ccb7e86a23504a27a71fd3d61577b"
+    },
+    {
+      "path": "src/world/generated_map.c",
+      "sha256": "5fe50a1abcd1c421d2bebe2957141ce212675eaedad21c28312da4b5d609533c"
+    },
+    {
+      "path": "src/world/native_save.c",
+      "sha256": "c4b829bd2bae8c5d7269fff7e7f34e3c80c79641ee16aa3a4bfb983298d75133"
+    },
+    {
+      "path": "src/world/wild_shuffle.c",
+      "sha256": "74db5cf1126adfdbbfb5d3311e1c2b774aaada03c84970817be082b55eac5168"
+    },
+    {
+      "path": "src/world/world_bridge.c",
+      "sha256": "2e9a2eafdf71282ea89de59c81f638dee9871c26a82b8fb3d485d95e871d6c09"
+    },
+    {
+      "path": "src/world/world_cave_wire.c",
+      "sha256": "aaba09cac92d59b92f641c95fc781ec9faf157e43744ee6915c7b7754c5632f1"
+    },
+    {
+      "path": "src/world/world_chat.c",
+      "sha256": "38b84cf2a52061a9a34384a020209d42d5d7e2771bc93c1815f2f22b7412207e"
+    },
+    {
+      "path": "src/world/world_coop.c",
+      "sha256": "70ef3d687ccb3df12f6956c2117c074fe1bb188d253d643160dd83b2663c597b"
+    },
+    {
+      "path": "src/world/world_coop_potion.c",
+      "sha256": "19c029b31f6ba6a99f0b3d29f30245e002371dc0f8290155119ab4353c2cceab"
+    },
+    {
+      "path": "src/world/world_menu.c",
+      "sha256": "073516bf57988e360b71f94abe54ed67df83ceb78ecf6438c280981112f91ea0"
+    },
+    {
+      "path": "src/world/world_runtime.c",
+      "sha256": "3f22897fa88e8eba382faf067189f64089b7271d1cd7b2ddddae10c3a019f968"
+    },
+    {
+      "path": "src/world/xl_progress_store.c",
+      "sha256": "9da1c81382602a0f84fc7fd2df15ebcf21e8e02577ca47291c75114b85fce6f6"
+    },
+    {
+      "path": "tests/check_coop_private_completion_cleanup.py",
+      "sha256": "ebe41b11c98dd76b54e6845ea0eaae079b24d0b05afd60bcf0eb6db0b183426d"
+    },
+    {
+      "path": "tests/rc8/generated_options_test.c",
+      "sha256": "42cb78197802f08702ca5600a53e6c0cdd546fd26bcb54b15c596a1345a17fca"
+    }
+  ],
+  "reconstruction_verification": {
+    "method": "Temporary Git index read-tree at pinned public base then git apply --cached of all three source patches and git write-tree; source worktree untouched",
+    "public_base_commit": "bb3fd057061cdd7e6a9e79b76abb41924ee44ecc",
+    "ordered_patches": [
+      "native-foundation.patch",
+      "native-world-wip.patch",
+      "native-world-integration-current.patch"
+    ],
+    "result_tree": "0026146184b0eb0fe003742f6d4095aff3dc4fbc",
+    "expected_checkpoint_tree": "0026146184b0eb0fe003742f6d4095aff3dc4fbc",
+    "identical": true,
+    "fresh_clone_build_verified": false
+  },
+  "reconstructed_tree": "181a0eb3bdb9f9bc110c8c112a3d9109bf3e6cb6"
+}

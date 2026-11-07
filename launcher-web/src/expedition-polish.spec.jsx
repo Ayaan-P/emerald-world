@@ -17,6 +17,43 @@ it('shows unexpected exit recovery from the last save only and hides it for a li
 const state = { world_key: 'local-one', local_host: true, trainer: 'Player', cave_authoring: true, generated_areas: [] };
 const props = { ready: true, busy: false, onOpen: vi.fn(), onActivate: vi.fn(), onAuthor: vi.fn() };
 
+it('identifies the active area and blocks replacement while trainers are inside', () => {
+  const onActivate = vi.fn();
+  render(<ExpeditionPanel {...props} onActivate={onActivate} state={{ ...state,
+    active_generated_area: { label: 'Wide islands', kind: 'xl_wilds', side: 127, occupants: 2 },
+    generated_areas: [{ identity: 'other', label: 'Quiet cave', kind: 'cave', active: false }],
+  }} />);
+  const area = screen.getByRole('region', { name: 'Current exploration area' });
+  expect(area.textContent).toContain('Wide islands');
+  expect(area.textContent).toContain('127 × 127');
+  expect(area.textContent).toContain('2 trainers inside');
+  expect(screen.getByRole('button', { name: 'Use this area' }).disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText('Area theme'), { target: { value: 'Another cave' } });
+  expect(screen.getByRole('button', { name: 'Review generation and cost', hidden: true }).disabled).toBe(true);
+  expect(onActivate).not.toHaveBeenCalled();
+});
+
+it('explains the separate RC8 play modes without advertising offline stories as multiplayer', () => {
+  render(<PlayerHome state={{ ...state, games: [], worlds: [], offline_saves: [], hosting: { worlds: [] } }} ready busy={false} />);
+  const modes = screen.getByRole('region', { name: 'RC8 play modes' });
+  expect(modes.textContent).toContain('Shared exploration');
+  expect(modes.textContent).toContain('Offline story tools');
+  expect(modes.textContent).toContain('not shared multiplayer quests');
+  expect(modes.textContent).toContain('does not start a director');
+});
+
+it('offers shared XL generation only after explicit paid-generation confirmation', async () => {
+  const onAuthor = vi.fn().mockResolvedValue(true);
+  render(<ExpeditionPanel {...props} onAuthor={onAuthor} state={{ ...state, xl_wilds_authoring: true }} />);
+  fireEvent.change(screen.getByLabelText('Area type'), { target: { value: 'xl_wilds' } });
+  fireEvent.change(screen.getByLabelText('Area theme'), { target: { value: 'Wide islands' } });
+  expect(screen.getByText(/no generated characters, story graphs or editable overlays/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Review generation and cost', hidden: true }));
+  expect(onAuthor).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm generation' }));
+  await waitFor(() => expect(onAuthor).toHaveBeenCalledWith({ world: 'local-one', theme: 'Wide islands', kind: 'xl_wilds', confirmed: true }));
+});
+
 it('separates published adventures from fixed scenery without inventing an adventure', () => {
   const { rerender } = render(<ExpeditionPanel {...props} state={state} />);
   expect(screen.getByText('Your director has not published an adventure')).toBeTruthy();

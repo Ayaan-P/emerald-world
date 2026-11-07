@@ -1,0 +1,319 @@
+{
+  "kind": "syntax-only; no linked gameplay or behavior claim",
+  "baseline": [
+    {
+      "module": "native_link",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/baseline-native_link.log"
+    },
+    {
+      "module": "link_transport",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/baseline-link_transport.log"
+    },
+    {
+      "module": "world_coop_potion",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/baseline-world_coop_potion.log"
+    },
+    {
+      "module": "world_coop_roster",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/baseline-world_coop_roster.log"
+    },
+    {
+      "module": "world_cave_wire",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/baseline-world_cave_wire.log"
+    },
+    {
+      "module": "world_chat",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/baseline-world_chat.log"
+    },
+    {
+      "module": "world_rally",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/baseline-world_rally.log"
+    },
+    {
+      "module": "world_bridge",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/baseline-world_bridge.log"
+    },
+    {
+      "module": "world_activity",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/baseline-world_activity.log"
+    },
+    {
+      "module": "world_coop",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/baseline-world_coop.log"
+    },
+    {
+      "module": "world_menu",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/baseline-world_menu.log"
+    },
+    {
+      "module": "world_travel",
+      "exit": 1,
+      "errors": [
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_travel.c:29:10: fatal error: constants/heal_locations.h: No such file or directory"
+      ],
+      "log": "build/solution-probe/baseline-world_travel.log"
+    },
+    {
+      "module": "generated_map",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/baseline-generated_map.log"
+    },
+    {
+      "module": "dexnav_native",
+      "exit": 1,
+      "errors": [
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/dexnav_native.c:35:10: fatal error: constants/region_map_sections.h: No such file or directory"
+      ],
+      "log": "build/solution-probe/baseline-dexnav_native.log"
+    },
+    {
+      "module": "party_autoheal",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/baseline-party_autoheal.log"
+    },
+    {
+      "module": "repeat_repel",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/baseline-repeat_repel.log"
+    },
+    {
+      "module": "player_control",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/baseline-player_control.log"
+    }
+  ],
+  "expansion": [
+    {
+      "module": "native_link",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/expansion-native_link.log"
+    },
+    {
+      "module": "link_transport",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/expansion-link_transport.log"
+    },
+    {
+      "module": "world_coop_potion",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/expansion-world_coop_potion.log"
+    },
+    {
+      "module": "world_coop_roster",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/expansion-world_coop_roster.log"
+    },
+    {
+      "module": "world_cave_wire",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/expansion-world_cave_wire.log"
+    },
+    {
+      "module": "world_chat",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/expansion-world_chat.log"
+    },
+    {
+      "module": "world_rally",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/expansion-world_rally.log"
+    },
+    {
+      "module": "world_bridge",
+      "exit": 1,
+      "errors": [
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_bridge.c:255:32: error: \u2018MAP_GENERATED_WORLD_CAVE\u2019 undeclared (first use in this function)",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_bridge.c:257:32: error: \u2018MAP_GENERATED_WORLD_WILDS\u2019 undeclared (first use in this function); did you mean \u2018GENERATED_MAP_WILDS\u2019?",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_bridge.c:268:167: error: \u2018MAP_GENERATED_WORLD_WILDS\u2019 undeclared (first use in this function); did you mean \u2018GENERATED_MAP_WILDS\u2019?",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_bridge.c:1605:35: error: \u2018struct SaveBlock1\u2019 has no member named \u2018bagPocket_Items\u2019",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_bridge.c:1606:42: error: \u2018struct SaveBlock1\u2019 has no member named \u2018bagPocket_Items\u2019",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_bridge.c:1606:84: error: \u2018struct SaveBlock1\u2019 has no member named \u2018bagPocket_KeyItems\u2019",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_bridge.c:1607:42: error: \u2018struct SaveBlock1\u2019 has no member named \u2018bagPocket_PokeBalls\u2019",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_bridge.c:1607:88: error: \u2018struct SaveBlock1\u2019 has no member named \u2018bagPocket_TMHM\u2019",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_bridge.c:1608:42: error: \u2018struct SaveBlock1\u2019 has no member named \u2018bagPocket_Berries\u2019",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_bridge.c:1755:48: error: implicit declaration of function \u2018WorldPlayerPaletteCompatible\u2019 [-Werror=implicit-function-declaration]",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_bridge.c:1770:18: error: implicit declaration of function \u2018SpawnWorldObjectEventParameterized\u2019; did you mean \u2018SpawnSpecialObjectEventParameterized\u2019? [-Werror=implicit-function-declaration]"
+      ],
+      "log": "build/solution-probe/expansion-world_bridge.log"
+    },
+    {
+      "module": "world_activity",
+      "exit": 1,
+      "errors": [
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_activity.c:180:9: error: implicit declaration of function \u2018BattleSetup_ResumeWorldTrainerBattle\u2019; did you mean \u2018BattleSetup_StartTrainerBattle\u2019? [-Werror=implicit-function-declaration]",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_activity.c:183:26: error: implicit declaration of function \u2018BattleSetup_ResumeWorldWildBattle\u2019; did you mean \u2018BattleSetup_StartWildBattle\u2019? [-Werror=implicit-function-declaration]",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_activity.c:437:12: error: implicit declaration of function \u2018BattleSetup_CanShareWorldTrainerCredit\u2019 [-Werror=implicit-function-declaration]",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_activity.c:447:34: error: implicit declaration of function \u2018BattleSetup_ResumeWorldTrainerScript\u2019 [-Werror=implicit-function-declaration]",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_activity.c:467:13: error: implicit declaration of function \u2018BattleSetup_RegisterWorldTrainerInMatchCall\u2019 [-Werror=implicit-function-declaration]",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_activity.c:470:9: error: implicit declaration of function \u2018BattleSetup_EndWorldWildBattle\u2019; did you mean \u2018BattleSetup_StartWildBattle\u2019? [-Werror=implicit-function-declaration]"
+      ],
+      "log": "build/solution-probe/expansion-world_activity.log"
+    },
+    {
+      "module": "world_coop",
+      "exit": 1,
+      "errors": [
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:164:46: error: \u2018LAST_BALL\u2019 undeclared (first use in this function)",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:186:48: error: \u2018LAST_BALL\u2019 undeclared (first use in this function)",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:200:26: error: incompatible types when assigning to type \u2018u32\u2019 {aka \u2018unsigned int\u2019} from type \u2018rng_value_t\u2019 {aka \u2018struct Sfc32State\u2019}",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:208:38: error: \u2018gTrainerBattleOpponent_A\u2019 undeclared (first use in this function); did you mean \u2018gTrainerBattleParameter\u2019?",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:226:26: error: incompatible types when assigning to type \u2018u32\u2019 {aka \u2018unsigned int\u2019} from type \u2018rng_value_t\u2019 {aka \u2018struct Sfc32State\u2019}",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:452:9: error: \u2018gActiveBattler\u2019 undeclared (first use in this function)",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:497:9: error: \u2018gActiveBattler\u2019 undeclared (first use in this function)",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:506:28: error: \u2018gWishFutureKnock\u2019 undeclared (first use in this function)",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:532:19: error: \u2018gWishFutureKnock\u2019 undeclared (first use in this function)",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:536:5: error: \u2018gActiveBattler\u2019 undeclared (first use in this function)",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:537:5: error: too few arguments to function \u2018PrepareBufferDataTransferLink\u2019",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:551:13: error: \u2018gBattleBufferB\u2019 undeclared (first use in this function)",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:560:9: error: \u2018gActiveBattler\u2019 undeclared (first use in this function)",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:561:9: error: too few arguments to function \u2018PrepareBufferDataTransferLink\u2019",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:639:68: error: \u2018(const struct Trainer *)&gTrainers[(int)header->trainer]\u2019 is a pointer; did you mean to use \u2018->\u2019?",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:641:48: error: \u2018(const struct Trainer *)&gTrainers[(int)header->trainer]\u2019 is a pointer; did you mean to use \u2018->\u2019?",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:776:42: error: incompatible types when assigning to type \u2018rng_value_t\u2019 {aka \u2018struct Sfc32State\u2019} from type \u2018u32\u2019 {aka \u2018unsigned int\u2019}",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:781:9: error: \u2018gTrainerBattleOpponent_A\u2019 undeclared (first use in this function); did you mean \u2018gTrainerBattleParameter\u2019?",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:788:9: error: implicit declaration of function \u2018BattleSetup_RecordWorldTrainerBattle\u2019; did you mean \u2018BattleSetup_StartTrainerBattle\u2019? [-Werror=implicit-function-declaration]",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:790:9: error: implicit declaration of function \u2018BattleSetup_RecordWorldWildBattle\u2019; did you mean \u2018BattleSetup_StartDoubleWildBattle\u2019? [-Werror=implicit-function-declaration]",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:1037:9: error: \u2018gActiveBattler\u2019 undeclared (first use in this function)",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:1072:5: error: \u2018gActiveBattler\u2019 undeclared (first use in this function)",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:1073:5: error: too few arguments to function \u2018PrepareBufferDataTransferLink\u2019",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:1095:67: error: \u2018struct BattlePokemon\u2019 has no member named \u2018status2\u2019; did you mean \u2018status1\u2019?",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:1095:77: error: \u2018STATUS2_CONFUSION\u2019 undeclared (first use in this function); did you mean \u2018VOLATILE_CONFUSION\u2019?",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:1099:5: error: \u2018gActiveBattler\u2019 undeclared (first use in this function)",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:1100:5: error: too few arguments to function \u2018BtlController_EmitGetMonData\u2019",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:1112:13: error: \u2018gBattleBufferB\u2019 undeclared (first use in this function)",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:1122:9: error: \u2018gBattleMoveDamage\u2019 undeclared (first use in this function)",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:1126:68: error: \u2018struct BattlePokemon\u2019 has no member named \u2018status2\u2019; did you mean \u2018status1\u2019?",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:1126:80: error: \u2018STATUS2_CONFUSION\u2019 undeclared (first use in this function); did you mean \u2018VOLATILE_CONFUSION\u2019?",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:1131:42: error: \u2018struct BattlePokemon\u2019 has no member named \u2018status2\u2019; did you mean \u2018status1\u2019?",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:1131:54: error: \u2018STATUS2_NIGHTMARE\u2019 undeclared (first use in this function); did you mean \u2018ENDTURN_NIGHTMARE\u2019?",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:1132:17: error: \u2018gActiveBattler\u2019 undeclared (first use in this function)",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:1133:17: error: too few arguments to function \u2018BtlController_EmitSetMonData\u2019",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:1143:13: error: too few arguments to function \u2018BtlController_EmitSetMonData\u2019",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:1155:13: error: too few arguments to function \u2018BtlController_EmitSetMonData\u2019",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:1175:64: error: \u2018LAST_BALL\u2019 undeclared (first use in this function)",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:1204:5: error: \u2018gActiveBattler\u2019 undeclared (first use in this function)",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c:1205:5: error: too few arguments to function \u2018PrepareBufferDataTransferLink\u2019"
+      ],
+      "log": "build/solution-probe/expansion-world_coop.log"
+    },
+    {
+      "module": "world_menu",
+      "exit": 1,
+      "errors": [
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_menu.c:406:20: error: implicit declaration of function \u2018DexNav_RequestOpen\u2019 [-Werror=implicit-function-declaration]"
+      ],
+      "log": "build/solution-probe/expansion-world_menu.log"
+    },
+    {
+      "module": "world_travel",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/expansion-world_travel.log"
+    },
+    {
+      "module": "generated_map",
+      "exit": 1,
+      "errors": [
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/generated_map.c:711:25: error: \u2018SPECIES_OLD_UNOWN_B\u2019 undeclared (first use in this function); did you mean \u2018SPECIES_UNOWN_B\u2019?",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/generated_map.c:711:59: error: \u2018SPECIES_OLD_UNOWN_Z\u2019 undeclared (first use in this function); did you mean \u2018SPECIES_UNOWN_Z\u2019?",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/generated_map.c:774:79: error: \u2018MAP_GENERATED_WORLD_CAVE\u2019 undeclared (first use in this function)",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/generated_map.c:777:60: error: \u2018MAP_GENERATED_WORLD_WILDS\u2019 undeclared (first use in this function); did you mean \u2018GENERATED_MAP_WILDS\u2019?",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/generated_map.c:978:38: error: \u2018MAP_GENERATED_WORLD_WILDS\u2019 undeclared (first use in this function); did you mean \u2018GENERATED_MAP_WILDS\u2019?",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/generated_map.c:981:38: error: \u2018MAP_GENERATED_WORLD_CAVE\u2019 undeclared (first use in this function)"
+      ],
+      "log": "build/solution-probe/expansion-generated_map.log"
+    },
+    {
+      "module": "dexnav_native",
+      "exit": 1,
+      "errors": [
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/dexnav_native.c:46:60: error: \u2018EVOS_PER_MON\u2019 undeclared here (not in a function)",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/dexnav_native.c:247:20: error: implicit declaration of function \u2018DexNav_OpenFromField\u2019 [-Werror=implicit-function-declaration]",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/dexnav_native.c:251:9: error: implicit declaration of function \u2018DexNav_Update\u2019 [-Werror=implicit-function-declaration]",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/dexnav_native.c:360:58: error: \u2018gSpeciesNames\u2019 undeclared (first use in this function); did you mean \u2018GetSpeciesName\u2019?",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/dexnav_native.c:361:52: error: \u2018gMoveNames\u2019 undeclared (first use in this function)",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/engines/expansion-native/include/gba/defines.h:7:16: error: incompatible type for argument 5 of \u2018CreateMon\u2019",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/dexnav_native.c:399:5: error: too many arguments to function \u2018CreateMon\u2019",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/dexnav_native.c:416:35: error: implicit declaration of function \u2018INCGFX_U32\u2019 [-Werror=implicit-function-declaration]",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/dexnav_native.c:416:35: error: invalid initializer",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/dexnav_native.c:417:45: error: implicit declaration of function \u2018INCGFX_U16\u2019 [-Werror=implicit-function-declaration]",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/dexnav_native.c:417:45: error: invalid initializer",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/dexnav_native.c:419:32: error: invalid initializer",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/dexnav_native.c:420:35: error: invalid initializer",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/dexnav_native.c:421:33: error: invalid initializer",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/dexnav_native.c:453:31: error: invalid initializer",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/dexnav_native.c:454:32: error: invalid initializer",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/dexnav_native.c:468:34: error: too many arguments to function \u2018GetMonIconPtr\u2019",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/dexnav_native.c:619:53: error: too many arguments to function \u2018GetMonIconPtr\u2019",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/dexnav_native.c:674:5: error: implicit declaration of function \u2018LZDecompressWram\u2019 [-Werror=implicit-function-declaration]",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/dexnav_native.c:716:10: error: \u2018FLDEFF_UNUSED_GRASS\u2019 undeclared (first use in this function); did you mean \u2018FLDEFFOBJ_UNUSED_GRASS\u2019?",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/dexnav_native.c:720:10: error: \u2018FLDEFF_UNUSED_GRASS_2\u2019 undeclared (first use in this function); did you mean \u2018FLDEFFOBJ_UNUSED_GRASS_2\u2019?",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/dexnav_native.c:724:10: error: \u2018FLDEFF_UNUSED_SAND\u2019 undeclared (first use in this function); did you mean \u2018FLDEFFOBJ_UNUSED_SAND\u2019?"
+      ],
+      "log": "build/solution-probe/expansion-dexnav_native.log"
+    },
+    {
+      "module": "party_autoheal",
+      "exit": 1,
+      "errors": [
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/party_autoheal.c:80:17: error: \u2018gActiveBattler\u2019 undeclared (first use in this function)",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/party_autoheal.c:101:39: error: \u2018struct SaveBlock1\u2019 has no member named \u2018bagPocket_Items\u2019",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/party_autoheal.c:102:41: error: \u2018struct SaveBlock1\u2019 has no member named \u2018bagPocket_Berries\u2019",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/party_autoheal.c:154:46: error: \u2018struct SaveBlock1\u2019 has no member named \u2018bagPocket_Items\u2019",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/party_autoheal.c:155:48: error: \u2018struct SaveBlock1\u2019 has no member named \u2018bagPocket_Berries\u2019",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/party_autoheal.c:170:34: error: \u2018struct SaveBlock1\u2019 has no member named \u2018bagPocket_Items\u2019",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/party_autoheal.c:171:34: error: \u2018struct SaveBlock1\u2019 has no member named \u2018bagPocket_Berries\u2019"
+      ],
+      "log": "build/solution-probe/expansion-party_autoheal.log"
+    },
+    {
+      "module": "repeat_repel",
+      "exit": 1,
+      "errors": [
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/repeat_repel.c:52:12: error: implicit declaration of function \u2018GetTaskCount\u2019 [-Werror=implicit-function-declaration]",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/repeat_repel.c:76:35: error: implicit declaration of function \u2018ScriptContext_IsAt\u2019; did you mean \u2018ScriptContext_Init\u2019? [-Werror=implicit-function-declaration]",
+        "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/repeat_repel.c:118:26: error: implicit declaration of function \u2018ScriptMenu_DrawRepelChoice\u2019 [-Werror=implicit-function-declaration]"
+      ],
+      "log": "build/solution-probe/expansion-repeat_repel.log"
+    },
+    {
+      "module": "player_control",
+      "exit": 0,
+      "errors": [],
+      "log": "build/solution-probe/expansion-player_control.log"
+    }
+  ]
+}

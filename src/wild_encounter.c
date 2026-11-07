@@ -1,6 +1,7 @@
 #include "global.h"
 #ifdef PORTABLE
 #include "platform/dexnav_native.h"
+#include "platform/wild_shuffle.h"
 #include "dexnav.h"
 #endif
 #include "battle_setup.h"
@@ -465,6 +466,23 @@ void WildEncounter_CreateDexNavMon(u16 species, u8 level)
 #define TRY_GET_ABILITY_INFLUENCED_WILD_MON_INDEX(wildPokemon, type, ability, ptr, count) TryGetAbilityInfluencedWildMonIndex(wildPokemon, type, ability, ptr)
 #endif
 
+/* Only ordinary encounter tables are shuffled. Scripted encounters, DexNav,
+ * outbreaks, generated areas and Battle Frontier facilities keep their rules. */
+static u16 ShuffleOrdinaryWildSpecies(u16 species)
+{
+#ifdef PORTABLE
+#if defined(GENERATED_MAP_READY) && GENERATED_MAP_READY
+    if (GeneratedMap_IsInside()) return species;
+#endif
+    if (gMapHeader.mapLayoutId == LAYOUT_BATTLE_FRONTIER_BATTLE_PIKE_ROOM_WILD_MONS
+     || gMapHeader.mapLayoutId == LAYOUT_BATTLE_FRONTIER_BATTLE_PYRAMID_FLOOR)
+        return species;
+    return WildShuffle_MapSpecies(species);
+#else
+    return species;
+#endif
+}
+
 static bool8 TryGenerateWildMon(const struct WildPokemonInfo *wildMonInfo, u8 area, u8 flags)
 {
     u8 wildMonIndex = 0;
@@ -497,7 +515,7 @@ static bool8 TryGenerateWildMon(const struct WildPokemonInfo *wildMonInfo, u8 ar
     if (gMapHeader.mapLayoutId != LAYOUT_BATTLE_FRONTIER_BATTLE_PIKE_ROOM_WILD_MONS && flags & WILD_CHECK_KEEN_EYE && !IsAbilityAllowingEncounter(level))
         return FALSE;
 
-    CreateWildMon(wildMonInfo->wildPokemon[wildMonIndex].species, level);
+    CreateWildMon(ShuffleOrdinaryWildSpecies(wildMonInfo->wildPokemon[wildMonIndex].species), level);
     return TRUE;
 }
 
@@ -506,8 +524,9 @@ static u16 GenerateFishingWildMon(const struct WildPokemonInfo *wildMonInfo, u8 
     u8 wildMonIndex = ChooseWildMonIndex_Fishing(rod);
     u8 level = ChooseWildMonLevel(&wildMonInfo->wildPokemon[wildMonIndex]);
 
-    CreateWildMon(wildMonInfo->wildPokemon[wildMonIndex].species, level);
-    return wildMonInfo->wildPokemon[wildMonIndex].species;
+    u16 species = ShuffleOrdinaryWildSpecies(wildMonInfo->wildPokemon[wildMonIndex].species);
+    CreateWildMon(species, level);
+    return species;
 }
 
 static bool8 SetUpMassOutbreakEncounter(u8 flags)
@@ -1050,3 +1069,4 @@ static void ApplyCleanseTagEncounterRateMod(u32 *encRate)
     if (GetMonData(&gPlayerParty[0], MON_DATA_HELD_ITEM) == ITEM_CLEANSE_TAG)
         *encRate = *encRate * 2 / 3;
 }
+

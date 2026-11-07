@@ -1,0 +1,580 @@
+{
+  "purpose": "Extracted actual native results; these are historical binary-specific results, not blanket acceptance of current source",
+  "runs": [
+    {
+      "run": "single-build16",
+      "source_artifact": "/home/ayaan/projects/emerald-world-research/rc7-rescue/single-build16/acceptance.json",
+      "ok": true,
+      "scope": "real two-client ordinary single battle through peer menus and bilateral consent; no co-op/trade acceptance",
+      "binary_sha256": "ea9f37affc08f6124f4076a73d30d7609e2507b8ad34df03f454173636adf0d1",
+      "error": null,
+      "milestones": [
+        "both real native control endpoints connected",
+        "both clients connected to the disposable authority and reached ready overworld",
+        "native Bob position changed after actual GBA input",
+        "both native renderers report visible peer sprites at the other current position",
+        "real peer menu opened",
+        "real native invitation received",
+        "both clients entered native battle",
+        "both trainers returned after actual single battle"
+      ],
+      "final_observations": {
+        "alice": {
+          "callback2": "CB2_Overworld",
+          "battle_main": "ReturnFromBattleToOverworld",
+          "in_battle": false,
+          "controls_locked": false,
+          "overworld": true
+        },
+        "bob": {
+          "callback2": "CB2_Overworld",
+          "battle_main": "BeginBattleIntroDummy",
+          "in_battle": false,
+          "controls_locked": false,
+          "overworld": true
+        }
+      }
+    },
+    {
+      "run": "save-build18",
+      "source_artifact": "/home/ayaan/projects/emerald-world-research/rc7-rescue/save-build18/acceptance.json",
+      "ok": true,
+      "scope": "real two-client presence/movement plus independent in-game saves and cold Continue of distinct positions/party counts; no battle/trade reward acceptance",
+      "binary_sha256": "f0a891dea01d63a39242fff82597cf0c060e514e7df45568ca0df427b8285732",
+      "error": null,
+      "milestones": [
+        "both real native control endpoints connected",
+        "both clients connected to the disposable authority and reached ready overworld",
+        "native Bob position changed after actual GBA input",
+        "both native renderers report visible peer sprites at the other current position",
+        "both normal in-game saves changed only their own distinct private files",
+        "both independent native saves cold-Continued at their own distinct locations with matching party counts"
+      ],
+      "final_observations": {
+        "alice": {
+          "callback2": "CB2_Overworld",
+          "battle_main": "none",
+          "in_battle": false,
+          "controls_locked": false,
+          "overworld": true
+        },
+        "bob": {
+          "callback2": "CB2_Overworld",
+          "battle_main": "none",
+          "in_battle": false,
+          "controls_locked": false,
+          "overworld": true
+        }
+      }
+    },
+    {
+      "run": "coop-build18",
+      "source_artifact": "/home/ayaan/projects/emerald-world-research/rc7-rescue/coop-build18/acceptance.json",
+      "ok": false,
+      "scope": "real two-client tagged wild encounter from walking; native co-op entry and field return only; no capture, medicine, reward ownership or save/reload acceptance",
+      "binary_sha256": "f0a891dea01d63a39242fff82597cf0c060e514e7df45568ca0df427b8285732",
+      "error": "TimeoutError: tagged wild battle field return",
+      "milestones": [
+        "both real native control endpoints connected",
+        "both clients connected to the disposable authority and reached ready overworld",
+        "native Bob position changed after actual GBA input",
+        "both native renderers report visible peer sprites at the other current position",
+        "real tag peer menu opened",
+        "real tag invitation received",
+        "tag consent returned both trainers to field",
+        "left actual lab alice",
+        "left actual lab bob",
+        "walked into Route101 alice",
+        "walked into Route101 bob",
+        "both native clients entered tagged wild battle"
+      ],
+      "final_observations": {
+        "alice": {
+          "callback2": "CB2_HandleStartMultiBattle",
+          "battle_main": "BeginBattleIntroDummy",
+          "battle": true,
+          "locked": true
+        },
+        "bob": {
+          "callback2": "CB2_HandleStartMultiBattle",
+          "battle_main": "BeginBattleIntroDummy",
+          "battle": true,
+          "locked": true
+        }
+      },
+      "last_trace_label": "tagged battle did not complete"
+    },
+    {
+      "run": "coop-build19",
+      "source_artifact": "/home/ayaan/projects/emerald-world-research/rc7-rescue/coop-build19/acceptance.json",
+      "ok": false,
+      "scope": "real two-client tagged wild encounter from walking; native co-op entry and field return only; no capture, medicine, reward ownership or save/reload acceptance",
+      "binary_sha256": "fef6228ce3c6af8d23697a92b8b255cc6bc38144f4a60ddc28dac43c9b07a73e",
+      "error": "TimeoutError: tagged wild battle field return",
+      "milestones": [
+        "both real native control endpoints connected",
+        "both clients connected to the disposable authority and reached ready overworld",
+        "native Bob position changed after actual GBA input",
+        "both native renderers report visible peer sprites at the other current position",
+        "real tag peer menu opened",
+        "real tag invitation received",
+        "tag consent returned both trainers to field",
+        "left actual lab alice",
+        "left actual lab bob",
+        "walked into Route101 alice",
+        "walked into Route101 bob",
+        "both native clients entered tagged wild battle"
+      ],
+      "final_observations": {
+        "alice": {
+          "callback2": "BattleMainCB2",
+          "battle_main": "DoBattleIntro",
+          "battle": true,
+          "locked": true
+        },
+        "bob": {
+          "callback2": "BattleMainCB2",
+          "battle_main": "BeginBattleIntroDummy",
+          "battle": true,
+          "locked": true
+        }
+      },
+      "last_trace_label": "tagged battle did not complete"
+    },
+    {
+      "ok": true,
+      "scope": "real two-client tagged wild encounter from walking; native co-op entry and field return only; no capture, medicine, reward ownership or save/reload acceptance",
+      "binary_sha256": "c8b3523894e36808becc40570920b9d4c20e1f57db2e05ce1752fb3fe8656cc7",
+      "error": null,
+      "milestones": [
+        "both real native control endpoints connected",
+        "both clients connected to the disposable authority and reached ready overworld",
+        "native Bob position changed after actual GBA input",
+        "both native renderers report visible peer sprites at the other current position",
+        "real tag peer menu opened",
+        "real tag invitation received",
+        "tag consent returned both trainers to field",
+        "left actual lab alice",
+        "left actual lab bob",
+        "walked into Route101 alice",
+        "walked into Route101 bob",
+        "both native clients entered tagged wild battle",
+        "both clients returned after tagged wild battle"
+      ],
+      "run": "coop-build22-completion",
+      "source_artifact": "/home/ayaan/projects/emerald-world-research/rc7-rescue/coop-build22-completion/acceptance.json"
+    },
+    {
+      "ok": true,
+      "scope": "real shared tagged wild battle win and owner-private EXP followed by separate normal saves and cold Continue; no capture/medicine acceptance",
+      "binary_sha256": "895598a7210934967ac97fac4d44ca3e74c90440ae187ee04de7364314bc5a5c",
+      "error": null,
+      "milestones": [
+        "both real native control endpoints connected",
+        "both clients connected to the disposable authority and reached ready overworld",
+        "native Bob position changed after actual GBA input",
+        "both native renderers report visible peer sprites at the other current position",
+        "real tag peer menu opened",
+        "real tag invitation received",
+        "tag consent returned both trainers to field",
+        "left actual lab alice",
+        "left actual lab bob",
+        "walked into Route101 alice",
+        "walked into Route101 bob",
+        "both native clients entered tagged wild battle",
+        "both clients returned after tagged wild battle",
+        "both restored private Pokemon retained identity and independently gained experience from the shared win",
+        "both normal in-game saves changed only their own distinct private files",
+        "both independent native saves cold-Continued at their own distinct locations with matching party counts"
+      ],
+      "run": "coop-save-build23",
+      "source_artifact": "/home/ayaan/projects/emerald-world-research/rc7-rescue/coop-save-build23/acceptance.json",
+      "release_accepted": false,
+      "correctness_failure": "Persisted EXP is131337 for a low-level Wurmple defeat; weak original assertion was insufficient.",
+      "private_reward_progress": {
+        "alice": {
+          "before": {
+            "species": 252,
+            "personality": 1439202710,
+            "ot": 2898929743,
+            "exp": 149,
+            "hp": 20,
+            "max_hp": 20,
+            "level": 5,
+            "status": 0,
+            "outcome": 0
+          },
+          "after": {
+            "species": 252,
+            "personality": 1439202710,
+            "ot": 2898929743,
+            "exp": 131486,
+            "hp": 113,
+            "max_hp": 115,
+            "level": 51,
+            "status": 0,
+            "outcome": 1
+          }
+        },
+        "bob": {
+          "before": {
+            "species": 252,
+            "personality": 1439202710,
+            "ot": 2898929743,
+            "exp": 149,
+            "hp": 20,
+            "max_hp": 20,
+            "level": 5,
+            "status": 0,
+            "outcome": 0
+          },
+          "after": {
+            "species": 252,
+            "personality": 1439202710,
+            "ot": 2898929743,
+            "exp": 131486,
+            "hp": 115,
+            "max_hp": 115,
+            "level": 51,
+            "status": 0,
+            "outcome": 1
+          }
+        }
+      }
+    },
+    {
+      "ok": true,
+      "scope": "real two-client ordinary single battle through peer menus and bilateral consent; no co-op/trade acceptance",
+      "binary_sha256": "895598a7210934967ac97fac4d44ca3e74c90440ae187ee04de7364314bc5a5c",
+      "error": null,
+      "milestones": [
+        "both real native control endpoints connected",
+        "both clients connected to the disposable authority and reached ready overworld",
+        "native Bob position changed after actual GBA input",
+        "both native renderers report visible peer sprites at the other current position",
+        "real peer menu opened",
+        "real native invitation received",
+        "both clients entered native battle",
+        "both trainers returned after actual single battle"
+      ],
+      "run": "single-build23",
+      "source_artifact": "/home/ayaan/projects/emerald-world-research/worktrees/rc7/build/release-acceptance/single-build23/acceptance.json"
+    },
+    {
+      "ok": false,
+      "scope": "real two-client tagged wild encounter from walking; native co-op entry and field return only; no capture, medicine, reward ownership or save/reload acceptance",
+      "binary_sha256": "0c6e122f5d53d914c03380c09371187342bc638df0ae57502aee152b37a5b959",
+      "error": "PlayerProtocolError: native socket closed before complete JSONL response",
+      "milestones": [
+        "both real native control endpoints connected",
+        "both clients connected to the disposable authority and reached ready overworld",
+        "native Bob position changed after actual GBA input",
+        "both native renderers report visible peer sprites at the other current position",
+        "real tag peer menu opened",
+        "real tag invitation received",
+        "tag consent returned both trainers to field",
+        "left actual lab alice",
+        "left actual lab bob",
+        "walked into Route101 alice",
+        "walked into Route101 bob",
+        "both native clients entered tagged wild battle"
+      ],
+      "run": "coop-save-build24",
+      "source_artifact": "/home/ayaan/projects/emerald-world-research/worktrees/rc7/build/release-acceptance/coop-save-build24/acceptance.json"
+    },
+    {
+      "run": "coop-save-build26",
+      "source_artifact": "/home/ayaan/projects/emerald-world-research/worktrees/rc7/build/release-acceptance/coop-save-build26/acceptance.json",
+      "ok": true,
+      "scope": "real shared tagged wild battle win and owner-private EXP followed by separate normal saves and cold Continue; no capture/medicine acceptance",
+      "binary_sha256": "8b74a36603049acb72cf4e82f7c03e0a43ca4e62adf1eb794cb32b71a6dbd444",
+      "error": null,
+      "milestones": [
+        "both real native control endpoints connected",
+        "both clients connected to the disposable authority and reached ready overworld",
+        "native Bob position changed after actual GBA input",
+        "both native renderers report visible peer sprites at the other current position",
+        "real tag peer menu opened",
+        "real tag invitation received",
+        "tag consent returned both trainers to field",
+        "left actual lab alice",
+        "left actual lab bob",
+        "walked into Route101 alice",
+        "walked into Route101 bob",
+        "both native clients entered tagged wild battle",
+        "both clients returned after tagged wild battle",
+        "both restored private Pokemon retained identity and independently gained experience from the shared win",
+        "both normal in-game saves changed only their own distinct private files",
+        "both independent native saves cold-Continued at their own distinct locations with matching party counts"
+      ],
+      "private_reward_progress": {
+        "alice": {
+          "before": {
+            "species": 252,
+            "personality": 1439202710,
+            "ot": 2898929743,
+            "exp": 149,
+            "hp": 20,
+            "max_hp": 20,
+            "level": 5,
+            "status": 0,
+            "outcome": 0
+          },
+          "after": {
+            "species": 252,
+            "personality": 1439202710,
+            "ot": 2898929743,
+            "exp": 174,
+            "hp": 17,
+            "max_hp": 20,
+            "level": 5,
+            "status": 0,
+            "outcome": 1
+          }
+        },
+        "bob": {
+          "before": {
+            "species": 252,
+            "personality": 1439202710,
+            "ot": 2898929743,
+            "exp": 149,
+            "hp": 20,
+            "max_hp": 20,
+            "level": 5,
+            "status": 0,
+            "outcome": 0
+          },
+          "after": {
+            "species": 252,
+            "personality": 1439202710,
+            "ot": 2898929743,
+            "exp": 174,
+            "hp": 17,
+            "max_hp": 20,
+            "level": 5,
+            "status": 0,
+            "outcome": 1
+          }
+        }
+      }
+    },
+    {
+      "run": "coop-save-build27",
+      "source_artifact": "/home/ayaan/projects/emerald-world-research/worktrees/rc7/build/release-acceptance/coop-save-build27/acceptance.json",
+      "ok": true,
+      "scope": "real shared tagged wild battle win and owner-private EXP followed by separate normal saves and cold Continue; no capture/medicine acceptance",
+      "binary_sha256": "53a99fda78d2c602a2de1289b457b6d2f0d83c3c2188320472e9aa71585645d5",
+      "error": null,
+      "milestones": [
+        "both real native control endpoints connected",
+        "both clients connected to the disposable authority and reached ready overworld",
+        "native Bob position changed after actual GBA input",
+        "both native renderers report visible peer sprites at the other current position",
+        "real tag peer menu opened",
+        "real tag invitation received",
+        "tag consent returned both trainers to field",
+        "left actual lab alice",
+        "left actual lab bob",
+        "walked into Route101 alice",
+        "walked into Route101 bob",
+        "both native clients entered tagged wild battle",
+        "both clients returned after tagged wild battle",
+        "both restored private Pokemon retained identity and independently gained experience from the shared win",
+        "both normal in-game saves changed only their own distinct private files",
+        "both independent native saves cold-Continued at their own distinct locations with matching party counts"
+      ],
+      "private_reward_progress": {
+        "alice": {
+          "before": {
+            "species": 252,
+            "personality": 1439202710,
+            "ot": 2898929743,
+            "exp": 149,
+            "hp": 20,
+            "max_hp": 20,
+            "level": 5,
+            "status": 0,
+            "outcome": 0
+          },
+          "after": {
+            "species": 252,
+            "personality": 1439202710,
+            "ot": 2898929743,
+            "exp": 163,
+            "hp": 17,
+            "max_hp": 20,
+            "level": 5,
+            "status": 0,
+            "outcome": 1
+          }
+        },
+        "bob": {
+          "before": {
+            "species": 252,
+            "personality": 1439202710,
+            "ot": 2898929743,
+            "exp": 149,
+            "hp": 20,
+            "max_hp": 20,
+            "level": 5,
+            "status": 0,
+            "outcome": 0
+          },
+          "after": {
+            "species": 252,
+            "personality": 1439202710,
+            "ot": 2898929743,
+            "exp": 163,
+            "hp": 18,
+            "max_hp": 20,
+            "level": 5,
+            "status": 0,
+            "outcome": 1
+          }
+        }
+      }
+    },
+    {
+      "run": "packaged-single-rc7",
+      "ok": true,
+      "scope": "real two-client ordinary single battle through peer menus and bilateral consent; no co-op/trade acceptance",
+      "binary_sha256": "b7c1f063ad8d514a2d13baeb133d3079b057d2a1363b562ca20a47b298776bdd",
+      "error": null,
+      "milestones": [
+        "both real native control endpoints connected",
+        "both clients connected to the disposable authority and reached ready overworld",
+        "native Bob position changed after actual GBA input",
+        "both native renderers report visible peer sprites at the other current position",
+        "real peer menu opened",
+        "real native invitation received",
+        "both clients entered native battle",
+        "both trainers returned after actual single battle"
+      ],
+      "private_reward_progress": null
+    },
+    {
+      "run": "packaged-coop-rc7",
+      "ok": true,
+      "scope": "real shared tagged wild battle win and owner-private EXP followed by separate normal saves and cold Continue; no capture/medicine acceptance",
+      "binary_sha256": "b7c1f063ad8d514a2d13baeb133d3079b057d2a1363b562ca20a47b298776bdd",
+      "error": null,
+      "milestones": [
+        "both real native control endpoints connected",
+        "both clients connected to the disposable authority and reached ready overworld",
+        "native Bob position changed after actual GBA input",
+        "both native renderers report visible peer sprites at the other current position",
+        "real tag peer menu opened",
+        "real tag invitation received",
+        "tag consent returned both trainers to field",
+        "left actual lab alice",
+        "left actual lab bob",
+        "walked into Route101 alice",
+        "walked into Route101 bob",
+        "both native clients entered tagged wild battle",
+        "both clients returned after tagged wild battle",
+        "both restored private Pokemon retained identity and independently gained experience from the shared win",
+        "both normal in-game saves changed only their own distinct private files",
+        "both independent native saves cold-Continued at their own distinct locations with matching party counts"
+      ],
+      "private_reward_progress": {
+        "alice": {
+          "before": {
+            "species": 252,
+            "personality": 1439202710,
+            "ot": 2898929743,
+            "exp": 149,
+            "hp": 20,
+            "max_hp": 20,
+            "level": 5,
+            "status": 0,
+            "outcome": 0
+          },
+          "after": {
+            "species": 252,
+            "personality": 1439202710,
+            "ot": 2898929743,
+            "exp": 174,
+            "hp": 14,
+            "max_hp": 20,
+            "level": 5,
+            "status": 0,
+            "outcome": 1
+          }
+        },
+        "bob": {
+          "before": {
+            "species": 252,
+            "personality": 1439202710,
+            "ot": 2898929743,
+            "exp": 149,
+            "hp": 20,
+            "max_hp": 20,
+            "level": 5,
+            "status": 0,
+            "outcome": 0
+          },
+          "after": {
+            "species": 252,
+            "personality": 1439202710,
+            "ot": 2898929743,
+            "exp": 174,
+            "hp": 20,
+            "max_hp": 20,
+            "level": 5,
+            "status": 0,
+            "outcome": 1
+          }
+        }
+      }
+    }
+  ],
+  "packaged_launcher": {
+    "ok": true,
+    "scope": "actual extracted-package DesktopSession host, local profile, Expansion start, authentication and ready world; disposable opening fixture",
+    "selected_engine": "expansion-native",
+    "profile": "/tmp/rc7-packaged-launch-nb0s26o6/launch-proof/engines/expansion-native/trainers/LaunchProof",
+    "world": {
+      "chat_count": 0,
+      "in_battle": false,
+      "trainer": "LaunchProof",
+      "frame": 962,
+      "connected": true,
+      "revision": 31,
+      "ready": true,
+      "map": [
+        1,
+        4
+      ],
+      "pos": [
+        6,
+        5
+      ],
+      "peers": [],
+      "visible_peer_limit": 32,
+      "peer_wire_limit": 32,
+      "roster": [],
+      "objects": [],
+      "object_count": 0,
+      "dialogue_active": false,
+      "dialogue_object": "",
+      "interaction_seq": 0,
+      "dialogue_text": "",
+      "dialogue_kind": "object",
+      "meeting": null,
+      "tiles": [],
+      "restored_tiles": [],
+      "travel_available": true,
+      "friends": [],
+      "travel": {
+        "phase": "idle",
+        "status": "idle",
+        "target": "",
+        "landing": [
+          0,
+          0
+        ]
+      }
+    },
+    "party_count": 1
+  }
+}

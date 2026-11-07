@@ -24,6 +24,24 @@ static int Identifier(const char *text)
     return 1;
 }
 
+/* A private self-addressed capability reply is required before guild
+ * commands. On old servers only the harmless /guild help probe is sent;
+ * private guild/board text can never fall back to public chat. The live
+ * history is cleared on disconnect, so capabilities do not survive reconnects. */
+static int GuildAvailable(void)
+{
+    const char *trainer = WorldBridge_TrainerName();
+    char expected[128], line[184];
+    unsigned i;
+    if (!trainer || !Identifier(trainer)) return 0;
+    snprintf(expected, sizeof(expected), "%s > %s: Guild: protocol 1", trainer, trainer);
+    for (i = 0; i < WorldBridge_ChatCount(); i++) {
+        WorldBridge_ChatLine(i, line, sizeof(line));
+        if (!strcmp(line, expected)) return 1;
+    }
+    return 0;
+}
+
 static void Submit(void)
 {
     char copy[152], *text = copy, *target = "*", *space;
@@ -37,6 +55,13 @@ static void Submit(void)
         if (!Identifier(target)) goto invalid;
     }
     if (!*text || strlen(text) > 120) goto invalid;
+    if (!strcmp(target, "*")
+     && ((!strncmp(text, "/guild", 6) && (text[6] == 0 || text[6] == ' '))
+      || (!strncmp(text, "/g", 2) && (text[2] == 0 || text[2] == ' ')))
+     && strcmp(text, "/guild help") && !GuildAvailable()) {
+        strcpy(sChat.hint, "Send /guild help to check server support first.");
+        return;
+    }
     if (!WorldBridge_ChatSend(target, text)) {
         strcpy(sChat.hint, "Not sent. Check connection or try again.");
         return;
@@ -51,6 +76,18 @@ static void Submit(void)
     return;
 invalid:
     strcpy(sChat.hint, "1-120 characters. Private: /w trainer text");
+}
+
+int WorldChat_OpenGuild(void)
+{
+    if (!WORLD_CHAT_HEIGHT || !WorldBridge_Enabled() || sChat.editing) return 0;
+    sChat.editing = 1;
+    sChat.scroll = 0;
+    strcpy(sChat.draft, "/guild help");
+    strcpy(sChat.hint, "Press Enter for guild commands.");
+    SDL_FlushEvent(SDL_TEXTINPUT);
+    SDL_StartTextInput();
+    return 1;
 }
 
 int WorldChat_Event(const SDL_Event *event)
@@ -261,3 +298,4 @@ void WorldChat_Draw(SDL_Renderer *renderer)
     }
 }
 #endif /* PORTABLE */
+

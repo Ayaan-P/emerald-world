@@ -1,0 +1,32 @@
+{
+  "rc7_head": "c576f5dda3b8f286839e941539c8fcf01c3adfcb",
+  "native_head": "c22527265e72236fb269937d9705bafa49cc02cc",
+  "native_dirty": "",
+  "symbol_counts": {
+    "__wrap_frame_run": 1,
+    "WorldBridge_": 0,
+    "LinkTransport_": 0,
+    "NativeLink_": 0,
+    "WorldActivity_": 0,
+    "WorldCoop_": 0,
+    "WorldTravel_": 0,
+    "GeneratedMap_": 0
+  },
+  "native_pokemon_bytes_from_gParties_symbol": 100,
+  "sources": {
+    "/home/ayaan/projects/emerald-world-research/worktrees/rc7/world/link_protocol.py": "6533767cc2cf15b7539d1f034b840464f092c18e19fc38a6173d66caff61ac90",
+    "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/native_link.c": "5f82d51c03d7cb7fd3bce94e6925a0052240592b6cbd07d9e2e7eb0801a0e229",
+    "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/world_coop.c": "1449630dde03ab0d283dff6e2430fc1d3d1816dfbda6129c5f106e46bd282a98",
+    "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/platform/sdl2.c": "4784d101874ca776c7193db74e50b73306d4b12e723b51728a75ca06e37910db",
+    "/home/ayaan/projects/emerald-world-research/worktrees/rc7/src/battle_main.c": "70bf92048e30370e32bbba79c32f419b72162ae24758c81ff30c2880a078dfde",
+    "/home/ayaan/projects/emerald-world-research/worktrees/rc7/engines/expansion_presence.c": "5b77d6566f1fa8c2aa2c33565532dff17c2912c9457e213cb4d077503e281a0b",
+    "/home/ayaan/projects/emerald-world-research/worktrees/rc7/engines/expansion-native/include/constants/battle.h": "123829779023ddd1148784c2fb78d3815f2b1d70bed737b126754f9f64e5f332",
+    "/home/ayaan/projects/emerald-world-research/worktrees/rc7/engines/expansion-native/include/pokemon.h": "5b286522d25982404732161762aa40802978e4c20a97494a89fd30fec6ba71bd",
+    "/home/ayaan/projects/emerald-world-research/worktrees/rc7/engines/expansion-native/src/main.c": "9c00e89864eb600f6db45dec77a83ab4c05f2c7f1eac67ea6af25984a6bdbbac",
+    "/home/ayaan/projects/emerald-world-research/worktrees/rc7/engines/expansion-native/src/link.c": "405fc2406fc9f46afd7e1c620fcbc2bb40924b520a4e49126c129c56b80a08da",
+    "/home/ayaan/projects/emerald-world-research/worktrees/rc4/src/battle_main.c": "bad11c31fc2061497aa2c883752bb0602433e97f17483522ace7257f967f67da",
+    "/home/ayaan/projects/emerald-world-research/worktrees/rc4/build/rc4-battle-transplant/parent-build-04.log": "e4f707b364fe93403c884c99a0b57ed1a1b7735b491ff913317a9f5c71c6aef9",
+    "/home/ayaan/projects/emerald-world-research/worktrees/rc4/build/rc4-battle-transplant/parent-build-08.log": "a1bbc4ec3668571c84faf9436eab0b661222b223633918eb5c935663d59f3f0a",
+    "/home/ayaan/projects/emerald-world-research/worktrees/rc4/build/rc4-battle-transplant/parent-build-15.log": "15aa28635ae5bb98347851de3dbfb6c66e295f9423ae96a04c1e22f393bd282b"
+  }
+}

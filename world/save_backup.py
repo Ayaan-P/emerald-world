@@ -28,7 +28,7 @@ def _owned_directory(path):
     return fd
 
 
-def backup_save(world, trainer, destination, *, offline=False):
+def backup_save(world, trainer, destination, *, offline=False, engine='vanilla'):
     """Copy one save while holding its existing nonblocking profile lock."""
     world = Path(world).absolute()
     destination = Path(destination).absolute()
@@ -43,7 +43,7 @@ def backup_save(world, trainer, destination, *, offline=False):
         if (not stat.S_ISREG(marker.st_mode) or marker.st_uid != os.geteuid()
                 or marker.st_nlink != 1 or marker.st_mode & 0o077):
             raise ValueError('Choose a valid private offline profile.')
-    paths = profile_paths(state, trainer)
+    paths = profile_paths(state, trainer, engine=engine)
     for directory in (state, paths['profile'].parent, paths['profile']):
         check = _owned_directory(directory)
         os.close(check)
@@ -52,7 +52,7 @@ def backup_save(world, trainer, destination, *, offline=False):
     temporary = None
     try:
         # OfflineGameLock also holds the parent world lifecycle barrier.
-        lock = OfflineGameLock(world, trainer) if offline else ProfileLock(world, trainer)
+        lock = OfflineGameLock(world, trainer, engine=engine) if offline else ProfileLock(world, trainer, engine=engine)
         source_fd = os.open(paths['save'], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         with os.fdopen(source_fd, 'rb') as source:
             before = os.fstat(source.fileno())
@@ -95,9 +95,10 @@ def main(argv=None):
     parser.add_argument('--trainer', required=True, help='local trainer profile key')
     parser.add_argument('--destination', type=Path, required=True, help='new backup file path')
     parser.add_argument('--offline', action='store_true', help='back up the separate offline profile')
+    parser.add_argument('--engine', choices=('vanilla', 'expansion-native'), default='vanilla')
     args = parser.parse_args(argv)
     try:
-        backup_save(args.world, args.trainer, args.destination, offline=args.offline)
+        backup_save(args.world, args.trainer, args.destination, offline=args.offline, engine=args.engine)
     except (OSError, ValueError, TypeError):
         parser.exit(1, 'Save backup failed. Close the game, check paths and permissions, and choose a new destination. A completed file may already exist if disk synchronization failed.\n')
     print('Private save backup created. The source was not modified. Save compatibility was not checked.')

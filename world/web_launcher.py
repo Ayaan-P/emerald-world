@@ -35,9 +35,15 @@ MAX_SAVE = 131072
 
 class LauncherBridge:
     """Serialize access to the existing session; never return credentials."""
-    def __init__(self, session, binary):
+    def __init__(self, session, binary, engine='vanilla'):
+        if engine not in ('vanilla', 'expansion-native'):
+            raise ValueError('Unsupported launcher engine')
+        session_engine = getattr(session, 'engine', None)
+        if isinstance(session_engine, str) and session_engine != engine:
+            raise ValueError('Launcher engine does not match the selected world namespace')
         self.session = session
         self.binary = Path(binary)
+        self.engine = engine
         self.remote_paths = None
         self.browser_input = None
         self.browser_input_session = None
@@ -61,12 +67,14 @@ class LauncherBridge:
                 continue
             if not private_dir(world, 0o022):
                 continue
-            offline = world / '.offline'
+            offline_root = world / '.offline'
+            offline = (offline_root if self.engine == 'vanilla'
+                       else offline_root / 'engines' / self.engine)
             trainers = offline / 'trainers'
-            if not private_dir(offline) or not private_dir(trainers):
+            if not private_dir(offline_root) or not private_dir(offline) or not private_dir(trainers):
                 continue
             try:
-                marker = (offline / '.offline-copy').lstat()
+                marker = (offline_root / '.offline-copy').lstat()
                 if not stat.S_ISREG(marker.st_mode) or marker.st_uid != os.geteuid() or marker.st_nlink != 1 or marker.st_mode & 0o077:
                     continue
             except OSError:
@@ -104,7 +112,7 @@ class LauncherBridge:
         if not binary_ready(self.binary):
             raise SessionError('The native game is not built. Follow INSTALL_PC.md first.')
         self._ensure_game_display()
-        options = {'copy_online': copy}
+        options = {'copy_online': copy, 'engine': self.engine}
         if seed_save is not None:
             options['seed_save'] = seed_save
         self.session.launch_offline(world, trainer, self.binary,
@@ -159,7 +167,10 @@ class LauncherBridge:
             except (OSError, ValueError, TypeError, KeyError):
                 label = 'Local expedition · ' + path.name[-4:]
             profiles = []
-            trainers = path / 'trainers'
+            trainers = self.session._world(path.name) / 'trainers'
+            if self.engine != 'vanilla':
+                from .launcher import engine_state
+                trainers = engine_state(path, self.engine) / 'trainers'
             if trainers.is_dir() and not trainers.is_symlink():
                 for profile in trainers.iterdir():
                     if (not profile.is_symlink() and profile.is_dir()
@@ -200,9 +211,16 @@ class LauncherBridge:
                     continue
                 try:
                     profile = Path(paths['profile'])
-                    world = profile.parent.parent.parent
-                    if (profile.name == game[8:] and profile.parent.name == 'trainers'
-                            and profile.parent.parent.name == '.offline'
+                    if self.engine == 'vanilla':
+                        world = profile.parent.parent.parent
+                        valid = profile.parent.name == 'trainers' and profile.parent.parent.name == '.offline'
+                    else:
+                        world = profile.parents[4]
+                        valid = (profile.parent.name == 'trainers'
+                                 and profile.parent.parent.name == self.engine
+                                 and profile.parent.parent.parent.name == 'engines'
+                                 and profile.parent.parent.parent.parent.name == '.offline')
+                    if (profile.name == game[8:] and valid
                             and world.parent == self.session.root
                             and re.fullmatch(r'[A-Za-z0-9_-]{1,48}', world.name)):
                         offline_world_key = world.name
@@ -226,11 +244,23 @@ class LauncherBridge:
                         formats = dict(server.db.execute(
                             'SELECT identity, substr(template, 1, 8) FROM generated_area_archive'))
                     kinds = {b'EWGMAP06': 'wilds', b'EWGMAP07': 'guided_wilds',
-                             b'EWGMAP08': 'cast_wilds', b'EWGMAP09': 'event_wilds'}
+                             b'EWGMAP08': 'cast_wilds', b'EWGMAP09': 'event_wilds', b'EWGMAP0A': 'xl_wilds'}
                     areas = [dict(area, kind=kinds.get(formats.get(area['identity'], b''), area['kind']))
                              for area in areas]
                 except Exception:
                     archive_error = 'Saved areas could not be loaded. Reopen the local host and try again.'
+            active_area = None
+            if local_host and server is not None:
+                with server.lock:
+                    cave = server.shared_cave
+                    if cave is not None:
+                        kinds = {6: 'wilds', 7: 'guided_wilds', 8: 'cast_wilds', 9: 'event_wilds', 16: 'xl_wilds'}
+                        archived = next((area for area in areas if area['identity'] == cave.identity), {})
+                        occupants = sum(1 for peer in server.peers.values()
+                            if not peer.get('closing') and (peer.get('in_generated_cave') or
+                                (peer.get('state') is not None and tuple(peer['state'][:2]) in (server.cave_map, server.wilds_map))))
+                        active_area = {'kind': kinds.get(cave.version, 'cave'), 'side': cave.side,
+                            'label': archived.get('label', 'Current generated area'), 'occupants': occupants}
             live_games = [name for name, (process, _paths) in self.session.games.items()
                           if process.poll() is None]
             game_exit = None
@@ -244,11 +274,12 @@ class LauncherBridge:
                     game_exit = {'trainer': name, 'code': code, 'unexpected': code != 0}
             return {'local_worlds': self.local_expeditions(),
                     'game_exit': game_exit,
-                    'generated_areas': areas, 'area_archive': archive_enabled,
+                    'generated_areas': areas, 'active_generated_area': active_area, 'area_archive': archive_enabled,
                     'area_archive_error': archive_error,
                     'wilds_authoring': wilds_authoring,
                     'guided_wilds_authoring': wilds_authoring,
                     'cast_wilds_authoring': wilds_authoring,
+                    'xl_wilds_authoring': wilds_authoring,
                     'local_host': local_host,
                     'cave_authoring': server is not None and local_host and server.cave_map is not None,
                     'cave_persistent': bool(server is not None and local_host and server.persist_generated_cave),
@@ -256,7 +287,7 @@ class LauncherBridge:
                     'trainer': self.session.remote_trainer,
                     'world_key': self.session.state.name if self.session.state is not None else None,
                     'offline_world_key': offline_world_key,
-                    'games': live_games, 'status': self.session.status}
+                    'games': live_games, 'status': self.session.status, 'engine': self.engine}
 
     def stop_browser_input(self):
         # Also used by launcher shutdown. Serialize teardown with HTTP lifecycle
@@ -364,11 +395,11 @@ class LauncherBridge:
                         or self.session.server is None):
                     raise SessionError('Host the selected local expedition before generating an area.')
                 kind = payload.get('kind', 'cave')
-                if kind not in ('cave', 'wilds', 'guided_wilds', 'cast_wilds'):
+                if kind not in ('cave', 'wilds', 'guided_wilds', 'cast_wilds', 'xl_wilds'):
                     raise SessionError('Choose a cave, outdoor wilds, wilds with a guide or wilds with a cast.')
                 try:
-                    self.session.author_shared_cave(payload.get('theme'), wilds=kind != 'cave',
-                        guide=kind == 'guided_wilds', cast=kind == 'cast_wilds')
+                    self.session.author_shared_cave(payload.get('theme'), cohort=self.engine, wilds=kind != 'cave',
+                        guide=kind == 'guided_wilds', cast=kind == 'cast_wilds', **({'xl': True} if kind == 'xl_wilds' else {}))
                 except SessionError:
                     raise
                 except Exception:
@@ -426,7 +457,8 @@ class LauncherBridge:
                 try:
                     with tempfile.TemporaryDirectory(prefix='emerald-save-backup-') as directory:
                         destination = Path(directory) / 'trainer.sav'
-                        backup_save(self.session._world(world), trainer, destination, offline=offline)
+                        backup_save(self.session._world(world), trainer, destination, offline=offline,
+                                    engine=self.engine)
                         encoded = base64.b64encode(destination.read_bytes()).decode('ascii')
                 except (OSError, ValueError):
                     raise SessionError('Could not back up this save. Close the game and check that the profile has a save.') from None
@@ -447,7 +479,7 @@ class LauncherBridge:
                 from scripts.linux_client import binary_ready, discover_display
                 if not binary_ready(self.binary):
                     raise SessionError('The native game is not built. Follow INSTALL_PC.md first.')
-                self.session.launch(self.remote_paths, self.binary, self._ensure_game_display())
+                self.session.launch(self.remote_paths, self.binary, self._ensure_game_display(), engine=self.engine)
             elif action == 'offline':
                 world = payload.get('world')
                 copy = payload.get('copy')
@@ -690,8 +722,10 @@ def open_browser(url):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--worlds-root', type=Path, default=Path.home() / '.local/share/emerald-world/worlds')
+    parser.add_argument('--worlds-root', type=Path, help='explicit library root; Expansion uses a short private default for Unix sockets')
     parser.add_argument('--binary', type=Path)
+    parser.add_argument('--engine', choices=('vanilla', 'expansion-native'), default='vanilla',
+                        help='pin this web launcher to one engine and its private profiles')
     parser.add_argument('--install', action='store_true', help='add a separate user application shortcut')
     args = parser.parse_args(argv)
     if not (DIST / 'index.html').is_file():
@@ -710,16 +744,27 @@ def main(argv=None):
     previous = signal.signal(signal.SIGTERM, interrupted)
     try:
         with ExitStack() as cleanup:
-            root = DesktopSession.create_root(args.worlds_root.absolute())
+            if args.worlds_root is None:
+                # Native Unix socket addresses have a 107-byte limit. Keep the
+                # new Expansion library isolated without doubling long prefixes.
+                # The existing vanilla library is deliberately unchanged.
+                worlds_root = (Path.home() / '.ew/x' if args.engine == 'expansion-native'
+                               else Path.home() / '.local/share/emerald-world/worlds')
+            else:
+                worlds_root = args.worlds_root.absolute()
+                if args.engine != 'vanilla':
+                    worlds_root = worlds_root / 'engines' / args.engine
+            root = DesktopSession.create_root(worlds_root)
             instance = LauncherInstance(root)
             cleanup.callback(instance.close)
             if not instance.owner:
                 if not open_browser(instance.existing_url()):
                     raise InstanceError('Could not open the running launcher in a browser. Retry the shortcut.')
                 return 0
-            session = DesktopSession(root)
+            session = DesktopSession(root, engine=args.engine)
             cleanup.callback(session.close)
-            bridge = LauncherBridge(session, args.binary or discover_binary())
+            binary = args.binary or discover_binary(args.engine)
+            bridge = LauncherBridge(session, binary, engine=args.engine)
             cleanup.callback(bridge.stop_browser_input)
             capability = secrets.token_urlsafe(32)
             server = ThreadingHTTPServer(('127.0.0.1', 0), BaseHTTPRequestHandler)

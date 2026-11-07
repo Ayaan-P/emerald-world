@@ -39,7 +39,7 @@ def checks(manifest):
             ready = False
         rows.append((library, ready, 'System loader must resolve this library and its dependencies'))
     from scripts.linux_client import prerequisites
-    rows.extend(row for row in prerequisites(ROOT / 'build/pokeemerald64') if row[0] != 'tkinter')
+    rows.extend(row for row in prerequisites(ROOT / manifest['binary']) if row[0] != 'tkinter')
     rows.append(('browser', bool(shutil.which('xdg-open') or shutil.which('firefox') or shutil.which('chromium')),
                  'A default desktop browser is required'))
     return rows
@@ -66,7 +66,7 @@ def main(argv=None):
     # Keep child module lookup independent of the caller's current directory.
     os.chdir(ROOT)
     from world.web_launcher import main as launch
-    return launch(['--binary', str(ROOT / 'build/pokeemerald64')])
+    return launch(['--binary', str(ROOT / manifest['binary']), '--engine', manifest['engine']])
 
 
 if __name__ == '__main__':

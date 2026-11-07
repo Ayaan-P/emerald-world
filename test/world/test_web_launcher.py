@@ -90,7 +90,7 @@ class WebLauncherTests(unittest.TestCase):
         self.session.friend_worlds.return_value = [{'name': 'world1', 'trainer': 'May'}]
         with self.live_display(), patch('scripts.linux_client.binary_ready', return_value=True):
             self.bridge.action('offline', {'world': 'world1', 'copy': True, 'trainer': 'someone-else'})
-        self.session.launch_offline.assert_called_once_with('world1', 'May', Path('/nonexistent/game'), ':90', copy_online=True)
+        self.session.launch_offline.assert_called_once_with('world1', 'May', Path('/nonexistent/game'), ':90', copy_online=True, engine='vanilla')
 
     def test_offline_refuses_active_session_and_unknown_world(self):
         self.session.friend_worlds.return_value = [{'name': 'world1', 'trainer': 'May'}]
@@ -158,7 +158,7 @@ class WebLauncherTests(unittest.TestCase):
     def test_new_solo_starts_a_new_isolated_world(self):
         with self.live_display(), patch('scripts.linux_client.binary_ready', return_value=True), patch('world.web_launcher.secrets.token_hex', return_value='abc123'):
             self.bridge.action('solo_new', {'trainer': 'May'})
-        self.session.launch_offline.assert_called_once_with('solo-abc123', 'May', Path('/nonexistent/game'), ':90', copy_online=False)
+        self.session.launch_offline.assert_called_once_with('solo-abc123', 'May', Path('/nonexistent/game'), ':90', copy_online=False, engine='vanilla')
         self.session.connect_remote.assert_not_called()
 
     def test_solo_import_stages_private_copy_and_removes_temporary_file(self):

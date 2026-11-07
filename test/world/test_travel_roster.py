@@ -12,6 +12,9 @@ class TravelRosterTests(unittest.TestCase):
     def setUp(self):
         self.server = WorldServer.__new__(WorldServer)
         self.server.revision = 1
+        # This __new__ fixture bypasses constructor initialization.
+        self.server.cave_map = None
+        self.server.wilds_map = None
         self.server.tiles = []
         self.server.objects = []
         self.server.peers = {}

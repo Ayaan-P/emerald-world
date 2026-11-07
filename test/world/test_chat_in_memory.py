@@ -15,6 +15,9 @@ class ChatRoutingTests(unittest.TestCase):
         self.server.chat_serial = 0
         self.server.peers = {name: peer(name, name != 'legacy') for name in ('alice', 'bob', 'carol', 'legacy')}
         self.server.rally = RallyCoordinator(self.server.peers)
+        from world.guild_chat import GuildChat
+        from world.server import validate_coords, TRAVEL_FRESH_SECONDS
+        self.server.guild_chat = GuildChat(self.server, validate_coords, TRAVEL_FRESH_SECONDS)
         self.server._broadcast = Mock()
         self.server._queue = Mock()
         self.server.revision = 0

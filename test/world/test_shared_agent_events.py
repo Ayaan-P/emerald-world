@@ -88,7 +88,7 @@ line[strcspn(line,"\n")]=0;for(p=strtok_r(line," ",&save);p&&n<5;p=strtok_r(NULL
 r=WorldCaveWire_Feed(&w,n,(const char *const*)t);if(r<0)return 2;}
 return r==1 && w.version==9 && w.nextRow==63 && w.nextEventChunk==6 && w.cast[0]==2 ? 0 : 3;}'''
         with tempfile.TemporaryDirectory() as t:
-            p=Path(t);(p/'global.h').write_text('#include <stdint.h>\ntypedef uint8_t u8;typedef uint32_t u32;typedef int bool8;\n#define TRUE 1\n#define FALSE 0\n');(p/'test.c').write_text(code)
+            p=Path(t);(p/'global.h').write_text('#include <stdint.h>\ntypedef uint8_t u8;typedef uint16_t u16;typedef uint32_t u32;typedef int bool8;\n#define TRUE 1\n#define FALSE 0\n');(p/'test.c').write_text(code)
             cmd=['cc','-std=gnu99','-Wall','-Wextra','-Werror','-DPORTABLE','-DGENERATED_CAVE_PROFILES=1','-DGENERATED_CAVE_WILDLIFE=1','-DGENERATED_MAP_LARGE=1','-DGENERATED_MAP_WILDS=1','-DGENERATED_WILDS_GUIDE=1','-DGENERATED_WILDS_CAST=1','-DGENERATED_WILDS_EVENTS=1','-iquote',str(p),'-iquote',str(ROOT/'include'),str(ROOT/'src/platform/world_cave_wire.c'),str(p/'test.c'),'-o',str(p/'test')]
             build=subprocess.run(cmd,capture_output=True,text=True);self.assertEqual(build.returncode,0,build.stderr)
             area=SharedCave(self.blob());frames=area.frames();run=lambda x:subprocess.run([str(p/'test')],input=x,capture_output=True,text=True).returncode
@@ -125,7 +125,7 @@ return r==1 && w.version==9 && w.nextRow==63 && w.nextEventChunk==6 && w.cast[0]
 struct Task {int isActive;};struct Task gTasks[16];
 struct Save save,*gSaveBlock1Ptr=&save;__typeof__(gMain) gMain;__typeof__(gMapHeader) gMapHeader;
 enum CaveState {CAVE_DISABLED,CAVE_IDLE,CAVE_WAIT,CAVE_WAIT_RESET,CAVE_ACK,CAVE_WAIT_OK,CAVE_READY,CAVE_MISMATCH,CAVE_RETURN_NONE};
-static struct {bool8 connected,caveAvailable,staging,caveReturning,caveV2Probe,caveV3Probe,caveV4Probe,caveV5Probe,caveV6Probe,caveV7Probe,caveV8Probe,caveV9Probe;u8 eventHead,eventCount;unsigned eventSetSeq;struct {u8 kind,state,rule[61];unsigned sequence;} eventQueue[8];enum CaveState caveState;unsigned caveTimeout,caveRetry,snapshotAge;char caveExpected[65];struct WorldCaveWire caveWire;size_t outputSize;char output[4096];} sWorld;
+static struct {bool8 connected,caveAvailable,staging,caveReturning,caveV2Probe,caveV3Probe,caveV4Probe,caveV5Probe,caveV6Probe,caveV7Probe,caveV8Probe,caveV9Probe;u8 eventHead,eventCount;unsigned eventSetSeq;struct {u8 kind,state,rule[61],x,y,terrain,tiles[193],tilesSize;unsigned sequence;} eventQueue[8];enum CaveState caveState;unsigned caveTimeout,caveRetry,snapshotAge;char caveExpected[65];struct WorldCaveWire caveWire;size_t outputSize;char output[4096];} sWorld;
 static int leaving,disconnected;static struct WarpData destination;static struct MapEvents events;
 const u8 GeneratedWorld_Wilds_EventScript_Guide[]={0};const u8 GeneratedWorld_Wilds_EventScript_Cast2[]={0},GeneratedWorld_Wilds_EventScript_Cast3[]={0},GeneratedWorld_Wilds_EventScript_Graph[]={0};u16 gSpecialVar_LastTalked;extern u8 gGeneratedWildsGuideText[58],gGeneratedEventText[58];
 const char *LinkTransport_TagPeer(void){return 0;}
@@ -138,6 +138,7 @@ int IsMapTypeOutdoors(int x){return x==1;}int TestPlayerAvatarFlags(int f){retur
 void PlayerGetDestCoords(s16 *x,s16 *y){*x=15;*y=16;}
 void SetWarpDestination(s8 g,s8 n,s8 w,s8 x,s8 y){destination=(struct WarpData){g,n,w,x,y};}
 void SetDynamicWarpWithCoords(int z,s8 g,s8 n,s8 w,s8 x,s8 y){(void)z;save.dynamicWarp=(struct WarpData){g,n,w,x,y};}
+static int tileX,tileY,tileValue,draws;void MapGridSetMetatileEntryAt(int x,int y,u16 value){tileX=x;tileY=y;tileValue=value;}void CurrentMapDrawMetatileAt(int x,int y){(void)x;(void)y;draws++;}
 void StoreInitialPlayerAvatarState(void){}void DoWarp(void){leaving++;}
 static int ready=1;static bool8 Ready(void){return ready;}
 static int WorldCatalog_Coords(unsigned g,unsigned n,unsigned x,unsigned y){(void)g;(void)n;(void)x;(void)y;return 0;}
@@ -179,6 +180,15 @@ int main(void){const char *a="ID_A",*b="ID_B";struct MapLayout base={19,26,0,0,0
  ready=0;assert(CaveLine(5,set2));assert(CaveLine(8,patch2));CavePump();assert(sWorld.eventCount==2 && GeneratedMap_EventState()==6);
  ready=1;CavePump();assert(sWorld.eventCount==1 && GeneratedMap_EventState()==7);CavePump();assert(sWorld.eventCount==0);GeneratedMap_RunEvent();assert(GeneratedMap_EventState()==8);
  char *invalid[]={"CAVE","EVENTRULE",(char*)a,"6","8","1","9","01"};assert(CaveLine(8,invalid));CavePump();assert(strstr(lastOutput," 6 REJECTED") && GeneratedMap_EventState()==8);
+ char *tile[]={"CAVE","EVENTTILE",(char*)a,"7","3","3","1"};assert(CaveLine(7,tile));CavePump();assert(strstr(lastOutput," 7 APPLIED") && tileX==10 && tileY==10 && tileValue==0x300d && draws==1);assert(GeneratedMap_ResolveLayout(&base)->map[3*63+3]==0x300d);
+ char *blocked[]={"CAVE","EVENTTILE",(char*)a,"8","2","1","0"};assert(CaveLine(7,blocked));CavePump();assert(strstr(lastOutput," 8 REJECTED") && draws==1);
+ char *tiles[]={"CAVE","EVENTTILES",(char*)a,"9","02030300040401"};assert(CaveLine(5,tiles));CavePump();assert(strstr(lastOutput," 9 APPLIED") && draws==3);assert(GeneratedMap_ResolveLayout(&base)->map[3*63+3]==0x3001 && GeneratedMap_ResolveLayout(&base)->map[4*63+4]==0x300d);
+ char *duplicate[]={"CAVE","EVENTTILES",(char*)a,"10","02030300030301"};assert(CaveLine(5,duplicate));CavePump();assert(strstr(lastOutput," 10 REJECTED") && draws==3);assert(GeneratedMap_ResolveLayout(&base)->map[3*63+3]==0x3001);
+ u8 many[193];many[0]=64;for(int i=0;i<64;i++){many[1+3*i]=3+i%8;many[2+3*i]=3+i/8;many[3+3*i]=i%2;}
+ assert(GeneratedMap_SetSharedEventTiles(many,sizeof(many)) && draws==67);many[1+3*63]=1;many[2+3*63]=1;assert(!GeneratedMap_SetSharedEventTiles(many,sizeof(many)) && draws==67);
+
+
+
  /* The same terrain and characters with a different event graph is a different identity. It must
     leave the old cave before staging or acknowledging the replacement. */
  sWorld.caveState=CAVE_WAIT;WorldCaveWire_Reset(&sWorld.caveWire);deliver(b,"META_B_SENTINEL","GRAPH_B_SENTINEL");
@@ -202,6 +212,7 @@ int main(void){const char *a="ID_A",*b="ID_B";struct MapLayout base={19,26,0,0,0
             p=Path(temp);(p/'platform').mkdir();(p/'constants').mkdir();(p/'global.h').write_text('#ifndef G\n#define G\n'+global_h+'\n#endif\n')
             for name in ('main.h','overworld.h','field_screen_effect.h','field_player_avatar.h','fieldmap.h'):
                 (p/name).write_text('#include "global.h"\nint IsMapTypeOutdoors(int);int TestPlayerAvatarFlags(int);void SetWarpDestination(s8,s8,s8,s8,s8);void SetDynamicWarpWithCoords(int,s8,s8,s8,s8,s8);void PlayerGetDestCoords(s16*,s16*);void StoreInitialPlayerAvatarState(void);void DoWarp(void);\n#define MAP_OFFSET 7\n')
+            (p/'field_camera.h').write_text('#include "global.h"\nvoid CurrentMapDrawMetatileAt(int,int);void MapGridSetMetatileEntryAt(int,int,u16);\n')
             (p/'event_data.h').write_text('#include "global.h"\nextern u16 gSpecialVar_LastTalked;\n')
             (p/'task.h').write_text('struct Task {int isActive;}; extern struct Task gTasks[16];\n#define NUM_TASKS 16\n')
             (p/'platform/world_rally.h').write_text('struct WorldRallySnapshot{unsigned id;};int WorldRally_HasReturn(void);int WorldRally_GetSnapshot(struct WorldRallySnapshot *);\n')

@@ -1,0 +1,286 @@
+[
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/expansion-input-reuse.json",
+    "sha256": "b559017d3892b5be2c46a8274201a7b52133ed58c6701c39f692dba748a489d0"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/fresh-integration-research-evidence.json",
+    "sha256": "a85d9284f97906300cc86d11c6391e7c24eabb798229975eab468292580c9d77"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/fresh-integration-research.txt",
+    "sha256": "1b4f9ec862bf3ef53034a0c8c6e7be0a06e7b6d7fa1fc0b90d56d504aa02cd24"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/port_helpers.py",
+    "sha256": "5dc59209fa140172616b182dc85af308aecf3d8635c82a8e06f418f3926aa368"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/port_world_maps.py",
+    "sha256": "1180ce61fd25b525d47dd2ded32d1b7193d36676a4f46ffc199b39ed79a0971f"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/rc7-integrated-expansion-build.log",
+    "sha256": "07aba1c1a2889a71d480671fadb7f5b8cf6516e3aac7add36ea75103d25c8609"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/rc7-world-port-01.log",
+    "sha256": "08732ae735b1d4ccd0d4982aef932ca5a0d3eb6cd9d2ee986aa5cadf06755ecb"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/rc7-world-port-02.log",
+    "sha256": "2b2c6635f0a02da3f6a62bde8377b8a74f2e97aaf6910068e976af53a33caee4"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/rc7-world-port-03.log",
+    "sha256": "4eb5814ebfbc1f3c69d42f1cc59bb765a477e2304a29128bc3c5e19a7f88e1f9"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/rc7-world-port-04.log",
+    "sha256": "dbcef58dddf60b984f92e7128c3cb9e3a6a5ce49d428ed1b8fcd5ed1df71dfe9"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/rc7-world-port-05.log",
+    "sha256": "3600758bded97b33420168e9a7b591c92f3aef3c1164b4f4d4275d15f84dde1b"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/rc7-world-port-06.log",
+    "sha256": "85db638421acc9b3971e59c64971dc4ea53959e6d08034cd6d0f3a80150d3d71"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/rc7-world-port-07.log",
+    "sha256": "2b197358f6a9878afd5612f90d2f58f2e8ba01b9ecdaef80ed36d731118e5e99"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/rc7-world-port-08.log",
+    "sha256": "d5bd824b6abdf23e402ceeda234ed7d3ba34e6385828e286c9b8082523b5e0e9"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/rc7-world-port-09.log",
+    "sha256": "3afcdf993925fdbdc27fd3be127d62f27761c5fa539f58b5fb691204d5f0ac50"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/baseline-dexnav_native.log",
+    "sha256": "13d17f6b9ef6accbbc801b732627f6523fa4780d3ce2c8cc2e7ebc2e8416db49"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/baseline-generated_map.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/baseline-link_transport.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/baseline-native_link.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/baseline-party_autoheal.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/baseline-player_control.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/baseline-repeat_repel.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/baseline-world_activity.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/baseline-world_bridge.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/baseline-world_cave_wire.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/baseline-world_chat.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/baseline-world_coop.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/baseline-world_coop_potion.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/baseline-world_coop_roster.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/baseline-world_menu.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/baseline-world_rally.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/baseline-world_travel.log",
+    "sha256": "1d342d20710099e52e984f56551212fdfadf1829ba3aaea0acd48c729bd031bd"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/compile_world.py",
+    "sha256": "100a5930aea9685179b9b0b8fc7645cfb185fc8a020d2e6deaef417bfeadeae2"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/expansion-dexnav_native.log",
+    "sha256": "50595de4715a9cc5c9d77071df1c827a68a624caa35f279175d83cb80b1b42d9"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/expansion-generated_map.log",
+    "sha256": "dcd6342317383a9d73a919139051490023bbde4cb452ba7966107a720006d22c"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/expansion-link_transport.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/expansion-native_link.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/expansion-party_autoheal.log",
+    "sha256": "b2571cd8752cdef5b3050e655312f0fc126a759893ddc42e74733d7d4263cb77"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/expansion-player_control.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/expansion-repeat_repel.log",
+    "sha256": "6e539081c6701b28d40eacca4fcb18308a1dc37b9a01b01410160a76ed436cbf"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/expansion-world_activity.log",
+    "sha256": "ce50a68de12c2be07867d6c0d9a7c73564516ee10f0bee6386edf07bedf6d069"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/expansion-world_bridge.log",
+    "sha256": "8631a31055a59b25ed4912fdc09b799fecf3456b89ce3876f86f975ade78f715"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/expansion-world_cave_wire.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/expansion-world_chat.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/expansion-world_coop.log",
+    "sha256": "454b1011d54df7d28130a7306ac5337f77b56149145ef77199429468e8ce87c8"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/expansion-world_coop_potion.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/expansion-world_coop_roster.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/expansion-world_menu.log",
+    "sha256": "298eda800f93124ba11461b10d776f12c30cd86e5201b2ce22f8c05f1cd38abc"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/expansion-world_rally.log",
+    "sha256": "40495142cec9bde015aa2733e81d6c651d87d466adea9f8681eb65abe9ef3d23"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/expansion-world_travel.log",
+    "sha256": "448441c06dd7ef824cee475490fbdd8948ef86d4a7ad619a8b627165c6f03612"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/ported-dexnav_native.log",
+    "sha256": "99908d1a5504a312718cc10b57caf79ce7b1e9417dd9bd4f7f9b4e35e2208818"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/ported-generated_map.log",
+    "sha256": "6316bc0badc3dbd98e8d464192479482ec037215a8155bfe60bf746d46369b44"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/ported-link_transport.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/ported-native_link.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/ported-party_autoheal.log",
+    "sha256": "831bbdad85f0dbbad1167b798920825ed28f9d9455bcd2e5f44e6057545a2f10"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/ported-player_control.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/ported-repeat_repel.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/ported-results.json",
+    "sha256": "f8dae3f3308743d2c55d288621074573f9e6a4a7839f109a0deec0805b8cd4ab"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/ported-world_activity.log",
+    "sha256": "44f4b79213283c5400693ae201eb6f4ca44adbc7078be0b9d0c9873b0654c771"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/ported-world_bridge.log",
+    "sha256": "c8eb643405f718ef65149aad805138e6c9f0c5bd09d85cd1a72fce4cebc74d2b"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/ported-world_cave_wire.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/ported-world_chat.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/ported-world_coop.log",
+    "sha256": "48db1a5471d035fef2502558dea297e5ddbeceb635c2da81a6c8dc82eaf6369b"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/ported-world_coop_potion.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/ported-world_coop_roster.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/ported-world_menu.log",
+    "sha256": "3e45802cc2a1822c784633d141c53471a5525d9a13101330e63543fe68d95a38"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/ported-world_rally.log",
+    "sha256": "3d1e3f110914132e983e8418ce6edf69984ecf7215708e1965cc49905a3ab77f"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/ported-world_travel.log",
+    "sha256": "b81c22a67f82011572597e6b8fe1d5024f14d2ec5e2e4bb1e60d1d670bb638ea"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/results.json",
+    "sha256": "151e42a018e5175a7e92b16ae2abbce657957bdfb4abe30a8bf14b8ef77d7645"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-probe/summary.log",
+    "sha256": "bee4426eca603a76002e962c64d168700fb4fa519ad892755ee27f701c8e4f4a"
+  },
+  {
+    "path": "docs/attempt-handoffs/rc7/evidence/solution-research-sources.json",
+    "sha256": "b30968d9479ea8cd9808d42922f6a07e4c4b2588bb4b045579d32e658294ab43"
+  }
+]

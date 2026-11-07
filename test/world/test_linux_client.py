@@ -101,6 +101,18 @@ class LinuxClientTests(unittest.TestCase):
         with patch.object(client, 'REPO', self.repo):
             self.assertEqual(client.discover_binary(), self.repo / 'build/pokeemerald64')
 
+    def test_expansion_binary_discovery_never_falls_back_to_vanilla(self):
+        client = self.load()
+        vanilla = self.binary()
+        with patch.object(client, 'REPO', self.repo):
+            self.assertEqual(client.discover_binary('expansion-native'),
+                             self.repo / 'build/expansion-native/pokeemerald-native')
+            expansion = self.binary('build/expansion-native/pokeemerald-native')
+            self.assertEqual(client.discover_binary('expansion-native'), expansion)
+            self.assertNotEqual(client.discover_binary('expansion-native'), vanilla)
+            with self.assertRaises(ValueError):
+                client.discover_binary('unknown')
+
     def test_display_selection_avoids_sockets_locks_and_dangling_links(self):
         client = self.load()
         displays = self.root/'displays'

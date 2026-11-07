@@ -76,11 +76,18 @@ def tk_environment(root):
     return env
 
 
-def profile_paths(state_dir, trainer):
+def engine_state(state_dir, engine='vanilla'):
+    if engine not in ('vanilla', 'expansion-native'):
+        raise ValueError('engine must be vanilla or expansion-native')
+    state = Path(state_dir).resolve()
+    return state if engine == 'vanilla' else state / 'engines' / engine
+
+
+def profile_paths(state_dir, trainer, *, engine='vanilla'):
     if not re.fullmatch(r'[A-Za-z0-9_-]{1,24}', trainer):
         raise ValueError('trainer must be 1..24 ASCII letters, digits, _ or -')
     state_dir = Path(state_dir).resolve()
-    profile = state_dir / 'trainers' / trainer
+    profile = engine_state(state_dir, engine) / 'trainers' / trainer
     if profile.resolve() != profile:
         raise ValueError('trainer profile and its ancestors cannot be symlinks')
     paths = {'profile': profile, 'save': profile / 'game.sav',
@@ -98,8 +105,9 @@ class ProfileLock:
     Lock files are permanent: unlinking them would split the locking inode.
     No PID or timestamp is used to decide whether a profile is available.
     """
-    def __init__(self, state_dir, trainer):
+    def __init__(self, state_dir, trainer, *, engine='vanilla'):
         from world.world_library import WorldActivityLock
+        state_dir = engine_state(state_dir, engine)
         self.activity = WorldActivityLock(state_dir)
         try:
             self._acquire(state_dir, trainer)
@@ -195,13 +203,20 @@ def check_player_endpoint(paths):
     raise ValueError('An existing player control endpoint is active. Stop its owner first.')
 
 
-def game_command(binary, state_dir, paths, display=None, agent_control=False, *, online=True):
+def game_command(binary, state_dir, paths, display=None, agent_control=False, *, online=True, engine='vanilla'):
     """Construct explicit allowlist mounts. Never mount whole HOME or /run."""
+    engine_state(state_dir, engine)
+    mismatched_binary = 'pokeemerald-native' if engine == 'vanilla' else 'pokeemerald64'
+    if (Path(binary).name == mismatched_binary or Path(binary).resolve().name == mismatched_binary):
+        raise ValueError('Native binary does not match the selected engine state namespace')
+    expanded = engine == 'expansion-native'
+    if expanded and paths != profile_paths(state_dir, paths['profile'].name, engine=engine):
+        raise ValueError('Expansion requires its own separate profile')
     binary = Path(binary).resolve()
     state_dir = Path(state_dir).resolve()
     if online:
         require_online_state(state_dir)
-    transport = state_dir / 'transport'
+    transport = engine_state(state_dir, engine) / 'transport'
     if online:
         if transport.resolve() != transport:
             raise ValueError('transport cannot be a symlink')
@@ -216,6 +231,11 @@ def game_command(binary, state_dir, paths, display=None, agent_control=False, *,
             '--ro-bind', str(binary), str(binary),
             '--bind', str(paths['profile']), str(paths['profile']),
             '--chdir', str(paths['profile'])]
+    # The native inspector reads an exact sibling, not the whole build tree.
+    # Keep diagnostics available inside the same narrow sandbox as gameplay.
+    symbols = binary.with_name(binary.name + '.symbols')
+    if symbols.is_file() and not symbols.is_symlink():
+        args += ['--ro-bind', str(symbols), str(symbols)]
     if online:
         args += ['--ro-bind', str(transport), str(transport)]
     env = {'HOME': '/home/sandbox', 'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8',
@@ -229,8 +249,18 @@ def game_command(binary, state_dir, paths, display=None, agent_control=False, *,
         env['DISPLAY'] = display
     else:
         env['SDL_VIDEODRIVER'] = 'dummy'
+    if expanded:
+        if online:
+            env['EW_WORLD_CONFIG'] = str(paths['config'])
+        env['EW_WORLD_HEADLESS'] = '0' if display else '1'
     for key, value in env.items():
         args += ['--setenv', key, value]
+    if expanded:
+        command = args + ['--', str(binary), '--data-dir', str(paths['profile']),
+                          '--save', str(paths['save']), '--rtc-offset', str(paths['profile'] / 'clock.rtc')]
+        if agent_control:
+            command += ['--player-control', str(player_endpoint(paths))]
+        return command + ([] if display else ['--headless', '--silent'])
     command = args + ['--', str(binary), '--save', str(paths['save']),
                       '--config', str(paths['settings'])]
     if online:
@@ -251,12 +281,12 @@ def require_online_state(state_dir):
         raise ValueError('Offline copies cannot connect to world services. Select the original online world.')
 
 
-def prepare_profile(state_dir, trainer, seed_save=None):
-    with ProfileLock(state_dir, trainer) as lock:
-        return _prepare_profile(state_dir, trainer, seed_save, lock.paths)
+def prepare_profile(state_dir, trainer, seed_save=None, *, engine='vanilla'):
+    with ProfileLock(state_dir, trainer, engine=engine) as lock:
+        return _prepare_profile(state_dir, trainer, seed_save, lock.paths, engine=engine)
 
 
-def _prepare_profile(state_dir, trainer, seed_save, paths):
+def _prepare_profile(state_dir, trainer, seed_save, paths, *, engine='vanilla'):
     """Prepare only while the caller owns the profile lock."""
     require_online_state(state_dir)
     from world.server import create_identity
@@ -275,7 +305,7 @@ def _prepare_profile(state_dir, trainer, seed_save, paths):
         if seed == paths['save']:
             raise ValueError('seed must differ from profile save')
         shutil.copyfile(seed, paths['save'])
-    socket_path = Path(state_dir).resolve() / 'transport/world.sock'
+    socket_path = engine_state(state_dir, engine) / 'transport/world.sock'
     paths['config'].write_text(f'socket {socket_path}\ntrainer {trainer}\ntoken {token}\ntelemetry {paths["telemetry"]}\n')
     os.chmod(paths['config'], 0o600)
     if not paths['settings'].exists():
@@ -288,10 +318,11 @@ def admin(socket_path, command):
     return admin_request(str(socket_path), command)
 
 
-def discover_worlds(worlds_root):
+def discover_worlds(worlds_root, engine='vanilla'):
     """List valid immediate child worlds without following links or opening saves."""
     from urllib.parse import quote
     root = Path(worlds_root).expanduser()
+    engine_state(root, engine)
     try:
         root.lstat()
     except OSError as exc:
@@ -332,10 +363,15 @@ def main(argv=None):
     desktop.add_argument('--ui-python', type=Path, default=Path('/usr/bin/python3'), help='UI interpreter used with --tk-runtime')
     worlds = sub.add_parser('list-worlds', help='discover worlds under an explicit directory')
     worlds.add_argument('--worlds-root', type=Path, required=True, help='directory whose immediate child worlds to list')
-    sub.add_parser('host', help='run persistent local world service in foreground')
+    worlds.add_argument('--engine', choices=('vanilla', 'expansion-native'), default='vanilla')
+    host = sub.add_parser('host', help='run persistent local world service in foreground')
+    host.add_argument('--engine', choices=('vanilla', 'expansion-native'), default='vanilla')
     join = sub.add_parser('join', help='create/resume an independent trainer and launch the native game')
     join.add_argument('trainer')
-    join.add_argument('--binary', type=Path, default=REPO / 'build/pokeemerald64')
+    join.add_argument('--binary', type=Path)
+    join.add_argument('--engine', choices=('vanilla', 'expansion-native'), default='vanilla')
+    join.add_argument('--replay', type=Path, help='Expansion donor replay script')
+    join.add_argument('--frames', type=int, help='Expansion frame limit')
     join.add_argument('--seed-save', type=Path, help='explicit copy into a new profile; never modifies original')
     join.add_argument('--display', help='dedicated nested Xephyr display :90..:199')
     join.add_argument('--test-input', type=Path, help='run upstream headless engine input instead of GUI')
@@ -348,7 +384,10 @@ def main(argv=None):
     join.add_argument('--pin', help='trusted remote TLS certificate SHA256 pin')
     offline = sub.add_parser('offline', help='play a separate offline trainer copy without world services')
     offline.add_argument('trainer')
-    offline.add_argument('--binary', type=Path, default=REPO / 'build/pokeemerald64')
+    offline.add_argument('--binary', type=Path)
+    offline.add_argument('--engine', choices=('vanilla', 'expansion-native'), default='vanilla')
+    offline.add_argument('--replay', type=Path, help='Expansion donor replay script')
+    offline.add_argument('--frames', type=int, help='Expansion frame limit')
     seed = offline.add_mutually_exclusive_group()
     seed.add_argument('--seed-save', type=Path, help='copy an explicit disposable save once, never merge back')
     seed.add_argument('--copy-online', action='store_true', help='copy this trainer while its online game is stopped')
@@ -370,15 +409,27 @@ def main(argv=None):
         from world.session import run_desktop
         return run_desktop(args.worlds_root, args.binary, args.display)
     if args.command == 'list-worlds':
-        print(json.dumps({'worlds': discover_worlds(args.worlds_root)}, indent=2))
+        print(json.dumps({'worlds': discover_worlds(args.worlds_root, args.engine)}, indent=2))
         return 0
     if args.state_dir is None:
         p.error('--state-dir is required for this command')
+    if args.command in ('join', 'offline'):
+        if args.engine == 'expansion-native':
+            from world.expansion import run
+            return run(args)
+        if args.replay or args.frames is not None:
+            p.error('--replay and --frames require --engine expansion-native')
+        args.binary = args.binary or REPO / 'build/pokeemerald64'
     if args.command == 'offline':
         from world.offline import run_offline
         return run_offline(args)
     state = args.state_dir.resolve()
     require_online_state(state)
+    if args.command == 'host':
+        state = engine_state(state, args.engine)
+        if state.resolve() != state:
+            raise ValueError('engine state cannot contain symlinks')
+        state.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
     from world.world_library import WorldActivityLock
     with WorldActivityLock(state):
         state.mkdir(parents=True, exist_ok=True, mode=0o700)

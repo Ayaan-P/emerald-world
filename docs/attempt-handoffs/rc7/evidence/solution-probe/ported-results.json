@@ -1,0 +1,104 @@
+[
+  {
+    "module": "native_link",
+    "exit": 0,
+    "errors": [],
+    "log": "build/solution-probe/ported-native_link.log"
+  },
+  {
+    "module": "link_transport",
+    "exit": 0,
+    "errors": [],
+    "log": "build/solution-probe/ported-link_transport.log"
+  },
+  {
+    "module": "world_coop_potion",
+    "exit": 0,
+    "errors": [],
+    "log": "build/solution-probe/ported-world_coop_potion.log"
+  },
+  {
+    "module": "world_coop_roster",
+    "exit": 0,
+    "errors": [],
+    "log": "build/solution-probe/ported-world_coop_roster.log"
+  },
+  {
+    "module": "world_cave_wire",
+    "exit": 0,
+    "errors": [],
+    "log": "build/solution-probe/ported-world_cave_wire.log"
+  },
+  {
+    "module": "world_chat",
+    "exit": 0,
+    "errors": [],
+    "log": "build/solution-probe/ported-world_chat.log"
+  },
+  {
+    "module": "world_rally",
+    "exit": 0,
+    "errors": [],
+    "log": "build/solution-probe/ported-world_rally.log"
+  },
+  {
+    "module": "world_bridge",
+    "exit": 0,
+    "errors": [],
+    "log": "build/solution-probe/ported-world_bridge.log"
+  },
+  {
+    "module": "world_activity",
+    "exit": 0,
+    "errors": [],
+    "log": "build/solution-probe/ported-world_activity.log"
+  },
+  {
+    "module": "world_coop",
+    "exit": 0,
+    "errors": [],
+    "log": "build/solution-probe/ported-world_coop.log"
+  },
+  {
+    "module": "world_menu",
+    "exit": 0,
+    "errors": [],
+    "log": "build/solution-probe/ported-world_menu.log"
+  },
+  {
+    "module": "world_travel",
+    "exit": 0,
+    "errors": [],
+    "log": "build/solution-probe/ported-world_travel.log"
+  },
+  {
+    "module": "generated_map",
+    "exit": 0,
+    "errors": [],
+    "log": "build/solution-probe/ported-generated_map.log"
+  },
+  {
+    "module": "dexnav_native",
+    "exit": 0,
+    "errors": [],
+    "log": "build/solution-probe/ported-dexnav_native.log"
+  },
+  {
+    "module": "party_autoheal",
+    "exit": 0,
+    "errors": [],
+    "log": "build/solution-probe/ported-party_autoheal.log"
+  },
+  {
+    "module": "repeat_repel",
+    "exit": 0,
+    "errors": [],
+    "log": "build/solution-probe/ported-repeat_repel.log"
+  },
+  {
+    "module": "player_control",
+    "exit": 0,
+    "errors": [],
+    "log": "build/solution-probe/ported-player_control.log"
+  }
+]
