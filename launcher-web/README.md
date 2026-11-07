@@ -8,6 +8,18 @@ The Linux browser launcher manages native game sessions, local worlds, dedicated
 
 Closing a game, disconnecting a session and stopping a host are separate operations. Disconnect leaves owned local hosts running, and they remain visible under Local worlds. Stop host requires confirmation and affects only that local world. Quit closes this launcher's games and owned hosts; it does not stop remote servers.
 
+**World options** is under each Local worlds entry. Open the host without launching the game, edit a draft, then review and apply. A running background host can be edited without changing your selected session. All players must leave before applying changes. No one is disconnected automatically. Loading options never changes existing worlds. Display and key bindings remain personal native settings, applied when the game starts.
+
+The editor connects to the existing world-rules version-one authority: wild shuffle on/off and seed 1–20. It requires the world-rules host and matching native-client update; older RC9 hosts show an unavailable state. This UI does not install the authority or change game eligibility. Hosted owner services do not yet expose world-options editing. Additional RC10 categories and Expansion playground remain unavailable until they have matching host and runtime support.
+
+### World-options integration
+
+- The bridge reads existing owned authorities under their lock. It never constructs `WorldRules`, migrates a database, or writes a trainer save. A detached local authority remains owned by the launcher.
+- Applying sends the existing private admin command `world_rules`, action `replace`, complete `rules`, and `expected_revision`. The authority retains the atomic zero-player and revision checks. Browser requests cannot supply an admin path or target a saved remote connection.
+- The UI accepts only the verified version-one schema. Unknown fields or versions fail closed rather than dropping options. Polling preserves drafts, conflicting revisions require reload, and an unconfirmed write is never retried automatically.
+- Extending RC10 needs a versioned gameplay schema with authoritative supported values/defaults, a backend-defined preset and its exact change preview, persistence/admission semantics, and an authenticated owner API for hosted worlds. Distinguish whether a world allows a system, whether its matching build supports it, and whether a trainer is eligible. Do not turn compile-time flags into launcher toggles.
+- Keep the existing world's rules unless its owner explicitly reviews and applies changes. Personal native startup settings and save-local game options are separate from shared gameplay rules.
+
 For a guided one-command frontend setup and optional application shortcut, see [React launcher setup](../docs/REACT_LAUNCHER_SETUP.md).
 
 ## Run
@@ -32,11 +44,13 @@ When the online game is running, the launcher can show connection status and nea
 ## Checks
 
 ```sh
-python3 -m unittest test.world.test_hosting_ui test.world.test_hosting_ui_contract test.world.test_web_launcher
+python3 -m unittest test.world.test_hosting_ui test.world.test_hosting_ui_contract test.world.test_web_launcher test.world.test_rules_ui
 cd launcher-web && npm test && npm run test:ui && npm run build
 ```
 
 These checks do not run a real multiplayer session or exercise the native game. A graphical Linux desktop and native prerequisites are required for an end-to-end run. Windows and macOS are not supported by this experimental launcher.
+
+The world-options suite mocks transport and never opens sockets. Its optional compatibility cases exercise the actual world-rules authority in memory when that backend is integrated; they are explicitly skipped on branches without it.
 
 Hosted worlds use a private HOST ACCESS file to enroll an owner account. A host owner can create and resume worlds and download one-trainer join invitations. World-join invitations are private credentials: share them through a trusted channel. A pending creation is retried with the same request ID to avoid duplicate worlds after an uncertain result. The existing single-world service is not modified by this launcher.
 
