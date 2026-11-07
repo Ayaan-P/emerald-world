@@ -10,7 +10,7 @@ This is NOT a finished multiplayer release. No newer Dot branch is merged.
 
 - App branch: `integrate/rc7`; the app checkpoint is the commit containing this ledger.
 - Engine branch: `integrate/rc7-world`.
-- Engine checkpoint: `fb9e7bde1a6895b4a1a9dfe9ff47f94a7e67e212` (build20 sender-count correction).
+- Engine checkpoint: `dd4cbc90f985735097d21dc202bc4cc3fe9b0f46` (build22 original-contract adaptation).
 - Canonical build 19 and mandatory build checks passed before this checkpoint.
 - Build-19 executable SHA-256: `fef6228ce3c6af8d23697a92b8b255cc6bc38144f4a60ddc28dac43c9b07a73e`.
 - Build log: `/home/ayaan/projects/emerald-world-research/rc7-rescue/integrated-rebuild-19.log`.
@@ -88,3 +88,11 @@ The link send task independently chose four consoles for BATTLE_TYPE_MULTI.
 The WorldCoop-only participant count is now two, allowing the queued intro
 commands, responses and DONE messages to leave COUNT_PLAYERS. Canonical build20
 passed; `coop-build20` actual gameplay run is pending. No new success is claimed.
+
+## Build22 original-contract adaptation
+
+Restored the original co-op intro full controller/ACK barrier, sender-side
+engine reply ownership and safe DONE padding. Read-only diagnostics from build21
+identified intro8/flags100000ff and completed local NOP controllers with pending
+receive records. Build22 compiled; gameplay and full native dispatcher closure
+remain unverified/incomplete. See `RC7_PORT_CONTRACT.md` for source evidence.
