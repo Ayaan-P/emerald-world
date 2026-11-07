@@ -30,3 +30,6 @@ vendor/expansion-dexnav/upstream/** -text whitespace=-blank-at-eol
 graphics/dexnav/*.pal -text
 graphics/field_effects/palettes/cave_dust.pal -text
 graphics/text_window/dexnav_pal.pal -text
+
+# Unified patch context prefixes a space before upstream assembly tabs.
+port/kanto-on-rc9/*.patch whitespace=-space-before-tab
