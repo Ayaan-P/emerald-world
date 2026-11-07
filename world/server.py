@@ -481,16 +481,20 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
-                cave_events = role.endswith('CAVE9')
+                cave_expansion = role.endswith('CAVE10') or role.endswith('CAVE11')
+                cave_expansion_large = role.endswith('CAVE11')
+                cave_events = cave_expansion or role.endswith('CAVE9')
                 cave_cast = cave_events or role.endswith('CAVE8')
                 cave_guide = cave_cast or role.endswith('CAVE7')
                 cave_wilds = cave_guide or role.endswith('CAVE6')
                 cave_large_wildlife = cave_wilds or role.endswith('CAVE5')
                 cave_large = cave_large_wildlife or role.endswith('CAVE4')
                 cave_wildlife = cave_large or role.endswith('CAVE3')
-                cave_profile = cave_wildlife or role.endswith('CAVE2')
-                cave_capable = cave_profile or role.endswith('CAVE')
-                if cave_profile:
+                cave_profile = cave_expansion or cave_wildlife or role.endswith('CAVE2')
+                cave_capable = cave_expansion or cave_profile or role.endswith('CAVE')
+                if cave_expansion:
+                    role = role[:-6]
+                elif cave_profile:
                     role = role[:-5]
                 elif cave_capable:
                     role = role[:-4]
@@ -561,6 +565,8 @@ class WorldServer:
                 conn['cave_guide'] = cave_guide
                 conn['cave_cast'] = cave_cast
                 conn['cave_events'] = cave_events
+                conn['cave_expansion'] = cave_expansion
+                conn['cave_expansion_large'] = cave_expansion_large
                 conn['event_command_seq'] = 0
                 conn['event_commands'] = {}
                 conn['event_command_session'] = secrets.token_hex(8)
@@ -602,9 +608,11 @@ class WorldServer:
                             or (self.shared_cave.version == 8 and not conn.get('cave_cast'))
                             or (self.shared_cave.version == 7 and not conn.get('cave_guide'))
                             or (self.shared_cave.version == 6 and not conn.get('cave_wilds'))
-                            or (self.shared_cave.version == 5 and not conn.get('cave_large_wildlife'))
-                            or (self.shared_cave.version == 4 and not conn.get('cave_large'))
-                            or (self.shared_cave.version == 3 and not conn.get('cave_wildlife'))
+                            or (self.shared_cave.version == 3 and (not conn.get('cave_wildlife') or conn.get('cave_expansion')))
+                            or (self.shared_cave.version == 5 and (not conn.get('cave_large_wildlife') or conn.get('cave_expansion')))
+                            or (self.shared_cave.version == 10 and not conn.get('cave_expansion'))
+                            or (self.shared_cave.version == 11 and not conn.get('cave_expansion_large'))
+                            or (self.shared_cave.version in (10, 11) and (conn.get('cave_wildlife') and not conn.get('cave_expansion')))
                             or (self.shared_cave.profile is not None and not conn.get('cave_profile'))):
                         conn['cave_offer'] = None
                         self._queue(conn, 'CAVE NONE\n')

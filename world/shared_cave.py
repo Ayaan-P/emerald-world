@@ -6,7 +6,7 @@ independent signature or permission grant.
 """
 from collections import deque
 from hashlib import sha256
-from .cave_species import SPECIES
+from .species_cohort import contains_species_id
 
 SIDE = 31
 MAGIC = b'EWGMAP01'
@@ -18,6 +18,8 @@ MAGIC_WILDS = b'EWGMAP06'
 MAGIC_GUIDED_WILDS = b'EWGMAP07'
 MAGIC_CAST_WILDS = b'EWGMAP08'
 MAGIC_EVENT_WILDS = b'EWGMAP09'
+MAGIC_EXPANSION_WILDLIFE = b'EWGMAP10'
+MAGIC_EXPANSION_LARGE_WILDLIFE = b'EWGMAP11'
 LARGE_SIDE = 63
 SIZE = len(MAGIC) + SIDE * SIDE
 PROFILE_SIZE = SIZE + 1
@@ -44,6 +46,7 @@ class SharedCave:
         self.cast = None
         self.events = None
         self.version = 1
+        self.cohort = 'vanilla'
         self.side = SIDE
         if len(blob) == SIZE and blob[:8] == MAGIC:
             self.profile = None
@@ -53,9 +56,15 @@ class SharedCave:
             self.profile = blob[8]
             cells = blob[9:]
         elif ((len(blob) == WILDLIFE_SIZE and blob[:8] == MAGIC_WILDLIFE)
-              or (len(blob) == LARGE_WILDLIFE_SIZE and blob[:8] == MAGIC_LARGE_WILDLIFE)) and blob[8] <= 3:
-            self.version = 5 if blob[:8] == MAGIC_LARGE_WILDLIFE else 3
-            if self.version == 5: self.side = LARGE_SIDE
+              or (len(blob) == LARGE_WILDLIFE_SIZE and blob[:8] in (MAGIC_LARGE_WILDLIFE, MAGIC_EXPANSION_LARGE_WILDLIFE))
+              or (len(blob) == WILDLIFE_SIZE and blob[:8] == MAGIC_EXPANSION_WILDLIFE)) and blob[8] <= 3:
+            self.version = 5 if blob[:8] in (MAGIC_LARGE_WILDLIFE, MAGIC_EXPANSION_LARGE_WILDLIFE) else 3
+            if blob[:8] == MAGIC_EXPANSION_WILDLIFE:
+                self.cohort = 'expansion-native'
+            elif blob[:8] == MAGIC_EXPANSION_LARGE_WILDLIFE:
+                self.cohort = 'expansion-native'; self.version = 11
+            if self.version in (5, 11): self.side = LARGE_SIDE
+            if self.cohort == 'expansion-native': self.version = 10 if self.side == SIDE else 11
             self.profile = blob[8]
             self.wildlife = blob[9:9 + WILDLIFE_BYTES]
             if not 1 <= self.wildlife[0] <= 100:
@@ -63,7 +72,7 @@ class SharedCave:
             for i in range(12):
                 offset = 1 + i * 3
                 species = int.from_bytes(self.wildlife[offset:offset + 2], 'little')
-                if species not in SPECIES.values() or not 1 <= self.wildlife[offset + 2] <= 100:
+                if not contains_species_id(species, self.cohort) or not 1 <= self.wildlife[offset + 2] <= 100:
                     raise CaveError('invalid wildlife slot')
             cells = blob[9 + WILDLIFE_BYTES:]
         elif len(blob) == MAX_SIZE and blob[:8] == MAGIC_EVENT_WILDS:
@@ -118,9 +127,9 @@ class SharedCave:
 
     def frames(self):
         suffix = '' if self.profile is None else f' {self.profile}'
-        if self.version == 3: suffix += ' 3'
+        if self.version in (3, 10): suffix += f' {self.version}'
         if self.version == 4: suffix = ' LARGE'
-        if self.version == 5: suffix += ' 5'
+        if self.version in (5, 11): suffix += f' {self.version}'
         if self.version == 6: suffix = ' WILDS'
         if self.version == 7: suffix = ' GUIDE'
         if self.version == 8: suffix = ' CAST'

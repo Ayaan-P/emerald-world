@@ -36,7 +36,7 @@ def check_ice_frame(directory, after_frame):
         raise RuntimeError(f'native ice cave did not render enough blue pixels: {blue}')
 
 
-def run(binary, seed, out, encounter=False, profile=None, observe_only=False, wildlife=False):
+def run(binary, seed, out, encounter=False, profile=None, observe_only=False, wildlife=False, cohort='vanilla'):
     binary, seed, out = Path(binary).resolve(), Path(seed).resolve(), Path(out).resolve()
     out.mkdir(parents=True, exist_ok=True)
     blueprint = {'rooms': [[2,2,12,12],[16,16,12,12]], 'links': [[0,1]],
@@ -49,8 +49,8 @@ def run(binary, seed, out, encounter=False, profile=None, observe_only=False, wi
         root = Path(temp)
         cave = root/'cave.bin'
         if wildlife:
-            roster = [{'species': 'MAGIKARP', 'level': 5} for _ in range(12)]
-            cave.write_bytes(encode_wildlife(proposal, profile or 'ice', 100, roster))
+            roster = [{'species': 'TREECKO' if cohort == 'expansion-native' else 'MAGIKARP', 'level': 5} for _ in range(12)]
+            cave.write_bytes(encode_wildlife(proposal, profile or 'ice', 100, roster, cohort=cohort))
         else:
             cave.write_bytes(encode(proposal, encounter_profile=profile))
         # driver.Game accepts an executable path; the wrapper supplies only the
@@ -114,7 +114,7 @@ def run(binary, seed, out, encounter=False, profile=None, observe_only=False, wi
                 enemies = [mon for mon in game.state.battle_state['battlers'] if mon['side'] == 1]
                 # Confirm the visible opponent belongs to the selected native table.
                 if wildlife:
-                    allowed = {(129,5)}
+                    allowed = {(252,5)} if cohort == 'expansion-native' else {(129,5)}
                 elif profile == 'meteor':
                     allowed = {(41,level) for level in range(14,21)} | {(349,14),(349,16),(349,18)}
                 elif profile == 'ice':
@@ -179,14 +179,15 @@ def main():
     parser.add_argument('--encounter', action='store_true', help='walk until a visible wild encounter starts')
     parser.add_argument('--profile', choices=('meteor','ice'), help='use a versioned offline encounter profile')
     parser.add_argument('--observe-only', action='store_true', help='stop at the visible encounter')
-    parser.add_argument('--wildlife', action='store_true', help='use a deterministic custom Magikarp test table')
+    parser.add_argument('--wildlife', action='store_true', help='use a deterministic custom encounter table')
+    parser.add_argument('--cohort', choices=('vanilla', 'expansion-native'), default='vanilla')
     args = parser.parse_args()
     if (args.profile or args.observe_only or args.wildlife) and not args.encounter:
         parser.error('--profile, --observe-only and --wildlife require --encounter')
     if args.wildlife and (args.profile != 'ice' or not args.observe_only):
         parser.error('--wildlife requires --profile ice and --observe-only')
     run(args.binary, args.seed_save, args.out, encounter=args.encounter,
-        profile=args.profile, observe_only=args.observe_only, wildlife=args.wildlife)
+        profile=args.profile, observe_only=args.observe_only, wildlife=args.wildlife, cohort=args.cohort)
 
 if __name__ == '__main__':
     main()

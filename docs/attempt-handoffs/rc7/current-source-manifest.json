@@ -1,9 +1,9 @@
 {
   "description": "Current source-only incremental engine checkpoint; not a complete-game acceptance",
   "base_engine_commit": "e406cf82922e9c3a5bfee746f9a97f67f3916a4c",
-  "target_engine_commit": "dd4cbc90f985735097d21dc202bc4cc3fe9b0f46",
+  "target_engine_commit": "1d82672e93db02a28a1deea281c5f694f52a5e9f",
   "patch": "native-world-integration-current.patch",
-  "patch_sha256": "e88d2303f51bcf238d53b10a541b92512437b7b0735359fe288bfe10dd335721",
+  "patch_sha256": "e160073044b3f90c782ad21509c53a557c79ac2fc74a0cfee246d8ee83575f31",
   "files": [
     {
       "path": "data/battle_scripts_2.s",
@@ -75,11 +75,11 @@
     },
     {
       "path": "platform/inspect.c",
-      "sha256": "3477a84ed81c74b5cec04f3bd54ea21f18e96c92dd1e8349b6d5caad4a3300ec"
+      "sha256": "b8ebe4cb78c873ff8b198f3da6288ec9aa28dbf88515ffe3b814b1cc4e3c6eaf"
     },
     {
       "path": "platform/main.c",
-      "sha256": "2a2a5cb14b0ace2003017fe8c9a1facd88d037f05705849a86ebb5989624b063"
+      "sha256": "cf6ca2f9cada41a0eea9504450246a7f0960a27a740049c6a7953bfa521f1956"
     },
     {
       "path": "platform/options.c",
@@ -103,7 +103,7 @@
     },
     {
       "path": "src/battle_controller_player.c",
-      "sha256": "e40e0872081db0ee6c76525fced546527fb2eaed7ae3068b95ff684870c7f3bc"
+      "sha256": "98701e3f19fd787737851903b71d84e8d0dc067518c9cd54470cb4d2b5dd5a96"
     },
     {
       "path": "src/battle_controllers.c",
@@ -127,7 +127,7 @@
     },
     {
       "path": "src/battle_main.c",
-      "sha256": "330a79bd72bbc32a97ebe3519c7183720edcb9b9202259a14a9af81757c3d77c"
+      "sha256": "c503289564e86e45b7015fddfa7336fe475602f39964cd9a2a342b955c228abb"
     },
     {
       "path": "src/battle_script_commands.c",
@@ -202,6 +202,14 @@
       "sha256": "c5a00328f2f7daa04c9e9c34ced877dd13ebb21fc28774ddec917d85b83cc6f5"
     },
     {
+      "path": "src/world/world_bridge.c",
+      "sha256": "2f3577c7277c0f0e2afb35e0850034f385ee1a0216f9f8b82ee32b2f406955ea"
+    },
+    {
+      "path": "src/world/world_cave_wire.c",
+      "sha256": "68e26fab83afd978d795cca33ab8c12949a6e58941f9b1d741600fbc84b45f42"
+    },
+    {
       "path": "src/world/world_chat.c",
       "sha256": "288a1e725fb570b9673f9a37965bdad039913fc05ceb9e84a1c1ee9de795633c"
     },
@@ -234,5 +242,6 @@
     "expected_checkpoint_tree": "0026146184b0eb0fe003742f6d4095aff3dc4fbc",
     "identical": true,
     "fresh_clone_build_verified": false
-  }
+  },
+  "reconstructed_tree": "e33f8cae5e4c6bb76d0e640b5dac51d42a4ddc61"
 }
