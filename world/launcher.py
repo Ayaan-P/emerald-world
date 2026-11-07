@@ -105,8 +105,9 @@ class ProfileLock:
     Lock files are permanent: unlinking them would split the locking inode.
     No PID or timestamp is used to decide whether a profile is available.
     """
-    def __init__(self, state_dir, trainer):
+    def __init__(self, state_dir, trainer, *, engine='vanilla'):
         from world.world_library import WorldActivityLock
+        state_dir = engine_state(state_dir, engine)
         self.activity = WorldActivityLock(state_dir)
         try:
             self._acquire(state_dir, trainer)
@@ -206,11 +207,8 @@ def game_command(binary, state_dir, paths, display=None, agent_control=False, *,
     """Construct explicit allowlist mounts. Never mount whole HOME or /run."""
     engine_state(state_dir, engine)
     expanded = engine == 'expansion-native'
-    if expanded:
-        if agent_control:
-            raise ValueError('Expansion does not implement the vanilla player-control ABI')
-        if paths != profile_paths(state_dir, paths['profile'].name, engine=engine):
-            raise ValueError('Expansion requires its own separate profile')
+    if expanded and paths != profile_paths(state_dir, paths['profile'].name, engine=engine):
+        raise ValueError('Expansion requires its own separate profile')
     binary = Path(binary).resolve()
     state_dir = Path(state_dir).resolve()
     if online:
@@ -230,6 +228,11 @@ def game_command(binary, state_dir, paths, display=None, agent_control=False, *,
             '--ro-bind', str(binary), str(binary),
             '--bind', str(paths['profile']), str(paths['profile']),
             '--chdir', str(paths['profile'])]
+    # The native inspector reads an exact sibling, not the whole build tree.
+    # Keep diagnostics available inside the same narrow sandbox as gameplay.
+    symbols = binary.with_name(binary.name + '.symbols')
+    if symbols.is_file() and not symbols.is_symlink():
+        args += ['--ro-bind', str(symbols), str(symbols)]
     if online:
         args += ['--ro-bind', str(transport), str(transport)]
     env = {'HOME': '/home/sandbox', 'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8',
@@ -250,8 +253,11 @@ def game_command(binary, state_dir, paths, display=None, agent_control=False, *,
     for key, value in env.items():
         args += ['--setenv', key, value]
     if expanded:
-        return args + ['--', str(binary), '--data-dir', str(paths['profile']),
-                       '--save', str(paths['save']), '--rtc-offset', str(paths['profile'] / 'clock.rtc')] + ([] if display else ['--headless', '--silent'])
+        command = args + ['--', str(binary), '--data-dir', str(paths['profile']),
+                          '--save', str(paths['save']), '--rtc-offset', str(paths['profile'] / 'clock.rtc')]
+        if agent_control:
+            command += ['--player-control', str(player_endpoint(paths))]
+        return command + ([] if display else ['--headless', '--silent'])
     command = args + ['--', str(binary), '--save', str(paths['save']),
                       '--config', str(paths['settings'])]
     if online:

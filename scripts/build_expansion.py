@@ -78,6 +78,12 @@ def main():
     # Makefile.native marks intermediates secondary. A formerly linked binary
     # must not hide newly added world objects just because those objects are absent.
     (source / 'build/native64/pokeemerald-native').unlink(missing_ok=True)
+    # Pointer4 reference objects encode CPPFLAGS (including the RC7 script
+    # cohort) in their assembled contents, but make cannot see flag changes as
+    # prerequisites. Recreate only this generated reference tree each build so
+    # relocation/layout comparisons always use the current feature cohort.
+    shutil.rmtree(source / 'build/native64/pointer4', ignore_errors=True)
+    (source / 'build/native64/pointer4.built').unlink(missing_ok=True)
     result = subprocess.run(command)
     if result.returncode:
         return result.returncode

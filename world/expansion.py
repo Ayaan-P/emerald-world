@@ -7,7 +7,8 @@ import json
 from pathlib import Path
 import subprocess
 
-from .launcher import REPO, ProfileLock, engine_state, game_command, profile_paths, _prepare_profile
+from .launcher import (REPO, ProfileLock, check_player_endpoint, engine_state,
+                       game_command, player_endpoint, profile_paths, _prepare_profile)
 
 ENGINE = 'expansion-native'
 BINARY = REPO / 'build/expansion-native/pokeemerald-native'
@@ -76,18 +77,21 @@ class ExpansionSession:
         self.trainer = trainer
         self.online = online
 
-    def run(self, binary=BINARY, display=None, *, replay=None, frames=None, print_command=False):
+    def run(self, binary=BINARY, display=None, *, replay=None, frames=None, agent_control=False, print_command=False):
         if self.state.resolve() != self.state:
             raise ValueError('Expansion state cannot contain symlinks')
         self.state.mkdir(parents=True, mode=0o700, exist_ok=True)
-        with ProfileLock(self.state, self.trainer) as lock:
+        with ProfileLock(self.base, self.trainer, engine=ENGINE) as lock:
             if lock.paths != self.paths:
                 raise ValueError('Expansion profile namespace mismatch')
             if self.online:
                 _prepare_profile(self.state, self.trainer, None, self.paths)
             else:
                 self.paths['profile'].mkdir(parents=True, mode=0o700, exist_ok=True)
-            command = game_command(binary, self.base, self.paths, display, online=self.online, engine=ENGINE)
+            if agent_control:
+                check_player_endpoint(self.paths)
+            command = game_command(binary, self.base, self.paths, display, agent_control=agent_control,
+                                  online=self.online, engine=ENGINE)
             boundary = command.index('--')
             extra = []
             symbols = Path(str(Path(binary).resolve()) + '.symbols')
@@ -111,6 +115,16 @@ class ExpansionSession:
                 path.unlink(missing_ok=True)
             process = subprocess.Popen(command)
             try:
+                if agent_control:
+                    import shlex
+                    endpoint = player_endpoint(self.paths)
+                    print(f'AI control starting. Endpoint: {endpoint}', flush=True)
+                    print('Observe: ' + shlex.join(['env', f'PYTHONPATH={REPO}', 'python3', '-m',
+                                                   'world.player', '--endpoint', str(endpoint), 'observe']),
+                          flush=True)
+                    code = f'from world.player import PlayerClient; print(PlayerClient({str(endpoint)!r}).observe())'
+                    print('SDK: ' + shlex.join(['env', f'PYTHONPATH={REPO}', 'python3', '-c', code]),
+                          flush=True)
                 return process.wait()
             finally:
                 if process.poll() is None:
@@ -124,8 +138,9 @@ class ExpansionSession:
 
 def run(args):
     if any(getattr(args, name, None) for name in
-           ('seed_save', 'copy_online', 'agent_control', 'test_input', 'bootstrap', 'remote', 'invitation', 'pin')):
-        raise ValueError('Expansion does not accept vanilla saves, controls, input scripts or invitations. Use --replay for donor replays.')
+           ('seed_save', 'copy_online', 'test_input', 'bootstrap', 'remote', 'invitation', 'pin')):
+        raise ValueError('Expansion does not accept vanilla saves, input scripts or invitations. Use --replay for donor replays.')
     session = ExpansionSession(args.state_dir, args.trainer, online=args.command == 'join')
     return session.run(args.binary or BINARY, args.display, replay=args.replay, frames=args.frames,
+                       agent_control=bool(getattr(args, 'agent_control', False)),
                        print_command=args.print_command)
