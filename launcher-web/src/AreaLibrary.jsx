@@ -55,7 +55,7 @@ function MapPreview({ area, data }) {
   </>;
 }
 
-export default function AreaLibrary({ world, areas, error, disabled, occupied, pending, onInspect, onReview }) {
+export default function AreaLibrary({ world, areas, error, disabled, occupied, pending, onInspect, onReview, onEditTerrain }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('All areas');
   const [limit, setLimit] = useState(24);
@@ -134,7 +134,7 @@ export default function AreaLibrary({ world, areas, error, disabled, occupied, p
         <div className="area-library-grid">{group.map(area => <article key={area.identity} className={`area-library-card${area.active ? ' is-active' : ''}`}>
           <span className="area-card-type">{labels[area.kind] || 'Generated area'}</span><h3>{area.label}</h3>
           {area.active && <span className="area-active-badge">Active now</span>}
-          <div className="area-card-actions"><button className="button small ghost" disabled={disabled || Boolean(pending) || preview?.loading || !onInspect} aria-label={`Preview map: ${area.label}`} onClick={() => inspect(area)}>Preview map</button>
+          <div className="area-card-actions">{area.active && area.kind === 'event_wilds' && onEditTerrain && <button className="button small ghost" disabled={disabled || Boolean(pending)} onClick={() => onEditTerrain(area)}>Edit terrain</button>}<button className="button small ghost" disabled={disabled || Boolean(pending) || preview?.loading || !onInspect} aria-label={`Preview map: ${area.label}`} onClick={() => inspect(area)}>Preview map</button>
             {!area.active && <button className="text-button" disabled={disabled || occupied || Boolean(pending)} onClick={() => review(area)}>{adventure ? 'Open adventure' : 'Use this area'}</button>}</div>
         </article>)}</div>
       </section>;

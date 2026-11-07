@@ -439,6 +439,9 @@ class LauncherBridge:
                     raise
                 except Exception:
                     raise SessionError('Area generation could not complete. Check model login and local host setup before retrying.') from None
+            elif action in ('terrain_read', 'terrain_review', 'terrain_apply'):
+                from .terrain_ui import terrain_action
+                return terrain_action(self.session, self.local_expeditions(), action, payload)
             elif action == 'inspect_area':
                 from .area_library_ui import inspect_area
                 return inspect_area(self.session, self.local_expeditions(), payload)
