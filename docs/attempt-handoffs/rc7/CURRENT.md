@@ -6,7 +6,7 @@ new engine, create a new repository, or incorporate newer Dot branches.
 ## Current source
 
 - App gameplay checkpoint: `670d991d4c1eebe421139e2d73a83885416a80be` on `integrate/rc7`.
-- Engine checkpoint: `4ae9756faf18a9540758a95b8cec72bc7c808ceb` on local `integrate/rc7-world`.
+- Engine checkpoint: `fb9e7bde1a6895b4a1a9dfe9ff47f94a7e67e212` on local `integrate/rc7-world`.
 - Engine is a submodule; the recorded local engine commit is not fetchable from
   the upstream URL in `.gitmodules`. Do not mistake a parent push for publishing
   that object. The engine's complete current source deltas are supplied here.
@@ -53,6 +53,10 @@ The current work map and next actual integration blocker are recorded in
 
 All three patches were applied in order to a temporary Git index seeded from
 `bb3fd057061cdd7e6a9e79b76abb41924ee44ecc`. The reconstructed tree exactly
-matches `4ae9756faf`'s tree: `657391ae99c79cb714ec82e76e324a471a47ae7b`.
+matches `fb9e7bde1a`'s tree: `289ad25553d2de1a8e6e57cb4cb110ee5841e108`.
 There were no differing paths. The source worktree was not reset or modified.
 This verifies the complete source handoff, not a fresh-clone build or gameplay.
+
+Latest engine checkpoint also fixes the co-op link send task COUNT_PLAYERS gate
+(two native owners versus four battlers). Build20 compiled before committing
+this source; its actual co-op run is pending. No new gameplay pass is claimed.

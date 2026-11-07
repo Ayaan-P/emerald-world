@@ -19,9 +19,9 @@ Recent instructions to exclude newer Dot work and trading remain controlling.
 ## Source of truth
 
 - App: `worktrees/rc7`, branch `integrate/rc7`, gameplay checkpoint `670d991d`.
-- Engine: `engines/expansion-native`, branch `integrate/rc7-world`, `4ae9756faf`.
+- Engine: `engines/expansion-native`, branch `integrate/rc7-world`, `fb9e7bde1a`.
 - The app branch tracks `origin/integrate/rc7`, NOT `origin/main`.
-- Latest native build: 19. Shared co-op acceptance: FAILED, not complete.
+- Latest native build: 20. Shared co-op acceptance: FAILED, not complete.
 - `docs/RC7_INTEGRATION_STATUS.md`: binary-specific acceptance boundaries.
 - `docs/rc7-evidence-summary.json`: extracted actual results readable by Dot.
 - `docs/attempt-handoffs/rc7/CURRENT.md`: current source-only reconstruction.
@@ -36,7 +36,7 @@ handoff deliberately shipped patches instead of publishing that entire history.
 The latest engine delta is now in the SAME app repository, extending the prior
 two patches. Applying all three against the pinned public base was verified
 using a temporary Git index: the resulting tree is exactly
-`657391ae99c79cb714ec82e76e324a471a47ae7b`, the engine checkpoint's tree.
+`289ad25553d2de1a8e6e57cb4cb110ee5841e108`, the engine checkpoint's tree.
 No source worktree was reset or replaced to perform that check.
 
 This proves source reconstruction, NOT fresh-clone dependency availability or
@@ -94,3 +94,12 @@ handoff are updated together before reporting the work accessible to Dot.
 Verify remote branch after push. Keep failed and passing gameplay evidence
 separate by executable hash. No new system installs, paid model invocations,
 human saves, destructive cleanup or unrelated publication during organization.
+
+## Current source after build19 diagnosis
+
+Engine `fb9e7bde1a` fixes the second four-console assumption in
+`Task_HandleSendLinkBuffersData` / `SENDTASK_STATE_COUNT_PLAYERS`.
+WorldCoop's two transport participants can now release queued intro commands,
+replies and DONE packets. Ordinary four-human Multi Battle behavior is unchanged.
+Canonical build20 passed before the commit; actual `coop-build20` is pending.
+The source-only handoff and verified reconstruction tree are updated with it.

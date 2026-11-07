@@ -10,7 +10,7 @@ This is NOT a finished multiplayer release. No newer Dot branch is merged.
 
 - App branch: `integrate/rc7`; the app checkpoint is the commit containing this ledger.
 - Engine branch: `integrate/rc7-world`.
-- Engine checkpoint: `4ae9756faf18a9540758a95b8cec72bc7c808ceb`.
+- Engine checkpoint: `fb9e7bde1a6895b4a1a9dfe9ff47f94a7e67e212` (build20 sender-count correction).
 - Canonical build 19 and mandatory build checks passed before this checkpoint.
 - Build-19 executable SHA-256: `fef6228ce3c6af8d23697a92b8b255cc6bc38144f4a60ddc28dac43c9b07a73e`.
 - Build log: `/home/ayaan/projects/emerald-world-research/rc7-rescue/integrated-rebuild-19.log`.
@@ -81,3 +81,10 @@ Worker reports, source integration, compilation and gameplay acceptance are
 separate evidence levels. No game release or installed desktop replacement is
 claimed by this checkpoint. App/source handoff commits are published separately;
 see `docs/attempt-handoffs/rc7/CURRENT.md` for source reconstruction limits.
+
+## Build20 sender-count correction
+
+The link send task independently chose four consoles for BATTLE_TYPE_MULTI.
+The WorldCoop-only participant count is now two, allowing the queued intro
+commands, responses and DONE messages to leave COUNT_PLAYERS. Canonical build20
+passed; `coop-build20` actual gameplay run is pending. No new success is claimed.

@@ -1,9 +1,9 @@
 {
   "description": "Current source-only incremental engine checkpoint; not a complete-game acceptance",
   "base_engine_commit": "e406cf82922e9c3a5bfee746f9a97f67f3916a4c",
-  "target_engine_commit": "4ae9756faf18a9540758a95b8cec72bc7c808ceb",
+  "target_engine_commit": "fb9e7bde1a6895b4a1a9dfe9ff47f94a7e67e212",
   "patch": "native-world-integration-current.patch",
-  "patch_sha256": "c00b9dfc063c92524ed638db79b943fe98eb0cee7e81f615de0ca20ca941300b",
+  "patch_sha256": "3959760486af9681d22bf54ac7094487616fbf766b845ba237863997d69dc868",
   "files": [
     {
       "path": "data/battle_scripts_2.s",
@@ -103,7 +103,7 @@
     },
     {
       "path": "src/battle_controllers.c",
-      "sha256": "cd46cf783a5a9cd1cf7498eb365accfe04396c965e34347adfebebba76e5d34d"
+      "sha256": "e7514030251007808ff616ad5cf2f7593cfefccd3072b69597373f7a95b2efe9"
     },
     {
       "path": "src/battle_gfx_sfx_util.c",
@@ -226,8 +226,8 @@
       "native-world-wip.patch",
       "native-world-integration-current.patch"
     ],
-    "result_tree": "657391ae99c79cb714ec82e76e324a471a47ae7b",
-    "expected_checkpoint_tree": "657391ae99c79cb714ec82e76e324a471a47ae7b",
+    "result_tree": "289ad25553d2de1a8e6e57cb4cb110ee5841e108",
+    "expected_checkpoint_tree": "289ad25553d2de1a8e6e57cb4cb110ee5841e108",
     "identical": true,
     "fresh_clone_build_verified": false
   }

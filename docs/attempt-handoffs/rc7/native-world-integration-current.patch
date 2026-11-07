@@ -972,7 +972,7 @@ index 7553ca6144b9420df325f6d7a03ffbb548b4dcf8..1e13791f51797551b68d54eda3ddfae0
      {
          gBattleStruct->arenaMindPoints[battler] = 8;
 diff --git a/src/battle_controllers.c b/src/battle_controllers.c
-index 466fd5481dcdb4ba0d65985526d08e1858aef84e..e27ff745470e4331291f9551a55e2d676fb9a947 100644
+index 466fd5481dcdb4ba0d65985526d08e1858aef84e..a3e8775fde5629f6737d459184405e7ac9fd9396 100644
 --- a/src/battle_controllers.c
 +++ b/src/battle_controllers.c
 @@ -1,6 +1,7 @@
@@ -1112,7 +1112,22 @@ index 466fd5481dcdb4ba0d65985526d08e1858aef84e..e27ff745470e4331291f9551a55e2d67
  
      if (gBattleTypeFlags & BATTLE_TYPE_LINK)
      {
-@@ -769,10 +881,92 @@ void TryReceiveLinkBattleData(void)
+@@ -688,6 +800,14 @@ static void Task_HandleSendLinkBuffersData(u8 taskId)
+         }
+         else
+         {
++#ifdef PORTABLE
++            /* Co-op has four battlers but only two transport participants.
++             * Waiting for four consoles here prevents every queued intro
++             * request, reply and DONE acknowledgement from being sent. */
++            if (WorldCoop_IsBattle())
++                numPlayers = 2;
++            else
++#endif
+             if (gBattleTypeFlags & BATTLE_TYPE_BATTLE_TOWER)
+                 numPlayers = 2;
+             else
+@@ -769,10 +889,92 @@ void TryReceiveLinkBattleData(void)
          DestroyTask_RfuIdle();
          for (i = 0; i < GetLinkPlayerCount(); i++)
          {
