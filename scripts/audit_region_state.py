@@ -9,8 +9,10 @@ import json
 from pathlib import Path
 import re
 
-DIRECT_VAR = re.compile(r'^\s*#define\s+(VAR_[A-Z0-9_]+)\s+(0x[0-9A-Fa-f]+)\b', re.M)
-ZERO_FLAG = re.compile(r'^\s*#define\s+(FLAG_[A-Z0-9_]+)\s+0(?:\s|$)', re.M)
+# The optional region wrappers keep these values in the default cohort. This
+# audit still reports default-source conflicts, not enabled-cohort reachability.
+DIRECT_VAR = re.compile(r'^\s*#define\s+(VAR_[A-Z0-9_]+)\s+(?:KANTO_SCENE_VAR\()?(0x[0-9A-Fa-f]+)\b', re.M)
+ZERO_FLAG = re.compile(r'^\s*#define\s+(FLAG_[A-Z0-9_]+)\s+(?:0(?:\s|$)|KANTO_SCENE_FLAG\()', re.M)
 USED = re.compile(r'\b(?:VAR|FLAG)_[A-Z0-9_]+\b')
 
 

@@ -45,6 +45,6 @@ class CombinedRegions(unittest.TestCase):
  def test_kanto_progress_ids_conflict_with_hoenn(self):
   emerald=(ENGINE/'include/constants/vars.h').read_text();kanto=(ENGINE/'include/constants/vars_frlg.h').read_text()
   self.assertIn('VAR_LITTLEROOT_TOWN_STATE                        0x4050',emerald)
-  self.assertRegex(kanto,r'VAR_MAP_SCENE_PALLET_TOWN_OAK\s+0x4050')
+  self.assertRegex(kanto,r'VAR_MAP_SCENE_PALLET_TOWN_OAK\s+(?:KANTO_SCENE_VAR\()?0x4050')
   flags=(ENGINE/'include/constants/flags.h').read_text()
-  self.assertRegex(flags,r'FLAG_PALLET_LADY_NOT_BLOCKING_SIGN\s+0\b')
+  self.assertRegex(flags,r'FLAG_PALLET_LADY_NOT_BLOCKING_SIGN\s+(?:0\b|KANTO_SCENE_FLAG\()')
