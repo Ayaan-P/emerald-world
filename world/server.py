@@ -25,6 +25,7 @@ from .link_protocol import LinkProtocol
 from .guilds import Guilds
 from .guild_chat import GuildChat
 from .rally import RallyCoordinator
+from .shared_wildlife import SharedWildlife, catalogue as wildlife_catalogue
 
 MAX_QUEUE = 65536
 MAX_LINE = 1024
@@ -202,6 +203,7 @@ class WorldServer:
         self.link_protocol = LinkProtocol(max_players=self.max_players)
         self.tiles = []
         self.objects = []
+        self.wildlife = SharedWildlife()
         self.interaction_cursor = 0
         self.revision = self.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
         # Presence is a latest-value snapshot, not authoritative game progress.
@@ -380,6 +382,8 @@ class WorldServer:
             del self.link_channels[conn['id']]
             self._deliver_links(self.link_protocol.disconnect(conn['id']))
         if conn['id'] and self.peers.get(conn['id']) is conn:
+            with self.lock:
+                self.wildlife.drop(conn)
             self.rally.disconnect(conn)
             self._flush_states()
             del self.peers[conn['id']]
@@ -454,6 +458,10 @@ class WorldServer:
         if conn.get('chat'):
             lines += ['CHATMSG ' + ' '.join(map(str, message)) for message in conn['chat_history']]
             lines.append('CHATSTATUS ' + conn['chat_status'])
+        if conn.get('shared_wildlife'):
+            with self.lock:
+                self.wildlife.expire(time.monotonic())
+                lines += self.wildlife.lines(conn)
         lines += self.rally.snapshot(conn)
         return '\n'.join(lines + ['END', ''])
 
@@ -480,6 +488,9 @@ class WorldServer:
             self.presence_due = now + PRESENCE_BATCH_INTERVAL
 
     def _poll_presence(self, now):
+        with self.lock:
+            if self.wildlife.expire(now):
+                self._broadcast()
         if self.presence_dirty and now >= self.presence_due:
             self._broadcast()
 
@@ -603,6 +614,9 @@ class WorldServer:
                 return
             if conn.get('control'):
                 self._control_line(conn, raw)
+                return
+            if fields and fields[0] == 'WILDLIFE':
+                self._wildlife_line(conn, raw, fields)
                 return
             if fields and fields[0] == 'CAVE':
                 if raw.decode('ascii') != ' '.join(fields):
@@ -888,6 +902,53 @@ class WorldServer:
         conn['last_meeting'] = target['last_meeting'] = now
         conn['meeting'] = target['meeting'] = meeting
         self._broadcast()
+
+    def inspect_shared_wildlife(self):
+        with self.lock:
+            self.wildlife.expire(time.monotonic())
+            return self.wildlife.view(None)
+
+    def replace_shared_wildlife(self, epoch, revision, spawns):
+        with self.lock:
+            self.wildlife.expire(time.monotonic())
+            occupied = {tuple(o[k] for k in ('group', 'num', 'x', 'y')) for o in self.objects}
+            occupied.update(tuple(p['state'][:4]) for p in self.peers.values() if p.get('state'))
+            result = self.wildlife.replace(epoch, revision, spawns,
+                                           (self.cave_map, self.wilds_map), occupied)
+            self._broadcast()
+            return result
+
+    def _wildlife_line(self, conn, raw, fields):
+        if (raw.decode('ascii') != ' '.join(fields) or not conn.get('social')
+                or conn.get('closing') or self.peers.get(conn['id']) is not conn):
+            raise ValueError('wildlife requires canonical authenticated presence')
+        with self.lock:
+            if conn.get('closing') or self.peers.get(conn['id']) is not conn:
+                raise ValueError('wildlife presence changed')
+            if len(fields) == 3 and fields[1] == 'SUBSCRIBE':
+                if fields[2] != wildlife_catalogue()[1]:
+                    raise ValueError('wildlife species cohort mismatch')
+                conn['shared_wildlife'] = True
+                self._queue(conn, self._snapshot(conn))
+                return
+            if not conn.get('shared_wildlife') or len(fields) not in (5, 6):
+                raise ValueError('invalid wildlife command')
+            seq = bounded(fields[2], 0, 2**63 - 1)
+            if fields[1] not in ('CLAIM', 'RELEASE') or len(fields) != (5 if fields[1] == 'CLAIM' else 6):
+                raise ValueError('invalid wildlife operation')
+            if seq <= conn['seq']:
+                self._queue(conn, self._snapshot(conn))
+                return
+            conn['seq'] = seq
+            self.wildlife.expire(time.monotonic())
+            if fields[1] == 'CLAIM':
+                changed = self.wildlife.claim(conn, fields[3], fields[4], time.monotonic())
+            else:
+                changed = self.wildlife.release(conn, fields[3], fields[4], fields[5])
+            if changed:
+                self._broadcast()
+            else:
+                self._queue(conn, self._snapshot(conn))
 
     def _interact(self, conn, fields):
         if len(fields) != 3 or not ID.fullmatch(fields[2]):
@@ -1274,7 +1335,18 @@ class WorldServer:
         conn['closing'] = True
         try:
             request = json.loads(raw)
-            if request.get('command') == 'replace_cave':
+            if request.get('command') in ('inspect_shared_wildlife', 'replace_shared_wildlife'):
+                try:
+                    if request['command'] == 'inspect_shared_wildlife':
+                        if set(request) != {'command'}: raise ValueError('invalid wildlife inspect')
+                        result = dict(ok=True, wildlife=self.inspect_shared_wildlife(), persistent=False)
+                    else:
+                        if set(request) != {'command', 'epoch', 'revision', 'spawns'}: raise ValueError('invalid wildlife publish')
+                        result = dict(ok=True, wildlife=self.replace_shared_wildlife(
+                            request['epoch'], request['revision'], request['spawns']), persistent=False)
+                except ValueError as exc:
+                    result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'replace_cave':
                 try:
                     if (set(request) not in ({'command', 'template'}, {'command', 'template', 'label'})
                             or type(request['template']) is not str):
