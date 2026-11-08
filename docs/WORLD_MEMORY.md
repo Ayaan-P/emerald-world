@@ -691,3 +691,32 @@ in this execution environment. No full Expansion build, two-native-client
 playthrough, graphical rendering, WAN session or seamless portal acceptance is
 claimed. The offline XL progress system is separate; this plain-cave selection
 path does not migrate private story flags, event graphs or finite progress slots.
+
+## Custom terrain-aware routes (independent generator)
+
+`world.route_landscape` accepts a bounded original plan of arbitrary landmark
+clearings, rectangular terrain reservations, a seed and up to four alternate
+routes. It builds a spanning route network using deterministic A* around the
+reservations. Extra routes must carve new terrain outside the endpoint clearings;
+they cannot simply claim that an existing path is a new loop. Plans that separate
+required landmarks fail instead of erasing reserved terrain.
+
+Run `python -m world.route_landscape plan.json area.ewmap --report routes.json`.
+The plan has exactly `seed`, `landmarks`, `reservations` and `loops`. Landmarks
+have unique lowercase `id`, integer `x`, `y` and `radius` (2..10). Use 2..12
+landmarks inside the 127-square map, leaving the native entry at (1,1) and exit
+at (125,125) available. Reservations are [x,y,width,height] rectangles inside
+the perimeter. Outputs must not exist. The report contains measured paths,
+newly carved tiles and the actual content revision, not authoritative history.
+
+This emits the existing EWGMAP0A format and reuses native validation and ordinary
+owner publication/persistence. It does not create a new region registry or save
+system. The CLI only writes local requested files; it does not contact a server.
+A generation report is not proof of publication. Reserved terrain uses existing
+impassable XL graphics, not new biome artwork, water simulation or licensed
+assets. Native entry/exit, quests and inter-map portals are unchanged.
+
+This generator uses the existing single active XL publication path; it does not
+extend outdoor regional admission. The generator and existing authority persist
+its geometry and logical place identity across restart in component tests. Full
+native playthrough remains outstanding.
