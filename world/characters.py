@@ -197,6 +197,9 @@ def history_feed(db, state):
             value = original.get(key)
             if type(value) is str:
                 event[key] = value[:160]
+        if original['event']=='landmark_discovery_shared':
+            event.update(place_id=original['place_id'],revision=original['revision'],landmark=original['landmark'],
+                         x=original['x'],y=original['y'],publication=original['publication'],basis=original['basis'])
         if original['event'] == 'area_named':
             event.update(before=original['before'][:160], after=original['after'][:160])
         elif original['event'] == 'character_changed':

@@ -944,7 +944,10 @@ Chat messages cannot masquerade as protocol readiness. Disconnect and reconnect
 clear support, and an unanswered probe never releases a queued private command.
 
 This does not protect older clients or arbitrary custom clients. Those clients
-can expose slash-command text on old servers. The actual Expansion engine needs
-the corresponding native guard; an app/outer-source patch alone is not evidence
-that its separately pinned engine is protected. Explicit public-discovery
-confirmation remains required after capability negotiation.
+can expose slash-command text on old servers. The paired draft now pins actual
+Expansion guard commit `1b34f4360bf8248a337c024acbc68b238bebf738` in both
+the gitlink and build script. Its bridge and composer sources match the published
+engine files. This pin includes the privacy guard, not unpublished character
+walking. Explicit public-discovery confirmation remains required after capability
+negotiation. Production source fixtures and object compilation passed; a linked
+build of this newer guard and live network acceptance remain unverified.

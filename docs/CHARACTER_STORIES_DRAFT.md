@@ -50,3 +50,11 @@ An independently supported path now lets persistent NPCs inhabit archived format
 The CHARREG1 capability may accompany CAVE16 without REGION1. Placement coordinates support the full 127x127 map and are checked against actual archived floor geometry, not the engine placeholder layout dimensions. All NPC collision tiles are checked together: actors cannot collectively seal a passage or isolate any remaining walkable map tile. Entry, exit and exit approach stay clear. Mutable terrain/cast formats remain excluded.
 
 Authority tests use actual XL transfer/ACK/state admission, high coordinates, battle requests, replacement, stale scope rejection, restart, and reactivation. Shared-slot admission still refuses replacement while players are inside. This adds NPC presence to the existing route-map publication path; it does not implement generated-region guild goals, automatic route generation or a linked rendered playthrough.
+
+## Reacting to voluntarily shared discoveries
+
+With the landmark survey integration, a chapter may wait for `landmark_discovery_shared`. It must name the exact `place_id`, immutable `revision`, and registered `landmark` identifier. The character history feed includes only the already committed public event and its bounded destination/coordinate/publication fields. It never queries private survey sessions or visit trails.
+
+Private arrivals, survey completion, and the first share-confirmation prompt do not trigger characters. Only the player's explicit confirmed publication can do so. The tested example moves a scholar from camp to the publicly reported lookout, changes dialogue and battle team, and records that public sequence as evidence. Duplicate shares do not advance twice, another revision with the same landmark name does not match, and restart preserves the change.
+
+This uses an authored chapter and the existing authority commit, scoped NPC and battle-admission paths. It does not invoke a model on each arrival, reveal who shared the discovery, or prove travel/battle outcomes beyond the existing acknowledged client-presence rules. The two-source integration fixture requires the survey branch in addition to this compiler/feed support; it does not activate anything in a live world.
