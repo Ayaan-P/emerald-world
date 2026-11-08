@@ -57,3 +57,48 @@ it('preserves all nine V3 flags through shuffle review and save', async () => {
  await screen.findByText('World options saved.');
  expect(p.onSave).toHaveBeenCalledExactlyOnceWith({world:key,expected_revision:4,rules:expected,confirmed:true});
 });
+it('resets every V3 permission and seed only after explicit review and apply', async () => {
+ const p = props();
+ const expected = {wild_shuffle:{enabled:false,seed:1}, ...Object.fromEntries(flags.map(key => [key,false]))};
+ p.onSave.mockResolvedValue({world_options:{[key]:{...p.state.world_options[key],revision:5,rules:expected}}});
+ render(<WorldOptions {...p}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Use default'}));
+ expect(screen.getAllByRole('checkbox').every(input => !input.checked)).toBe(true);
+ expect(screen.getByLabelText('Shuffle seed').value).toBe('1');
+ expect(p.onSave).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'Review changes'}));
+ expect(screen.getAllByText('On → Off')).toHaveLength(9);
+ expect(screen.getByText('7 → 1')).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'Keep editing'}));
+ expect(p.onSave).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'Review changes'}));
+ fireEvent.click(screen.getByRole('button',{name:'Apply changes'}));
+ await screen.findByText('World options saved.');
+ expect(p.onSave).toHaveBeenCalledExactlyOnceWith({world:key,expected_revision:4,rules:expected,confirmed:true});
+});
+it('recognizes an expanded-only reset as dirty and keeps the player guard', () => {
+ const p = props();
+ const defaults = {wild_shuffle:{enabled:false,seed:1}, ...Object.fromEntries(flags.map(key => [key,false]))};
+ p.state = snapshot({...defaults, expanded_species_pool:true});
+ p.state.world_options[key].players = 1;
+ const view = render(<WorldOptions {...p}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Use default'}));
+ expect(screen.getByLabelText('Expanded species pool').checked).toBe(false);
+ expect(screen.getByText('Unapplied changes')).toBeTruthy();
+ expect(screen.getByRole('button',{name:'Review changes'}).disabled).toBe(true);
+ p.state = snapshot({...defaults, expanded_species_pool:true});
+ view.rerender(<WorldOptions {...p}/>);
+ expect(screen.getByRole('button',{name:'Review changes'}).disabled).toBe(false);
+ fireEvent.click(screen.getByRole('button',{name:'Review changes'}));
+ expect(screen.getAllByText('On → Off')).toHaveLength(1);
+ expect(p.onSave).not.toHaveBeenCalled();
+});
+it('leaves already-default V3 rules unchanged', () => {
+ const p = props();
+ p.state = snapshot({wild_shuffle:{enabled:false,seed:1}, ...Object.fromEntries(flags.map(key => [key,false]))});
+ render(<WorldOptions {...p}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Use default'}));
+ expect(screen.getByText('No changes')).toBeTruthy();
+ expect(screen.getByRole('button',{name:'Review changes'}).disabled).toBe(true);
+ expect(p.onSave).not.toHaveBeenCalled();
+});
