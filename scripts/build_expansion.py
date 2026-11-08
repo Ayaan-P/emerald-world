@@ -11,7 +11,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = 'c8feb78cfb7bdd82c19406eabe0f36716ea87f16'
+PIN = 'e2aa70213d1176763b154bb338da18d97afa595b'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -22,17 +22,21 @@ def main():
                         help='existing extracted libc/GCC multilib root for mandatory ABI probes')
     parser.add_argument('--development', action='store_true',
                         help='build explicit local RC10 integration changes on top of the verified engine pin')
+    parser.add_argument('--regional-state', action='store_true',
+                        help='enable experimental native Kanto progression storage (requires --development)')
+    parser.add_argument('--kanto-content', action='store_true',
+                        help='compile experimental combined maps, scripts and tilesets (requires --regional-state)')
     parser.add_argument('--jobs', type=int, default=4)
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error('--jobs must be positive')
+    if args.regional_state and not args.development:
+        parser.error('--regional-state requires --development and is not a release cohort')
+    if args.kanto_content and not args.regional_state:
+        parser.error('--kanto-content requires --regional-state and is not a playable release')
     source = ROOT / 'engines/expansion-native'
     import sys
     sys.path.insert(0, str(ROOT))
-    from scripts.export_expansion_species_catalogue import export_catalogue
-    catalogue_path = ROOT / 'build/species-cohort/expansion-species.json'
-    export_catalogue(source, catalogue_path)
-    shutil.copy2(catalogue_path, ROOT / 'world/expansion_species.json')
     head = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
     dirty = subprocess.check_output(['git', '-C', str(source), 'status', '--porcelain'], text=True).strip()
     if not args.development and (head != PIN or dirty):
@@ -77,6 +81,7 @@ def main():
     for key, value in env.items():
         command += ['--setenv', key, value]
     command += ['--', 'make', '-f', str(ROOT / 'engines/expansion.mk'), f'-j{args.jobs}',
+                f'EW_REGION_STATE={int(args.regional_state)}', f'EW_KANTO_CONTENT={int(args.kanto_content)}',
                 'native', 'BITS=64', f'TARGET_CC={compiler}', f'NATIVE_VERSION={PIN[:12]}-rc10',
                 'build/native64/data_relocations.checked', 'build/native64/data_layout.checked',
                 'build/native64/battle_script_operands.checked']
@@ -93,6 +98,13 @@ def main():
     result = subprocess.run(command)
     if result.returncode:
         return result.returncode
+    # Species preprocessing includes generated map/region headers. A clean
+    # checkout must run the verified native generation/build first, and a
+    # failed build must not replace the app's species catalogue.
+    from scripts.export_expansion_species_catalogue import export_catalogue
+    catalogue_path = ROOT / 'build/species-cohort/expansion-species.json'
+    export_catalogue(source, catalogue_path)
+    shutil.copy2(catalogue_path, ROOT / 'world/expansion_species.json')
     destination = ROOT / 'build/expansion-native'
     destination.mkdir(parents=True, exist_ok=True)
     binary = source / 'build/native64/pokeemerald-native'

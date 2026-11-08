@@ -30,3 +30,7 @@ vendor/expansion-dexnav/upstream/** -text whitespace=-blank-at-eol
 graphics/dexnav/*.pal -text
 graphics/field_effects/palettes/cave_dust.pal -text
 graphics/text_window/dexnav_pal.pal -text
+
+# Unified patches preserve upstream context indentation and blank-line spaces.
+# Check the applied engine source separately for newly introduced whitespace.
+port/kanto-on-rc9/*.patch whitespace=-space-before-tab,-blank-at-eol
