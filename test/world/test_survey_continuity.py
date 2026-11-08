@@ -3,7 +3,7 @@ import json
 import unittest
 from unittest.mock import patch
 import test_landmark_survey as survey
-from world.route_artifacts import create,load
+from world.route_artifacts import load
 
 
 def route():
@@ -18,8 +18,10 @@ class SurveyContinuity(unittest.TestCase):
         self.f=survey.LandmarkSurveyTests()
         with patch.object(survey,'plan',side_effect=route):self.f.setUp()
         self.addCleanup(self.f.doCleanups)
-        self.s=self.f.s;blob,artifact=create(route())
-        self.s._replace_cave(blob,route_artifact=artifact)
+        # setUp registers an exact plan against bytes-only publication.
+        # Registration itself must retain the recipe used by construction.
+        self.s=self.f.s
+        self.assertEqual(load(self.s,self.s.shared_cave.identity)['plan'],route())
         self.old=self.s.shared_cave.identity
         self.f.command('/explore start')
         self.f.state(self.f.conn,35,35);self.f.state(self.f.conn,95,95)
@@ -32,6 +34,8 @@ class SurveyContinuity(unittest.TestCase):
             previous_revision=self.old,expected_world_id=context['world_id'],expected_sequence=context['through']))
 
     def test_growth_restart_preserves_only_unchanged_private_evidence(self):
+        # No original plan file or fresh authoring is available after restart.
+        self.s.close();self.f.f.server=self.f.f.open();self.s=self.f.s=self.f.f.server
         result=self.build();self.assertTrue(result['ok'],result);new=result['revision']
         artifact=load(self.s,new)
         self.assertEqual(artifact['schema'],2)

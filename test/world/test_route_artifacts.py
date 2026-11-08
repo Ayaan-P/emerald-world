@@ -56,9 +56,54 @@ class RouteArtifactTests(fixtures.RouteAuthorTests):
         with patch('world.client.admin_request',side_effect=self.transport):
             landmark_survey.main([str(sidecar),'--admin-socket','admin'])
         self.assertEqual(artifact['revision'],self.server.shared_cave.identity)
+        self.server.close();self.case.server=self.case.open();self.server=self.case.server
+        self.assertEqual(load(self.server,artifact['revision']),artifact)
+        with patch('world.client.admin_request',side_effect=self.transport):
+            landmark_survey.main(['--revision',artifact['revision'],'--admin-socket','admin'])
         with patch('world.author_cave.request_validated') as provider:
             self.assertEqual(author_routes.main(['theme','--output',str(output)]),1)
             provider.assert_not_called()
+
+    def test_plan_registration_refuses_changed_archived_bytes(self):
+        blob,artifact=create(plan())
+        revision=self.server._replace_cave(blob)
+        with self.server.db:
+            self.server.db.execute('UPDATE generated_area_archive SET template=? WHERE identity=?',
+                                   (blob[:-1]+b'.',revision))
+        with self.assertRaisesRegex(ValueError,'exact route map'):
+            self.server.landmark_survey.register(plan())
+        self.assertEqual(self.server.db.execute('SELECT count(*) FROM route_artifacts').fetchone()[0],0)
+        self.assertEqual(self.server.db.execute('SELECT count(*) FROM survey_routes').fetchone()[0],0)
+
+    def test_plan_registration_refuses_conflicting_recipe_and_sites(self):
+        blob,artifact=create(plan())
+        self.server._replace_cave(blob,route_artifact=artifact)
+        renamed=plan();renamed['landmarks'][0]['id']='renamed'
+        self.assertEqual(create(renamed)[0],blob)
+        with self.assertRaisesRegex(ValueError,'already fixed'):
+            self.server.landmark_survey.register(renamed)
+        self.assertEqual(self.server.db.execute('SELECT count(*) FROM survey_routes').fetchone()[0],0)
+        self.assertEqual(load(self.server,artifact['revision']),artifact)
+        self.server.landmark_survey.register(plan())
+        with self.assertRaisesRegex(ValueError,'landmarks are already fixed'):
+            self.server.landmark_survey.register(renamed)
+        self.assertEqual(load(self.server,artifact['revision']),artifact)
+
+    def test_plan_registration_rolls_back_both_writes_and_can_retry(self):
+        blob,artifact=create(plan())
+        self.server._replace_cave(blob)
+        for table in ('route_artifacts','survey_routes'):
+            self.server.db.execute(f"CREATE TRIGGER refuse_registration BEFORE INSERT ON {table} BEGIN SELECT RAISE(ABORT,'fixture'); END")
+            import sqlite3
+            with self.assertRaises(sqlite3.IntegrityError):
+                self.server.landmark_survey.register(plan())
+            self.assertEqual(self.server.db.execute('SELECT count(*) FROM route_artifacts').fetchone()[0],0)
+            self.assertEqual(self.server.db.execute('SELECT count(*) FROM survey_routes').fetchone()[0],0)
+            self.server.db.execute('DROP TRIGGER refuse_registration')
+        self.server.landmark_survey.register(plan())
+        self.server.landmark_survey.register(plan())
+        self.assertEqual(load(self.server,artifact['revision']),artifact)
+        self.assertEqual(self.server.db.execute('SELECT count(*) FROM survey_routes').fetchone()[0],1)
 
     def test_tampered_artifact_refuses_before_world_changes(self):
         blob,artifact=create(plan());artifact['report']['landmarks'][1]['x']+=1

@@ -30,7 +30,9 @@ class LandmarkSurvey:
     def register(self, plan):
         """Owner registers an already archived exact generated route plan."""
         s=self.server
-        blob,report=compile_plan(plan)
+        from .route_artifacts import create, archive
+        blob,artifact=create(plan)
+        report=artifact['report']
         sites=[site for site in report['landmarks'] if site['id'] not in ('entry','exit')]
         with s.lock:
             if not s.archive_generated_areas:raise ValueError('survey requires persistent area archive')
@@ -39,7 +41,9 @@ class LandmarkSurvey:
             encoded=json.dumps(sites,sort_keys=True)
             old=s.db.execute('SELECT sites FROM survey_routes WHERE revision=?',(report['revision'],)).fetchone()
             if old and old[0]!=encoded:raise ValueError('survey landmarks are already fixed for this revision')
-            with s.db:s.db.execute('INSERT OR IGNORE INTO survey_routes VALUES (?,?)',(report['revision'],encoded))
+            with s.db:
+                archive(s,artifact,blob)
+                s.db.execute('INSERT OR IGNORE INTO survey_routes VALUES (?,?)',(report['revision'],encoded))
         return dict(ok=True,revision=report['revision'],landmarks=len(sites))
 
     def register_revision(self, revision):
