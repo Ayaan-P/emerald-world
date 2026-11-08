@@ -34,6 +34,7 @@
 #include "constants/event_objects.h"
 #include "constants/map_groups.h"
 #include "platform/world_bridge.h"
+#include "platform/chat_command_gate.h"
 #include "platform/generated_map.h"
 #if GENERATED_MAP_READY
 #include "platform/world_cave_wire.h"
@@ -86,6 +87,7 @@ struct Snapshot {
     struct Tile tiles[WB_TILES];
     struct Meeting meeting;
     unsigned chatCount;
+    unsigned commandMask, commandsSeen;
     char chatStatus[12];
     struct ChatMessage chat[16];
     bool8 travel;
@@ -109,6 +111,7 @@ struct Remote { char id[26]; u8 object, sprite, group, num;
 struct Applied { struct Tile tile; u16 original, raw; };
 static struct {
     bool8 enabled, connected, connecting, staging, chatProbe, chatLegacy, chatAvailable;
+    bool8 commandsProbe, commandsLegacy;
     bool8 travelProbe, travelLegacy, travelAvailable;
     bool8 rallyProbe, rallyLegacy, rallyAvailable;
 #if GENERATED_MAP_READY
@@ -454,6 +457,8 @@ static void Disconnect(void)
 #endif
     sWorld.connected = sWorld.connecting = sWorld.staging = FALSE;
     sWorld.chatProbe = sWorld.chatAvailable = FALSE;
+    sWorld.commandsProbe = FALSE;
+    sWorld.live.commandMask = sWorld.live.commandsSeen = 0;
     sWorld.travelProbe = sWorld.travelAvailable = FALSE;
 #if GENERATED_MAP_READY
     sWorld.caveProbe = sWorld.caveAvailable = sWorld.caveReturning = FALSE;
@@ -1112,6 +1117,11 @@ static bool8 Line(char *line)
     }
     if (!n) return FALSE;
     if (!sWorld.connected) {
+        if (sWorld.commandsProbe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
+            sWorld.commandsLegacy = TRUE;
+            return FALSE;
+        }
+
 #if WORLD_EXTENDED_OBJECTS
         if (sWorld.peer32Probe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
             sWorld.peer32Legacy = TRUE;
@@ -1173,6 +1183,7 @@ static bool8 Line(char *line)
     }
     if (!sWorld.staging) return FALSE;
     if (!strcmp(tokens[0], "END")) {
+        if (!ChatCommandGate_Complete(sWorld.commandsProbe, sWorld.stage.commandsSeen)) return FALSE;
         if (n != 1) return FALSE;
         if ((sWorld.travelAvailable && !sWorld.stage.travel)
          || sWorld.stage.travelCount != sWorld.stage.travelExpected) return FALSE;
@@ -1234,6 +1245,11 @@ static bool8 Line(char *line)
         m->seq=v[0]; m->group=v[1]; m->num=v[2]; m->x=v[3]; m->y=v[4];
         strcpy(m->player,tokens[2]); strcpy(m->target,tokens[3]);
         return TRUE;
+    }
+    if (!strcmp(tokens[0], "COMMANDS")) {
+        if (n != 3 || !Decimal(tokens[1], &v[0]) || !Decimal(tokens[2], &v[1])) return FALSE;
+        return ChatCommandGate_Record(&sWorld.stage.commandMask, &sWorld.stage.commandsSeen,
+                                      v[0], v[1], sWorld.commandsProbe);
     }
     if (!strcmp(tokens[0], "CHATSTATUS")) {
         if (n != 2 || sWorld.stage.chatStatus[0]
@@ -1435,18 +1451,20 @@ static void QueueHello(bool8 headless)
 #ifdef _WIN32
     (void)headless;
     sWorld.chatProbe = FALSE;
+    sWorld.commandsProbe = FALSE;
     sWorld.travelProbe = !sWorld.travelLegacy;
     role = sWorld.rallyProbe ? "SOCIALTRAVELRALLY" : sWorld.travelProbe ? "SOCIALTRAVEL" : "SOCIAL";
     sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
         "EWLOCAL1 %s\nHELLO 1 %s %s %s%s%s\n", sWorld.loopbackToken, sWorld.trainer, sWorld.token, role, WB_PEER_SUFFIX, suffix);
 #else
     sWorld.chatProbe = !headless && !sWorld.chatLegacy;
+    sWorld.commandsProbe = sWorld.chatProbe && !sWorld.commandsLegacy;
     sWorld.travelProbe = !sWorld.travelLegacy;
     role = sWorld.rallyProbe ? (sWorld.chatProbe ? "SOCIALTRAVELCHATRALLY" : "SOCIALTRAVELRALLY")
         : sWorld.travelProbe ? (sWorld.chatProbe ? "SOCIALTRAVELCHAT" : "SOCIALTRAVEL")
         : (sWorld.chatProbe ? "SOCIALCHAT" : "SOCIAL");
     sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
-        "HELLO 1 %s %s %s%s%s\n", sWorld.trainer, sWorld.token, role, WB_PEER_SUFFIX, suffix);
+        "HELLO 1 %s %s %s%s%s%s\n", sWorld.trainer, sWorld.token, role, WB_PEER_SUFFIX, suffix, sWorld.commandsProbe ? "COMMANDS1" : "");
 #endif
 #undef WB_PEER_SUFFIX
 }
@@ -1614,6 +1632,12 @@ static void Fingerprint(const void *data, size_t size, char out[17])
     snprintf(out, 17, "%016llx", (unsigned long long)hash);
 }
 
+int WorldBridge_ChatCommandAllowed(const char *target, const char *text)
+{
+    return sWorld.connected && sWorld.chatAvailable
+        && ChatCommandGate_Allowed(sWorld.live.commandMask, target, text);
+}
+
 int WorldBridge_ChatSend(const char *target, const char *text)
 {
     char hex[241];
@@ -1628,7 +1652,7 @@ int WorldBridge_ChatSend(const char *target, const char *text)
         hex[2*i] = "0123456789abcdef"[c >> 4];
         hex[2*i+1] = "0123456789abcdef"[c & 15];
     }
-    if (!visible) return 0;
+    if (!visible || !WorldBridge_ChatCommandAllowed(target, text)) return 0;
     hex[2*i] = 0;
     sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
         "CHAT %u %s %s\n", ++sWorld.seq, target, hex);

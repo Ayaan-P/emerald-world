@@ -102,3 +102,19 @@ refused privately rather than broadcast. This server change cannot protect an
 old client connected to an old server: do not advertise private story commands
 until the paired fail-closed client boundary is deployed. No actual disclosure
 incident was observed; this corrects a statically reproduced fallback risk.
+
+### Client safety candidate
+
+The app-side bridge now negotiates COMMANDS1 and accepts command families only
+from a complete authoritative snapshot. Chat text cannot grant capabilities.
+All slash commands fail closed on legacy servers, including mixed-case commands;
+ordinary chat remains available. Unsupported commands remain in the composer.
+The same four-file change is prepared separately for Expansion, but this app PR
+alone does not update the Expansion engine pin. Do not expose private story or
+mystery choices in an RC until that paired native change is integrated.
+
+The compiled bridge contract test can also exercise a clean Expansion source:
+`WORLD_BRIDGE_TEST_SOURCE=/path/to/expansion/src/world/world_bridge.c PYTHONPATH=test/world python -m unittest test_chat.NativeChatTests.test_native_snapshot_chat_is_atomic_and_rejects_injection`.
+It compiles actual parser, negotiation and send functions, including the real
+Expansion rules parser. It is not a rendered multiplayer playtest. The SDL
+composer test skips when SDL development headers are absent.
