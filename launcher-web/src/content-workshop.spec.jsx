@@ -95,3 +95,12 @@ it('offers capture-the-flag instructions without changing the local world', asyn
   expect(screen.queryByRole('button',{name:/Preview|Apply/})).toBeNull();
   expect(request).toHaveBeenCalledTimes(1);
 });
+it('unifies installed games and explicit guild invitation consent without publishing', async () => {
+  const request=vi.fn(async()=>({...info,activities:[{kind:'relay',id:'petalburg_relay1',title:'Petalburg Baton Circuit',players:2}]}));
+  render(<ContentWorkshop {...props} onRequest={request}/>);
+  await screen.findByRole('heading',{name:'Find something to play together'});
+  expect(screen.getByText('Petalburg Baton Circuit')).toBeTruthy();
+  expect(screen.getByText(/never your clues, choices or results/)).toBeTruthy();
+  expect(screen.getByText(/No puzzle pack is installed here yet/)).toBeTruthy();
+  expect(request).toHaveBeenCalledTimes(1);
+});
