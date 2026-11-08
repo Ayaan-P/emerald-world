@@ -1,0 +1,146 @@
+{
+  "release": "RC11",
+  "next_candidate_version": "0.4.0-rc.11.3",
+  "decision": "Recommend a bounded RC11 cut with the tested existing content and these repairs. Do not fold the newer experimental Dot feature cohorts into this cut.",
+  "state": "Source committed locally; pinned native artifact built and targeted two-client verification passed. Not packaged, installed, pushed, promoted to main or deployed by this work.",
+  "source": {
+    "app": "382165d42bc94bc01a1da7f65553f28fc4552658",
+    "engine": "5cb76554ca986a95230a49d9d34c9cc3ef24388d",
+    "branch": "integrate/rc11-dot-reviewed-swarm",
+    "baseline_app": "fe0006b2f9b2e0e5119addb171972b234cc0e52d",
+    "baseline_engine": "c121f443bb9bc8160fe08c96c928dc8c3a127e28"
+  },
+  "changes": [
+    "Fresh character-action staging continues from the inspected public durable checkpoint instead of recreating chapter one; nonempty state, actor version admission and idempotent receipts remain authoritative.",
+    "Admitted generated-area human peers can open the existing Talk/Tag/Cancel menu. Admission is revalidated before dispatch; stale/revoked inputs are dropped. PvP/trade remain intentionally unavailable in generated areas."
+  ],
+  "build": {
+    "native_version": "5cb76554ca98-rc11.3",
+    "binary_sha256": "86b966d2cd201d1ffba72bcdb5129de35df6a5323d2603606321745168ee1ae7",
+    "symbols_sha256": "8a9d65f00968a563fb79921b75f684d14edd89451fb5eb12615ce59e2059dfaf",
+    "species_catalogue_sha256": "09de78b24f5b21a9d8f579a43d5fc7a4b0a94b53a4c9f12257ad68bc26cf2ddb",
+    "command": "python3 scripts/build_expansion.py --development --regional-state --kanto-content --sysroot <existing SDL sysroot> --multilib-sysroot <existing multilib root> --jobs 8",
+    "checks": [
+      "32-bit compile/run ABI preflight",
+      "data_relocations.checked",
+      "data_layout.checked",
+      "battle_script_operands.checked"
+    ],
+    "log": "peer-interaction/official-build.log"
+  },
+  "verification": {
+    "tests": {
+      "app_characters": {
+        "ran": 43,
+        "passed": 43,
+        "skipped": 0,
+        "evidence": "checkpoint/character-regressions.log"
+      },
+      "native": {
+        "ran": 60,
+        "passed": 60,
+        "skipped": 0,
+        "evidence": "peer-interaction/native-regressions.log"
+      },
+      "native_characters": {
+        "ran": 15,
+        "passed": 15,
+        "skipped": 0,
+        "evidence": "peer-interaction/character-regressions.log"
+      },
+      "native_privacy": {
+        "ran": 4,
+        "passed": 3,
+        "skipped": 1,
+        "evidence": "peer-interaction/privacy-regressions.log"
+      }
+    },
+    "builder_setup_tests": 5,
+    "independent_app_review": "passed",
+    "independent_native_review": "passed",
+    "real_character_sandbox_stage_and_run": "passed; actor v2 continued to v3",
+    "two_native_clients": {
+      "passed": true,
+      "evidence": "peer-interaction/official-native/acceptance.json",
+      "milestones": [
+        "both Continue ready",
+        "both outdoors",
+        "same generated map ready",
+        "both rendered adjacent and ready",
+        "peer menu open",
+        "first tag invitation received",
+        "both idle after decline",
+        "peer menu open",
+        "tag invitation received",
+        "both Tag active and native field ready",
+        "receiver active-tag menu opened",
+        "receiver closed active-tag menu",
+        "End tag menu opened",
+        "both free field after End tag",
+        "both can walk freely after End tag"
+      ],
+      "binary_and_source_stable": true,
+      "both_private_disposable_saves_unchanged": true,
+      "human_game_or_save_touched": false
+    },
+    "frontend": "Unchanged; no fresh frontend acceptance claimed."
+  },
+  "dot_review": {
+    "app_branches_inventoried": 123,
+    "engine_branches_inventoried": 6,
+    "final_remote_check": "2026-11-08T18:45:45.708892+00:00",
+    "method": "Actual branch/source and patch/content equivalence, including branches without PRs. New upstream test passes are not combined-candidate/native gameplay proof.",
+    "reviewed_reports": [
+      "dot-app-review.json",
+      "dot-engine-review.json",
+      "dot-final-head-check.json"
+    ],
+    "deferred": [
+      {
+        "feature": "Resident guides, exact generated expeditions and relationship-driven chapters",
+        "head": "0d5362943ea241563f0583909c1c6d9b13d6f99a",
+        "reason": "New additive authoring/service cohort; reconcile with tested walking/checkpoint repairs before delivery."
+      },
+      {
+        "feature": "Coastal journeys, route continuity, trails, surveys, ensembles and independent region atlases",
+        "head": "0d18700b6aa83ee18d8679c46298b6574a933e9d",
+        "reason": "Large separate app/admission/persistence cohort; upstream tests do not establish combined native acceptance."
+      },
+      {
+        "feature": "Settlement growth and uncertain-result recovery",
+        "head": "f09a52adbbd0578706835f54d40058b293e81a07",
+        "reason": "Optional opt-in world growth, not needed to repair accepted RC11 content."
+      },
+      {
+        "feature": "Expanded habitat encounter ecology, footstep habitats and shared wildlife",
+        "reason": "Separate matching app/native gameplay and acquisition/privacy verification needed."
+      },
+      {
+        "feature": "Short private campaigns with new experimental native rental-battle/file bridge",
+        "app_head": "674e6e4d2d637159ad075dfab5298ec564331f5a",
+        "engine_head": "b4fd237d198c5afcb0bf2d702dfd8e54d0dfad9b",
+        "reason": "Late source is now connected through explicit EW_CAMPAIGN_EXPERIMENTAL opt-in; it is not in this candidate. Its README explicitly says real native seed/battle acceptance commands have not been run and default host still refuses experimental protocol."
+      },
+      {
+        "feature": "Grouped map generation and derived heal-location outputs",
+        "head": "72bf240135307bad8d02fadbb69a5f9ac60fb3d8",
+        "reason": "Useful next build-graph repair, but raw cherry-pick conflicts and must preserve combined map_regions and always emit derived JSON. Not a demonstrated defect in this tested combined binary."
+      }
+    ]
+  },
+  "remaining_release_gates": [
+    "Package the exact new cohort; safe installation only after the human closes their game.",
+    "Stage and activate the matching app authority on existing Hetzner services with backup/rollback and connected-player coordination; current live services remain RC10.",
+    "Verify applicable platform CI/package acceptance before public promotion; Windows runtime not tested here."
+  ],
+  "known_limits": [
+    "Generated-area PvP/trade are not enabled or tested by this repair.",
+    "No shared-wild co-op battle executed by this targeted Tag consent/free-field check.",
+    "NPC portraits still use generic native trainer art and battle names still derive from internal IDs; presentation polish is not claimed complete.",
+    "Optional older-authority privacy case skipped because its checkout was not supplied."
+  ],
+  "evidence_root": "/home/ayaan/rc11-swarm-integration-evidence/rc11-release-gate",
+  "main_promoted": false,
+  "installed_release_changed": false,
+  "hosted_services_changed": false
+}
