@@ -24,6 +24,7 @@ from .mechanics import validate_objects
 from .link_protocol import LinkProtocol
 from .guilds import Guilds
 from .guild_chat import GuildChat
+from .private_commands import route as route_private_command, STORY, MYSTERY, GUILD, EXPLORE
 from .world_rules import WorldRules
 from .rally import RallyCoordinator
 from .world_memory import object_content, overlay_places, terrain_delta
@@ -141,6 +142,18 @@ class WorldServer:
         self.memory = WorldMemory(self.db)
         self.guilds = Guilds(self.db, catalog_maps(), record_outcome=self.memory.append)
         self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
+        from .cooperative_mysteries import Mysteries
+        from .opportunities import Opportunities
+        from .opportunity_chat import OpportunityChat
+        self.mysteries = Mysteries(self, validate_coords, TRAVEL_FRESH_SECONDS)
+        self.opportunities = Opportunities(self.db, [m['name'] for m in catalog_maps().values()], self.mysteries)
+        self.opportunity_chat = OpportunityChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
+        from .field_relays import FieldRelays
+        self.relays = FieldRelays(self, validate_coords)
+        from .field_flags import FieldFlags
+        self.flags = FieldFlags(self)
+        from .activity_board import ActivityBoard
+        self.activities = ActivityBoard(self)
         from .landmark_survey import LandmarkSurvey
         self.landmark_survey = LandmarkSurvey(self)
         self.db.executescript('''
@@ -486,6 +499,7 @@ class WorldServer:
 
     def _snapshot(self, conn):
         lines = ['BEGIN ' + str(self.revision)]
+        if conn.get('mount_capable'):lines.append('MOUNTS 1')
         # World population is not the fixed native render-array capacity.
         # Select deterministically by proximity; no extra wire fields are added.
         origin = conn.get('state')
@@ -507,6 +521,9 @@ class WorldServer:
             candidates.append((distance, name, state))
         for _, name, state in sorted(candidates)[:conn.get('peer_limit', MAX_PEERS)]:
             lines.append('PEER ' + name + ' ' + ' '.join(map(str, state)))
+            mount=self.peers[name].get('mount',(0,0))
+            if conn.get('mount_capable') and mount[0] and state[6] and time.monotonic()-self.peers[name].get('state_time',0)<=3:
+                lines.append(f'RIDER {name} {mount[0]} {mount[1]}')
         if conn.get('travel'):
             # Separate from render relevance. Include every field occupant so
             # a ninth trainer cannot become an invisible occupied landing tile.
@@ -558,6 +575,11 @@ class WorldServer:
             lines.append('MEET ' + ' '.join(str(meeting[k]) for k in
                 ('seq','player','target','group','num','x','y','signal')))
         if conn.get('chat'):
+            if conn.get('private_commands'):
+                mask = GUILD | EXPLORE
+                if getattr(self, 'opportunity_chat', None):mask |= STORY
+                if getattr(self, 'mysteries', None):mask |= MYSTERY
+                lines.append(f'COMMANDS 1 {mask}')
             lines += ['CHATMSG ' + ' '.join(map(str, message)) for message in conn['chat_history']]
             lines.append('CHATSTATUS ' + conn['chat_status'])
         lines += self.rally.snapshot(conn)
@@ -603,6 +625,10 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                mount_capable = role.endswith('MOUNTS1')
+                if mount_capable:role=role[:-7]
+                private_commands = role.endswith('COMMANDS1')
+                if private_commands:role=role[:-9]
                 character_walk_capable = role.endswith('CHARWALK1')
                 if character_walk_capable:role=role[:-9]
                 character_region_capable = role.endswith('CHARREG1')
@@ -657,6 +683,10 @@ class WorldServer:
                     self._error(conn, 'AUTH')
                     return
                 if character_quest_capable and not character_capable:
+                    self._error(conn, 'AUTH')
+                    return
+                if mount_capable and not private_commands:raise ValueError('mounts require private command negotiation')
+                if private_commands and not chat_capable:
                     self._error(conn, 'AUTH')
                     return
                 if character_capable and not social:
@@ -720,6 +750,9 @@ class WorldServer:
                     return
                 conn['id'] = name
                 conn['social'] = social
+                conn['mount_capable'] = mount_capable
+                conn['mount'] = (0, 0)
+                conn['private_commands'] = private_commands
                 conn['character_walk_capable'] = character_walk_capable
                 conn['character_region_capable'] = character_region_capable
                 conn['character_capable'] = character_capable
@@ -913,6 +946,13 @@ class WorldServer:
                 # FIELD keeps a visible trainer on the map while walking or using
                 # a menu. Its ready bit still gates every interaction. Legacy STATE
                 # retains its canonical absent representation and validation.
+                mount=(0,0);mount_trail="."
+                if fields and fields[0] in ('MSTATE','MFIELD'):
+                    if not conn.get('mount_capable') or len(fields)!=14:raise ValueError('unnegotiated mount state')
+                    mount=(bounded(fields[11],0,65535),bounded(fields[12],0,3))
+                    if mount[0] not in (0,59,78,85,234) or (not mount[0] and mount[1]):raise ValueError('invalid mount')
+                    mount_trail=fields[13]
+                    fields=[fields[0][1:]]+fields[1:11]
                 field = bool(fields and fields[0] == 'FIELD' and conn.get('social'))
                 if len(fields) != 11 or (fields[0] != 'STATE' and not field):
                     raise ValueError('state shape')
@@ -943,6 +983,9 @@ class WorldServer:
                     raise ValueError('noncanonical unready state')
                 if not all(HASH.fullmatch(h) for h in fields[9:]):
                     raise ValueError('hash')
+                if mount[0] and (not state[6] or tuple(state[:2]) in (self.cave_map,self.wilds_map)):raise ValueError('inactive mount')
+                from .mount_motion import decode as decode_mount_motion
+                trail,lost=decode_mount_motion(mount_trail,conn.get('state'),state,conn.get('mount',(0,0)),mount,0<=time.monotonic()-conn.get('state_time',0)<=3)
                 data = dict(id=conn['id'], seq=seq, state=state, party_hash=fields[9], bag_hash=fields[10])
                 hashes = tuple(fields[9:])
                 previous = self.db.execute('SELECT party_hash,bag_hash FROM identities WHERE id=?', (conn['id'],)).fetchone()
@@ -959,7 +1002,10 @@ class WorldServer:
                 # An identical report can revive a previously expired friend.
                 became_fresh = (last_state is not None and
                                 int((TRAVEL_FRESH_SECONDS - (now - last_state)) * 60) <= 0)
-                changed = (conn.get('state') != state or bool(conn.get('field')) != field or hashes != previous or became_fresh)
+                changed = (conn.get('mount',(0,0)) != mount or conn.get('state') != state or bool(conn.get('field')) != field or hashes != previous or became_fresh)
+                conn['motion_previous'] = (conn.get('state'),conn.get('state_time'),conn.get('mount',(0,0)))
+                conn['mount_trail'],conn['mount_trail_lost'] = trail,lost
+                conn['mount'] = mount
                 conn['seq'], conn['state'], conn['field'] = seq, state, field
                 if tuple(state[:2]) in (self.cave_map, self.wilds_map):
                     conn['in_generated_cave'] = True
@@ -971,6 +1017,8 @@ class WorldServer:
                     self._schedule_presence(now)
                 self.guild_chat.observe(conn, state)
                 self.landmark_survey.observe(conn)
+                if getattr(self, 'relays', None):self.relays.tick()
+                if getattr(self, 'flags', None):self.flags.tick()
         except (UnicodeError, ValueError):
             self._error(conn, 'MALFORMED')
 
@@ -1003,9 +1051,7 @@ class WorldServer:
             self._queue(conn, self._snapshot(conn))
             return
         conn['chat_credit'] = credit - 1
-        if fields[2] == '*' and self.landmark_survey.handle(conn, text.decode('ascii')):
-            return
-        if fields[2] == '*' and self.guild_chat.handle(conn, text.decode('ascii')):
+        if route_private_command(self, conn, fields[2], text.decode('ascii')):
             return
         self.chat_serial += 1
         message = (self.chat_serial, conn['id'], fields[2], fields[3])
@@ -1567,6 +1613,30 @@ class WorldServer:
                 except ValueError as exc:
                     # Expected validation/occupancy refusal is not a mechanic error.
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'publish_flag_arena':
+                try:
+                    if set(request)!={'command','arena'}:raise ValueError('Invalid flag publication.')
+                    with self.lock:result=self.flags.publish(request['arena'])
+                except ValueError as exc:result=dict(ok=False,error=str(exc))
+            elif request.get('command') == 'publish_relay_course':
+                try:
+                    if set(request)!={'command','course'}:raise ValueError('Invalid relay publication.')
+                    with self.lock:result=self.relays.publish(request['course'])
+                except ValueError as exc:result=dict(ok=False,error=str(exc))
+            elif request.get('command') == 'publish_field_story':
+                try:
+                    if set(request)!={'command','bundle'}:raise ValueError('Invalid field story publication.')
+                    from .field_story_bundle import install
+                    with self.lock:result=install(self,request['bundle'])
+                except ValueError as exc:
+                    result=dict(ok=False,error=str(exc))
+            elif request.get('command') in ('publish_mystery', 'publish_opportunities'):
+                try:
+                    if set(request)!={'command','pack'}:raise ValueError('Invalid story publication.')
+                    system = self.mysteries if request['command']=='publish_mystery' else self.opportunities
+                    with self.lock:result=system.publish(request['pack'])
+                except ValueError as exc:
+                    result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'register_survey':
                 if set(request) != {'command','plan'}:raise ValueError('invalid survey registration')
                 result = self.landmark_survey.register(request['plan'])
@@ -1966,6 +2036,8 @@ class WorldServer:
                 self._poll_presence(time.monotonic())
                 self._deliver_links(self.link_protocol.tick())
                 self.rally.tick()
+                self.relays.tick()
+                self.flags.tick()
                 self._poll_controls()
                 self._poll_mechanics()
 

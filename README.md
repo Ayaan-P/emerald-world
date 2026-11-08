@@ -11,7 +11,7 @@ A native PC Pokémon Emerald world built from [pret's decompilation](https://git
 
 ## Current release and source
 
-`main` contains **RC10**, including the rc10.10 multiplayer and native-engine fixes. The app pins the matching source in [Ayaan-P/pokeemerald-expansion-native](https://github.com/Ayaan-P/pokeemerald-expansion-native), whose default `main` branch carries that engine checkpoint. See [the RC10 handoff and build instructions](docs/RC10_EXPANSION_HANDOFF.md). Published downloadable packages on [GitHub Releases](https://github.com/Ayaan-P/emerald-world/releases) currently remain RC9; pulling source does not update an installed package or shortcut.
+This branch is the **RC12 multiplayer field-activities candidate**, not a released build or a claim of completed native QA. It contains the cumulative app stack #279–283 on app main `80b14ebfbfd4dd4da2dc16d886a37f0db1f45516` and pins the paired native mount/privacy client `488796e4959eb7f9d658abc7e8313e138acb3c87` (#24, including #23). Pulling source does not update an installed package or shortcut. See [candidate handoff](INSTALL_PC.md#rc12-cumulative-candidate-handoff) for exact dependencies, player entry and remaining checks.
 
 For an existing source checkout:
 
@@ -73,6 +73,68 @@ The tkinter launcher remains a legacy/operator fallback. Its old UI labels are n
 5. Return with **WORLD → Leave generated area**, then save through the normal game menu. Closing or restarting discards unsaved progress. Saved terrain and saved trainer progress are different things.
 
 Disconnecting does not stop a local host. Use Stop host in Local worlds or Quit launcher. Persistent dedicated hosting is separate. Do not launch two games on the same trainer save. Use **Save backups** on a stopped profile before experimenting. Backups contain trainer save bytes, not the server world, account credentials or durable adventure progress.
+
+## Cooperative field stories (RC12 candidate)
+
+This draft pairs private two-player clues with persistent local story choices.
+It requires the matched COMMANDS1 native client and server from the RC12 private
+command candidate. It does not change a player's party, money, items or save.
+
+For a local world, open its host and select **Content workshop → Cooperative
+field story (RC12)**. Preview shows the exact two-part content and station list.
+Save and close connected games, review the preset, then apply it. Both parts
+are installed in one database transaction. Existing maps, residents and player
+progress are preserved; reinstalling identical content does not reset a run.
+The preset stations pass static checks against the released Expansion layout
+bytes: clear ground, connected paths and no authored NPC overlap. Rendered
+two-client QA is still required before public deployment. Versioned preset IDs
+leave any older installed prototype and its progress untouched.
+
+Hosted-world owners can use the existing owner API with
+`{"command":"publish_field_story","bundle":{"mystery":...,"story":...}}`.
+The bundled preset is available from `world.field_story_bundle.curated()` and
+matches `examples/cooperative_signal.json` plus
+`examples/cooperative_signal_story.json`. This is an owner operation, not a
+player chat command. Conflicting immutable IDs reject the whole installation.
+Never give players owner credentials.
+
+1. One player types `/mystery start signal_v2` and shares the displayed invitation
+   with their chosen partner. The partner uses `/mystery join CODE`.
+2. Each player uses `/mystery status`, travels to their own station and reads
+   `/mystery clue`. Clues are private. Tell your partner what you learned.
+3. The designated solver uses the displayed `/mystery solve STAGE ANSWER` line.
+   Both players must be present at their stations and have read their clues.
+   Solving advances both players. `/mystery leave` ends the run for both.
+4. After both stages, either participant can read `/story signal_after_v2` in
+   Rustboro and choose whether to restore the warning relay or archive its
+   message. Other visitors then see the resulting local story. The relay is
+   narrative state, not a newly placed map object or a changed transport route.
+
+Run progress, both participants' completion, and the resulting place story
+survive server restarts. A resumed run still needs fresh player positions.
+`/mystery list` lists published mysteries and `/story` lists available local
+stories. Private choices are not posted to room chat. The owner can inspect the
+world database, so this is player-to-player privacy, not secrecy from the host.
+
+Authors can reuse the system with two roles, up to twelve paired clue stages,
+and story scenes with a `mystery` prerequisite. Only actual participants in a
+completed run satisfy that prerequisite. The server evaluates availability and
+commits choices with idempotent receipts; agents author content rather than
+asserting that a player completed it.
+
+## RC12 candidate: mounted Pokemon and field relays
+
+Matched native clients can ride their own supported conscious party Pokemon with
+`/mount SLOT` and enter `petalburg_mount1`, a mounted relay using exact tile
+witnesses rather than interpolated network positions. No Pokemon are granted;
+see [mount requirements](world/PLAYER_CLIENT.md#mounted-pokemon-relay-candidate).
+
+Two to four guildmates can run ordered checkpoints, physically pass a baton on
+adjacent pads and improve durable private team times. The included Petalburg
+circuit needs no story pack or save changes. The launcher Content workshop lists
+courses and the player loop; [player instructions](world/PLAYER_CLIENT.md#rc12-candidate-cooperative-field-relays)
+cover joining, countdowns, handoffs and cancellation. Requires the paired RC12
+private-command client. Source/authority tests are not rendered gameplay QA.
 
 ## Contributing
 

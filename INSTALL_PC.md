@@ -136,3 +136,85 @@ You should get an executable named `pokeemerald64`, which uses Homebrew's SDL2.
 ## GBA
 
 Follow instructions in [INSTALL.md](INSTALL.md)
+
+
+## RC12 cumulative candidate handoff
+
+This candidate contains the entire app stack against main, with no merge or
+release implied. Integrate this cumulative candidate once; do not also apply
+all constituent patches a second time. The smaller drafts remain review slices.
+
+Verified source inputs at preparation:
+
+- App main: `80b14ebfbfd4dd4da2dc16d886a37f0db1f45516`.
+- #279 privacy: `ebc93b91ec5c882ac08d8336af26da4ad943ee18`.
+- #280 complete field story: `da328a772a80b3f0ea67b11aa254873c5c66fbdb`.
+- #281 relays: `24bc0deca2b7803a3816a9d37cd8e69e25ef4f12`.
+- #282 flag duels: `3f946f921ede2956e00644158a49973dd3906c19`.
+- #283 activity board: `27c097d834bab56a3d27bf48fde15c5ddaf4a326`.
+- Native main: `7d463da5613d9aa3c19f444c22de0be4424e2458`.
+- Native #23 paired privacy client: `984165808a45aaaaa7c7169c228ef1a1480ab6d0`.
+
+- Native #24 mounts and matched witness protocol: `488796e4959eb7f9d658abc7e8313e138acb3c87`.
+
+The native gitlink and `scripts/build_expansion.py` pin both point at #24.
+Native #24 (including #23) remains independently reviewable; its source must be available to the
+build account. In a separate clean checkout, initialize the pinned submodule,
+run `python3 scripts/build_expansion.py --check`, then use the supported build
+instructions above. Do not reset a dirty integration checkout or substitute an
+older executable. Rebuild/package the launcher and server with the same candidate.
+If the native commit is rebased during integration, update both pins together.
+
+### One player-facing batch
+
+1. Run a disposable local world with two independent trainers and matched RC12
+   clients. Each joins the same guild voluntarily. `/guild play` is the common
+   entry; `/guild play list` lists installed games and starting locations.
+2. Relays and flag duels ship as built-in Petalburg activities. Neither requires
+   story installation, generated-area travel or save editing. A host starts one,
+   then explicitly `/guild play share KIND`; a partner reads `/guild play open`
+   and joins by host name. Adverts remain within the guild and expose no clues.
+3. The owner installs the complete Two-Tower Signal through Local worlds →
+   Author content → Cooperative field story, preview and confirmed apply.
+   This publishes both the two-player puzzle and its linked follow-up together.
+   It must be done with players disconnected. No puzzle is silently installed.
+4. Puzzle stations are on ordinary Petalburg and Rustboro maps. After completion,
+   read `/story` at the final location for eligible consequences. Races/duels
+   report automatic movement events in the existing native chat strip.
+
+### Privacy and acceptance boundaries
+
+The paired client is required: capability negotiation and unknown/slash-command
+fail-closed behavior must survive old-server connection, reconnect and forged
+chat replies. Do not expose private activity features using an old client.
+Native tests compile real parser/send/disconnect functions plus mount adapter
+and ordered tile witness code; app tests cover
+private routing and the real in-memory CHAT/STATE activity paths. None of these
+assert that a rendered two-client playtest happened.
+
+Local candidate verification: 65 activity/content/privacy/mount Python checks,
+148 launcher UI tests and a production launcher build passed before pinning.
+The five build-setup tests and native focused C privacy test also pass.
+Full native compilation and rendered/internet multiplayer remain unverified in
+this environment. Existing baseline CI had a private native-submodule checkout
+credential failure; fix access through the normal repository setup, not an
+alternate payload or security workaround. No dependencies were installed here.
+
+Maya owns integration, QA and release. Acceptance still needs: a clean build of
+the exact pin, mixed-version privacy checks, two visible clients walking the
+source-checked stations/bases, relay handoff and flag tag feel, disconnect/rejoin,
+completed-result restart persistence, and confirmation that independent normal
+saves remain unchanged by these activities. Source collision/BFS checks are not
+visual route QA. Field records use reported positions, not anti-cheat authority.
+
+
+Mounted extension: `/mount SLOT` selects an owned conscious supported party
+Pokemon. `/guild play start relay petalburg_mount1` is the distinct mounted
+course. No Pokemon are granted. MOUNTS1 must be negotiated; no mounted race runs
+on a foot-only/legacy peer. The paired protocol carries exact per-frame tile
+witnesses so faster movement and turns survive six-frame network sampling.
+Overflow or lost continuity cancels instead of inventing checkpoint visits.
+Remote mounts use bounded extra sprites/palettes; resource exhaustion preserves
+the trainer but may omit its mount. Add actual rider alignment, full native
+compilation, two-client mount visibility, fastest turns and delayed-network race
+behavior to Maya's acceptance checks. No such rendered playtest is claimed here.
