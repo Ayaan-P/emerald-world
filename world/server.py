@@ -233,8 +233,14 @@ class WorldServer:
                 state_json, tiles = self._validated(dict(state=json.loads(row[2]),
                     tiles=[dict(zip(keys, tile)) for tile in stored]))
                 objects = validate_objects(json.loads(row[4]))
-                if any((obj['group'], obj['num']) in (self.cave_map, self.wilds_map) for obj in objects):
-                    raise ValueError('persisted object targets generated cave')
+                from .characters import validate_transition
+                validate_transition(json.loads(state_json), json.loads(state_json), objects, self.db)
+                from .region_characters import validate_region_objects
+                validate_region_objects(self,objects,json.loads(state_json))
+                from .generated_goals import validate_offer_places
+                validate_offer_places(self,json.loads(state_json))
+                from .character_walks import validate_walks
+                validate_walks(self,json.loads(state_json),json.loads(state_json),objects,restoring=True)
                 if type(row[5]) is not int or row[5] < 0:
                     raise ValueError('invalid interaction cursor')
                 self.module_state, self.tiles, self.objects = json.loads(state_json), tiles, objects
@@ -527,10 +533,32 @@ class WorldServer:
         lines += ['TILE ' + ' '.join(map(str, tile)) for tile in self.tiles
                   if tuple(tile[:2]) not in (self.cave_map, self.wilds_map)]
         for obj in self.objects:
+            from .character_walks import walk_for,walking
+            walk=walk_for(self.module_state,obj['id'])
+            if walking(self.module_state,obj['id']) and not conn.get('character_walk_capable'):continue
+            prefix='OBJECT '
             if (obj['group'], obj['num']) in (self.cave_map, self.wilds_map):
-                continue
-            lines.append('OBJECT ' + obj['id'] + ' ' + ' '.join(str(obj[k]) for k in ('group','num','x','y','gfx'))
+                from .region_characters import scoped
+                if not scoped(self,conn,obj,obj.get('region_revision')):continue
+                prefix='REGION_OBJECT '+obj['region_revision']+' '
+            lines.append(prefix + obj['id'] + ' ' + ' '.join(str(obj[k]) for k in ('group','num','x','y','gfx'))
                          + ' ' + obj['text'].encode('ascii').hex())
+            if conn.get('character_capable'):
+                from .characters import records
+                character = records(self.module_state).get(obj['id'])
+                if character and character['status'] == 'active':
+                    lines.append('CHARACTER ' + obj['id'] + ' ' + str(character['version']))
+                    if walk and conn.get('character_walk_capable'):
+                        lines.append('CHARACTER_WALK '+' '.join(map(str,[obj['id'],character['version'],walk['id'],walk['index'],len(walk['path']),*[v for p in walk['path'] for v in p]])))
+                    if conn.get('character_quest_capable') and character.get('offer'):
+                        offer=character['offer']
+                        if offer['place_id'].startswith('area:'):
+                            from .generated_goals import resolve_place,destination_available
+                            if conn.get('place_quest_capable') and destination_available(self,conn,offer['place_id'],offer['region_revision']):
+                                place=resolve_place(self,offer['place_id'],offer['region_revision'])
+                                lines.append('CHARACTER_PLACE_OFFER '+' '.join(map(str,[obj['id'],character['version'],offer['id'],offer['revision'],offer['target'],place['place_id'],place['revision'],place['label'].encode('ascii').hex()])))
+                        else:
+                            lines.append('CHARACTER_OFFER '+ ' '.join(map(str,[obj['id'],character['version'],offer['id'],offer['revision'],offer['target'],offer['place_id'][7:]])))
         meeting = conn.get('meeting')
         if conn.get('social') and meeting:
             lines.append('MEET ' + ' '.join(str(meeting[k]) for k in
@@ -581,6 +609,18 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                place_quest_capable=role.endswith('PLACEQUEST1')
+                if place_quest_capable:role=role[:-11]
+                character_walk_capable = role.endswith('CHARWALK1')
+                if character_walk_capable:role=role[:-9]
+                character_region_capable = role.endswith('CHARREG1')
+                if character_region_capable:role=role[:-8]
+                character_quest_capable = role.endswith('CHARQUEST1')
+                if character_quest_capable:
+                    role = role[:-10]
+                character_capable = role.endswith('CHAR1')
+                if character_capable:
+                    role = role[:-5]
                 rules_version = 3 if role.endswith('RULES3') else 2 if role.endswith('RULES2') else 1 if role.endswith('RULES1') else 0
                 rules_capable = rules_version != 0
                 if rules_capable:
@@ -618,6 +658,21 @@ class WorldServer:
                 travel = role in ('SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
                 social = role in ('SOCIAL', 'SOCIALCHAT', 'SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
                 link = role == 'LINK'
+                if character_walk_capable and not character_region_capable:
+                    self._error(conn,'AUTH')
+                    return
+                if character_region_capable and not (character_capable and (region_capable or cave_xl)):
+                    self._error(conn, 'AUTH')
+                    return
+                if place_quest_capable and not character_quest_capable:
+                    self._error(conn,'AUTH')
+                    return
+                if character_quest_capable and not character_capable:
+                    self._error(conn, 'AUTH')
+                    return
+                if character_capable and not social:
+                    self._error(conn, 'AUTH')
+                    return
                 if rules_capable and not social:
                     self._error(conn, 'AUTH')
                     return
@@ -676,6 +731,11 @@ class WorldServer:
                     return
                 conn['id'] = name
                 conn['social'] = social
+                conn['character_walk_capable'] = character_walk_capable
+                conn['character_region_capable'] = character_region_capable
+                conn['character_capable'] = character_capable
+                conn['place_quest_capable']=place_quest_capable
+                conn['character_quest_capable'] = character_quest_capable
                 conn['rules_capable'] = rules_capable
                 conn['rules_version'] = rules_version
                 conn['region_capable'] = region_capable
@@ -826,7 +886,30 @@ class WorldServer:
                     raise ValueError('noncanonical chat line')
                 self._chat(conn, fields)
                 return
-            if fields and fields[0] == 'INTERACT':
+            if fields and fields[0] in ('CHARACTER_ACCEPT','CHARACTER_ACCEPT_REGION'):
+                from .characters import accept_offer, CharacterOfferError
+                try:
+                    with self.lock:
+                        if raw.decode('ascii') != ' '.join(fields):
+                            raise CharacterOfferError('STALE')
+                        self._queue(conn,accept_offer(self,conn,fields))
+                except (CharacterOfferError,sqlite3.Error) as exc:
+                    code=str(exc) if isinstance(exc,CharacterOfferError) else 'REFUSED'
+                    nonce=fields[1] if len(fields)>1 and fields[1].isdigit() and len(fields[1])<=10 else '0'
+                    self._queue(conn,'CHARACTER_OFFER_REJECT '+nonce+' '+code+'\n')
+                return
+            if fields and fields[0] in ('CHARACTER_CHALLENGE', 'CHARACTER_CHALLENGE_REGION', 'CHARACTER_RESULT'):
+                from .characters import challenge, report_result
+                try:
+                    if raw.decode('ascii') != ' '.join(fields):
+                        raise ValueError('noncanonical character request')
+                    reply = (challenge if fields[0] in ('CHARACTER_CHALLENGE','CHARACTER_CHALLENGE_REGION') else report_result)(self, conn, fields)
+                    self._queue(conn, reply)
+                except ValueError:
+                    rejected = fields[1] if len(fields) > 1 and fields[1].isdigit() and len(fields[1]) <= 10 else '0'
+                    self._queue(conn, 'CHARACTER_REJECT ' + rejected + '\n')
+                return
+            if fields and fields[0] in ('INTERACT','INTERACT_REGION'):
                 self._interact(conn, fields)
                 return
             if fields and fields[0] == 'MEET':
@@ -1020,16 +1103,20 @@ class WorldServer:
         self._broadcast()
 
     def _interact(self, conn, fields):
-        if len(fields) != 3 or not ID.fullmatch(fields[2]):
+        region=fields[0]=='INTERACT_REGION'
+        if len(fields) != (4 if region else 3) or not ID.fullmatch(fields[2]):
             raise ValueError('invalid interaction')
         seq = bounded(fields[1], 0, 2**63 - 1)
         if seq <= conn['seq']:
             self._error(conn, 'STALE')
             return
         state = conn['state']
-        if state and tuple(state[:2]) in (self.cave_map, self.wilds_map):
-            raise ValueError('generated cave interactions unavailable')
         obj = next((o for o in self.objects if o['id'] == fields[2]), None)
+        from .region_characters import scoped
+        if not scoped(self,conn,obj,fields[3] if region else None):raise ValueError('interaction region mismatch')
+        from .character_walks import walking
+        if walking(self.module_state,fields[2]):raise ValueError('character is walking')
+        if region and time.monotonic()-conn.get('state_time',0)>5:raise ValueError('stale region interaction')
         if not state or not state[6] or not obj or state[:2] != [obj['group'], obj['num']]:
             raise ValueError('interaction unavailable')
         dx, dy = {1:(0,1), 2:(0,-1), 3:(-1,0), 4:(1,0)}[state[4]]
@@ -1038,9 +1125,10 @@ class WorldServer:
         now = time.monotonic()
         if now - conn.get('last_interaction', -1) < .2:
             raise ValueError('interaction rate exceeded')
+        scope=dict(region_revision=obj['region_revision'],place_id=self.memory.place(obj['region_revision'])) if region else {}
         with self.db:
             self._event('interaction', dict(player=conn['id'], object=obj['id'],
-                group=obj['group'], num=obj['num'], x=obj['x'], y=obj['y']))
+                group=obj['group'], num=obj['num'], x=obj['x'], y=obj['y'],**scope))
         conn['seq'], conn['last_interaction'] = seq, now
         self._broadcast()
 
@@ -1680,7 +1768,10 @@ class WorldServer:
         # Failed candidates retry these same durable event IDs, never lose them.
         rows = self.db.execute("SELECT seq,data FROM events WHERE kind='interaction' AND seq>? ORDER BY seq LIMIT 64",
                                (self.interaction_cursor,)).fetchall()
+        from .characters import history_feed
         return dict(players=self.inspect()['players'], revision=self.revision, tick=self.tick,
+                    character_history=history_feed(self.db, self.module_state),
+                    world_history=self.memory.context(self),
                     interactions=[dict(json.loads(data), seq=seq) for seq, data in rows])
 
     def _deploy(self, source, tests, context, state):
@@ -1699,8 +1790,8 @@ class WorldServer:
         from .build_catalog import catalog_maps
         reserved = {(g, n) for (g, n), item in catalog_maps().items()
                     if item.get('name') in ('GeneratedWorld_Cave', 'GeneratedWorld_Wilds')}
-        if any((obj['group'], obj['num']) in reserved for obj in objects):
-            raise ValueError('generated cave cannot have mutable objects')
+        if any((obj['group'], obj['num']) in reserved and 'region_revision' not in obj for obj in objects):
+            raise ValueError('generated objects require immutable region scope')
         if type(tiles) is not list or len(tiles) > MAX_TILES:
             raise ValueError('invalid tiles')
         keys = ('group', 'num', 'x', 'y', 'metatile', 'collision')
@@ -1731,6 +1822,14 @@ class WorldServer:
                 candidate, result = future.result()
                 state_json, tiles = self._validated(result)
                 objects = result.get('objects', [])
+                from .region_characters import validate_region_objects
+                validate_region_objects(self,objects,result['state'])
+                from .generated_goals import validate_offer_places
+                validate_offer_places(self,result['state'])
+                from .character_walks import validate_walks
+                validate_walks(self,self.module_state,result['state'],objects)
+                from .characters import validate_transition
+                character_changes = validate_transition(self.module_state, result['state'], objects, self.db)
                 changed = (kind == 'deploy' or result['state'] != self.module_state or tiles != self.tiles
                            or objects != self.objects or cursor != self.interaction_cursor)
                 if changed:
@@ -1742,9 +1841,13 @@ class WorldServer:
                             self.revision = self.memory.append('mechanic_changed', dict(
                                 module_hash=candidate.sha256, previous_module_hash=self.candidate.sha256 if self.candidate else None,
                                 cause=kind, interaction_cursor=cursor,
-                                places=overlay_places(self.tiles + tiles, self.objects + objects),
+                                places=overlay_places(self.tiles + tiles, self.objects + objects,self.db),
                                 before=dict(tiles=self.tiles, objects=self.objects),
                                 after=dict(tiles=tiles, objects=objects)))
+                        for change in character_changes:
+                            change['places'] = overlay_places([], [obj for obj in self.objects + objects
+                                if obj['id'] == change['character_id']],self.db)
+                            self.revision = self.memory.append('character_changed', change)
                         if kind == 'deploy':
                             self.db.execute('INSERT OR REPLACE INTO status VALUES(1,NULL)')
                     self.candidate, self.module_state, self.tiles = candidate, json.loads(state_json), tiles

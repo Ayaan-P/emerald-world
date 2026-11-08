@@ -16,15 +16,21 @@ def native_place(group, num):
     return 'native:' + item['name']
 
 
-def overlay_places(tiles, objects):
+def overlay_places(tiles, objects, db=None):
     pairs = {(tile[0], tile[1]) for tile in tiles}
-    pairs.update((obj['group'], obj['num']) for obj in objects)
-    return sorted(place for group, num in pairs if (place := native_place(group, num)))
+    pairs.update((obj['group'], obj['num']) for obj in objects if 'region_revision' not in obj)
+    places={place for group,num in pairs if (place:=native_place(group,num))}
+    if db is not None:
+        for obj in objects:
+            if obj.get('region_revision'):
+                row=db.execute('SELECT place_id FROM world_places WHERE revision=?',(obj['region_revision'],)).fetchone()
+                if row:places.add(row[0])
+    return sorted(places)
 
 
 def object_content(objects):
     # Routine NPC walking is current state, not a new historical milestone.
-    return sorted((obj['id'], obj['group'], obj['num'], obj['gfx'], obj['text']) for obj in objects)
+    return sorted((obj['id'], obj['group'], obj['num'], obj['gfx'], obj['text'], obj.get('region_revision','')) for obj in objects)
 
 
 def terrain_delta(cave, before, after):
@@ -60,6 +66,9 @@ def evidence_index(event, *, current_catalog=False):
                 place = native_place(*key[:2])
                 if place and preserved is None:
                     places.add(place)
+    elif event.get('event') == 'character_changed':
+        words.extend((event['character_id'], event['after']['name'], event['after']['role'],
+                      event['after']['reason'], *event['after']['goals']))
     elif event.get('event') == 'guild_goal_completed':
         words.extend((event['guild_name'],event['goal_kind'],'completed guild goal'))
     elif event.get('event') in ('area_activated','region_opened'):
@@ -324,7 +333,7 @@ class WorldMemory:
                     coverage_start_seq=int(self.db.execute("SELECT value FROM world_memory_metadata WHERE key='coverage_start_seq'").fetchone()[0]),
                     active_area=active_area,
                     saved_places_request=dict(command='saved_places', after='', limit=8),
-                    current_places=overlay_places(server.tiles, server.objects),
+                    current_places=overlay_places(server.tiles, server.objects, server.db),
                     recent=recent, older_history_available=len(rows)>len(selected),
                     history_request=dict(command='world_history', after=0, through=through, limit=32),
                     boundaries=['Current shared overlays remain authoritative in inspection.',
