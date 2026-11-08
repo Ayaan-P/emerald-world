@@ -1,0 +1,80 @@
+{
+  "version": "0.4.0-rc.11.1",
+  "status": "local release candidate; joint playtest and main promotion pending",
+  "app_source_commit": "c5c61eb6fc1b14a9a60cc0838190c1fda7154cc3",
+  "app_branch": "integrate/rc11-dot-reviewed-swarm",
+  "engine_commit": "49b4611587122dbae6596ce4b5935ab3c86b3da3",
+  "baseline": {
+    "app": "aed5c4031060893b59a5608344d53abd693e5c07",
+    "engine": "4b23d084aa9a21341aea89919e62dde836477498",
+    "release": "0.4.0-rc.11"
+  },
+  "changes": [
+    "Native CHARWALK1 negotiation, exact generated revision scoping, bounded path/sequence parser and native NPC held-movement playback. Catch-up, successor, standing and cancellation recovery.",
+    "Local-owner Content workshop exposes reviewed outposts, settlement residents and surveys through existing authority compilers. Curated opt-in field-test preset. No hosted content management from this panel.",
+    "Character revision continuation starts sandbox staging from the latest trusted checkpoint rather than resurrecting obsolete initial chapter positions.",
+    "Builder engine pin and native version identify this source cohort. Existing combined Hoenn/Kanto content and private regional saves are retained."
+  ],
+  "build": {
+    "command": "python3 scripts/build_expansion.py --development --regional-state --kanto-content --sysroot <existing SDL sysroot> --multilib-sysroot <existing multilib root> --jobs 8",
+    "flags": {
+      "BITS": 64,
+      "EW_REGION_STATE": 1,
+      "EW_KANTO_CONTENT": 1,
+      "MAP_VERSION": "combined",
+      "GENERATED_WORLD_REGIONS": 0
+    },
+    "checks": [
+      "32-bit compile/run ABI preflight",
+      "data_relocations.checked",
+      "data_layout.checked",
+      "battle_script_operands.checked"
+    ],
+    "binary_sha256": "94db69f125bdbaa9a89a339fabbf1a6e3b7cb49b531eba0a3b4dc6a2df51517f",
+    "symbols_sha256": "d26a7865f8c604c3d93dd96d5ffbdf5570f932b6b232db30ba6285696d3dc28a",
+    "species_catalogue_sha256": "09de78b24f5b21a9d8f579a43d5fc7a4b0a94b53a4c9f12257ad68bc26cf2ddb",
+    "frontend_files": {
+      "launcher-web/dist/assets/hoenn-CxRkBf2o.webp": "ce4110aa3a55efa3db0baa06f27038d135a0eae451740183355adf17886cb7b4",
+      "launcher-web/dist/assets/index-7rA_J9lC.js": "4542efed3a0c99e7106a322eda046e82cd3137a88f80345a3b97aa32d68febbf",
+      "launcher-web/dist/assets/index-Ci6iTD6z.css": "5569b1338abc5e6f46da51ac96589e001dd17538b81b65d4e70e350b488d970f",
+      "launcher-web/dist/index.html": "ffaece0d25737bd09e907ea31b61018735f21a2f6432575b9b8c5a83b4a9b8ed"
+    }
+  },
+  "verification": {
+    "app_focused_tests": {
+      "count": 19,
+      "passed": true
+    },
+    "frontend_node_tests": {
+      "count": 6,
+      "passed": true
+    },
+    "frontend_ui_tests": {
+      "count": 143,
+      "files": 19,
+      "passed": true
+    },
+    "frontend_production_build": true,
+    "combined_native_runtime": {
+      "passed": true,
+      "authority_walk_api": true,
+      "generated_map": true,
+      "sample_count": 130,
+      "all_samples_visible": true,
+      "save_unchanged": true,
+      "distinct_sprite_positions": 37
+    }
+  },
+  "release_policy": {
+    "main_promoted": false,
+    "requires_user_playtest_before_main": true,
+    "human_save_mutated": false,
+    "test_save_policy": "Separate backed-up clone with authorized feature kit. Personal save data and test-kit saves are not tracked or distributed."
+  },
+  "runtime_limitations": [
+    "Linux native and frontend verified. Windows runtime not exercised.",
+    "Curated field test is authored fixture content, not model generation or campaign achievement.",
+    "Hosted server has not been redeployed by this RC11.1 local update.",
+    "Full multi-human feature acceptance remains a joint playtest, not implied by automated tests."
+  ]
+}

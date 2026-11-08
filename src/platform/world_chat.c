@@ -63,11 +63,17 @@ static void Submit(void)
         return;
     }
     if (!WorldBridge_ChatSend(target, text)) {
-        strcpy(sChat.hint, "Not sent. Check connection or try again.");
+        strcpy(sChat.hint, !strncmp(text, "/explore", 8)
+            ? "Not sent. Checking survey support; retry after server reply."
+            : "Not sent. Check connection or try again.");
         return;
     }
     /* The server's echo is the delivery receipt, never a fabricated local line. */
     strcpy(sChat.hint, "Queued. Check history for delivery.");
+#if GENERATED_WORLD_REGIONS
+    if (!strcmp(target, "*") && !strncmp(text, "/region ", 8))
+        strcpy(sChat.hint, "Close chat to select. Use WORLD when ready.");
+#endif
     sChat.draft[0] = 0;
     sChat.editing = 0;
     sChat.scroll = 0;

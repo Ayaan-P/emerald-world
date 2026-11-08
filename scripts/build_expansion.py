@@ -11,32 +11,45 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = 'c8feb78cfb7bdd82c19406eabe0f36716ea87f16'
+PIN = '5cb76554ca986a95230a49d9d34c9cc3ef24388d'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--check', action='store_true',
+                        help='check the pin and sandboxed toolchain without building or changing source files')
     parser.add_argument('--sysroot', type=Path)
     parser.add_argument('--multilib-sysroot', '--multilib-root', type=Path,
                         help='existing extracted libc/GCC multilib root for mandatory ABI probes')
     parser.add_argument('--development', action='store_true',
                         help='build explicit local RC10 integration changes on top of the verified engine pin')
+    parser.add_argument('--regional-state', action='store_true',
+                        help='enable experimental regional saves (requires --development)')
+    parser.add_argument('--kanto-content', action='store_true',
+                        help='enable combined Hoenn/Kanto content (requires --regional-state)')
     parser.add_argument('--jobs', type=int, default=4)
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error('--jobs must be positive')
+    if args.regional_state and not args.development:
+        parser.error('--regional-state requires --development and is not a release cohort')
+    if args.kanto_content and not args.regional_state:
+        parser.error('--kanto-content requires --regional-state')
+    for flag, path in (('--sysroot', args.sysroot), ('--multilib-sysroot', args.multilib_sysroot)):
+        if path is not None and not path.is_dir():
+            parser.error(f'{flag} must name an existing directory: {path}')
     source = ROOT / 'engines/expansion-native'
-    import sys
-    sys.path.insert(0, str(ROOT))
-    from scripts.export_expansion_species_catalogue import export_catalogue
-    catalogue_path = ROOT / 'build/species-cohort/expansion-species.json'
-    export_catalogue(source, catalogue_path)
-    shutil.copy2(catalogue_path, ROOT / 'world/expansion_species.json')
+    if not (source / 'Makefile.native').is_file() or not (source / '.git').exists():
+        parser.error('Expansion engine is not initialized. From the checkout root run: '
+                     'git submodule sync --recursive && git submodule update --init --recursive')
     head = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
     dirty = subprocess.check_output(['git', '-C', str(source), 'status', '--porcelain'], text=True).strip()
     if not args.development and (head != PIN or dirty):
-        parser.error('engine must be the clean pinned engines/expansion-native submodule')
+        parser.error(f'engine must be the clean engines/expansion-native submodule at {PIN}. '
+                     'Preserve any local engine changes, then run: '
+                     'git submodule sync --recursive && git submodule update --init --recursive. '
+                     'Use --development only for deliberate local engine integration work.')
     subprocess.run(['git', '-C', str(source), 'merge-base', '--is-ancestor', PIN, head], check=True)
     if dirty:
         print('Building explicitly requested uncommitted integration sources; not a release artifact.', flush=True)
@@ -59,7 +72,7 @@ def main():
         command += ['--ro-bind', str(sysroot), str(sysroot)]
         env.update(C_INCLUDE_PATH=f'{sysroot}/usr/include:{sysroot}/usr/include/x86_64-linux-gnu:/usr/include/x86_64-linux-gnu:/usr/include',
                    LIBRARY_PATH=f'{sysroot}/usr/lib/x86_64-linux-gnu',
-                   PKG_CONFIG_LIBDIR=f'{sysroot}/usr/lib/x86_64-linux-gnu/pkgconfig',
+                   PKG_CONFIG_LIBDIR=f'{sysroot}/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig',
                    PKG_CONFIG_SYSROOT_DIR=str(sysroot))
     compiler = 'gcc'
     if args.multilib_sysroot:
@@ -76,8 +89,48 @@ def main():
                                          env.get('C_INCLUDE_PATH', '/usr/include/x86_64-linux-gnu:/usr/include')))
     for key, value in env.items():
         command += ['--setenv', key, value]
+    # Probe inside the same sandbox and sysroots as make. In particular, the
+    # mandatory layout checks compile AND run a 32-bit reference executable.
+    probe = r'''
+import shlex, shutil, subprocess, sys
+missing = []
+for tool in ('gcc', 'g++', 'make', 'git', 'pkg-config', 'as', 'objcopy', 'nm'):
+    if not shutil.which(tool):
+        missing.append(tool + ' (build-essential, binutils, git, pkg-config)')
+if shutil.which('pkg-config'):
+    for package, hint in (('sdl2', 'libsdl2-dev'), ('libpng', 'libpng-dev')):
+        if subprocess.run(['pkg-config', '--exists', package]).returncode:
+            missing.append(package + ' headers/libraries (' + hint + ')')
+if shutil.which('gcc'):
+    for bits in ('32', '64'):
+        output = '/tmp/ew-abi' + bits
+        result = subprocess.run(shlex.split(sys.argv[1]) + ['-m' + bits, '-x', 'c', '-o', output, '-'],
+                                input='#include <stdio.h>\nint main(void) { return 0; }\n',
+                                text=True, capture_output=True)
+        try:
+            ready = result.returncode == 0 and subprocess.run([output], capture_output=True).returncode == 0
+        except OSError:
+            ready = False
+        if not ready:
+            missing.append(bits + '-bit C compile/run ABI probe (gcc-multilib, libc6-dev-i386 for 32-bit; or --multilib-sysroot)')
+if missing:
+    print('Missing build prerequisites. See INSTALL_PC.md. Nothing was installed.', file=sys.stderr)
+    for item in missing:
+        print('  ' + item, file=sys.stderr)
+    sys.exit(1)
+print('OK pinned Expansion engine and sandboxed native toolchain (including 32-bit ABI probe).')
+'''
+    result = subprocess.run(command + ['--', 'python3', '-c', probe, compiler])
+    if result.returncode:
+        parser.error('Build preflight failed. Resolve the missing prerequisites above. '
+                     'If Bubblewrap failed, check that unprivileged user namespaces are permitted.')
+    if args.check:
+        return 0
     command += ['--', 'make', '-f', str(ROOT / 'engines/expansion.mk'), f'-j{args.jobs}',
-                'native', 'BITS=64', f'TARGET_CC={compiler}', f'NATIVE_VERSION={PIN[:12]}-rc10',
+                f'EW_REGION_STATE={int(args.regional_state)}',
+                f'EW_KANTO_CONTENT={int(args.kanto_content)}',
+                *(['MAP_VERSION=combined'] if args.kanto_content else []),
+                'native', 'BITS=64', f'TARGET_CC={compiler}', f'NATIVE_VERSION={PIN[:12]}-rc11.3',
                 'build/native64/data_relocations.checked', 'build/native64/data_layout.checked',
                 'build/native64/battle_script_operands.checked']
     print(shlex.join(command), flush=True)
@@ -93,6 +146,14 @@ def main():
     result = subprocess.run(command)
     if result.returncode:
         return result.returncode
+    # Make generates headers such as map_groups.h needed by global.h. A fresh
+    # clone cannot preprocess species metadata before that generation step.
+    import sys
+    sys.path.insert(0, str(ROOT))
+    from scripts.export_expansion_species_catalogue import export_catalogue
+    catalogue_path = ROOT / 'build/species-cohort/expansion-species.json'
+    export_catalogue(source, catalogue_path)
+    shutil.copy2(catalogue_path, ROOT / 'world/expansion_species.json')
     destination = ROOT / 'build/expansion-native'
     destination.mkdir(parents=True, exist_ok=True)
     binary = source / 'build/native64/pokeemerald-native'

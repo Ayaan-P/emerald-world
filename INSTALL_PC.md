@@ -1,4 +1,40 @@
-# Build the native PC port
+# Build from source
+
+## RC10 Expansion on Linux
+
+For the current game, follow the [README source setup](README.md#build-and-open-rc10-from-source-on-linux).
+The root `make linux`, Windows and macOS targets below build the historical
+vanilla port, not RC10. RC10 uses the pinned `engines/expansion-native` submodule
+and `python3 scripts/build_expansion.py`. It does not need the root vanilla
+asset-restoration command or an ARM/GBA toolchain.
+
+On Debian/Ubuntu, the native build and isolated game require these packages
+(install them explicitly with your package manager):
+
+```sh
+sudo apt install build-essential git make pkg-config libpng-dev libsdl2-dev gcc-multilib libc6-dev-i386 python3 bubblewrap xserver-xephyr
+```
+
+Use Python 3.11+, GNU make 4.2+ and Node.js/npm for `launcher-web`. The game needs
+an X11/XWayland desktop and a browser. No 32-bit SDL2 is required for the 64-bit
+RC10 binary, but a working 32-bit C compiler/runtime is required by the ABI
+layout checks. Check the actual sandboxed toolchain before a long build:
+
+```sh
+git submodule sync --recursive
+git submodule update --init --recursive
+python3 scripts/build_expansion.py --check
+python3 scripts/build_expansion.py
+python3 -m world.web_launcher --check
+```
+
+The last check also expects the React UI to have been built as shown in the
+README. Neither check installs packages or opens a game. The build check uses
+only disposable files in its sandbox's private `/tmp`. If Bubblewrap cannot
+create its sandbox, check your distribution's user-namespace policy rather
+than running the builder as root.
+
+## Historical vanilla port
 
 These instructions build **pokeemerald** from source. For the current multiplayer
 features, Linux launcher setup and evidence limits, see the [README](README.md)

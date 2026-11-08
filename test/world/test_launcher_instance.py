@@ -18,11 +18,13 @@ class LauncherInstanceTests(unittest.TestCase):
         import time
         from world.launcher_instance import LauncherInstance
         from world.web_launcher import REPO
-        # Only replace the browser side effect and built assets. The real CLI,
-        # HTTP server, locks, signals and DesktopSession lifecycle all run.
+        # Isolate desktop prerequisites, the browser and built assets. The real
+        # CLI, HTTP server, locks, signals and session lifecycle all run. Keep
+        # vanilla explicit because these fixtures assert its root layout.
         code = ('import sys; from pathlib import Path; import world.web_launcher as w; '
+                'import scripts.linux_client as client; client.prerequisites=lambda binary: []; '
                 'w.DIST=Path(sys.argv[1]); w.open_browser=lambda url: True; '
-                'sys.exit(w.main(["--worlds-root",sys.argv[1],"--binary","/no/game"]))')
+                'sys.exit(w.main(["--worlds-root",sys.argv[1],"--engine","vanilla","--binary","/no/game"]))')
         for exit_method in ('quit', 'sigterm'):
             with self.subTest(exit_method=exit_method), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
@@ -142,10 +144,11 @@ class LauncherInstanceTests(unittest.TestCase):
             (root / 'index.html').write_text('fixture')
             errors = io.StringIO()
             with patch('world.web_launcher.DIST', root), \
+                 patch('scripts.linux_client.prerequisites', return_value=[]), \
                  patch('world.web_launcher.open_browser', return_value=False), \
                  patch.object(DesktopSession, 'close', autospec=True) as close, \
                  contextlib.redirect_stderr(errors):
-                self.assertEqual(main(['--worlds-root', directory, '--binary', '/no/game']), 1)
+                self.assertEqual(main(['--worlds-root', directory, '--engine', 'vanilla', '--binary', '/no/game']), 1)
                 close.assert_called_once()
             self.assertEqual(errors.getvalue(), 'Could not open the local launcher in a browser. Retry the shortcut.\n')
             self.assertEqual((root / '.launcher-instance').read_bytes(), b'')
@@ -187,6 +190,7 @@ class LauncherInstanceTests(unittest.TestCase):
             owner.publish(server.server_port, 'a' * 43)
             try:
                 with patch('world.web_launcher.DIST', root), \
+                     patch('scripts.linux_client.prerequisites', return_value=[]), \
                      patch('world.web_launcher.DesktopSession') as session, \
                      patch('world.web_launcher.open_browser', return_value=True) as browser, \
                      patch('world.web_launcher.ThreadingHTTPServer'):

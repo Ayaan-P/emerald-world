@@ -1,0 +1,58 @@
+// @vitest-environment jsdom
+import React from 'react';
+import { afterEach, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import ContentWorkshop from './ContentWorkshop';
+import { App } from './main';
+import { loadState, perform } from './api';
+vi.mock('./api', () => ({ loadState: vi.fn(), perform: vi.fn(), forgetCapability: vi.fn() }));
+afterEach(() => { cleanup(); vi.clearAllMocks(); });
+const info = { world: 'local', identity: 'a'.repeat(64), version: 16, rows: ['###','#.#','###'], residents: ['old_friend'], outcomes: [{seq: 15, guild_name: 'My guild', goal_kind: 'expedition'}], players: 0 };
+const props = { world: {key: 'local', name: 'My world'}, available: true, ready: true, busy: false, onBack: vi.fn(), onOpen: vi.fn() };
+it('previews authored content then applies only a server-held review token', async () => {
+  const request = vi.fn(async (action, payload) => action === 'content_preview' ? {...info,token:'review-token',report:{added_walkable_tiles: 35},proposed_rows:info.rows,plan:payload.plan} : action === 'content_apply' ? {...info,saved:true} : info);
+  render(<ContentWorkshop {...props} onRequest={request} />);
+  await screen.findByText(/old_friend/);
+  fireEvent.click(screen.getByRole('button', {name:'Start editable plan'}));
+  expect(request).toHaveBeenCalledTimes(1);
+  fireEvent.change(screen.getByLabelText('Destination name'), {target:{value:'My courtyard'}});
+  fireEvent.click(screen.getByRole('button',{name:'Preview content'}));
+  await screen.findByRole('heading',{name:'Review content'});
+  expect(request.mock.calls.filter(([a]) => a === 'content_apply')).toHaveLength(0);
+  fireEvent.click(screen.getByLabelText(/I reviewed/));
+  fireEvent.click(screen.getByRole('button',{name:'Apply reviewed content'}));
+  await screen.findByText(/Content saved/);
+  expect(request).toHaveBeenLastCalledWith('content_apply',{world:'local',token:'review-token',confirmed:true});
+});
+it('clears review on edits and never applies a stale or uncertain result again', async () => {
+  const request = vi.fn(async (action,payload) => action === 'content_preview' ? {...info,token:'t',report:{},proposed_rows:info.rows,plan:payload.plan} : info);
+  render(<ContentWorkshop {...props} onRequest={request} />);
+  await screen.findByText(/old_friend/);
+  fireEvent.click(screen.getByRole('button',{name:'Start editable plan'}));
+  fireEvent.change(screen.getByLabelText('Destination name'),{target:{value:'Test'}});
+  fireEvent.click(screen.getByRole('button',{name:'Preview content'}));
+  await screen.findByRole('heading',{name:'Review content'});
+  fireEvent.change(screen.getByLabelText('Content plan JSON'),{target:{value:'{}'}});
+  expect(screen.queryByRole('button',{name:'Apply reviewed content'})).toBeNull();
+});
+it('offers a populated curated field-test preview without publishing anything or requesting a model', async () => {
+  const request = vi.fn(async (action,payload) => action === 'content_preview' ? {...info,identity:null,token:'field-test',report:{},proposed_rows:info.rows,plan:{character:{id:'rc11_scholar'}}} : {...info,identity:null,rows:[],residents:[]});
+  render(<ContentWorkshop {...props} onRequest={request} />);
+  await screen.findByLabelText('Content type');
+  fireEvent.change(screen.getByLabelText('Content type'),{target:{value:'field_test'}});
+  fireEvent.click(screen.getByRole('button',{name:'Preview RC11 field test'}));
+  await screen.findByRole('heading',{name:'Review content'});
+  expect(request).toHaveBeenLastCalledWith('content_preview',{world:'local',kind:'field_test',label:'RC11 field test',plan:{},outcome_seq:null});
+  expect(request.mock.calls.filter(([a]) => a === 'content_apply')).toHaveLength(0);
+  expect(screen.getByText(/lookout.*22.*8/)).toBeTruthy();
+});
+
+it('exposes the workshop from the existing Local worlds launcher page', async () => {
+  loadState.mockResolvedValue({local_worlds:[{key:'local',name:'My world',trainer:'Player'}],local_hosts:['local'],engine:'expansion-native',local_host:true,world_key:'local',worlds:[],offline_saves:[],games:[],hosting:{available:false,worlds:[]},setup:[],status:'Ready'});
+  perform.mockResolvedValue(info);
+  render(<App />);
+  fireEvent.click(await screen.findByRole('button',{name:'Local worlds'}));
+  fireEvent.click(await screen.findByRole('button',{name:'Author content'}));
+  await screen.findByRole('heading',{name:'Content workshop'});
+  await waitFor(() => expect(perform).toHaveBeenCalledWith('content_read',{world:'local'}));
+});

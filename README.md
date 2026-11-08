@@ -23,7 +23,7 @@ git submodule update --init --recursive
 
 RC10 retains the Expansion campaign, shared exploration and tagged co-op, modern species catalogue, generated areas, guilds and independent trainer saves. It adds reviewed world/personal settings and the native battle, capture/naming, PC, WORLD menu, co-op admission and scheduling fixes. World permissions still require eligible Pokémon and equipment; test-kit Pokémon/items are not bundled into fresh saves. Kanto and unfinished world-history/multi-place drafts are not included.
 
-Expansion and vanilla have separate binaries, profiles and protocol cohorts. Do not import older vanilla saves into Expansion. The root `src/` is the older engine; RC10 game-side development belongs under `engines/expansion-native/src/world/` and that submodule's `include/platform/`. Build RC10 with `scripts/build_expansion.py` as described in the handoff, not the vanilla command below.
+Expansion and vanilla have separate binaries, profiles and protocol cohorts. Do not import older vanilla saves into Expansion. The root `src/` is the older engine; RC10 game-side development belongs under `engines/expansion-native/src/world/` and that submodule's `include/platform/`. Build RC10 with `scripts/build_expansion.py` using the source setup below. Root `make linux` still builds the historical vanilla engine.
 
 ## Launcher and game
 
@@ -36,27 +36,31 @@ Expansion and vanilla have separate binaries, profiles and protocol cohorts. Do 
 
 A selected launcher session is not proof that the native game is connected. Game connection and nearby trainers use fresh native telemetry. In-page preview is optional; the native game still runs separately.
 
-## Build and open the vanilla source launcher on Linux
+## Build and open RC10 from source on Linux
 
-Use system Python 3.11+, a C/C++ toolchain, GNU make, pkg-config, libpng and SDL2. The sandboxed desktop game also needs Bubblewrap, Xephyr, a browser and X11/XWayland with permitted user namespaces. The React source build needs Node.js/npm. Install dependencies explicitly using [INSTALL_PC.md](INSTALL_PC.md); nothing below installs system packages.
+Use system Python 3.11+, a C/C++ toolchain, GNU make 4.2+, pkg-config, libpng and SDL2 development files. The 64-bit engine also needs a working 32-bit C toolchain for its mandatory ABI checks. The sandboxed desktop game needs Bubblewrap, Xephyr, a browser and X11/XWayland with permitted user namespaces. The React source build needs Node.js/npm. See [INSTALL_PC.md](INSTALL_PC.md) for dependency guidance. The builder installs nothing and makes no network requests.
 
 ```sh
-git clone --branch main https://github.com/Ayaan-P/emerald-world.git
+git clone --branch main --recurse-submodules https://github.com/Ayaan-P/emerald-world.git
 cd emerald-world
 
-# Review the pinned asset manifest before this explicit network restore.
-python3 scripts/restore_upstream_assets.py
-python3 scripts/restore_upstream_assets.py --check
-make -j"$(nproc)" linux CFLAGS=-g WERROR=1
+# Checks the engine pin and build dependencies without changing source files.
+python3 scripts/build_expansion.py --check
+python3 scripts/build_expansion.py --jobs "$(nproc)"
 
 cd launcher-web
 npm ci
 npm run build
 cd ..
-python3 -m world.web_launcher --binary "$PWD/pokeemerald64"
+python3 -m world.web_launcher --check
+python3 -m world.web_launcher
 ```
 
-The explicit `--binary` avoids accidentally selecting an older `build/pokeemerald64`. Generated build inputs and executables stay out of Git. On unusual toolchains, inspect the commands and `build/<target>/build_flags.txt` rather than assuming a successful build used the expected feature gates.
+The web launcher defaults to Expansion and only discovers `build/expansion-native/pokeemerald-native` for that engine. It never falls back to a vanilla binary. Existing Expansion profiles remain in their separate library. Existing vanilla users can opt in with `--engine vanilla --binary "$PWD/pokeemerald64"`; this does not convert saves.
+
+After the source update commands above, rebuild with `python3 scripts/build_expansion.py`, rebuild `launcher-web`, then run `python3 -m world.web_launcher`. No `/tmp` assets, local checkpoint or private sysroot is required when system dependencies are installed. Developers who deliberately use extracted dependencies can pass `--sysroot` and `--multilib-sysroot` to both the builder and its `--check` mode. Do not use `--development` for an ordinary source build; it explicitly permits uncommitted or descendant engine integration work.
+
+The root vanilla build and its asset-restoration instructions remain in [INSTALL_PC.md](INSTALL_PC.md) for historical port work. They are not RC10 prerequisites. Generated build inputs and executables stay out of Git.
 
 The tkinter launcher remains a legacy/operator fallback. Its old UI labels are not the React player's instructions. For dedicated server operation and private invitations, see [deploy/README.md](deploy/README.md). A packaged player install needs neither npm nor a source checkout; use [the package guide](docs/linux-packaging.md).
 

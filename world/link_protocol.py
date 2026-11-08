@@ -67,6 +67,10 @@ class LinkProtocol:
         self._tags = {}
         self._tag_actor = {}
 
+    def busy(self, actor):
+        """Region selection must not carry an existing link/tag into a new place."""
+        return actor in self.sessions._locks or actor in self._tag_actor
+
     def _end_tag(self, tag):
         del self._tags[tag.id]
         for actor in tag.participants:

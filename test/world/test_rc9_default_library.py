@@ -17,7 +17,8 @@ class DefaultLibrary(unittest.TestCase):
             raise RootCaptured()
         with tempfile.TemporaryDirectory() as temp:
             dist=Path(temp);(dist/'index.html').write_text('<html></html>')
-            with patch.object(web_launcher,'DIST',dist), patch.object(Path,'home',return_value=Path('/home/tester')):
+            with patch.object(web_launcher,'DIST',dist), patch.object(Path,'home',return_value=Path('/home/tester')), \
+                    patch('scripts.linux_client.prerequisites', return_value=[]):
                 with patch.object(web_launcher.DesktopSession,'create_root',side_effect=capture):
                     with self.assertRaises(RootCaptured):web_launcher.main(args)
         return captured[0]
@@ -31,8 +32,26 @@ class DefaultLibrary(unittest.TestCase):
         self.assertLessEqual(len(str(player).encode()),107)
         self.assertNotEqual(root,Path('/home/tester/.local/share/emerald-world/worlds'))
 
-    def test_vanilla_default_is_unchanged(self):
-        self.assertEqual(self.capture_root([]),Path('/home/tester/.local/share/emerald-world/worlds'))
+    def test_source_launcher_defaults_to_expansion(self):
+        self.assertEqual(self.capture_root([]),Path('/home/tester/.ew/x'))
+
+    def test_explicit_vanilla_library_is_unchanged(self):
+        self.assertEqual(self.capture_root(['--engine','vanilla']),Path('/home/tester/.local/share/emerald-world/worlds'))
+
+    def test_check_is_read_only_and_reports_missing_expansion_binary(self):
+        import contextlib
+        import io
+        output = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(web_launcher, 'DIST', Path(directory)), \
+                    patch('scripts.linux_client.discover_binary', return_value=Path(directory)/'pokeemerald-native') as discover, \
+                    patch.object(web_launcher.DesktopSession, 'create_root') as create, \
+                    contextlib.redirect_stdout(output):
+                self.assertEqual(web_launcher.main(['--check']), 1)
+            discover.assert_called_once_with('expansion-native')
+            create.assert_not_called()
+        self.assertIn('scripts/build_expansion.py', output.getvalue())
+        self.assertIn('npm ci', output.getvalue())
 
     def test_explicit_root_keeps_existing_engine_namespace(self):
         self.assertEqual(self.capture_root(['--worlds-root','/tmp/worlds','--engine','expansion-native']),

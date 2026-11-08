@@ -13,7 +13,7 @@ import sys
 from .launcher import ProfileLock, profile_paths, require_online_state
 from .offline import OfflineGameLock
 
-MAX_SAVE = 131072  # The native Emerald flash buffer is 128 KiB.
+from .save_limits import save_size_limit, save_size_label
 
 
 def _owned_directory(path):
@@ -30,6 +30,7 @@ def _owned_directory(path):
 
 def backup_save(world, trainer, destination, *, offline=False, engine='vanilla'):
     """Copy one save while holding its existing nonblocking profile lock."""
+    limit = save_size_limit(engine)
     world = Path(world).absolute()
     destination = Path(destination).absolute()
     # Check the supplied world before constructing any paths or acquiring locks.
@@ -57,9 +58,9 @@ def backup_save(world, trainer, destination, *, offline=False, engine='vanilla')
         with os.fdopen(source_fd, 'rb') as source:
             before = os.fstat(source.fileno())
             if (not stat.S_ISREG(before.st_mode) or before.st_uid != os.geteuid()
-                    or before.st_nlink != 1 or not 0 < before.st_size <= MAX_SAVE):
-                raise ValueError('Save must be an owned, nonempty regular file no larger than 128 KiB.')
-            data = source.read(MAX_SAVE + 1)
+                    or before.st_nlink != 1 or not 0 < before.st_size <= limit):
+                raise ValueError(f'Save must be an owned, nonempty regular file no larger than {save_size_label(engine)}.')
+            data = source.read(limit + 1)
             after = os.fstat(source.fileno())
         stamp = lambda info: (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
         if len(data) != before.st_size or stamp(before) != stamp(after):

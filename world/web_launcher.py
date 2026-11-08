@@ -27,10 +27,10 @@ import subprocess
 from .launcher import REPO
 from .session import DesktopSession, SessionError
 from .transport import read_invitation
+from .save_limits import save_size_limit, encoded_save_limit, save_size_label
 
 DIST = REPO / 'launcher-web' / 'dist'
-MAX_BODY = 180000
-MAX_SAVE = 131072
+MAX_BODY = encoded_save_limit('expansion-native') + 4096
 
 
 class LauncherBridge:
@@ -334,7 +334,8 @@ class LauncherBridge:
                     'trainer': self.session.remote_trainer,
                     'world_key': self.session.state.name if self.session.state is not None else None,
                     'offline_world_key': offline_world_key,
-                    'games': live_games, 'status': self.session.status, 'engine': self.engine, **area_projection}
+                    'games': live_games, 'status': self.session.status, 'engine': self.engine,
+                    'save_import_max_bytes': save_size_limit(self.engine), **area_projection}
 
     def stop_browser_input(self):
         # Also used by launcher shutdown. Serialize teardown with HTTP lifecycle
@@ -460,6 +461,16 @@ class LauncherBridge:
                     raise
                 except Exception:
                     raise SessionError('Area generation could not complete. Check model login and local host setup before retrying.') from None
+            elif action in ('content_read', 'content_preview', 'content_apply'):
+                if self.engine != 'expansion-native':
+                    raise SessionError('Content workshop requires the Expansion launcher.')
+                from .content_ui import ContentWorkshop
+                if not hasattr(self, 'content_workshop'):
+                    self.content_workshop = ContentWorkshop()
+                return self.content_workshop.action(self.session, self.local_expeditions(), action, payload)
+            elif action == 'journal_read':
+                from .world_journal import read_journal
+                return read_journal(self.session, self.local_expeditions(), payload)
             elif action in ('terrain_read', 'terrain_review', 'terrain_apply'):
                 from .terrain_ui import terrain_action
                 return terrain_action(self.session, self.local_expeditions(), action, payload)
@@ -608,14 +619,14 @@ class LauncherBridge:
                 if seed is None:
                     self._start_offline(world, trainer)
                 else:
-                    if not isinstance(seed, str) or len(seed) > 174800:
-                        raise SessionError('Choose a save file no larger than 128 KiB.')
+                    if not isinstance(seed, str) or len(seed) > encoded_save_limit(self.engine):
+                        raise SessionError(f'Choose a save file no larger than {save_size_label(self.engine)}.')
                     try:
                         data = base64.b64decode(seed, validate=True)
                     except (ValueError, binascii.Error):
                         raise SessionError('That save file could not be read.') from None
-                    if not 0 < len(data) <= MAX_SAVE:
-                        raise SessionError('Choose a nonempty save file no larger than 128 KiB.')
+                    if not 0 < len(data) <= save_size_limit(self.engine):
+                        raise SessionError(f'Choose a nonempty save file no larger than {save_size_label(self.engine)}.')
                     with tempfile.TemporaryDirectory(prefix='emerald-save-') as directory:
                         path = Path(directory) / 'seed.sav'
                         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -848,11 +859,30 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worlds-root', type=Path, help='explicit library root; Expansion uses a short private default for Unix sockets')
     parser.add_argument('--binary', type=Path)
-    parser.add_argument('--engine', choices=('vanilla', 'expansion-native'), default='vanilla',
-                        help='pin this web launcher to one engine and its private profiles')
+    parser.add_argument('--engine', choices=('vanilla', 'expansion-native'), default='expansion-native',
+                        help='engine and private profiles (default: expansion-native; vanilla is opt-in)')
+    parser.add_argument('--check', action='store_true', help='check source launcher prerequisites without opening windows or writing state')
     parser.add_argument('--install', action='store_true', help='add a separate user application shortcut')
     args = parser.parse_args(argv)
-    if not (DIST / 'index.html').is_file():
+    from scripts.linux_client import discover_binary, prerequisites
+    binary = args.binary or discover_binary(args.engine)
+    build_hint = ('python3 scripts/build_expansion.py' if args.engine == 'expansion-native'
+                  else 'make linux CFLAGS=-g WERROR=1')
+    checks = [(name, ready, detail if name != 'binary' else f'{binary}. Build with: {build_hint}')
+              for name, ready, detail in prerequisites(binary) if name != 'tkinter']
+    checks.append(('launcher-web', (DIST / 'index.html').is_file(),
+                   'Build the UI: cd launcher-web && npm ci && npm run build'))
+    if args.check:
+        for name, ready, detail in checks:
+            print(('OK ' if ready else 'MISSING ') + name + ': ' + detail)
+        print(f'Engine: {args.engine}. No game, browser or display was started. '
+              'Desktop DISPLAY and runtime sandbox policy are not tested.')
+        return 0 if all(ready for _, ready, _ in checks) else 1
+    if not args.install:
+        missing = [detail for _, ready, detail in checks if not ready]
+        if missing:
+            parser.error('Missing prerequisites: ' + '\n'.join(missing) + '\nRun python3 -m world.web_launcher --check for details.')
+    elif not (DIST / 'index.html').is_file():
         parser.error('Build launcher-web with npm ci and npm run build first.')
     if args.install:
         print(f'Installed experimental launcher shortcut: {install_shortcut()}')
@@ -860,7 +890,6 @@ def main(argv=None):
     from contextlib import ExitStack
     import signal
     from .launcher_instance import LauncherInstance, InstanceError
-    from scripts.linux_client import discover_binary
 
     def interrupted(_signum, _frame):
         raise KeyboardInterrupt
@@ -887,7 +916,6 @@ def main(argv=None):
                 return 0
             session = DesktopSession(root, engine=args.engine)
             cleanup.callback(session.close)
-            binary = args.binary or discover_binary(args.engine)
             bridge = LauncherBridge(session, binary, engine=args.engine)
             cleanup.callback(bridge.stop_browser_input)
             capability = secrets.token_urlsafe(32)
