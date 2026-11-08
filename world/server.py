@@ -169,6 +169,8 @@ class WorldServer:
         os.chmod(self.root / 'world.sqlite3', 0o600)
         from .host_controls import HostControls
         self.host_controls = HostControls(self.db)
+        from .habitat import Habitats
+        self.habitats = Habitats(self)
         self.runtime = mechanics
         if self.runtime is None:
             from .mechanics import MechanicRuntime
@@ -781,6 +783,7 @@ class WorldServer:
                 became_fresh = (last_state is not None and
                                 int((TRAVEL_FRESH_SECONDS - (now - last_state)) * 60) <= 0)
                 changed = (conn.get('state') != state or bool(conn.get('field')) != field or hashes != previous or became_fresh)
+                self.habitats.observe(conn, conn.get('state'), state)
                 conn['seq'], conn['state'], conn['field'] = seq, state, field
                 if tuple(state[:2]) in (self.cave_map, self.wilds_map):
                     conn['in_generated_cave'] = True
@@ -1312,6 +1315,11 @@ class WorldServer:
                 except ValueError as exc:
                     # Expected validation/occupancy refusal is not a mechanic error.
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'habitat':
+                try:
+                    result = self.habitats.request(request)
+                except (ValueError, sqlite3.Error) as exc:
+                    result = dict(ok=False, error=str(exc))
             elif request.get('command') == 'set_event_state':
                 try:
                     if set(request)!={'command','trainer','identity','state'}:raise ValueError('invalid event state command')
@@ -1444,6 +1452,7 @@ class WorldServer:
                                       connections=self.max_connections),
                         tiles=json.loads(json.dumps(self.tiles)), objects=json.loads(json.dumps(self.objects)),
                         state=json.loads(json.dumps(self.module_state)),
+                        habitat=self.habitats.status(self.shared_cave.identity) if self.shared_cave else None,
                         module_hash=self.candidate.sha256 if self.candidate else None,
                         error=self.module_error)
 
@@ -1621,6 +1630,7 @@ class WorldServer:
                 self.rally.tick()
                 self._poll_controls()
                 self._poll_mechanics()
+                self.habitats.flush()
 
     def close(self):
         if self._closed:

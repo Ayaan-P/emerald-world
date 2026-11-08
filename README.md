@@ -70,6 +70,20 @@ The tkinter launcher remains a legacy/operator fallback. Its old UI labels are n
 
 Disconnecting does not stop a local host. Use Stop host in Local worlds or Quit launcher. Persistent dedicated hosting is separate. Do not launch two games on the same trainer save. Use **Save backups** on a stopped profile before experimenting. Backups contain trainer save bytes, not the server world, account credentials or durable adventure progress.
 
+## Living grass habitats (owner control)
+
+An owner or authorized agent can opt a published version-9 generated event area into living grass. This uses its existing shared terrain protocol; it does not enable ecology in native routes, imported regions, or XL areas. Players walking repeatedly onto configured cells wear tall grass down into clear grass. Walking elsewhere in that area lets it regrow. Rest counts accepted adjacent footsteps, not elapsed time, and idle reports, arrival, teleports and unready movement do not advance it. Tall-grass and clear-grass metatiles use the game's normal encounter behavior.
+
+Create a JSON tile list such as `[{"x":1,"y":2},{"x":2,"y":2}]`, then run:
+
+```bash
+python3 -m world.habitat_control --admin-socket /path/to/admin.sock --area AREA_SHA256 --tiles-file habitat.json --wear-steps 4 --rest-steps 40
+python3 -m world.habitat_control --admin-socket /path/to/admin.sock --area AREA_SHA256 --status
+python3 -m world.habitat_control --admin-socket /path/to/admin.sock --area AREA_SHA256 --disable
+```
+
+Configuration initially grows tall grass and owns at most 64 walkable cells. Disable before manually repainting those cells; disabling preserves their current terrain. Changing the configuration resets its pressure counters, while an identical request preserves them. State survives host restarts and pauses when another area is active. Busy or incompatible clients leave changes pending for retry. A terrain commit is not proof that a client rendered it; inspect shared terrain for client-reported application. Only the owner socket can configure habitats. The general owner inspection includes habitat status for agents.
+
 ## Contributing
 
 Branch from current main, keep changes focused and record actual verification. Use disposable worlds for development, not a running human session. Preserve native battle/save/world ownership boundaries. Do not treat stale draft titles as a missing-feature list: many original stacked PRs were incorporated by an integration PR.
