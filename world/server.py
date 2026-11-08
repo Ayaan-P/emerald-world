@@ -239,6 +239,8 @@ class WorldServer:
                 validate_transition(json.loads(state_json), json.loads(state_json), objects, self.db)
                 from .region_characters import validate_region_objects
                 validate_region_objects(self,objects,json.loads(state_json))
+                from .generated_goals import validate_offer_places
+                validate_offer_places(self,json.loads(state_json))
                 from .character_walks import validate_walks
                 validate_walks(self,json.loads(state_json),json.loads(state_json),objects,restoring=True)
                 if type(row[5]) is not int or row[5] < 0:
@@ -552,7 +554,13 @@ class WorldServer:
                         lines.append('CHARACTER_WALK '+' '.join(map(str,[obj['id'],character['version'],walk['id'],walk['index'],len(walk['path']),*[v for p in walk['path'] for v in p]])))
                     if conn.get('character_quest_capable') and character.get('offer'):
                         offer=character['offer']
-                        lines.append('CHARACTER_OFFER '+ ' '.join(map(str,[obj['id'],character['version'],offer['id'],offer['revision'],offer['target'],offer['place_id'][7:]])))
+                        if offer['place_id'].startswith('area:'):
+                            from .generated_goals import resolve_place,destination_available
+                            if conn.get('place_quest_capable') and destination_available(self,conn,offer['place_id'],offer['region_revision']):
+                                place=resolve_place(self,offer['place_id'],offer['region_revision'])
+                                lines.append('CHARACTER_PLACE_OFFER '+' '.join(map(str,[obj['id'],character['version'],offer['id'],offer['revision'],offer['target'],place['place_id'],place['revision'],place['label'].encode('ascii').hex()])))
+                        else:
+                            lines.append('CHARACTER_OFFER '+ ' '.join(map(str,[obj['id'],character['version'],offer['id'],offer['revision'],offer['target'],offer['place_id'][7:]])))
         meeting = conn.get('meeting')
         if conn.get('social') and meeting:
             lines.append('MEET ' + ' '.join(str(meeting[k]) for k in
@@ -603,6 +611,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                place_quest_capable=role.endswith('PLACEQUEST1')
+                if place_quest_capable:role=role[:-11]
                 character_walk_capable = role.endswith('CHARWALK1')
                 if character_walk_capable:role=role[:-9]
                 character_region_capable = role.endswith('CHARREG1')
@@ -655,6 +665,9 @@ class WorldServer:
                     return
                 if character_region_capable and not (character_capable and (region_capable or cave_xl)):
                     self._error(conn, 'AUTH')
+                    return
+                if place_quest_capable and not character_quest_capable:
+                    self._error(conn,'AUTH')
                     return
                 if character_quest_capable and not character_capable:
                     self._error(conn, 'AUTH')
@@ -723,6 +736,7 @@ class WorldServer:
                 conn['character_walk_capable'] = character_walk_capable
                 conn['character_region_capable'] = character_region_capable
                 conn['character_capable'] = character_capable
+                conn['place_quest_capable']=place_quest_capable
                 conn['character_quest_capable'] = character_quest_capable
                 conn['rules_capable'] = rules_capable
                 conn['rules_version'] = rules_version
@@ -1003,6 +1017,9 @@ class WorldServer:
             self._queue(conn, self._snapshot(conn))
             return
         conn['chat_credit'] = credit - 1
+        from .character_guides import handle as handle_character_guide
+        if fields[2] == '*' and handle_character_guide(self,conn,text.decode('ascii')):
+            return
         if fields[2] == '*' and self.landmark_survey.handle(conn, text.decode('ascii')):
             return
         if fields[2] == '*' and self.guild_chat.handle(conn, text.decode('ascii')):
@@ -1852,6 +1869,8 @@ class WorldServer:
                 objects = result.get('objects', [])
                 from .region_characters import validate_region_objects
                 validate_region_objects(self,objects,result['state'])
+                from .generated_goals import validate_offer_places
+                validate_offer_places(self,result['state'])
                 from .character_walks import validate_walks
                 validate_walks(self,self.module_state,result['state'],objects)
                 from .characters import validate_transition

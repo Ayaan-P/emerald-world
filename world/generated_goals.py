@@ -38,3 +38,19 @@ def observed_place(server,conn,freshness=5):
     if row is None:return None
     try:return resolve_place(server,row[0],cave.identity)
     except GuildError:return None
+
+
+def destination_available(server,conn,place_id,revision):
+    """No automatic travel/activation: offer only destinations this client can enter."""
+    if server.shared_cave and server.shared_cave.identity==revision and server.shared_cave.version==16:
+        return bool(conn.get('cave_xl'))
+    return bool(conn.get('region_capable') and server.db.execute(
+        'SELECT 1 FROM world_region_revisions WHERE place_id=? AND revision=?',(place_id,revision)).fetchone())
+
+
+def validate_offer_places(server,state):
+    from .characters import records
+    for character in records(state).values():
+        offer=character.get('offer')
+        if offer and offer['place_id'].startswith('area:'):
+            resolve_place(server,offer['place_id'],offer['region_revision'])
