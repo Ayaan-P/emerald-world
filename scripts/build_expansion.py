@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build RC10's pinned full native Expansion engine with its presence adapter.
+"""Build the candidate's pinned full native Expansion engine with its presence adapter.
 
 Only existing development/sysroot inputs are used. No installs or downloads.
 The engine is a separate checkout and no vanilla Pokemon/save ABI is imported.
@@ -11,7 +11,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '5cb76554ca986a95230a49d9d34c9cc3ef24388d'
+PIN = '984165808a45aaaaa7c7169c228ef1a1480ab6d0'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -23,7 +23,7 @@ def main():
     parser.add_argument('--multilib-sysroot', '--multilib-root', type=Path,
                         help='existing extracted libc/GCC multilib root for mandatory ABI probes')
     parser.add_argument('--development', action='store_true',
-                        help='build explicit local RC10 integration changes on top of the verified engine pin')
+                        help='build explicit local candidate integration changes on top of the verified engine pin')
     parser.add_argument('--regional-state', action='store_true',
                         help='enable experimental regional saves (requires --development)')
     parser.add_argument('--kanto-content', action='store_true',
@@ -130,7 +130,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'EW_REGION_STATE={int(args.regional_state)}',
                 f'EW_KANTO_CONTENT={int(args.kanto_content)}',
                 *(['MAP_VERSION=combined'] if args.kanto_content else []),
-                'native', 'BITS=64', f'TARGET_CC={compiler}', f'NATIVE_VERSION={PIN[:12]}-rc11.3',
+                'native', 'BITS=64', f'TARGET_CC={compiler}', f'NATIVE_VERSION={PIN[:12]}-rc12-candidate',
                 'build/native64/data_relocations.checked', 'build/native64/data_layout.checked',
                 'build/native64/battle_script_operands.checked']
     print(shlex.join(command), flush=True)

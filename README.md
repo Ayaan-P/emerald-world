@@ -11,7 +11,7 @@ A native PC Pokémon Emerald world built from [pret's decompilation](https://git
 
 ## Current release and source
 
-`main` contains **RC10**, including the rc10.10 multiplayer and native-engine fixes. The app pins the matching source in [Ayaan-P/pokeemerald-expansion-native](https://github.com/Ayaan-P/pokeemerald-expansion-native), whose default `main` branch carries that engine checkpoint. See [the RC10 handoff and build instructions](docs/RC10_EXPANSION_HANDOFF.md). Published downloadable packages on [GitHub Releases](https://github.com/Ayaan-P/emerald-world/releases) currently remain RC9; pulling source does not update an installed package or shortcut.
+This branch is the **RC12 multiplayer field-activities candidate**, not a released build or a claim of completed native QA. It contains the cumulative app stack #279–283 on app main `80b14ebfbfd4dd4da2dc16d886a37f0db1f45516` and pins the paired native privacy client `984165808a45aaaaa7c7169c228ef1a1480ab6d0` (#23). Pulling source does not update an installed package or shortcut. See [candidate handoff](INSTALL_PC.md#rc12-cumulative-candidate-handoff) for exact dependencies, player entry and remaining checks.
 
 For an existing source checkout:
 
