@@ -774,3 +774,50 @@ The local reconstruction's commit metadata is not a clean pinned submodule;
 source-tree equality is the verified result. An actual native build stopped at
 `tools/gbagfx` because `png.h` is missing; SDL2/libpng development packages are
 also unavailable. No linked binary or two-client playthrough is claimed.
+
+### Frontier outpost construction
+
+`python -m world.frontier_outposts camp.json --admin-socket /path/to/admin.sock
+--label 'Western Frontier Camp'` previews an additive construction plan in the
+active plain XL map. Add `--apply` to commit it. A plan contains exactly `x`, `y`,
+`width`, `height`, `gate` and `reservations`. For example:
+
+```json
+{"x":15,"y":20,"width":9,"height":7,"gate":"west","reservations":[]}
+```
+
+The bounded footprint becomes a walkable courtyard with one gate. An access trail
+connects that gate to existing land. The perimeter and a rock buffer remain
+impassable, and every old walkable tile is preserved. Width and height are 5..15;
+gates face north, east, south or west. Construction rejects overlap with old
+routes or sites, excessive trail length and unreachable locations. Reservations
+use [x,y,width,height] rectangles; carry forward the source plan's reservations
+when they must remain protected. Arbitrary terrain bytes do not encode ownership
+or protected-land semantics, and the tool does not infer them.
+
+The owner-only `construct_outpost` admin command compiles against the exact active
+archived template while holding the authority lock. It requires the inspected
+world ID, sequence and previous revision. Existing publication occupancy and
+persistence checks apply. The new map continues the same logical place and its
+ordinary committed activation history; both versions remain in the archive.
+Restart and revisiting preserve the construction. A stale or duplicate request
+fails rather than applying twice. Placed characters bound to the old revision
+block construction until the owner explicitly moves or retires them. Character
+plans, teams and private player progress are not migrated by this tool.
+
+This is an owner/agent construction primitive, not a player crafting economy,
+settlement simulation, indoor building system or new tile-art pack. Walls use
+the existing impassable outdoor tiles. It adds no autonomous construction trigger
+and changes no engine source. Tests cover additive geometry, reservations,
+place continuity, archive/restart, failed commits and source-extracted native XL
+staging. The native-source test skips when the paired source is unavailable.
+The exact 80bf567 engine staging function accepted constructed geometry and
+rejected damaged bytes locally. A full native build stopped at missing `png.h`;
+headless smoke could not start because no binary was produced. A linked native
+playthrough and rendered building appearance remain unverified.
+
+Design precedents informed the narrow scope: Valheim documents persistent shared
+worlds (https://www.valheimgame.com/support/a-guide-to-dedicated-servers/), while
+Factorio's elevated infrastructure changes traversable geography
+(https://factorio.com/game/content-space-age). This implementation reuses the
+existing authority and native geometry rather than adding another world store.

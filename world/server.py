@@ -1536,6 +1536,12 @@ class WorldServer:
                 except ValueError as exc:
                     # Expected validation/occupancy refusal is not a mechanic error.
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'construct_outpost':
+                try:
+                    from .frontier_outposts import construct
+                    result = construct(self, request)
+                except ValueError as exc:
+                    result = dict(ok=False, error=str(exc))
             elif request.get('command') == 'set_event_state':
                 try:
                     if set(request)!={'command','trainer','identity','state'}:raise ValueError('invalid event state command')
