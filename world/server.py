@@ -237,6 +237,8 @@ class WorldServer:
                 validate_transition(json.loads(state_json), json.loads(state_json), objects, self.db)
                 from .region_characters import validate_region_objects
                 validate_region_objects(self,objects,json.loads(state_json))
+                from .character_walks import validate_walks
+                validate_walks(self,json.loads(state_json),json.loads(state_json),objects,restoring=True)
                 if type(row[5]) is not int or row[5] < 0:
                     raise ValueError('invalid interaction cursor')
                 self.module_state, self.tiles, self.objects = json.loads(state_json), tiles, objects
@@ -529,6 +531,9 @@ class WorldServer:
         lines += ['TILE ' + ' '.join(map(str, tile)) for tile in self.tiles
                   if tuple(tile[:2]) not in (self.cave_map, self.wilds_map)]
         for obj in self.objects:
+            from .character_walks import walk_for,walking
+            walk=walk_for(self.module_state,obj['id'])
+            if walking(self.module_state,obj['id']) and not conn.get('character_walk_capable'):continue
             prefix='OBJECT '
             if (obj['group'], obj['num']) in (self.cave_map, self.wilds_map):
                 from .region_characters import scoped
@@ -541,6 +546,8 @@ class WorldServer:
                 character = records(self.module_state).get(obj['id'])
                 if character and character['status'] == 'active':
                     lines.append('CHARACTER ' + obj['id'] + ' ' + str(character['version']))
+                    if walk and conn.get('character_walk_capable'):
+                        lines.append('CHARACTER_WALK '+' '.join(map(str,[obj['id'],character['version'],walk['id'],walk['index'],len(walk['path']),*[v for p in walk['path'] for v in p]])))
                     if conn.get('character_quest_capable') and character.get('offer'):
                         offer=character['offer']
                         lines.append('CHARACTER_OFFER '+ ' '.join(map(str,[obj['id'],character['version'],offer['id'],offer['revision'],offer['target'],offer['place_id'][7:]])))
@@ -594,6 +601,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                character_walk_capable = role.endswith('CHARWALK1')
+                if character_walk_capable:role=role[:-9]
                 character_region_capable = role.endswith('CHARREG1')
                 if character_region_capable:role=role[:-8]
                 character_quest_capable = role.endswith('CHARQUEST1')
@@ -639,6 +648,9 @@ class WorldServer:
                 travel = role in ('SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
                 social = role in ('SOCIAL', 'SOCIALCHAT', 'SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
                 link = role == 'LINK'
+                if character_walk_capable and not character_region_capable:
+                    self._error(conn,'AUTH')
+                    return
                 if character_region_capable and not (character_capable and (region_capable or cave_xl)):
                     self._error(conn, 'AUTH')
                     return
@@ -706,6 +718,7 @@ class WorldServer:
                     return
                 conn['id'] = name
                 conn['social'] = social
+                conn['character_walk_capable'] = character_walk_capable
                 conn['character_region_capable'] = character_region_capable
                 conn['character_capable'] = character_capable
                 conn['character_quest_capable'] = character_quest_capable
@@ -1087,6 +1100,8 @@ class WorldServer:
         obj = next((o for o in self.objects if o['id'] == fields[2]), None)
         from .region_characters import scoped
         if not scoped(self,conn,obj,fields[3] if region else None):raise ValueError('interaction region mismatch')
+        from .character_walks import walking
+        if walking(self.module_state,fields[2]):raise ValueError('character is walking')
         if region and time.monotonic()-conn.get('state_time',0)>5:raise ValueError('stale region interaction')
         if not state or not state[6] or not obj or state[:2] != [obj['group'], obj['num']]:
             raise ValueError('interaction unavailable')
@@ -1795,6 +1810,8 @@ class WorldServer:
                 objects = result.get('objects', [])
                 from .region_characters import validate_region_objects
                 validate_region_objects(self,objects,result['state'])
+                from .character_walks import validate_walks
+                validate_walks(self,self.module_state,result['state'],objects)
                 from .characters import validate_transition
                 character_changes = validate_transition(self.module_state, result['state'], objects, self.db)
                 changed = (kind == 'deploy' or result['state'] != self.module_state or tiles != self.tiles

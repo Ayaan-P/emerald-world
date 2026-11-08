@@ -57,10 +57,10 @@ class RegionCharacterTests(unittest.TestCase):
         self.assertIsNone(self.server.module_error)
         return revision
 
-    def connect_shared_xl(self,name='Alice'):
+    def connect_shared_xl(self,name='Alice',walking=False):
         token=self.server.create_identity(name)['token']
         conn=dict(id=None,out=bytearray(),closing=False,state=None,seq=0,sock=object())
-        self.assertIn('WELCOME',self.send(conn,f'HELLO 1 {name} {token} SOCIALCAVE16CHAR1CHARQUEST1CHARREG1'))
+        self.assertIn('WELCOME',self.send(conn,f'HELLO 1 {name} {token} SOCIALCAVE16CHAR1CHARQUEST1CHARREG1'+('CHARWALK1' if walking else '')))
         self.state(conn,0,9,8,8)
         self.assertIn('XLWILDS',self.send(conn,'CAVE GET'))
         self.assertIn('CAVE OK',self.send(conn,'CAVE ACK '+self.server.shared_cave.identity))

@@ -134,6 +134,8 @@ def challenge(server, conn, fields):
         raise ValueError('character challenge already pending')
     character = records(server.module_state).get(fields[2])
     obj = next((obj for obj in server.objects if obj['id'] == fields[2]), None)
+    from .character_walks import walking
+    if walking(server.module_state,fields[2]):raise ValueError('character is walking')
     from .region_characters import scoped
     if not scoped(server,conn,obj,fields[4] if region else None):raise ValueError('character region mismatch')
     state = conn.get('state')
@@ -267,6 +269,8 @@ def accept_offer(server, conn, fields):
             or not offer or offer['id']!=fields[4] or offer['revision']!=revision):
         raise CharacterOfferError('STALE')
     obj=next((obj for obj in server.objects if obj['id']==fields[2]),None)
+    from .character_walks import walking
+    if walking(server.module_state,fields[2]):raise CharacterOfferError('UNAVAILABLE')
     from .region_characters import scoped
     if not scoped(server,conn,obj,fields[6] if region else None):raise CharacterOfferError('UNAVAILABLE')
     state=conn.get('state')
