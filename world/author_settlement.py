@@ -34,15 +34,17 @@ def author_settlement(socket, theme, outcome_seq, *, apply=False, timeout=120, e
     saved = call(dict(command='inspect_saved_place', revision=active['revision']))
     history = call(dict(command='world_history', after=outcome_seq-1, through=memory['through'], limit=1))
     if (saved['world_id'] != memory['world_id'] or saved['captured_at_seq'] != memory['through']
-            or saved['template_version'] != 16 or history['world_id'] != memory['world_id']):
+            or saved['template_version'] not in (16,17) or history['world_id'] != memory['world_id']):
         raise ValueError('durable XL world changed during inspection')
     events = history['events']
     if len(events)!=1 or events[0]['seq']!=outcome_seq or events[0]['event']!='guild_goal_completed':
         raise ValueError('choose an actual public guild completion')
     maps = [key for key,value in catalog_maps().items() if value['name']=='GeneratedWorld_Wilds']
     if len(maps)!=1: raise ValueError('generated wilds map unavailable')
-    blob = encode(dict(rows=saved['rows'], spawn=[1,1], exit=[125,125]))
+    from .route_encounters import from_inspection
+    blob = from_inspection(saved)
     prompt = '''Design a small inhabited outpost inspired by the recorded public outcome.
+Existing authored encounter populations are preserved exactly, not edited by this plan.
 Return inert JSON only with exactly label, construction and resident.
 construction has x,y,width,height,gate,reservations. Use integer width/height
 5..15, x,y at least 3, x+width/y+height at most 124. Footprint plus one-tile

@@ -51,5 +51,22 @@ def context(cave):
         wildlife.append(dict(species=names[int.from_bytes(cave.wildlife[offset:offset+2],'little')],
                              level=cave.wildlife[offset+2]))
     return dict(revision=cave.identity,cohort=cave.cohort,rate=cave.wildlife[0],
-                population=population(dict(wildlife=wildlife)),
+                wildlife=wildlife, population=population(dict(wildlife=wildlife)),
                 basis='authored_table_bound_to_archived_template_not_observed_wildlife_or_catches')
+
+
+def from_inspection(saved):
+    """Recover exact authored bytes, never approximate a table from percentages."""
+    from .xl_wilds import encode as geometry
+    from .shared_cave import SharedCave
+    if saved['template_version'] not in (16, 17):
+        raise ValueError('construction requires an XL outdoor map')
+    blob = geometry(dict(rows=saved['rows'], spawn=[1, 1], exit=[125, 125]))
+    if saved['template_version'] == 17:
+        table = saved.get('encounters')
+        if type(table) is not dict or table.get('revision') != saved['revision']:
+            raise ValueError('exact authored encounter table unavailable')
+        blob = encode(blob, dict(rate=table['rate'], wildlife=table['wildlife']))
+    if SharedCave(blob).identity != saved['revision']:
+        raise ValueError('inspected map does not reproduce its archived revision')
+    return blob

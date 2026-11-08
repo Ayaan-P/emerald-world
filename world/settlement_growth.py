@@ -10,7 +10,7 @@ def candidates(server, after=0, limit=16, *, expected_world_id=None, expected_pl
         raise ValueError('growth inspection world or place changed')
     result=dict(ok=True,world_id=memory['world_id'],through=memory['through'],cursor=memory['through'],
                 place_id=active.get('place_id'),revision=active.get('revision'),candidates=[],blocked=None)
-    if not server.archive_generated_areas or active.get('template_version')!=16:
+    if not server.archive_generated_areas or active.get('template_version') not in (16,17):
         result['blocked']='active durable XL area required';result['cursor']=after;return result
     from .characters import records
     if len(records(server.module_state))>=8:

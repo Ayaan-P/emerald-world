@@ -14,8 +14,8 @@ from .xl_wilds import encode
 
 def compile_outpost(blob, plan):
     cave = SharedCave(blob)
-    if cave.version != 16:
-        raise ValueError('construction requires a plain XL outdoor map')
+    if cave.version not in (16,17):
+        raise ValueError('construction requires an XL outdoor map')
     if type(plan) is not dict or set(plan) != {'x', 'y', 'width', 'height', 'gate', 'reservations'}:
         raise ValueError('expected x, y, width, height, gate and reservations')
     x, y, width, height = (plan[key] for key in ('x', 'y', 'width', 'height'))
@@ -77,6 +77,9 @@ def compile_outpost(blob, plan):
     for xx, yy in additions:
         rows[yy][xx] = ord('.')
     result = encode(dict(rows=[row.decode('ascii') for row in rows], spawn=[1, 1], exit=[125, 125]))
+    if cave.version == 17:
+        from .route_encounters import MAGIC, validate_table
+        result = MAGIC + validate_table(cave.wildlife) + result[8:]
     return result, dict(previous_revision=cave.identity, revision=SharedCave(result).identity,
                        footprint=[x, y, width, height], gate=list(gate),
                        access_trail=[list(p) for p in trail], added_walkable_tiles=len(additions - old),
@@ -128,11 +131,12 @@ def main(argv=None):
         inspection = call(dict(command='inspect'))
         memory = inspection['world_memory']; active = memory['active_area']
         saved = call(dict(command='inspect_saved_place', revision=active['revision']))
-        if saved['template_version'] != 16:
-            raise ValueError('construction requires a plain XL outdoor map')
+        if saved['template_version'] not in (16,17):
+            raise ValueError('construction requires an XL outdoor map')
         if saved['world_id'] != memory['world_id'] or saved['captured_at_seq'] != memory['through']:
             raise ValueError('world changed during inspection')
-        blob = encode(dict(rows=saved['rows'], spawn=[1, 1], exit=[125, 125]))
+        from .route_encounters import from_inspection
+        blob = from_inspection(saved)
         _, report = compile_outpost(blob, plan)
         result = dict(ok=True, applied=False, construction=report)
         if args.apply:

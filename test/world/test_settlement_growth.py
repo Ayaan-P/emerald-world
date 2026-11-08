@@ -17,7 +17,7 @@ class Growth(unittest.TestCase):
     def setUp(self):
         self.f=settlement.SettlementFlow();self.f.setUp();self.addCleanup(self.f.doCleanups)
 
-    def test_wildlife_destination_is_not_silently_rebuilt_as_plain_xl(self):
+    def test_wildlife_destination_retains_population_during_construction(self):
         from world.route_encounters import encode
         server=self.f.server
         blob=server.db.execute('SELECT template FROM generated_cave WHERE singleton=1').fetchone()[0]
@@ -26,11 +26,11 @@ class Growth(unittest.TestCase):
         revision=server.shared_cave.identity
         page=candidates(server,0)
         self.assertEqual(page['candidates'],[])
-        self.assertIsNotNone(page['blocked'])
-        self.assertEqual(page['cursor'],0)
+        self.assertIsNone(page['blocked'])
         result=self.f.transport('',self.f.request())
-        self.assertFalse(result['ok'])
-        self.assertEqual(server.shared_cave.identity,revision)
+        self.assertTrue(result['ok'],result)
+        self.assertNotEqual(server.shared_cave.identity,revision)
+        self.assertEqual(server.shared_cave.wildlife,wildlife[8:45])
         self.assertEqual(server.shared_cave.version,17)
 
     def test_player_completion_queues_real_author_route_and_persists_exactly_once_growth(self):
