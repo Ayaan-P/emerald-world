@@ -17,7 +17,9 @@ The first usable loop is:
 2. The authority writes the actual change and a historical event in one SQLite
    transaction. A failed history write rolls back that change.
 3. A later GM request receives current shared state and recent historical
-   evidence through its existing `inspect` request, including after restart.
+   evidence through `inspect`, then retrieves request-matched old evidence and
+   first recorded place changes through `world_recall` at that same sequence boundary, including
+   after restart.
 4. The author preserves those facts while proposing another tested mechanic.
    The existing staging, tests and deployment authority still decide whether
    that proposal takes effect. Text in history cannot grant new authority.
@@ -86,8 +88,8 @@ python3 -m world.world_memory history --admin-socket /path/to/world/admin.sock -
 
 `context` returns current public mechanic overlays and world memory, without
 trainer identity rows, save paths or arbitrary module state. The GM automatically
-gets world memory through its existing inspection; no new autonomous tool
-permissions are granted.
+gets recent memory through inspection and bounded older evidence through a
+host-only recall request; no new model tool permissions are granted.
 
 History pages carry `cursor`, `through` and `has_more`. Keep the first page's
 `through` value while following `cursor`, so a concurrent newer commit does not
@@ -99,7 +101,7 @@ The GM's recent context is a bounded preview, not an exhaustive history. Large
 entries retain their sequence and advertise full details in history. Active
 terrain previews explicitly report truncation and supply the existing full
 terrain-inspection request. Older history is available through the host command;
-this first author controller does not automatically search every old event.
+the controller also performs the targeted full-history lookup described below.
 
 Explicitly continue an area using the publication API or CLI:
 
@@ -140,8 +142,8 @@ is smaller and safer than replacing them with a generic memory framework.
 
 The next useful slice is a place journal in the launcher: select a place, see its
 confirmed changes, and ask the builder to continue from that specific history.
-That should drive targeted retrieval in the GM controller, with explicit evidence
-references and a visible preview before a proposed world change. Avoid automatic
+The controller now has targeted retrieval with explicit evidence references;
+the launcher should make that selection and the proposed change visible. Avoid automatic
 summaries that silently become authoritative lore.
 
 A fuller readable saved-trainer document needs an explicit engine observation or
@@ -155,3 +157,68 @@ here, and the event log is not claimed to replay or rebuild the entire world.
 State-only tick history in the pre-existing log still has its original behavior.
 This is a coherent first slice, not a claim that years of traffic, native migration,
 all regions or offline player outcomes have been verified.
+
+
+## Recall across older history
+
+```sh
+python3 -m world.world_memory recall --admin-socket /path/to/world/admin.sock \
+  --request 'Build a Cedar bridge memorial.'
+```
+
+The GM uses the same selection automatically before authoring. Up to six literal
+words from the owner's request are matched against changed public content across
+all recorded history. Up to four exact places contribute their first recorded and two
+latest committed changes. Explicit place IDs in the request take priority, then
+the active area, observed player locations and current overlay places. Original
+events and their sequence numbers are returned, not model-generated lore.
+
+A small rebuildable SQLite projection indexes event-to-place membership and
+searchable changed text. An NPC that remains unchanged in 35 later full-overlay
+snapshots does not drown out its two actual historical changes. Newly recorded
+changes retain their native place names in the event, so rebuilding this index
+cannot reinterpret them using a later build's numeric map allocation. Older
+records from the first slice retain their original, potentially broader place
+references rather than inventing more precise ones. Index reconstruction adds no
+historical events or timestamps. Failed index writes roll back the original
+world mutation as well as the history record.
+
+Results disclose selection reasons, a fixed `through` boundary, omitted sequences
+and whether there were more literal matches. The payload stays below the existing
+admin transport limit. The controller refuses to author if recall fails or returns
+a different world/boundary. A legitimate empty result is allowed and remains
+unknown history. The immutable GM context and report retain the selected evidence
+references for review.
+
+This is literal lookup, not semantic understanding: synonyms, unnamed landmarks
+and private story outcomes cannot be inferred. Word matching scans the compact
+search projection; place lookup uses its indexed membership. Years-long volumes
+have not been benchmarked. Bounded selection is not an exhaustive world history,
+and older evidence never overrides the current shared state.
+
+### Concrete proposal experiment
+
+Run the isolated authority/controller regression:
+
+```sh
+PYTHONPATH=test/world:. python3 -m unittest \
+  test_world_memory.WorldMemoryTests.test_controller_builds_proposal_from_buried_evidence_after_restart -v
+```
+
+The experiment commits a keeper saying `Cedar bridge repaired.`, then commits
+`Cedar bridge closed.`. It commits 35 unrelated city-guide changes that retain the
+keeper in their full snapshots, closes the authority, and opens it again. Neither
+bridge change is in the latest global history tail.
+
+A new request to build a Cedar bridge memorial reaches the real GM controller.
+Its recall step retrieves both old bridge changes and records their sequence
+references. An injected deterministic author checks that evidence and produces a
+reviewable mechanic adding an adjacent memorial NPC while retaining the current
+closed-bridge keeper. The proposal is written through the ordinary immutable
+candidate path. The test deliberately rejects the deployment step: it does not
+pretend to run a model, pass sandbox tests or prove native rendering. The world
+therefore remains unchanged by the experiment's proposal.
+
+This verifies the missing connection from actual committed history, through a
+restart and relevant recall, to a subsequent proposal. Real model quality and a
+playable sandbox/native acceptance run remain separate checks.

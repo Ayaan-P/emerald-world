@@ -1440,6 +1440,13 @@ class WorldServer:
                     # A busy activity or refused host action is not a failing
                     # mechanic module. Do not replace its persisted status.
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'world_recall':
+                try:
+                    if not {'command', 'through'} <= set(request) or not set(request) <= {'command', 'through', 'places', 'terms'}:
+                        raise ValueError('invalid recall request')
+                    result = dict(ok=True, **self.memory.recall(**{k:v for k,v in request.items() if k != 'command'}))
+                except (ValueError, TypeError) as exc:
+                    result = dict(ok=False, error=str(exc))
             elif request.get('command') == 'world_history':
                 try:
                     if not set(request) <= {'command', 'after', 'limit', 'place_id', 'through'}:

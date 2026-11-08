@@ -201,6 +201,126 @@ class WorldMemoryTests(unittest.TestCase):
         self.assertNotIn(self.server.memory.world_id.encode(), conn['out'])
         self.assertIn(b'ERROR',conn['out'])
 
+    def bury_bridge_history(self):
+        bridge = dict(id='keeper',group=0,num=9,x=8,y=8,gfx=7,text='Cedar bridge repaired.')
+        self.commit_mechanic([bridge], {'private':'not-for-recall'}, 'deploy')
+        origin = self.server.memory.history()['events'][-1]['seq']
+        bridge = dict(bridge,text='Cedar bridge closed.')
+        self.commit_mechanic([bridge])
+        closure = self.server.memory.history()['events'][-1]['seq']
+        for n in range(35):
+            other = dict(id='cityguide',group=0,num=0,x=8,y=8,gfx=8,text='City notice '+str(n)+'.')
+            self.commit_mechanic([bridge,other], {'private':'not-for-recall','clock':n})
+        return origin, closure
+
+    def test_recall_old_changes_not_unchanged_snapshot_mentions(self):
+        origin, closure = self.bury_bridge_history()
+        inspection = self.server.inspect()
+        self.assertNotIn(origin,[event['seq'] for event in inspection['world_memory']['recent']])
+        query = world_memory.recall_request('Build a Cedar bridge memorial.',inspection)
+        recalled = self.admin(query)
+        self.assertTrue(recalled['ok'],recalled)
+        matches = [event['seq'] for event in recalled['events'] if 'literal_text_match' in event['selected_by']]
+        self.assertEqual(matches,[origin,closure])
+        self.assertFalse(recalled['more_text_matches'])
+        self.assertNotIn('not-for-recall',json.dumps(recalled))
+        self.assertLess(len(json.dumps(recalled).encode()),65536)
+        self.assertLess(len(json.dumps(query).encode()),1024)
+        self.server.close()
+        self.server = self.open()
+        self.assertEqual(recalled,self.admin(query))
+        # Same snapshot mentions the keeper 35 times, but only two changes at
+        # that place belong to its journal.
+        self.assertEqual([e['seq'] for e in self.server.memory.history(place_id='native:LittlerootTown')['events']], [origin,closure])
+
+    def test_recall_cutoff_and_index_rebuild_preserve_original_evidence(self):
+        self.server._replace_cave(BLOB,label='Ancient Harbor')
+        before = self.server.memory.history()['events']
+        through = before[-1]['seq']
+        self.server._replace_cave(BLOB,label='Modern Harbor')
+        query = dict(command='world_recall',through=through,terms=['harbor'])
+        self.assertEqual([e['seq'] for e in self.admin(query)['events']],[through])
+        with self.server.db:
+            self.server.db.execute('DROP TABLE world_memory_place_events')
+            self.server.db.execute('DROP TABLE world_memory_lookup')
+        self.server.memory = world_memory.WorldMemory(self.server.db)
+        self.assertEqual(before,self.server.memory.history(through=through)['events'])
+        self.assertEqual([e['seq'] for e in self.admin(query)['events']],[through])
+        for bad in (dict(terms=['x%']),dict(terms=['word']*7),dict(places=['p']*5),dict(through=999999)):
+            self.assertFalse(self.admin(dict(query,**bad))['ok'])
+
+    def test_rebuilt_native_references_do_not_follow_numeric_catalog_changes(self):
+        origin, closure = self.bury_bridge_history()
+        with self.server.db:
+            self.server.db.execute('DROP TABLE world_memory_place_events')
+            self.server.db.execute('DROP TABLE world_memory_lookup')
+        with patch('world.world_memory.native_place',return_value='native:DifferentRegion'):
+            self.server.memory = world_memory.WorldMemory(self.server.db)
+        self.assertEqual([e['seq'] for e in self.server.memory.history(place_id='native:LittlerootTown')['events']], [origin,closure])
+        self.assertEqual(self.server.memory.history(place_id='native:DifferentRegion')['events'],[])
+
+    def test_search_projection_failure_rolls_back_world_and_evidence(self):
+        identity = self.server._replace_cave(BLOB)
+        history = self.server.memory.history()
+        with patch.object(self.server.memory,'_index',side_effect=sqlite3.OperationalError('index write failed')):
+            with self.assertRaises(ValueError):
+                self.server._replace_cave(BLOB[:168]+b'#'+BLOB[169:],previous_revision=identity)
+        self.assertEqual(self.server.shared_cave.identity,identity)
+        self.assertEqual(self.server.memory.history(),history)
+        self.assertFalse(self.admin(dict(command='world_recall',through=None))['ok'])
+
+    def test_controller_builds_proposal_from_buried_evidence_after_restart(self):
+        origin, closure = self.bury_bridge_history()
+        self.server.close()
+        self.server = self.open()
+        proposals = []
+        calls = []
+        def transport(_socket, request, timeout):
+            calls.append(request['command'])
+            if request['command'] == 'deploy':
+                proposals.append(Path(request['source_path']).read_text())
+                # This fixture checks recall -> proposal only. It does not fake
+                # a sandbox/gameplay acceptance result.
+                return dict(ok=False,error='proposal captured; execution outside this fixture')
+            return self.admin(request)
+        def author(prompt):
+            document = json.loads(prompt.split('Request and snapshot follow:\n',1)[1])
+            context = document['inspection']
+            evidence = context['recalled_history']['events']
+            repair = next(e for e in evidence if e['seq']==origin)
+            self.assertEqual(repair['after']['objects'][0]['text'],'Cedar bridge repaired.')
+            self.assertIn(closure,[e['seq'] for e in evidence])
+            # Preserve the *current* closed bridge, rather than restoring its
+            # historical repaired state, and add an adjacent commemorative NPC.
+            objects = context['objects'] + [dict(id='memorial',group=0,num=9,x=9,y=8,gfx=8,text='Cedar bridge remembered.')]
+            source = "# Historical evidence seq %d; current inspection retained.\ndef update(context, state):\n    return {'state': state, 'tiles': [], 'objects': %r}\n" % (origin,objects)
+            return dict(source=source,tests="def test_memorial():\n    assert update({}, {})['objects'][-1]['id'] == 'memorial'\n")
+        with patch('world.gm.admin_request',side_effect=transport):
+            report = gm.author_and_deploy(self.root/'controller',self.root/'socket',
+                                          'Build a Cedar bridge memorial.',author)
+        self.assertEqual(calls,['inspect','world_recall','deploy'])
+        self.assertFalse(report['ok'])
+        self.assertIn(origin,report['history_evidence']['sequences'])
+        self.assertIn('Cedar bridge remembered.',proposals[0])
+        self.assertIn('Cedar bridge closed.',proposals[0])
+        self.assertNotIn('not-for-recall',proposals[0])
+        self.assertNotIn('memorial',[obj['id'] for obj in self.server.objects])
+        saved = json.loads(Path(report['context_path']).read_text())
+        self.assertEqual(saved['recalled_history']['world_id'],self.server.memory.world_id)
+
+    def test_recall_failure_stops_authoring_instead_of_guessing(self):
+        self.server._replace_cave(BLOB)
+        called = []
+        def transport(_socket,request,timeout):
+            if request['command']=='world_recall':
+                return dict(ok=True,world_id='wrong-world',through=0,events=[])
+            return self.admin(request)
+        with patch('world.gm.admin_request',side_effect=transport):
+            report = gm.author_and_deploy(self.root/'controller',self.root/'socket','Continue harbor',lambda prompt:called.append(prompt))
+        self.assertFalse(report['ok'])
+        self.assertEqual(report['stage'],'recall')
+        self.assertEqual(called,[])
+
     def test_existing_events_are_not_relabelled_or_given_fake_dates(self):
         db = sqlite3.connect(':memory:')
         db.execute('CREATE TABLE events(seq INTEGER PRIMARY KEY,kind TEXT,data TEXT)')
