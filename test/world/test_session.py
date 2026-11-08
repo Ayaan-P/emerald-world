@@ -710,9 +710,15 @@ class SessionTests(unittest.TestCase):
                 children = []
                 def spawn(*args, **kwargs):
                     child = original(*args, **kwargs); children.append(child); return child
+                import threading
+                original_start = threading.Thread.start
+                def start_watcher(thread):
+                    if thread.name == 'native-profile-lock':
+                        raise RuntimeError('no watcher thread')
+                    return original_start(thread)
                 with patch('world.session.game_command', return_value=['/usr/bin/sleep', '30']), \
                      patch('world.session.subprocess.Popen', side_effect=spawn), \
-                     patch('threading.Thread.start', side_effect=RuntimeError('no thread')):
+                     patch('threading.Thread.start', new=start_watcher):
                     with self.assertRaises(RuntimeError): host.launch(paths, '/usr/bin/sleep', None)
                 self.assertIsNotNone(children[0].poll())
                 with launcher.ProfileLock(host.state, 'alice'):

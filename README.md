@@ -4,39 +4,39 @@ A native PC Pokémon Emerald world built from [pret's decompilation](https://git
 
 ## Start here
 
-- **Players:** [RC6 features and player flow](docs/RELEASE_RC6.md), [Linux player installation](docs/linux-packaging.md).
+- **Players:** [RC10 version and source handoff](docs/RC10_EXPANSION_HANDOFF.md), [Linux player installation](docs/linux-packaging.md).
 - **Developers and agents:** [development rules and port invariants](CLAUDE.md), [native build instructions](INSTALL_PC.md).
 - **Finding the right document:** [documentation index](docs/README.md).
 - **What landed versus what is next:** [integration status](docs/INTEGRATION_STATUS.md).
 
-## Main, candidates and published downloads
+## Current release and source
 
-`main` contains the integrated RC5 feature stack and the polished RC6 NPC, interaction-graph and live director work, promoted through [PR #205](https://github.com/Ayaan-P/emerald-world/pull/205). Start new work from `origin/main` and target PRs to `main`.
+`main` contains **RC10**, including the rc10.10 multiplayer and native-engine fixes. The app pins the matching source in [Ayaan-P/pokeemerald-expansion-native](https://github.com/Ayaan-P/pokeemerald-expansion-native), whose default `main` branch carries that engine checkpoint. See [the RC10 handoff and build instructions](docs/RC10_EXPANSION_HANDOFF.md). Published downloadable packages on [GitHub Releases](https://github.com/Ayaan-P/emerald-world/releases) currently remain RC9; pulling source does not update an installed package or shortcut.
 
-The published Linux player archive is [v0.2.0-rc.5](https://github.com/Ayaan-P/emerald-world/releases/tag/v0.2.0-rc.5). RC6 source being on main does **not** mean an RC6 download has been published. Check [GitHub Releases](https://github.com/Ayaan-P/emerald-world/releases) for actual assets and tags. An old installed shortcut may still point to an older checkout or package.
+For an existing source checkout:
 
-`vanilla` preserves the upstream port. `rc` and the RC4 experiments are historical, not alternate current baselines. Do not copy the unfinished RC4 battle-engine transplant into main. Mega Evolution and an expanded National Dex are not included in this release scope.
+```sh
+git pull origin main
+git submodule sync --recursive
+git submodule update --init --recursive
+```
 
-## Available in the integrated source
+RC10 retains the Expansion campaign, shared exploration and tagged co-op, modern species catalogue, generated areas, guilds and independent trainer saves. It adds reviewed world/personal settings and the native battle, capture/naming, PC, WORLD menu, co-op admission and scheduling fixes. World permissions still require eligible Pokémon and equipment; test-kit Pokémon/items are not bundled into fresh saves. Kanto and unfinished world-history/multi-place drafts are not included.
 
-- Shared exploration, consent-based tag/co-op activities, private trainer saves, chat, friend travel and existing trade/PvP paths. Presence capacity, sprite capacity and battle participant counts are different limits; none is a new load-test result.
-- Persistent generated caves with authored wildlife, and outdoor areas using existing Hoenn art and Route 101 encounters. One generated area is active per authority; everyone must leave before switching.
-- Outdoor guides and casts of up to three native characters with fixed authored dialogue.
-- Director-published interactive adventures with state-dependent NPC dialogue. An owner can change one admitted trainer's temporary state or interaction rule and query client-reported outcomes.
-- A React launcher with local continuation, saved-area selection, explicit generation-cost confirmation, private save backups and recovery guidance.
-- Inherited rally, DexNav and repeat-Repel functionality. Their specific progression and encounter limits remain separate from generated-area acceptance.
+Expansion and vanilla have separate binaries, profiles and protocol cohorts. Do not import older vanilla saves into Expansion. The root `src/` is the older engine; RC10 game-side development belongs under `engines/expansion-native/src/world/` and that submodule's `include/platform/`. Build RC10 with `scripts/build_expansion.py` as described in the handoff, not the vanilla command below.
 
-Guides/casts are not automatically interactive adventures. Opening an adventure does not start an autonomous director. Adventure state is per trainer and per visit, not durable shared quest progress. There are no new quest reward actions, generated artwork or authored trainer battles. See [RC6 scope](docs/RELEASE_RC6.md) for the full boundary.
+## Launcher and game
 
-### Evidence, not blanket certification
+- **Play:** choose Local or Hosted, or open a named saved game. Solo saves are always available separately.
+- **Local worlds:** run on this computer. Create and play, or set up generated areas first. Creation does not expose an Internet server. Stop host disconnects that world's players; Disconnect only detaches your session. Local authorities keep running until stopped or the launcher quits.
+- **Hosted worlds:** join with a private player invitation. Owner access is separate and lets you manage a configured dedicated service, such as a Hetzner server. The launcher does not provision or deploy that server.
+- **Explore:** open a local world, generate a cave or outdoor area, or select saved content. Generation uses a supported signed-in model CLI and may incur charges. Reopening saved areas makes no model call. Remote hosted worlds are not editable here.
+- **Controls & help:** keyboard controls, co-op, the native WORLD menu and recovery. Gameplay, guilds, friend travel, DexNav and wild shuffle remain in the native game.
+- **Save backups:** export a stopped trainer's save. Owner-account credentials and server-world data are separate backups.
 
-Combined Linux native and React builds and focused real native/socket and browser journeys have passed locally. Those journeys include area entry/return, an authored NPC transition, live owner state/rule changes with applied reports and observed native transitions, named adventure selection and private save backup. RC5 also received direct maintainer playtesting.
+A selected launcher session is not proof that the native game is connected. Game connection and nearby trainers use fresh native telemetry. In-page preview is optional; the native game still runs separately.
 
-This is not a full-campaign, new Windows/macOS, WAN/load or autonomous-GM certification. Full six-party co-op rotation, medicine targeting/consumption and catch-to-storage remain unverified in the integrated candidate. Implemented features are not necessarily fully accepted features.
-
-[GitHub Actions](https://github.com/Ayaan-P/emerald-world/actions) is the current CI source. A merge or old green run is not evidence that the current revision is green. [Historical co-op evidence](docs/COOP_STATUS.md) is retained with its original scope, not promoted into current acceptance claims.
-
-## Build and open the source launcher on Linux
+## Build and open the vanilla source launcher on Linux
 
 Use system Python 3.11+, a C/C++ toolchain, GNU make, pkg-config, libpng and SDL2. The sandboxed desktop game also needs Bubblewrap, Xephyr, a browser and X11/XWayland with permitted user namespaces. The React source build needs Node.js/npm. Install dependencies explicitly using [INSTALL_PC.md](INSTALL_PC.md); nothing below installs system packages.
 
@@ -60,15 +60,15 @@ The explicit `--binary` avoids accidentally selecting an older `build/pokeemeral
 
 The tkinter launcher remains a legacy/operator fallback. Its old UI labels are not the React player's instructions. For dedicated server operation and private invitations, see [deploy/README.md](deploy/README.md). A packaged player install needs neither npm nor a source checkout; use [the package guide](docs/linux-packaging.md).
 
-## Play an expedition
+## Enter a generated area
 
-1. Open a local expedition or create a clearly labeled new world/save. Continue reuses the displayed trainer. A new trainer starts the normal introduction and needs a Pokémon before exploring.
-2. Generate an area with explicit model-use confirmation, or select an existing area or director-published adventure. Selecting saved content does not call a model.
+1. Create or open a local world. Play reuses its displayed trainer. A new trainer starts the normal introduction and needs a Pokémon before exploring.
+2. Open Explore. Generate an area with explicit model-use confirmation, or select a saved area or published adventure. Selecting saved content does not call a model.
 3. In the native game, stand outdoors/on foot with a conscious non-Egg Pokémon. Open **START → WORLD → Explore generated area**.
 4. Face a character and press **A** to talk. Keyboard defaults: arrows to move, **Z** for A, **X** for B, **Enter** for START. Chat uses **T**, or **Ctrl+T** when T is a game binding. **Esc** cancels typing.
 5. Return with **WORLD → Leave generated area**, then save through the normal game menu. Closing or restarting discards unsaved progress. Saved terrain and saved trainer progress are different things.
 
-Local hosting ends when its launcher exits. Persistent dedicated hosting is separate. Do not launch two games on the same trainer save. Use **Save backups** on a stopped profile before experimenting. Backups contain trainer save bytes, not the server world, account credentials or durable adventure progress.
+Disconnecting does not stop a local host. Use Stop host in Local worlds or Quit launcher. Persistent dedicated hosting is separate. Do not launch two games on the same trainer save. Use **Save backups** on a stopped profile before experimenting. Backups contain trainer save bytes, not the server world, account credentials or durable adventure progress.
 
 ## Contributing
 

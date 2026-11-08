@@ -167,6 +167,16 @@ class HostingTests(unittest.TestCase):
             self.assertEqual(request('POST', '/v1/worlds', '{"name":1,"name":2}', headers),
                              (400, b'{"error":"invalid_request"}'))
             self.assertEqual(manager.list_worlds('a'*64), [])
+            world_id = manager.create_world('a'*64, 'Bounds', 'Owner', 'bounds')['world']['id']
+            area_path = '/v1/worlds/' + world_id + '/generated-areas'
+            from world.shared_cave import MAX_SIZE
+            upload_limit = 4 * ((MAX_SIZE + 2) // 3) + 1024
+            for path, size in ((area_path, upload_limit+1),
+                               (area_path+'/activate', 4097),
+                               ('/v1/worlds/'+world_id+'/resume', 4097),
+                               (area_path+'?upload=1', 4097)):
+                self.assertEqual(request('POST', path, 'x'*size, headers),
+                                 (400, b'{"error":"invalid_request"}'))
         finally:
             service.close()
             manager.close()
@@ -394,6 +404,130 @@ class HostingTests(unittest.TestCase):
             self.assertEqual(result['invitation']['endpoint']['port'], self.port)
             self.assertEqual(manager.resume('a'*64, result['world']['id']), result)
         finally:
+            manager.close()
+
+    @staticmethod
+    def generated_blob(side=63, magic=b'EWGMAP04'):
+        rows = ['#' * side] + ['#' + '.' * (side-2) + '#'] * (side-2) + ['#' * side]
+        return magic + ''.join(rows).encode('ascii')
+
+    def test_generated_area_https_publication_activation_and_restart(self):
+        from world.hosting import HostingService
+        from world.hosting_client import HostingClient
+        from world.shared_cave import SharedCave
+        manager = self.manager()
+        service = HostingService(manager, ('127.0.0.1', 0)).start()
+        try:
+            access = manager.create_account()
+            manager.enroll(access['token'], 'a'*64)
+            client = HostingClient(dict(kind='host-profile', version=1, token='a'*64,
+                endpoint=dict(host='localhost', port=service.address[1]), pin=self.pin))
+            world_id = client.create('Generated world', 'Owner')['world']['id']
+            status = client.generated_areas(world_id)
+            self.assertTrue(status['cave_authoring'])
+            self.assertTrue(status['xl_wilds_authoring'])
+            self.assertTrue(status['area_archive'])
+            self.assertTrue(status['cave_persistent'])
+            self.assertEqual(status['generated_areas'], [])
+            self.assertIsNone(status['active_generated_area'])
+            cave = self.generated_blob()
+            identity = SharedCave(cave).identity
+            self.assertEqual(client.publish_generated_area(world_id, cave, label='First cave'),
+                             dict(identity=identity))
+            xl = self.generated_blob(127, b'EWGMAP0A')
+            xl_identity = SharedCave(xl).identity
+            self.assertEqual(client.publish_generated_area(world_id, xl, label='Large outdoors'),
+                             dict(identity=xl_identity))
+            status = client.generated_areas(world_id)
+            self.assertEqual(len(status['generated_areas']), 2)
+            self.assertEqual(status['active_generated_area'], dict(identity=xl_identity,
+                kind='xl_wilds', side=127, label='Large outdoors', occupants=0))
+            self.assertEqual(client.activate_generated_area(world_id, identity), dict(identity=identity))
+            self.assertEqual(client.generated_area_status(world_id)['active_generated_area']['label'], 'First cave')
+        finally:
+            service.close()
+            manager.close()
+        manager = self.manager()
+        try:
+            status = manager.generated_area_status('a'*64, world_id)
+            self.assertEqual(status['active_generated_area']['identity'], identity)
+            self.assertEqual(len(status['generated_areas']), 2)
+        finally:
+            manager.close()
+
+    def test_generated_area_authorization_validation_and_occupancy(self):
+        import base64
+        from world.hosting import HostingService, HostingError
+        from world.hosting_client import HostingClient
+        manager = self.manager()
+        service = HostingService(manager, ('127.0.0.1', 0)).start()
+        try:
+            clients = []
+            for token in ('a'*64, 'b'*64):
+                access = manager.create_account()
+                manager.enroll(access['token'], token)
+                clients.append(HostingClient(dict(kind='host-profile', version=1, token=token,
+                    endpoint=dict(host='localhost', port=service.address[1]), pin=self.pin)))
+            owner, outsider = clients
+            world_id = owner.create('Private area', 'Owner')['world']['id']
+            blob = self.generated_blob()
+            first = owner.publish_generated_area(world_id, blob, label='Cave')['identity']
+            other_blob = self.generated_blob(127, b'EWGMAP0A')
+            second = owner.publish_generated_area(world_id, other_blob, label='Wilds')['identity']
+            owner.activate_generated_area(world_id, first)
+            for operation in (lambda: outsider.generated_area_status(world_id),
+                              lambda: outsider.publish_generated_area(world_id, blob, label='Stolen'),
+                              lambda: outsider.activate_generated_area(world_id, second)):
+                with self.assertRaises(HostingError) as rejected:
+                    operation()
+                self.assertEqual(rejected.exception.status, 403)
+            invite = owner.invite(world_id, self.root/'guest-area.json')
+            guest_profile = dict(owner.profile, token=invite['token'])
+            with self.assertRaises(HostingError) as rejected:
+                HostingClient(guest_profile).generated_area_status(world_id)
+            self.assertEqual(rejected.exception.status, 403)
+            path = '/v1/worlds/' + world_id + '/generated-areas'
+            encoded = base64.b64encode(blob).decode('ascii')
+            for body in (dict(template='not base64', label='Bad'),
+                         dict(template=encoded+'\n', label='Bad'),
+                         dict(template=base64.b64encode(b'print(1)').decode(), label='Code'),
+                         dict(template=encoded, label='\x7f'),
+                         dict(template=encoded, label='A'*81),
+                         dict(template=encoded, label='Valid', admin_socket='/tmp/no'),
+                         dict(template=base64.b64encode(blob[:-1]+b'.').decode(), label='Open boundary')):
+                with self.assertRaises(HostingError) as rejected:
+                    owner._request(owner.profile, 'POST', path, body)
+                self.assertEqual(rejected.exception.status, 400)
+            server = manager.running[world_id][0]
+            # Exercise both occupancy representations used by the production publisher.
+            for peer in (dict(in_generated_cave=True), dict(state=(*server.wilds_map,))):
+                with server.lock:
+                    server.peers['occupancy-test'] = peer
+                try:
+                    self.assertEqual(owner.generated_area_status(world_id)['active_generated_area']['occupants'], 1)
+                    for operation in (lambda: owner.publish_generated_area(world_id, other_blob, label='Blocked'),
+                                      lambda: owner.activate_generated_area(world_id, second)):
+                        with self.assertRaises(HostingError) as rejected:
+                            operation()
+                        self.assertEqual(rejected.exception.status, 409)
+                    self.assertEqual(owner.generated_area_status(world_id)['active_generated_area']['identity'], first)
+                finally:
+                    with server.lock:
+                        del server.peers['occupancy-test']
+            with self.assertRaises(HostingError) as missing:
+                owner.activate_generated_area(world_id, '0'*64)
+            self.assertEqual(missing.exception.status, 409)
+            with self.assertRaises(HostingError):
+                manager.publish_generated_area('a'*64, world_id, encoded[:-4], label='Truncated')
+            with self.assertRaises(ValueError):
+                owner.publish_generated_area(world_id, b'not a template', label='Bad')
+            with self.assertRaises(ValueError):
+                owner.activate_generated_area(world_id, '../area')
+            status = owner.generated_area_status(world_id)
+            self.assertEqual(len(status['generated_areas']), 2)
+            self.assertEqual(status['active_generated_area']['label'], 'Cave')
+        finally:
+            service.close()
             manager.close()
 
     def test_owner_creates_persistent_world_with_native_invitation(self):

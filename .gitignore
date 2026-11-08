@@ -42,6 +42,7 @@ prefabs.json
 *.diff
 *.sym
 *.js
+!/launcher-web/src/*.js
 /pokeemerald-*.png
 /pokeemerald_modern-*.png
 

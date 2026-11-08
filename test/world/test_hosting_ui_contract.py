@@ -26,6 +26,10 @@ class HostedAdapterContract(unittest.TestCase):
             with patch.object(HostingClient, '_request', side_effect=AssertionError('network forbidden')):
                 hosted.restore_profile(json.dumps(value))
                 self.assertTrue(hosted.enrolled())
+                snapshot = hosted.state()
+                self.assertEqual(snapshot['endpoint'], value['endpoint'])
+                self.assertNotIn(value['token'], json.dumps(snapshot))
+                self.assertNotIn(value['pin'], json.dumps(snapshot))
                 self.assertEqual(json.loads(hosted.export_profile()), value)
                 self.assertEqual(hosted.profile.stat().st_mode & 0o777, 0o600)
                 changed = dict(value, token='c' * 64)

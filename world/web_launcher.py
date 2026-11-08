@@ -27,10 +27,10 @@ import subprocess
 from .launcher import REPO
 from .session import DesktopSession, SessionError
 from .transport import read_invitation
+from .save_limits import save_size_limit, encoded_save_limit, save_size_label
 
 DIST = REPO / 'launcher-web' / 'dist'
-MAX_BODY = 180000
-MAX_SAVE = 131072
+MAX_BODY = encoded_save_limit('expansion-native') + 4096
 
 
 class LauncherBridge:
@@ -165,7 +165,7 @@ class LauncherBridge:
             try:
                 label = _read_metadata(path)['display_name']
             except (OSError, ValueError, TypeError, KeyError):
-                label = 'Local expedition · ' + path.name[-4:]
+                label = 'Local world · ' + path.name[-4:]
             profiles = []
             trainers = self.session._world(path.name) / 'trainers'
             if self.engine != 'vanilla':
@@ -190,6 +190,35 @@ class LauncherBridge:
             found.append({'key': path.name, 'name': label, 'trainer': trainer,
                           'has_save': any(saved and name == trainer for saved, _, name in profiles)})
         return found
+
+    def personal_profiles(self):
+        """Only profiles already discoverable in this launcher's library."""
+        if self.engine != 'expansion-native':
+            return []
+        from .launcher import profile_paths
+        from .world_library import _read_metadata
+        candidates = [dict(world=item['key'], trainer=item['trainer'], name=item['name'], offline=False)
+                      for item in self.local_expeditions()]
+        for item in self.session.friend_worlds():
+            try:
+                label = _read_metadata(self.session._world(item['name']))['display_name']
+            except (OSError, ValueError, KeyError, TypeError):
+                label = item['name']
+            candidates.append(dict(world=item['name'], trainer=item['trainer'], name=label, offline=False))
+        candidates.extend(dict(item, offline=True) for item in self.offline_saves())
+        profiles = {}
+        for item in candidates:
+            try:
+                world = self.session._world(item['world'])
+                path = profile_paths(world / '.offline' if item['offline'] else world,
+                                     item['trainer'], engine=self.engine)['profile']
+                if not path.is_dir():
+                    continue
+                key = f'{"offline" if item["offline"] else "online"}/{item["world"]}/{item["trainer"]}'
+                profiles[key] = dict(item, id=key)
+            except (OSError, ValueError, TypeError):
+                continue
+        return list(profiles.values())
 
     def snapshot(self):
         with self.lock:
@@ -261,6 +290,18 @@ class LauncherBridge:
                                 (peer.get('state') is not None and tuple(peer['state'][:2]) in (server.cave_map, server.wilds_map))))
                         active_area = {'kind': kinds.get(cave.version, 'cave'), 'side': cave.side,
                             'label': archived.get('label', 'Current generated area'), 'occupants': occupants}
+            area_projection = {'area_authoring': local_host,
+                'area_world_key': self.session.state.name if local_host and self.session.state else None,
+                'hosted_area_world': None, 'hosted_area_error': None}
+            if not local_host and self.hosted.area_world is not None:
+                area_projection['hosted_area_world'] = dict(self.hosted.area_world)
+                area_projection['area_world_key'] = 'hosted-' + self.hosted.area_world['id']
+                try:
+                    area_projection.update(self.hosted.area_status())
+                    area_projection['area_authoring'] = True
+                except Exception:
+                    area_projection['area_authoring'] = False
+                    area_projection['hosted_area_error'] = 'Could not read generated areas from this hosted world. Check the connection and select it again.'
             live_games = [name for name, (process, _paths) in self.session.games.items()
                           if process.poll() is None]
             game_exit = None
@@ -272,7 +313,13 @@ class LauncherBridge:
                 code = process.poll()
                 if code is not None:
                     game_exit = {'trainer': name, 'code': code, 'unexpected': code != 0}
-            return {'local_worlds': self.local_expeditions(),
+            from .rules_ui import options_snapshot
+            from .local_sharing_ui import sharing_snapshot
+            local_worlds = self.local_expeditions()
+            return {'local_worlds': local_worlds,
+                    'world_options': options_snapshot(self.session, local_worlds),
+                    'local_sharing': sharing_snapshot(self.session, local_worlds),
+                    'local_hosts': self.session.hosted_worlds(),
                     'game_exit': game_exit,
                     'generated_areas': areas, 'active_generated_area': active_area, 'area_archive': archive_enabled,
                     'area_archive_error': archive_error,
@@ -287,7 +334,8 @@ class LauncherBridge:
                     'trainer': self.session.remote_trainer,
                     'world_key': self.session.state.name if self.session.state is not None else None,
                     'offline_world_key': offline_world_key,
-                    'games': live_games, 'status': self.session.status, 'engine': self.engine}
+                    'games': live_games, 'status': self.session.status, 'engine': self.engine,
+                    'save_import_max_bytes': save_size_limit(self.engine), **area_projection}
 
     def stop_browser_input(self):
         # Also used by launcher shutdown. Serialize teardown with HTTP lifecycle
@@ -311,7 +359,9 @@ class LauncherBridge:
                     raise SessionError('The hosted-world backend is not installed yet.')
                 from .hosting_protocol import HostingError
                 try:
-                    if action == 'host_enroll':
+                    if action == 'host_select_area':
+                        self.hosted.select_area_world(payload.get('world'))
+                    elif action == 'host_enroll':
                         self.hosted.enroll(payload.get('access'))
                     elif action == 'host_restore':
                         self.hosted.restore_profile(payload.get('profile'))
@@ -365,14 +415,14 @@ class LauncherBridge:
                     label = payload.get('name')
                     if (not isinstance(label, str) or not 1 <= len(label.strip()) <= 80
                             or any(ord(c) < 32 for c in label)):
-                        raise SessionError('Use 1 to 80 printable characters for the expedition name.')
+                        raise SessionError('Use 1 to 80 printable characters for the world name.')
                     name = 'e-' + secrets.token_urlsafe(9)
                     self.session.create_world(name)
                     self.session.rename_world(name, label.strip(), [])
                 else:
                     name = payload.get('world')
                     if not any(item['key'] == name for item in self.local_expeditions()):
-                        raise SessionError('Choose an existing local expedition.')
+                        raise SessionError('Choose an existing local world.')
                 try:
                     self.session.host(name)
                     self.remote_paths = self.session.local_profile(trainer)
@@ -385,28 +435,49 @@ class LauncherBridge:
                 except (OSError, ValueError):
                     self.remote_paths = None
                     self.session.disconnect()
-                    raise SessionError('Could not open the local expedition. Check the local world and trainer setup, then retry.') from None
+                    raise SessionError('Could not open the local world. Check the local world and trainer setup, then retry.') from None
             elif action == 'author_cave':
                 # Keep bridge mutations serialized throughout authoring, but never
                 # hold the world server lock while waiting for the provider.
                 if payload.get('confirmed') is not True:
                     raise SessionError('Confirm provider usage and area replacement before generating.')
-                if (self.session.state is None or payload.get('world') != self.session.state.name
+                remote_area = self.session.server is None and self.hosted.area_world is not None
+                if remote_area:
+                    if payload.get('world') != 'hosted-' + self.hosted.area_world['id']:
+                        raise SessionError('The selected generation world changed. Choose it again.')
+                elif (self.session.state is None or payload.get('world') != self.session.state.name
                         or self.session.server is None):
-                    raise SessionError('Host the selected local expedition before generating an area.')
+                    raise SessionError('Choose a world in Explore before generating an area.')
                 kind = payload.get('kind', 'cave')
                 if kind not in ('cave', 'wilds', 'guided_wilds', 'cast_wilds', 'xl_wilds'):
                     raise SessionError('Choose a cave, outdoor wilds, wilds with a guide or wilds with a cast.')
                 try:
+                    if remote_area:
+                        self.hosted.author_area(payload.get('theme'), kind, self.engine)
+                        return self.snapshot()
                     self.session.author_shared_cave(payload.get('theme'), cohort=self.engine, wilds=kind != 'cave',
                         guide=kind == 'guided_wilds', cast=kind == 'cast_wilds', **({'xl': True} if kind == 'xl_wilds' else {}))
                 except SessionError:
                     raise
                 except Exception:
                     raise SessionError('Area generation could not complete. Check model login and local host setup before retrying.') from None
+            elif action in ('terrain_read', 'terrain_review', 'terrain_apply'):
+                from .terrain_ui import terrain_action
+                return terrain_action(self.session, self.local_expeditions(), action, payload)
+            elif action == 'inspect_area':
+                from .area_library_ui import inspect_area
+                return inspect_area(self.session, self.local_expeditions(), payload)
             elif action == 'activate_area':
                 if payload.get('confirmed') is not True:
                     raise SessionError('Confirm changing the active generated area.')
+                if self.session.server is None and self.hosted.area_world is not None:
+                    if payload.get('world') != 'hosted-' + self.hosted.area_world['id']:
+                        raise SessionError('The selected generation world changed. Choose it again.')
+                    try:
+                        self.hosted.activate_area(payload.get('identity'))
+                    except Exception:
+                        raise SessionError('Could not activate the saved area. Check the connection and that everyone has left.') from None
+                    return self.snapshot()
                 if (self.session.server is None or self.session.state is None
                         or payload.get('world') != self.session.state.name):
                     raise SessionError('The hosted world changed. Choose a saved area from the current local host.')
@@ -437,6 +508,44 @@ class LauncherBridge:
                 if not isinstance(name, str):
                     raise SessionError('Choose a saved world.')
                 self.remote_paths = self.session.rejoin_friend(name)
+            elif action in ('local_share_start', 'local_share_stop', 'local_invite'):
+                from .local_sharing_ui import start_sharing, stop_sharing, export_friend
+                worlds = self.local_expeditions()
+                if action == 'local_share_start':
+                    start_sharing(self.session, worlds, payload)
+                elif action == 'local_share_stop':
+                    stop_sharing(self.session, worlds, payload)
+                else:
+                    invitation = export_friend(self.session, worlds, payload)
+                    result = self.snapshot()
+                    result['download'] = invitation
+                    result['download_kind'] = 'local_friend'
+                    return result
+            elif action == 'local_share_refresh':
+                pass
+            elif action == 'personal_settings_info':
+                from .personal_settings import DEFAULTS, KEYS
+                return {'available': self.engine == 'expansion-native', 'profiles': self.personal_profiles(),
+                        'defaults': dict(DEFAULTS), 'keys': KEYS}
+            elif action in ('personal_settings_read', 'personal_settings_save'):
+                profile = next((item for item in self.personal_profiles() if item['id'] == payload.get('profile')), None)
+                if profile is None:
+                    raise SessionError('Choose an existing Expansion trainer profile.')
+                from .personal_settings import read_settings, write_settings
+                try:
+                    world = self.session._world(profile['world'])
+                    if action == 'personal_settings_read':
+                        return read_settings(world, profile['trainer'], offline=profile['offline'])
+                    if set(payload) != {'profile', 'changes', 'expected_revision'}:
+                        raise SessionError('Choose supported personal settings.')
+                    return write_settings(world, profile['trainer'], payload['changes'], payload['expected_revision'],
+                                          offline=profile['offline'])
+                except UnicodeError:
+                    raise SessionError('Settings are not valid UTF-8 text. Check settings.ini before editing.') from None
+                except OSError:
+                    raise SessionError('Settings could not be read or the save confirmed. Reload before trying again.') from None
+                except ValueError as exc:
+                    raise SessionError(str(exc)) from None
             elif action == 'save_backup_info':
                 return {'available': importlib.util.find_spec('world.save_backup') is not None}
             elif action == 'save_backup':
@@ -500,14 +609,14 @@ class LauncherBridge:
                 if seed is None:
                     self._start_offline(world, trainer)
                 else:
-                    if not isinstance(seed, str) or len(seed) > 174800:
-                        raise SessionError('Choose a save file no larger than 128 KiB.')
+                    if not isinstance(seed, str) or len(seed) > encoded_save_limit(self.engine):
+                        raise SessionError(f'Choose a save file no larger than {save_size_label(self.engine)}.')
                     try:
                         data = base64.b64decode(seed, validate=True)
                     except (ValueError, binascii.Error):
                         raise SessionError('That save file could not be read.') from None
-                    if not 0 < len(data) <= MAX_SAVE:
-                        raise SessionError('Choose a nonempty save file no larger than 128 KiB.')
+                    if not 0 < len(data) <= save_size_limit(self.engine):
+                        raise SessionError(f'Choose a nonempty save file no larger than {save_size_label(self.engine)}.')
                     with tempfile.TemporaryDirectory(prefix='emerald-save-') as directory:
                         path = Path(directory) / 'seed.sav'
                         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -525,6 +634,22 @@ class LauncherBridge:
                 if not trainer:
                     raise SessionError('No connected trainer is selected.')
                 self.session.leave_game(trainer)
+            elif action == 'rules_replace':
+                from .rules_ui import replace_options
+                replace_options(self.session, self.local_expeditions(), self.engine, payload)
+            elif action == 'rules_refresh':
+                pass  # Snapshot only. Never initialize or mutate a world's rules.
+            elif action == 'local_stop':
+                name = payload.get('world')
+                if (not isinstance(name, str) or name not in self.session.hosted_worlds()
+                        or not any(world['key'] == name for world in self.local_expeditions())):
+                    raise SessionError('Choose a local world hosted by this launcher.')
+                current = self.session.state is not None and self.session.state.name == name
+                if current:
+                    self.stop_browser_input()
+                self.session.shutdown_world(name)
+                if current:
+                    self.remote_paths = None
             elif action == 'disconnect':
                 self.stop_browser_input()
                 self.session.disconnect()

@@ -11,12 +11,17 @@ class WildShuffleTests(unittest.TestCase):
  def test_stable_permutation_opt_in_and_engine_conversion(self):
   with tempfile.TemporaryDirectory() as d:
    p=Path(d);(p/'gba').mkdir()
-   (p/'gba/types.h').write_text('#include <stdint.h>\ntypedef uint8_t bool8;typedef uint16_t u16;typedef uint32_t u32;\n')
-   (p/'global.h').write_text('#include "gba/types.h"\n')
-   (p/'pokemon.h').write_text('#include "gba/types.h"\nu16 SpeciesToNationalPokedexNum(u16);u16 NationalPokedexNumToSpecies(u16);\n')
+   (p/'gba/types.h').write_text('#include <stdint.h>\ntypedef uint8_t u8;typedef uint8_t bool8;typedef uint16_t u16;typedef uint32_t u32;\n')
+   (p/'global.h').write_text('#include "gba/types.h"\n#define FALSE 0\n#define TRUE 1\n')
+   (p/'pokemon.h').write_text('#include "gba/types.h"\nu16 SpeciesToNationalPokedexNum(u16);u16 NationalPokedexNumToSpecies(u16);\n#include "constants/species.h"\nstruct SpeciesInfo {unsigned isMegaEvolution,isPrimalReversion,isUltraBurst,isGigantamax,isTeraForm,cannotBeTraded;};\nstruct FormChange {u16 method,targetSpecies;};\nextern const struct SpeciesInfo gSpeciesInfo[NUM_SPECIES];\nbool8 IsSpeciesEnabled(u16);\nconst struct FormChange *GetSpeciesFormChanges(u16);\n')
    (p/'test.c').write_text(r'''
 #include <assert.h>
 #include "platform/wild_shuffle.h"
+#include "pokemon.h"
+const struct SpeciesInfo gSpeciesInfo[NUM_SPECIES]={0};
+bool8 IsSpeciesEnabled(u16 s){(void)s;return 0;}
+const struct FormChange *GetSpeciesFormChanges(u16 s){(void)s;return 0;}
+bool8 WorldRules_GameplayEnabled(unsigned rule){(void)rule;return 0;}
 /* Deliberately non-identical engine IDs exercise the canonical Dex boundary. */
 u16 SpeciesToNationalPokedexNum(u16 s){return s>=1001 && s<=1386?s-1000:0;}
 u16 NationalPokedexNumToSpecies(u16 n){return n>=1 && n<=386?n+1000:0;}
@@ -39,7 +44,7 @@ int main(void){
  return 0;
 }
 ''')
-   binary=p/'shuffle';build=subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-DPORTABLE','-I'+str(p),'-I'+str(ROOT/'include'),str(ENGINE/'src/world/wild_shuffle.c'),str(p/'test.c'),'-o',str(binary)],capture_output=True,text=True)
+   binary=p/'shuffle';build=subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-DPORTABLE','-I'+str(p),'-I'+str(ENGINE/'include'),str(ENGINE/'src/world/wild_shuffle.c'),str(p/'test.c'),'-o',str(binary)],capture_output=True,text=True)
    self.assertEqual(build.returncode,0,build.stderr)
    run=subprocess.run([str(binary)],capture_output=True,text=True);self.assertEqual(run.returncode,0,run.stderr)
 if __name__=='__main__':unittest.main()
