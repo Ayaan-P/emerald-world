@@ -92,17 +92,18 @@ def construct(server, request):
         cave = server.shared_cave
         if not server.archive_generated_areas or cave is None or cave.identity != request['previous_revision']:
             raise ValueError('active archived area changed; inspect before construction')
-        if any(obj.get('region_revision') == cave.identity for obj in server.objects):
-            raise ValueError('move or retire placed characters before changing their exact map revision')
         stored = server.db.execute('SELECT template FROM generated_cave WHERE singleton=1').fetchone()
         if stored is None or SharedCave(stored[0]).identity != cave.identity:
             raise ValueError('active area is not durably published')
         blob, report = compile_outpost(stored[0], request['plan'])
+        from .character_rebinding import prepare
+        continuation = prepare(server, cave.identity, report['revision'])
         revision = server._replace_cave(blob, label=request['label'], previous_revision=cave.identity,
             expected_world_id=request['expected_world_id'], expected_sequence=request['expected_sequence'],
-            history_evidence=[])
+            history_evidence=[], character_continuation=continuation)
         return dict(ok=True, revision=revision, place_id=server.memory.place(revision),
-                    persistent=True, construction=report)
+                    persistent=True, construction=report,
+                    rebound_characters=continuation['ids'] if continuation else [])
 
 
 def main(argv=None):

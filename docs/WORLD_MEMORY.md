@@ -801,9 +801,10 @@ world ID, sequence and previous revision. Existing publication occupancy and
 persistence checks apply. The new map continues the same logical place and its
 ordinary committed activation history; both versions remain in the archive.
 Restart and revisiting preserve the construction. A stale or duplicate request
-fails rather than applying twice. Placed characters bound to the old revision
-block construction until the owner explicitly moves or retires them. Character
-plans, teams and private player progress are not migrated by this tool.
+fails rather than applying twice. Placed persistent characters on the shared revision are rebound at unchanged
+coordinates, with the complete NPC collision set validated against the new map.
+Their identities, teams, versions and prior history remain unchanged. Private
+player progress is not migrated by this tool.
 
 This is an owner/agent construction primitive, not a player crafting economy,
 settlement simulation, indoor building system or new tile-art pack. Walls use
@@ -821,3 +822,26 @@ worlds (https://www.valheimgame.com/support/a-guide-to-dedicated-servers/), whil
 Factorio's elevated infrastructure changes traversable geography
 (https://factorio.com/game/content-space-age). This implementation reuses the
 existing authority and native geometry rather than adding another world store.
+
+
+Construction now commits geometry, unchanged-location character bindings and the
+corresponding mechanic source atomically. A bounded wrapper around the existing
+authored reducer preserves those exact bindings on subsequent ticks and after
+restart. A later chapter that moves an actor within obsolete geometry fails
+rather than silently transporting it; author that chapter against its current
+revision explicitly. Repeated construction composes wrappers without replacing
+character chapter state or fabricating a character evolution.
+
+Pending mechanic/deployment work and character battles block inhabited
+construction. Characters on opened immutable regions cannot be migrated through
+the shared slot. Other revisions' actors remain untouched. Old archived geometry
+remains available, but migrated actors appear only on their new exact revision,
+not simultaneously on old copies. A committed placement-change record connects
+the previous and new geometry while preserving earlier history.
+
+Tests include the actual authored chapter reducer across construction, repeated
+construction and restart, exact-revision authentication/challenge wire, unrelated
+actor isolation, an NPC blocking the newly added access trail, and rollback after
+a module-write failure. Test source execution uses a fixture boundary; production
+retains the existing sandbox runtime. Full native rendering/playthrough limits
+above still apply.

@@ -139,7 +139,7 @@ class FrontierAuthority(unittest.TestCase):
         finally: self.server.peers.clear()
         self.server.objects = [dict(region_revision=self.old)]
         try:
-            result = self.f.admin(self.request()); self.assertFalse(result['ok']); self.assertIn('characters', result['error'])
+            result = self.f.admin(self.request()); self.assertFalse(result['ok']); self.assertIn('character', result['error'])
         finally: self.server.objects = []
         self.assertEqual(self.server.memory.history(), before)
 

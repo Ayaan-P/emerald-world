@@ -1,0 +1,76 @@
+"""Explicit same-place revision migration for unchanged persistent NPC locations.
+
+A source wrapper preserves the migration on later authored mechanic ticks.
+No global place alias or cross-map character lookup is introduced.
+"""
+import hashlib
+import json
+from .mechanics import Candidate, validate_objects
+
+
+def prepare(server, previous, revision):
+    affected = [obj for obj in server.objects if obj.get('region_revision') == previous]
+    if server.db.execute('SELECT 1 FROM world_region_revisions WHERE revision=?', (previous,)).fetchone():
+        raise ValueError('opened immutable region characters cannot migrate with the shared slot')
+    if server.job is not None or server.deployment is not None:
+        raise ValueError('wait for pending mechanic work before rebinding characters')
+    if any(peer.get('character_pending') for peer in server.peers.values()):
+        raise ValueError('finish pending character interactions before construction')
+    if not affected:
+        return None
+    if server.candidate is None or hashlib.sha256(server.candidate.source.encode()).hexdigest() != server.candidate.sha256:
+        raise ValueError('character source is unavailable or changed')
+    row = server.db.execute('SELECT sha256,objects FROM module WHERE singleton=1').fetchone()
+    if row is None or row[0] != server.candidate.sha256 or json.loads(row[1]) != server.objects:
+        raise ValueError('character placements are not durably committed')
+    from .characters import validate_transition
+    from .region_characters import validate_region_objects
+    validate_transition(server.module_state, server.module_state, server.objects, server.db)
+    validate_region_objects(server, server.objects, server.module_state)
+    positions = {obj['id']: [obj[key] for key in ('group', 'num', 'x', 'y')] for obj in affected}
+    objects = [dict(obj, region_revision=revision) if obj in affected else dict(obj) for obj in server.objects]
+    validate_objects(objects)
+    # Capture the previous callable in the default argument. A later migration
+    # can append another wrapper without global-name recursion or source edits.
+    suffix = '''
+
+def update(context, state, _previous=update):
+    result = _previous(context, state)
+    objects = []
+    for original in result.get('objects', []):
+        obj = dict(original)
+        positions = %r
+        if obj.get('id') in positions and obj.get('region_revision') == %r:
+            if [obj[key] for key in ('group', 'num', 'x', 'y')] != positions[obj['id']]:
+                raise ValueError('rebound character moved in obsolete geometry; author its current revision explicitly')
+            obj['region_revision'] = %r
+        objects.append(obj)
+    result = dict(result)
+    result['objects'] = objects
+    return result
+''' % (positions, previous, revision)
+    source = server.candidate.source + suffix
+    if len(source.encode()) > 256 * 1024:
+        raise ValueError('continued character source exceeds mechanic size limit')
+    compile(source, '<character-continuation>', 'exec')
+    return dict(candidate=Candidate(source, hashlib.sha256(source.encode()).hexdigest()),
+                objects=objects, previous_hash=server.candidate.sha256, ids=sorted(positions))
+
+
+def persist(server, continuation, place_id, previous, revision):
+    """Called only inside the same transaction that archives the new geometry."""
+    from .region_characters import validate_region_objects
+    from .characters import validate_transition
+    objects = continuation['objects']; candidate = continuation['candidate']
+    validate_region_objects(server, objects, server.module_state)
+    validate_transition(server.module_state, server.module_state, objects, server.db)
+    updated = server.db.execute('UPDATE module SET source=?,sha256=?,objects=? WHERE singleton=1 AND sha256=?',
+        (candidate.source, candidate.sha256, json.dumps(objects), continuation['previous_hash']))
+    if updated.rowcount != 1:
+        raise ValueError('character source changed during construction')
+    server.memory.append('mechanic_changed', dict(module_hash=candidate.sha256,
+        previous_module_hash=continuation['previous_hash'], cause='place_continued',
+        interaction_cursor=server.interaction_cursor, places=[place_id],
+        before=dict(tiles=server.tiles, objects=server.objects),
+        after=dict(tiles=server.tiles, objects=objects),
+        previous_revision=previous, revision=revision, rebound_characters=continuation['ids']))
