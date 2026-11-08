@@ -3,7 +3,8 @@
 IntentQueue is safe for concurrent submitters. A runtime holds a separate flock
 for its entire life. Claimed requests are never automatically replayed, even if
 an author or deployment was interrupted. Operators must submit a new request ID
-when they deliberately want another attempt.
+when they deliberately want another attempt. Settlement growth instead has an
+owner-only retry-settlement command that reconciles the authoritative receipt.
 """
 import fcntl
 import math
@@ -110,6 +111,9 @@ class IntentQueue:
     def finish(self, identifier, status, result):
         if status not in ('succeeded', 'failed', 'interrupted'):
             raise ValueError('invalid terminal status')
+        row=self.db.execute('SELECT kind,result FROM requests WHERE id=?',(identifier,)).fetchone()
+        if row and row['kind']=='settlement':
+            result={**json.loads(row['result']), **result}
         payload = json.dumps(result, allow_nan=False, sort_keys=True)
         with self.db:
             updated = self.db.execute("UPDATE requests SET status=?,finished=?,result=? WHERE id=? AND status='running'",
@@ -245,7 +249,7 @@ class IntentQueue:
                         raise ValueError('invalid settlement outcome')
                     last=event['seq']
                     identity='settlement:'+page['world_id']+':'+str(event['seq'])
-                    payload=dict(world_id=page['world_id'],place_id=place,outcome_seq=event['seq'])
+                    payload=dict(world_id=page['world_id'],place_id=place,outcome_seq=event['seq'],revision=page.get('revision'),stage='queued')
                     self.db.execute("INSERT OR IGNORE INTO requests(id,player,text,kind,status,created,result) VALUES(?,?,?,?,?,?,?)",
                         (identity,'',theme,'settlement','queued',time.time(),json.dumps(payload)))
             if place is not None and not page.get('blocked'):
@@ -258,10 +262,18 @@ class IntentQueue:
 
     def recover(self):
         """Only call while holding the runtime lock, never from a submitter."""
+        rows=self.db.execute("SELECT id FROM requests WHERE status='running'").fetchall()
+        for row in rows:
+            self.finish(row['id'],'interrupted',dict(ok=False,error='runtime interrupted; reconcile before retry',outcome_state='uncertain'))
+        return len(rows)
+
+    def settlement_progress(self, identifier, **state):
         with self.db:
-            result = self.db.execute("UPDATE requests SET status='interrupted',finished=?,result=? WHERE status='running'",
-                                     (time.time(), json.dumps({'ok': False, 'error': 'runtime interrupted; outcome may be unknown; not replayed'})))
-            return result.rowcount
+            row=self.db.execute("SELECT result FROM requests WHERE id=? AND kind='settlement' AND status='running'",(identifier,)).fetchone()
+            if row is None: raise ValueError('settlement is not running')
+            value={**json.loads(row['result']),**state}
+            self.db.execute('UPDATE requests SET result=? WHERE id=?',(json.dumps(value),identifier))
+
 
     def status(self):
         rows = [dict(row) for row in self.db.execute('SELECT * FROM requests ORDER BY seq')]
@@ -347,6 +359,33 @@ class RuntimeGM:
                 pass
         return None
 
+    def retry_settlement(self, identifier):
+        """Explicit owner action under the runtime lock, never automatic replay."""
+        from world.client import admin_request
+        row=self.queue.db.execute('SELECT * FROM requests WHERE id=?',(identifier,)).fetchone()
+        if row is None or row['kind']!='settlement' or row['status'] not in ('failed','interrupted'):
+            raise ValueError('choose a failed or interrupted settlement request')
+        value=json.loads(row['result'])
+        keys=('world_id','place_id','revision','outcome_seq')
+        if not all(key in value for key in keys):
+            raise ValueError('legacy request has no recoverable identity')
+        path=Path(self.socket_path)
+        admin=path.parent.parent/'admin.sock' if path.parent.name=='transport' else Path(str(path)+'.admin')
+        result=admin_request('',dict(command='settlement_recovery',**{k:value[k] for k in keys}),admin_path=admin,timeout=30)
+        if result.get('ok') is not True: raise ValueError(result.get('error','recovery refused'))
+        if result.get('state') not in ('committed','not_committed','uncertain'): raise ValueError('invalid recovery reply')
+        attempts=value.pop('attempts',[])
+        attempts.append(dict(status=row['status'],finished=row['finished'],result=dict(value)))
+        value.update(attempts=attempts,reconciliation=result)
+        status=row['status']
+        if result['state']=='committed':
+            status='succeeded';value.update(ok=True,outcome_state='committed',stage='reconciled')
+        elif result['state']=='not_committed':
+            status='queued';value.update(stage='queued',outcome_state='not_committed')
+        with self.queue.db:
+            self.queue.db.execute('UPDATE requests SET status=?,result=? WHERE id=?',(status,json.dumps(value),identifier))
+        return dict(id=identifier,status=status,reconciliation=result)
+
     def step(self):
         from world import gm
         growth_blocked=None;place=None
@@ -390,7 +429,9 @@ class RuntimeGM:
                 path=Path(self.socket_path)
                 admin=(path.parent.parent/'admin.sock' if path.parent.name=='transport' else Path(str(path)+'.admin'))
                 report=author_settlement(admin,self.settlement_growth_theme,outcome['outcome_seq'],apply=True,timeout=self.timeout,
-                    expected_world_id=outcome['world_id'],expected_place_id=outcome['place_id'])
+                    expected_world_id=outcome['world_id'],expected_place_id=outcome['place_id'],
+                    expected_revision=outcome.get('revision') if outcome.get('attempts') else None,
+                    progress=lambda **state:self.queue.settlement_progress(item['id'],**state))
                 if report.get('applied') and report.get('commit'):
                     report.update({key:report['commit'][key] for key in ('source_path','source_sha256')})
             else:
@@ -501,6 +542,10 @@ def main(argv=None):
     submit.add_argument('--request-id', help='stable client idempotency key')
     status = sub.add_parser('status')
     status.add_argument('--state-dir', required=True)
+    retry = sub.add_parser('retry-settlement', help='Owner-only receipt reconciliation and explicit retry; stop the GM first')
+    retry.add_argument('--state-dir', required=True)
+    retry.add_argument('--socket', required=True)
+    retry.add_argument('--request-id', required=True)
     run = sub.add_parser('run', help='explicitly enable the public Luna author')
     run.add_argument('--state-dir', required=True)
     run.add_argument('--socket', required=True)
@@ -540,6 +585,9 @@ def main(argv=None):
                 gm._write(catalog_path, json.dumps(catalog))
                 wire = invoke(codex_argv(args.model, catalog_path), prompt.decode())
             print(json.dumps(decode_codex(wire)))
+        elif args.command == 'retry-settlement':
+            with RuntimeGM(args.state_dir,args.socket,model=MODEL) as worker:
+                print(json.dumps(worker.retry_settlement(args.request_id),sort_keys=True))
         elif args.command in ('submit', 'status'):
             queue = IntentQueue(args.state_dir)
             try:

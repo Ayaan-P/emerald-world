@@ -50,6 +50,64 @@ class Growth(unittest.TestCase):
             with patch('world.gm.admin_request',side_effect=admin),patch('world.author_settlement.author_settlement') as author:
                 self.assertIsNone(worker.step());author.assert_not_called()
 
+    def test_owner_recovery_before_provider_before_commit_and_after_lost_response(self):
+        from world.settlement_growth import reconcile
+        root=self.f.server.root
+        memory=self.f.server.memory.context(self.f.server)
+        identity=dict(world_id=memory['world_id'],place_id=memory['active_area']['place_id'],
+                      revision=memory['active_area']['revision'],outcome_seq=self.f.outcome['seq'])
+        def authority(_socket,request,**kwargs):return reconcile(self.f.server,request)
+        with RuntimeGM(root,root/'transport'/'world.sock',model=MODEL) as worker:
+            q=worker.queue
+            for stage in ('inspection','provider','commit'):
+                identifier='recovery-'+stage
+                with q.db:
+                    q.db.execute("INSERT INTO requests(id,player,text,kind,status,created,result) VALUES(?,?,?,?,?,?,?)",
+                                 (identifier,'','Grow','settlement','queued',0,json.dumps(identity)))
+                item=q.claim();self.assertEqual(item['id'],identifier)
+                q.settlement_progress(identifier,stage=stage,outcome_state='uncertain' if stage=='commit' else 'not_committed')
+                q.finish(identifier,'failed',dict(ok=False,error='TimeoutError'))
+                saved=next(r['result'] for r in q.status()['requests'] if r['id']==identifier)
+                self.assertEqual(saved['stage'],stage);self.assertEqual(saved['outcome_seq'],identity['outcome_seq'])
+                with patch('world.client.admin_request',side_effect=authority):
+                    if stage=='commit':
+                        # Simulate response loss after actual atomic founding.
+                        self.f.server.runtime=FixtureRuntime()
+                        response=self.f.transport('',self.f.request())
+                        self.assertTrue(response['ok'],response)
+                        result=worker.retry_settlement(identifier)
+                        self.assertEqual(result['status'],'succeeded')
+                        self.assertEqual(result['reconciliation']['state'],'committed')
+                        self.assertIsNone(q.claim())
+                    else:
+                        result=worker.retry_settlement(identifier)
+                        self.assertEqual(result['status'],'queued')
+                        self.assertEqual(q.claim()['id'],identifier)
+                        q.finish(identifier,'succeeded',dict(ok=True))
+
+    def test_recovery_defers_pending_and_rejects_wrong_revision_or_world(self):
+        from world.settlement_growth import reconcile
+        memory=self.f.server.memory.context(self.f.server)
+        request=dict(command='settlement_recovery',world_id=memory['world_id'],
+                     place_id=memory['active_area']['place_id'],revision=memory['active_area']['revision'],
+                     outcome_seq=self.f.outcome['seq'])
+        self.f.server.job=object()
+        self.assertEqual(reconcile(self.f.server,request)['state'],'uncertain')
+        self.f.server.job=None
+        for field in ('world_id','revision','place_id'):
+            with self.assertRaises(ValueError):reconcile(self.f.server,dict(request,**{field:'wrong'}))
+
+    def test_interruption_preserves_identity_and_stage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            q=IntentQueue(tmp);self.addCleanup(q.close)
+            page=dict(ok=True,world_id='w',place_id='p',revision='r',through=1,cursor=1,candidates=[],blocked=None)
+            q.observe_settlements(page,'Grow')
+            q.observe_settlements(dict(page,through=2,cursor=2,candidates=[dict(seq=2)]),'Grow')
+            item=q.claim();q.settlement_progress(item['id'],stage='commit')
+            q.recover();result=q.status()['requests'][0]['result']
+            self.assertEqual((result['world_id'],result['place_id'],result['outcome_seq'],result['stage']),('w','p',2,'commit'))
+            self.assertEqual(result['outcome_state'],'uncertain');self.assertIsNone(q.claim())
+
     def test_unrelated_guild_completion_does_not_trigger_growth(self):
         page=candidates(self.f.server)
         self.assertEqual(page['candidates'],[])  # founder outcome has no settlement steward

@@ -1560,6 +1560,12 @@ class WorldServer:
                         expected_world_id=request.get('expected_world_id'),expected_place_id=request.get('expected_place_id'))
                 except ValueError as exc:
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'settlement_recovery':
+                try:
+                    from .settlement_growth import reconcile
+                    result = reconcile(self, request)
+                except ValueError as exc:
+                    result = dict(ok=False, error=str(exc))
             elif request.get('command') == 'found_settlement':
                 try:
                     from .settlement_plans import begin

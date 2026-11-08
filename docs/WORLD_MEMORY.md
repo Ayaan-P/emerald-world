@@ -934,3 +934,29 @@ author adapter was separately invoked for preflight and refused this environment
 `0.156.1`. The gate was not changed and no model call occurred. The previous
 sandbox and native build blockers remain. Nothing here enables growth in a live
 world merely by merging or starting the ordinary default launcher.
+
+### Explicit settlement recovery
+
+Growth failures never replay automatically. `python -m world.runtime_gm
+retry-settlement --state-dir STATE --socket SOCKET --request-id ID` is an
+owner-initiated reconciliation command. Stop the running GM first: recovery
+holds the same exclusive runtime lock. It does not invoke the provider.
+Status retains the original world, place, public outcome, attempted revision,
+failure stage and previous attempts. Provider stderr is deliberately not saved.
+
+The authority checks the atomic founding receipt first. A receipt reconciles a
+lost success reply without creating another settlement. Without a receipt,
+pending authority work remains uncertain and is not queued. A retry requires
+the original world, place and exact revision, and the original public outcome
+must still exist. The next explicitly enabled GM run checks that revision again
+before provider invocation; normal commit guards and receipt uniqueness remain
+in force. A changed place/revision needs deliberate owner handling rather than
+automatic rebasing. Legacy terminal rows whose identities were overwritten
+cannot be safely recovered by this command. No automatic replay or sandbox or
+provider-version gate bypass is introduced.
+
+Recovery validation: 125 focused tests pass, including receipt reconciliation
+after an actual fixture-sandbox founding whose response is treated as lost,
+pre-publication retries, pending-write deferral, wrong-scope/revision rejection,
+and preservation of interrupted identity/stage. This does not establish live
+model invocation or native gameplay; the documented runtime blockers remain.
