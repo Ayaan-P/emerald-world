@@ -910,9 +910,26 @@ registered map selects its separate progress.
 
 This is opt-in personal exploration, with no rewards or anti-cheat claim.
 Validated client-reported presence is the evidence, not a server simulation of
-travel. Trainer discoveries are neither public world history nor model context,
-and other players do not receive the messages. Old-revision surveys pause when
+travel. Trainer discoveries stay out of public world history and model context by
+default, and other players do not receive the private messages. Old-revision surveys pause when
 the map changes; reactivating the exact archived map allows them to continue.
 Landmarks are coordinate destinations in existing geometry, not new sign art.
 Clients need their existing interactive chat path; this adds no Windows/headless
 chat UI and does not change native region admission.
+
+A player can deliberately share one discovered landmark while standing beside it:
+`/explore share camp` previews the public data and permanence. Only
+`/explore share camp confirm` publishes. The public record contains the landmark
+name, coordinates, exact map revision and durable place identity, not the player's
+name or other discoveries. This permission applies only to that arrival, not
+future surveys. The shared discovery can be recalled by landmark name and used
+as evidence for later authored destinations. It confirms consent and validated
+client-reported presence, not independently simulated travel. Repeated sharing
+of the same landmark/revision reuses its existing milestone. Publication and its
+receipt commit together; failed writes leave the private discovery intact.
+
+The end-to-end fixture follows an authenticated survey arrival through explicit
+sharing, public recall and the existing guarded route-author publication. The
+new destination cites the shared event, and the receipt survives restart. Model
+output is a deterministic fixture; this is not an automatic world-building
+trigger or proof of a live model/native game session.

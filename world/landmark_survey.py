@@ -1,11 +1,13 @@
 """Opt-in private landmark exploration over acknowledged generated geometry.
 
-Arrivals are client-reported validated presence, not anti-cheat proof. No trainer
-visits are copied to public history or sent to an author/model.
+Arrivals are client-reported validated presence, not anti-cheat proof. Private
+visits stay private unless a player explicitly shares one anonymous landmark
+arrival with public world history.
 """
 import argparse
 import json
 import time
+import sqlite3
 from pathlib import Path
 from .route_landscape import compile_plan, MAX_INPUT
 
@@ -16,6 +18,8 @@ class LandmarkSurvey:
         server.db.executescript('''
             CREATE TABLE IF NOT EXISTS survey_routes (revision TEXT PRIMARY KEY, sites TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS survey_sessions (trainer TEXT PRIMARY KEY, revision TEXT NOT NULL, active INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS survey_publications (revision TEXT, landmark TEXT, seq INTEGER NOT NULL,
+                PRIMARY KEY(revision,landmark));
             CREATE TABLE IF NOT EXISTS survey_visits (trainer TEXT, revision TEXT, landmark TEXT,
                 PRIMARY KEY(trainer,revision,landmark));
         ''')
@@ -55,6 +59,36 @@ class LandmarkSurvey:
         site=min((p for p in sites if p['id'] not in seen),key=lambda p:(abs(p['x']-x)+abs(p['y']-y),p['id']))
         return lines+[f'Next: {site["id"]} near ({site["x"]},{site["y"]}). Reach its clearing center.']
 
+    def share(self, conn, landmark, confirmed=False):
+        s=self.server;revision=self.scope(conn)
+        if revision is None:return ['Stand beside a discovered landmark in its acknowledged map to share it.']
+        row=s.db.execute('SELECT sites FROM survey_routes WHERE revision=?',(revision,)).fetchone()
+        sites=json.loads(row[0]) if row else []
+        site=next((p for p in sites if p['id']==landmark),None)
+        visited=s.db.execute('SELECT 1 FROM survey_visits WHERE trainer=? AND revision=? AND landmark=?',
+                             (conn['id'],revision,landmark)).fetchone()
+        if (site is None or not visited or abs(site['x']-conn['state'][2])+abs(site['y']-conn['state'][3])>1):
+            return ['Only a landmark you discovered and are standing beside can be shared.']
+        if not confirmed:
+            return ['Publish this landmark name, coordinates and map revision to public world history?',
+                    'Agents and other players can read it. Your name and private survey trail are excluded.',
+                    f'This record persists. Confirm with /explore share {landmark} confirm']
+        old=s.db.execute('SELECT seq FROM survey_publications WHERE revision=? AND landmark=?',(revision,landmark)).fetchone()
+        if old:return ['That landmark discovery is already in public world history.']
+        place=s.db.execute('SELECT place_id FROM world_places WHERE revision=?',(revision,)).fetchone()
+        if place is None:return ['Archived place identity unavailable; nothing was shared.']
+        try:
+            with s.db:
+                seq=s.memory.append('landmark_discovery_shared',dict(place_id=place[0],revision=revision,
+                    landmark=landmark,x=site['x'],y=site['y'],publication='explicit_player_share',
+                    basis='authenticated_acknowledged_client_presence',
+                    limits='A player chose to share this arrival. Travel is client-reported, not independently simulated.'))
+                s.db.execute('INSERT INTO survey_publications VALUES (?,?,?)',(revision,landmark,seq))
+        except sqlite3.Error:
+            return ['World history could not be saved. Nothing was shared; you can try again.']
+        s.revision=seq
+        return ['Landmark discovery shared with public world history. Your other discoveries remain private.']
+
     def reply(self, conn, lines):
         s=self.server
         for line in lines:s.guild_chat.message(conn,'World',line)
@@ -71,10 +105,12 @@ class LandmarkSurvey:
                     self.reply(conn,['Enter an acknowledged route map with a registered survey first.']);return True
                 with s.db:s.db.execute('INSERT OR REPLACE INTO survey_sessions VALUES (?,?,1)',(conn['id'],revision))
                 self.observe(conn)
+            elif len(command) in (2,3) and command[0]=='share' and (len(command)==2 or command[2]=='confirm'):
+                self.reply(conn,self.share(conn,command[1],len(command)==3));return True
             elif command==['stop']:
                 with s.db:s.db.execute('UPDATE survey_sessions SET active=0 WHERE trainer=?',(conn['id'],))
             elif command not in ([],['status']):
-                self.reply(conn,['Use /explore start, /explore status, or /explore stop.']);return True
+                self.reply(conn,['Use /explore start, status, stop, or share LANDMARK.']);return True
             self.reply(conn,self.lines(conn))
         return True
 

@@ -77,6 +77,55 @@ class LandmarkSurveyTests(unittest.TestCase):
             self.send(self.conn,'CAVE GET');self.send(self.conn,'CAVE ACK '+self.revision)
         self.state(self.conn,15,20);self.assertEqual(self.count(),1)
 
+    def test_explicit_share_becomes_recalled_author_evidence_without_identity(self):
+        from world import author_cave, author_routes
+        from test_author_cave import wire
+        self.command('/explore start');self.state(self.conn,15,20)
+        before=self.s.memory.history()['events']
+        self.command('/explore share camp')
+        self.assertEqual(self.s.memory.history()['events'],before)
+        self.command('/explore share camp confirm')
+        event=self.s.memory.history()['events'][-1]
+        self.assertEqual(event['event'],'landmark_discovery_shared')
+        self.assertEqual(event['revision'],self.revision)
+        self.assertEqual(event['place_id'],self.s.memory.place(self.revision))
+        self.assertNotIn('Scout',json.dumps(event))
+        self.assertNotIn('trainer',event)
+        self.command('/explore share camp confirm')
+        self.assertEqual(self.s.memory.history()['events'][-1],event)
+        self.send(self.conn,f'STATE {self.conn["seq"]+1} 0 9 8 8 4 7 1 '+'a'*16+' '+'b'*16)
+        def transport(_socket,request,**kw):return self.f.admin(request)
+        def provider(prompt,validator,**kw):
+            self.assertIn('landmark_discovery_shared',prompt)
+            self.assertNotIn('Scout',prompt)
+            candidate=plan();candidate['seed']=45
+            return validator(wire(candidate))
+        with patch('world.client.admin_request',side_effect=transport), \
+             patch('world.publish_cave.admin_request',side_effect=transport), \
+             patch('world.author_cave.request_validated',side_effect=provider):
+            self.assertEqual(author_routes.main(['Build beyond camp','--activate-shared','admin','--label','Beyond Camp']),0)
+        activation=self.s.memory.history()['events'][-1]
+        self.assertIn(event['seq'],activation['history_evidence'])
+        self.s.close();self.f.server=self.f.open();self.s=self.f.server
+        self.assertEqual(self.s.db.execute('SELECT seq FROM survey_publications').fetchone()[0],event['seq'])
+
+    def test_share_requires_current_presence_and_rolls_back_history_failure(self):
+        import sqlite3
+        self.command('/explore start');self.state(self.conn,15,20)
+        before=self.s.memory.history()['events']
+        self.command('/explore share unknown confirm')
+        self.state(self.conn,30,95);self.command('/explore share camp confirm')
+        self.assertEqual(self.s.memory.history()['events'],before)
+        self.state(self.conn,15,20)
+        append=self.s.memory.append
+        def fail(*args,**kw):
+            append(*args,**kw)
+            raise sqlite3.OperationalError('fixture failure after event insertion')
+        with patch.object(self.s.memory,'append',side_effect=fail):
+            self.command('/explore share camp confirm')
+        self.assertEqual(self.s.memory.history()['events'],before)
+        self.assertEqual(self.s.db.execute('SELECT count(*) FROM survey_publications').fetchone()[0],0)
+
     def test_registration_requires_exact_archived_template(self):
         changed=plan();changed['seed']=45
         result=self.f.admin(dict(command='register_survey',plan=changed))
