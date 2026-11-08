@@ -1,0 +1,61 @@
+{
+  "id": "signal",
+  "title": "The Two-Tower Signal",
+  "roles": [
+    "Field Observer",
+    "Archive Decoder"
+  ],
+  "ending": "Together you decoded the old route signal. Your expedition is recorded.",
+  "stages": [
+    {
+      "title": "The missing word",
+      "stations": [
+        {
+          "at": [
+            0,
+            0,
+            10,
+            10
+          ],
+          "clue": "The weather vane shows a SUN. Tell the decoder exactly what you see."
+        },
+        {
+          "at": [
+            0,
+            0,
+            15,
+            10
+          ],
+          "clue": "Archive rule: append RISE to the observers symbol. Submit the joined word."
+        }
+      ],
+      "answer": "SUNRISE",
+      "result": "The first signal is decoded. Follow the second pair of stations."
+    },
+    {
+      "title": "The second beacon",
+      "stations": [
+        {
+          "at": [
+            0,
+            3,
+            10,
+            10
+          ],
+          "clue": "The beacon flashes BLUE. Tell your partner its color."
+        },
+        {
+          "at": [
+            0,
+            3,
+            15,
+            10
+          ],
+          "clue": "The ledger pairs BLUE with TIDE and RED with ASH. Submit the matching word."
+        }
+      ],
+      "answer": "TIDE",
+      "result": "The towers answer in harmony. The old message is complete."
+    }
+  ]
+}

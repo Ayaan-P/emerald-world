@@ -74,6 +74,45 @@ The tkinter launcher remains a legacy/operator fallback. Its old UI labels are n
 
 Disconnecting does not stop a local host. Use Stop host in Local worlds or Quit launcher. Persistent dedicated hosting is separate. Do not launch two games on the same trainer save. Use **Save backups** on a stopped profile before experimenting. Backups contain trainer save bytes, not the server world, account credentials or durable adventure progress.
 
+## Cooperative field stories (RC12 candidate)
+
+This draft pairs private two-player clues with persistent local story choices.
+It requires the matched COMMANDS1 native client and server from the RC12 private
+command candidate. It does not change a player's party, money, items or save.
+
+An owner publishes `examples/cooperative_signal.json` using the existing owner
+API with `{"command":"publish_mystery","pack":...}`, then publishes
+`examples/cooperative_signal_story.json` with
+`{"command":"publish_opportunities","pack":...}`. These are immutable authored
+packs, not player chat commands. Publishing a different pack under an existing
+ID is refused. Use `world.client.admin_request` and the configured admin socket;
+never give players owner credentials. The example coordinates pass map bounds
+validation but still need an in-game walkability check before public deployment.
+
+1. One player types `/mystery start signal` and shares the displayed invitation
+   with their chosen partner. The partner uses `/mystery join CODE`.
+2. Each player uses `/mystery status`, travels to their own station and reads
+   `/mystery clue`. Clues are private. Tell your partner what you learned.
+3. The designated solver uses the displayed `/mystery solve STAGE ANSWER` line.
+   Both players must be present at their stations and have read their clues.
+   Solving advances both players. `/mystery leave` ends the run for both.
+4. After both stages, either participant can read `/story signal_after` in
+   Rustboro and choose whether to restore the warning relay or archive its
+   message. Other visitors then see the resulting local story. The relay is
+   narrative state, not a newly placed map object or a changed transport route.
+
+Run progress, both participants' completion, and the resulting place story
+survive server restarts. A resumed run still needs fresh player positions.
+`/mystery list` lists published mysteries and `/story` lists available local
+stories. Private choices are not posted to room chat. The owner can inspect the
+world database, so this is player-to-player privacy, not secrecy from the host.
+
+Authors can reuse the system with two roles, up to twelve paired clue stages,
+and story scenes with a `mystery` prerequisite. Only actual participants in a
+completed run satisfy that prerequisite. The server evaluates availability and
+commits choices with idempotent receipts; agents author content rather than
+asserting that a player completed it.
+
 ## Contributing
 
 Branch from current main, keep changes focused and record actual verification. Use disposable worlds for development, not a running human session. Preserve native battle/save/world ownership boundaries. Do not treat stale draft titles as a missing-feature list: many original stacked PRs were incorporated by an integration PR.
