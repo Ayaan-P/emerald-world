@@ -9,9 +9,9 @@ For RC10 game-side changes use the `engines/expansion-native` submodule:
 - Integration branch: `integrate/rc10-app`
 - Expansion repository: https://github.com/Ayaan-P/pokeemerald-expansion-native
 - Expansion branch containing the RC10 integration: `integrate/rc10-summary-fix`
-- This handoff's exact published source pin: `2c3d08f42e39fea85ccf5bcf77389d04848dd841`
-- Matching installed release checkpoint: `0.4.0-rc.10.9`
-- That checkpoint's Linux native binary SHA256: `5030e0994803daf0f44925adbbd5d23b7b6d4b48555694db5185747681c77ad0`
+- This handoff's exact published source pin: `c8feb78cfb7bdd82c19406eabe0f36716ea87f16`
+- Matching installed release checkpoint: `0.4.0-rc.10.10`
+- That checkpoint's Linux native binary SHA256: `6924a801aca5c06ed3814f8251e241152a27814a79c662e08e2cca5c13146c9b`
 
 Both the submodule gitlink and `scripts/build_expansion.py:PIN` must name that
 same commit. `.gitmodules` must point at **Ayaan-P's fork**: the old upstream
@@ -20,9 +20,9 @@ the upstream donor or port the root engine over Expansion. The runtime includes
 native ABI, controller, capture/naming, PC lifecycle and world integration fixes.
 
 This is a stable published checkpoint, not a promise that no later commits exist.
-Performance work and two-client May admission verification are proceeding in
-parallel. Consume a new published engine pin explicitly; do not rely on a moving
-branch as proof of the source used for a release.
+This checkpoint includes the native block-scheduling optimization and the May
+trainer co-op admission/initialization fixes. Consume a new published engine pin
+explicitly; do not rely on a moving branch as proof of release source.
 
 ## Fetch and verify
 
@@ -50,7 +50,7 @@ empty before claiming a release build. An independent direct source fetch is:
 
 ```sh
 git clone --branch integrate/rc10-summary-fix https://github.com/Ayaan-P/pokeemerald-expansion-native.git expansion-source
-git -C expansion-source checkout --detach 2c3d08f42e39fea85ccf5bcf77389d04848dd841
+git -C expansion-source checkout --detach c8feb78cfb7bdd82c19406eabe0f36716ea87f16
 ```
 
 The default app build may still target the old engine. Use the Expansion builder:
@@ -104,9 +104,14 @@ free of party contents, credentials and private chat.
 ## Evidence and limits
 
 The pinned source was published and used for a successful Linux native build.
-The installed checkpoint includes the idle-RFU guest admission correction.
-All three May starter encounter variants passed actual engine co-op capture
-preparation in a private fixture; that is **not** a completed bilateral May battle.
+The installed checkpoint includes the idle-RFU guest admission correction,
+pending trainer live-position refresh, and bypass of the obsolete four-human
+trainer-preview path. Two isolated native clients with copied saves and fresh
+tags reached the active battle loop for May, using debug invocation of her real
+script. No diagnostic position patch was enabled in the final passing run. This
+proves bilateral entry, **not** completion of the whole May battle. The scheduling
+regression passes with packet bytes, order and ACK semantics retained; no
+user-visible speedup ratio has been measured.
 User playtests established basic multiplayer battles and modern battle mechanics,
 not acceptance of PR #252's multi-place integration.
 
