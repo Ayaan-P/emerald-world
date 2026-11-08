@@ -423,8 +423,8 @@ def decode_codex(wire):
     if not completed or not messages or not isinstance(messages[-1], str):
         raise ValueError('Codex did not complete an author response')
     response = json.loads(messages[-1])
-    if type(response) is not dict or set(response) != {'source', 'tests'}:
-        raise ValueError('Codex author must return exactly source and tests')
+    if type(response) is not dict or set(response) not in ({'source', 'tests'}, {'character_plan', 'tests'}):
+        raise ValueError('Codex author must return source/tests or character_plan/tests')
     return response
 
 
