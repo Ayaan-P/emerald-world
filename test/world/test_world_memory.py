@@ -68,6 +68,66 @@ class WorldMemoryTests(unittest.TestCase):
             self.server._replace_cave(BLOB, previous_revision=other)
         self.assertEqual(self.server.shared_cave.identity, other)
 
+    def test_dormant_places_survive_and_can_be_inspected_without_activation(self):
+        harbor = self.server._replace_cave(BLOB, label='Cedar Harbor')
+        place = self.server.memory.place(harbor)
+        revised = self.server._replace_cave(BLOB[:168]+b'#'+BLOB[169:],
+                                            label='Cedar Harbor',previous_revision=harbor)
+        forest = self.server._replace_cave(BLOB[:169]+b'#'+BLOB[170:],label='Pine Forest')
+        self.server.close()
+        self.server = self.open()
+        before = self.server.memory.history()
+        result = self.admin(dict(command='world_recall',through=before['through'],terms=['cedar']))
+        saved = result['saved_places']
+        self.assertEqual({p['revision'] for p in saved['revisions']},{harbor,revised})
+        self.assertEqual({p['place_id'] for p in saved['revisions']},{place})
+        self.assertTrue(all(not p['active'] for p in saved['revisions']))
+        detail = self.admin(saved['revisions'][0]['inspect_request'])
+        self.assertTrue(detail['ok'])
+        self.assertEqual(detail['side'],31)
+        self.assertEqual(detail['place_id'],place)
+        self.assertEqual(len(detail['rows']),31)
+        self.assertEqual(self.server.shared_cave.identity,forest)
+        self.assertEqual(self.server.memory.history(),before)
+        page = self.admin(dict(command='saved_places',limit=1))
+        self.assertTrue(page['has_more'])
+        second = self.admin(dict(command='saved_places',limit=1,after=page['cursor']))
+        self.assertNotEqual(page['revisions'][0]['revision'],second['revisions'][0]['revision'])
+        self.assertFalse(self.admin(dict(command='inspect_saved_place',revision='bad'))['ok'])
+        self.assertFalse(self.admin(dict(command='saved_places',limit=100))['ok'])
+        # Read-only discovery does not relax the existing multiplayer barrier.
+        self.server.peers[1] = dict(state=[*self.server.cave_map,1,1],closing=False)
+        with self.assertRaisesRegex(ValueError,'occupied'):
+            self.server.activate_generated_area(harbor)
+        self.server.peers.clear()
+        self.server.activate_generated_area(harbor)
+        self.assertEqual(self.server.memory.place(harbor),place)
+
+    def test_dormant_destination_reaches_builder_after_restart(self):
+        harbor = self.server._replace_cave(BLOB,label='Cedar Harbor')
+        self.server._replace_cave(BLOB[:168]+b'#'+BLOB[169:],label='Pine Forest')
+        self.server.close()
+        self.server = self.open()
+        proposals=[]
+        def transport(_socket,request,timeout):
+            if request['command']=='deploy':
+                proposals.append(Path(request['source_path']).read_text())
+                return dict(ok=False,error='proposal captured, sandbox not executed')
+            return self.admin(request)
+        def author(prompt):
+            context=json.loads(prompt.split('Request and snapshot follow:\n',1)[1])['inspection']
+            destination=next(p for p in context['recalled_history']['saved_places']['revisions'] if p['revision']==harbor)
+            self.assertFalse(destination['active'])
+            self.assertEqual(destination['label'],'Cedar Harbor')
+            source="def update(context,state):\n    return {'state':state,'tiles':[], 'objects':[{'id':'archivist','group':0,'num':9,'x':9,'y':8,'gfx':8,'text':'Cedar Harbor is preserved in the archive.'}]}\n"
+            return dict(source=source,tests="def test_archivist():\n    assert update({}, {})['objects'][0]['id']=='archivist'\n")
+        with patch('world.gm.admin_request',side_effect=transport):
+            report=gm.author_and_deploy(self.root/'controller',self.root/'socket','Build an archivist remembering Cedar Harbor',author)
+        self.assertFalse(report['ok'])
+        self.assertEqual(len(proposals),1)
+        self.assertIn('Cedar Harbor',proposals[0])
+        self.assertNotEqual(self.server.shared_cave.identity,harbor)
+
     def test_labels_are_history_not_identity(self):
         identity = self.server._replace_cave(BLOB, label='Old Harbor')
         place = self.server.inspect()['world_memory']['active_area']['place_id']
@@ -100,6 +160,22 @@ class WorldMemoryTests(unittest.TestCase):
         self.server = self.open()
         self.assertEqual(before, self.server._active_terrain())
         self.assertEqual(event, self.server.memory.history()['events'][-1])
+
+    def test_dormant_terrain_is_inspected_and_restored_per_revision(self):
+        blob=test_shared_terrain_world.SharedTerrainWorld().blob()
+        revision=self.server._replace_cave(blob,label='Garden')
+        self.server.set_shared_terrain(revision,[dict(x=2,y=2,terrain='tall_grass')])
+        self.server._replace_cave(BLOB,label='Other cave')
+        self.server.close()
+        self.server=self.open()
+        before=self.server.memory.history()
+        detail=self.admin(dict(command='inspect_saved_place',revision=revision))
+        self.assertTrue(detail['ok'])
+        self.assertFalse(detail['active'])
+        self.assertEqual(detail['terrain_overrides'],[dict(x=2,y=2,before='original',after='tall_grass')])
+        self.assertEqual(self.server.memory.history(),before)
+        self.server.activate_generated_area(revision)
+        self.assertEqual(self.server._active_terrain()[0],detail['terrain_revision'])
 
     def test_area_history_failure_rolls_back_actual_publication(self):
         identity = self.server._replace_cave(BLOB)

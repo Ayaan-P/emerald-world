@@ -313,3 +313,50 @@ The actual mechanic-sandbox experiment was also attempted using the same real
 completion and proposal flow. Bubblewrap failed while creating its NETLINK_ROUTE
 socket with `Operation not permitted`. The candidate was rejected and no marker
 was installed. No unisolated fallback or retry of that denied operation was used.
+
+## Continuing dormant places
+
+The archive already retains multiple generated templates and per-revision terrain,
+but the native multiplayer protocol has one globally active generated template.
+`_replace_cave` rejects a different template while any trainer occupies a generated
+map. An atlas or link table alone cannot turn that slot into simultaneous regions.
+This iteration preserves that barrier instead of presenting metadata as working
+portals.
+
+The builder's recall now includes matching **current archived revisions** by
+literal label or selected stable place ID. This includes dormant destinations and
+multiple saved revisions of the same place. It exposes exact revision, place ID,
+label, active status and terrain revision, plus a read-only detail request. This
+also works for archives predating history coverage without inventing their past.
+No newest-by-timestamp guess silently selects a version to restore.
+
+`captured_at_seq` distinguishes current archive facts from a historical recall
+cutoff. The GM rejects mismatched current archive/inspection boundaries. Selection
+is bounded to eight revisions with an explicit `has_more`; the full catalog has
+keyset pagination. These are live current-state pages, not a frozen historical
+catalog. Literal matches are not exhaustive semantic place discovery.
+
+```sh
+python3 -m world.world_memory saved-places --admin-socket /path/to/admin.sock
+python3 -m world.world_memory inspect-saved-place --admin-socket /path/to/admin.sock --revision CONTENT_SHA256
+```
+
+The detail command checks the stored content digest, reads the saved base grid and
+its own persisted terrain overrides, and links to that logical place's history.
+It neither switches areas nor exposes trainer saves. Existing exact-revision
+activation remains the only restore path and retains its multiplayer checks.
+The builder can refer to a preserved destination in dialogue or a continuation
+proposal without claiming a player visited it or a portal already connects it.
+
+Tests preserve a harbor and its revision alongside a forest through restart,
+inspect both dormant versions without changing the active world, reject activation
+while occupied, and restore the chosen old version. A garden's terrain survives
+another area's activation and is inspected/restored by its exact revision. A real
+GM-controller fixture feeds a dormant harbor into a deterministic archivist proposal;
+deployment is intentionally rejected, not reported as sandbox or native success.
+
+A future simultaneous-region slice needs explicit per-player region/revision
+identity, region-scoped NPC/terrain replication and native transition negotiation
+before adding traversable connections. That protocol/native change is outside this
+history patch. The world does not yet support simultaneous persistent generated
+regions, cross-region portals or automatic agent expansion into new regions.

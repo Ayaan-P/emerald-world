@@ -1440,11 +1440,26 @@ class WorldServer:
                     # A busy activity or refused host action is not a failing
                     # mechanic module. Do not replace its persisted status.
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'saved_places':
+                try:
+                    if not set(request) <= {'command','after','limit'}:
+                        raise ValueError('invalid saved places request')
+                    result = dict(ok=True, **self.memory.saved_places(self, **{k:v for k,v in request.items() if k!='command'}))
+                except (ValueError, TypeError) as exc:
+                    result = dict(ok=False,error=str(exc))
+            elif request.get('command') == 'inspect_saved_place':
+                try:
+                    if set(request) != {'command','revision'}:
+                        raise ValueError('invalid saved place inspection')
+                    result = dict(ok=True, **self.memory.inspect_saved_place(self,request['revision']))
+                except ValueError as exc:
+                    result = dict(ok=False,error=str(exc))
             elif request.get('command') == 'world_recall':
                 try:
                     if not {'command', 'through'} <= set(request) or not set(request) <= {'command', 'through', 'places', 'terms'}:
                         raise ValueError('invalid recall request')
                     result = dict(ok=True, **self.memory.recall(**{k:v for k,v in request.items() if k != 'command'}))
+                    result['saved_places'] = self.memory.saved_places(self, places=result['places'], terms=result['terms'])
                 except (ValueError, TypeError) as exc:
                     result = dict(ok=False, error=str(exc))
             elif request.get('command') == 'world_history':

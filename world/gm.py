@@ -197,6 +197,11 @@ Use it to preserve places and existing changes when building. It is a bounded ta
 not complete history. Unknown past events must remain unknown. recalled_history contains request-matched
 older evidence and first recorded place changes, not just recent events. Use its seq references
 when preserving a landmark; older states do not override the current inspection.
+recalled_history.saved_places lists matching durable archived revisions, including dormant places.
+Preserve their exact place_id and revision when planning continuation. Different revisions of one
+place are alternatives, not separate regions. Only one generated revision can be active worldwide.
+Do not claim new portals, simultaneous regions, travel or activation from an overlay proposal.
+Use archived place names to ground public dialogue, but do not infer that players visited them.
 Guild goal completion records confirm the authority completed that group goal and
 awarded the recorded guild XP. Their travel basis is client-reported, not anti-cheat
 proof. They do not prove battle wins, catches, badge progress or native quests.
@@ -336,7 +341,8 @@ def _author_and_deploy(state_dir, socket_path, request, author_argv, timeout, *,
             recalled = _clean(admin_request(socket_path, recall_query, timeout))
             memory = context.get('data', context)['world_memory']
             if (recalled.get('ok') is not True or recalled.get('world_id') != memory['world_id']
-                    or recalled.get('through') != memory['through'] or type(recalled.get('events')) is not list):
+                    or recalled.get('through') != memory['through'] or type(recalled.get('events')) is not list
+                    or ('saved_places' in recalled and recalled['saved_places'].get('captured_at_seq') != memory['through'])):
                 raise ValueError('world recall did not match the inspected world and boundary')
             context['recalled_history'] = recalled
             report['history_evidence'] = dict(world_id=memory['world_id'], through=memory['through'],
