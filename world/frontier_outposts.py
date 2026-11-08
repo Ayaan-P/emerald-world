@@ -101,9 +101,11 @@ def construct(server, request):
         blob, report = compile_outpost(stored[0], request['plan'])
         from .character_rebinding import prepare
         continuation = prepare(server, cave.identity, report['revision'])
+        from .route_artifacts import derive
+        artifact=derive(server,cave.identity,blob,request['plan'])
         revision = server._replace_cave(blob, label=request['label'], previous_revision=cave.identity,
             expected_world_id=request['expected_world_id'], expected_sequence=request['expected_sequence'],
-            history_evidence=[], character_continuation=continuation)
+            history_evidence=[], character_continuation=continuation, route_artifact=artifact)
         return dict(ok=True, revision=revision, place_id=server.memory.place(revision),
                     persistent=True, construction=report,
                     rebound_characters=continuation['ids'] if continuation else [])

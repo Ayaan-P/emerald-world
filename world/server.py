@@ -1239,6 +1239,8 @@ class WorldServer:
                                        previous_revision=hashlib.sha256(previous[0]).hexdigest() if previous else None,
                                        continued=previous_revision is not None,
                                        **({'history_evidence':history_evidence} if history_evidence is not None else {})))
+                if route_artifact is not None and route_artifact['schema']==2:
+                    self.landmark_survey.continue_revision(route_artifact)
                 if character_continuation is not None:
                     from .character_rebinding import persist
                     persist(self, character_continuation, place_id, previous_revision, identity)
@@ -1259,7 +1261,9 @@ class WorldServer:
         if route_artifact is not None:
             from .route_artifacts import validate
             if not self.archive_generated_areas:raise ValueError('route artifacts require persistent archive')
-            validate(route_artifact, blob)
+            validate(route_artifact, blob, self)
+            if route_artifact.get('schema')==2 and route_artifact['parent']!=previous_revision:
+                raise ValueError('derived route must continue its exact parent')
         candidate = SharedCave(blob)  # validate completely before mutating anything
         if previous_revision is not None and (not self.persist_generated_cave or type(previous_revision) is not str or not re.fullmatch(r'[0-9a-f]{64}', previous_revision)):
             raise ValueError('invalid previous area revision')

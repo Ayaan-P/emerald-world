@@ -18,6 +18,8 @@ class LandmarkSurvey:
         server.db.executescript('''
             CREATE TABLE IF NOT EXISTS route_artifacts (revision TEXT PRIMARY KEY, artifact TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS survey_routes (revision TEXT PRIMARY KEY, sites TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS survey_inherited (trainer TEXT, revision TEXT, landmark TEXT, source_revision TEXT NOT NULL,
+                PRIMARY KEY(trainer,revision,landmark));
             CREATE TABLE IF NOT EXISTS survey_sessions (trainer TEXT PRIMARY KEY, revision TEXT NOT NULL, active INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS survey_publications (revision TEXT, landmark TEXT, seq INTEGER NOT NULL,
                 PRIMARY KEY(revision,landmark));
@@ -43,7 +45,34 @@ class LandmarkSurvey:
     def register_revision(self, revision):
         from .route_artifacts import load
         with self.server.lock:
-            return self.register(load(self.server, revision)['plan'])
+            artifact=load(self.server, revision)
+            sites=[p for p in artifact['report']['landmarks'] if p['id'] not in ('entry','exit')]
+            encoded=json.dumps(sites,sort_keys=True)
+            old=self.server.db.execute('SELECT sites FROM survey_routes WHERE revision=?',(revision,)).fetchone()
+            if old and old[0]!=encoded:raise ValueError('survey landmarks are already fixed for this revision')
+            with self.server.db:self.server.db.execute('INSERT OR IGNORE INTO survey_routes VALUES (?,?)',(revision,encoded))
+            return dict(ok=True,revision=revision,landmarks=len(sites))
+
+    def continue_revision(self, artifact):
+        """Within the construction transaction; retain evidence, never invent arrivals."""
+        s=self.server;old=artifact['parent'];new=artifact['revision']
+        old_survey=s.db.execute('SELECT sites FROM survey_routes WHERE revision=?',(old,)).fetchone()
+        if old_survey is None:return
+        sites=[p for p in artifact['report']['landmarks'] if p['id'] not in ('entry','exit')]
+        encoded=json.dumps(sites,sort_keys=True)
+        existing=s.db.execute('SELECT sites FROM survey_routes WHERE revision=?',(new,)).fetchone()
+        if existing and existing[0]!=encoded:raise ValueError('derived survey already differs')
+        s.db.execute('INSERT OR IGNORE INTO survey_routes VALUES (?,?)',(new,encoded))
+        from .route_artifacts import load
+        parent_sites={p['id']:p for p in load(s,old)['report']['landmarks']}
+        registered={p['id']:p for p in json.loads(old_survey[0])}
+        retained={name for name in artifact['report']['retained'] if registered.get(name)==parent_sites.get(name)}
+        evidence=s.db.execute('SELECT trainer,landmark,source_revision FROM survey_inherited WHERE revision=?',(old,)).fetchall()
+        evidence+=s.db.execute('SELECT trainer,landmark,revision FROM survey_visits WHERE revision=?',(old,)).fetchall()
+        for trainer,landmark,source in evidence:
+            if landmark in retained:
+                s.db.execute('INSERT OR IGNORE INTO survey_inherited VALUES (?,?,?,?)',(trainer,new,landmark,source))
+        s.db.execute('UPDATE survey_sessions SET revision=? WHERE revision=?',(new,old))
 
     def scope(self, conn):
         s=self.server;state=conn.get('state');cave=s._connection_cave(conn)
@@ -58,7 +87,10 @@ class LandmarkSurvey:
         revision,active=row
         sites=json.loads(s.db.execute('SELECT sites FROM survey_routes WHERE revision=?',(revision,)).fetchone()[0])
         seen={r[0] for r in s.db.execute('SELECT landmark FROM survey_visits WHERE trainer=? AND revision=?',(conn['id'],revision))}
-        lines=[f'Survey: {len(seen)}/{len(sites)} landmarks. '+('Active.' if active else 'Paused.')]
+        inherited={r[0] for r in s.db.execute('SELECT landmark FROM survey_inherited WHERE trainer=? AND revision=?',(conn['id'],revision))}
+        carried=len(inherited-seen);seen|=inherited
+        lines=([f'{carried} unchanged landmarks retained from earlier visits.'] if carried else [])
+        lines += [f'Survey: {len(seen)}/{len(sites)} landmarks. '+('Active.' if active else 'Paused.')]
         if len(seen)==len(sites):return lines+['Survey complete. Your discoveries are saved privately.']
         if self.scope(conn)!=revision:return lines+['Return to the same map revision to continue.']
         x,y=conn['state'][2:4]
