@@ -65,6 +65,7 @@ def records(state):
 
 
 def validate_transition(before, after, objects, db):
+    validate_history_cursor(before, after, db)
     old, new = records(before), records(after)
     if old.keys() - new.keys():
         raise ValueError('persistent characters must be retained; retire explicitly')
@@ -95,9 +96,10 @@ def author_contract():
         'record_fields': sorted(FIELDS),
         'team_member': {'species': 'enabled numeric species ID', 'level': 'integer 1..100'},
         'presence': 'active requires a matching top-level objects entry; away/retired must not render',
-        'identity': 'stable ID matches object_id, never delete; retire explicitly; version starts at 1 and increments exactly once per changed record',
+        'identity': 'stable ID matches object_id, never delete; retire explicitly; version starts at 1 and increments exactly once per committed changed record, not once per processed history event; coalesce a batch before assigning the version',
         'evidence': 'up to eight exact public world_memory sequence IDs; creation may have none; rationale is authored interpretation, never proof of battles or catches',
-        'runtime': 'world_history is a bounded recent authority tail; use durable seq cursors for replay-safe decisions; absence is not proof an event never happened',
+        'runtime': 'character_history is an ordered bounded batch after state.character_history_cursor. Process every event once, then acknowledge through in that state key. Empty or has_more does not mean history is absent. Preserve the cursor across script replacements. world_history is only the recent tail.',
+        'interaction_order': 'Native dialogue emits INTERACT before battle consent. Keep meet-memory outside the versioned character record if a battle is offered; moving or revising the character during that prompt intentionally invalidates the challenge.',
         'limits': 'eight public fictional characters, four goals, relationships only to other registered NPC identities; never store private player teams or save fields',
         'native_battles': 'not available through this character registry alone; do not claim a battle occurred or a team is native until the battle adapter confirms it',
     }
@@ -151,3 +153,55 @@ def report_result(server, conn, fields):
             version=pending['version'], outcome=int(fields[4]), evidence='authenticated_client_report_not_verified_outcome'))
     conn.pop('character_pending')
     return 'CHARACTER_RESULT_ACK ' + ' '.join(fields[1:4]) + '\n'
+
+
+CURSOR_KEY = 'character_history_cursor'
+HISTORY_BATCH = 16
+
+
+def history_cursor(state):
+    cursor = state.get(CURSOR_KEY, 0) if type(state) is dict else 0
+    if type(cursor) is not int or not 0 <= cursor <= 2**63-1:
+        raise ValueError('invalid character history cursor')
+    return cursor
+
+
+def history_feed(db, state):
+    """Ordered public events after the durable cursor, never a lossy recent tail.
+
+    Fixed-size summaries avoid replaying huge geometry payloads into the sandbox.
+    Full original evidence remains accessible through the existing host history API.
+    """
+    after = history_cursor(state)
+    rows = db.execute("SELECT seq,data FROM events WHERE kind='world_memory' AND seq>? ORDER BY seq LIMIT ?",
+                      (after, HISTORY_BATCH + 1)).fetchall()
+    events = []
+    for seq, raw in rows[:HISTORY_BATCH]:
+        original = json.loads(raw)
+        event = dict(seq=seq, event=original['event'], evidence=original.get('evidence'),
+                     recorded_at=original['recorded_at'], details='bounded_summary_full_event_in_world_history')
+        for key in ('place_id', 'label', 'character_id', 'goal_kind', 'guild_name'):
+            value = original.get(key)
+            if type(value) is str:
+                event[key] = value[:160]
+        if original['event'] == 'area_named':
+            event.update(before=original['before'][:160], after=original['after'][:160])
+        elif original['event'] == 'character_changed':
+            character = original['after']
+            event.update(character_version=character['version'], character_status=character['status'])
+        elif original['event'] == 'terrain_changed':
+            event['changed_cell_count'] = len(original['tiles'])
+        elif original['event'] == 'guild_goal_completed':
+            event.update(credited=original['credited'], target=original['target'],
+                         awarded_guild_xp=original['awarded_guild_xp'])
+        events.append(event)
+    return dict(after=after, through=events[-1]['seq'] if events else after,
+                events=events, has_more=len(rows)>HISTORY_BATCH,
+                cursor_state_key=CURSOR_KEY)
+
+
+def validate_history_cursor(before, after, db):
+    previous, current = history_cursor(before), history_cursor(after)
+    feed = history_feed(db, before)
+    if current < previous or current not in {previous, *[e['seq'] for e in feed['events']]}:
+        raise ValueError('character history cursor must acknowledge this ordered public batch')

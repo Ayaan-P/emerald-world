@@ -1705,7 +1705,9 @@ class WorldServer:
         # Failed candidates retry these same durable event IDs, never lose them.
         rows = self.db.execute("SELECT seq,data FROM events WHERE kind='interaction' AND seq>? ORDER BY seq LIMIT 64",
                                (self.interaction_cursor,)).fetchall()
+        from .characters import history_feed
         return dict(players=self.inspect()['players'], revision=self.revision, tick=self.tick,
+                    character_history=history_feed(self.db, self.module_state),
                     world_history=self.memory.context(self),
                     interactions=[dict(json.loads(data), seq=seq) for seq, data in rows])
 
