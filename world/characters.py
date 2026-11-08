@@ -25,7 +25,7 @@ def records(state):
     for identity, character in value.items():
         if type(identity) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}', identity):
             raise ValueError('invalid character identity')
-        if type(character) is not dict or set(character) != FIELDS:
+        if type(character) is not dict or not FIELDS <= set(character) or set(character)-FIELDS-{'offer'}:
             raise ValueError('invalid character fields')
         if type(character['version']) is not int or not 1 <= character['version'] <= 2**31-1:
             raise ValueError('invalid character version')
@@ -34,6 +34,10 @@ def records(state):
         _text(character['reason'], 240)
         if character['object_id'] != identity or character['status'] not in ('active', 'away', 'retired'):
             raise ValueError('invalid character presence')
+        if character.get('offer') is not None:
+            validate_offer(character['offer'])
+            if character['status'] != 'active':
+                raise ValueError('only active characters may offer an expedition')
         goals = character['goals']
         if type(goals) is not list or len(goals) > 4:
             raise ValueError('invalid character goals')
@@ -77,6 +81,11 @@ def validate_transition(before, after, objects, db):
         previous = old.get(identity)
         if previous == character:
             continue
+        old_offer = previous.get('offer') if previous else None
+        new_offer = character.get('offer')
+        if old_offer and new_offer and old_offer['id'] == new_offer['id']:
+            if new_offer['revision'] < old_offer['revision'] or (new_offer['revision'] == old_offer['revision'] and new_offer != old_offer):
+                raise ValueError('changed offer terms require a newer offer revision')
         if character['version'] != (previous['version'] + 1 if previous else 1):
             raise ValueError('character version must advance exactly once')
         if previous and previous['status'] == 'retired' and character['status'] != 'retired':
@@ -94,6 +103,8 @@ def author_contract():
     return {
         'state_key': KEY,
         'record_fields': sorted(FIELDS),
+        'optional_offer': {'id':'stable offer ID','revision':'positive revision, increase when destination/count changes','kind':'expedition','place_id':'native:canonical map','target':'1..50 guild members'},
+        'offer_consent':'CHARQUEST1 native explicit acceptance; guild leader only, existing chronicle ON required, never toggle publication; completion uses existing guild authority',
         'team_member': {'species': 'enabled numeric species ID', 'level': 'integer 1..100'},
         'presence': 'active requires a matching top-level objects entry; away/retired must not render',
         'identity': 'stable ID matches object_id, never delete; retire explicitly; version starts at 1 and increments exactly once per committed changed record, not once per processed history event; coalesce a batch before assigning the version',
@@ -180,7 +191,7 @@ def history_feed(db, state):
         original = json.loads(raw)
         event = dict(seq=seq, event=original['event'], evidence=original.get('evidence'),
                      recorded_at=original['recorded_at'], details='bounded_summary_full_event_in_world_history')
-        for key in ('place_id', 'label', 'character_id', 'goal_kind', 'guild_name'):
+        for key in ('place_id', 'label', 'character_id', 'character_offer_id', 'goal_kind', 'guild_name'):
             value = original.get(key)
             if type(value) is str:
                 event[key] = value[:160]
@@ -192,6 +203,8 @@ def history_feed(db, state):
         elif original['event'] == 'terrain_changed':
             event['changed_cell_count'] = len(original['tiles'])
         elif original['event'] == 'guild_goal_completed':
+            if 'character_offer_revision' in original:
+                event['character_offer_revision'] = original['character_offer_revision']
             event.update(credited=original['credited'], target=original['target'],
                          awarded_guild_xp=original['awarded_guild_xp'])
         events.append(event)
@@ -205,3 +218,80 @@ def validate_history_cursor(before, after, db):
     feed = history_feed(db, before)
     if current < previous or current not in {previous, *[e['seq'] for e in feed['events']]}:
         raise ValueError('character history cursor must acknowledge this ordered public batch')
+
+
+def validate_offer(offer):
+    from .build_catalog import catalog_maps
+    if type(offer) is not dict or set(offer) != {'id','revision','kind','place_id','target'}:
+        raise ValueError('invalid character expedition offer')
+    if type(offer['id']) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}',offer['id']):
+        raise ValueError('invalid offer identity')
+    if type(offer['revision']) is not int or not 1 <= offer['revision'] <= 2**31-1:
+        raise ValueError('invalid offer revision')
+    if offer['kind'] != 'expedition' or type(offer['target']) is not int or not 1 <= offer['target'] <= 50:
+        raise ValueError('invalid offer objective')
+    place=offer['place_id']
+    if type(place) is not str or not place.startswith('native:'):
+        raise ValueError('offer destination must be a native map')
+    name=place[7:]
+    if (not re.fullmatch('[A-Za-z0-9_]{1,63}',name) or name.startswith('GeneratedWorld_')
+            or name not in {m['name'] for m in catalog_maps().values()}):
+        raise ValueError('unsupported offer destination')
+    return offer
+
+
+class CharacterOfferError(ValueError):
+    pass
+
+
+def accept_offer(server, conn, fields):
+    """Explicit native acceptance starts an existing guild objective, never a reward."""
+    import time
+    from .guilds import GuildError
+    if (len(fields)!=6 or not conn.get('character_quest_capable') or
+            server.peers.get(conn.get('id')) is not conn or conn.get('closing')):
+        raise CharacterOfferError('UNAVAILABLE')
+    try:
+        seq,version,revision=int(fields[1]),int(fields[3]),int(fields[5])
+    except ValueError:
+        raise CharacterOfferError('STALE') from None
+    if ([str(seq),str(version),str(revision)] != [fields[1],fields[3],fields[5]]
+            or not conn['seq'] < seq <= 2**31-1):
+        raise CharacterOfferError('STALE')
+    character=records(server.module_state).get(fields[2])
+    offer=character.get('offer') if character else None
+    if (not character or character['status']!='active' or character['version']!=version
+            or not offer or offer['id']!=fields[4] or offer['revision']!=revision):
+        raise CharacterOfferError('STALE')
+    obj=next((obj for obj in server.objects if obj['id']==fields[2]),None)
+    state=conn.get('state')
+    if (not obj or not state or not state[6] or time.monotonic()-conn.get('state_time',0)>5
+            or tuple(state[:2]) in (server.cave_map,server.wilds_map)
+            or state[:2]!=[obj['group'],obj['num']] or conn.get('character_pending')
+            or server.link_protocol.busy(conn['id']) or server.rally.current(conn) is not None):
+        raise CharacterOfferError('UNAVAILABLE')
+    dx,dy={1:(0,1),2:(0,-1),3:(-1,0),4:(1,0)}.get(state[4],(0,0))
+    if (state[2]+dx,state[3]+dy)!=(obj['x'],obj['y']):
+        raise CharacterOfferError('UNAVAILABLE')
+    guild=server.guilds._member(conn['id'])
+    if not guild or guild[2]!=conn['id']:
+        raise CharacterOfferError('LEADER')
+    receipt=(guild[0],fields[2],offer['id'],revision)
+    exists=server.db.execute('SELECT 1 FROM guild_character_offer_receipts WHERE guild_id=? AND character_id=? AND offer_id=? AND offer_revision=?',receipt).fetchone()
+    if not exists:
+        privacy=server.db.execute('SELECT enabled FROM guild_world_history WHERE guild_id=?',(guild[0],)).fetchone()
+        if not privacy or not privacy[0]:raise CharacterOfferError('PRIVATE')
+        current=server.db.execute('SELECT complete FROM guild_expeditions WHERE guild_id=?',(guild[0],)).fetchone()
+        if current and not current[0]:raise CharacterOfferError('ACTIVE')
+        count=server.db.execute('SELECT COUNT(*) FROM guild_members WHERE guild_id=?',(guild[0],)).fetchone()[0]
+        if offer['target']>count:raise CharacterOfferError('MEMBERS')
+    try:
+        server.guilds.expedition(conn['id'],['start',offer['place_id'][7:],str(offer['target'])],
+                                character_offer=(fields[2],offer['id'],revision))
+    except GuildError as exc:
+        raise CharacterOfferError('REFUSED') from exc
+    conn['seq']=seq
+    if not exists:
+        # Existing presence deduplication must notice the newly started goal.
+        server.guild_chat.epoch+=1
+    return 'CHARACTER_ACCEPTED '+ ' '.join([str(seq),fields[2],offer['id'],str(revision),'ALREADY' if exists else 'STARTED'])+'\n'

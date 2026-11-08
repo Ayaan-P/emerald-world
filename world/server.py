@@ -538,6 +538,9 @@ class WorldServer:
                 character = records(self.module_state).get(obj['id'])
                 if character and character['status'] == 'active':
                     lines.append('CHARACTER ' + obj['id'] + ' ' + str(character['version']))
+                    if conn.get('character_quest_capable') and character.get('offer'):
+                        offer=character['offer']
+                        lines.append('CHARACTER_OFFER '+ ' '.join(map(str,[obj['id'],character['version'],offer['id'],offer['revision'],offer['target'],offer['place_id'][7:]])))
         meeting = conn.get('meeting')
         if conn.get('social') and meeting:
             lines.append('MEET ' + ' '.join(str(meeting[k]) for k in
@@ -588,6 +591,9 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                character_quest_capable = role.endswith('CHARQUEST1')
+                if character_quest_capable:
+                    role = role[:-10]
                 character_capable = role.endswith('CHAR1')
                 if character_capable:
                     role = role[:-5]
@@ -628,6 +634,9 @@ class WorldServer:
                 travel = role in ('SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
                 social = role in ('SOCIAL', 'SOCIALCHAT', 'SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
                 link = role == 'LINK'
+                if character_quest_capable and not character_capable:
+                    self._error(conn, 'AUTH')
+                    return
                 if character_capable and not social:
                     self._error(conn, 'AUTH')
                     return
@@ -690,6 +699,7 @@ class WorldServer:
                 conn['id'] = name
                 conn['social'] = social
                 conn['character_capable'] = character_capable
+                conn['character_quest_capable'] = character_quest_capable
                 conn['rules_capable'] = rules_capable
                 conn['rules_version'] = rules_version
                 conn['region_capable'] = region_capable
@@ -839,6 +849,18 @@ class WorldServer:
                 if raw.decode('ascii') != ' '.join(fields):
                     raise ValueError('noncanonical chat line')
                 self._chat(conn, fields)
+                return
+            if fields and fields[0] == 'CHARACTER_ACCEPT':
+                from .characters import accept_offer, CharacterOfferError
+                try:
+                    with self.lock:
+                        if raw.decode('ascii') != ' '.join(fields):
+                            raise CharacterOfferError('STALE')
+                        self._queue(conn,accept_offer(self,conn,fields))
+                except (CharacterOfferError,sqlite3.Error) as exc:
+                    code=str(exc) if isinstance(exc,CharacterOfferError) else 'REFUSED'
+                    nonce=fields[1] if len(fields)>1 and fields[1].isdigit() and len(fields[1])<=10 else '0'
+                    self._queue(conn,'CHARACTER_OFFER_REJECT '+nonce+' '+code+'\n')
                 return
             if fields and fields[0] in ('CHARACTER_CHALLENGE', 'CHARACTER_RESULT'):
                 from .characters import challenge, report_result

@@ -12,7 +12,7 @@ EVENT_FIELDS = {
     'area_activated': {'place_id', 'label'},
     'area_named': {'place_id', 'before', 'after'},
     'region_opened': {'place_id', 'label'},
-    'guild_goal_completed': {'place_id', 'goal_kind', 'guild_name'},
+    'guild_goal_completed': {'place_id', 'goal_kind', 'guild_name', 'character_id', 'character_offer_id', 'character_offer_revision'},
     'character_changed': {'character_id', 'character_status'},
 }
 
@@ -31,7 +31,8 @@ def validate_plan(plan):
         raise ValueError('one to sixteen character chapters required')
     identities=set()
     for index,chapter in enumerate(chapters):
-        if type(chapter) is not dict or set(chapter) != {'id','when','goals','team','status','object','reason'}:
+        if (type(chapter) is not dict or not {'id','when','goals','team','status','object','reason'} <= set(chapter)
+                or set(chapter)-{'id','when','goals','team','status','object','reason','offer'}):
             raise ValueError('invalid chapter fields')
         identity=chapter['id']
         if type(identity) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}',identity) or identity in identities:
@@ -42,11 +43,19 @@ def validate_plan(plan):
             if condition is not None:raise ValueError('first chapter starts on approved publication')
         elif (type(condition) is not dict or type(condition.get('event')) is not str or condition.get('event') not in EVENT_FIELDS
               or not set(condition) <= EVENT_FIELDS[condition['event']] | {'event'}
-              or len(condition)<2 or any(type(v) is not str or not 1 <= len(v) <= 160 for v in condition.values())):
+              or len(condition)<2 or any((type(v) is not int or not 1<=v<=2**31-1) if k=='character_offer_revision'
+                  else (type(v) is not str or not 1<=len(v)<=160) for k,v in condition.items())):
             raise ValueError('chapter needs a specific public-event condition')
+        previous_offer=chapters[index-1].get('offer') if index else None
+        if previous_offer and condition['event']=='guild_goal_completed':
+            expected={'character_id':plan['id'],'character_offer_id':previous_offer['id'],
+                      'character_offer_revision':previous_offer['revision']}
+            if any(condition.get(key)!=value for key,value in expected.items()):
+                raise ValueError('offered expedition completion requires exact character and offer identity')
         character=dict(version=1,name=plan['name'],role=plan['role'],goals=chapter['goals'],relationships={},
                        team=chapter['team'],status=chapter['status'],object_id=plan['id'],
                        evidence=plan['origin_evidence'],reason=chapter['reason'])
+        if chapter.get('offer') is not None:character['offer']=chapter['offer']
         records({'world_characters':{plan['id']:character}})
         obj=chapter['object']
         if chapter['status']=='active':
@@ -83,6 +92,7 @@ def chapter_step(plan, definition, published_after, context, result):
         cast[identity]=dict(version=1,name=plan['name'],role=plan['role'],goals=chapter['goals'],
             relationships={},team=chapter['team'],status=chapter['status'],object_id=identity,
             evidence=plan['origin_evidence'],reason=chapter['reason'])
+        if chapter.get('offer') is not None:cast[identity]['offer']=chapter['offer']
         original=None
     else:
         if progress['definition'] != definition:
@@ -100,6 +110,8 @@ def chapter_step(plan, definition, published_after, context, result):
         progress['chapter']=next_index
         cast[identity].update(goals=chapter['goals'],team=chapter['team'],status=chapter['status'],
                               evidence=[event['seq']],reason=chapter['reason'])
+        cast[identity].pop('offer',None)
+        if chapter.get('offer') is not None:cast[identity]['offer']=chapter['offer']
     character=cast[identity]
     if original is not None and character != original:
         character['version']=original['version']+1
@@ -145,6 +157,8 @@ def contract():
     return {'response': '{"character_plan": plan, "tests": "Python tests for update"}',
             'plan_fields':['id','name','role','origin_evidence','chapters'],
             'chapter_fields':['id','when','goals','team','status','object','reason'],
+            'optional_chapter_field':'offer: validated expedition offer; requires explicit native acceptance and pre-existing guild chronicle ON',
+            'scope':'shared-world characters respond to public events from any opted-in guild; guild_name is a literal name, not stable identity; an offered expedition completion must match its exact character_id, character_offer_id and character_offer_revision',
             'first_when':None,'later_when':'exact public event plus at least one listed field, all comparisons must match',
             'events':{name:sorted(fields) for name,fields in EVENT_FIELDS.items()},
             'limits':'one new stable character, up to sixteen authored chapters; valid native object maps only; 16 KiB plan',

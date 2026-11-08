@@ -45,6 +45,12 @@ class Guilds:
             CREATE TABLE IF NOT EXISTS guild_expeditions (
                 guild_id INTEGER PRIMARY KEY, map_name TEXT NOT NULL,
                 goal INTEGER NOT NULL, complete INTEGER NOT NULL DEFAULT 0);
+            CREATE TABLE IF NOT EXISTS guild_character_offer_receipts (
+                guild_id INTEGER NOT NULL, character_id TEXT NOT NULL, offer_id TEXT NOT NULL,
+                offer_revision INTEGER NOT NULL, PRIMARY KEY(guild_id,character_id,offer_id,offer_revision));
+            CREATE TABLE IF NOT EXISTS guild_expedition_offers (
+                guild_id INTEGER PRIMARY KEY, character_id TEXT NOT NULL, offer_id TEXT NOT NULL,
+                offer_revision INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS guild_expedition_visits (
                 guild_id INTEGER NOT NULL, trainer TEXT NOT NULL,
                 PRIMARY KEY(guild_id, trainer));
@@ -157,6 +163,8 @@ class Guilds:
             self.db.execute('DELETE FROM guild_meetups WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_posts WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_world_history WHERE guild_id=?',(guild[0],))
+            self.db.execute('DELETE FROM guild_character_offer_receipts WHERE guild_id=?',(guild[0],))
+            self.db.execute('DELETE FROM guild_expedition_offers WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_stats WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_members WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guilds WHERE id=?',(guild[0],))
@@ -250,8 +258,13 @@ class Guilds:
         if not enabled or not enabled[0] or self.record_outcome is None:
             return
         after_xp = self.db.execute('SELECT xp FROM guild_stats WHERE guild_id=?',(guild[0],)).fetchone()[0]
+        offer_fields={}
+        if kind=='expedition':
+            offer=self.db.execute('SELECT character_id,offer_id,offer_revision FROM guild_expedition_offers WHERE guild_id=?',(guild[0],)).fetchone()
+            if offer:
+                offer_fields=dict(character_id=offer[0],character_offer_id=offer[1],character_offer_revision=offer[2])
         try:
-            self.record_outcome('guild_goal_completed', dict(
+            self.record_outcome('guild_goal_completed', dict(**offer_fields,
                 guild_name=guild[1], goal_kind=kind, place_id='native:'+map_name,
                 target=goal, credited=credited, awarded_guild_xp=after_xp-before_xp,
                 resulting_guild_xp=after_xp, publication='guild_leader_opt_in',
@@ -304,7 +317,7 @@ class Guilds:
             self._record_completion(guild,'meetup',row[0],row[1],len(set(ready_members).intersection(members)),before_xp)
             return guild[1],row[0],row[1],members
 
-    def expedition(self, trainer, args):
+    def expedition(self, trainer, args, *, character_offer=None):
         """A cooperative visit objective. Arrival is client-reported, not anti-cheat."""
         with self.db:
             guild=self._require(trainer)
@@ -316,19 +329,39 @@ class Guilds:
                 return [f'Expedition: {row[0]} {count}/{row[1]} trainers ({state}).']
             self._require(trainer,leader=True)
             if args == ['cancel']:
+                active=self.db.execute('SELECT complete FROM guild_expeditions WHERE guild_id=?',(guild[0],)).fetchone()
+                binding=self.db.execute('SELECT character_id,offer_id,offer_revision FROM guild_expedition_offers WHERE guild_id=?',(guild[0],)).fetchone()
+                if active and not active[0] and binding:
+                    self.db.execute('DELETE FROM guild_character_offer_receipts WHERE guild_id=? AND character_id=? AND offer_id=? AND offer_revision=?',(guild[0],*binding))
                 self.db.execute('DELETE FROM guild_expedition_visits WHERE guild_id=?',(guild[0],))
+                self.db.execute('DELETE FROM guild_expedition_offers WHERE guild_id=?',(guild[0],))
                 removed=self.db.execute('DELETE FROM guild_expeditions WHERE guild_id=?',(guild[0],)).rowcount
                 return ['Expedition cancelled.' if removed else 'No expedition to cancel.']
             if len(args)!=3 or args[0].lower()!='start' or not args[2].isascii() or not args[2].isdecimal() or len(args[2])>2:
                 raise GuildError('Use /guild expedition start MAP COUNT or cancel.')
             name=self.maps.get(args[1].lower())
             if not name: raise GuildError('Unknown map. Use a canonical World map name, e.g. Route101.')
+            if character_offer is not None:
+                if (type(character_offer) is not tuple or len(character_offer)!=3 or
+                    any(type(v) is not str or not NAME.fullmatch(v) for v in character_offer[:2]) or
+                    type(character_offer[2]) is not int or not 1<=character_offer[2]<=2**31-1):
+                    raise GuildError('Invalid character offer.')
+                receipt=(guild[0],*character_offer)
+                if self.db.execute('SELECT 1 FROM guild_character_offer_receipts WHERE guild_id=? AND character_id=? AND offer_id=? AND offer_revision=?',receipt).fetchone():
+                    return ['Character offer already accepted.']
+                publication=self.db.execute('SELECT enabled FROM guild_world_history WHERE guild_id=?',(guild[0],)).fetchone()
+                if not publication or not publication[0]:
+                    raise GuildError('Enable guild chronicle before accepting a public character expedition.')
             goal=int(args[2]); member_count=self.db.execute('SELECT COUNT(*) FROM guild_members WHERE guild_id=?',(guild[0],)).fetchone()[0]
             if not 1<=goal<=min(member_count,MAX_MEMBERS): raise GuildError('COUNT must be 1 through your current guild size.')
             current=self.db.execute('SELECT complete FROM guild_expeditions WHERE guild_id=?',(guild[0],)).fetchone()
             if current and not current[0]: raise GuildError('Finish or cancel the active expedition first.')
             self.db.execute('DELETE FROM guild_expedition_visits WHERE guild_id=?',(guild[0],))
             self.db.execute('INSERT OR REPLACE INTO guild_expeditions VALUES(?,?,?,0)',(guild[0],name,goal))
+            self.db.execute('DELETE FROM guild_expedition_offers WHERE guild_id=?',(guild[0],))
+            if character_offer is not None:
+                self.db.execute('INSERT INTO guild_character_offer_receipts VALUES(?,?,?,?)',receipt)
+                self.db.execute('INSERT INTO guild_expedition_offers VALUES(?,?,?,?)',receipt)
             return [f'Expedition started: {goal} trainers visit {name}.']
 
     def visit(self, trainer, map_name):
