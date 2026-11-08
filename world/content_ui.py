@@ -54,6 +54,7 @@ class ContentWorkshop:
                     rows=[row.decode('ascii') for row in cave._rows] if cave else [],
                     outcomes=outcomes, residents=sorted(server.module_state.get('world_characters', {})),
                     players=sum(not peer.get('closing') for peer in server.peers.values()),
+                    activities=server.activities.catalog(),
                     relay_courses=[dict(id=key,title=json.loads(raw)['title'],runners=len(json.loads(raw)['legs']))
                                    for key,raw in server.db.execute('SELECT id,document FROM relay_courses ORDER BY id LIMIT 8')])
 

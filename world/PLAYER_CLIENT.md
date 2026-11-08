@@ -129,3 +129,33 @@ apart, 30–600 second duration and 1–5 captures to win. New base collision an
 route accessibility must be checked by the author; coordinate validation alone
 is insufficient. Generated maps are excluded. Matches are transient until a
 completed score is committed atomically; no interrupted match is resumed.
+
+## RC12 candidate: one guild activity board
+
+Use `/guild play` to discover installed puzzles, relays and capture-the-flag
+arenas without learning each command family first. `/guild play list PAGE`
+shows titles, player counts, starting locations and exact start commands.
+`/guild play start KIND ID` enters the existing activity, while `/guild play
+status` retrieves your own current instructions. These actions never enrol a
+partner automatically or change underlying activity progression.
+
+Hosts may explicitly publish their open invitation to guildmates with `/guild
+play share KIND`, where KIND is `mystery`, `relay` or `flag`. This reveals the
+host name, selected activity and join opportunity to members of that guild;
+clues, choices and private results are not exposed. A host can advertise only
+an activity they own. Nothing appears on the board merely because it started.
+
+Partners use `/guild play open` and the displayed `/guild play join HOST`
+command. The board checks the latest guild, connected host and remaining slots
+before joining through the activity's real handler. `/guild play hide` withdraws
+the invitation without cancelling the activity. Full, cancelled or disconnected
+host sessions disappear on the next board request. Adverts are transient and
+never restored after restart; durable mystery progress remains resumable using
+its normal command. No unsolicited invitations are broadcast by this board.
+
+The launcher Content workshop shows the same installed catalog and consent
+instructions. Missing puzzle content is called out with the existing reviewed
+installer as its next step. After finishing a mystery, `/story` at its final
+location exposes eligible follow-up choices; board browsing never reads those
+choices. Existing direct mode commands remain available. No automatic queue,
+matchmaking, teleportation or public score sharing is implied.

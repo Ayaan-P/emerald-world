@@ -152,6 +152,8 @@ class WorldServer:
         self.relays = FieldRelays(self, validate_coords)
         from .field_flags import FieldFlags
         self.flags = FieldFlags(self)
+        from .activity_board import ActivityBoard
+        self.activities = ActivityBoard(self)
         from .landmark_survey import LandmarkSurvey
         self.landmark_survey = LandmarkSurvey(self)
         self.db.executescript('''
