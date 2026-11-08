@@ -53,7 +53,9 @@ class ContentWorkshop:
                     identity=cave.identity if cave else None, version=cave.version if cave else None,
                     rows=[row.decode('ascii') for row in cave._rows] if cave else [],
                     outcomes=outcomes, residents=sorted(server.module_state.get('world_characters', {})),
-                    players=sum(not peer.get('closing') for peer in server.peers.values()))
+                    players=sum(not peer.get('closing') for peer in server.peers.values()),
+                    relay_courses=[dict(id=key,title=json.loads(raw)['title'],runners=len(json.loads(raw)['legs']))
+                                   for key,raw in server.db.execute('SELECT id,document FROM relay_courses ORDER BY id LIMIT 8')])
 
     @staticmethod
     def _guard(current):

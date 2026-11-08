@@ -72,3 +72,16 @@ it('installs the complete cooperative preset only after review and shows the rig
   expect(screen.queryByText(/Content saved and read back/)).toBeNull();
   expect(request).toHaveBeenLastCalledWith('content_apply',{world:'local',token:'story-review',confirmed:true});
 });
+it('shows relay gameplay without publishing content or altering the world', async () => {
+  const request=vi.fn(async()=>({...info,relay_courses:[{id:'petalburg_relay1',title:'Petalburg Baton Circuit',runners:2}]}));
+  render(<ContentWorkshop {...props} onRequest={request}/>);
+  await screen.findByLabelText('Content type');
+  fireEvent.change(screen.getByLabelText('Content type'),{target:{value:'relay'}});
+  expect(screen.getByRole('heading',{name:'Run a cooperative field relay'})).toBeTruthy();
+  expect(screen.getByText(/petalburg_relay1 \(2 runners\)/)).toBeTruthy();
+  expect(screen.getByText(/three-second countdown/)).toBeTruthy();
+  expect(screen.queryByLabelText('Content plan JSON')).toBeNull();
+  expect(screen.queryByRole('button',{name:/Preview|Apply/})).toBeNull();
+  expect(request).toHaveBeenCalledTimes(1);
+  expect(request).toHaveBeenCalledWith('content_read',{world:'local'});
+});

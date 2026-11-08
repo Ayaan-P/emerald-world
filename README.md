@@ -122,6 +122,15 @@ completed run satisfy that prerequisite. The server evaluates availability and
 commits choices with idempotent receipts; agents author content rather than
 asserting that a player completed it.
 
+## RC12 candidate: cooperative field relays
+
+Two to four guildmates can run ordered checkpoints, physically pass a baton on
+adjacent pads and improve durable private team times. The included Petalburg
+circuit needs no story pack or save changes. The launcher Content workshop lists
+courses and the player loop; [player instructions](world/PLAYER_CLIENT.md#rc12-candidate-cooperative-field-relays)
+cover joining, countdowns, handoffs and cancellation. Requires the paired RC12
+private-command client. Source/authority tests are not rendered gameplay QA.
+
 ## Contributing
 
 Branch from current main, keep changes focused and record actual verification. Use disposable worlds for development, not a running human session. Preserve native battle/save/world ownership boundaries. Do not treat stale draft titles as a missing-feature list: many original stacked PRs were incorporated by an integration PR.

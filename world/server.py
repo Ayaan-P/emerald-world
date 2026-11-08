@@ -148,6 +148,8 @@ class WorldServer:
         self.mysteries = Mysteries(self, validate_coords, TRAVEL_FRESH_SECONDS)
         self.opportunities = Opportunities(self.db, [m['name'] for m in catalog_maps().values()], self.mysteries)
         self.opportunity_chat = OpportunityChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
+        from .field_relays import FieldRelays
+        self.relays = FieldRelays(self, validate_coords)
         from .landmark_survey import LandmarkSurvey
         self.landmark_survey = LandmarkSurvey(self)
         self.db.executescript('''
@@ -989,6 +991,7 @@ class WorldServer:
                     self._schedule_presence(now)
                 self.guild_chat.observe(conn, state)
                 self.landmark_survey.observe(conn)
+                if getattr(self, 'relays', None):self.relays.tick()
         except (UnicodeError, ValueError):
             self._error(conn, 'MALFORMED')
 
@@ -1583,6 +1586,11 @@ class WorldServer:
                 except ValueError as exc:
                     # Expected validation/occupancy refusal is not a mechanic error.
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'publish_relay_course':
+                try:
+                    if set(request)!={'command','course'}:raise ValueError('Invalid relay publication.')
+                    with self.lock:result=self.relays.publish(request['course'])
+                except ValueError as exc:result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'publish_field_story':
                 try:
                     if set(request)!={'command','bundle'}:raise ValueError('Invalid field story publication.')
@@ -1996,6 +2004,7 @@ class WorldServer:
                 self._poll_presence(time.monotonic())
                 self._deliver_links(self.link_protocol.tick())
                 self.rally.tick()
+                self.relays.tick()
                 self._poll_controls()
                 self._poll_mechanics()
 
