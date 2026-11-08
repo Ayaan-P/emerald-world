@@ -163,6 +163,20 @@ class Rebinding(unittest.TestCase):
         snapshot = self.server._snapshot(conn)
         self.assertIn(self.p['id'], snapshot); self.assertNotIn('other_guide', snapshot)
 
+    def test_continued_source_empty_baseline_retains_latest_character_checkpoint(self):
+        # A recurring chapter has already moved since this source's initial
+        # empty-state layout. New settlement staging must not resurrect it.
+        initial = dict(state=self.initial_state, tiles=[], objects=self.initial_objects)
+        latest = dict(state=self.initial_state, tiles=[], objects=[dict(self.initial_objects[0], x=4)])
+        source = 'def update(context,state):\n return '+repr(latest)+' if state else '+repr(initial)+'\n'
+        self.commit(Candidate(source, hashlib.sha256(source.encode()).hexdigest()), latest)
+        self.assertTrue(self.build()['ok'])
+        scope = {}; exec(self.server.candidate.source, scope)
+        baseline = scope['update'](dict(players=[], interactions=[], tick=0, revision=0), {})
+        self.assertEqual(baseline['objects'][0]['x'], 4)
+        self.assertEqual(baseline['objects'][0]['region_revision'], self.server.shared_cave.identity)
+        self.assertEqual(baseline['state']['world_characters'], self.initial_state['world_characters'])
+
     def test_old_source_location_change_requires_explicit_reauthor(self):
         self.assertTrue(self.build()['ok'])
         source = self.server.candidate.source

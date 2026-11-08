@@ -45,6 +45,11 @@ def prepare(server, previous, revision):
     suffix = '''
 
 def update(context, state, _previous=update):
+    # Sandbox staging starts with empty state. Continue from the trusted
+    # checkpoint, not the author's obsolete first-chapter placement.
+    if not state:
+        import copy
+        state = copy.deepcopy(%r)
     result = _previous(context, state)
     objects = []
     for original in result.get('objects', []):
@@ -66,7 +71,7 @@ def update(context, state, _previous=update):
             if control and control.get('object') is not None and control['object'].get('region_revision') == %r:
                 control['object'] = dict(obj)
     return result
-''' % (positions, previous, revision, previous)
+''' % (server.module_state, positions, previous, revision, previous)
     source = server.candidate.source + suffix
     if len(source.encode()) > 256 * 1024:
         raise ValueError('continued character source exceeds mechanic size limit')
