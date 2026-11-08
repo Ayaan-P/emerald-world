@@ -70,3 +70,11 @@ CHARWALK1 follows CHARREG1 in capability negotiation. After CHARACTER, `CHARACTE
 Authority interaction, battle admission and expedition acceptance reject while the logical route is unfinished. The native counterpart also gates interaction until its visible actor actually reaches the endpoint, and uses ordinary held walking actions with read-only local collision checks. A player or moving object can delay native animation even after the authority reaches the logical endpoint; no reward, arrival proof or forged battle result comes from that local playback. Off-path retargeting safely waits rather than teleporting.
 
 This is short, explicit same-map walking, not automatic navigation, a cross-map journey or guaranteed synchronization with unreported local obstacles. Existing teleport-style authored relocation remains a separate action. Source/component fixtures exercise the real authority path and native playback routines, but a rendered playthrough is still a separate acceptance step.
+
+## Reacting to voluntarily shared discoveries
+
+With the landmark survey integration, a chapter may wait for `landmark_discovery_shared`. It must name the exact `place_id`, immutable `revision`, and registered `landmark` identifier. The character history feed includes only the already committed public event and its bounded destination/coordinate/publication fields. It never queries private survey sessions or visit trails.
+
+Private arrivals, survey completion, and the first share-confirmation prompt do not trigger characters. Only the player's explicit confirmed publication can do so. The tested example moves a scholar from camp to the publicly reported lookout, changes dialogue and battle team, and records that public sequence as evidence. Duplicate shares do not advance twice, another revision with the same landmark name does not match, and restart preserves the change.
+
+This uses an authored chapter and the existing authority commit, scoped NPC and battle-admission paths. It does not invoke a model on each arrival, reveal who shared the discovery, or prove travel/battle outcomes beyond the existing acknowledged client-presence rules. The two-source integration fixture requires the survey branch in addition to this compiler/feed support; it does not activate anything in a live world.
