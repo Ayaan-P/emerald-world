@@ -1192,3 +1192,38 @@ old-index repair, unrelated-place isolation, fixed pagination and control-text
 sanitization. This uses existing protected exploration chat commands, with no
 engine pin, native movement or new artwork. Native rendered gameplay has not
 been verified for this new command.
+
+
+### Collective discoveries change a resident's role
+
+An authored character chapter can now wait for `when: {"all": [condition,
+condition]}` with two to four distinct public-event conditions. The existing
+single-condition format remains valid. For example, a researcher can remain at
+camp until players explicitly share both the orchard and ruins, then relocate
+to the lookout with new dialogue, an authored team and the existing guide
+service. The conditions may arrive in either order from different players.
+This is an optional reusable authoring contract, not a globally installed NPC.
+
+Partial matches are retained in the character's existing durable chapter state.
+Only events newer than publication and observed while that chapter is a possible
+next choice count. One event can satisfy at most one outstanding requirement;
+replayed records never count twice. The first eligible completed branch wins and
+discards other branches' partial matches. All matched original sequence numbers
+become the changed character's public evidence. Offered guild outcomes still
+require the exact character and offer revision; discovery conditions still need
+the exact place, map revision and landmark. Private visits never enter this feed.
+
+The native object relocation, dialogue, team and optional service are the same
+validated chapter effects as before, not new engine protocols. The compiler
+continues through the existing sandbox staging and atomic authority commit.
+Agent context advertises the bounded conjunction. It does not automatically
+author or deploy a character, relax validation, grant rewards, or infer battles
+and catches from narrative team changes.
+
+The integrated fixture uses two authenticated explorers, real private survey
+arrivals and explicit sharing. A first public report persists across restart;
+a second explorer's complementary report moves the researcher to the lookout,
+changes dialogue, enables guidance and produces the new frozen challenge team
+through the actual app protocol. Partial progress and replay do not grow the
+team. The authored plan and successful sandbox execution are fixture boundaries;
+no model call, native rendered session or live-world deployment is claimed.
