@@ -42,3 +42,79 @@ This is a single-tile, per-trainer control primitive, not a globally synchronize
 An owner agent can submit a JSON array of one to 64 tile edits using `--tiles-file patch.json` in place of `--x`, `--y` and `--terrain`. Every entry has exactly `x`, `y` and `terrain` (`grass` or `tall_grass`). For example: `[{"x": 5, "y": 5, "terrain": "grass"}, {"x": 6, "y": 5, "terrain": "tall_grass"}]`. The owner authority validates the entire patch, rejects duplicate or protected/unwalkable coordinates, and queues one bounded command for one trainer. The native client validates the entire patch again before changing any tile, so an invalid patch changes none; a valid patch updates the in-memory map and redraws tiles. One client-reported outcome covers the whole patch.
 
 This is still per-trainer and ephemeral, with unchanged collision. It is not globally synchronized or persistent and does not create walls, buildings or new art. Tall grass relies on the normal encounter system, including the separate empty-party crash fix. No live two-client session, actual local socket or external agent was exercised.
+
+## State-driven world opportunities (draft)
+
+The opportunity director is a different narrative structure from a campaign
+chain or an NPC chapter sequence. It selects authored scenes by current shared
+place qualities and private participant qualities. A player's choice can make
+another visitor's available stories change, while personal participation and
+choices remain private. It does not award native money, create creatures,
+change terrain, or physically open a ferry route.
+
+Research inspiration: Failbetter describes quality-based narrative as short
+interactive storylets whose availability depends on state that their choices
+also change. The implementation here is original and uses no source content:
+https://www.failbettergames.com/news/storynexus-developer-diary-2-fewer-spreadsheets-less-swearing
+https://www.failbettergames.com/news/new-narrative-structures
+
+The owner publishes an immutable pack through the existing owner-only admin
+endpoint with `command: publish_opportunities` and `pack`. The example is
+`examples/river_opportunities.json`. It binds scenes to PetalburgCity and gives
+players a persistent flood-relief dilemma: slow repairs preserve nesting reeds;
+fast drainage destroys them and exposes a restoration scene; two different
+participants can complete relief; shared completion exposes a private welcome
+only to contributors. The ferry is narrative state, not a new travel service.
+
+Players already using native chat enter `/story` or `/story river` while ready
+on that standard map. The authority replies privately with scene and choice
+text plus exact `/story pick ...` lines. Eligibility is rechecked at choice
+time against the authenticated player's fresh, validated field report. Location
+is client-reported under the existing protocol, not a new anti-cheat guarantee.
+Stale place revisions refuse rather than silently choose an altered outcome.
+Exact request receipts replay without applying effects twice; conflicting
+receipt reuse fails. Each scene is once per player or once for that place.
+
+Pack qualities are bounded integers with `place` or `player` scope, explicit
+initial values and maxima. Requirements are inclusive intervals; choices apply
+bounded integer changes atomically with participation, shared revision, causal
+history and receipt. No executable expressions or model callbacks run on player
+input. An out-of-range effect makes that choice unavailable. Packs have bounded
+size and immutable identities; different content requires a new pack identity.
+Only shared quality deltas enter the place-consequence ledger, not private
+player qualities. No story-player table enters the ordinary world inspection.
+
+Tests exercise the real authority's authenticated native CHAT dispatch without
+opening sockets: two-player relief, alternate consequences, private replies,
+restart persistence, exact replay, stale location/state refusal and transaction
+rollback. No live world or rendered native chat client was used. Campaign native
+build/play acceptance remains separately blocked by missing build dependencies
+and the environment's apt configuration read restriction.
+
+Private-command compatibility boundary: `/story` now requires a client session
+that negotiated the `COMMANDS1` HELLO suffix. Its complete snapshots carry the
+non-chat `COMMANDS 1 MASK` record (story=1, mystery=2, guild=4). Old sessions
+receive no new protocol record and cannot execute story commands. This requires
+a paired client update before using the feature. User chat text never grants
+capabilities. Reserved slash prefixes are intercepted case-insensitively after
+leading spaces; unknown commands and commands addressed to another trainer are
+refused privately rather than broadcast. This server change cannot protect an
+old client connected to an old server: do not advertise private story commands
+until the paired fail-closed client boundary is deployed. No actual disclosure
+incident was observed; this corrects a statically reproduced fallback risk.
+
+### Client safety candidate
+
+The app-side bridge now negotiates COMMANDS1 and accepts command families only
+from a complete authoritative snapshot. Chat text cannot grant capabilities.
+All slash commands fail closed on legacy servers, including mixed-case commands;
+ordinary chat remains available. Unsupported commands remain in the composer.
+The same four-file change is prepared separately for Expansion, but this app PR
+alone does not update the Expansion engine pin. Do not expose private story or
+mystery choices in an RC until that paired native change is integrated.
+
+The compiled bridge contract test can also exercise a clean Expansion source:
+`WORLD_BRIDGE_TEST_SOURCE=/path/to/expansion/src/world/world_bridge.c PYTHONPATH=test/world python -m unittest test_chat.NativeChatTests.test_native_snapshot_chat_is_atomic_and_rejects_injection`.
+It compiles actual parser, negotiation and send functions, including the real
+Expansion rules parser. It is not a rendered multiplayer playtest. The SDL
+composer test skips when SDL development headers are absent.
