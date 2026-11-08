@@ -142,6 +142,12 @@ class WorldServer:
         self.memory = WorldMemory(self.db)
         self.guilds = Guilds(self.db, catalog_maps(), record_outcome=self.memory.append)
         self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
+        from .cooperative_mysteries import Mysteries
+        from .opportunities import Opportunities
+        from .opportunity_chat import OpportunityChat
+        self.mysteries = Mysteries(self, validate_coords, TRAVEL_FRESH_SECONDS)
+        self.opportunities = Opportunities(self.db, [m['name'] for m in catalog_maps().values()], self.mysteries)
+        self.opportunity_chat = OpportunityChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
         from .landmark_survey import LandmarkSurvey
         self.landmark_survey = LandmarkSurvey(self)
         self.db.executescript('''
@@ -1577,6 +1583,20 @@ class WorldServer:
                 except ValueError as exc:
                     # Expected validation/occupancy refusal is not a mechanic error.
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'publish_field_story':
+                try:
+                    if set(request)!={'command','bundle'}:raise ValueError('Invalid field story publication.')
+                    from .field_story_bundle import install
+                    with self.lock:result=install(self,request['bundle'])
+                except ValueError as exc:
+                    result=dict(ok=False,error=str(exc))
+            elif request.get('command') in ('publish_mystery', 'publish_opportunities'):
+                try:
+                    if set(request)!={'command','pack'}:raise ValueError('Invalid story publication.')
+                    system = self.mysteries if request['command']=='publish_mystery' else self.opportunities
+                    with self.lock:result=system.publish(request['pack'])
+                except ValueError as exc:
+                    result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'register_survey':
                 if set(request) != {'command','plan'}:raise ValueError('invalid survey registration')
                 result = self.landmark_survey.register(request['plan'])

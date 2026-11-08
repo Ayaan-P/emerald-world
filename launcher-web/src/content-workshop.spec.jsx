@@ -56,3 +56,19 @@ it('exposes the workshop from the existing Local worlds launcher page', async ()
   await screen.findByRole('heading',{name:'Content workshop'});
   await waitFor(() => expect(perform).toHaveBeenCalledWith('content_read',{world:'local'}));
 });
+it('installs the complete cooperative preset only after review and shows the right player entry', async () => {
+  const request=vi.fn(async (action,payload) => action==='content_preview' ? {...info,kind:'field_story',token:'story-review',report:{stages:2},plan:{mystery:{id:'signal_v2'},story:{id:'signal_after_v2'}},proposed_rows:info.rows} : action==='content_apply' ? {...info,saved:true,field_story:{installed:true}} : info);
+  render(<ContentWorkshop {...props} onRequest={request} />);
+  await screen.findByLabelText('Content type');
+  fireEvent.change(screen.getByLabelText('Content type'),{target:{value:'field_story'}});
+  expect(screen.queryByLabelText('Content plan JSON')).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'Preview cooperative field story'}));
+  await screen.findByRole('heading',{name:'Review content'});
+  expect(request).toHaveBeenLastCalledWith('content_preview',{world:'local',kind:'field_story',label:'The Two-Tower Signal',plan:{},outcome_seq:null});
+  expect(request.mock.calls.filter(([a])=>a==='content_apply')).toHaveLength(0);
+  fireEvent.click(screen.getByLabelText(/I reviewed/));
+  fireEvent.click(screen.getByRole('button',{name:'Apply reviewed content'}));
+  await screen.findByText(/Both story parts are saved/);
+  expect(screen.queryByText(/Content saved and read back/)).toBeNull();
+  expect(request).toHaveBeenLastCalledWith('content_apply',{world:'local',token:'story-review',confirmed:true});
+});
