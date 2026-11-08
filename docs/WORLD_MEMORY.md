@@ -774,3 +774,189 @@ The local reconstruction's commit metadata is not a clean pinned submodule;
 source-tree equality is the verified result. An actual native build stopped at
 `tools/gbagfx` because `png.h` is missing; SDL2/libpng development packages are
 also unavailable. No linked binary or two-client playthrough is claimed.
+
+### Frontier outpost construction
+
+`python -m world.frontier_outposts camp.json --admin-socket /path/to/admin.sock
+--label 'Western Frontier Camp'` previews an additive construction plan in the
+active plain XL map. Add `--apply` to commit it. A plan contains exactly `x`, `y`,
+`width`, `height`, `gate` and `reservations`. For example:
+
+```json
+{"x":15,"y":20,"width":9,"height":7,"gate":"west","reservations":[]}
+```
+
+The bounded footprint becomes a walkable courtyard with one gate. An access trail
+connects that gate to existing land. The perimeter and a rock buffer remain
+impassable, and every old walkable tile is preserved. Width and height are 5..15;
+gates face north, east, south or west. Construction rejects overlap with old
+routes or sites, excessive trail length and unreachable locations. Reservations
+use [x,y,width,height] rectangles; carry forward the source plan's reservations
+when they must remain protected. Arbitrary terrain bytes do not encode ownership
+or protected-land semantics, and the tool does not infer them.
+
+The owner-only `construct_outpost` admin command compiles against the exact active
+archived template while holding the authority lock. It requires the inspected
+world ID, sequence and previous revision. Existing publication occupancy and
+persistence checks apply. The new map continues the same logical place and its
+ordinary committed activation history; both versions remain in the archive.
+Restart and revisiting preserve the construction. A stale or duplicate request
+fails rather than applying twice. Placed persistent characters on the shared revision are rebound at unchanged
+coordinates, with the complete NPC collision set validated against the new map.
+Their identities, teams, versions and prior history remain unchanged. Private
+player progress is not migrated by this tool.
+
+This is an owner/agent construction primitive, not a player crafting economy,
+settlement simulation, indoor building system or new tile-art pack. Walls use
+the existing impassable outdoor tiles. It adds no autonomous construction trigger
+and changes no engine source. Tests cover additive geometry, reservations,
+place continuity, archive/restart, failed commits and source-extracted native XL
+staging. The native-source test skips when the paired source is unavailable.
+The exact 80bf567 engine staging function accepted constructed geometry and
+rejected damaged bytes locally. A full native build stopped at missing `png.h`;
+headless smoke could not start because no binary was produced. A linked native
+playthrough and rendered building appearance remain unverified.
+
+Design precedents informed the narrow scope: Valheim documents persistent shared
+worlds (https://www.valheimgame.com/support/a-guide-to-dedicated-servers/), while
+Factorio's elevated infrastructure changes traversable geography
+(https://factorio.com/game/content-space-age). This implementation reuses the
+existing authority and native geometry rather than adding another world store.
+
+
+Construction now commits geometry, unchanged-location character bindings and the
+corresponding mechanic source atomically. A bounded wrapper around the existing
+authored reducer preserves those exact bindings on subsequent ticks and after
+restart. A later chapter that moves an actor within obsolete geometry fails
+rather than silently transporting it; author that chapter against its current
+revision explicitly. Repeated construction composes wrappers without replacing
+character chapter state or fabricating a character evolution.
+
+Pending mechanic/deployment work and character battles block inhabited
+construction. Characters on opened immutable regions cannot be migrated through
+the shared slot. Other revisions' actors remain untouched. Old archived geometry
+remains available, but migrated actors appear only on their new exact revision,
+not simultaneously on old copies. A committed placement-change record connects
+the previous and new geometry while preserving earlier history.
+
+Tests include the actual authored chapter reducer across construction, repeated
+construction and restart, exact-revision authentication/challenge wire, unrelated
+actor isolation, an NPC blocking the newly added access trail, and rollback after
+a module-write failure. Test source execution uses a fixture boundary; production
+retains the existing sandbox runtime. Full native rendering/playthrough limits
+above still apply.
+
+### Outcome-grounded inhabited settlements
+
+`python -m world.author_settlement 'Honor the expedition with a field station'
+--admin-socket /path/to/admin.sock --outcome-seq 42` asks the existing tool-disabled
+provider for an inert settlement proposal and previews it. Add `--apply` for
+explicit publication. The selected sequence must be a real committed public
+`guild_goal_completed` event. Theme, archived geometry and that public outcome
+are sent to the provider; trainer names, private saves, party hashes and live
+inspection data are not. Calls may incur provider usage charges. Recorded text
+is treated as data, not instructions.
+
+A plan contains `label`, the existing `construction` footprint, and one
+`resident`. Resident fields are `id`, `name`, `role`, `goals`, `team`, `gfx`,
+`text`, `offer`, `completion_text` and `completion_goals`. The offer uses the
+existing expedition schema. The compiler places the steward at the courtyard
+center and creates ordinary validated character chapters: arrival with the offer,
+then updated goals/dialogue after that exact character/offer revision completes.
+The team stays unchanged. Construction is authored fiction inspired by evidence,
+not a claim that the guild constructed a building or the steward won a battle.
+
+The owner-only `found_settlement` command also accepts an already-authored inert
+plan directly. It stages and runs the compiled source through the existing
+kernel-sandboxed mechanic runtime asynchronously. A failed stage changes no map
+or actor state. After staging, world sequence, map revision, source and occupancy
+are checked again. Geometry, source, character state and bindings then commit in
+one transaction. Existing inhabitants are preserved through the continuation
+mechanism above. The normal capacity, character-transition and joint collision
+validators remain authoritative. A duplicate resident ID fails rather than
+replacing an established character.
+
+A visiting guild leader sees an ordinary revision-scoped character offer. It
+requires explicit native acceptance and prior chronicle opt-in; merely founding
+the settlement never starts an expedition or enables publication. The existing
+guild authority records completion, and the normal character reducer changes
+this steward's dialogue and goals. Restart retains both the settlement and the
+completed character state.
+
+The end-to-end tests substitute provider output and sandbox execution, but use
+real public guild outcomes, geometry, authority transactions, authentication,
+scoped offer consent, expedition completion and the authored chapter reducer.
+No actual model invocation is claimed. An actual sandbox stage was attempted in
+this environment and failed because bubblewrap could not create a NETLINK_ROUTE
+socket. The real authority returned refusal with the map unchanged and steward
+absent. No weaker execution route was used. Native build/rendering limits above
+also remain; these protocol/component tests are not a linked gameplay session.
+
+### Player-driven settlement growth
+
+The existing opt-in GM runtime accepts `--settlement-growth-theme 'Extend the
+surveyed frontier'` on its `run` command. This explicitly permits later eligible
+steward completions to invoke the constrained settlement author and publish a
+new inhabited expansion. Provider usage may be charged. The option is absent
+by default. It shares the existing durable queue, runtime lock and minimum
+author interval; no second background daemon or implicit provider is introduced.
+Use `--no-events` if this runtime should react only to settlement completions
+rather than also handling its existing selected-player event tasks.
+
+The first enabled inspection establishes a baseline without authoring old
+outcomes. Later genuine public completions must match the offer ID/revision of
+a recorded settlement steward in the currently active logical place. Arbitrary
+guild achievements do not trigger growth. Per-place cursors defer other archived
+places instead of discarding their outcomes. A verified completion remains valid
+if its steward is now away; publication still requires its logical place active.
+Each founding stores an outcome receipt in the same transaction as geometry,
+source, NPCs and history. An outcome can found at most one settlement, including
+manual publication. Old camps without these new receipts are not retroactively
+classified as automatic growth triggers.
+
+Each selected outcome gets a stable world/sequence queue identity. Failed or
+interrupted author/publication requests are terminal and never automatically
+replayed. Omitting the growth option prevents queued growth work from running.
+Re-enabling permits queued work, subject to a fresh exact-world/place check.
+The authority again checks current geometry, occupancy and all existing staging
+rules. Capacity limits surface in runtime status rather than invoking authors
+that cannot add another character. A successful settlement publishes its exact
+staged source reference back to the existing GM queue so later ordinary agent
+work can preserve the newly inhabited world behavior.
+
+The integrated fixture uses a genuine authenticated steward-offer acceptance and
+guild completion, discovers it through the production authority query, and runs
+the existing GM step through an authored second inhabited revision. It verifies
+exactly-once consumption, restart, source continuity and no unrelated-place
+leakage. Provider output and sandbox success remain substitutes. The actual
+author adapter was separately invoked for preflight and refused this environment's
+`codex-cli 0.167.0-alpha.4`, because its security-reviewed allowlist requires
+`0.156.1`. The gate was not changed and no model call occurred. The previous
+sandbox and native build blockers remain. Nothing here enables growth in a live
+world merely by merging or starting the ordinary default launcher.
+
+### Explicit settlement recovery
+
+Growth failures never replay automatically. `python -m world.runtime_gm
+retry-settlement --state-dir STATE --socket SOCKET --request-id ID` is an
+owner-initiated reconciliation command. Stop the running GM first: recovery
+holds the same exclusive runtime lock. It does not invoke the provider.
+Status retains the original world, place, public outcome, attempted revision,
+failure stage and previous attempts. Provider stderr is deliberately not saved.
+
+The authority checks the atomic founding receipt first. A receipt reconciles a
+lost success reply without creating another settlement. Without a receipt,
+pending authority work remains uncertain and is not queued. A retry requires
+the original world, place and exact revision, and the original public outcome
+must still exist. The next explicitly enabled GM run checks that revision again
+before provider invocation; normal commit guards and receipt uniqueness remain
+in force. A changed place/revision needs deliberate owner handling rather than
+automatic rebasing. Legacy terminal rows whose identities were overwritten
+cannot be safely recovered by this command. No automatic replay or sandbox or
+provider-version gate bypass is introduced.
+
+Recovery validation: 125 focused tests pass, including receipt reconciliation
+after an actual fixture-sandbox founding whose response is treated as lost,
+pre-publication retries, pending-write deferral, wrong-scope/revision rejection,
+and preservation of interrupted identity/stage. This does not establish live
+model invocation or native gameplay; the documented runtime blockers remain.

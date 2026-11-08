@@ -148,6 +148,10 @@ class WorldServer:
             CREATE TABLE IF NOT EXISTS status (
                 singleton INTEGER PRIMARY KEY CHECK(singleton=1), error TEXT);
         ''')
+        self.db.execute('''CREATE TABLE IF NOT EXISTS settlement_foundings (
+            outcome_seq INTEGER PRIMARY KEY, resident_id TEXT UNIQUE NOT NULL,
+            place_id TEXT NOT NULL, revision TEXT NOT NULL,
+            offer_id TEXT NOT NULL, offer_revision INTEGER NOT NULL)''')
         columns = {row[1] for row in self.db.execute('PRAGMA table_info(module)')}
         if 'objects' not in columns:
             self.db.execute("ALTER TABLE module ADD COLUMN objects TEXT NOT NULL DEFAULT '[]'")
@@ -1179,7 +1183,7 @@ class WorldServer:
                 self._queue(conn, json.dumps(future.result(), ensure_ascii=True) + '\n')
         self.control_jobs = remaining
 
-    def _persist_cave(self, blob, *, label=None, previous_revision=None, history_evidence=None):
+    def _persist_cave(self, blob, *, label=None, previous_revision=None, history_evidence=None, character_continuation=None):
         if not self.persist_generated_cave:
             return
         try:
@@ -1210,11 +1214,22 @@ class WorldServer:
                                        previous_revision=hashlib.sha256(previous[0]).hexdigest() if previous else None,
                                        continued=previous_revision is not None,
                                        **({'history_evidence':history_evidence} if history_evidence is not None else {})))
+                if character_continuation is not None:
+                    from .character_rebinding import persist
+                    persist(self, character_continuation, place_id, previous_revision, identity)
+            if character_continuation is not None:
+                self.candidate = character_continuation['candidate']
+                self.objects = character_continuation['objects']
+                self.module_state = character_continuation.get('state', self.module_state)
+                self.tiles = character_continuation.get('tiles', self.tiles)
+                self.interaction_cursor = character_continuation.get('cursor', self.interaction_cursor)
+                if character_continuation.get('clear_error'):
+                    self.module_error = None
             self.revision = self.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
         except sqlite3.Error:
             raise ValueError('generated cave could not be persisted') from None
 
-    def _replace_cave(self, blob, *, label=None, previous_revision=None, expected_world_id=None, expected_sequence=None, history_evidence=None):
+    def _replace_cave(self, blob, *, label=None, previous_revision=None, expected_world_id=None, expected_sequence=None, history_evidence=None, character_continuation=None):
         from .shared_cave import SharedCave
         candidate = SharedCave(blob)  # validate completely before mutating anything
         if previous_revision is not None and (not self.persist_generated_cave or type(previous_revision) is not str or not re.fullmatch(r'[0-9a-f]{64}', previous_revision)):
@@ -1237,7 +1252,7 @@ class WorldServer:
             if (self.wilds_map if candidate.version in (6, 7, 8, 9, 16) else self.cave_map) is None:
                 raise ValueError('generated map missing from catalog')
             if self.shared_cave and candidate.identity == self.shared_cave.identity:
-                self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence)
+                self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence, character_continuation=character_continuation)
                 return candidate.identity
             peers = [peer for peer in self.peers.values() if not peer.get('closing') and not peer.get('region_cave')]
             if any(peer.get('in_generated_cave') or
@@ -1249,7 +1264,7 @@ class WorldServer:
             if any(len(peer['out']) + len(message) > MAX_QUEUE for peer in recipients):
                 raise ValueError('generated cave update is busy')
             old_id = self.shared_cave.identity if self.shared_cave else None
-            self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence)
+            self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence, character_continuation=character_continuation)
             self.shared_cave = candidate
             self._terrain_walk_cache = None
             for peer in recipients:
@@ -1536,6 +1551,34 @@ class WorldServer:
                 except ValueError as exc:
                     # Expected validation/occupancy refusal is not a mechanic error.
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'settlement_growth':
+                try:
+                    if not set(request) <= {'command','after','limit','expected_world_id','expected_place_id'}:
+                        raise ValueError('invalid growth inspection')
+                    from .settlement_growth import candidates
+                    result = candidates(self, request.get('after',0), request.get('limit',16),
+                        expected_world_id=request.get('expected_world_id'),expected_place_id=request.get('expected_place_id'))
+                except ValueError as exc:
+                    result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'settlement_recovery':
+                try:
+                    from .settlement_growth import reconcile
+                    result = reconcile(self, request)
+                except ValueError as exc:
+                    result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'found_settlement':
+                try:
+                    from .settlement_plans import begin
+                    begin(self, conn, request)
+                    return
+                except ValueError as exc:
+                    result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'construct_outpost':
+                try:
+                    from .frontier_outposts import construct
+                    result = construct(self, request)
+                except ValueError as exc:
+                    result = dict(ok=False, error=str(exc))
             elif request.get('command') == 'set_event_state':
                 try:
                     if set(request)!={'command','trainer','identity','state'}:raise ValueError('invalid event state command')
@@ -1789,6 +1832,16 @@ class WorldServer:
         if self.job is not None and self.job[0].done():
             future, kind, conn, cursor = self.job
             self.job = None
+            if kind == 'settlement':
+                try:
+                    from .settlement_plans import finish
+                    response = finish(self, future.result(), cursor)
+                except Exception as exc:
+                    response = dict(ok=False, error=str(exc))
+                if conn is not None and conn['sock'] in self.connections:
+                    self._queue(conn, json.dumps(response, ensure_ascii=True) + '\n')
+                self.next_tick = time.monotonic() + 0.1
+                return
             try:
                 candidate, result = future.result()
                 state_json, tiles = self._validated(result)
