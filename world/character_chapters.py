@@ -57,8 +57,7 @@ def validate_plan(plan):
                 raise ValueError('active chapter must render its character')
             validate_objects([obj])
             entry=catalog_maps()[(obj['group'],obj['num'])]
-            if entry['name'].startswith('GeneratedWorld_'):
-                raise ValueError('chapter characters require supported native maps')
+
         elif obj is not None:
             raise ValueError('away and retired chapters must not render')
         if chapter['status']=='retired' and index != len(chapters)-1:
@@ -184,7 +183,7 @@ def contract():
             'scope':'shared-world characters respond to public events from any opted-in guild; guild_name is a literal name, not stable identity; an offered expedition completion must match its exact character_id, character_offer_id and character_offer_revision',
             'first_when':None,'later_when':'exact public event plus at least one listed field, all comparisons must match',
             'events':{name:sorted(fields) for name,fields in EVENT_FIELDS.items()},
-            'limits':'one new stable character, up to sixteen authored chapters; valid native object maps only; 16 KiB plan',
+            'limits':'one new stable character, up to sixteen authored chapters; native maps or explicitly scoped opened immutable generated regions; 16 KiB plan',
             'behavior':'initial chapter appears on approved publication; later chapters use only events newer than the author inspection; no battle-result triggers or mandatory player goals',
             'preservation':'wraps hash-verified previous_source; preserves other characters, tiles and objects; existing identities require normal source/tests route for deliberate revision',
             'execution':'compiled source still uses normal sandbox tests, authority validation and publication; this is not a sandbox bypass'}

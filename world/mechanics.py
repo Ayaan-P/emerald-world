@@ -26,7 +26,7 @@ def validate_objects(objects):
         raise ValueError('objects must be a list of at most 8 entries')
     seen, locations = set(), set()
     for obj in objects:
-        if type(obj) is not dict or set(obj) != {'id', 'group', 'num', 'x', 'y', 'gfx', 'text'}:
+        if type(obj) is not dict or set(obj) - {'region_revision'} != {'id', 'group', 'num', 'x', 'y', 'gfx', 'text'}:
             raise ValueError('invalid object fields')
         name, text = obj['id'], obj['text']
         if type(name) is not str or not re.fullmatch(r'[A-Za-z0-9_-]{1,24}', name) or name in seen:
@@ -34,12 +34,17 @@ def validate_objects(objects):
         if any(type(obj[k]) is not int for k in ('group', 'num', 'x', 'y', 'gfx')):
             raise ValueError('object coordinates and graphics must be integers')
         validate_coords(obj['group'], obj['num'], obj['x'], obj['y'])
+        from .build_catalog import catalog_maps
+        generated=catalog_maps()[(obj['group'],obj['num'])]['name'].startswith('GeneratedWorld_')
+        revision=obj.get('region_revision')
+        if generated != ('region_revision' in obj) or (generated and (type(revision) is not str or not re.fullmatch('[0-9a-f]{64}',revision))):
+            raise ValueError('generated objects require immutable region_revision; native objects must omit it')
         if obj['gfx'] not in (7, 8):
             raise ValueError('object graphics must be boy 1 (7) or girl 1 (8)')
         if (type(text) is not str or not re.fullmatch(r"[A-Za-z0-9 .,!?'-]+(?:\n[A-Za-z0-9 .,!?'-]+)?", text)
                 or any(len(line) > 28 for line in text.split('\n'))):
             raise ValueError('object text needs one or two literal lines of at most 28 characters')
-        location = tuple(obj[k] for k in ('group', 'num', 'x', 'y'))
+        location = tuple(obj[k] for k in ('group', 'num', 'x', 'y')) + (obj.get('region_revision'),)
         if location in locations:
             raise ValueError('duplicate object position')
         seen.add(name)

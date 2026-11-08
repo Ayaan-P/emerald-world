@@ -41,8 +41,7 @@ def validate_actions(actions, context):
         if character['status']=='active':
             if type(obj) is not dict or obj.get('id')!=identity:raise ValueError('active action needs matching rendered object')
             validate_objects([obj])
-            if catalog_maps()[(obj['group'],obj['num'])]['name'].startswith('GeneratedWorld_'):
-                raise ValueError('character actions require supported native maps')
+
         elif obj is not None:raise ValueError('absent character action must remove object')
     records({'world_characters':cast})
     return copy.deepcopy(actions)
@@ -93,5 +92,5 @@ def contract():
             'changes':'goals, relationships to existing public NPCs, team, status, optional offer (null removes)',
             'effect':'explicitly take over selected existing NPCs from older scripts; native map object controls actual relocation/dialogue and team controls battle; all unrelated source effects preserved',
             'evidence':'nonempty inspected/recalled public history references; authored intent, never proof of battle or catch',
-            'limits':'eight actions per request, 32 action publications before source consolidation; expected version rechecked on admission; supported native maps only',
+            'limits':'eight actions per request, 32 action publications before source consolidation; expected version rechecked on admission; native maps or region_revision-bound opened immutable generated regions',
             'execution':'source compiler only; normal tests, sandbox and atomic authority validation remain mandatory; no autonomous LLM call or live publication'}

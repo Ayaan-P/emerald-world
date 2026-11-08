@@ -119,7 +119,8 @@ def author_contract():
 def challenge(server, conn, fields):
     """Freeze one explicitly requested opponent for exactly this authenticated peer."""
     import time
-    if (len(fields) != 4 or not conn.get('character_capable') or
+    region=fields[0]=='CHARACTER_CHALLENGE_REGION'
+    if (len(fields) != (5 if region else 4) or not conn.get('character_capable') or
             server.peers.get(conn.get('id')) is not conn or conn.get('closing')):
         raise ValueError('character challenge unavailable')
     try:
@@ -133,11 +134,12 @@ def challenge(server, conn, fields):
         raise ValueError('character challenge already pending')
     character = records(server.module_state).get(fields[2])
     obj = next((obj for obj in server.objects if obj['id'] == fields[2]), None)
+    from .region_characters import scoped
+    if not scoped(server,conn,obj,fields[4] if region else None):raise ValueError('character region mismatch')
     state = conn.get('state')
     if (character is None or character['status'] != 'active' or character['version'] != version or
             obj is None or not state or not state[6] or
             time.monotonic() - conn.get('state_time', 0) > 5 or
-            tuple(state[:2]) in (server.cave_map, server.wilds_map) or
             state[:2] != [obj['group'], obj['num']] or
             server.link_protocol.busy(conn['id']) or server.rally.current(conn) is not None):
         raise ValueError('character moved, changed or player unavailable')
@@ -248,7 +250,8 @@ def accept_offer(server, conn, fields):
     """Explicit native acceptance starts an existing guild objective, never a reward."""
     import time
     from .guilds import GuildError
-    if (len(fields)!=6 or not conn.get('character_quest_capable') or
+    region=fields[0]=='CHARACTER_ACCEPT_REGION'
+    if (len(fields)!=(7 if region else 6) or not conn.get('character_quest_capable') or
             server.peers.get(conn.get('id')) is not conn or conn.get('closing')):
         raise CharacterOfferError('UNAVAILABLE')
     try:
@@ -264,9 +267,10 @@ def accept_offer(server, conn, fields):
             or not offer or offer['id']!=fields[4] or offer['revision']!=revision):
         raise CharacterOfferError('STALE')
     obj=next((obj for obj in server.objects if obj['id']==fields[2]),None)
+    from .region_characters import scoped
+    if not scoped(server,conn,obj,fields[6] if region else None):raise CharacterOfferError('UNAVAILABLE')
     state=conn.get('state')
     if (not obj or not state or not state[6] or time.monotonic()-conn.get('state_time',0)>5
-            or tuple(state[:2]) in (server.cave_map,server.wilds_map)
             or state[:2]!=[obj['group'],obj['num']] or conn.get('character_pending')
             or server.link_protocol.busy(conn['id']) or server.rally.current(conn) is not None):
         raise CharacterOfferError('UNAVAILABLE')
