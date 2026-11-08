@@ -743,3 +743,26 @@ regional admission to outdoor maps, add portals, or connect canonical regions.
 Compatible native XL clients are still required. Tests exercise actual authority
 persistence and validation with deterministic fake provider responses, not a paid
 model call or linked native gameplay session.
+
+### Characters at generated landmarks
+
+`world.route_characters.bind_landmarks(character_plan, blob, route_report,
+chapter_landmarks)` binds each active chapter to a named clearing from the route
+report. It returns an ordinary validated character plan with the exact XL content
+revision and generated-map coordinates. It does not deploy a mechanic or replace
+a map. The existing character compiler, staging and authority checks still apply,
+including joint NPC collision validation so characters cannot seal a route.
+
+The integrated fixture follows a real public expedition outcome through route
+authoring and shared activation, places a researcher at camp, authenticates a
+client and challenges that character, then uses a later committed guild meetup to
+motivate an authored move to the lookout and a new team. Restart preserves the
+map, character and evidence. Model output and sandbox execution are fixture
+boundaries; the reducer, authority commits, authentication and scoped wire are
+exercised. Team evolution is authored fiction, not proof of a battle or catch.
+
+Generated-character native presentation requires the separate CHARREG1 engine
+changes. This app branch preserves its existing engine pin, which does not yet
+include those changes. Neither this fixture nor a matching wire response proves
+a linked native gameplay session. Outdoor multi-region selection remains outside
+this slice; archived characters appear only when their exact shared map is active.
