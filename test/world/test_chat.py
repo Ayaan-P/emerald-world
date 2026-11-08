@@ -239,6 +239,26 @@ int main(void) {
  assert(line("CHATMSG 2 bob alice 61"));
  assert(!line("CHATMSG 2 bob alice 61"));sWorld.staging=0;
  assert(line("BEGIN 2"));assert(!line("CHATSTATUS bogus"));
+ sWorld.staging=0;sWorld.outputSize=0;
+ assert(!WorldBridge_ChatSend("*","/explore share secret_camp confirm"));
+ assert(strstr(sWorld.output,"2f6578706c6f72652070726f746f636f6c2031"));
+ assert(!strstr(sWorld.output,"7365637265745f63616d70"));
+ unsigned probe=sWorld.exploreProbeSeq;assert(probe && !sWorld.exploreAvailable);
+ assert(!line("EXPLORE_READY 999999"));assert(!sWorld.exploreAvailable);
+ assert(line("BEGIN 3"));assert(line("CHATMSG 3 bob * 4558504c4f52455f5245414459"));assert(line("END"));
+ assert(!sWorld.exploreAvailable);
+ char ready[64];snprintf(ready,sizeof(ready),"EXPLORE_READY %u",probe);
+ assert(line(ready));assert(sWorld.exploreAvailable);
+ assert(WorldBridge_ChatSend("*","/explore share camp"));
+ assert(!line(ready)); /* repeated or unsolicited readiness is invalid */
+ sWorld.connected=0;assert(line("WELCOME 1 alice 3"));
+ assert(!sWorld.exploreAvailable && !sWorld.exploreProbeSeq);
+ sWorld.outputSize=0;assert(!WorldBridge_ChatSend("*","/explore start"));
+ assert(sWorld.exploreProbeSeq && !sWorld.exploreAvailable);
+ /* Legacy host never answers the probe: retries never send the private command. */
+ unsigned blocked=sWorld.seq;
+ assert(!WorldBridge_ChatSend("*","/explore share private_site confirm"));
+ assert(sWorld.seq==blocked && !sWorld.exploreAvailable);
  return 0;
 }
 '''

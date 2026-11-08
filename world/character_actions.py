@@ -19,7 +19,7 @@ def validate_actions(actions, context):
     known={e['seq'] for e in context.get('recalled_history',{}).get('events',[])+data.get('world_memory',{}).get('recent',[]) if type(e.get('seq')) is int}
     seen=set()
     for action in actions:
-        if type(action) is not dict or set(action)!={'id','expected_version','evidence','reason','changes','object'}:
+        if type(action) is not dict or set(action)-{'walk'}!={'id','expected_version','evidence','reason','changes','object'}:
             raise ValueError('invalid character action fields')
         identity=action['id']
         if type(identity) is not str or identity not in cast or identity in seen:
@@ -35,6 +35,18 @@ def validate_actions(actions, context):
         changes=action['changes']
         if type(changes) is not dict or set(changes)-{'goals','relationships','team','status','offer'}:
             raise ValueError('unsupported character action changes')
+        if 'walk' in action:
+            path=action['walk'];obj=action['object']
+            original=next((o for o in data.get('objects',[]) if o['id']==identity),None)
+            if (type(path) is not list or not 2<=len(path)<=6 or
+                    any(type(p) is not list or len(p)!=2 or any(type(v) is not int for v in p) for p in path) or
+                    len({tuple(p) for p in path})!=len(path) or
+                    any(abs(a[0]-b[0])+abs(a[1]-b[1])!=1 for a,b in zip(path,path[1:])) or
+                    original is None or obj is None or 'region_revision' not in obj or
+                    character['status']!='active' or changes.get('status','active')!='active' or
+                    path[0]!=[original['x'],original['y']] or path[-1]!=[obj['x'],obj['y']] or
+                    any(original.get(k)!=obj.get(k) for k in ('group','num','region_revision'))):
+                raise ValueError('walk requires 2..6 unique cardinal points in the current generated place')
         character.update(copy.deepcopy(changes),version=character['version']+1,evidence=evidence,reason=action['reason'])
         if character.get('offer') is None:character.pop('offer',None)
         obj=action['object']
@@ -47,13 +59,14 @@ def validate_actions(actions, context):
     return copy.deepcopy(actions)
 
 
-def action_step(actions, definition, result):
+def action_step(actions, definition, result, context=None):
     """Trusted reducer embedded in source; controlled actors supersede old scripts."""
     import copy
     result=copy.deepcopy(result)
     state=result['state'];cast=state['world_characters']
     receipts=state.setdefault('world_character_action_receipts',[])
     controls=state.setdefault('world_character_controls',{})
+    tick=(context or {}).get('tick',0)
     if definition not in receipts:
         if len(receipts)>=32:raise ValueError('character action receipt limit')
         for action in actions:
@@ -65,8 +78,19 @@ def action_step(actions, definition, result):
                              evidence=action['evidence'],reason=action['reason'])
             if character.get('offer') is None:character.pop('offer',None)
             controls[identity]={'character':character,'object':copy.deepcopy(action['object'])}
+            if 'walk' in action:
+                controls[identity]['walk']={'id':definition[:24],'path':copy.deepcopy(action['walk']),'index':0,'last_tick':tick}
+                controls[identity]['object']['x'],controls[identity]['object']['y']=action['walk'][0]
         receipts.append(definition)
-    for identity,control in controls.items():
+    for identity,control in sorted(controls.items()):
+        walk=control.get('walk')
+        if walk and walk['index']<len(walk['path'])-1 and walk['last_tick']!=tick:
+            point=walk['path'][walk['index']+1];obj=control['object']
+            occupied=any(p.get('ready') and p.get('generated_place',{}).get('revision')==obj.get('region_revision')
+                         and [p.get('x'),p.get('y')]==point for p in (context or {}).get('players',[]))
+            if not occupied:
+                walk['index']+=1;obj['x'],obj['y']=point
+            walk['last_tick']=tick
         cast[identity]=copy.deepcopy(control['character'])
     result['objects']=[obj for obj in result.get('objects',[]) if obj['id'] not in controls]
     result['objects'] += [copy.deepcopy(control['object']) for control in controls.values() if control['object'] is not None]
@@ -83,12 +107,13 @@ def compile_actions(actions, context):
     suffix=definition[:16]
     helper=inspect.getsource(action_step).replace('def action_step(',f'def _action_step_{suffix}(',1)
     return (previous+'\n'+f'_action_previous_{suffix}=update\n'+helper+'\n'+
-            f'def update(context,state):\n    return _action_step_{suffix}({actions!r}, {definition!r}, _action_previous_{suffix}(context,state))\n')
+            f'def update(context,state):\n    return _action_step_{suffix}({actions!r}, {definition!r}, _action_previous_{suffix}(context,state), context)\n')
 
 
 def contract():
     return {'response':'{"character_actions": actions, "tests": "Python tests"}',
             'action_fields':['id','expected_version','evidence','reason','changes','object'],
+            'optional_walk':'2..6 unique cardinal [x,y] points including current start and replacement object endpoint, same generated revision only; progresses one point per authority tick, yields to reported ready player occupancy, blocks interactions until complete',
             'changes':'goals, relationships to existing public NPCs, team, status, optional offer (null removes)',
             'effect':'explicitly take over selected existing NPCs from older scripts; native map object controls actual relocation/dialogue and team controls battle; all unrelated source effects preserved',
             'evidence':'nonempty inspected/recalled public history references; authored intent, never proof of battle or catch',

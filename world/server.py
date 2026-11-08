@@ -141,6 +141,8 @@ class WorldServer:
         self.memory = WorldMemory(self.db)
         self.guilds = Guilds(self.db, catalog_maps(), record_outcome=self.memory.append)
         self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
+        from .landmark_survey import LandmarkSurvey
+        self.landmark_survey = LandmarkSurvey(self)
         self.db.executescript('''
             CREATE TABLE IF NOT EXISTS module (
                 singleton INTEGER PRIMARY KEY CHECK(singleton=1), source TEXT,
@@ -237,6 +239,8 @@ class WorldServer:
                 validate_transition(json.loads(state_json), json.loads(state_json), objects, self.db)
                 from .region_characters import validate_region_objects
                 validate_region_objects(self,objects,json.loads(state_json))
+                from .character_walks import validate_walks
+                validate_walks(self,json.loads(state_json),json.loads(state_json),objects,restoring=True)
                 if type(row[5]) is not int or row[5] < 0:
                     raise ValueError('invalid interaction cursor')
                 self.module_state, self.tiles, self.objects = json.loads(state_json), tiles, objects
@@ -529,6 +533,9 @@ class WorldServer:
         lines += ['TILE ' + ' '.join(map(str, tile)) for tile in self.tiles
                   if tuple(tile[:2]) not in (self.cave_map, self.wilds_map)]
         for obj in self.objects:
+            from .character_walks import walk_for,walking
+            walk=walk_for(self.module_state,obj['id'])
+            if walking(self.module_state,obj['id']) and not conn.get('character_walk_capable'):continue
             prefix='OBJECT '
             if (obj['group'], obj['num']) in (self.cave_map, self.wilds_map):
                 from .region_characters import scoped
@@ -541,6 +548,8 @@ class WorldServer:
                 character = records(self.module_state).get(obj['id'])
                 if character and character['status'] == 'active':
                     lines.append('CHARACTER ' + obj['id'] + ' ' + str(character['version']))
+                    if walk and conn.get('character_walk_capable'):
+                        lines.append('CHARACTER_WALK '+' '.join(map(str,[obj['id'],character['version'],walk['id'],walk['index'],len(walk['path']),*[v for p in walk['path'] for v in p]])))
                     if conn.get('character_quest_capable') and character.get('offer'):
                         offer=character['offer']
                         lines.append('CHARACTER_OFFER '+ ' '.join(map(str,[obj['id'],character['version'],offer['id'],offer['revision'],offer['target'],offer['place_id'][7:]])))
@@ -594,6 +603,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                character_walk_capable = role.endswith('CHARWALK1')
+                if character_walk_capable:role=role[:-9]
                 character_region_capable = role.endswith('CHARREG1')
                 if character_region_capable:role=role[:-8]
                 character_quest_capable = role.endswith('CHARQUEST1')
@@ -639,6 +650,9 @@ class WorldServer:
                 travel = role in ('SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
                 social = role in ('SOCIAL', 'SOCIALCHAT', 'SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
                 link = role == 'LINK'
+                if character_walk_capable and not character_region_capable:
+                    self._error(conn,'AUTH')
+                    return
                 if character_region_capable and not (character_capable and (region_capable or cave_xl)):
                     self._error(conn, 'AUTH')
                     return
@@ -706,6 +720,7 @@ class WorldServer:
                     return
                 conn['id'] = name
                 conn['social'] = social
+                conn['character_walk_capable'] = character_walk_capable
                 conn['character_region_capable'] = character_region_capable
                 conn['character_capable'] = character_capable
                 conn['character_quest_capable'] = character_quest_capable
@@ -955,6 +970,7 @@ class WorldServer:
                 if changed or now - self.last_presence_broadcast >= PRESENCE_HEARTBEAT_INTERVAL:
                     self._schedule_presence(now)
                 self.guild_chat.observe(conn, state)
+                self.landmark_survey.observe(conn)
         except (UnicodeError, ValueError):
             self._error(conn, 'MALFORMED')
 
@@ -987,6 +1003,8 @@ class WorldServer:
             self._queue(conn, self._snapshot(conn))
             return
         conn['chat_credit'] = credit - 1
+        if fields[2] == '*' and self.landmark_survey.handle(conn, text.decode('ascii')):
+            return
         if fields[2] == '*' and self.guild_chat.handle(conn, text.decode('ascii')):
             return
         self.chat_serial += 1
@@ -1087,6 +1105,8 @@ class WorldServer:
         obj = next((o for o in self.objects if o['id'] == fields[2]), None)
         from .region_characters import scoped
         if not scoped(self,conn,obj,fields[3] if region else None):raise ValueError('interaction region mismatch')
+        from .character_walks import walking
+        if walking(self.module_state,fields[2]):raise ValueError('character is walking')
         if region and time.monotonic()-conn.get('state_time',0)>5:raise ValueError('stale region interaction')
         if not state or not state[6] or not obj or state[:2] != [obj['group'], obj['num']]:
             raise ValueError('interaction unavailable')
@@ -1179,7 +1199,7 @@ class WorldServer:
                 self._queue(conn, json.dumps(future.result(), ensure_ascii=True) + '\n')
         self.control_jobs = remaining
 
-    def _persist_cave(self, blob, *, label=None, previous_revision=None, history_evidence=None):
+    def _persist_cave(self, blob, *, label=None, previous_revision=None, history_evidence=None, character_continuation=None):
         if not self.persist_generated_cave:
             return
         try:
@@ -1210,11 +1230,22 @@ class WorldServer:
                                        previous_revision=hashlib.sha256(previous[0]).hexdigest() if previous else None,
                                        continued=previous_revision is not None,
                                        **({'history_evidence':history_evidence} if history_evidence is not None else {})))
+                if character_continuation is not None:
+                    from .character_rebinding import persist
+                    persist(self, character_continuation, place_id, previous_revision, identity)
+            if character_continuation is not None:
+                self.candidate = character_continuation['candidate']
+                self.objects = character_continuation['objects']
+                self.module_state = character_continuation.get('state', self.module_state)
+                self.tiles = character_continuation.get('tiles', self.tiles)
+                self.interaction_cursor = character_continuation.get('cursor', self.interaction_cursor)
+                if character_continuation.get('clear_error'):
+                    self.module_error = None
             self.revision = self.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
         except sqlite3.Error:
             raise ValueError('generated cave could not be persisted') from None
 
-    def _replace_cave(self, blob, *, label=None, previous_revision=None, expected_world_id=None, expected_sequence=None, history_evidence=None):
+    def _replace_cave(self, blob, *, label=None, previous_revision=None, expected_world_id=None, expected_sequence=None, history_evidence=None, character_continuation=None):
         from .shared_cave import SharedCave
         candidate = SharedCave(blob)  # validate completely before mutating anything
         if previous_revision is not None and (not self.persist_generated_cave or type(previous_revision) is not str or not re.fullmatch(r'[0-9a-f]{64}', previous_revision)):
@@ -1237,7 +1268,7 @@ class WorldServer:
             if (self.wilds_map if candidate.version in (6, 7, 8, 9, 16) else self.cave_map) is None:
                 raise ValueError('generated map missing from catalog')
             if self.shared_cave and candidate.identity == self.shared_cave.identity:
-                self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence)
+                self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence, character_continuation=character_continuation)
                 return candidate.identity
             peers = [peer for peer in self.peers.values() if not peer.get('closing') and not peer.get('region_cave')]
             if any(peer.get('in_generated_cave') or
@@ -1249,7 +1280,7 @@ class WorldServer:
             if any(len(peer['out']) + len(message) > MAX_QUEUE for peer in recipients):
                 raise ValueError('generated cave update is busy')
             old_id = self.shared_cave.identity if self.shared_cave else None
-            self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence)
+            self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence, character_continuation=character_continuation)
             self.shared_cave = candidate
             self._terrain_walk_cache = None
             for peer in recipients:
@@ -1536,6 +1567,22 @@ class WorldServer:
                 except ValueError as exc:
                     # Expected validation/occupancy refusal is not a mechanic error.
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'register_survey':
+                if set(request) != {'command','plan'}:raise ValueError('invalid survey registration')
+                result = self.landmark_survey.register(request['plan'])
+            elif request.get('command') == 'found_settlement':
+                try:
+                    from .settlement_plans import begin
+                    begin(self, conn, request)
+                    return
+                except ValueError as exc:
+                    result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'construct_outpost':
+                try:
+                    from .frontier_outposts import construct
+                    result = construct(self, request)
+                except ValueError as exc:
+                    result = dict(ok=False, error=str(exc))
             elif request.get('command') == 'set_event_state':
                 try:
                     if set(request)!={'command','trainer','identity','state'}:raise ValueError('invalid event state command')
@@ -1789,12 +1836,24 @@ class WorldServer:
         if self.job is not None and self.job[0].done():
             future, kind, conn, cursor = self.job
             self.job = None
+            if kind == 'settlement':
+                try:
+                    from .settlement_plans import finish
+                    response = finish(self, future.result(), cursor)
+                except Exception as exc:
+                    response = dict(ok=False, error=str(exc))
+                if conn is not None and conn['sock'] in self.connections:
+                    self._queue(conn, json.dumps(response, ensure_ascii=True) + '\n')
+                self.next_tick = time.monotonic() + 0.1
+                return
             try:
                 candidate, result = future.result()
                 state_json, tiles = self._validated(result)
                 objects = result.get('objects', [])
                 from .region_characters import validate_region_objects
                 validate_region_objects(self,objects,result['state'])
+                from .character_walks import validate_walks
+                validate_walks(self,self.module_state,result['state'],objects)
                 from .characters import validate_transition
                 character_changes = validate_transition(self.module_state, result['state'], objects, self.db)
                 changed = (kind == 'deploy' or result['state'] != self.module_state or tiles != self.tiles

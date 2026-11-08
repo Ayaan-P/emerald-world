@@ -75,6 +75,8 @@ def evidence_index(event, *, current_catalog=False):
         words.append(event.get('label') or '')
     elif event.get('event') == 'area_named':
         words.extend((event['before'], event['after']))
+    elif event.get('event') == 'landmark_discovery_shared':
+        words.append(event['landmark'])
     elif event.get('event') == 'terrain_changed':
         words.extend(sorted({tile[key] for tile in event['tiles'] for key in ('before','after')}))
     words.extend(sorted(places))

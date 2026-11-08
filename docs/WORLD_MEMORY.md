@@ -774,3 +774,181 @@ The local reconstruction's commit metadata is not a clean pinned submodule;
 source-tree equality is the verified result. An actual native build stopped at
 `tools/gbagfx` because `png.h` is missing; SDL2/libpng development packages are
 also unavailable. No linked binary or two-client playthrough is claimed.
+
+### Frontier outpost construction
+
+`python -m world.frontier_outposts camp.json --admin-socket /path/to/admin.sock
+--label 'Western Frontier Camp'` previews an additive construction plan in the
+active plain XL map. Add `--apply` to commit it. A plan contains exactly `x`, `y`,
+`width`, `height`, `gate` and `reservations`. For example:
+
+```json
+{"x":15,"y":20,"width":9,"height":7,"gate":"west","reservations":[]}
+```
+
+The bounded footprint becomes a walkable courtyard with one gate. An access trail
+connects that gate to existing land. The perimeter and a rock buffer remain
+impassable, and every old walkable tile is preserved. Width and height are 5..15;
+gates face north, east, south or west. Construction rejects overlap with old
+routes or sites, excessive trail length and unreachable locations. Reservations
+use [x,y,width,height] rectangles; carry forward the source plan's reservations
+when they must remain protected. Arbitrary terrain bytes do not encode ownership
+or protected-land semantics, and the tool does not infer them.
+
+The owner-only `construct_outpost` admin command compiles against the exact active
+archived template while holding the authority lock. It requires the inspected
+world ID, sequence and previous revision. Existing publication occupancy and
+persistence checks apply. The new map continues the same logical place and its
+ordinary committed activation history; both versions remain in the archive.
+Restart and revisiting preserve the construction. A stale or duplicate request
+fails rather than applying twice. Placed persistent characters on the shared revision are rebound at unchanged
+coordinates, with the complete NPC collision set validated against the new map.
+Their identities, teams, versions and prior history remain unchanged. Private
+player progress is not migrated by this tool.
+
+This is an owner/agent construction primitive, not a player crafting economy,
+settlement simulation, indoor building system or new tile-art pack. Walls use
+the existing impassable outdoor tiles. It adds no autonomous construction trigger
+and changes no engine source. Tests cover additive geometry, reservations,
+place continuity, archive/restart, failed commits and source-extracted native XL
+staging. The native-source test skips when the paired source is unavailable.
+The exact 80bf567 engine staging function accepted constructed geometry and
+rejected damaged bytes locally. A full native build stopped at missing `png.h`;
+headless smoke could not start because no binary was produced. A linked native
+playthrough and rendered building appearance remain unverified.
+
+Design precedents informed the narrow scope: Valheim documents persistent shared
+worlds (https://www.valheimgame.com/support/a-guide-to-dedicated-servers/), while
+Factorio's elevated infrastructure changes traversable geography
+(https://factorio.com/game/content-space-age). This implementation reuses the
+existing authority and native geometry rather than adding another world store.
+
+
+Construction now commits geometry, unchanged-location character bindings and the
+corresponding mechanic source atomically. A bounded wrapper around the existing
+authored reducer preserves those exact bindings on subsequent ticks and after
+restart. A later chapter that moves an actor within obsolete geometry fails
+rather than silently transporting it; author that chapter against its current
+revision explicitly. Repeated construction composes wrappers without replacing
+character chapter state or fabricating a character evolution.
+
+Pending mechanic/deployment work and character battles block inhabited
+construction. Characters on opened immutable regions cannot be migrated through
+the shared slot. Other revisions' actors remain untouched. Old archived geometry
+remains available, but migrated actors appear only on their new exact revision,
+not simultaneously on old copies. A committed placement-change record connects
+the previous and new geometry while preserving earlier history.
+
+Tests include the actual authored chapter reducer across construction, repeated
+construction and restart, exact-revision authentication/challenge wire, unrelated
+actor isolation, an NPC blocking the newly added access trail, and rollback after
+a module-write failure. Test source execution uses a fixture boundary; production
+retains the existing sandbox runtime. Full native rendering/playthrough limits
+above still apply.
+
+### Outcome-grounded inhabited settlements
+
+`python -m world.author_settlement 'Honor the expedition with a field station'
+--admin-socket /path/to/admin.sock --outcome-seq 42` asks the existing tool-disabled
+provider for an inert settlement proposal and previews it. Add `--apply` for
+explicit publication. The selected sequence must be a real committed public
+`guild_goal_completed` event. Theme, archived geometry and that public outcome
+are sent to the provider; trainer names, private saves, party hashes and live
+inspection data are not. Calls may incur provider usage charges. Recorded text
+is treated as data, not instructions.
+
+A plan contains `label`, the existing `construction` footprint, and one
+`resident`. Resident fields are `id`, `name`, `role`, `goals`, `team`, `gfx`,
+`text`, `offer`, `completion_text` and `completion_goals`. The offer uses the
+existing expedition schema. The compiler places the steward at the courtyard
+center and creates ordinary validated character chapters: arrival with the offer,
+then updated goals/dialogue after that exact character/offer revision completes.
+The team stays unchanged. Construction is authored fiction inspired by evidence,
+not a claim that the guild constructed a building or the steward won a battle.
+
+The owner-only `found_settlement` command also accepts an already-authored inert
+plan directly. It stages and runs the compiled source through the existing
+kernel-sandboxed mechanic runtime asynchronously. A failed stage changes no map
+or actor state. After staging, world sequence, map revision, source and occupancy
+are checked again. Geometry, source, character state and bindings then commit in
+one transaction. Existing inhabitants are preserved through the continuation
+mechanism above. The normal capacity, character-transition and joint collision
+validators remain authoritative. A duplicate resident ID fails rather than
+replacing an established character.
+
+A visiting guild leader sees an ordinary revision-scoped character offer. It
+requires explicit native acceptance and prior chronicle opt-in; merely founding
+the settlement never starts an expedition or enables publication. The existing
+guild authority records completion, and the normal character reducer changes
+this steward's dialogue and goals. Restart retains both the settlement and the
+completed character state.
+
+The end-to-end tests substitute provider output and sandbox execution, but use
+real public guild outcomes, geometry, authority transactions, authentication,
+scoped offer consent, expedition completion and the authored chapter reducer.
+No actual model invocation is claimed. An actual sandbox stage was attempted in
+this environment and failed because bubblewrap could not create a NETLINK_ROUTE
+socket. The real authority returned refusal with the map unchanged and steward
+absent. No weaker execution route was used. Native build/rendering limits above
+also remain; these protocol/component tests are not a linked gameplay session.
+
+### Private landmark surveys
+
+After publishing a route template, the owner can register the same route plan:
+`python -m world.landmark_survey plan.json --admin-socket /path/to/admin.sock`.
+Registration recompiles the plan, requires byte-for-byte equality with an archived
+XL template, and fixes its named clearings for that revision. It does not activate
+or modify terrain. Only this owner-admin path can register surveys.
+
+Inside that acknowledged map, a player types `/explore start` using existing
+native chat. `/explore status` shows progress and the nearest undiscovered
+clearing's coordinates; `/explore stop` pauses it. Reaching within one tile of a
+clearing center records a discovery and sends a private chat message. All
+landmarks can be explored in any order. Completion and partial progress survive
+server restart. Starting again resumes that revision, while starting in another
+registered map selects its separate progress.
+
+This is opt-in personal exploration, with no rewards or anti-cheat claim.
+Validated client-reported presence is the evidence, not a server simulation of
+travel. Trainer discoveries stay out of public world history and model context by
+default, and other players do not receive the private messages. Old-revision surveys pause when
+the map changes; reactivating the exact archived map allows them to continue.
+Landmarks are coordinate destinations in existing geometry, not new sign art.
+Clients need their existing interactive chat path; this adds no Windows/headless
+chat UI and does not change native region admission.
+
+A player can deliberately share one discovered landmark while standing beside it:
+`/explore share camp` previews the public data and permanence. Only
+`/explore share camp confirm` publishes. The public record contains the landmark
+name, coordinates, exact map revision and durable place identity, not the player's
+name or other discoveries. This permission applies only to that arrival, not
+future surveys. The shared discovery can be recalled by landmark name and used
+as evidence for later authored destinations. It confirms consent and validated
+client-reported presence, not independently simulated travel. Repeated sharing
+of the same landmark/revision reuses its existing milestone. Publication and its
+receipt commit together; failed writes leave the private discovery intact.
+
+The end-to-end fixture follows an authenticated survey arrival through explicit
+sharing, public recall and the existing guarded route-author publication. The
+new destination cites the shared event, and the receipt survives restart. Model
+output is a deterministic fixture; this is not an automatic world-building
+trigger or proof of a live model/native game session.
+
+Native compatibility privacy boundary: updated outer native clients gate public
+`/explore` commands at `WorldBridge_ChatSend`, not only the composer. The first
+attempt sends only the fixed harmless `/explore protocol 1` probe and retains the
+private draft. A dedicated sequence-matched authority response enables commands
+for that connection; the player must submit again. Old servers may broadcast the
+probe, but never receive the held discovery command from this updated client.
+Chat messages cannot masquerade as protocol readiness. Disconnect and reconnect
+clear support, and an unanswered probe never releases a queued private command.
+
+This does not protect older clients or arbitrary custom clients. Those clients
+can expose slash-command text on old servers. The source branch paired this
+handshake with Expansion guard commit `1b34f4360bf8248a337c024acbc68b238bebf738`.
+The reviewed integration's engine gitlink and build-script pin are managed
+separately to preserve both that privacy guard and the integrated character
+walking work. This app-source integration does not change or verify that pin.
+Explicit public-discovery confirmation remains required after capability
+negotiation. No tests, object compilation, linked build or live network acceptance
+were run for this source-only integration.

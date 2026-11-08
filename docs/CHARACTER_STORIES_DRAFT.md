@@ -60,3 +60,21 @@ The existing leader permission, active-goal protection, cancellation and chronic
 Bare engine aliases `GeneratedWorld_Cave` and `GeneratedWorld_Wilds` now reject rather than starting goals that cannot complete. Old persisted goals using those aliases show instructions to cancel and restart inside the intended destination. They are not silently cancelled.
 
 Native NPC expedition offers still target native maps only. The generated-place player command is usable independently of a new native offer presentation. Do not emit generated destinations in CHARACTER_OFFER or claim NPC-offered generated expeditions until explicit place/revision consent presentation is implemented and negotiated.
+
+## Visible, authority-paced character walking
+
+A character action may include `walk`, two through six unique cardinal `[x,y]` points including the current position and the replacement object's endpoint. The path must remain within one exact generated revision. The authority validates every point against actual immutable geometry and other NPC placements, including route connectivity. A new walking action increments the character version once. It starts at the old position, then commits at most one point per mechanic tick, yielding when a reported ready player occupies the next tile. Mid-walk state survives restart; replay/nested action wrappers do not double-step.
+
+CHARWALK1 follows CHARREG1 in capability negotiation. After CHARACTER, `CHARACTER_WALK id version movement_id index count x0 y0 ...` supplies the full bounded route and current authoritative index. The ordinary scoped object's position equals that indexed point. The complete path remains after completion so a client missing snapshots can catch up. Older clients hide the moving actor and can see it again when finished.
+
+Authority interaction, battle admission and expedition acceptance reject while the logical route is unfinished. The native counterpart also gates interaction until its visible actor actually reaches the endpoint, and uses ordinary held walking actions with read-only local collision checks. A player or moving object can delay native animation even after the authority reaches the logical endpoint; no reward, arrival proof or forged battle result comes from that local playback. Off-path retargeting safely waits rather than teleporting.
+
+This is short, explicit same-map walking, not automatic navigation, a cross-map journey or guaranteed synchronization with unreported local obstacles. Existing teleport-style authored relocation remains a separate action. Source/component fixtures exercise the real authority path and native playback routines, but a rendered playthrough is still a separate acceptance step.
+
+## Reacting to voluntarily shared discoveries
+
+With the landmark survey integration, a chapter may wait for `landmark_discovery_shared`. It must name the exact `place_id`, immutable `revision`, and registered `landmark` identifier. The character history feed includes only the already committed public event and its bounded destination/coordinate/publication fields. It never queries private survey sessions or visit trails.
+
+Private arrivals, survey completion, and the first share-confirmation prompt do not trigger characters. Only the player's explicit confirmed publication can do so. The tested example moves a scholar from camp to the publicly reported lookout, changes dialogue and battle team, and records that public sequence as evidence. Duplicate shares do not advance twice, another revision with the same landmark name does not match, and restart preserves the change.
+
+This uses an authored chapter and the existing authority commit, scoped NPC and battle-admission paths. It does not invoke a model on each arrival, reveal who shared the discovery, or prove travel/battle outcomes beyond the existing acknowledged client-presence rules. The two-source integration fixture requires the survey branch in addition to this compiler/feed support; it does not activate anything in a live world.
