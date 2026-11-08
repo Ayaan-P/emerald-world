@@ -12,7 +12,7 @@ def bind_landmarks(character_plan, blob, route_report, chapter_landmarks):
     model, activate a destination, or bypass mechanic staging/authority checks.
     """
     cave=SharedCave(blob)
-    if cave.version!=16 or type(route_report) is not dict or route_report.get('revision')!=cave.identity:
+    if cave.version not in (16,17) or type(route_report) is not dict or route_report.get('revision')!=cave.identity:
         raise ValueError('route report must match the exact XL template')
     if type(chapter_landmarks) is not dict or any(type(v) is not str for v in chapter_landmarks.values()):
         raise ValueError('chapter landmark bindings must be an object')

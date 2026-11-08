@@ -278,12 +278,14 @@ class WorldMemory:
         if row is None or hashlib.sha256(row[0]).hexdigest()!=revision:
             raise ValueError('saved revision unavailable')
         cave=SharedCave(row[0])
+        from .route_encounters import context as encounter_context
         terrain=self.db.execute('SELECT revision,payload FROM generated_area_terrain WHERE identity=?',(revision,)).fetchone()
         overrides=terrain_delta(cave,b'\0',terrain[1]) if terrain and cave.version==9 else []
         return dict(world_id=self.world_id,
                     captured_at_seq=self.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0],
                     revision=revision,label=row[1],place_id=row[2],template_version=cave.version,
                     active=bool(server.shared_cave and server.shared_cave.identity==revision),
+                    encounters=encounter_context(cave),
                     side=cave.side,rows=[line.decode('ascii') for line in cave._rows],
                     terrain_revision=terrain[0] if terrain else 0,terrain_overrides=overrides,
                     layout='saved_base_with_explicit_terrain_overrides',
@@ -325,6 +327,8 @@ class WorldMemory:
             label = self.db.execute('SELECT label FROM generated_area_archive WHERE identity=?', (active,)).fetchone() if server.archive_generated_areas else None
             active_area['label'] = label[0] if label else None
             active_area['template_version'] = server.shared_cave.version
+            from .route_encounters import context as encounter_context
+            active_area['encounters'] = encounter_context(server.shared_cave)
             terrain_revision, payload = server._active_terrain()
             active_area['terrain_revision'] = terrain_revision
             overrides = terrain_delta(server.shared_cave, b'\0', payload) if server.shared_cave.version == 9 else []

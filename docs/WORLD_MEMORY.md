@@ -1010,3 +1010,32 @@ The implementation is original and intentionally limited to the game's existing
 walkable-ground/blocked-water XL format. Existing custom wildlife tables belong
 to other cave formats; this feature does not mislabel terrain shapes as new
 encounter-bearing biomes.
+
+### Authored XL encounter populations (CAVE17 candidate)
+
+`world.author_routes --encounters` explicitly asks the constrained author for an
+encounter population in addition to route geometry. The plan's optional
+`encounters` object has `rate` (1..100) and exactly twelve `wildlife` entries,
+each with an enabled Expansion species name and a level (1..100). Native slot
+weights are 20,20,10,10,10,10,5,5,4,4,1,1 percent. The report combines repeated
+species/level entries using those weights. Rate is a native encounter parameter,
+not a promised per-step probability. No private trainer party is used to infer
+levels, and this single population applies across the destination, not separate
+per-landmark habitats.
+
+The new immutable format is `EWGMAP17`, followed by 37 bytes (rate and twelve
+little-endian species IDs/levels), followed by the existing 127x127 geometry.
+Its digest covers the table as well as every cell. Only an explicit `CAVE17`
+client receives `XLWILDLIFE` plus `CAVE WILD` and the rows. Older `CAVE16` clients
+receive no map instead of silently discarding the table. Existing archive,
+occupancy and history guards apply; changing wildlife changes the exact revision.
+Surveys and characters bind to that exact immutable revision. Outpost construction
+still rejects this format rather than erasing its encounter data.
+
+Archive inspection and the active public context expose the bounded authored
+population, clearly distinguished from observed wildlife, catches or player
+progress. The history-informed author can use that public context when proposing
+a subsequent destination. No automatic live-world update or battle outcome is
+inferred. The native counterpart must be built and paired before claiming these
+maps can be played; this candidate is an app/protocol extension, not evidence
+that an older engine pin already supports CAVE17.

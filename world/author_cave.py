@@ -276,6 +276,9 @@ def read_world_history(admin_socket, theme):
             or history.get('saved_places',{}).get('enabled') is not True
             or history['saved_places'].get('captured_at_seq')!=memory['through']):
         raise ValueError('persistent world history changed or unavailable')
+    encounters=memory.get('active_area',{}).get('encounters')
+    if encounters is not None:
+        history['active_authored_encounters']=encounters
     return history
 
 

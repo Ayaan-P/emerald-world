@@ -42,7 +42,7 @@ class LandmarkSurvey:
     def scope(self, conn):
         s=self.server;state=conn.get('state');cave=s._connection_cave(conn)
         if (not state or time.monotonic()-conn.get('state_time',0)>5 or not state[6] or not conn.get('in_generated_cave') or cave is None
-                or cave.version!=16 or tuple(state[:2])!=s.wilds_map or s._region_scope(conn)!=cave.identity):
+                or cave.version not in (16,17) or tuple(state[:2])!=s.wilds_map or s._region_scope(conn)!=cave.identity):
             return None
         return cave.identity
 

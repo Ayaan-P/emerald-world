@@ -30,7 +30,7 @@ Routes go around reservations, rather than drawing L-shaped lines through them.
 The spanning network connects every clearing and both native return endpoints.
 Requested additional routes must use new terrain outside their endpoint areas.
 """
-    if type(plan) is not dict or not {'seed','landmarks','reservations','loops'}<=set(plan) or set(plan)-{'seed','landmarks','reservations','loops','journey'}:
+    if type(plan) is not dict or not {'seed','landmarks','reservations','loops'}<=set(plan) or set(plan)-{'seed','landmarks','reservations','loops','journey','encounters'}:
         raise ValueError('expected seed, landmarks, reservations and loops')
     seed=plan['seed'];loops=plan['loops'];landmarks=plan['landmarks'];reservations=plan['reservations']
     if type(seed) is not int or not 0<=seed<2**32 or type(loops) is not int or not 0<=loops<=4:
@@ -179,14 +179,19 @@ Requested additional routes must use new terrain outside their endpoint areas.
         if (125,125) in seen:
             raise ValueError('required landmark can be bypassed in final geometry: '+name)
     rows=[''.join('.' if (x,y) in walk else '#' for x in range(SIDE)) for y in range(SIDE)]
-    blob=encode(dict(rows=rows,spawn=[1,1],exit=[125,125]));cave=SharedCave(blob)
+    blob=encode(dict(rows=rows,spawn=[1,1],exit=[125,125]))
+    population=None
+    if 'encounters' in plan:
+        from .route_encounters import encode as encode_encounters, population as summarize_population
+        blob=encode_encounters(blob,plan['encounters']);population=summarize_population(plan['encounters'])
+    cave=SharedCave(blob)
     distance={(1,1):0};queue=deque(distance)
     while queue:
         x,y=queue.popleft()
         for p in ((x-1,y),(x+1,y),(x,y-1),(x,y+1)):
             if p in walk and p not in distance:distance[p]=distance[x,y]+1;queue.append(p)
     return blob,dict(schema=1,generator='reserved-terrain-routes-1',revision=cave.identity,
-        landmarks=sites,routes=records,required_passages=required,protected_coastal_water=[list(p) for p in sorted(coastal_water)],walkable_tiles=len(walk),entry_to_exit_steps=distance[125,125],
+        landmarks=sites,routes=records,encounter_population=population,required_passages=required,protected_coastal_water=[list(p) for p in sorted(coastal_water)],walkable_tiles=len(walk),entry_to_exit_steps=distance[125,125],
         limitations='Geometry uses the existing grass/water palette. No elevation, new biome art, quests or inter-map portals.')
 
 
