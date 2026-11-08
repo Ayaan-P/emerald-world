@@ -114,3 +114,44 @@ cover per-player privacy, frozen definitions, recruitment/squad validation,
 restart while pending, loss/abort/retry, duplicate/conflicting results, and
 transaction rollback if a final receipt or result write fails. A sentinel normal
 save stays unchanged. This proves director behavior, not actual engine battles.
+
+
+### Per-run profile and handoff boundary
+
+`world.campaign_profiles.campaign_profile` holds the existing world-lifetime and
+profile locks around a distinct run directory. A frozen manifest binds that run
+to its authenticated trainer, campaign definition and Expansion engine. One run
+lock covers even callers supplying a different trainer name. Reusing a run with
+another owner, definition or changed ticket is refused. An explicit starter save
+can be copied once; no normal save is inferred, automatically imported or merged
+back. Resume reuses only the campaign profile. The caller must retain this
+context for the entire native process lifetime.
+
+`adapter_command` probes `--campaign-protocol` through the existing network-isolated
+sandbox and requires the exact `EW_CAMPAIGN 1` response before constructing a
+campaign launch. There is no ordinary-game or unsandboxed fallback. The native
+process receives only its run-profile writable mount, an immutable read-only
+battle-ticket file, system runtime files and the selected binary. It receives no
+world transport, admin socket, credentials or normal trainer profile mount.
+The command uses `--campaign-ticket` and `--campaign-result`; current binaries
+without those capabilities are refused. This module does not implement those
+native flags or launch a campaign automatically.
+
+The result reader accepts only a bounded private regular file matching the exact
+ticket, a win/loss/abort outcome, and an explicit `party_restored: true` report.
+It produces the owner-adapter report payload, never silently advances the run.
+Wrong-ticket, missing-restore, symlink, shared-permission and malformed results
+fail closed. Restoration is still a native adapter claim, not independent proof.
+
+Further native inspection found `LoadPlayerParty` updates boxed HP/status fields
+while restoring the party (`load_save.c:200-218` in the inspected RC10 family).
+Therefore a byte-exact in-memory rental restore cannot simply assume that
+`SavePlayerParty`/`LoadPlayerParty` are inverse byte copies. The adapter must use
+a complete party/count snapshot for battle exit and keep its own run-profile
+save lifecycle separate from ordinary trainer files. Native launch, rental swap
+and crash recovery are still required before playable-campaign acceptance.
+
+Profile tests use real files and locks, but mock the native capability probe.
+They verify resume, concurrent-use refusal, owner/ticket conflicts, isolation of
+normal saves, exact sandbox mount construction, unsupported-engine refusal and
+result validation. They do not exercise a native battle or bypass sandbox limits.
