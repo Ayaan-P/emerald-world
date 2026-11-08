@@ -23,7 +23,27 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # official v4
         with:
           persist-credentials: false
-          submodules: true
+          submodules: false
+      - name: Require explicitly scoped private engine access
+        env:
+          ENGINE_SOURCE_READ_TOKEN: ${{ secrets.ENGINE_SOURCE_READ_TOKEN }}
+        run: |
+          if [ -z "$ENGINE_SOURCE_READ_TOKEN" ]; then
+            printf '%s\n' '::error::Configure ENGINE_SOURCE_READ_TOKEN with read-only Contents access to Ayaan-P/pokeemerald-expansion-native. The app GITHUB_TOKEN cannot read this private repository. See docs/RC12_BUILD_RELEASE.md.'
+            exit 1
+          fi
+      - name: Read the committed engine pin
+        id: engine-pin
+        run: printf 'sha=%s\n' "$(git rev-parse HEAD:engines/expansion-native)" >> "$GITHUB_OUTPUT"
+      - name: Checkout the exact private engine without stored credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # official v4
+        with:
+          repository: Ayaan-P/pokeemerald-expansion-native
+          ref: ${{ steps.engine-pin.outputs.sha }}
+          path: engines/expansion-native
+          token: ${{ secrets.ENGINE_SOURCE_READ_TOKEN }}
+          persist-credentials: false
+          fetch-depth: 0
       - name: Generate map constants for production C fixtures
         run: |
           make -C tools/mapjson
