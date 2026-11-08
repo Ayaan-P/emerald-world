@@ -50,20 +50,48 @@ class GuildChat:
             with s.lock:
                 try:
                     command=text[6:].strip();words=command.split()
+                    handled=False
                     if words and words[0].lower()=='online': lines=self.online(conn['id'],words[1:])
                     else:
-                        if (len(words)==4 and words[0].lower() in ('expedition','meet')
-                                and words[1].lower()=='start' and words[2].lower()=='here'):
+                        if len(words) >= 5 and words[:2] == ['event', 'start'] and words[2].lower() == 'here':
+                            state=conn.get('state')
+                            fresh=conn.get('state_time') is not None and time.monotonic()-conn['state_time']<=self.freshness
+                            if not state or not fresh or not state[6] or tuple(state[:2]) in (s.cave_map,s.wilds_map):
+                                raise GuildError('Stand ready on a standard map before starting a guild journey.')
+                            map_name=self.validate_coords(*state[:4])['name']
+                            command=f'event start here {words[3]} {map_name} {" ".join(words[4:])}'
+                            lines=s.guilds.command(conn['id'],command)
+                            self.epoch+=1
+                            handled=True
+                        elif len(words) == 3 and words[:2] == ['event', 'arrive']:
+                            state=conn.get('state')
+                            fresh=conn.get('state_time') is not None and time.monotonic()-conn['state_time']<=self.freshness
+                            if not state or not fresh or not state[6] or tuple(state[:2]) in (s.cave_map,s.wilds_map):
+                                raise GuildError('Stand ready on a standard map before reporting your journey arrival.')
+                            active=s.guilds.db.execute('SELECT guild_id,map_name,complete FROM guild_events WHERE id=?',(int(words[2]),)).fetchone()
+                            if not active or active[2] or tuple(state[:2]) in (s.cave_map,s.wilds_map):
+                                raise GuildError('That guild journey is no longer active.')
+                            actual=self.validate_coords(*state[:4])['name']
+                            if actual != active[1]: raise GuildError(f'This journey is at {active[1]}.')
+                            lines=s.guilds.command(conn['id'],command)
+                            self.epoch+=1
+                            handled=True
+                        if not handled and len(words)==4 and words[0].lower() in ('expedition','meet') and words[1].lower()=='start' and words[2].lower()=='here':
                             state=conn.get('state')
                             fresh=conn.get('state_time') is not None and time.monotonic()-conn['state_time']<=self.freshness
                             if not state or not fresh or not state[6] or tuple(state[:2]) in (s.cave_map,s.wilds_map):
                                 raise GuildError('Stand ready on a standard map before starting here.')
                             command=f'{words[0].lower()} start {self.validate_coords(*state[:4])["name"]} {words[3]}'
-                        lines=s.guilds.command(conn['id'],command)
-                        self.epoch+=1
+                        if not handled:
+                            lines=s.guilds.command(conn['id'],command)
+                            self.epoch+=1
                 except GuildError as exc: lines=[str(exc)]
                 for line in lines: self.message(conn,conn['id'],'Guild: '+line)
                 parts=text.split()
+                if (len(parts)==3 and parts[1].lower()=='event' and parts[2].lower()=='arrive'
+                        and lines[0].startswith('Guild journey complete')):
+                    _,members=s.guilds.members(conn['id'])
+                    self._announce(conn,[name for name in members if name!=conn['id']],lines[0])
                 if len(parts)==3 and parts[1].lower()=='invite' and lines[0].startswith('Invited '):
                     invitee=s.peers.get(parts[2]);guild=s.guilds._member(conn['id'])
                     if invitee and invitee.get('chat') and not invitee.get('closing') and guild:
