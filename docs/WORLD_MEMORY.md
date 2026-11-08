@@ -1,5 +1,35 @@
 # World memory: build on what actually happened
 
+## Current implementation target: app authority plus outer reference engine
+
+The Python authority and REGION1 reference client changes in this PR target the
+actual app. The native C changes and compiled component fixtures target the
+**outer repository's `src/platform/` engine**, not the RC10 Expansion engine used
+by the pinned submodule. They do not establish native Expansion availability.
+
+The actual Expansion path is `engines/expansion-native/src/world/`. At the app
+baseline in this PR, its gitlink is `fa9c20cb82f2ee1b6e9d22f8c569f336d5a26ef5`.
+That directory is uninitialized here; available reconstructed engine worktrees
+contain older revisions, not that commit. A read of the configured public donor
+repository for that SHA returned no commit. Separately, the existing
+`scripts/build_expansion.py` still enforces `c22527265e72236fb269937d9705bafa49cc02cc`,
+which differs from the gitlink. Neither pin was changed by this work.
+
+`engines/expansion.mk` does not define `GENERATED_WORLD_REGIONS`. The new flag in
+the outer Makefile does not enable the feature in Expansion. The CAVE10 fallback
+component test uses synthetic feature defines with extracted **outer** bridge
+functions; it verifies that parser/negotiation logic only, not compatibility with
+the actual Expansion source or executable. All native-component and build claims
+below must be read with that target boundary. The png.h build failure is from the
+outer native build; the actual Expansion port is blocked earlier by missing exact
+source and unreconciled build pins.
+
+The required next input is the exact current RC10 Expansion checkout or an
+accessible published commit/ref. Native selection/menu work must be ported and
+verified there, then integrated through the correct engine build/pin workflow.
+No Expansion flag, engine gitlink, release artifact or live server was changed.
+
+
 ## Decision and first slice
 
 A persistent world needs a memory of its places and changes, not a second save

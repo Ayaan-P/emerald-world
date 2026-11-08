@@ -1,6 +1,7 @@
-"""Real native region/geometry components consume actual authority wire frames.
+"""Outer reference-engine components consume actual authority wire frames.
 
-The fixture stubs field task/warp execution. It is not a graphical playthrough.
+The fixture stubs field task/warp execution. It does not compile the separately
+pinned RC10 Expansion engine or establish graphical playthrough acceptance.
 """
 from pathlib import Path
 import json
@@ -119,7 +120,7 @@ int main(void){char place[42],line[256],revision[65];struct MapLayout base={19,2
 
 
 class NativeRegions(unittest.TestCase):
-    def test_expansion_capability_fallback_keeps_cohort(self):
+    def test_outer_bridge_capability_fallback_keeps_cohort(self):
         source=(ROOT/'src/platform/world_bridge.c').read_text()
         flags=('GENERATED_WORLD_REGIONS','GENERATED_MAP_READY','GENERATED_CAVE_PROFILES',
                'GENERATED_CAVE_WILDLIFE','GENERATED_MAP_LARGE','GENERATED_MAP_WILDS',
