@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
-from world.campaign_profiles import campaign_profile,adapter_command,result_report,validate_ticket,RESTRICTIONS
+from world.campaign_profiles import campaign_profile,adapter_command,result_report,validate_ticket,RESTRICTIONS,run_battle
 from world.launcher import profile_paths
 
 
@@ -73,6 +73,29 @@ class CampaignProfileTests(unittest.TestCase):
             with self.assertRaises(ValueError):result_report(prepared)
             prepared['result'].unlink();prepared['result'].symlink_to(self.normal['save'])
             with self.assertRaises(OSError):result_report(prepared)
+
+    def test_experimental_launch_is_explicit_and_profile_owned_until_exit(self):
+        with campaign_profile(self.world,'Alice',ticket()) as prepared:
+            with patch('world.campaign_profiles.subprocess.run',return_value=subprocess.CompletedProcess([],0,'EW_CAMPAIGN_EXPERIMENTAL 1','')):
+                with self.assertRaises(ValueError):adapter_command('/usr/bin/false',prepared)
+                self.assertIn('--campaign-ticket',adapter_command('/usr/bin/false',prepared,experimental=True))
+        calls=[]
+        def launch(command,**kwargs):
+            calls.append(command)
+            if '--campaign-protocol' in command:
+                return subprocess.CompletedProcess(command,0,'EW_CAMPAIGN_EXPERIMENTAL 1','')
+            with self.assertRaises(ValueError):
+                with campaign_profile(self.world,'Alice',ticket()):pass
+            result=Path(command[command.index('--campaign-result')+1])
+            result.write_text(json.dumps(dict(schema=1,ticket='a'*32,outcome='loss',party_restored=True)))
+            result.chmod(0o600)
+            return subprocess.CompletedProcess(command,0)
+        with patch('world.campaign_profiles.subprocess.run',side_effect=launch):
+            report=run_battle('/usr/bin/false',self.world,'Alice',ticket(),seed_save=self.seed,experimental=True)
+            self.assertEqual(report['outcome'],'loss')
+            self.assertEqual(run_battle('/usr/bin/false',self.world,'Alice',ticket()),report)
+        self.assertEqual(len(calls),2)
+        self.assertEqual(self.normal['save'].read_bytes(),b'normal trainer save')
 
     def test_untrusted_contract_fields_and_unseeded_profile_do_not_copy_online(self):
         for change in ({'run':'../normal'},{'schema':True},{'restrictions':[]},{'squad':[dict(species=True,level=50)]}):

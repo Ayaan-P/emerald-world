@@ -15,6 +15,7 @@ from .offline import _private_directory, offline_profile
 from .world_library import WorldActivityLock, _directory
 
 PROTOCOL='EW_CAMPAIGN 1'
+EXPERIMENTAL_PROTOCOL='EW_CAMPAIGN_EXPERIMENTAL 1'
 RESTRICTIONS=['isolated_run_profile','no_normal_save_writes','no_frontier_rewards_or_streaks']
 
 
@@ -88,11 +89,13 @@ def _base_command(binary,prepared,display=None):
     return game_command(binary,prepared['state'],prepared['paths'],display,online=False,engine='expansion-native')
 
 
-def adapter_command(binary,prepared,display=None):
+def adapter_command(binary,prepared,display=None,*,experimental=False):
     """Probe within the same network-isolated profile sandbox; no fallback."""
     probe=_base_command(binary,prepared)
     checked=subprocess.run(probe+['--campaign-protocol'],capture_output=True,text=True,timeout=5)
-    if checked.returncode!=0 or checked.stdout.strip()!=PROTOCOL:
+    accepted={PROTOCOL}
+    if experimental:accepted.add(EXPERIMENTAL_PROTOCOL)
+    if checked.returncode!=0 or checked.stdout.strip() not in accepted:
         raise ValueError('native campaign adapter unavailable; campaign launch refused')
     command=_base_command(binary,prepared,display)
     separator=command.index('--')
@@ -108,3 +111,20 @@ def result_report(prepared):
         raise ValueError('campaign result does not confirm this ticket and party restoration')
     # Still an adapter report, never independent proof of a battle or restoration.
     return dict(command='campaign_report',ticket=result['ticket'],outcome=result['outcome'])
+
+
+def run_battle(binary,state_dir,trainer,ticket,*,seed_save=None,display=None,experimental=False):
+    """Hold the owned run profile throughout a foreground native battle process.
+
+    Experimental binaries require explicit opt-in. Closing/resetting before a
+    restored receipt is produced leaves the director ticket unresolved. This
+    returns an owner-report payload; it never sends it or marks a battle won.
+    """
+    with campaign_profile(state_dir,trainer,ticket,seed_save=seed_save) as prepared:
+        if prepared['result'].exists():
+            return result_report(prepared) # recover a completed launch without replaying it
+        command=adapter_command(binary,prepared,display,experimental=experimental)
+        completed=subprocess.run(command,check=False)
+        if completed.returncode!=0:
+            raise ValueError('campaign process failed; ticket remains unresolved')
+        return result_report(prepared)

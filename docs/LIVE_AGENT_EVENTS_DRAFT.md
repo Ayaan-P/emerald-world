@@ -155,3 +155,16 @@ Profile tests use real files and locks, but mock the native capability probe.
 They verify resume, concurrent-use refusal, owner/ticket conflicts, isolation of
 normal saves, exact sandbox mount construction, unsupported-engine refusal and
 result validation. They do not exercise a native battle or bypass sandbox limits.
+
+Campaign experimental native launch: `world.campaign_profiles.run_battle` now
+holds the existing per-run profile ownership through a foreground native
+process, then returns a validated owner-report payload (it does not send it).
+`experimental=True` explicitly accepts EW_CAMPAIGN_EXPERIMENTAL 1; defaults
+still require the released protocol. The separate native campaign draft has
+file ingestion, field callbacks and restored-result emission, but full build
+and actual battle acceptance are not yet verified. An explicit compatible
+field-ready seed and player title/load input are required. Closing/resetting
+without a valid receipt leaves the ticket unresolved. Existing valid receipts
+are recovered without launching the same battle again. No normal save is
+copied implicitly or merged back. Tests mock process execution and do not claim
+that the native game has been played.
