@@ -42,3 +42,51 @@ This is a single-tile, per-trainer control primitive, not a globally synchronize
 An owner agent can submit a JSON array of one to 64 tile edits using `--tiles-file patch.json` in place of `--x`, `--y` and `--terrain`. Every entry has exactly `x`, `y` and `terrain` (`grass` or `tall_grass`). For example: `[{"x": 5, "y": 5, "terrain": "grass"}, {"x": 6, "y": 5, "terrain": "tall_grass"}]`. The owner authority validates the entire patch, rejects duplicate or protected/unwalkable coordinates, and queues one bounded command for one trainer. The native client validates the entire patch again before changing any tile, so an invalid patch changes none; a valid patch updates the in-memory map and redraws tiles. One client-reported outcome covers the whole patch.
 
 This is still per-trainer and ephemeral, with unchanged collision. It is not globally synchronized or persistent and does not create walls, buildings or new art. Tall grass relies on the normal encounter system, including the separate empty-party crash fix. No live two-client session, actual local socket or external agent was exercised.
+
+## State-driven world opportunities (draft)
+
+The opportunity director is a different narrative structure from a campaign
+chain or an NPC chapter sequence. It selects authored scenes by current shared
+place qualities and private participant qualities. A player's choice can make
+another visitor's available stories change, while personal participation and
+choices remain private. It does not award native money, create creatures,
+change terrain, or physically open a ferry route.
+
+Research inspiration: Failbetter describes quality-based narrative as short
+interactive storylets whose availability depends on state that their choices
+also change. The implementation here is original and uses no source content:
+https://www.failbettergames.com/news/storynexus-developer-diary-2-fewer-spreadsheets-less-swearing
+https://www.failbettergames.com/news/new-narrative-structures
+
+The owner publishes an immutable pack through the existing owner-only admin
+endpoint with `command: publish_opportunities` and `pack`. The example is
+`examples/river_opportunities.json`. It binds scenes to PetalburgCity and gives
+players a persistent flood-relief dilemma: slow repairs preserve nesting reeds;
+fast drainage destroys them and exposes a restoration scene; two different
+participants can complete relief; shared completion exposes a private welcome
+only to contributors. The ferry is narrative state, not a new travel service.
+
+Players already using native chat enter `/story` or `/story river` while ready
+on that standard map. The authority replies privately with scene and choice
+text plus exact `/story pick ...` lines. Eligibility is rechecked at choice
+time against the authenticated player's fresh, validated field report. Location
+is client-reported under the existing protocol, not a new anti-cheat guarantee.
+Stale place revisions refuse rather than silently choose an altered outcome.
+Exact request receipts replay without applying effects twice; conflicting
+receipt reuse fails. Each scene is once per player or once for that place.
+
+Pack qualities are bounded integers with `place` or `player` scope, explicit
+initial values and maxima. Requirements are inclusive intervals; choices apply
+bounded integer changes atomically with participation, shared revision, causal
+history and receipt. No executable expressions or model callbacks run on player
+input. An out-of-range effect makes that choice unavailable. Packs have bounded
+size and immutable identities; different content requires a new pack identity.
+Only shared quality deltas enter the place-consequence ledger, not private
+player qualities. No story-player table enters the ordinary world inspection.
+
+Tests exercise the real authority's authenticated native CHAT dispatch without
+opening sockets: two-player relief, alternate consequences, private replies,
+restart persistence, exact replay, stale location/state refusal and transaction
+rollback. No live world or rendered native chat client was used. Campaign native
+build/play acceptance remains separately blocked by missing build dependencies
+and the environment's apt configuration read restriction.
