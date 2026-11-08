@@ -73,7 +73,8 @@ def build_reference(source, revision):
     species = [mon['species_and_item'].split(' @ ')[0] for mon in mons]
     return {'version': 1, 'provenance': {
         'repository': 'Ayaan-P/pokeemerald-expansion-native', 'revision': revision,
-        'path': SOURCE_PATH, 'sha256': hashlib.sha256(source.encode()).hexdigest()},
+        'path': SOURCE_PATH, 'sha256': hashlib.sha256(source.encode()).hexdigest(),
+        'git_blob_sha1': hashlib.sha1(('blob ' + str(len(source.encode())) + '\0').encode() + source.encode()).hexdigest()},
         'scope': 'Hoenn trainer definitions only; includes rematches and unused definitions; not map reachability or live state',
         'summary': {'trainer_definitions': len(trainers), 'party_slots': len(mons),
                     'distinct_species_labels': len(set(species)),

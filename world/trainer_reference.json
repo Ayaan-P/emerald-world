@@ -4,7 +4,8 @@
     "repository": "Ayaan-P/pokeemerald-expansion-native",
     "revision": "db028d31a8e4fcb615e60414c7a870cba3263330",
     "path": "src/data/trainers.party",
-    "sha256": "566a0c69daa2a8de0539113363fed2d35a7de1667ddbe7fab1d7b04fc4e8e234"
+    "sha256": "d08e7a008df0f9eeaf58bbddf66d8a2d0a9cfc269d34d5f25d3fdb4042942e85",
+    "git_blob_sha1": "fbe4a37f6dafa6b397902c9e3c01ce12848580f8"
   },
   "scope": "Hoenn trainer definitions only; includes rematches and unused definitions; not map reachability or live state",
   "summary": {

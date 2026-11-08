@@ -10,6 +10,7 @@ class TrainerContextTests(unittest.TestCase):
     def test_snapshot_progression_and_source(self):
         result = author_context('Help prepare for Roxanne in Rustboro')
         self.assertEqual(result['provenance']['revision'], 'db028d31a8e4fcb615e60414c7a870cba3263330')
+        self.assertEqual(result['provenance']['git_blob_sha1'], 'fbe4a37f6dafa6b397902c9e3c01ce12848580f8')
         self.assertEqual(len(result['story_progression']), 8)
         self.assertEqual([m['level'] for m in result['matched_teams'][0]['party']], [12, 12, 15])
         self.assertEqual(result['matched_teams'][0]['party'][0]['species_and_item'], 'Geodude')
