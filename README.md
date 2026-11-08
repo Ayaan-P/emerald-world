@@ -4,18 +4,26 @@ A native PC Pokémon Emerald world built from [pret's decompilation](https://git
 
 ## Start here
 
-- **Players:** [RC9 features and player flow](docs/RELEASE_RC9.md), [Linux player installation](docs/linux-packaging.md).
+- **Players:** [RC10 version and source handoff](docs/RC10_EXPANSION_HANDOFF.md), [Linux player installation](docs/linux-packaging.md).
 - **Developers and agents:** [development rules and port invariants](CLAUDE.md), [native build instructions](INSTALL_PC.md).
 - **Finding the right document:** [documentation index](docs/README.md).
 - **What landed versus what is next:** [integration status](docs/INTEGRATION_STATUS.md).
 
 ## Current release and source
 
-`main` contains RC9, combining the Expansion-native game with shared generated worlds. See [RC9 scope and installation](docs/RELEASE_RC9.md) and [GitHub Releases](https://github.com/Ayaan-P/emerald-world/releases) for published player packages. Source changes do not update an installed package or shortcut.
+`main` contains **RC10**, including the rc10.10 multiplayer and native-engine fixes. The app pins the matching source in [Ayaan-P/pokeemerald-expansion-native](https://github.com/Ayaan-P/pokeemerald-expansion-native), whose default `main` branch carries that engine checkpoint. See [the RC10 handoff and build instructions](docs/RC10_EXPANSION_HANDOFF.md). Published downloadable packages on [GitHub Releases](https://github.com/Ayaan-P/emerald-world/releases) currently remain RC9; pulling source does not update an installed package or shortcut.
 
-RC9 starts a fresh Expansion campaign with matching clients. It includes shared exploration and tagged co-op, the modern species catalogue, generated caves and outdoor areas, guilds and independent trainer saves. Imported species data is not proof of every mechanic or encounter. Kanto and newer trading additions are outside RC9's release scope.
+For an existing source checkout:
 
-Expansion and vanilla have separate binaries, profiles and protocol cohorts. Never import an older vanilla save into the RC9 Expansion campaign. The vanilla source remains in `src/`; the Expansion engine is pinned under `engines/expansion-native`. Its current source reconstruction and verification boundaries are recorded in [the source handoff](docs/attempt-handoffs/rc7/CURRENT.md).
+```sh
+git pull origin main
+git submodule sync --recursive
+git submodule update --init --recursive
+```
+
+RC10 retains the Expansion campaign, shared exploration and tagged co-op, modern species catalogue, generated areas, guilds and independent trainer saves. It adds reviewed world/personal settings and the native battle, capture/naming, PC, WORLD menu, co-op admission and scheduling fixes. World permissions still require eligible Pokémon and equipment; test-kit Pokémon/items are not bundled into fresh saves. Kanto and unfinished world-history/multi-place drafts are not included.
+
+Expansion and vanilla have separate binaries, profiles and protocol cohorts. Do not import older vanilla saves into Expansion. The root `src/` is the older engine; RC10 game-side development belongs under `engines/expansion-native/src/world/` and that submodule's `include/platform/`. Build RC10 with `scripts/build_expansion.py` as described in the handoff, not the vanilla command below.
 
 ## Launcher and game
 
