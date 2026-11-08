@@ -517,3 +517,73 @@ server-only link patch. No such half-integrated route was enabled here. The
 repaired native component harnesses remove one verification obstacle; full
 native build/playthrough and the coordinated region protocol are still required
 before claiming connected persistent places.
+
+## Implemented REGION1 authority/admission slice
+
+The first stage of the connected-place architecture is now implemented, rather
+than only described above. It is experimental **server and reference-client
+support**, not native connected-region gameplay or a portal system.
+
+An owner opens an archived immutable plain cave with the existing admin socket:
+
+```python
+from world.client import admin_request
+region = admin_request('', {'command': 'open_region', 'revision': content_sha256},
+                       admin_path='/path/to/admin.sock')
+# Keep the returned place_id. Opening does not replace the legacy default area.
+```
+
+`world_region_revisions` pins one revision per stable place. The pin and a public
+`region_opened` record commit together; reopening is idempotent. Another revision
+of that logical place cannot silently replace it. This stage supports EWGMAP01
+only. Mutable event/wildlife/guide/cast regions are not admitted through REGION1.
+Their legacy default-area workflows continue unchanged.
+
+A compatible presence client adds `REGION1` after its cave capability and before
+any RULES suffix, for example `SOCIALCAVEREGION1`. Only that client receives
+`REGION READY 1`. After reporting a fresh ready position outside generated maps,
+it can send `REGION SELECT area:UUID`. The authority checks the owner-opened pin,
+source occupancy, active tag/link/rally activity and archive digest, then returns
+`REGION SELECTED area:UUID CONTENT_SHA256`. The client must still perform the
+normal CAVE GET/hash validation/ACK exchange before any generated-map STATE is
+accepted. There is no automatic teleport or claim that a player traversed a link.
+
+`world.client.RegionClient` implements this capability and the bounded template
+verification/acknowledgement path. Its `select_region(place_id)` returns the exact
+validated template; it never invents movement or calls native warp functions.
+It accepts snapshots interleaved with protocol responses. Integration tests use
+this actual client and the actual authority dispatcher over in-memory wire I/O.
+
+Each selected connection retains its own immutable template independently of
+`shared_cave`, which remains the legacy default. STATE collision/admission and
+peer snapshots use the selected revision. Same native map numbers are no longer
+enough to place two regional clients together. Internal link presence includes
+an authority-only region scope, used by offer, accept/readiness and tag range
+checks; the native seven-field STATE and existing link payloads do not change.
+Cross-region co-op is refused, while same-region tag consent and co-op admission
+use the existing coordinator. A pending or active tag/link blocks reselection.
+
+Default-area replacement and terrain edits do not reset or block on pinned
+regional occupants. Client selection is session-local: reconnect negotiates from
+the default until a region-capable client selects again. The region pins and
+layouts persist, but this is not a new trainer save/resume mechanism. Inspection
+now associates generated-map player reports with their admitted place/revision,
+so history recall need not mistake another region for the default. No player
+arrival event is synthesized from selection or client-reported STATE.
+
+Five integration tests cover three clients in two simultaneously occupied places,
+same-region visibility and tag/co-op admission, cross-region isolation, independent
+collision geometry, departure/reselection while another client remains behind,
+refusal while inside/busy, untouched legacy negotiation, durable pins, idempotent
+opening, and default event-area edits while a pinned plain region is occupied.
+The final expanded aggregate passes **202 checks**, including native component
+coverage. The standalone Unix-socket test was attempted separately and is blocked
+at socket creation by `Operation not permitted`; no socket/WAN claim follows from
+the in-memory integration. The full native build still requires missing png.h.
+
+Still required for playable connected places: native REGION1 negotiation and
+selection UI, source-to-destination transition state machine preserving the
+original overworld return anchor, persistent route/landing definitions, and
+full native playthrough. Mutable event-area region scoping remains out of this
+stage. No portals, automatic travel, live-server migration or deployment are
+claimed or enabled.

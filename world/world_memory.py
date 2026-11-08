@@ -62,7 +62,7 @@ def evidence_index(event, *, current_catalog=False):
                     places.add(place)
     elif event.get('event') == 'guild_goal_completed':
         words.extend((event['guild_name'],event['goal_kind'],'completed guild goal'))
-    elif event.get('event') == 'area_activated':
+    elif event.get('event') in ('area_activated','region_opened'):
         words.append(event.get('label') or '')
     elif event.get('event') == 'area_named':
         words.extend((event['before'], event['after']))
@@ -350,6 +350,9 @@ def recall_request(request, inspection):
     if active and active not in places:
         places.append(active)
     for player in data.get('players', []):
+        place = player.get('generated_place', {}).get('place_id')
+        if place and place not in places:
+            places.append(place)
         if type(player.get('group')) is int and type(player.get('num')) is int:
             place = native_place(player['group'], player['num'])
             if place and place not in places:
