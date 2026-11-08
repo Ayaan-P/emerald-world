@@ -21,3 +21,13 @@ When a chapter offers an expedition, any outgoing guild-completion chapter must 
 ## Verification and limits
 
 Tests exercise both real guild outcomes, the authority commit, changed native object dialogue, changed authenticated battle response, restart persistence, and replay immunity. Native UI and bridge components have separate paired fixtures. Full linked-game playthrough and actual model-generated sandbox candidate execution remain separate checks, not claimed by these reducer tests. Character presence and offer destinations currently use supported native catalog maps, not REGION1 generated maps. No save party decoding, automatic player participation, deployment, or campaign trainer modification is involved.
+
+## Agent actions after publication
+
+An author can now return `character_actions` plus normal tests instead of predicting every future chapter. Each action names an existing character, its inspected `expected_version`, nonempty public-history `evidence`, an authored `reason`, `changes`, and its complete replacement `object` (or null when away/retired). Allowed changes are goals, NPC relationships, team, status and offer; null offer removes it. Identity and version cannot be rewritten by the author.
+
+This deliberately takes control of that actor from its older story: subsequent outputs from older scripts for that character are superseded, while unrelated world effects still run. Durable control records hold the most recent character/object projection. Later action wrappers see and preserve that latest projection, not their own old copy. Up to 32 action publications can be stacked before source consolidation is required. This avoids unbounded source/receipt growth and makes the ownership change explicit.
+
+The action compiler requires the exact current source hash, validates the inspected expected version and public evidence, and emits source only. Runtime admission rechecks the version, while existing authority validation checks character transitions, objects and committed public history atomically. A stale action fails rather than silently overwriting newer character development.
+
+The tested example completes an actual public expedition, then authors a new decision: the researcher establishes a Route101 post, changes dialogue and uses a stronger field team. The character disappears from the old map; battle admission there rejects it, while fresh adjacent presence on Route101 receives the revised native team. Restart and older-script ticks preserve the new location. This is relocation between supported native maps, not simulated walking/pathfinding, generated-region support, or proof of a model having independently decided anything. No additional native protocol is required.
