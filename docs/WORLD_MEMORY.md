@@ -140,10 +140,9 @@ and per-template terrain. Native observations expose owner-specific game facts.
 The GM already uses inspection and verified previous source. Extending these paths
 is smaller and safer than replacing them with a generic memory framework.
 
-The next useful slice is a place journal in the launcher: select a place, see its
-confirmed changes, and ask the builder to continue from that specific history.
-The controller now has targeted retrieval with explicit evidence references;
-the launcher should make that selection and the proposed change visible. Avoid automatic
+The launcher now provides a read-only place journal for local owners. The next
+step is letting a player select specific journal evidence while requesting a
+world-building proposal, with a visible review before any change. Avoid automatic
 summaries that silently become authoritative lore.
 
 A fuller readable saved-trainer document needs an explicit engine observation or
@@ -222,3 +221,31 @@ therefore remains unchanged by the experiment's proposal.
 This verifies the missing connection from actual committed history, through a
 restart and relevant recall, to a subsequent proposal. Real model quality and a
 playable sandbox/native acceptance run remain separate checks.
+
+
+## Player-facing local place journal
+
+Open **Local worlds → World journal** beside a world. Running and detached hosts
+are readable without switching the current game. A stopped host is opened only
+when the user chooses **Open host**, using the existing local-world flow without
+launching a game. Hosted remote journals are not exposed by this candidate.
+
+Select a stable place to see its committed changes, or read the whole world's
+journal. Entries describe structural facts: an area was activated or renamed,
+terrain cells changed, an NPC appeared/disappeared, or dialogue changed. Quoted
+NPC text remains text. A claim such as “bridge repaired” is displayed as a dialogue
+change, not proof that a player actually repaired a bridge or completed a quest.
+
+The journal shows current shared mechanic NPCs separately from historical entries.
+Older pages retain a fixed world identity and sequence boundary; **Refresh journal**
+starts a new view that includes later changes. The UI identifies its coverage
+boundary, marks committed evidence by sequence, and displays recording times.
+Changing places discards the previous selection's entries. Late responses from a
+previous world are ignored. Reads do not change state, start a game, call a model,
+or inspect private trainer saves, party data, credentials or arbitrary module state.
+
+The place selector is capped at 100 entries and reports truncation. Journal pages
+contain 20 events, with bounded terrain previews. Full raw evidence remains in the
+existing history API. This launcher slice gives players visible world continuity;
+it does not add native in-game journal rendering, a complete trainer-save decoder,
+or a proof of long-running multiplayer gameplay.
