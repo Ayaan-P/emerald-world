@@ -845,3 +845,49 @@ actor isolation, an NPC blocking the newly added access trail, and rollback afte
 a module-write failure. Test source execution uses a fixture boundary; production
 retains the existing sandbox runtime. Full native rendering/playthrough limits
 above still apply.
+
+### Outcome-grounded inhabited settlements
+
+`python -m world.author_settlement 'Honor the expedition with a field station'
+--admin-socket /path/to/admin.sock --outcome-seq 42` asks the existing tool-disabled
+provider for an inert settlement proposal and previews it. Add `--apply` for
+explicit publication. The selected sequence must be a real committed public
+`guild_goal_completed` event. Theme, archived geometry and that public outcome
+are sent to the provider; trainer names, private saves, party hashes and live
+inspection data are not. Calls may incur provider usage charges. Recorded text
+is treated as data, not instructions.
+
+A plan contains `label`, the existing `construction` footprint, and one
+`resident`. Resident fields are `id`, `name`, `role`, `goals`, `team`, `gfx`,
+`text`, `offer`, `completion_text` and `completion_goals`. The offer uses the
+existing expedition schema. The compiler places the steward at the courtyard
+center and creates ordinary validated character chapters: arrival with the offer,
+then updated goals/dialogue after that exact character/offer revision completes.
+The team stays unchanged. Construction is authored fiction inspired by evidence,
+not a claim that the guild constructed a building or the steward won a battle.
+
+The owner-only `found_settlement` command also accepts an already-authored inert
+plan directly. It stages and runs the compiled source through the existing
+kernel-sandboxed mechanic runtime asynchronously. A failed stage changes no map
+or actor state. After staging, world sequence, map revision, source and occupancy
+are checked again. Geometry, source, character state and bindings then commit in
+one transaction. Existing inhabitants are preserved through the continuation
+mechanism above. The normal capacity, character-transition and joint collision
+validators remain authoritative. A duplicate resident ID fails rather than
+replacing an established character.
+
+A visiting guild leader sees an ordinary revision-scoped character offer. It
+requires explicit native acceptance and prior chronicle opt-in; merely founding
+the settlement never starts an expedition or enables publication. The existing
+guild authority records completion, and the normal character reducer changes
+this steward's dialogue and goals. Restart retains both the settlement and the
+completed character state.
+
+The end-to-end tests substitute provider output and sandbox execution, but use
+real public guild outcomes, geometry, authority transactions, authentication,
+scoped offer consent, expedition completion and the authored chapter reducer.
+No actual model invocation is claimed. An actual sandbox stage was attempted in
+this environment and failed because bubblewrap could not create a NETLINK_ROUTE
+socket. The real authority returned refusal with the map unchanged and steward
+absent. No weaker execution route was used. Native build/rendering limits above
+also remain; these protocol/component tests are not a linked gameplay session.

@@ -62,15 +62,30 @@ def persist(server, continuation, place_id, previous, revision):
     from .region_characters import validate_region_objects
     from .characters import validate_transition
     objects = continuation['objects']; candidate = continuation['candidate']
-    validate_region_objects(server, objects, server.module_state)
-    validate_transition(server.module_state, server.module_state, objects, server.db)
-    updated = server.db.execute('UPDATE module SET source=?,sha256=?,objects=? WHERE singleton=1 AND sha256=?',
-        (candidate.source, candidate.sha256, json.dumps(objects), continuation['previous_hash']))
-    if updated.rowcount != 1:
+    state = continuation.get('state', server.module_state)
+    tiles = continuation.get('tiles', server.tiles)
+    cursor = continuation.get('cursor', server.interaction_cursor)
+    validate_region_objects(server, objects, state)
+    changes = validate_transition(server.module_state, state, objects, server.db)
+    current = server.db.execute('SELECT sha256 FROM module WHERE singleton=1').fetchone()
+    if (current[0] if current else None) != continuation['previous_hash']:
         raise ValueError('character source changed during construction')
+    if current:
+        server.db.execute('UPDATE module SET source=?,sha256=?,state=?,tiles=?,objects=?,interaction_cursor=? WHERE singleton=1',
+            (candidate.source, candidate.sha256, json.dumps(state), json.dumps(tiles), json.dumps(objects), cursor))
+    else:
+        server.db.execute('INSERT INTO module(singleton,source,sha256,state,tiles,objects,interaction_cursor) VALUES(1,?,?,?,?,?,?)',
+            (candidate.source, candidate.sha256, json.dumps(state), json.dumps(tiles), json.dumps(objects), cursor))
+    if continuation.get('clear_error'):
+        server.db.execute('INSERT OR REPLACE INTO status VALUES(1,NULL)')
     server.memory.append('mechanic_changed', dict(module_hash=candidate.sha256,
         previous_module_hash=continuation['previous_hash'], cause='place_continued',
-        interaction_cursor=server.interaction_cursor, places=[place_id],
+        interaction_cursor=cursor, places=[place_id],
         before=dict(tiles=server.tiles, objects=server.objects),
-        after=dict(tiles=server.tiles, objects=objects),
+        after=dict(tiles=tiles, objects=objects),
         previous_revision=previous, revision=revision, rebound_characters=continuation['ids']))
+    from .world_memory import overlay_places
+    for change in changes:
+        change['places'] = overlay_places([], [obj for obj in server.objects + objects
+            if obj['id'] == change['character_id']], server.db)
+        server.memory.append('character_changed', change)

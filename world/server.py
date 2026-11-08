@@ -1216,6 +1216,11 @@ class WorldServer:
             if character_continuation is not None:
                 self.candidate = character_continuation['candidate']
                 self.objects = character_continuation['objects']
+                self.module_state = character_continuation.get('state', self.module_state)
+                self.tiles = character_continuation.get('tiles', self.tiles)
+                self.interaction_cursor = character_continuation.get('cursor', self.interaction_cursor)
+                if character_continuation.get('clear_error'):
+                    self.module_error = None
             self.revision = self.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
         except sqlite3.Error:
             raise ValueError('generated cave could not be persisted') from None
@@ -1542,6 +1547,13 @@ class WorldServer:
                 except ValueError as exc:
                     # Expected validation/occupancy refusal is not a mechanic error.
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'found_settlement':
+                try:
+                    from .settlement_plans import begin
+                    begin(self, conn, request)
+                    return
+                except ValueError as exc:
+                    result = dict(ok=False, error=str(exc))
             elif request.get('command') == 'construct_outpost':
                 try:
                     from .frontier_outposts import construct
@@ -1801,6 +1813,16 @@ class WorldServer:
         if self.job is not None and self.job[0].done():
             future, kind, conn, cursor = self.job
             self.job = None
+            if kind == 'settlement':
+                try:
+                    from .settlement_plans import finish
+                    response = finish(self, future.result(), cursor)
+                except Exception as exc:
+                    response = dict(ok=False, error=str(exc))
+                if conn is not None and conn['sock'] in self.connections:
+                    self._queue(conn, json.dumps(response, ensure_ascii=True) + '\n')
+                self.next_tick = time.monotonic() + 0.1
+                return
             try:
                 candidate, result = future.result()
                 state_json, tiles = self._validated(result)
