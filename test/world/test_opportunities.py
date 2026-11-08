@@ -24,7 +24,7 @@ class OpportunityTests(unittest.TestCase):
     def connect(self,name):
         who=self.s.create_identity(name)
         conn=dict(id=None,out=bytearray(),closing=False,state=None,seq=0,sock=object())
-        self.s._line(conn,f"HELLO 1 {who['id']} {who['token']} SOCIALTRAVELCHATRALLYCAVE".encode())
+        self.s._line(conn,f"HELLO 1 {who['id']} {who['token']} SOCIALTRAVELCHATRALLYCAVECOMMANDS1".encode())
         self.assertIn(b'WELCOME 1',conn['out']);conn['out'].clear()
         self.s._line(conn,('STATE 1 0 0 1 1 1 7 1 '+'a'*16+' '+'b'*16).encode())
         self.assertEqual(conn['state'][:2],[0,0]);conn['out'].clear()

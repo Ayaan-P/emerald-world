@@ -24,6 +24,7 @@ from .mechanics import validate_objects
 from .link_protocol import LinkProtocol
 from .guilds import Guilds
 from .guild_chat import GuildChat
+from .private_commands import route as route_private_command
 from .world_rules import WorldRules
 from .rally import RallyCoordinator
 
@@ -457,6 +458,8 @@ class WorldServer:
         if conn.get('social') and meeting:
             lines.append('MEET ' + ' '.join(str(meeting[k]) for k in
                 ('seq','player','target','group','num','x','y','signal')))
+        if conn.get('private_commands'):
+            lines.append('COMMANDS 1 ' + str(4 | (1 if getattr(self, 'opportunity_chat', None) else 0) | (2 if getattr(self, 'mysteries', None) else 0)))
         if conn.get('chat'):
             lines += ['CHATMSG ' + ' '.join(map(str, message)) for message in conn['chat_history']]
             lines.append('CHATSTATUS ' + conn['chat_status'])
@@ -501,6 +504,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                private_commands = role.endswith('COMMANDS1')
+                if private_commands: role = role[:-9]
                 rules_version = 3 if role.endswith('RULES3') else 2 if role.endswith('RULES2') else 1 if role.endswith('RULES1') else 0
                 rules_capable = rules_version != 0
                 if rules_capable:
@@ -535,6 +540,9 @@ class WorldServer:
                 travel = role in ('SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
                 social = role in ('SOCIAL', 'SOCIALCHAT', 'SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
                 link = role == 'LINK'
+                if private_commands and not chat_capable:
+                    self._error(conn, 'AUTH')
+                    return
                 if rules_capable and not social:
                     self._error(conn, 'AUTH')
                     return
@@ -614,6 +622,7 @@ class WorldServer:
                 conn['cave_revoked'] = []
                 conn['peer_limit'] = MAX_PEERS_EXTENDED if peer32 else MAX_PEERS_INTERMEDIATE if peer16 else MAX_PEERS
                 conn['chat'] = chat_capable
+                conn['private_commands'] = private_commands
                 conn['travel'] = travel
                 conn['chat_history'] = []
                 conn['chat_status'] = 'ready'
@@ -827,9 +836,7 @@ class WorldServer:
             self._queue(conn, self._snapshot(conn))
             return
         conn['chat_credit'] = credit - 1
-        if fields[2] == '*' and getattr(self, 'opportunity_chat', None) and self.opportunity_chat.handle(conn, text.decode('ascii')):
-            return
-        if fields[2] == '*' and self.guild_chat.handle(conn, text.decode('ascii')):
+        if route_private_command(self, conn, fields[2], text.decode('ascii')):
             return
         self.chat_serial += 1
         message = (self.chat_serial, conn['id'], fields[2], fields[3])

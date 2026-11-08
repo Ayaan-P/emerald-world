@@ -90,3 +90,15 @@ restart persistence, exact replay, stale location/state refusal and transaction
 rollback. No live world or rendered native chat client was used. Campaign native
 build/play acceptance remains separately blocked by missing build dependencies
 and the environment's apt configuration read restriction.
+
+Private-command compatibility boundary: `/story` now requires a client session
+that negotiated the `COMMANDS1` HELLO suffix. Its complete snapshots carry the
+non-chat `COMMANDS 1 MASK` record (story=1, mystery=2, guild=4). Old sessions
+receive no new protocol record and cannot execute story commands. This requires
+a paired client update before using the feature. User chat text never grants
+capabilities. Reserved slash prefixes are intercepted case-insensitively after
+leading spaces; unknown commands and commands addressed to another trainer are
+refused privately rather than broadcast. This server change cannot protect an
+old client connected to an old server: do not advertise private story commands
+until the paired fail-closed client boundary is deployed. No actual disclosure
+incident was observed; this corrects a statically reproduced fallback risk.
