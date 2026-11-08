@@ -59,6 +59,28 @@ class CharacterActionTests(unittest.TestCase):
         self.assertEqual(self.f.fixture.server.objects[0]['num'],16)
         self.assertEqual(self.f.fixture.server.module_state['world_characters']['field_researcher'],character)
 
+    def test_compiled_source_stages_from_current_checkpoint_not_first_chapter(self):
+        before = deepcopy(self.context)
+        source = compile_actions(self.actions, self.context)
+        scope = {}
+        exec(compile(source, '<compiled-character-action-test>', 'exec'), scope)
+        staging_context = {'tick': 0, 'players': [], 'interactions': []}
+        result = scope['update'](staging_context, {})
+        character = result['state']['world_characters']['field_researcher']
+        self.assertEqual(character['version'], 3)
+        self.assertEqual(character['team'], [dict(species=278, level=20)])
+        self.assertEqual(result['objects'][0]['num'], 16)
+        self.assertEqual(self.context, before)
+        # Fresh staging is deterministic; subsequent ticks do not reapply the action.
+        self.assertEqual(scope['update'](staging_context, {}), result)
+        later = scope['update'](dict(staging_context, tick=1), result['state'])
+        self.assertEqual(later['state']['world_characters']['field_researcher'], character)
+        self.assertEqual(len(later['state']['world_character_action_receipts']), 1)
+        stale = deepcopy(before['state'])
+        stale['world_characters']['field_researcher']['version'] = 4
+        with self.assertRaisesRegex(ValueError, 'character changed before action admission'):
+            scope['update'](staging_context, stale)
+
     def test_stale_and_private_evidence_reject_before_compile_or_commit(self):
         for key,value in [('expected_version',1),('evidence',[]),('evidence',[999999])]:
             actions=deepcopy(self.actions);actions[0][key]=value

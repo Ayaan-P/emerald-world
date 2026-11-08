@@ -106,8 +106,12 @@ def compile_actions(actions, context):
     definition=hashlib.sha256(json.dumps(actions,sort_keys=True).encode()).hexdigest()
     suffix=definition[:16]
     helper=inspect.getsource(action_step).replace('def action_step(',f'def _action_step_{suffix}(',1)
+    # Fresh sandbox staging must continue the inspected durable world, not
+    # recreate the previous source's first chapter. Nonempty runtime state
+    # remains authoritative, including admission/version checks below.
+    checkpoint=copy.deepcopy(data.get('state',{}))
     return (previous+'\n'+f'_action_previous_{suffix}=update\n'+helper+'\n'+
-            f'def update(context,state):\n    return _action_step_{suffix}({actions!r}, {definition!r}, _action_previous_{suffix}(context,state), context)\n')
+            f'def update(context,state):\n    if not state:\n        import copy\n        state=copy.deepcopy({checkpoint!r})\n    return _action_step_{suffix}({actions!r}, {definition!r}, _action_previous_{suffix}(context,state), context)\n')
 
 
 def contract():
