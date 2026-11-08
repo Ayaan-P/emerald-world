@@ -455,3 +455,65 @@ cast compilation fixtures failed because their compile environment could not fin
 also remains blocked by missing `png.h`, and headless has no resulting executable.
 Python compilation and whitespace validation pass. These limits are not reported
 as passing native tests.
+
+## Connected-place investigation: verified native boundary
+
+The four isolated native guide/cast fixtures above had stale temporary header
+stubs after RC10 added `GeneratedMap_HasUsableParty`. The repository does contain
+`include/pokemon.h`; the full-game include tree is deliberately not used by these
+small C harnesses. A shared party-API fixture now supplies the missing API and a
+usable party, and the four native harnesses explicitly verify that an empty party
+still blocks entry. They execute real `generated_map.c`, and the shared versions
+also execute extracted production `CaveLine`/`CavePump` logic. All 154 checks now
+pass, including those four native component tests. This does not fix the separate
+full-game libpng build dependency or constitute a full game playthrough.
+
+The component tests confirm safe template staging, actual generated-map entry,
+return to the original native map, reconnect handling, refusal to overwrite a
+prepared area, and staging a new guide/cast only after leaving the old one.
+They provide a useful baseline for region transitions. The current implementation
+still has no connected-region feature.
+
+Concrete integration points and minimum implementation boundary:
+
+1. `world/server.py` owns a single `shared_cave`. `CAVE GET/ACK`, STATE admission,
+   `_snapshot`, `_link_presence`, `_link_line` and terrain/event commands all assume
+   that global identity. A region-capable authority must resolve an immutable
+   revision and terrain from the connection's admitted logical place, rather than
+   temporarily switching this global field. Presence and link sessions must be
+   scoped by both logical place and revision, even when native map numbers match.
+   Otherwise players in different places can see or battle each other accidentally.
+2. `world_places` records lineage but does not select a canonical current revision
+   per place. A real region activation record must explicitly pin each place's
+   served revision. Named links must target stable place IDs and an explicit
+   entrance, not labels or incidental template hashes. Adding these records alone
+   is not traversable travel and should not be exposed as completed gameplay.
+3. `src/platform/world_bridge.c` has one negotiated cave identity per client,
+   which is enough for one client occupying one region. Its mismatch recovery
+   already leaves a prepared map before staging another. Region transitions need
+   a new capability-negotiated request/acknowledgement tying the source admission,
+   destination and immutable transfer together. Old clients must retain the old
+   default area and never receive transition verbs they do not understand.
+4. `src/platform/generated_map.c` keeps one `sPrepared` layout and one `sReturn`
+   overworld warp. `GeneratedMap_Enter` requires a safe outdoors/on-foot state,
+   usable party and acknowledged template; `Leave` returns to the preserved native
+   warp. A real inter-region transition must preserve that original return anchor
+   across the whole journey, end interactions before transfer, install the new
+   template only outside the old prepared state, and then validate a destination
+   landing. Calling Enter from inside, clearing sPrepared early, or pretending a
+   link table is a warp bypasses those safety properties.
+5. The first complete playable slice should use two immutable plain generated
+   places and one bidirectional entrance, with a third client remaining in the
+   first place. Test peer isolation, co-op refusal across regions, same-region
+   co-op, stale acknowledgements, disconnect recovery and original-overworld
+   return. Only then add mutable event-area terrain, whose commands currently
+   address the global active template, and whose private trainer progress must
+   stay out of shared history. Existing finite native story slots remain a
+   separate continuity limit.
+
+This crosses authority admission, replication, link-session isolation, native
+field transitions and save return semantics. It is not safely completed by a
+server-only link patch. No such half-integrated route was enabled here. The
+repaired native component harnesses remove one verification obstacle; full
+native build/playthrough and the coordinated region protocol are still required
+before claiming connected persistent places.
