@@ -55,6 +55,8 @@ def begin(server, conn, request):
     seq = request['outcome_seq']
     if type(seq) is not int or not 1 <= seq <= request['expected_sequence']:
         raise ValueError('invalid outcome sequence')
+    if server.db.execute('SELECT 1 FROM settlement_foundings WHERE outcome_seq=?',(seq,)).fetchone():
+        raise ValueError('public outcome already founded a settlement')
     row = server.db.execute("SELECT data FROM events WHERE seq=? AND kind='world_memory'", (seq,)).fetchone()
     if row is None or json.loads(row[0]).get('event') != 'guild_goal_completed':
         raise ValueError('settlement must cite a real public guild outcome')
@@ -78,7 +80,7 @@ def begin(server, conn, request):
     cursor = runtime_context['interactions'][-1]['seq'] if runtime_context['interactions'] else server.interaction_cursor
     prepared = dict(request=deepcopy(request), blob=blob, report=report, character=character,
                     previous_hash=server.candidate.sha256 if server.candidate else None,
-                    ids=rebinding['ids'] if rebinding else [], source_hash=hashlib.sha256(source.encode()).hexdigest())
+                    ids=rebinding['ids'] if rebinding else [], source_path=str(path), source_hash=hashlib.sha256(source.encode()).hexdigest())
     def stage():
         # Both calls invoke the existing kernel-sandboxed production runtime.
         candidate = server.runtime.stage(path)
@@ -99,11 +101,13 @@ def finish(server, staged, cursor):
     if obj != prepared['character']['chapters'][0]['object']:
         raise ValueError('staged settlement resident differs from the approved plan')
     continuation = dict(candidate=candidate, objects=result.get('objects',[]), previous_hash=prepared['previous_hash'],
-                        ids=prepared['ids'], state=json.loads(state_json), tiles=tiles, cursor=cursor, clear_error=True)
+                        ids=prepared['ids'], state=json.loads(state_json), tiles=tiles, cursor=cursor, clear_error=True,
+                        founding=dict(outcome_seq=request['outcome_seq'],resident_id=resident,
+                            offer=prepared['character']['chapters'][0]['offer']))
     revision = server._replace_cave(prepared['blob'], label=request['plan']['label'],
         previous_revision=request['previous_revision'], expected_world_id=request['expected_world_id'],
         expected_sequence=request['expected_sequence'], history_evidence=[request['outcome_seq']],
         character_continuation=continuation)
     return dict(ok=True, revision=revision, place_id=server.memory.place(revision),
                 resident=resident, construction=prepared['report'], persistent=True,
-                outcome_seq=request['outcome_seq'])
+                outcome_seq=request['outcome_seq'],source_path=prepared['source_path'],source_sha256=candidate.sha256)

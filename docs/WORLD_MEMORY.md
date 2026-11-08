@@ -1061,3 +1061,75 @@ python -m world.landmark_survey --revision EXACT_REVISION --admin-socket ADMIN_S
 Registration reloads and validates the recipe against archived map bytes. It does not activate a different map, publish player visits, or start a player's survey. Players still opt in with `/explore start` after entering and acknowledging that revision. The integration test generates a provider fixture through the actual author command, publishes through the real admin dispatcher, restarts the authority, registers by revision, freshly authenticates/re-enters and records a private discovery. It is not proof of native in-place save/resume; normal play still leaves the generated map before saving and re-enters the archived revision after restart.
 
 Offline output `route.ewmap` now also writes `route.ewmap.route.json`, which the survey CLI accepts after the matching map has been archived. Both paths are exclusive-create and never overwrite existing files. The recipe is written first: if writing the map fails, the durable recipe remains available for recovery rather than being silently discarded. The compiler format is versioned; a future compiler change that cannot reproduce old bytes must reject registration rather than reinterpret a stored route.
+### Player-driven settlement growth
+
+The existing opt-in GM runtime accepts `--settlement-growth-theme 'Extend the
+surveyed frontier'` on its `run` command. This explicitly permits later eligible
+steward completions to invoke the constrained settlement author and publish a
+new inhabited expansion. Provider usage may be charged. The option is absent
+by default. It shares the existing durable queue, runtime lock and minimum
+author interval; no second background daemon or implicit provider is introduced.
+Use `--no-events` if this runtime should react only to settlement completions
+rather than also handling its existing selected-player event tasks.
+
+The first enabled inspection establishes a baseline without authoring old
+outcomes. Later genuine public completions must match the offer ID/revision of
+a recorded settlement steward in the currently active logical place. Arbitrary
+guild achievements do not trigger growth. Per-place cursors defer other archived
+places instead of discarding their outcomes. A verified completion remains valid
+if its steward is now away; publication still requires its logical place active.
+Each founding stores an outcome receipt in the same transaction as geometry,
+source, NPCs and history. An outcome can found at most one settlement, including
+manual publication. Old camps without these new receipts are not retroactively
+classified as automatic growth triggers.
+
+Each selected outcome gets a stable world/sequence queue identity. Failed or
+interrupted author/publication requests are terminal and never automatically
+replayed. Omitting the growth option prevents queued growth work from running.
+Re-enabling permits queued work, subject to a fresh exact-world/place check.
+The authority again checks current geometry, occupancy and all existing staging
+rules. Capacity limits surface in runtime status rather than invoking authors
+that cannot add another character. A successful settlement publishes its exact
+staged source reference back to the existing GM queue so later ordinary agent
+work can preserve the newly inhabited world behavior.
+
+The integrated fixture uses a genuine authenticated steward-offer acceptance and
+guild completion, discovers it through the production authority query, and runs
+the existing GM step through an authored second inhabited revision. It verifies
+exactly-once consumption, restart, source continuity and no unrelated-place
+leakage. Provider output and sandbox success remain substitutes. The actual
+author adapter was separately invoked for preflight and refused this environment's
+`codex-cli 0.167.0-alpha.4`, because its security-reviewed allowlist requires
+`0.156.1`. The gate was not changed and no model call occurred. The previous
+sandbox and native build blockers remain. Nothing here enables growth in a live
+world merely by merging or starting the ordinary default launcher.
+
+### Explicit settlement recovery
+
+Growth failures never replay automatically. `python -m world.runtime_gm
+retry-settlement --state-dir STATE --socket SOCKET --request-id ID` is an
+owner-initiated reconciliation command. Stop the running GM first: recovery
+holds the same exclusive runtime lock. It does not invoke the provider.
+Status retains the original world, place, public outcome, attempted revision,
+failure stage and previous attempts. Provider stderr is deliberately not saved.
+
+The authority checks the atomic founding receipt first. A receipt reconciles a
+lost success reply without creating another settlement. Without a receipt,
+pending authority work remains uncertain and is not queued. A retry requires
+the original world, place and exact revision, and the original public outcome
+must still exist. The next explicitly enabled GM run checks that revision again
+before provider invocation; normal commit guards and receipt uniqueness remain
+in force. A changed place/revision needs deliberate owner handling rather than
+automatic rebasing. Legacy terminal rows whose identities were overwritten
+cannot be safely recovered by this command. No automatic replay or sandbox or
+provider-version gate bypass is introduced.
+
+Recovery validation: 125 focused tests pass, including receipt reconciliation
+after an actual fixture-sandbox founding whose response is treated as lost,
+pre-publication retries, pending-write deferral, wrong-scope/revision rejection,
+and preservation of interrupted identity/stage. This does not establish live
+model invocation or native gameplay; the documented runtime blockers remain.
+
+### Survey and settlement draft reconciliation
+
+This draft includes settlement growth and receipt recovery from frontier-outposts f09a52ad while retaining survey recipe persistence and the privacy-enabled native pin 1b34f436 in both the gitlink and builder. Growth/construction intentionally accept plain format16 only: encounter-bearing format17 is refused, never silently downgraded or stripped of population data. Terrain construction produces a new exact revision; old surveys and route artifacts stay bound to the old archived revision and are not relabeled onto new terrain. Native release integration remains separate.
