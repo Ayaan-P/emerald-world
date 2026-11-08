@@ -951,3 +951,28 @@ engine files. This pin includes the privacy guard, not unpublished character
 walking. Explicit public-discovery confirmation remains required after capability
 negotiation. Production source fixtures and object compilation passed; a linked
 build of this newer guard and live network acceptance remain unverified.
+
+### Coastal route geography
+
+Each route landmark can now specify `landform` (`round`, `lagoon`, `cove`, or
+`headland`) and `facing` (`east`, `south`, `west`, or `north`). Defaults preserve
+old round plans. Round radius accepts 2..20; coastal forms require 6..20. Centers
+remain walkable for surveys and characters. Lagoon pools create a connected
+shore circuit, coves cut an inlet through the clearing edge, and headlands taper
+into narrow peninsulas. These are actual tile changes in ordinary shared XL map
+bytes, using existing native grass and blocked water, not new elevation or art.
+
+The route author receives this schema and may choose contrasting forms. The
+compiler reserves their water cuts before route search: paths must go around
+pools and inlets instead of filling them. Overlapping landmark footprints and
+unreachable plans fail validation. Reports expose the exact protected water cells
+for inspection; those cells are not an additional runtime state system. Reusing
+this plan with surveys or settlement construction does not grant permission to
+change an existing world.
+
+Tests compare all twelve form/orientation combinations, check protected water
+and landmark access, exercise constrained author compilation, and feed each form
+through the actual Expansion C wire codec, including corruption rejection.
+The codec test requires `EW_NATIVE_SOURCE` pointing at verified engine source.
+Native rendered playthrough remains unverified; no bridge, elevation, surfing or
+new biome-art behavior is added.

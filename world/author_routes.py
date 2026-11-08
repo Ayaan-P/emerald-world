@@ -20,9 +20,15 @@ def author(theme, *, history=None, timeout=120, attempts=1):
     author_cave.prompt_for(theme)
     prompt = '''Design an original outdoor destination as one JSON object with exactly
 seed (integer 0..4294967295), loops (integer 0..4), landmarks, reservations.
-landmarks is 2..12 objects with exactly id, x, y, radius. id is unique lowercase
+landmarks is 2..12 objects with required id, x, y, radius and optional landform, facing. id is unique lowercase
 ASCII letters/digits/underscores starting with a letter, 1..24 characters,
-not entry or exit. x,y are integer centers and radius is integer 2..10.
+not entry or exit. x,y are integer centers. Optional landform is round (default),
+lagoon (closed water pool with a walkable shore circuit), cove (open water inlet),
+or headland (narrow grassy peninsula). Optional facing is east (default), south,
+west or north. Radius is integer 2..20 for round, 6..20 for coastal landforms.
+Choose contrasting landforms and orientations for meaningful shoreline exploration.
+Water cuts stay impassable and routes must detour around them. Existing native
+art is grass and water only; do not claim elevation, bridges, forests or new art.
 Each clearing must fit inside 1..125, must not overlap another clearing or a
 reservation. reservations is 0..32 [x,y,width,height] integer rectangles fully
 inside 1..125. These are impassable terrain, not new biome art. Never reserve

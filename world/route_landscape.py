@@ -48,24 +48,45 @@ Requested additional routes must use new terrain outside their endpoint areas.
             raise ValueError('reservation outside interior')
         blocked.update((xx,yy) for xx in range(x,x+w) for yy in range(y,y+h))
     for item in landmarks:
-        if type(item) is not dict or set(item)!={'id','x','y','radius'}:
+        if type(item) is not dict or not {'id','x','y','radius'}<=set(item) or set(item)-{'id','x','y','radius','landform','facing'}:
             raise ValueError('landmark needs id, x, y and radius')
         name=item['id'];x=item['x'];y=item['y'];r=item['radius']
+        form=item.get('landform','round');facing=item.get('facing','east')
+        if form not in ('round','lagoon','cove','headland') or facing not in ('east','south','west','north'):
+            raise ValueError('invalid coastal landform or facing')
         if type(name) is not str or not re.fullmatch('[a-z][a-z0-9_]{0,23}',name) or name in ids:
             raise ValueError('landmark identities must be unique bounded names')
-        if any(type(v) is not int for v in (x,y,r)) or not 2<=r<=10 or min(x-r,y-r)<1 or max(x+r,y+r)>125:
+        if any(type(v) is not int for v in (x,y,r)) or not (2 if form=='round' else 6)<=r<=20 or min(x-r,y-r)<1 or max(x+r,y+r)>125:
             raise ValueError('landmark outside interior')
         ids.add(name);sites.append(dict(item))
     sites.append(dict(id='exit',x=125,y=125,radius=1))
-    walk=set();centers=[]
+    walk=set();centers=[];coastal_water=set();footprints=set()
     for site in sites:
         x,y,r=site['x'],site['y'],site['radius'];centers.append((x,y))
         clearing={(xx,yy) for xx in range(max(1,x-r),min(126,x+r+1))
                   for yy in range(max(1,y-r),min(126,y+r+1)) if (xx-x)**2+(yy-y)**2<=r*r}
         if clearing&blocked:raise ValueError('reserved terrain overlaps a landmark or native endpoint')
-        if site['id'] not in ('entry','exit') and clearing&walk:
+        if site['id'] not in ('entry','exit') and clearing&footprints:
             raise ValueError('landmark clearings overlap')
+        footprints.update(clearing)
+        form=site.get('landform','round');facing=site.get('facing','east')
+        def local(point):
+            dx,dy=point[0]-x,point[1]-y
+            return {'east':(dx,dy),'south':(dy,-dx),'west':(-dx,-dy),'north':(-dy,dx)}[facing]
+        water=set()
+        for point in clearing:
+            u,v=local(point)
+            if form=='lagoon' and (u-r//2)**2+v*v<=(r//3)**2:
+                water.add(point)
+            elif form=='cove' and (u-r)**2+v*v<=(r*2//3)**2:
+                water.add(point)
+            elif form=='headland' and u>r//3 and abs(v)>max(1,(r-u)//3):
+                water.add(point)
+        clearing-=water
+        coastal_water.update(water)
         walk.update(clearing)
+    # Water cuts are semantic geography, not cheap empty space for route carving.
+    blocked.update(coastal_water)
     # Seed affects route preference, not global process randomness or save state.
     costs={(x,y):10+hashlib.sha256(f'{seed}:{x//4}:{y//4}'.encode('ascii')).digest()[0]%7
            for x in range(1,126) for y in range(1,126)}
@@ -122,8 +143,8 @@ Requested additional routes must use new terrain outside their endpoint areas.
         for p in ((x-1,y),(x+1,y),(x,y-1),(x,y+1)):
             if p in walk and p not in distance:distance[p]=distance[x,y]+1;queue.append(p)
     return blob,dict(schema=1,generator='reserved-terrain-routes-1',revision=cave.identity,
-        landmarks=sites,routes=records,walkable_tiles=len(walk),entry_to_exit_steps=distance[125,125],
-        limitations='Geometry only. Reservations are impassable terrain, not new water/mountain art, quests or inter-map portals.')
+        landmarks=sites,routes=records,protected_coastal_water=[list(p) for p in sorted(coastal_water)],walkable_tiles=len(walk),entry_to_exit_steps=distance[125,125],
+        limitations='Geometry uses the existing grass/water palette. No elevation, new biome art, quests or inter-map portals.')
 
 
 def main(argv=None):
