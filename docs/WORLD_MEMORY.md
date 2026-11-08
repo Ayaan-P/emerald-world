@@ -1159,3 +1159,36 @@ Persistent NPC chapters/actions can opt into `services: ["guide"]`. In a registe
 Guide targets and notes are private and survive authority restart. Already visited or validly inherited landmarks are not proposed as unexplored. Directions alone never mark an arrival, share a discovery, grant rewards or advance public history. Normal observed arrival records the discovery privately, and the separate explicit share command remains necessary for public character reactions. After terrain changes, old revision notes require asking a guide again; they are not silently retargeted.
 
 This uses the existing protected `/explore` chat commands and published engine 1b34's CHARREG1 support on interactive chat-capable clients. It introduces no native walking, PLACEQUEST1 or CAVE17 requirement for plain XL guidance. App tests cover actual chat commands and tile-by-tile reported movement, privacy, explicit later sharing, restart, inherited evidence and unsupported-client refusal. Native rendered acceptance of this new guide interaction has not been run.
+
+
+### Read the place's past while exploring
+
+In an acknowledged generated XL destination, `/explore history` privately shows
+three recent public records for that logical place. `/explore history older`
+continues backward at the same fixed record boundary. Refresh starts at the
+latest committed record. Earlier revisions are explicitly labeled as history,
+not the current terrain. No survey opt-in or public discovery is needed merely
+to read already-public history. `/explore` advertises the command.
+
+The view includes recorded activations, names, authored character changes,
+explicitly published discoveries and opted-in actual guild outcomes. Character
+motives are labeled authored; guild XP is an authority award and travel remains
+client-reported. Unknown event types have a generic description, never a raw
+payload. Output is ASCII-safe and bounded to eight existing chat lines per page.
+Private visits, trainer data, battle reports, prompts and arbitrary module state
+are not exposed. Reading does not create world events, publish discoveries or
+change survey progress. Replies go only to the requesting player.
+
+Page cursors are connection-local and tied to world, logical place and exact
+revision. Changing destinations or reconnecting requires a fresh history read.
+A one-time projection repair indexes canonical place identities already present
+in older character records; it does not rewrite events, dates or sequences.
+This fixes previously missing resident stories in place-filtered history and
+also makes them available to the existing place-aware retrieval paths.
+
+Authority tests cover real discovery before/after explicit publication, actual
+guild completion with publication off/on, committed character changes, restart,
+old-index repair, unrelated-place isolation, fixed pagination and control-text
+sanitization. This uses existing protected exploration chat commands, with no
+engine pin, native movement or new artwork. Native rendered gameplay has not
+been verified for this new command.

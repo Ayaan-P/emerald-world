@@ -143,6 +143,9 @@ class LandmarkSurvey:
             command=text.split()[1:]
             if command==['protocol','1']:
                 s._queue(conn,f'EXPLORE_READY {conn["seq"]}\n');return True
+            if command in (['history'],['history','older']):
+                from .player_chronicle import read
+                self.reply(conn,read(s,conn,older=len(command)==2));return True
             if len(command)==2 and command[0]=='guide':
                 from .character_guides import guide
                 self.reply(conn,guide(s,conn,command[1]));return True
@@ -160,8 +163,10 @@ class LandmarkSurvey:
             elif command==['stop']:
                 with s.db:s.db.execute('UPDATE survey_sessions SET active=0 WHERE trainer=?',(conn['id'],))
             elif command not in ([],['status']):
-                self.reply(conn,['Use /explore start, status, stop, share LANDMARK, guide NPC_ID, or directions.']);return True
-            self.reply(conn,self.lines(conn))
+                self.reply(conn,['Use /explore start, status, stop, share LANDMARK, guide NPC_ID, directions, or history.']);return True
+            lines=self.lines(conn)
+            if not command:lines.append('Read this place\'s public past with /explore history.')
+            self.reply(conn,lines)
         return True
 
     def observe(self, conn):

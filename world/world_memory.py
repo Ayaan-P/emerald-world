@@ -67,6 +67,9 @@ def evidence_index(event, *, current_catalog=False):
                 if place and preserved is None:
                     places.add(place)
     elif event.get('event') == 'character_changed':
+        # Character commits already carry canonical places from their visible objects.
+        # Preserve these identities even when an older changed_places field was empty.
+        places.update(event.get('places', []))
         words.extend((event['character_id'], event['after']['name'], event['after']['role'],
                       event['after']['reason'], *event['after']['goals']))
     elif event.get('event') == 'guild_goal_completed':
@@ -111,6 +114,19 @@ class WorldMemory:
                 break
             for seq, data in rows:
                 self._index(seq, json.loads(data))
+        # Repair the old character-place projection, not the original event evidence.
+        if db.execute("SELECT 1 FROM world_memory_metadata WHERE key='character_place_index_v1'").fetchone() is None:
+            cursor=0
+            while True:
+                rows=db.execute("SELECT seq,data FROM events WHERE kind='world_memory' AND seq>? ORDER BY seq LIMIT 256",(cursor,)).fetchall()
+                if not rows:break
+                for seq,data in rows:
+                    event=json.loads(data)
+                    if event.get('event')=='character_changed':
+                        db.executemany('INSERT OR IGNORE INTO world_memory_place_events VALUES (?,?)',
+                                       ((place,seq) for place in event.get('places',[])))
+                cursor=rows[-1][0]
+            db.execute("INSERT INTO world_memory_metadata VALUES ('character_place_index_v1','1')")
         db.commit()
         self.world_id = db.execute("SELECT value FROM world_memory_metadata WHERE key='world_id'").fetchone()[0]
 
