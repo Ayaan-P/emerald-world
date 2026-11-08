@@ -191,3 +191,65 @@ Full native compilation, actual two-client visuals, sprite alignment and race
 feel still need Maya's QA. Headless C adapters/serializer tests are not a native
 playtest. Old clients receive ordinary peer snapshots, and old servers disable
 mount selection through capability fallback.
+
+## Canonical story adapter candidate (not connected to native gameplay)
+
+The authority includes a separate CORE1 contract for the Devon/Aqua story arc.
+The RC12 mount client does not negotiate it or alter the original Emerald story.
+The owner can inspect its hook contract with the local admin command
+`{"command":"core_story_contract"}`. This reports `native_connected: false`.
+Do not advertise this as a playable dynamic campaign.
+
+The tested authority flow is Woods rescue, optional public warning, Tunnel
+confrontation, goods recovery, optional public rescue report, and Devon's later
+response. A trainer's first offer at each checkpoint is pinned to a history
+boundary and survives restarts. Later public events can influence another
+trainer's first visit without changing an encounter already in progress.
+These effects are supplemental briefings and objective hints, not new battles,
+rewards, flag writes or replacement scripts. The original story always remains
+responsible for progression, Peeko, the Devon parts, letter and Pokenav.
+
+Native integration must append CORE1 to the negotiated HELLO role, wait for
+`CORE READY 1 <world-id>` from that connection, and never send these requests through CHAT.
+The request format is `CORE <32-lowercase-hex-save-lineage> <action> <key> <guard>`:
+
+- `SYNC <mask> private` reconciles this trainer's loaded native progression,
+  including offline play and rewinds. Allowed masks are 0, 1 (Woods), 3 (Woods
+  and goods), and 7 (also met the president). This replaces only private
+  eligibility. Rewinds clear stale pinned offers, never public history.
+- `REPORT woods_rescued complete` only after the Woods script has committed
+  VAR_PETALBURG_WOODS_STATE=1.
+- `REPORT goods_recovered complete` only after the Tunnel rescue and item path
+  have committed FLAG_RECOVERED_DEVON_GOODS, not merely after winning the battle.
+- `SHARE <beat> confirm` only after showing the exact fixed public summary and
+  obtaining the player's explicit consent. The summary and beat become world
+  history; trainer identity, lineage, dialogue, choices, party and save do not.
+- `OFFER rusturf_grunt safe` before the canonical Tunnel confrontation, or
+  `OFFER devon_return safe` at MeetPresident before MrStoneIHaveFavor. The native
+  adapter must independently check that its own save is eligible and safely
+  display the supplemental text without skipping the original event.
+
+The five-field diagnostic response is `CORE RESULT <UTF-8-JSON-hex>` or
+`CORE REFUSED`. A native client appends a sixth decimal request nonce (1 through
+4294967295). Its compact response is `CORE REPLY <nonce> <lineage> <action> <key>
+OK`, or for OFFER, the last OK is replaced by `<world-id> <digest> <briefing-hex>`.
+The compact briefing includes the objective hint, encoded as one bounded literal.
+Refusals echo `CORE REFUSED <nonce>`. Nonces must be matched to the one pending
+request. Responses go only to
+the authenticated connection. The client must match world, lineage and
+checkpoint, reject late or disconnected replies, and retain a bounded timeout
+that continues vanilla on failure. A local save-associated lineage sidecar must
+survive ordinary restarts and must not be silently reused for a different new
+game. Offline advancement and existing saves reconcile through SYNC, using actual
+native flags at a safe field boundary, never map presence as completion evidence.
+The paired native adapter is being developed separately and is not included in
+the pinned #24 client. The tested local adapter offers `/history share woods`
+or `/history share goods` to preview the exact summary, then `/history confirm`
+to opt in within 30 seconds. This is not available in the current pinned client.
+
+Reports are client attestations, not cryptographic proof of completion. Only the
+native adapter may create them during normal play. Tests drive the actual
+server routing with controlled fixtures, not an emulator or native playtest.
+Agent-authored extensions must use new reviewed arc versions and safe native
+checkpoints; arbitrary executable scripts, save offsets and flag changes are
+not accepted by this protocol.

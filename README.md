@@ -11,6 +11,8 @@ A native PC Pokémon Emerald world built from [pret's decompilation](https://git
 
 ## Current release and source
 
+This extension draft adds an **authority-only canonical-story adapter** above the RC12 candidate. It is not native-connected or part of the tested player activities. See [contract and native requirements](world/PLAYER_CLIENT.md#canonical-story-adapter-candidate-not-connected-to-native-gameplay).
+
 This branch is the **RC12 multiplayer field-activities candidate**, not a released build or a claim of completed native QA. It contains the cumulative app stack #279–283 on app main `80b14ebfbfd4dd4da2dc16d886a37f0db1f45516` and pins the paired native mount/privacy client `488796e4959eb7f9d658abc7e8313e138acb3c87` (#24, including #23). Pulling source does not update an installed package or shortcut. See [candidate handoff](INSTALL_PC.md#rc12-cumulative-candidate-handoff) for exact dependencies, player entry and remaining checks.
 
 For an existing source checkout:

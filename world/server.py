@@ -140,6 +140,8 @@ class WorldServer:
         self.world_rules = WorldRules(self.db)
         from .world_memory import WorldMemory
         self.memory = WorldMemory(self.db)
+        from .core_story import CoreStory
+        self.core_story = CoreStory(self)
         self.guilds = Guilds(self.db, catalog_maps(), record_outcome=self.memory.append)
         self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
         from .cooperative_mysteries import Mysteries
@@ -625,6 +627,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                core_story_capable = role.endswith('CORE1')
+                if core_story_capable:role=role[:-5]
                 mount_capable = role.endswith('MOUNTS1')
                 if mount_capable:role=role[:-7]
                 private_commands = role.endswith('COMMANDS1')
@@ -750,6 +754,7 @@ class WorldServer:
                     return
                 conn['id'] = name
                 conn['social'] = social
+                conn['core_story_capable'] = core_story_capable
                 conn['mount_capable'] = mount_capable
                 conn['mount'] = (0, 0)
                 conn['private_commands'] = private_commands
@@ -789,6 +794,8 @@ class WorldServer:
                 with self.db:
                     self._event('join', name)
                 self._queue(conn, f'WELCOME 1 {name} {self.revision}\n')
+                if core_story_capable:
+                    self._queue(conn,'CORE READY 1 '+self.memory.world_id+'\n')
                 if region_capable:
                     self._queue(conn,'REGION READY 1\n')
                 if social and rules_capable:
@@ -800,6 +807,26 @@ class WorldServer:
                 return
             if conn.get('control'):
                 self._control_line(conn, raw)
+                return
+            if fields and fields[0] == 'CORE':
+                nonce=None
+                try:
+                    if len(fields)==6:
+                        if not fields[5].isascii() or not fields[5].isdigit() or not 1<=int(fields[5])<=4294967295:
+                            raise ValueError('Invalid canonical request nonce.')
+                        nonce=fields[5]
+                    result = self.core_story.handle(conn, fields[:5] if nonce else fields)
+                    if nonce:
+                        prefix='CORE REPLY '+nonce+' '+fields[1]+' '+fields[2]+' '+fields[3]+' '
+                        if fields[2]=='OFFER':
+                            reply=result['world_id']+' '+result['digest']+' '+(result['briefing']+' '+result['objective']).encode().hex()
+                        else:
+                            reply='OK'
+                        self._queue(conn,prefix+reply+'\n')
+                    else:
+                        self._queue(conn, 'CORE RESULT ' + json.dumps(result,sort_keys=True,separators=(',', ':')).encode().hex() + '\n')
+                except ValueError:
+                    self._queue(conn, 'CORE REFUSED'+(' '+nonce if nonce else '')+'\n')
                 return
             if fields and fields[0] == 'REGION':
                 if len(fields)!=3 or fields[1] not in ('SELECT','LIST') or raw.decode('ascii')!=' '.join(fields):
@@ -1777,6 +1804,10 @@ class WorldServer:
                     result['saved_places'] = self.memory.saved_places(self, places=result['places'], terms=result['terms'])
                 except (ValueError, TypeError) as exc:
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'core_story_contract':
+                if set(request) != {'command'}:
+                    raise ValueError('Invalid canonical contract request.')
+                result = dict(ok=True, **self.core_story.contract())
             elif request.get('command') == 'world_history':
                 try:
                     if not set(request) <= {'command', 'after', 'limit', 'place_id', 'through'}:
