@@ -11,7 +11,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '49b4611587122dbae6596ce4b5935ab3c86b3da3'
+PIN = 'c121f443bb9bc8160fe08c96c928dc8c3a127e28'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -130,7 +130,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'EW_REGION_STATE={int(args.regional_state)}',
                 f'EW_KANTO_CONTENT={int(args.kanto_content)}',
                 *(['MAP_VERSION=combined'] if args.kanto_content else []),
-                'native', 'BITS=64', f'TARGET_CC={compiler}', f'NATIVE_VERSION={PIN[:12]}-rc11.1',
+                'native', 'BITS=64', f'TARGET_CC={compiler}', f'NATIVE_VERSION={PIN[:12]}-rc11.2',
                 'build/native64/data_relocations.checked', 'build/native64/data_layout.checked',
                 'build/native64/battle_script_operands.checked']
     print(shlex.join(command), flush=True)
