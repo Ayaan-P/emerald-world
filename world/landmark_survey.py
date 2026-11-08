@@ -99,6 +99,8 @@ class LandmarkSurvey:
         s=self.server
         with s.lock:
             command=text.split()[1:]
+            if command==['protocol','1']:
+                s._queue(conn,f'EXPLORE_READY {conn["seq"]}\n');return True
             if command==['start']:
                 revision=self.scope(conn)
                 if not revision or not s.db.execute('SELECT 1 FROM survey_routes WHERE revision=?',(revision,)).fetchone():

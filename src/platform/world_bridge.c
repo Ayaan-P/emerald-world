@@ -109,6 +109,8 @@ struct Remote { char id[26]; u8 object, sprite, group, num;
 struct Applied { struct Tile tile; u16 original, raw; };
 static struct {
     bool8 enabled, connected, connecting, staging, chatProbe, chatLegacy, chatAvailable;
+    bool8 exploreAvailable;
+    unsigned exploreProbeSeq;
     bool8 travelProbe, travelLegacy, travelAvailable;
     bool8 rallyProbe, rallyLegacy, rallyAvailable;
 #if GENERATED_MAP_READY
@@ -463,6 +465,8 @@ static void Disconnect(void)
 #endif
     sWorld.connected = sWorld.connecting = sWorld.staging = FALSE;
     sWorld.chatProbe = sWorld.chatAvailable = FALSE;
+    sWorld.exploreAvailable = FALSE;
+    sWorld.exploreProbeSeq = 0;
     sWorld.travelProbe = sWorld.travelAvailable = FALSE;
 #if GENERATED_MAP_READY
     sWorld.caveProbe = sWorld.caveAvailable = sWorld.caveReturning = FALSE;
@@ -1223,6 +1227,8 @@ static bool8 Line(char *line)
         }
         if (n != 4 || strcmp(tokens[0], "WELCOME") || strcmp(tokens[1], "1")
          || strcmp(tokens[2], sWorld.trainer) || !Decimal(tokens[3], &v[0])) return FALSE;
+        sWorld.exploreAvailable = FALSE;
+        sWorld.exploreProbeSeq = 0;
         sWorld.connected = TRUE;
         sWorld.rallyAvailable = sWorld.rallyProbe;
         sWorld.chatAvailable = sWorld.chatProbe;
@@ -1242,6 +1248,13 @@ static bool8 Line(char *line)
     if (!strcmp(tokens[0], "REGION")) return RegionLine(n, tokens);
 #endif
 #endif
+    if (!strcmp(tokens[0], "EXPLORE_READY")) {
+        if (n != 2 || sWorld.staging || !sWorld.exploreProbeSeq
+         || !Decimal(tokens[1], &v[0]) || v[0] != sWorld.exploreProbeSeq) return FALSE;
+        sWorld.exploreAvailable = TRUE;
+        sWorld.exploreProbeSeq = 0;
+        return TRUE;
+    }
     if (!strcmp(tokens[0], "BEGIN")) {
         if (n != 2 || sWorld.staging || !Decimal(tokens[1], &v[0]) || v[0] < sWorld.live.revision) return FALSE;
         memset(&sWorld.stage, 0, sizeof(sWorld.stage));
@@ -1707,6 +1720,18 @@ int WorldBridge_ChatSend(const char *target, const char *text)
     bool8 visible = FALSE;
     if (!sWorld.connected || !sWorld.chatAvailable || sWorld.outputSize || !length || length > 120
      || (strcmp(target, "*") && !Identifier(target)) || sWorld.seq == UINT_MAX) return 0;
+    /* Never submit a private survey command until this connection proves support.
+     * An older host can only echo this harmless fixed capability probe. */
+    if (!strcmp(target, "*") && !strncmp(text, "/explore", 8)
+     && (text[8] == 0 || text[8] == ' ') && !sWorld.exploreAvailable) {
+        if (!sWorld.exploreProbeSeq) {
+            sWorld.exploreProbeSeq = ++sWorld.seq;
+            sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
+                "CHAT %u * 2f6578706c6f72652070726f746f636f6c2031\n", sWorld.exploreProbeSeq);
+            Flush();
+        }
+        return 0;
+    }
     for (i = 0; i < length; i++) {
         unsigned c = (unsigned char)text[i];
         if (c < 32 || c > 126) return 0;

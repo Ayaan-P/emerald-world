@@ -933,3 +933,18 @@ sharing, public recall and the existing guarded route-author publication. The
 new destination cites the shared event, and the receipt survives restart. Model
 output is a deterministic fixture; this is not an automatic world-building
 trigger or proof of a live model/native game session.
+
+Native compatibility privacy boundary: updated outer native clients gate public
+`/explore` commands at `WorldBridge_ChatSend`, not only the composer. The first
+attempt sends only the fixed harmless `/explore protocol 1` probe and retains the
+private draft. A dedicated sequence-matched authority response enables commands
+for that connection; the player must submit again. Old servers may broadcast the
+probe, but never receive the held discovery command from this updated client.
+Chat messages cannot masquerade as protocol readiness. Disconnect and reconnect
+clear support, and an unanswered probe never releases a queued private command.
+
+This does not protect older clients or arbitrary custom clients. Those clients
+can expose slash-command text on old servers. The actual Expansion engine needs
+the corresponding native guard; an app/outer-source patch alone is not evidence
+that its separately pinned engine is protected. Explicit public-discovery
+confirmation remains required after capability negotiation.

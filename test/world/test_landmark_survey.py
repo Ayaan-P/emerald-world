@@ -126,6 +126,24 @@ class LandmarkSurveyTests(unittest.TestCase):
         self.assertEqual(self.s.memory.history()['events'],before)
         self.assertEqual(self.s.db.execute('SELECT count(*) FROM survey_publications').fetchone()[0],0)
 
+    def test_capability_probe_is_private_and_legacy_probe_has_no_survey_data(self):
+        other=self.connect('Other')
+        reply=self.command('/explore protocol 1')
+        self.assertIn(f'EXPLORE_READY {self.conn["seq"]}',reply)
+        self.assertEqual(other['chat_history'],[])
+        self.assertEqual(self.conn['chat_history'],[])
+        # Emulate the prior server, which forwards unknown slash commands.
+        with patch.object(self.s.landmark_survey,'handle',return_value=False):
+            self.command('/explore protocol 1')
+        public=bytes.fromhex(other['chat_history'][-1][3]).decode()
+        self.assertEqual(public,'/explore protocol 1')
+        self.assertNotIn('camp',public)
+        # Older clients lack this guard and remain unsafe on that old server.
+        with patch.object(self.s.landmark_survey,'handle',return_value=False):
+            self.command('/explore share camp')
+        self.assertEqual(other['chat_history'][-1][1],'Scout')
+        self.assertEqual(bytes.fromhex(other['chat_history'][-1][3]).decode(),'/explore share camp')
+
     def test_registration_requires_exact_archived_template(self):
         changed=plan();changed['seed']=45
         result=self.f.admin(dict(command='register_survey',plan=changed))
