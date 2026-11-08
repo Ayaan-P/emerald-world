@@ -49,6 +49,8 @@ static struct {
  bool8 connected,caveAvailable,staging,caveReturning,caveProbe,caveLegacy;
  bool8 regionProbe,regionLegacy,regionAvailable,regionSelected;
  bool8 rallyProbe,rallyLegacy,travelProbe,travelLegacy,chatProbe,chatLegacy,chatAvailable,fieldKnown;
+ bool8 exploreAvailable;
+ unsigned exploreProbeSeq;
  enum CaveState caveState;
  unsigned caveTimeout,caveRetry,snapshotAge,regionPhase,regionTimeout,seq;
  char caveExpected[65],regionRequest[42],trainer[25],token[65];

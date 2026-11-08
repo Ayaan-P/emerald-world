@@ -64,6 +64,7 @@ class BuildSetup(unittest.TestCase):
                     patch('sys.argv', ['build_expansion.py']), \
                     patch.object(build_expansion.subprocess, 'check_output', side_effect=[build_expansion.PIN, '']), \
                     patch.object(build_expansion.subprocess, 'run', side_effect=[CompletedProcess([], 0), CompletedProcess([], 0), CompletedProcess([], 0), CompletedProcess([], 1)]), \
+                    patch.object(build_expansion.shutil, 'which', return_value='/usr/bin/bwrap'), \
                     patch('scripts.export_expansion_species_catalogue.export_catalogue') as export:
                 self.assertEqual(build_expansion.main(), 1)
                 export.assert_not_called()
@@ -79,6 +80,7 @@ class BuildSetup(unittest.TestCase):
                     patch('sys.argv', ['build_expansion.py', '--check']), \
                     patch.object(build_expansion.subprocess, 'check_output', side_effect=[build_expansion.PIN, '']), \
                     patch.object(build_expansion.subprocess, 'run') as run, \
+                    patch.object(build_expansion.shutil, 'which', return_value='/usr/bin/bwrap'), \
                     patch('scripts.export_expansion_species_catalogue.export_catalogue') as export:
                 run.return_value.returncode = 0
                 self.assertEqual(build_expansion.main(), 0)
