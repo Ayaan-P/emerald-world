@@ -468,6 +468,30 @@ class LauncherBridge:
                 if not hasattr(self, 'content_workshop'):
                     self.content_workshop = ContentWorkshop()
                 return self.content_workshop.action(self.session, self.local_expeditions(), action, payload)
+            elif action in ('adventure_read', 'adventure_preview', 'adventure_apply'):
+                if self.engine != 'expansion-native':
+                    raise SessionError('Lantern Trail requires the Expansion launcher.')
+                fields = {'adventure_read': {'world'}, 'adventure_preview': {'world', 'adventure'},
+                          'adventure_apply': {'world', 'token', 'confirmed'}}
+                if (type(payload) is not dict or set(payload) != fields[action]
+                        or type(payload.get('world')) is not str):
+                    raise SessionError('Choose an owned adventure world and supported review fields.')
+                if action == 'adventure_apply' and payload['confirmed'] is not True:
+                    raise SessionError('Review and confirm the exact adventure before applying.')
+                if payload['world'].startswith('hosted-'):
+                    world_id = payload['world'][len('hosted-'):]
+                    if not re.fullmatch(r'[0-9a-f]{16}', world_id):
+                        raise SessionError('Choose an owned hosted world from the library.')
+                    if not callable(getattr(self.hosted, 'adventure_action', None)):
+                        raise SessionError('This hosted service does not provide adventure management yet. Remote area generation remains available in Explore.')
+                    return self.hosted.adventure_action(action, {**payload, 'world': world_id})
+                from .product_adventure import AdventureWorkshop
+                if not hasattr(self, 'adventure_workshop'):
+                    self.adventure_workshop = AdventureWorkshop()
+                return self.adventure_workshop.action(self.session, self.local_expeditions(), action, payload)
+            elif action == 'player_activity_read':
+                from .player_activity import read_activity
+                return read_activity(self.session, self.local_expeditions(), payload)
             elif action == 'journal_read':
                 from .world_journal import read_journal
                 return read_journal(self.session, self.local_expeditions(), payload)

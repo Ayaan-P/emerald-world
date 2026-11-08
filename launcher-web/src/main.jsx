@@ -17,6 +17,8 @@ import PersonalSettings from './PersonalSettings';
 import LocalFriends from './LocalFriends';
 import TerrainEditor from './TerrainEditor';
 import ContentWorkshop from './ContentWorkshop';
+import PlayerActivities from './PlayerActivities';
+import FirstAdventure from './FirstAdventure';
 import { saveImportLimit } from './save-import';
 
 const empty = { local_worlds: [], local_host: false, cave_authoring: false, cave_persistent: false, worlds: [], offline_saves: [], presence: null, hosting: { available: false, backup_available: false, enrolled: false, loaded: false, worlds: [], pending: null }, setup: [], connected: false, world_key: null, offline_world_key: null, trainer: null, games: [], status: 'Choose a world to begin.' };
@@ -257,6 +259,8 @@ export function App() {
 
   const nav = [
     { id: 'play', label: 'Play', icon: Compass },
+    { id: 'activities', label: 'Objectives & recap', icon: Check },
+    { id: 'adventure', label: 'Lantern Trail', icon: Sparkles },
     { id: 'local', label: 'Local worlds', icon: Gamepad2 },
     { id: 'worlds', label: 'Hosted worlds', icon: Globe2 },
     { id: 'explore', label: 'Explore', icon: Compass },
@@ -311,6 +315,8 @@ export function App() {
         onPlaySaved={world => requestPlay('rejoin', { world: world.key }, world.key)}
         onPlayHosted={world => requestPlay('host_resume', { world: world.id }, `hosted-${world.id}`)}
         onPlayOffline={playSolo} />}
+      {page === 'activities' && <PlayerActivities state={state} ready={ready} busy={busy} onRequest={(action,payload) => run(action,payload,{responseOnly:true})} onAdventure={() => go('adventure')} />}
+      {page === 'adventure' && <FirstAdventure state={state} ready={ready} busy={busy} onRequest={(action,payload) => run(action,payload,{responseOnly:true})} onOpen={world => localOpen('local_resume',{world:world.key,trainer:world.trainer},world.key,{returnPage:'adventure'})} onHostedWorlds={() => go('worlds')} />}
       {page === 'worlds' && <div className="interior">
         <header className="page-heading"><div><h1>Hosted worlds</h1><p>Dedicated servers, including Hetzner. Your trainer save stays here.</p></div><button className="button primary" onClick={() => { setError(''); setDialog('join'); }} disabled={!ready || busy}>Join a world</button></header>
         <section className="hosting-summary" aria-label="Hosting account"><div><h2>{!state.hosting.available ? 'Hosting management unavailable' : state.hosting.enrolled ? 'Owner account configured' : 'Add hosting access'}</h2><p>{!state.hosting.available ? 'You can still join an existing server with a player invitation.' : state.hosting.enrolled ? (state.hosting.endpoint ? `${state.hosting.endpoint.host}:${state.hosting.endpoint.port}` : 'Create worlds and invite players on your configured service.') : 'Import host access from your server operator, or restore your owner backup.'}</p></div><button className="button ghost" disabled={!ready || busy || !state.hosting.available} onClick={openCreate}>{state.hosting.enrolled ? 'Create hosted world' : 'Add host access'}</button></section>
