@@ -1,5 +1,5 @@
 {
-  "id": "signal",
+  "id": "signal_v2",
   "title": "The Two-Tower Signal",
   "roles": [
     "Field Observer",
@@ -23,8 +23,8 @@
           "at": [
             0,
             0,
-            15,
-            10
+            22,
+            12
           ],
           "clue": "Archive rule: append RISE to the observers symbol. Submit the joined word."
         }
@@ -40,7 +40,7 @@
             0,
             3,
             10,
-            10
+            40
           ],
           "clue": "The beacon flashes BLUE. Tell your partner its color."
         },
@@ -48,8 +48,8 @@
           "at": [
             0,
             3,
-            15,
-            10
+            22,
+            40
           ],
           "clue": "The ledger pairs BLUE with TIDE and RED with ASH. Submit the matching word."
         }

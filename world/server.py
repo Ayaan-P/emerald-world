@@ -1583,6 +1583,13 @@ class WorldServer:
                 except ValueError as exc:
                     # Expected validation/occupancy refusal is not a mechanic error.
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'publish_field_story':
+                try:
+                    if set(request)!={'command','bundle'}:raise ValueError('Invalid field story publication.')
+                    from .field_story_bundle import install
+                    with self.lock:result=install(self,request['bundle'])
+                except ValueError as exc:
+                    result=dict(ok=False,error=str(exc))
             elif request.get('command') in ('publish_mystery', 'publish_opportunities'):
                 try:
                     if set(request)!={'command','pack'}:raise ValueError('Invalid story publication.')

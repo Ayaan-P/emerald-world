@@ -1,5 +1,5 @@
 {
-  "id": "signal_after",
+  "id": "signal_after_v2",
   "title": "The River Signal Returns",
   "qualities": {
     "relay": {
@@ -24,7 +24,7 @@
         ]
       },
       "once": "world",
-      "mystery": "signal",
+      "mystery": "signal_v2",
       "choices": {
         "restore": {
           "text": "Restore the public warning relay.",

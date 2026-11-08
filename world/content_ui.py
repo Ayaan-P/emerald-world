@@ -80,6 +80,16 @@ class ContentWorkshop:
                         raise ValueError('content plan exceeds 16384 bytes')
                     plan = deepcopy(payload['plan']); kind = payload['kind']; label = payload['label']
                     request: dict[str, Any]
+                    if kind == 'field_story':
+                        from .field_story_bundle import curated, inspect
+                        if plan != {}:raise ValueError('The curated field story uses its reviewed built-in plan.')
+                        plan=curated();report=inspect(server,plan);token=secrets.token_hex(24)
+                        self.draft=dict(token=token,server=server,guard=self._guard(current),
+                                        request=dict(command='publish_field_story',bundle=plan),report=report,
+                                        expires=time.monotonic()+900)
+                        return dict(current,token=token,kind=kind,mode='install',plan=plan,report=report,
+                                    proposed_rows=current['rows'],
+                                    validation='Install both story parts together. Existing geography, trainers and progress are retained. Requires two matched RC12 clients. Station walkability still needs in-game QA.')
                     if kind == 'field_test':
                         if current['identity'] is not None or server.candidate is not None or server.objects:
                             raise SessionError('Use a separate empty local world for the RC11 field test. Existing geography and inhabitants cannot be replaced.')
@@ -142,6 +152,10 @@ class ContentWorkshop:
                 # automatically replayed, even if the HTTP response is lost.
                 self.draft = None
                 request = draft['request']
+                if request['command'] == 'publish_field_story':
+                    from .field_story_bundle import install
+                    installed=install(server,request['bundle'])
+                    return dict(self._read(server,payload['world']),saved=True,field_story=installed)
                 if request['command'] == 'construct_outpost':
                     from .frontier_outposts import construct
                     construct(server, request)
