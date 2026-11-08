@@ -1,16 +1,19 @@
 """Cross-map travel subscription regressions for the combined RC acceptance run."""
 import sqlite3
+import threading
 import unittest
-from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from world.server import WorldServer, MAX_TRAVEL_PEERS
 from world.rally import RallyCoordinator
+from world.host_controls import HostControls
+from world.world_rules import WorldRules
 
 
 class TravelRosterTests(unittest.TestCase):
     def setUp(self):
         self.server = WorldServer.__new__(WorldServer)
+        self.server.lock = threading.RLock()
         self.server.revision = 1
         # This __new__ fixture bypasses constructor initialization.
         self.server.cave_map = None
@@ -26,7 +29,8 @@ class TravelRosterTests(unittest.TestCase):
         self.server.db = sqlite3.connect(':memory:')
         self.addCleanup(self.server.db.close)
         self.server.db.execute('CREATE TABLE identities (id TEXT, token TEXT)')
-        self.server.host_controls = SimpleNamespace(rejection=lambda name: None)
+        self.server.world_rules = WorldRules(self.server.db)
+        self.server.host_controls = HostControls(self.server.db)
         self.server.max_players = 64
 
     def connect(self, name, role='SOCIALTRAVELCHAT', token=None):
