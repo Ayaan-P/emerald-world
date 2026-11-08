@@ -32,7 +32,7 @@ def validate_plan(plan):
     identities=set()
     for index,chapter in enumerate(chapters):
         if (type(chapter) is not dict or not {'id','when','goals','team','status','object','reason'} <= set(chapter)
-                or set(chapter)-{'id','when','goals','team','status','object','reason','offer'}):
+                or set(chapter)-{'id','when','goals','team','status','object','reason','offer','next'}):
             raise ValueError('invalid chapter fields')
         identity=chapter['id']
         if type(identity) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}',identity) or identity in identities:
@@ -46,12 +46,6 @@ def validate_plan(plan):
               or len(condition)<2 or any((type(v) is not int or not 1<=v<=2**31-1) if k=='character_offer_revision'
                   else (type(v) is not str or not 1<=len(v)<=160) for k,v in condition.items())):
             raise ValueError('chapter needs a specific public-event condition')
-        previous_offer=chapters[index-1].get('offer') if index else None
-        if previous_offer and condition['event']=='guild_goal_completed':
-            expected={'character_id':plan['id'],'character_offer_id':previous_offer['id'],
-                      'character_offer_revision':previous_offer['revision']}
-            if any(condition.get(key)!=value for key,value in expected.items()):
-                raise ValueError('offered expedition completion requires exact character and offer identity')
         character=dict(version=1,name=plan['name'],role=plan['role'],goals=chapter['goals'],relationships={},
                        team=chapter['team'],status=chapter['status'],object_id=plan['id'],
                        evidence=plan['origin_evidence'],reason=chapter['reason'])
@@ -69,6 +63,27 @@ def validate_plan(plan):
             raise ValueError('away and retired chapters must not render')
         if chapter['status']=='retired' and index != len(chapters)-1:
             raise ValueError('retirement must be the last chapter')
+    positions={chapter['id']:i for i,chapter in enumerate(chapters)}
+    reached={0}
+    for index,chapter in enumerate(chapters):
+        targets=chapter.get('next',[chapters[index+1]['id']] if index+1<len(chapters) else [])
+        if (type(targets) is not list or len(targets)>8 or
+                any(type(target) is not str or target not in positions or positions[target]<=index for target in targets)
+                or len(set(targets))!=len(targets)):
+            raise ValueError('chapter next must name up to eight distinct later chapters')
+        if chapter['status']=='retired' and targets:
+            raise ValueError('retired chapters cannot continue')
+        if index not in reached:
+            raise ValueError('all chapters must be reachable from arrival')
+        for target in targets:
+            reached.add(positions[target])
+            condition=chapters[positions[target]]['when']
+            offer=chapter.get('offer')
+            if offer and condition['event']=='guild_goal_completed':
+                expected={'character_id':plan['id'],'character_offer_id':offer['id'],
+                          'character_offer_revision':offer['revision']}
+                if any(condition.get(key)!=value for key,value in expected.items()):
+                    raise ValueError('offered expedition completion requires exact character and offer identity')
     return json.loads(json.dumps(plan))
 
 
@@ -103,10 +118,17 @@ def chapter_step(plan, definition, published_after, context, result):
         if event['seq'] <= progress['event_seq']:
             continue
         progress['event_seq']=event['seq']
-        next_index=progress['chapter']+1
-        if next_index >= len(plan['chapters']):continue
+        current=plan['chapters'][progress['chapter']]
+        targets=current.get('next',[plan['chapters'][progress['chapter']+1]['id']]
+                            if progress['chapter']+1<len(plan['chapters']) else [])
+        next_index=None
+        for target in targets:
+            candidate=next(i for i,c in enumerate(plan['chapters']) if c['id']==target)
+            if all(event.get(k)==v for k,v in plan['chapters'][candidate]['when'].items()):
+                next_index=candidate
+                break
+        if next_index is None:continue
         chapter=plan['chapters'][next_index]
-        if not all(event.get(k)==v for k,v in chapter['when'].items()):continue
         progress['chapter']=next_index
         cast[identity].update(goals=chapter['goals'],team=chapter['team'],status=chapter['status'],
                               evidence=[event['seq']],reason=chapter['reason'])
@@ -157,6 +179,7 @@ def contract():
     return {'response': '{"character_plan": plan, "tests": "Python tests for update"}',
             'plan_fields':['id','name','role','origin_evidence','chapters'],
             'chapter_fields':['id','when','goals','team','status','object','reason'],
+            'branching':'optional next lists up to eight later chapter ids; default is the next chapter; [] ends the story; earliest recorded matching event chooses one route, declaration order breaks simultaneous matches; skipped routes never run; all chapters must be reachable',
             'optional_chapter_field':'offer: validated expedition offer; requires explicit native acceptance and pre-existing guild chronicle ON',
             'scope':'shared-world characters respond to public events from any opted-in guild; guild_name is a literal name, not stable identity; an offered expedition completion must match its exact character_id, character_offer_id and character_offer_revision',
             'first_when':None,'later_when':'exact public event plus at least one listed field, all comparisons must match',

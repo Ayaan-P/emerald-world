@@ -81,6 +81,75 @@ class CharacterChapterTests(unittest.TestCase):
         self.assertEqual(replay,result)
         with self.assertRaises(ValueError):chapter_step(p,'changed',10,{},result)
 
+    def test_branch_validation_and_deterministic_first_event(self):
+        p=plan();p['chapters'][0]['next']=['fieldwork','return']
+        p['chapters'][1]['next']=[];p['chapters'][2]['next']=[]
+        validate_plan(p)
+        for targets in (['arrival'],['missing'],['fieldwork','fieldwork']):
+            broken=deepcopy(p);broken['chapters'][0]['next']=targets
+            with self.assertRaises(ValueError):validate_plan(broken)
+        broken=deepcopy(p);broken['chapters'][0]['next']=[]
+        with self.assertRaisesRegex(ValueError,'reachable'):validate_plan(broken)
+        # One chronological batch contains both alternatives. The earlier
+        # committed outcome chooses the terminal route; later/replayed events
+        # cannot resurrect a skipped branch.
+        events=[dict(seq=1,event='guild_goal_completed',place_id='native:LittlerootTown',goal_kind='meetup'),
+                dict(seq=2,event='guild_goal_completed',place_id='native:LittlerootTown',goal_kind='expedition')]
+        base=dict(state={},tiles=[],objects=[])
+        result=chapter_step(p,'branches',0,{'character_history':{'events':events,'through':2}},base)
+        self.assertEqual(result['state']['world_character_chapters'][p['id']]['chapter'],2)
+        self.assertEqual(result['state']['world_characters'][p['id']]['evidence'],[1])
+        replay=chapter_step(p,'branches',0,{'character_history':{'events':events,'through':2}},result)
+        self.assertEqual(result,replay)
+
+    def test_real_guild_choice_changes_returning_character_playable_role(self):
+        for goal in ('expedition','meetup'):
+            with self.subTest(goal=goal):
+                fixture=guild_fixture.GuildWorldMemoryTests();fixture.setUp()
+                try:
+                    server=fixture.server;p=plan()
+                    p['chapters'][0]['next']=['fieldwork','return']
+                    explorer=p['chapters'][1];explorer['next']=[];explorer['status']='active'
+                    explorer['object']=deepcopy(p['chapters'][0]['object'])
+                    explorer['object']['text']='Your expedition inspired me!\nMeet my field team.'
+                    explorer['team']=[dict(species=278,level=18)]
+                    mentor=p['chapters'][2];mentor['next']=[]
+                    mentor['object']['text']='Your reunion inspired me.\nI will stay and teach.'
+                    mentor['team']=[dict(species=277,level=14)]
+                    p=validate_plan(p);snapshot=server.inspect()
+                    definition=hashlib.sha256(json.dumps(p,sort_keys=True).encode()).hexdigest()
+                    source=compile_plan(p,snapshot);candidate=Candidate(source,hashlib.sha256(source.encode()).hexdigest())
+                    def tick():
+                        result=chapter_step(p,definition,snapshot['world_memory']['through'],server._context(),
+                            dict(state=server.module_state,tiles=[],objects=server.objects))
+                        future=Future();future.set_result((candidate,result))
+                        server.job=(future,'tick',None,server.interaction_cursor);server.next_tick=float('inf')
+                        server._poll_mechanics();self.assertIsNone(server.module_error)
+                    tick();fixture.command('chronicle on')
+                    fixture.command(('expedition' if goal=='expedition' else 'meet')+' start LittlerootTown 2')
+                    fixture.state('Alice');tick()
+                    self.assertEqual(server.module_state['world_characters'][p['id']]['version'],1)
+                    fixture.state('Bob');tick()
+                    chosen=explorer if goal=='expedition' else mentor
+                    character=server.module_state['world_characters'][p['id']]
+                    self.assertEqual(character['version'],2)
+                    self.assertEqual(character['team'],chosen['team'])
+                    self.assertEqual(server.objects[0]['text'],chosen['object']['text'])
+                    self.assertEqual(character['evidence'],[fixture.events()[-1]['seq']])
+                    # The chosen branch's team is the real battle admission
+                    # payload, not just narrative metadata.
+                    token=server.create_identity('Alice')['token'];server.peers.pop('Alice',None)
+                    conn=dict(id=None,out=bytearray(),closing=False,state=None,seq=0,sock=object())
+                    server._line(conn,('HELLO 1 Alice '+token+' SOCIALTRAVELCHATRALLYCHAR1').encode())
+                    self.assertIn(b'WELCOME',conn['out']);conn['out'].clear()
+                    server._line(conn,('STATE 1 0 9 8 8 4 7 1 '+'a'*16+' '+'b'*16).encode())
+                    conn['out'].clear();server._line(conn,b'CHARACTER_CHALLENGE 2 field_researcher 2')
+                    mon=chosen['team'][0]
+                    self.assertIn(f'CHARACTER_BATTLE_V1 2 field_researcher 2 1 {mon["species"]} {mon["level"]}',conn['out'].decode())
+                    server.close();fixture.case.server=fixture.case.open();fixture.server=fixture.case.server
+                    self.assertEqual(fixture.server.module_state['world_characters'][p['id']],character)
+                finally:fixture.doCleanups()
+
     def test_codex_adapter_preserves_chapter_response_without_executing_it(self):
         response={'character_plan':plan(),'tests':'def test_example():\n    assert callable(update)\n'}
         wire='\n'.join(map(json.dumps,[{'type':'item.completed','item':{'type':'agent_message','text':json.dumps(response)}},{'type':'turn.completed'}]))
