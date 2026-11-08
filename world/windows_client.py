@@ -28,12 +28,16 @@ class LoopbackGateway(ClientBroker):
     start() returns self, address is (127.0.0.1, ephemeral_port), close() joins
     workers. A closed instance cannot restart. Make a fresh instance to rejoin.
     """
-    def __init__(self, remote, *, fingerprint, local_token, auth_timeout=5, **limits):
+    def __init__(self, remote, *, fingerprint, local_token, auth_timeout=5, max_clients=8, **limits):
+        # One local native guest needs a small bounded gateway, not the public
+        # authority's larger population limit.
+        if type(max_clients) is not int or not 1 <= max_clients <= 8:
+            raise ValueError('local gateway max_clients must be within eight')
         if not isinstance(local_token, str) or not _HEX.fullmatch(local_token):
             raise ValueError('invalid local capability')
         if not 0 < auth_timeout <= 5:
             raise ValueError('authentication deadline must be within five seconds')
-        super().__init__('', remote, fingerprint=fingerprint, **limits)
+        super().__init__('', remote, fingerprint=fingerprint, max_clients=max_clients, **limits)
         self.local_token = local_token
         self.auth_timeout = auth_timeout
         self.address = None

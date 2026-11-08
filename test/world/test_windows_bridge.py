@@ -83,13 +83,15 @@ static int MoveFileExW(const wchar_t *from, const wchar_t *to, unsigned flags) {
 #define bool8 int
 #define TRUE 1
 #define FALSE 0
+#define WB_PEERS 8
 #define INVALID_SOCKET (~(unsigned long long)0)
 #define MAKEWORD(a,b) ((a)|((b)<<8))
 typedef struct { unsigned short wVersion; } WSADATA;
 static int WSAStartup(int v, WSADATA *d) { d->wVersion=v; return 0; }
 static int WSACleanup(void) { return 0; }
 static struct { unsigned long long fd; int enabled, winsockStarted;
-unsigned loopbackPort; char loopbackToken[65], socketPath[108], trainer[25], token[65], telemetry[1024]; } sWorld;
+unsigned loopbackPort, visiblePeers; char loopbackToken[65], socketPath[108], trainer[25], token[65], telemetry[1024]; } sWorld;
+static void WorldRally_Init(const char *path) { (void)path; }
 static bool8 Identifier(''' + identifier + '\nbool8 WorldBridge_Init(' + init + '''
 int main(int argc, char **argv) {
     int ok = WorldBridge_Init(argc > 1 ? argv[1] : NULL);
@@ -200,20 +202,42 @@ int main(int argc, char **argv) {
         self.assertEqual(subprocess.run([str(self.exe), str(path)], capture_output=True).returncode, 1)
 
     def test_wire_preface_precedes_unchanged_hello(self):
-        self.assertIn('static void QueueHello(void)', self.source)
-        helper = self.source.split('static void QueueHello(void)', 1)[1].split('static void Flush', 1)[0]
+        self.assertIn('static void QueueHello(bool8 headless)', self.source)
+        helper = self.source.split('static void QueueHello(bool8 headless)', 1)[1].split('static void Flush', 1)[0]
+        defines = ['-DGENERATED_MAP_READY=1','-DGENERATED_MAP_LARGE=1','-DGENERATED_MAP_WILDS=1',
+                   '-DGENERATED_CAVE_PROFILES=1','-DGENERATED_CAVE_WILDLIFE=1','-DGENERATED_WILDS_GUIDE=1',
+                   '-DGENERATED_WILDS_CAST=1','-DGENERATED_WILDS_EVENTS=1','-DGENERATED_WORLD_XL=1',
+                   '-DGENERATED_WILDS_SHARED_TERRAIN=1','-DGENERATED_WILDS_SHARED_GEOMETRY=1',
+                   '-DGENERATED_WILDS_LARGE_TERRAIN=1','-DWORLD_EXTENDED_OBJECTS=1','-DGENERATED_WORLD_REGIONS=0',
+                   '-DWORLD_CAVE_ID=16']
         c = self.path / 'wire.c'
-        c.write_text('#include <stdio.h>\n#include <string.h>\n'
+        fields = ['travelProbe', 'travelLegacy', 'rallyProbe', 'rallyLegacy',
+                  'peer32Probe', 'peer32Legacy', 'peer16Probe', 'peer16Legacy',
+                  'caveProbe', 'caveLegacy', 'caveV2Probe', 'caveV2Legacy',
+                  'caveV3Probe', 'caveV3Legacy', 'caveV4Probe', 'caveV4Legacy',
+                  'caveV5Probe', 'caveV5Legacy', 'caveV6Probe', 'caveV6Legacy',
+                  'caveV7Probe', 'caveV7Legacy', 'caveV8Probe', 'caveV8Legacy',
+                  'caveV9Probe', 'caveV9Legacy', 'caveV9TProbe', 'caveV9TLegacy',
+                  'caveV9GProbe', 'caveV9GLegacy', 'caveV9HProbe', 'caveV9HLegacy',
+                  'caveV11Probe', 'caveV11Legacy', 'caveV16Probe', 'caveV16Legacy',
+                  'caveV10Probe', 'caveV10Legacy',
+                  'rulesProbe', 'rulesV2Probe', 'rulesV3Probe', 'rulesLegacy',
+                  'rulesV2Legacy', 'rulesV3Legacy', 'characterLegacy', 'questLegacy',
+                  'characterRegionLegacy', 'characterWalkLegacy', 'characterIdentityLegacy',
+                  'placeQuestLegacy', 'chatProbe', 'chatLegacy']
+        c.write_text('#include <stdio.h>\n#include <string.h>\n#define FALSE 0\ntypedef int bool8;\n'
                      'static struct { char output[4096], loopbackToken[65], trainer[25], token[65]; '
-                     'size_t outputSize; } sWorld;\nstatic void QueueHello(void)' + helper +
+                     'size_t outputSize; int ' + ', '.join(fields) + '; } sWorld;\n'
+                     '#undef WB_PEER_SUFFIX\n#undef WB_REGION_SUFFIX\n'
+                     'static void QueueHello(bool8 headless)' + helper +
                      '\nint main(void) { memset(sWorld.loopbackToken, 97, 64); '
                      'memset(sWorld.token, 98, 64); strcpy(sWorld.trainer, "alice"); '
-                     'QueueHello(); fwrite(sWorld.output, 1, sWorld.outputSize, stdout); return 0; }')
+                     'QueueHello(1); fwrite(sWorld.output, 1, sWorld.outputSize, stdout); return 0; }')
         for define, prefix in [(['-D_WIN32'], 'EWLOCAL1 ' + 'a' * 64 + '\n'), ([], '')]:
             exe = self.path / 'wire'
-            subprocess.run([os.environ.get('CC', 'cc'), '-std=gnu99', *define, str(c), '-o', str(exe)], check=True, capture_output=True)
+            subprocess.run([os.environ.get('CC', 'cc'), '-std=gnu99', *define, *defines, str(c), '-o', str(exe)], check=True, capture_output=True)
             result = subprocess.run([str(exe)], check=True, capture_output=True, text=True)
-            self.assertEqual(result.stdout, prefix + 'HELLO 1 alice ' + 'b' * 64 + ' SOCIAL\n')
+            self.assertEqual(result.stdout, prefix + 'HELLO 1 alice ' + 'b' * 64 + ' SOCIALTRAVELRALLYPEER32CAVE10\n')
 
     def test_windows_transport_and_atomic_replace_guards(self):
         for required in ('SOCKET fd;', 'INVALID_SOCKET', 'WSAStartup', 'WSACleanup',
