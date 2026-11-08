@@ -57,6 +57,33 @@ class RegionAdmissionTests(unittest.TestCase):
     def outside(self,client):
         client.send_state(client.sock.conn['seq']+1,0,9,8,8,1,7,1,'a'*16,'b'*16)
 
+    def test_public_region_catalog_is_bounded_and_preserves_admission(self):
+        client=self.connect('Alice');peer=client.sock.conn
+        for index in range(5):
+            blob=bytearray(BLOB);blob[8+(index+3)*31+3]=ord('#')
+            revision=self.server._replace_cave(bytes(blob))
+            with self.server.db:
+                self.server.db.execute('UPDATE generated_area_archive SET label=? WHERE identity=?',
+                                       ('Harbor \n<script> snow ☃ '+str(index),revision))
+            self.server.open_region(revision)
+        def request(offset):
+            peer['out'].clear();self.server._line(peer,('REGION LIST '+str(offset)).encode())
+            return peer['out'].decode().splitlines()
+        before=(peer.get('cave_ack'),peer.get('region_place'))
+        first=request(0);second=request(4)
+        self.assertEqual(first[0],'REGION BEGIN 0 4 4');self.assertEqual(first[-1],'REGION END')
+        self.assertEqual(second[0],'REGION BEGIN 4 3 0')
+        ids=[]
+        for line in first[1:-1]+second[1:-1]:
+            prefix,kind,place,label=line.split();self.assertEqual((prefix,kind),('REGION','PLACE'))
+            ids.append(place);decoded=bytes.fromhex(label).decode('ascii')
+            self.assertLessEqual(len(decoded),20);self.assertNotIn('<',decoded);self.assertNotIn('\n',decoded)
+        self.assertEqual(len(set(ids)),7)
+        self.assertEqual(before,(peer.get('cave_ack'),peer.get('region_place')))
+        self.assertEqual(request('-1'),['REGION REFUSED'])
+        peer['region_capable']=False
+        self.assertEqual(request(0),['REGION REFUSED'])
+
     def test_reference_clients_occupy_two_places_without_global_replacement(self):
         alice,bob,carol=[self.connect(n) for n in ('Alice','Bob','Carol')]
         self.assertEqual(alice.select_region(self.ra['place_id'])['template'],BLOB)

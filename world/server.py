@@ -434,6 +434,24 @@ class WorldServer:
                 self.revision=self.db.execute('SELECT max(seq) FROM events').fetchone()[0]
             return dict(ok=True,place_id=place,revision=revision,changed=existing is None)
 
+    def _list_regions(self, conn, offset):
+        """Public, bounded menu of owner-opened immutable destinations."""
+        if (not conn.get('region_capable') or not self.archive_generated_areas
+                or not re.fullmatch(r'0|[1-9][0-9]{0,8}', offset)):
+            raise ValueError('region list unavailable')
+        start=int(offset)
+        rows=self.db.execute("""SELECT r.place_id,a.label FROM world_region_revisions r
+            JOIN generated_area_archive a ON a.identity=r.revision
+            ORDER BY r.place_id LIMIT 5 OFFSET ?""",(start,)).fetchall()
+        next_page=start+4 if len(rows)>4 else 0
+        self._queue(conn,f'REGION BEGIN {start} {min(len(rows),4)} {next_page}\n')
+        for place,label in rows[:4]:
+            # Native labels are bounded literals, never engine text commands.
+            safe=''.join(c if c.isascii() and (c.isalnum() or c in " .,'!?-") else ' '
+                         for c in (label or 'Unnamed place')).strip()[:20] or 'Unnamed place'
+            self._queue(conn,f'REGION PLACE {place} {safe.encode("ascii").hex()}\n')
+        self._queue(conn,'REGION END\n')
+
     def _select_region(self, conn, place):
         from .shared_cave import SharedCave
         with self.lock:
@@ -703,11 +721,14 @@ class WorldServer:
                 self._control_line(conn, raw)
                 return
             if fields and fields[0] == 'REGION':
-                if len(fields)!=3 or fields[1]!='SELECT' or raw.decode('ascii')!=' '.join(fields):
+                if len(fields)!=3 or fields[1] not in ('SELECT','LIST') or raw.decode('ascii')!=' '.join(fields):
                     self._error(conn,'REGION')
                     return
                 try:
-                    self._select_region(conn,fields[2])
+                    if fields[1]=='LIST':
+                        self._list_regions(conn,fields[2])
+                    else:
+                        self._select_region(conn,fields[2])
                 except ValueError:
                     self._queue(conn,'REGION REFUSED\n')
                 return

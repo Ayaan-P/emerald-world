@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build RC7's pinned full native Expansion engine with its presence adapter.
+"""Build RC10's pinned full native Expansion engine with its presence adapter.
 
 Only existing development/sysroot inputs are used. No installs or downloads.
 The engine is a separate checkout and no vanilla Pokemon/save ABI is imported.
@@ -11,7 +11,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = 'c22527265e72236fb269937d9705bafa49cc02cc'
+PIN = 'db028d31a8e4fcb615e60414c7a870cba3263330'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -21,7 +21,7 @@ def main():
     parser.add_argument('--multilib-sysroot', '--multilib-root', type=Path,
                         help='existing extracted libc/GCC multilib root for mandatory ABI probes')
     parser.add_argument('--development', action='store_true',
-                        help='build explicit local RC7 integration changes on top of the verified engine pin')
+                        help='build explicit local RC10 integration changes on top of the verified engine pin')
     parser.add_argument('--jobs', type=int, default=4)
     args = parser.parse_args()
     if args.jobs < 1:
@@ -77,14 +77,14 @@ def main():
     for key, value in env.items():
         command += ['--setenv', key, value]
     command += ['--', 'make', '-f', str(ROOT / 'engines/expansion.mk'), f'-j{args.jobs}',
-                'native', 'BITS=64', f'TARGET_CC={compiler}', f'NATIVE_VERSION={PIN[:12]}-rc7',
+                'native', 'BITS=64', f'TARGET_CC={compiler}', f'NATIVE_VERSION={PIN[:12]}-rc10',
                 'build/native64/data_relocations.checked', 'build/native64/data_layout.checked',
                 'build/native64/battle_script_operands.checked']
     print(shlex.join(command), flush=True)
     # Makefile.native marks intermediates secondary. A formerly linked binary
     # must not hide newly added world objects just because those objects are absent.
     (source / 'build/native64/pokeemerald-native').unlink(missing_ok=True)
-    # Pointer4 reference objects encode CPPFLAGS (including the RC7 script
+    # Pointer4 reference objects encode CPPFLAGS (including the RC10 script
     # cohort) in their assembled contents, but make cannot see flag changes as
     # prerequisites. Recreate only this generated reference tree each build so
     # relocation/layout comparisons always use the current feature cohort.

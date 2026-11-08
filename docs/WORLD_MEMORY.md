@@ -1,34 +1,41 @@
 # World memory: build on what actually happened
 
-## Current implementation target: app authority plus outer reference engine
+## Current implementation target and verification
 
-The Python authority and REGION1 reference client changes in this PR target the
-actual app. The native C changes and compiled component fixtures target the
-**outer repository's `src/platform/` engine**, not the RC10 Expansion engine used
-by the pinned submodule. They do not establish native Expansion availability.
+The app authority, persistent history and REGION1 reference client live in this
+repository. The actual RC10 Expansion port lives in the separate engine fork,
+branch `dot/world-memory-regions`, based on published checkpoint `2c3d08f42` and reconciled with `c8feb78c`
+(co-op pending-presence, battle-entry and native block scheduling fixes).
+The app gitlink and builder pin both select
+`db028d31a8e4fcb615e60414c7a870cba3263330`.
 
-The actual Expansion path is `engines/expansion-native/src/world/`. At the app
-baseline in this PR, its gitlink is `fa9c20cb82f2ee1b6e9d22f8c569f336d5a26ef5`.
-That directory is uninitialized here; available reconstructed engine worktrees
-contain older revisions, not that commit. A read of the configured public donor
-repository for that SHA returned no commit. Separately, the existing
-`scripts/build_expansion.py` still enforces `c22527265e72236fb269937d9705bafa49cc02cc`,
-which differs from the gitlink. Neither pin was changed by this work.
+The Expansion WORLD menu can browse four owner-opened immutable caves per page,
+select a destination after releasing field ownership, then enter through the
+existing manual generated-area action. Selection never warps automatically.
+The bridge preserves CAVE16/RULES3 negotiation and makes the menu independent of
+chat support. It does not add seamless portals, mutable regional wildlife/story
+state, or persistent selected-region resume in a trainer save.
 
-`engines/expansion.mk` does not define `GENERATED_WORLD_REGIONS`. The new flag in
-the outer Makefile does not enable the feature in Expansion. The CAVE10 fallback
-component test uses synthetic feature defines with extracted **outer** bridge
-functions; it verifies that parser/negotiation logic only, not compatibility with
-the actual Expansion source or executable. All native-component and build claims
-below must be read with that target boundary. The png.h build failure is from the
-outer native build; the actual Expansion port is blocked earlier by missing exact
-source and unreconciled build pins.
+`engines/expansion.mk` now passes `GENERATED_WORLD_REGIONS`, defaulting to zero.
+The port remains opt-in pending full native acceptance. Two compiled tests of
+actual Expansion bridge functions and one compiled actual WORLD menu fixture
+pass. Field/render backends are instrumented; this is not a linked engine build
+or a two-client playthrough. The full build attempt stopped before compilation
+because the shell could not authenticate the submodule clone. Exact source files
+were retrieved using the GitHub connector, without substituting an older engine.
 
-The required next input is the exact current RC10 Expansion checkout or an
-accessible published commit/ref. Native selection/menu work must be ported and
-verified there, then integrated through the correct engine build/pin workflow.
-No Expansion flag, engine gitlink, release artifact or live server was changed.
+The earlier outer `src/platform/` changes and fixtures remain reference-engine
+work only. Their CAVE10 fixture does not validate Expansion. No release artifact,
+live world, integration branch, merge or deployment is changed by this draft.
 
+### Public place catalog
+
+Authenticated REGION1 clients may send `REGION LIST <offset>`. The authority
+returns BEGIN with offset, count and next offset, at most four PLACE records
+(logical UUID plus a hex-encoded 20-character display label), then END. Only
+owner-opened pinned destinations are listed; no party, save or private chat is
+included. Listing does not alter admission. Names are display hints, while UUIDs
+select places. Pages reflect the current catalog, not a historical snapshot.
 
 ## Decision and first slice
 
@@ -38,8 +45,9 @@ as the authority, keep native trainer saves private, and give the next builder a
 bounded, readable view of confirmed history alongside the current world.
 
 This candidate starts from RC10 app checkpoint
-`d03b4f668d5d8e1ac388341e9d8d0cad407f69ad`. It does not change the Expansion pin,
-merge the wildlife experiments, or change a running world.
+`d03b4f668d5d8e1ac388341e9d8d0cad407f69ad` and incorporates published app source
+handoff `53c87d64`. The later opt-in native port updates the Expansion pin as
+described above; it does not merge wildlife experiments or change a running world.
 
 The first usable loop is:
 
