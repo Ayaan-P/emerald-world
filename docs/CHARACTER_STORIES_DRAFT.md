@@ -50,3 +50,13 @@ An independently supported path now lets persistent NPCs inhabit archived format
 The CHARREG1 capability may accompany CAVE16 without REGION1. Placement coordinates support the full 127x127 map and are checked against actual archived floor geometry, not the engine placeholder layout dimensions. All NPC collision tiles are checked together: actors cannot collectively seal a passage or isolate any remaining walkable map tile. Entry, exit and exit approach stay clear. Mutable terrain/cast formats remain excluded.
 
 Authority tests use actual XL transfer/ACK/state admission, high coordinates, battle requests, replacement, stale scope rejection, restart, and reactivation. Shared-slot admission still refuses replacement while players are inside. This adds NPC presence to the existing route-map publication path; it does not implement generated-region guild goals, automatic route generation or a linked rendered playthrough.
+
+## Player expeditions to generated destinations
+
+A guild leader standing ready inside an admitted immutable cave region or archived shared XL destination can now use `/guild expedition start here COUNT`. This uses the existing expedition progress, distinct-member counting and guild XP rules. The goal persists both the stable logical place and the exact template revision. Fresh authenticated presence must match the acknowledged template and actual generated map. Another area at identical coordinates does not count; a newer revision of the same logical place does not count either. A paused old destination can complete after its exact archived revision is activated again.
+
+The existing leader permission, active-goal protection, cancellation and chronicle privacy remain unchanged. Private completion awards existing guild XP without creating public character evidence. Opted-in completion atomically publishes the logical place and `region_revision`; chapter conditions can match that exact revision. Repeated visits and reconnects do not award the goal twice. Generated meetups remain unsupported.
+
+Bare engine aliases `GeneratedWorld_Cave` and `GeneratedWorld_Wilds` now reject rather than starting goals that cannot complete. Old persisted goals using those aliases show instructions to cancel and restart inside the intended destination. They are not silently cancelled.
+
+Native NPC expedition offers still target native maps only. The generated-place player command is usable independently of a new native offer presentation. Do not emit generated destinations in CHARACTER_OFFER or claim NPC-offered generated expeditions until explicit place/revision consent presentation is implemented and negotiated.

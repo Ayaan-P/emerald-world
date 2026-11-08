@@ -193,7 +193,7 @@ def history_feed(db, state):
         original = json.loads(raw)
         event = dict(seq=seq, event=original['event'], evidence=original.get('evidence'),
                      recorded_at=original['recorded_at'], details='bounded_summary_full_event_in_world_history')
-        for key in ('place_id', 'label', 'character_id', 'character_offer_id', 'goal_kind', 'guild_name'):
+        for key in ('place_id', 'label', 'character_id', 'character_offer_id', 'goal_kind', 'guild_name', 'region_revision'):
             value = original.get(key)
             if type(value) is str:
                 event[key] = value[:160]

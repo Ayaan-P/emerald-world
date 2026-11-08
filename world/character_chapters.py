@@ -12,7 +12,7 @@ EVENT_FIELDS = {
     'area_activated': {'place_id', 'label'},
     'area_named': {'place_id', 'before', 'after'},
     'region_opened': {'place_id', 'label'},
-    'guild_goal_completed': {'place_id', 'goal_kind', 'guild_name', 'character_id', 'character_offer_id', 'character_offer_revision'},
+    'guild_goal_completed': {'place_id', 'goal_kind', 'guild_name', 'character_id', 'character_offer_id', 'character_offer_revision', 'region_revision'},
     'character_changed': {'character_id', 'character_status'},
 }
 
