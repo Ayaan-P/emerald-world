@@ -587,3 +587,69 @@ original overworld return anchor, persistent route/landing definitions, and
 full native playthrough. Mutable event-area region scoping remains out of this
 stage. No portals, automatic travel, live-server migration or deployment are
 claimed or enabled.
+
+## Opt-in native region selection and admission
+
+The native bridge now implements the next stage behind
+`GENERATED_WORLD_REGIONS=1`. The default remains **0**, so existing ordinary
+builds and legacy HELLO messages are unchanged. This flag is added only to the
+portable/native build flags and requires generated maps. It has not been enabled
+for a release or deployed to a live world.
+
+```sh
+make -j2 linux CFLAGS=-g WERROR=1 GENERATED_WORLD_REGIONS=1
+```
+
+For an interactive chat-capable build, the owner first opens a persistent plain
+region through `open_region` as above and gives the player its exact place ID.
+The player returns from any generated area, opens world chat, and types:
+
+```text
+/region area:00000000-0000-0000-0000-000000000000
+```
+
+Replace the example with the actual owner-provided place ID. This is intercepted
+locally, never broadcast as a chat message. Close chat so the normal overworld
+presence becomes ready. The bridge sends a fresh STATE before the one-shot region
+selection request, verifies the matching place/revision response and reuses the
+existing cave reset, transfer, content validation and acknowledgement pipeline.
+While selection is pending, generated-map entry is blocked. Once chat status says
+`region ready: use WORLD`, the player uses the existing WORLD generated-area
+entry action. Selecting alone does not warp or alter a save.
+
+The existing `GeneratedMap_Enter` usable-party, field, template and return-position
+checks remain intact. Leaving uses the same original native overworld return
+anchor. A player must leave before choosing another region; this stage does not
+implement a seamless cave-to-cave transition or a route/portal graph. Server-side
+busy/occupancy checks still decide whether selection is allowed. A refused
+selection leaves the prior admission available. An expired request that was never
+sent is cancelled locally; an unanswered sent request disconnects instead of
+retrying or guessing which template the authority selected.
+
+Capability rejection falls back to the prior cave role before downgrading its
+cave/Expansion capabilities. The compiled negotiation test explicitly preserves
+`CAVE10` when `REGION1` is unsupported. Unexpected or mismatched region replies
+are not accepted. Disconnect clears pending selection; no trainer save contains
+or is rewritten with region selection state.
+
+Current UI scope is **interactive chat-capable clients only**. The existing
+Windows and headless paths disable chat, so this command is unavailable there
+even if the native bridge can negotiate REGION1. There is no claim of a Windows
+or headless selection menu, and no hidden alternate UI is provided. The protocol
+reference client remains available separately.
+
+Two new compiled C tests exercise production `RegionQueue`, `RegionPump`,
+`RegionLine`, cave transfer/acknowledgement functions, chat interception, capability
+fallback and actual `generated_map.c` entry/leave. Two independent component runs
+consume distinct region frames produced by the actual authority. They verify no
+warp before explicit entry, correct staging/acknowledgement, empty-party refusal,
+unchanged native return coordinates, refused/mismatched replies and timeout behavior.
+The field/task/warp-execution shell and fresh-state emission are fixture stubs,
+not two running graphical games. The full expanded aggregate passes **204 checks**.
+
+Full native build with the flag was attempted and is still blocked by missing
+`png.h`; headless cannot run without the executable. Unix sockets remain blocked
+in this execution environment. No full Expansion build, two-native-client
+playthrough, graphical rendering, WAN session or seamless portal acceptance is
+claimed. The offline XL progress system is separate; this plain-cave selection
+path does not migrate private story flags, event graphs or finite progress slots.

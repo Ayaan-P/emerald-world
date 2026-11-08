@@ -6,6 +6,14 @@
 #define GENERATED_MAP_READY 0
 #endif
 
+/* Opt-in protocol admission. Native entry/return still uses the existing menu. */
+#ifndef GENERATED_WORLD_REGIONS
+#define GENERATED_WORLD_REGIONS 0
+#endif
+#if GENERATED_WORLD_REGIONS && !GENERATED_MAP_READY
+#error GENERATED_WORLD_REGIONS requires generated maps
+#endif
+
 #ifndef GENERATED_MAP_AUTOTILE
 #define GENERATED_MAP_AUTOTILE 0
 #endif
