@@ -1,0 +1,103 @@
+{
+  "version": "0.4.0-rc.11.2",
+  "status": "verified update prepared; safe installation and joint playtest pending",
+  "app_source_commit": "461f93f198e9df7bd4681de24967b0ee37838402",
+  "app_branch": "integrate/rc11-dot-reviewed-swarm",
+  "engine_commit": "c121f443bb9bc8160fe08c96c928dc8c3a127e28",
+  "baseline": {
+    "release": "0.4.0-rc.11.1",
+    "app": "9c23e7d3c5cc8bdb8755af406c8995ca2dbe8887",
+    "engine": "49b4611587122dbae6596ce4b5935ab3c86b3da3"
+  },
+  "changes": [
+    "Generated-area collision exempts network trainer peers only, not authored NPCs. Native NPC current/previous tile occupancy and ordinary-map behavior retained.",
+    "Battle consent restores ready presence and waits for an exact scoped NPC snapshot before challenging. Facing, version, revision, nonce and native battle-admission guards are not weakened. Field input suppressed during bounded snapshot/output wait.",
+    "Survey support negotiated with a fixed harmless protocol query on an idle human chat connection before the first private command. No private draft is queued, leaked or automatically replayed after a capability reply.",
+    "Preserves RC11.1 combined Hoenn/Kanto cohort, modern mechanics options, local content workshop and native walking. No gameplay server deployment or save mutation."
+  ],
+  "build": {
+    "command": "python3 scripts/build_expansion.py --development --regional-state --kanto-content --sysroot <existing SDL sysroot> --multilib-sysroot <existing multilib root> --jobs 8",
+    "flags": {
+      "BITS": 64,
+      "EW_REGION_STATE": 1,
+      "EW_KANTO_CONTENT": 1,
+      "MAP_VERSION": "combined",
+      "GENERATED_WORLD_REGIONS": 0
+    },
+    "checks": [
+      "32-bit compile/run ABI preflight",
+      "data_relocations.checked",
+      "data_layout.checked",
+      "battle_script_operands.checked"
+    ],
+    "binary_sha256": "bec753e3ced5e06081fc177fbd242157cd45430ddabf5060a769c3d29a874509",
+    "symbols_sha256": "95b5937a2b7e12fea5c8b90417b3f4398065f909a2925232ca40bd837d27d3a2",
+    "species_catalogue_sha256": "09de78b24f5b21a9d8f579a43d5fc7a4b0a94b53a4c9f12257ad68bc26cf2ddb",
+    "frontend_files": {
+      "launcher-web/dist/assets/hoenn-CxRkBf2o.webp": "ce4110aa3a55efa3db0baa06f27038d135a0eae451740183355adf17886cb7b4",
+      "launcher-web/dist/assets/index-7rA_J9lC.js": "4542efed3a0c99e7106a322eda046e82cd3137a88f80345a3b97aa32d68febbf",
+      "launcher-web/dist/assets/index-Ci6iTD6z.css": "5569b1338abc5e6f46da51ac96589e001dd17538b81b65d4e70e350b488d970f",
+      "launcher-web/dist/index.html": "ffaece0d25737bd09e907ea31b61018735f21a2f6432575b9b8c5a83b4a9b8ed"
+    },
+    "native_version": "c121f443bb9b-rc11.2"
+  },
+  "verification": {
+    "native_top_level_tests": {
+      "passed": 57
+    },
+    "character_seam_tests": {
+      "passed": 15
+    },
+    "privacy_tests": {
+      "passed": 3,
+      "skipped": 1,
+      "skip_reason": "Optional pre-survey older authority checkout not supplied"
+    },
+    "builder_setup_tests": {
+      "passed": 5
+    },
+    "independent_source_review": "Passed after fail-first bounded-backpressure regression and fix",
+    "actual_native_runtime": {
+      "passed": true,
+      "human_mode_sdl_keyboard": true,
+      "authored_npc_blocks_player": {
+        "before": [
+          8,
+          7
+        ],
+        "after": [
+          8,
+          7
+        ],
+        "npc": [
+          8,
+          8
+        ]
+      },
+      "first_chat_commands": [
+        "/explore protocol 1",
+        "/explore start"
+      ],
+      "private_survey_session_count": 1,
+      "automatic_public_discoveries": 0,
+      "scoped_authority_battle_admitted": true,
+      "native_battle_callback": "BattleMainCB2",
+      "native_battle_intro_observed": true,
+      "disposable_save_unchanged": true,
+      "binary_hash_stable": true
+    },
+    "frontend": "Unchanged, byte-identical to the verified RC11.1 frontend. No new UI test run claimed."
+  },
+  "release_policy": {
+    "main_promoted": false,
+    "requires_user_playtest_before_main": true,
+    "do_not_interrupt_running_human_game": true,
+    "preserve_current_test_world_and_save": true
+  },
+  "limits": [
+    "Full battle completion/result persistence not exercised in this targeted generated-map intro proof.",
+    "Windows runtime and multi-human multiplayer not exercised by this repair pass.",
+    "A developer-authored disposable NPC/route fixture was used, not model-generated content or normal campaign acquisition.",
+    "The lookout is a named clearing, not a tower; the generated area is bounded 127 by 127 tiles."
+  ]
+}
