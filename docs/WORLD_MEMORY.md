@@ -360,3 +360,49 @@ identity, region-scoped NPC/terrain replication and native transition negotiatio
 before adding traversable connections. That protocol/native change is outside this
 history patch. The world does not yet support simultaneous persistent generated
 regions, cross-region portals or automatic agent expansion into new regions.
+
+## History-informed edits that actually commit
+
+`world.continue_area` connects the existing tool-disabled cave author to the
+existing persistent event-area geometry editor. It is an explicit owner command,
+not an autonomous background trigger. It edits the **active durable v9 event
+area**; it does not silently activate another saved place or replace its template.
+
+```sh
+# Uses the existing pinned Codex author. The request and shared geometry/history
+# go to that model provider; ordinary model usage charges may apply.
+python3 -m world.continue_area --admin-socket /path/to/admin.sock --request 'Restore the refuge clearing using its recorded terrain history'
+# Explicitly allow the new proposal to be committed if authority checks pass:
+python3 -m world.continue_area --admin-socket /path/to/admin.sock --request 'Restore the refuge clearing using its recorded terrain history' --apply
+```
+
+Without `--apply`, the result is a structurally checked proposal, not a committed
+edit or a promise of connectivity validation. Running again with `--apply` authors
+a new proposal against freshly inspected state; it does not approve a previously
+printed proposal verbatim. The author emits only 1..64 inert tile edits and references
+to original recalled history sequences. No generated Python is executed. Unmentioned
+tiles stay unchanged, including other builders' work. Player names, private intentions,
+native saves and per-trainer event state are excluded from the author context.
+
+On apply, the existing authority checks the exact world UUID and terrain revision
+under its lock, then runs its existing protected-cell, character-access and connected
+land checks. Occupied-area and connection-capacity barriers remain intact. An edit
+and its `terrain_changed` history record commit in one transaction. That record now
+can carry the original `history_evidence` sequences that informed the design. These
+references establish provenance, not proof that a model's interpretation is correct.
+
+The template hash and logical place ID remain unchanged, so this geometry-only path
+does not reassign native story keys or create another story-progress slot. Existing
+clients receive the established reset/terrain negotiation. The command reports the
+authority commit acknowledgement and delivery counters, not native rendering or
+per-client acceptance. Never blindly retry an uncertain transport failure after apply;
+read current history and terrain first. No automatic retry is implemented.
+
+Five focused tests use the real admin dispatcher and SQLite transactions: restore a
+clearing from its original terrain history, retain the same place/template through
+restart, verify both authenticated clients receive reset and the new terrain revision,
+reject a concurrent edit and an occupied area, and roll back on history persistence
+failure. Preview/private-data and invalid/protected-cell cases are included. The final
+aggregate has 107 passing Python tests. This is a deterministic author fixture, not a
+live model/provider call or native playthrough. Native build/headless remain blocked by
+missing png.h and the resulting absent binary. No live world was changed.

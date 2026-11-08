@@ -1197,7 +1197,7 @@ class WorldServer:
                     except Exception:peer['closing']=True
             return {'ok':True,'identity':identity,'revision':revision,'tiles':len(merged),'changed':True,'queued':queued,'delivery_failed':delivery_failed}
 
-    def set_shared_geometry(self, identity, tiles, replace=False):
+    def set_shared_geometry(self, identity, tiles, replace=False, *, expected_world_id=None, expected_revision=None, history_evidence=None):
         """Commit connected terrain geometry only while the generated area is empty."""
         from .shared_terrain import validate,encode,project
         if type(identity) is not str or not re.fullmatch(r'[0-9a-f]{64}',identity) or type(tiles) is not list or type(replace) is not bool or len(tiles)>512 or (not tiles and not replace):raise ValueError('invalid shared geometry request')
@@ -1215,6 +1215,17 @@ class WorldServer:
             peers=[p for p in self.peers.values() if not p.get('closing') and p.get('cave_capable')]
             if any(p.get('in_generated_cave') or (p.get('state') is not None and tuple(p['state'][:2]) in (self.cave_map,self.wilds_map)) for p in peers):raise ValueError('all trainers must leave the generated area')
             revision,old=self._active_terrain();merged={} if replace else validate(cave,old)
+            if expected_world_id is not None or expected_revision is not None or history_evidence is not None:
+                if (expected_world_id != self.memory.world_id or type(expected_revision) is not int
+                        or expected_revision != revision):
+                    raise ValueError('world or terrain changed; inspect before authoring again')
+                if (type(history_evidence) is not list or len(history_evidence)>16
+                        or any(type(seq) is not int or seq<=0 for seq in history_evidence)
+                        or len(set(history_evidence))!=len(history_evidence)):
+                    raise ValueError('invalid history evidence')
+                for seq in history_evidence:
+                    if self.db.execute("SELECT 1 FROM events WHERE seq=? AND kind='world_memory'",(seq,)).fetchone() is None:
+                        raise ValueError('history evidence unavailable')
             npcs={(cave.cast[2+61*i],cave.cast[3+61*i]) for i in range(cave.cast[0])}
             for (x,y),kind in changes.items():
                 if not 0<x<62 or not 0<y<62 or (x,y) in npcs or (x,y) in ((1,1),(61,60),(61,61)):raise ValueError('protected geometry cell')
@@ -1231,7 +1242,8 @@ class WorldServer:
                     self.db.execute('INSERT OR REPLACE INTO generated_area_terrain(identity,revision,payload) VALUES(?,?,?)',(identity,revision,payload))
                     self.memory.append('terrain_changed', dict(place_id=self.memory.place(identity),
                                        revision=identity, terrain_revision=revision,
-                                       tiles=terrain_delta(cave, old, payload)))
+                                       tiles=terrain_delta(cave, old, payload),
+                                       **({'history_evidence':history_evidence} if history_evidence is not None else {})))
                 self.revision = self.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
             except sqlite3.Error:raise ValueError('shared geometry could not be persisted') from None
             self._terrain_walk_cache=(identity,revision,project(cave,payload));queued=0;delivery_failed=0
@@ -1377,8 +1389,11 @@ class WorldServer:
                     result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'set_shared_geometry':
                 try:
-                    if set(request) not in ({'command','identity','tiles'},{'command','identity','tiles','replace'}):raise ValueError('invalid shared geometry request')
-                    result=self.set_shared_geometry(request['identity'],request['tiles'],request.get('replace',False))
+                    fields={'command','identity','tiles'}
+                    guarded=fields|{'expected_world_id','expected_revision','history_evidence'}
+                    if set(request) not in (fields,fields|{'replace'},guarded):raise ValueError('invalid shared geometry request')
+                    guard={key:request[key] for key in ('expected_world_id','expected_revision','history_evidence') if key in request}
+                    result=self.set_shared_geometry(request['identity'],request['tiles'],request.get('replace',False),**guard)
                 except ValueError as exc:
                     result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'inspect_shared_terrain':
