@@ -38,7 +38,7 @@ The CHARREG1 draft extends objects with `region_revision`, the exact opened arch
 
 The server sends `REGION_OBJECT revision id group num x y gfx hextext` only after the client is inside the matching selected region and has acknowledged that exact template. CHARREG1 is negotiated after CHARQUEST1. Legacy clients receive no region-character objects. Generated interaction requests are explicitly scoped: `INTERACT_REGION seq id revision`, `CHARACTER_CHALLENGE_REGION seq id version revision`, and `CHARACTER_ACCEPT_REGION seq id version offer_id offer_revision revision`. Existing direct replies remain nonce-bound. Plain native-map requests do not gain access to generated objects.
 
-Characters in two logical places can share engine map coordinates without leaking across regions. History records the actual logical place, not merely the engine's GeneratedWorld map name. Snapshot rendering, interaction, battle admission and offer acceptance all enforce the same scope. Offered expedition destinations still use native map names; generated-region visit goals are not implemented here.
+Characters in two logical places can share engine map coordinates without leaking across regions. History records the actual logical place, not merely the engine's GeneratedWorld map name. Snapshot rendering, interaction, battle admission and offer acceptance all enforce the same scope. Generated destinations use the separately negotiated PLACEQUEST1 offer contract below.
 
 Current #254 region admission opens format1 (31x31) immutable caves. Object validation also understands format16 geometry, but that format requires the separate region admission support before it can be used. This does not silently enable other cast/event/rotating cave formats. App tests cover authenticated selection/transfer/ACK, place isolation, scoped battle/offer commands, private guild opt-in, invalid geometry rollback, logical-place history and restart. Native fixtures separately test parser/render/admission paths. A full linked gameplay playthrough is still required.
 
@@ -59,7 +59,7 @@ The existing leader permission, active-goal protection, cancellation and chronic
 
 Bare engine aliases `GeneratedWorld_Cave` and `GeneratedWorld_Wilds` now reject rather than starting goals that cannot complete. Old persisted goals using those aliases show instructions to cancel and restart inside the intended destination. They are not silently cancelled.
 
-Native NPC expedition offers still target native maps only. The generated-place player command is usable independently of a new native offer presentation. Do not emit generated destinations in CHARACTER_OFFER or claim NPC-offered generated expeditions until explicit place/revision consent presentation is implemented and negotiated.
+The generated-place player command is independent of native offer support. Never encode a generated destination in CHARACTER_OFFER; use the separately negotiated PLACEQUEST1 contract below.
 
 ## Visible, authority-paced character walking
 
@@ -78,3 +78,16 @@ With the landmark survey integration, a chapter may wait for `landmark_discovery
 Private arrivals, survey completion, and the first share-confirmation prompt do not trigger characters. Only the player's explicit confirmed publication can do so. The tested example moves a scholar from camp to the publicly reported lookout, changes dialogue and battle team, and records that public sequence as evidence. Duplicate shares do not advance twice, another revision with the same landmark name does not match, and restart preserves the change.
 
 This uses an authored chapter and the existing authority commit, scoped NPC and battle-admission paths. It does not invoke a model on each arrival, reveal who shared the discovery, or prove travel/battle outcomes beyond the existing acknowledged client-presence rules. The two-source integration fixture requires the survey branch in addition to this compiler/feed support; it does not activate anything in a live world.
+
+
+## NPC-offered generated-place expeditions
+
+An offer may name `place_id: area:UUID` with a required `region_revision` digest. The authority resolves the archived label and validates the exact destination. Native destinations must omit that extra field. Changes of destination/revision require a new offer revision under the existing immutable-offer rule.
+
+PLACEQUEST1 is appended last in capability negotiation. Capable clients receive `CHARACTER_PLACE_OFFER id character_version offer_id offer_revision count place_id region_revision hexlabel`. It is a separate nine-token row, never an overloaded native-map name. The native UI displays the label, destination/revision identifiers and explicit public guild participation count. Acceptance uses the existing nonce-correlated CHARACTER_ACCEPT (or CHARACTER_ACCEPT_REGION when talking inside a generated place). Full destination identity, revision, label and count are frozen and checked during native consent.
+
+The player need not have visited the destination to accept. The NPC must still be adjacent and available, the player must lead the guild, and public guild chronicle must already be ON. No privacy toggle, warp, map activation or reward occurs on acceptance. The destination must currently be accessible to that client: an active shared XL revision with CAVE16, or an opened immutable region with REGION1. Unsupported clients and unavailable destinations receive no generated offer row and cannot start it through direct acceptance.
+
+Actual goal progress uses the existing exact-place/revision, fresh acknowledged presence rules. Replacement pauses that goal until its exact revision returns. Completion and XP are committed through existing guild rules before public character history. Turning chronicle OFF after acceptance preserves private completion without advancing the public character story. Goal, offer receipt and destination binding share one transaction; a failed binding leaves no partial accepted goal.
+
+Tests cover real acceptance, two authenticated destination arrivals, authoritative completion/XP, character team change, private completion, incompatible clients, inactive destinations and transaction rollback. The paired native component tests exercise actual offer parsing and explicit consent. This is not a linked rendered playthrough or deployment claim.
