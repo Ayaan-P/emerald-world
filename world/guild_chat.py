@@ -88,6 +88,10 @@ class GuildChat:
                 except GuildError as exc: lines=[str(exc)]
                 for line in lines: self.message(conn,conn['id'],'Guild: '+line)
                 parts=text.split()
+                if (len(parts)==3 and parts[1].lower()=='event' and parts[2].lower()=='arrive'
+                        and lines[0].startswith('Guild journey complete')):
+                    _,members=s.guilds.members(conn['id'])
+                    self._announce(conn,[name for name in members if name!=conn['id']],lines[0])
                 if len(parts)==3 and parts[1].lower()=='invite' and lines[0].startswith('Invited '):
                     invitee=s.peers.get(parts[2]);guild=s.guilds._member(conn['id'])
                     if invitee and invitee.get('chat') and not invitee.get('closing') and guild:
