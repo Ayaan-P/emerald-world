@@ -720,3 +720,26 @@ This generator uses the existing single active XL publication path; it does not
 extend outdoor regional admission. The generator and existing authority persist
 its geometry and logical place identity across restart in component tests. Full
 native playthrough remains outstanding.
+
+### History-informed route author
+
+`python -m world.author_routes 'A mountain divide with an orchard and lookout' --output new.ewmap`
+uses the same version-pinned, tool-disabled author adapter as `author_cave`.
+The provider returns only the route plan schema, compiled and validated into
+ordinary XL geometry. The theme is sent to the provider and usage may be charged.
+Add `--history-socket /path/to/admin.sock` to read matching public committed
+history for this offline proposal. Trainer observations and saves are not sent.
+
+For explicit shared activation, use `--activate-shared /path/to/admin.sock
+--label 'Orchard Divide'` instead of `--output`. This requires persistent area
+archiving and automatically recalls history from that same authority. Publication
+uses its existing world/sequence guard, archive and occupancy checks. Old places
+remain archived; a concurrent change rejects activation rather than overwriting
+new activity. A committed activation cites the recalled sequence evidence. This
+records provenance, not proof that a model's narrative interpretation is true.
+
+This activates the existing single shared destination slot. It does not extend
+regional admission to outdoor maps, add portals, or connect canonical regions.
+Compatible native XL clients are still required. Tests exercise actual authority
+persistence and validation with deterministic fake provider responses, not a paid
+model call or linked native gameplay session.
