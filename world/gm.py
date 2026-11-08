@@ -130,6 +130,11 @@ response {"character_plan": plan, "tests": "Python tests"}. Choose this only whe
 its public-event chapters express the request. Use the normal source route for
 other behavior or deliberate revisions of existing characters. Both are staged
 and tested by the same sandbox; author tests must assert actual NPC effects.
+For a small coordinated cast such as a travelling caravan, character_ensembles
+accepts {"character_ensemble": [two to four new chapter plans], "tests": "Python tests"}.
+Use shared public-event triggers for coordinated arrivals and moves, distinct
+walkable positions and meaningful individual roles. This is one atomic deployment,
+not permission to replace existing residents or add compulsory goals or rewards.
 Do not call tools, browse accounts, read host files, or execute code yourself.
 API: def update(context, state) -> {'state': JSON, 'tiles': [dict], 'objects': [dict]}.
 state is durable module memory. tiles and objects are TOP-LEVEL OUTPUT effects,
@@ -377,6 +382,8 @@ def _author_and_deploy(state_dir, socket_path, request, author_argv, timeout, *,
         context['character_contract'] = author_contract()
         from .character_chapters import contract as chapter_contract
         context['character_chapters'] = chapter_contract()
+        from .character_ensembles import contract as ensemble_contract
+        context['character_ensembles'] = ensemble_contract()
         from .character_actions import contract as action_contract
         context['character_actions'] = action_contract()
         candidates = root / 'candidates'
@@ -406,13 +413,18 @@ def _author_and_deploy(state_dir, socket_path, request, author_argv, timeout, *,
             actions = response['character_actions']
             response = dict(source=compile_actions(actions, context), tests=response['tests'])
             report['character_actions'] = actions
+        if type(response) is dict and set(response) == {'character_ensemble', 'tests'}:
+            from .character_ensembles import compile_ensemble
+            plans = response['character_ensemble']
+            response = dict(source=compile_ensemble(plans, context), tests=response['tests'])
+            report['character_ensemble'] = plans
         if type(response) is dict and set(response) == {'character_plan', 'tests'}:
             from .character_chapters import compile_plan
             plan = response['character_plan']
             response = dict(source=compile_plan(plan, context), tests=response['tests'])
             report['character_plan'] = plan
         if type(response) is not dict or set(response) != {'source', 'tests'}:
-            raise ValueError('author must return source/tests, character_plan/tests or character_actions/tests')
+            raise ValueError('author must return source/tests, character_plan/tests, character_ensemble/tests or character_actions/tests')
         for key in ('source', 'tests'):
             if type(response[key]) is not str or not response[key].strip() or len(response[key].encode()) > MAX_SOURCE:
                 raise ValueError(key + ' must be nonempty text <=256 KiB')

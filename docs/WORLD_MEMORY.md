@@ -1227,3 +1227,33 @@ changes dialogue, enables guidance and produces the new frozen challenge team
 through the actual app protocol. Partial progress and replay do not grow the
 team. The authored plan and successful sandbox execution are fixture boundaries;
 no model call, native rendered session or live-world deployment is claimed.
+
+
+### History-driven travelling casts
+
+The GM can propose `{"character_ensemble": [plans], "tests": "Python tests"}`
+for two to four new persistent residents in one publication. Every plan uses the
+existing chapter contract. A caravan can begin away, arrive together when an
+explicitly shared route report is committed, offer a guide and a distinct field
+challenger at separate positions, and move its camp after another public report.
+This is reusable authoring support, not a forced preset or automatic live event.
+
+Compilation reserves the existing eight-character/object capacity, rejects
+reused identities and conflicting initial positions, and wraps the exact prior
+source so unrelated behavior remains intact. The resulting single source and
+test artifact go through normal sandbox staging. Later cast transitions still
+use the authority's joint geometry/collision validation and atomic module,
+character-history and source transaction. A failed resident record cannot leave
+half a gathering published. Individual residents keep their durable identities,
+chapter evidence, teams and opt-in services through restart.
+
+The concrete app fixture begins with an empty clearing. A private visit does
+nothing; an explicitly shared ruins report brings a guide and challenger into
+the actual region-object snapshot. Existing guide chat returns a private route,
+and the native challenge dispatcher freezes the trainer's authored team. The
+whole cast survives restart and moves to the lookout after the orchard report.
+A failure on the second resident's history record rolls back both residents.
+The real GM adapter emits one compiled candidate and still refuses when sandbox
+publication is rejected. Provider output and sandbox success are fixture
+boundaries; no rendered native caravan, paid model invocation, live-world edit
+or deployment is claimed. No engine pin, new command or new protocol is added.
