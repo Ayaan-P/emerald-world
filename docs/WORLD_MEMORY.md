@@ -39,6 +39,8 @@ The entry includes a schema version, host recording time and
 - Shared terrain and geometry: logical place ID, template hash, terrain revision
   and changed coordinates with named before/after terrain. `original` means the
   template's terrain, not a guessed grass tile.
+- Opted-in guild expedition/meetup completion: the existing authority goal result,
+  canonical place and actual guild XP award, with its client-report trust boundary.
 - Mechanic deployment and visible content changes: old/new module hashes, current
   interaction cursor, before/after public tiles and NPCs, and stable native map
   references. Deployment does not prove that a player completed a quest.
@@ -249,3 +251,65 @@ contain 20 events, with bounded terrain previews. Full raw evidence remains in t
 existing history API. This launcher slice gives players visible world continuity;
 it does not add native in-game journal rendering, a complete trainer-save decoder,
 or a proof of long-running multiplayer gameplay.
+
+
+## Confirmed cooperative outcomes
+
+Guild expeditions and meetups already have server-owned completion rules and
+persistent guild XP. The authority can now record these real outcomes in the
+same SQLite transaction as the existing completed flag and reward. This is not a
+model declaring that a quest succeeded because it saw suggestive dialogue.
+
+Because guild destinations and activity are group-scoped, recording is **off by
+default**. The guild leader explicitly chooses:
+
+```text
+/guild chronicle on
+/guild chronicle off
+/guild chronicle
+```
+
+Turning it on publishes future aggregate completions to shared world history and
+the builder's context: the guild name at the time, canonical map/place, goal type,
+credited count and actual awarded guild XP. It does not publish member names,
+private chat, boards, trainer saves, battles, catches or native quest flags.
+Turning it off stops future publication; existing history is not erased. Enabling
+it does not backfill earlier outcomes. Disbanding clears the publication setting,
+so a new guild cannot inherit an old guild's consent.
+
+The existing `/guild expedition start MAP COUNT` and `/guild meet start MAP COUNT`
+commands and gameplay rules are unchanged. Expeditions credit distinct visits;
+meetups require enough current members with fresh ready presence at the same map.
+Completion and the awarded guild XP are authoritative. The travel input remains
+authenticated **client-reported** presence, not server-simulated movement or an
+anti-cheat guarantee. XP in history is the actual award, including the existing
+cap, not a guessed nominal reward.
+
+A failed history/index write rolls back completion, the visit that would complete
+it and its reward. The next valid presence report can retry; duplicate reports
+after successful completion cannot award or record it again. Explicitly starting
+a new goal after completion creates a new occurrence. Restart retains both the
+reward and its evidence. Cancelled, incomplete and opted-out goals do not become
+shared completion records.
+
+The existing place journal, recent GM context and older-evidence recall consume
+these events. A deterministic controller experiment authenticates two trainers,
+completes a real two-visit expedition through the normal STATE handler, confirms
+the awarded XP, buries the event under unrelated changes, restarts, and proposes
+an expedition marker from that exact evidence. It writes the ordinary GM proposal
+but deliberately rejects deployment in the fixture. It proves the outcome-to-
+context-to-proposal path, not a live model call, sandbox acceptance or native
+rendering of the marker.
+
+```sh
+PYTHONPATH=test/world:. python3 -m unittest test_guild_world_memory -v
+```
+
+Publishing a completion does not itself authorize or trigger a new world edit.
+The existing explicit GM requests and configured runtime purposes still govern
+when a proposal is made. The completion is durable evidence for that work.
+
+The actual mechanic-sandbox experiment was also attempted using the same real
+completion and proposal flow. Bubblewrap failed while creating its NETLINK_ROUTE
+socket with `Operation not permitted`. The candidate was rejected and no marker
+was installed. No unisolated fallback or retry of that denied operation was used.

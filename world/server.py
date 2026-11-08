@@ -139,7 +139,7 @@ class WorldServer:
         self.world_rules = WorldRules(self.db)
         from .world_memory import WorldMemory
         self.memory = WorldMemory(self.db)
-        self.guilds = Guilds(self.db, catalog_maps())
+        self.guilds = Guilds(self.db, catalog_maps(), record_outcome=self.memory.append)
         self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
         self.db.executescript('''
             CREATE TABLE IF NOT EXISTS module (

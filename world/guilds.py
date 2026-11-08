@@ -4,6 +4,7 @@ Only authenticated world identities can be supplied by the server. Calls run
 under the world's lock. This module never reads or changes trainer saves.
 """
 import re
+import sqlite3
 
 NAME = re.compile(r'[A-Za-z0-9_-]{1,24}\Z')
 MAX_MEMBERS = 50
@@ -12,8 +13,9 @@ class GuildError(ValueError):
     pass
 
 class Guilds:
-    def __init__(self, db, catalog=None):
+    def __init__(self, db, catalog=None, *, record_outcome=None):
         self.db = db
+        self.record_outcome = record_outcome
         self.maps = {m['name'].lower(): m['name'] for m in (catalog or {}).values()}
         db.executescript('''
             CREATE TABLE IF NOT EXISTS guilds (
@@ -35,6 +37,8 @@ class Guilds:
                 id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id INTEGER NOT NULL,
                 trainer TEXT NOT NULL, body TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS guild_posts_guild ON guild_posts(guild_id,id);
+            CREATE TABLE IF NOT EXISTS guild_world_history (
+                guild_id INTEGER PRIMARY KEY, enabled INTEGER NOT NULL CHECK(enabled IN (0,1)));
             CREATE TABLE IF NOT EXISTS guild_meetups (
                 guild_id INTEGER PRIMARY KEY, map_name TEXT NOT NULL,
                 goal INTEGER NOT NULL, complete INTEGER NOT NULL DEFAULT 0);
@@ -73,10 +77,12 @@ class Guilds:
             raise GuildError('Invalid guild command.')
         words = command.split()
         if not words or words == ['help']:
-            return ['protocol 1', '/guild create NAME | /guild invite TRAINER', '/guild list | /guild standings | /guild apply NAME | /guild invites', '/guild applications | /guild approve TRAINER | /guild reject TRAINER', '/guild info | /guild roster | /guild online | /guild leave', '/guild expedition and /guild meet show group goals.', '/guild post MESSAGE | /guild board | /guild clear', '/guild kick TRAINER | /guild transfer TRAINER | /guild disband', '/g MESSAGE sends guild-only chat.']
+            return ['protocol 1', '/guild create NAME | /guild invite TRAINER', '/guild list | /guild standings | /guild apply NAME | /guild invites', '/guild applications | /guild approve TRAINER | /guild reject TRAINER', '/guild info | /guild roster | /guild online | /guild leave', '/guild expedition and /guild meet show group goals.', '/guild chronicle on|off publishes future group-goal completions to world history.', '/guild post MESSAGE | /guild board | /guild clear', '/guild kick TRAINER | /guild transfer TRAINER | /guild disband', '/g MESSAGE sends guild-only chat.']
         op, args = words[0].lower(), words[1:]
         if op in ('list','standings','apply','applications','approve','reject'):
             return self.recruit(trainer, op, args)
+        if op == 'chronicle':
+            return self.chronicle(trainer, args)
         if op == 'meet':
             return self.meet(trainer, args)
         if op == 'expedition':
@@ -150,6 +156,7 @@ class Guilds:
             self.db.execute('DELETE FROM guild_expeditions WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_meetups WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_posts WHERE guild_id=?',(guild[0],))
+            self.db.execute('DELETE FROM guild_world_history WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_stats WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_members WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guilds WHERE id=?',(guild[0],))
@@ -222,6 +229,37 @@ class Guilds:
             rows=self.db.execute('SELECT trainer,body FROM guild_posts WHERE guild_id=? ORDER BY id DESC LIMIT 8',(guild[0],)).fetchall()
             return [f'{name}: {text}' for name,text in reversed(rows)] or ['Guild board is empty.']
 
+    def chronicle(self, trainer, args):
+        """Leader-controlled publication of future aggregate goal outcomes only."""
+        with self.db:
+            guild = self._require(trainer, leader=bool(args))
+            if args:
+                if args not in (['on'], ['off']):
+                    raise GuildError('Use /guild chronicle on or off.')
+                if args == ['on'] and self.record_outcome is None:
+                    raise GuildError('This host does not provide shared world history.')
+                self.db.execute('INSERT OR REPLACE INTO guild_world_history VALUES (?,?)', (guild[0],int(args==['on'])))
+            row = self.db.execute('SELECT enabled FROM guild_world_history WHERE guild_id=?',(guild[0],)).fetchone()
+            if row and row[0]:
+                return ['World history ON. Future goal completions publish guild name, place, count and guild XP.',
+                        'Members, private chat and trainer saves are not published. Turning OFF does not erase old records.']
+            return ['World history OFF. Future guild-goal completions stay out of the shared chronicle.']
+
+    def _record_completion(self, guild, kind, map_name, goal, credited, before_xp):
+        enabled = self.db.execute('SELECT enabled FROM guild_world_history WHERE guild_id=?',(guild[0],)).fetchone()
+        if not enabled or not enabled[0] or self.record_outcome is None:
+            return
+        after_xp = self.db.execute('SELECT xp FROM guild_stats WHERE guild_id=?',(guild[0],)).fetchone()[0]
+        try:
+            self.record_outcome('guild_goal_completed', dict(
+                guild_name=guild[1], goal_kind=kind, place_id='native:'+map_name,
+                target=goal, credited=credited, awarded_guild_xp=after_xp-before_xp,
+                resulting_guild_xp=after_xp, publication='guild_leader_opt_in',
+                basis='authority_goal_rules_over_authenticated_client_presence',
+                limits='Completion and guild XP are authoritative; reported travel is not independently simulated.'))
+        except sqlite3.Error as exc:
+            raise GuildError('World history could not be saved. The goal remains active; report your position again.') from exc
+
     def meet(self, trainer, args):
         """A shared goal requiring members to be present together."""
         with self.db:
@@ -260,8 +298,10 @@ class Guilds:
             if not row or row[2] or row[0]!=map_name:return None
             _,members=self.members(trainer)
             if len(set(ready_members).intersection(members))<row[1]:return None
+            before_xp=self.db.execute('SELECT xp FROM guild_stats WHERE guild_id=?',(guild[0],)).fetchone()[0]
             self.db.execute('UPDATE guild_meetups SET complete=1 WHERE guild_id=?',(guild[0],))
             self.db.execute('UPDATE guild_stats SET xp=MIN(xp+15,1000000000),meetups=MIN(meetups+1,1000000000) WHERE guild_id=?',(guild[0],))
+            self._record_completion(guild,'meetup',row[0],row[1],len(set(ready_members).intersection(members)),before_xp)
             return guild[1],row[0],row[1],members
 
     def expedition(self, trainer, args):
@@ -301,6 +341,8 @@ class Guilds:
             self.db.execute('INSERT OR IGNORE INTO guild_expedition_visits VALUES(?,?)',(guild[0],trainer))
             count=self.db.execute('SELECT COUNT(*) FROM guild_expedition_visits WHERE guild_id=?',(guild[0],)).fetchone()[0]
             if count < row[1]: return None
+            before_xp=self.db.execute('SELECT xp FROM guild_stats WHERE guild_id=?',(guild[0],)).fetchone()[0]
             self.db.execute('UPDATE guild_expeditions SET complete=1 WHERE guild_id=?',(guild[0],))
             self.db.execute('UPDATE guild_stats SET xp=MIN(xp+10,1000000000),expeditions=MIN(expeditions+1,1000000000) WHERE guild_id=?',(guild[0],))
+            self._record_completion(guild,'expedition',row[0],row[1],count,before_xp)
             return guild[1],row[0],row[1],self.members(trainer)[1]

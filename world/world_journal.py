@@ -29,6 +29,12 @@ def describe(event, place=None):
         details = [f"({t['x']}, {t['y']}): {t['before']} → {t['after']}" for t in event['tiles'][:8]]
         if len(event['tiles']) > 8:
             details.append(str(len(event['tiles']) - 8) + ' more changed cells in this record.')
+    elif kind == 'guild_goal_completed':
+        title = 'Guild '+event['goal_kind']+' completed'
+        details = [event['guild_name']+' completed its '+event['goal_kind']+' goal.',
+                   str(event['credited'])+' credited toward a goal of '+str(event['target'])+'.',
+                   str(event['awarded_guild_xp'])+' guild XP awarded by the authority.',
+                   'Based on authenticated client presence reports, not independently simulated travel.']
     elif kind == 'mechanic_changed':
         title = 'Shared world content changed'
         old = {obj['id']:obj for obj in event['before']['objects']}

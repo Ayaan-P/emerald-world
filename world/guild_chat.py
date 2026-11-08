@@ -117,7 +117,11 @@ class GuildChat:
         if conn.get('guild_visit_key')==key and last is not None and now-last<=self.freshness: return
         conn['guild_visit_key']=key
         map_name=self.validate_coords(*state[:4])['name']
-        completed=s.guilds.visit(conn['id'],map_name)
+        try:
+            completed=s.guilds.visit(conn['id'],map_name)
+        except GuildError as exc:
+            self._outcome_error(conn,exc)
+            return
         if completed:
             _,destination,goal,members=completed
             self._announce(conn,members,f'Guild expedition complete: {destination} ({goal} trainers). +10 guild XP.')
@@ -128,13 +132,27 @@ class GuildChat:
                 if (not peer.get('closing') and other and other[6] and observed is not None
                         and now-observed<=self.freshness and other[:2]==state[:2]):
                     ready.append(name)
-            completed=s.guilds.complete_meet(conn['id'],map_name,ready)
+            try:
+                completed=s.guilds.complete_meet(conn['id'],map_name,ready)
+            except GuildError as exc:
+                self._outcome_error(conn,exc)
+                return
             if completed:
                 _,destination,goal,members=completed
                 self._announce(conn,members,f'Guild meetup complete: {goal} trainers together at {destination}. +15 guild XP.')
 
+    def _outcome_error(self, conn, error):
+        # The completion transaction rolled back. Do not suppress the next
+        # otherwise-identical valid presence report as an already-counted visit.
+        conn.pop('guild_visit_key',None)
+        if conn.get('chat'):
+            self.message(conn,conn['id'],'Guild: '+str(error))
+            self.server._queue(conn,self.server._snapshot(conn))
+
     def _announce(self, conn, members, text):
         s=self.server
+        if getattr(s,'memory',None) is not None:
+            s.revision=s.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
         for name in members:
             recipient=s.peers.get(name)
             if recipient and recipient.get('chat') and not recipient.get('closing'):
