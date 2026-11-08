@@ -43,6 +43,7 @@ void WorldBridge_WriteJSON(FILE *file, u32 frame);
 void WorldBridge_PrepareSave(void);
 void WorldBridge_Close(void);
 /* SDL-side chat never locks, scripts, pauses, or writes the native game. */
+int WorldBridge_ChatCommandAllowed(const char *target, const char *text);
 int WorldBridge_ChatSend(const char *target, const char *text);
 /* Typed rally transport. A stale/disconnected snapshot is never returned. */
 bool8 WorldBridge_RallySend(unsigned action, unsigned id, unsigned arg);

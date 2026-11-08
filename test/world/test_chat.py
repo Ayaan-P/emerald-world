@@ -84,6 +84,7 @@ static int enabled=1, sent;
 static char recipient[25], message[121];
 bool8 WorldBridge_Enabled(void) {return enabled;}
 const char *WorldBridge_TrainerName(void) {return "Alice";}
+int WorldBridge_ChatCommandAllowed(const char *target,const char *text) {(void)target;(void)text;return 1;}
 int WorldBridge_ChatSend(const char *target,const char *text) {
  strcpy(recipient,target);strcpy(message,text);sent++;return 1;
 }
@@ -176,28 +177,46 @@ int main(int argc,char **argv) {
         import subprocess
         from test_save_isolation import function
         root = Path(__file__).resolve().parents[2]
-        bridge = (root/'src/platform/world_bridge.c').read_text()
+        bridge_path = Path(os.environ.get('WORLD_BRIDGE_TEST_SOURCE', root/'src/platform/world_bridge.c'))
+        bridge = bridge_path.read_text()
+        native = 'RulesProbeRejected' in bridge
         declarations = bridge[bridge.index('#define WB_PEERS'):bridge.index('static bool8 Identifier')]
         source = '''#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <unistd.h>
 #include "platform/world_rally.h"
+#include "platform/chat_command_gate.h"
 #define TRUE 1
 #define FALSE 0
 #define ARRAY_COUNT(a) (sizeof(a)/sizeof((a)[0]))
 static int MapCoords(unsigned g,unsigned n,unsigned x,unsigned y) {return g<35 && n<100 && x<200 && y<200;}
 static int WorldCatalog_Metatile(unsigned g,unsigned n,unsigned t) {(void)g;(void)n;return t<1024;}
-'''+declarations
-        source += 'static void Flush(void) {sWorld.outputSize=0;}\n'
-        for name in ('Identifier', 'Decimal', 'ObjectText', 'Line', 'QueueHello', 'WorldBridge_ChatSend',
+'''
+        if 'CharacterQuestReply' in bridge:
+            source += '#include "platform/world_character.h"\n#include "platform/world_gameplay_rules.h"\n'
+        source += declarations
+        if native:
+            source += '#include "platform/world_rules_wire.h"\nstatic void WildShuffle_SetWorldRule(unsigned a,unsigned b){(void)a;(void)b;}\nvoid WorldRules_SetGameplay(unsigned a){(void)a;}\n'
+            wire = (bridge_path.parent/'world_rules_wire.c').read_text()
+            for name in ('ParseUnsigned', 'WorldRules_ParseWire', 'WorldRules_ParseWireV2', 'WorldRules_ParseWireV3'):
+                source += function(wire, name)
+            source += function(bridge, 'RulesProbeRejected') + function(bridge, 'HandleRulesLine')
+        source += 'static void Flush(void) {sWorld.outputSize=0;}\nvoid WorldRally_Disconnected(void) {}\n'
+        if native:
+            source += 'void WildShuffle_ClearWorldRule(void) {}\nvoid WorldRules_ClearGameplay(void) {}\n'
+        source += function(bridge, 'Disconnect')
+        for name in ('Identifier', 'Decimal', 'ObjectText', 'Line', 'QueueHello', 'WorldBridge_ChatCommandAllowed', 'WorldBridge_ChatSend',
                      'WorldBridge_ChatCount', 'WorldBridge_ChatStatus', 'WorldBridge_ChatLine'):
+            if name == 'Line' and 'CharacterQuestReply' in bridge:
+                source += function(bridge, 'CharacterQuestReply') + function(bridge, 'CharacterWalkLine')
             source += function(bridge, name)
         source += r'''
 static int line(const char *s) {char b[1024];strcpy(b,s);return Line(b);}
 int main(void) {
- sWorld.rallyLegacy=sWorld.travelLegacy=1; /* Newer roles unavailable: exercise the chat-only authority fallback. */
+ sWorld.commandsLegacy=1; sWorld.rallyLegacy=sWorld.travelLegacy=1; /* Newer roles unavailable: exercise the chat-only authority fallback. */
  strcpy(sWorld.trainer,"alice");strcpy(sWorld.token,"secret");
  QueueHello(0); assert(strstr(sWorld.output," SOCIALCHAT\n") && sWorld.chatProbe);
  assert(!line("ERROR AUTH") && sWorld.chatLegacy);
@@ -239,33 +258,52 @@ int main(void) {
  assert(line("CHATMSG 2 bob alice 61"));
  assert(!line("CHATMSG 2 bob alice 61"));sWorld.staging=0;
  assert(line("BEGIN 2"));assert(!line("CHATSTATUS bogus"));
- sWorld.staging=0;sWorld.outputSize=0;
- assert(!WorldBridge_ChatSend("*","/explore share secret_camp confirm"));
- assert(strstr(sWorld.output,"2f6578706c6f72652070726f746f636f6c2031"));
- assert(!strstr(sWorld.output,"7365637265745f63616d70"));
- unsigned probe=sWorld.exploreProbeSeq;assert(probe && !sWorld.exploreAvailable);
- assert(!line("EXPLORE_READY 999999"));assert(!sWorld.exploreAvailable);
- assert(line("BEGIN 3"));assert(line("CHATMSG 3 bob * 4558504c4f52455f5245414459"));assert(line("END"));
- assert(!sWorld.exploreAvailable);
- char ready[64];snprintf(ready,sizeof(ready),"EXPLORE_READY %u",probe);
- assert(line(ready));assert(sWorld.exploreAvailable);
- assert(WorldBridge_ChatSend("*","/explore share camp"));
- assert(!line(ready)); /* repeated or unsolicited readiness is invalid */
- sWorld.connected=0;assert(line("WELCOME 1 alice 3"));
- assert(!sWorld.exploreAvailable && !sWorld.exploreProbeSeq);
- sWorld.outputSize=0;assert(!WorldBridge_ChatSend("*","/explore start"));
- assert(sWorld.exploreProbeSeq && !sWorld.exploreAvailable);
- /* Legacy host never answers the probe: retries never send the private command. */
- unsigned blocked=sWorld.seq;
- assert(!WorldBridge_ChatSend("*","/explore share private_site confirm"));
- assert(sWorld.seq==blocked && !sWorld.exploreAvailable);
+ /* A new session must negotiate and complete an authoritative snapshot. */
+ memset(&sWorld,0,sizeof(sWorld));
+ sWorld.rallyLegacy=sWorld.travelLegacy=1;
+ strcpy(sWorld.trainer,"alice");strcpy(sWorld.token,"secret");
+ QueueHello(0);assert(strstr(sWorld.output,"SOCIALCHATCOMMANDS1"));
+ assert(line("WELCOME 1 alice 0"));sWorld.outputSize=0;
+ assert(!WorldBridge_ChatSend("*","/STORY choose private"));
+ assert(line("BEGIN 1"));assert(line("COMMANDS 1 13"));
+ assert(!WorldBridge_ChatSend("*","/story choose private"));
+ assert(line("END"));
+ assert(WorldBridge_ChatSend("*","  /STORY choose private"));sWorld.outputSize=0;
+ assert(WorldBridge_ChatSend("*"," /EXPLORE status"));sWorld.outputSize=0;
+ assert(!WorldBridge_ChatSend("*","/mystery secret"));
+ assert(!WorldBridge_ChatSend("bob","/story secret"));
+ assert(!WorldBridge_ChatSend("*","/unknown secret"));
+ assert(line("BEGIN 2"));assert(!line("END"));sWorld.staging=0;
+ assert(line("BEGIN 2"));assert(line("COMMANDS 1 0"));
+ assert(!line("COMMANDS 1 5"));sWorld.staging=0;
+ assert(line("BEGIN 2"));assert(!line("COMMANDS 2 5"));sWorld.staging=0;
+ assert(line("BEGIN 2"));assert(!line("COMMANDS 1 16"));sWorld.staging=0;
+ /* The real disconnect function clears the prior session capability. */
+ sWorld.fd=-1;Disconnect();
+ assert(!sWorld.live.commandMask && !sWorld.commandsProbe);
+ assert(!WorldBridge_ChatSend("*","/story stale session"));
+ /* Reconnect fallback: old servers retain ordinary chat, never commands. */
+ memset(&sWorld,0,sizeof(sWorld));
+ sWorld.rallyLegacy=sWorld.travelLegacy=1;
+ strcpy(sWorld.trainer,"alice");strcpy(sWorld.token,"secret");
+ QueueHello(0);assert(!line("ERROR AUTH") && sWorld.commandsLegacy);
+ QueueHello(0);assert(!strstr(sWorld.output,"COMMANDS1"));
+ assert(line("WELCOME 1 alice 0"));sWorld.outputSize=0;
+ assert(line("BEGIN 1"));
+ assert(line("CHATMSG 1 alice alice 4775696c643a2070726f746f636f6c2031"));
+ assert(line("END"));
+ assert(!WorldBridge_ChatSend("*","/guild private"));
+ assert(!WorldBridge_ChatSend("*","/story private"));
+ assert(WorldBridge_ChatSend("*","ordinary chat"));
  return 0;
 }
 '''
+        if native:
+            source = source.replace('sWorld.rallyLegacy=sWorld.travelLegacy=1;', 'sWorld.characterLegacy=sWorld.questLegacy=sWorld.characterRegionLegacy=sWorld.characterWalkLegacy=1;sWorld.rulesLegacy=1;sWorld.rallyLegacy=sWorld.travelLegacy=1;')
         with tempfile.TemporaryDirectory(prefix='emerald-chat-c-') as tmp:
             c, exe = Path(tmp)/'chat.c', Path(tmp)/'chat'
             c.write_text(source)
-            result = subprocess.run([os.environ.get('CC','cc'),'-std=gnu99','-Wall','-Wextra','-Werror','-DPORTABLE','-iquote',str(root/'include'),str(c),'-o',str(exe)],capture_output=True,text=True)
+            result = subprocess.run([os.environ.get('CC','cc'),'-std=gnu99','-Wall','-Wextra','-Werror','-DPORTABLE','-iquote',str(root/'include'),'-iquote',str(bridge_path.parents[2]/'include'),str(c),'-o',str(exe)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
             result = subprocess.run([str(exe)],capture_output=True,text=True,cwd=tmp)
             self.assertEqual(result.returncode,0,result.stderr)
