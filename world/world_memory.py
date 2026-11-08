@@ -23,7 +23,7 @@ def overlay_places(tiles, objects, db=None):
     if db is not None:
         for obj in objects:
             if obj.get('region_revision'):
-                row=db.execute('SELECT place_id FROM world_region_revisions WHERE revision=?',(obj['region_revision'],)).fetchone()
+                row=db.execute('SELECT place_id FROM world_places WHERE revision=?',(obj['region_revision'],)).fetchone()
                 if row:places.add(row[0])
     return sorted(places)
 

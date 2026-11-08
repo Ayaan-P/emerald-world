@@ -92,5 +92,5 @@ def contract():
             'changes':'goals, relationships to existing public NPCs, team, status, optional offer (null removes)',
             'effect':'explicitly take over selected existing NPCs from older scripts; native map object controls actual relocation/dialogue and team controls battle; all unrelated source effects preserved',
             'evidence':'nonempty inspected/recalled public history references; authored intent, never proof of battle or catch',
-            'limits':'eight actions per request, 32 action publications before source consolidation; expected version rechecked on admission; native maps or region_revision-bound opened immutable generated regions',
+            'limits':'eight actions per request, 32 action publications before source consolidation; expected version rechecked on admission; native maps or region_revision-bound opened immutable generated regions or archived shared XL revisions',
             'execution':'source compiler only; normal tests, sandbox and atomic authority validation remain mandatory; no autonomous LLM call or live publication'}

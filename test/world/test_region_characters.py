@@ -3,6 +3,7 @@ from concurrent.futures import Future
 from copy import deepcopy
 import hashlib
 import unittest
+from unittest.mock import patch
 import test_region_admission as region_fixture
 from world.mechanics import Candidate, validate_objects
 from world.region_characters import validate_region_objects
@@ -46,6 +47,71 @@ class RegionCharacterTests(unittest.TestCase):
     def state(self,conn,group,num,x,y):
         out=self.send(conn,f'STATE {conn["seq"]+1} {group} {num} {x} {y} 4 7 1 '+'a'*16+' '+'b'*16)
         self.assertFalse(conn['closing'],out)
+
+    def enable_shared_xl(self):
+        self.xl_blob=b'EWGMAP0A'+(''.join(['#'*127]+['#'+'.'*125+'#']*125+['#'*127])).encode()
+        revision=self.server._replace_cave(self.xl_blob,label='Research Highlands')
+        self.obj.update(group=self.server.wilds_map[0],num=self.server.wilds_map[1],x=71,y=70,region_revision=revision)
+        self.character['version']=2
+        self.commit(dict(state={'world_characters':{'harbor_guide':self.character}},tiles=[],objects=[self.obj]))
+        self.assertIsNone(self.server.module_error)
+        return revision
+
+    def connect_shared_xl(self,name='Alice'):
+        token=self.server.create_identity(name)['token']
+        conn=dict(id=None,out=bytearray(),closing=False,state=None,seq=0,sock=object())
+        self.assertIn('WELCOME',self.send(conn,f'HELLO 1 {name} {token} SOCIALCAVE16CHAR1CHARQUEST1CHARREG1'))
+        self.state(conn,0,9,8,8)
+        self.assertIn('XLWILDS',self.send(conn,'CAVE GET'))
+        self.assertIn('CAVE OK',self.send(conn,'CAVE ACK '+self.server.shared_cave.identity))
+        self.state(conn,*self.server.wilds_map,70,70)
+        self.assertIsNone(conn.get('region_cave'))
+        return conn
+
+    def test_active_shared_xl_is_exact_revision_scoped_without_region_open(self):
+        revision=self.enable_shared_xl();alice=self.connect_shared_xl()
+        self.assertEqual(self.server.db.execute('SELECT count(*) FROM world_region_revisions WHERE revision=?',(revision,)).fetchone()[0],0)
+        self.assertIn('REGION_OBJECT '+revision+' harbor_guide',self.server._snapshot(alice))
+        reply=self.send(alice,f'CHARACTER_CHALLENGE_REGION {alice["seq"]+1} harbor_guide 2 {revision}')
+        self.assertIn('harbor_guide 2 1 278 18',reply)
+        pending=alice['character_pending']
+        self.send(alice,f'CHARACTER_RESULT {pending["seq"]} harbor_guide 2 0')
+        self.state(alice,0,9,8,8)
+        replacement=bytearray(self.xl_blob);replacement[8+10*127+10]=ord('#')
+        other=self.server._replace_cave(bytes(replacement),label='Different Highlands')
+        with patch('world.server.time.monotonic',return_value=alice['cave_next']+.01):
+            self.assertIn('XLWILDS',self.send(alice,'CAVE GET'))
+        self.assertIn('CAVE OK',self.send(alice,'CAVE ACK '+other))
+        self.state(alice,*self.server.wilds_map,70,70)
+        self.assertNotIn('harbor_guide',self.server._snapshot(alice))
+        self.assertIn('CHARACTER_REJECT',self.send(alice,f'CHARACTER_CHALLENGE_REGION {alice["seq"]+1} harbor_guide 2 {revision}'))
+        # Older archived actors remain durable and dormant, not discarded when
+        # a host activates a different shared destination.
+        self.server.close();self.f.server=self.f.open();self.server=self.f.server
+        self.assertEqual(self.server.objects,[self.obj])
+        self.assertEqual(self.server.shared_cave.identity,other)
+        history=self.server.memory.history()['events']
+        latest=[e for e in history if e['event']=='character_changed'][-1]
+        self.assertIn(self.server.memory.place(revision),latest['places'])
+        self.server._replace_cave(self.xl_blob,label='Research Highlands')
+        alice=self.connect_shared_xl('Returning')
+        self.assertIn('REGION_OBJECT '+revision+' harbor_guide',self.server._snapshot(alice))
+
+    def test_multiple_npcs_cannot_jointly_seal_region_route(self):
+        # A two-tile passage can tolerate either NPC alone, but not both.
+        from test_shared_generated_cave import BLOB
+        blob=bytearray(BLOB)
+        for y in range(1,30):
+            if y not in (10,11):blob[8+y*31+15]=ord('#')
+        revision=self.server._replace_cave(bytes(blob));self.server.open_region(revision)
+        first=dict(self.obj,x=15,y=10,region_revision=revision)
+        second=dict(first,id='other_guide',y=11)
+        other=dict(self.character,object_id='other_guide')
+        state={'world_characters':{'harbor_guide':self.character,'other_guide':other}}
+        validate_region_objects(self.server,[first],state)
+        validate_region_objects(self.server,[second],state)
+        with self.assertRaisesRegex(ValueError,'blocks region routes'):
+            validate_region_objects(self.server,[first,second],state)
 
     def test_same_map_coordinates_isolate_places_and_native_requests(self):
         alice=self.connect('Alice',self.f.ra['place_id'],self.f.a)

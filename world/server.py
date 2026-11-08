@@ -639,7 +639,7 @@ class WorldServer:
                 travel = role in ('SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
                 social = role in ('SOCIAL', 'SOCIALCHAT', 'SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
                 link = role == 'LINK'
-                if character_region_capable and not (character_capable and region_capable):
+                if character_region_capable and not (character_capable and (region_capable or cave_xl)):
                     self._error(conn, 'AUTH')
                     return
                 if character_quest_capable and not character_capable:
@@ -1096,7 +1096,7 @@ class WorldServer:
         now = time.monotonic()
         if now - conn.get('last_interaction', -1) < .2:
             raise ValueError('interaction rate exceeded')
-        scope=dict(region_revision=obj['region_revision'],place_id=conn['region_place']) if region else {}
+        scope=dict(region_revision=obj['region_revision'],place_id=self.memory.place(obj['region_revision'])) if region else {}
         with self.db:
             self._event('interaction', dict(player=conn['id'], object=obj['id'],
                 group=obj['group'], num=obj['num'], x=obj['x'], y=obj['y'],**scope))

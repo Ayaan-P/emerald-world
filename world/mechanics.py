@@ -33,12 +33,14 @@ def validate_objects(objects):
             raise ValueError('invalid or duplicate object id')
         if any(type(obj[k]) is not int for k in ('group', 'num', 'x', 'y', 'gfx')):
             raise ValueError('object coordinates and graphics must be integers')
-        validate_coords(obj['group'], obj['num'], obj['x'], obj['y'])
         from .build_catalog import catalog_maps
-        generated=catalog_maps()[(obj['group'],obj['num'])]['name'].startswith('GeneratedWorld_')
+        generated=catalog_maps().get((obj['group'],obj['num']),{}).get('name','').startswith('GeneratedWorld_')
         revision=obj.get('region_revision')
         if generated != ('region_revision' in obj) or (generated and (type(revision) is not str or not re.fullmatch('[0-9a-f]{64}',revision))):
             raise ValueError('generated objects require immutable region_revision; native objects must omit it')
+        if generated:
+            if not 0<=obj['x']<127 or not 0<=obj['y']<127:raise ValueError('invalid generated object coordinates')
+        else:validate_coords(obj['group'],obj['num'],obj['x'],obj['y'])
         if obj['gfx'] not in (7, 8):
             raise ValueError('object graphics must be boy 1 (7) or girl 1 (8)')
         if (type(text) is not str or not re.fullmatch(r"[A-Za-z0-9 .,!?'-]+(?:\n[A-Za-z0-9 .,!?'-]+)?", text)

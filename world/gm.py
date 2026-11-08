@@ -139,7 +139,7 @@ return {'state': new_state, 'tiles': [], 'objects': [npc_dict]}
 Tests of visible NPCs must assert result['objects'], not result['state']['objects'].
 An optional 'objects' list defines at most 8 shared interactable NPCs. Each has
 fields id,group,num,x,y,gfx,text. Generated-map characters additionally require
-region_revision: exact opened immutable archived region digest, with walkable placement
+region_revision: exact opened immutable region or archived shared XL digest, with walkable placement
 outside entrance/exit. They are visible only to CHARREG1 clients inside that region.
 Native-map objects must omit region_revision. id is unique [A-Za-z0-9_-]{1,24}, gfx is
 7 or 8, text is one or two lines <=28 characters each using only ASCII letters,

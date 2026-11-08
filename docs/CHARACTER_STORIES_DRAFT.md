@@ -41,3 +41,12 @@ The server sends `REGION_OBJECT revision id group num x y gfx hextext` only afte
 Characters in two logical places can share engine map coordinates without leaking across regions. History records the actual logical place, not merely the engine's GeneratedWorld map name. Snapshot rendering, interaction, battle admission and offer acceptance all enforce the same scope. Offered expedition destinations still use native map names; generated-region visit goals are not implemented here.
 
 Current #254 region admission opens format1 (31x31) immutable caves. Object validation also understands format16 geometry, but that format requires the separate region admission support before it can be used. This does not silently enable other cast/event/rotating cave formats. App tests cover authenticated selection/transfer/ACK, place isolation, scoped battle/offer commands, private guild opt-in, invalid geometry rollback, logical-place history and restart. Native fixtures separately test parser/render/admission paths. A full linked gameplay playthrough is still required.
+
+
+## Active shared XL destinations
+
+An independently supported path now lets persistent NPCs inhabit archived format16 shared destinations without opening a REGION1 outdoor region. Objects remain bound to the exact archive digest. The currently active shared template, acknowledged digest and actual generated-map position must all match. Replacing the shared destination makes the older NPC dormant; its record survives restart and reappears only when that exact archived destination is activated again. Neither region-selection nor the uncertain outdoor-region admission patch is used.
+
+The CHARREG1 capability may accompany CAVE16 without REGION1. Placement coordinates support the full 127x127 map and are checked against actual archived floor geometry, not the engine placeholder layout dimensions. All NPC collision tiles are checked together: actors cannot collectively seal a passage or isolate any remaining walkable map tile. Entry, exit and exit approach stay clear. Mutable terrain/cast formats remain excluded.
+
+Authority tests use actual XL transfer/ACK/state admission, high coordinates, battle requests, replacement, stale scope rejection, restart, and reactivation. Shared-slot admission still refuses replacement while players are inside. This adds NPC presence to the existing route-map publication path; it does not implement generated-region guild goals, automatic route generation or a linked rendered playthrough.
