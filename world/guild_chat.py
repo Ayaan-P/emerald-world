@@ -4,6 +4,7 @@ Kept separate from the engine and transport so either game client can use the
 same world authority. All input has already passed native chat validation.
 """
 import time
+import json
 from .guilds import GuildError
 
 class GuildChat:
@@ -52,7 +53,10 @@ class GuildChat:
                     command=text[6:].strip();words=command.split()
                     if words and words[0].lower()=='online': lines=self.online(conn['id'],words[1:])
                     else:
-                        generated=None
+                        generated=None;survey_sites=None
+                        survey_mode=len(words)==4 and words[:3]==['expedition','survey','here']
+                        if survey_mode:
+                            words[1]='start'
                         if (len(words)==4 and words[0].lower() in ('expedition','meet')
                                 and words[1].lower()=='start' and words[2].lower()=='here'):
                             state=conn.get('state')
@@ -65,7 +69,13 @@ class GuildChat:
                                 if words[0].lower()!='expedition' or generated is None:
                                     raise GuildError('Only expeditions in admitted immutable places are supported here.')
                             else:command=f'{words[0].lower()} start {self.validate_coords(*state[:4])["name"]} {words[3]}'
-                        lines=(s.guilds.expedition(conn['id'],['start','here',words[3]],place=generated) if generated else s.guilds.command(conn['id'],command))
+                        if survey_mode:
+                            row=(s.db.execute('SELECT sites FROM survey_routes WHERE revision=?',(generated['revision'],)).fetchone()
+                                 if generated else None)
+                            if row is None:raise GuildError('Enter an acknowledged generated place with a registered survey first.')
+                            survey_sites=json.loads(row[0])
+                        lines=(s.guilds.expedition(conn['id'],['start','here',words[3]],place=generated,survey_sites=survey_sites)
+                               if generated else s.guilds.command(conn['id'],command))
                         self.epoch+=1
                 except GuildError as exc: lines=[str(exc)]
                 for line in lines: self.message(conn,conn['id'],'Guild: '+line)
@@ -125,15 +135,20 @@ class GuildChat:
                 conn.pop('guild_visit_key',None);return
         now=time.monotonic();last=conn.get('guild_last_ready_time')
         conn['guild_last_ready_time']=now
-        key=(self.epoch,state[0],state[1],generated['revision'] if generated else None)
+        key=(self.epoch,state[0],state[1],generated['revision'] if generated else None,tuple(state[2:4]) if generated else None)
         if conn.get('guild_visit_key')==key and last is not None and now-last<=self.freshness: return
         conn['guild_visit_key']=key
         map_name=generated['label'] if generated else self.validate_coords(*state[:4])['name']
         try:
-            completed=s.guilds.visit(conn['id'],map_name,place=generated) if generated else s.guilds.visit(conn['id'],map_name)
+            before=s.guilds.survey_progress(conn['id']) if generated else []
+            completed=s.guilds.visit(conn['id'],map_name,place=generated,position=state[2:4]) if generated else s.guilds.visit(conn['id'],map_name)
         except GuildError as exc:
             self._outcome_error(conn,exc)
             return
+        after=s.guilds.survey_progress(conn['id']) if generated else []
+        if after!=before and conn.get('chat'):
+            for line in after:self.message(conn,conn['id'],'Guild: '+line)
+            s._queue(conn,s._snapshot(conn))
         if completed:
             _,destination,goal,members=completed
             self._announce(conn,members,f'Guild expedition complete: {destination} ({goal} trainers). +10 guild XP.')

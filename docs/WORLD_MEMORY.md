@@ -1301,3 +1301,35 @@ roll back the entire change. This is app/geometry acceptance, not a linked nativ
 rendered session. Plain XL uses existing CAVE16 support; authored-wildlife XL
 still needs the separate unpublished CAVE17 native integration. No engine pin,
 release integration branch, live world or deployment is changed by this draft.
+
+
+## Cooperative survey expeditions
+
+Inside a registered generated survey, a guild leader can start
+`/guild expedition survey here COUNT`. Every credited member must reach every
+clearing on that exact revision after the expedition starts. Entry alone, old
+private discoveries and inherited survey progress never count. Members can
+spread out and finish at different times. `/guild expedition` shows their own
+remaining fieldwork, and new clearing arrivals send private progress hints.
+Completing the requested number of full circuits awards the existing 10 guild
+XP once and announces the outcome to guild members. It does not change saves,
+give items, capture creatures, teleport players or grant battle rewards.
+
+The accepted clearing coordinates are frozen with the goal. Partial circuits
+survive restart and pause on other revisions, including changed terrain sharing
+the same logical place. Cancel/replacement/disband clears that goal's fieldwork.
+These are authenticated, acknowledged client position reports, not independently
+simulated travel or anti-cheat proof. Personal `/explore` progress is separate.
+Existing chronicle opt-in controls publication: only a completed aggregate
+`guild_goal_completed` event with `goal_kind: survey`, place/revision, guild name,
+count and XP enters public history. It carries no member names or individual
+clearing trails. Existing character chapters can match this outcome to change
+resident stories. History-write failure rolls back the final arrival, credit and
+award together, allowing the next position report to retry.
+
+The authority fixture covers two members, four clearings each, partial progress
+across restart, aggregate publication and character-history consumption, private
+defaults, stale/unacknowledged refusal, cancellation, rollback/retry, and an actual
+cell-by-cell circuit after restoring the exact old map. Native rendered play is
+not demonstrated by this fixture. This uses existing chat and presence transport
+and does not change engine pins, live worlds or release integration.
