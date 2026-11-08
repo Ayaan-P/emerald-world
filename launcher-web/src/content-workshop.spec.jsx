@@ -85,3 +85,13 @@ it('shows relay gameplay without publishing content or altering the world', asyn
   expect(request).toHaveBeenCalledTimes(1);
   expect(request).toHaveBeenCalledWith('content_read',{world:'local'});
 });
+it('offers capture-the-flag instructions without changing the local world', async () => {
+  const request=vi.fn(async()=>info);
+  render(<ContentWorkshop {...props} onRequest={request}/>);
+  await screen.findByLabelText('Content type');
+  fireEvent.change(screen.getByLabelText('Content type'),{target:{value:'flag'}});
+  expect(screen.getByRole('heading',{name:'Capture the flag with a friend'})).toBeTruthy();
+  expect(screen.getByText(/First to three captures wins/)).toBeTruthy();
+  expect(screen.queryByRole('button',{name:/Preview|Apply/})).toBeNull();
+  expect(request).toHaveBeenCalledTimes(1);
+});

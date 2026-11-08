@@ -125,14 +125,14 @@ class FieldRelays:
             return lines or ['No completed relay times yet.']
         run=self._current(trainer)
         if len(words)==2 and words[0]=='start':
-            if run:raise GuildError('You already joined a relay. Use /guild relay status or leave.')
+            if run or (getattr(self.s,'flags',None) and self.s.flags.current(trainer)):raise GuildError('Leave your current field activity first.')
             if len(self.runs)>=32 or any(r['guild']==guild[0] for r in self.runs.values()):raise GuildError('Your guild already has a relay, or all relay slots are busy.')
             course=self._course(words[1]);rid=secrets.token_hex(6)
             run=dict(id=rid,guild=guild[0],course=course,members=[conn],ready=set(),phase='lobby',until=now+300,leg=0,checkpoint=0,splits=[])
             self.runs[rid]=run
             return self.status(run,conn)
         if len(words)==2 and words[0]=='join':
-            if run:raise GuildError('You already joined a relay. Use /guild relay status or leave.')
+            if run or (getattr(self.s,'flags',None) and self.s.flags.current(trainer)):raise GuildError('Leave your current field activity first.')
             run=self.runs.get(words[1])
             if not run or run['phase']!='lobby' or run['guild']!=guild[0] or len(run['members'])>=len(run['course']['legs']):raise GuildError('That relay invitation is unavailable to you.')
             run['members'].append(conn)

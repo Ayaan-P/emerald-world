@@ -99,3 +99,33 @@ limit. Coordinates are `[map_group,map_number,x,y]`; successive handoff pads mus
 be adjacent distinct tiles on one standard map. Generated maps are excluded.
 Owners must check actual collision and paths for new courses before hosting;
 coordinate validation alone cannot prove a custom route is walkable.
+
+## RC12 candidate: capture-the-flag duels
+
+Two guildmates can play a non-story movement duel with `/guild flag start
+petalburg_flags1` and `/guild flag join CODE`. `/guild flag status` identifies
+Red/Blue roles and each base. Both players stand at home and send `/guild flag
+ready`; after a three-second countdown they can steal the enemy flag by walking
+onto its base. Return to your own base while your own flag is home to capture.
+First to three wins; the three-minute limit awards the higher score, or a draw.
+
+Move within one tile of an enemy carrier to tag them. Their flag returns and
+they must go home after a three-second cooldown to re-arm. Both carriers can be
+tagged simultaneously. No native teleport, freezing, sprites or battle effects
+are added: the existing chat strip reports automatic pickups, tags and captures.
+Leaving active field play (menu/battle/map exit or stale presence) returns any
+carried flag. A disconnect cancels the match. `/guild flag leave` also cancels.
+Completed results survive restart and `/guild flag records` reveals only your
+own matches. Start again for a rematch. You cannot join a relay and duel at once.
+
+Content workshop → Capture the flag includes the full instructions. These are
+friendly games using reported positions, not anti-cheat competitions. Normal
+saves and inventory remain untouched. Bases use source-checked Petalburg relay
+pads; rendered two-client movement, timing and route feel remain for Maya's QA.
+
+Owner `publish_flag_arena` takes an immutable `arena` matching
+`world.field_flags.ARENA`: two bases on one standard map, at least eight tiles
+apart, 30–600 second duration and 1–5 captures to win. New base collision and
+route accessibility must be checked by the author; coordinate validation alone
+is insufficient. Generated maps are excluded. Matches are transient until a
+completed score is committed atomically; no interrupted match is resumed.
