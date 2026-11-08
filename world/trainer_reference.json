@@ -1,0 +1,576 @@
+{
+  "version": 1,
+  "provenance": {
+    "repository": "Ayaan-P/pokeemerald-expansion-native",
+    "revision": "db028d31a8e4fcb615e60414c7a870cba3263330",
+    "path": "src/data/trainers.party",
+    "sha256": "566a0c69daa2a8de0539113363fed2d35a7de1667ddbe7fab1d7b04fc4e8e234"
+  },
+  "scope": "Hoenn trainer definitions only; includes rematches and unused definitions; not map reachability or live state",
+  "summary": {
+    "trainer_definitions": 855,
+    "party_slots": 1825,
+    "distinct_species_labels": 208,
+    "party_size_histogram": {
+      "0": 1,
+      "1": 305,
+      "2": 318,
+      "3": 135,
+      "4": 36,
+      "5": 25,
+      "6": 35
+    },
+    "explicit_movesets": 436,
+    "most_frequent_species": [
+      [
+        "Roselia",
+        40
+      ],
+      [
+        "Pelipper",
+        39
+      ],
+      [
+        "Wingull",
+        38
+      ],
+      [
+        "Numel",
+        36
+      ],
+      [
+        "Marill",
+        33
+      ],
+      [
+        "Tentacool",
+        33
+      ],
+      [
+        "Carvanha",
+        31
+      ],
+      [
+        "Hariyama",
+        31
+      ],
+      [
+        "Linoone",
+        31
+      ],
+      [
+        "Manectric",
+        30
+      ]
+    ]
+  },
+  "gym_anchors": [
+    {
+      "id": "TRAINER_ROXANNE_1",
+      "name": "ROXANNE",
+      "class": "Leader",
+      "ai": "Basic Trainer",
+      "items": "Potion / Potion",
+      "battle_format": "singles",
+      "party": [
+        {
+          "species_and_item": "Geodude",
+          "moves": [
+            "Tackle",
+            "Defense Curl",
+            "Rock Throw",
+            "Rock Tomb"
+          ],
+          "level": 12,
+          "ivs": "12 HP / 12 Atk / 12 Def / 12 SpA / 12 SpD / 12 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Geodude",
+          "moves": [
+            "Tackle",
+            "Defense Curl",
+            "Rock Throw",
+            "Rock Tomb"
+          ],
+          "level": 12,
+          "ivs": "12 HP / 12 Atk / 12 Def / 12 SpA / 12 SpD / 12 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Nosepass @ Oran Berry",
+          "moves": [
+            "Block",
+            "Harden",
+            "Tackle",
+            "Rock Tomb"
+          ],
+          "level": 15,
+          "ivs": "24 HP / 24 Atk / 24 Def / 24 SpA / 24 SpD / 24 Spe",
+          "moves_source": "explicit"
+        }
+      ],
+      "story_order": 1,
+      "town": "Rustboro",
+      "theme": "rock",
+      "theme_source": "editorial annotation of original gym identity"
+    },
+    {
+      "id": "TRAINER_BRAWLY_1",
+      "name": "BRAWLY",
+      "class": "Leader",
+      "ai": "Basic Trainer",
+      "items": "Super Potion / Super Potion",
+      "battle_format": "singles",
+      "party": [
+        {
+          "species_and_item": "Machop",
+          "moves": [
+            "Karate Chop",
+            "Low Kick",
+            "Seismic Toss",
+            "Bulk Up"
+          ],
+          "level": 16,
+          "ivs": "12 HP / 12 Atk / 12 Def / 12 SpA / 12 SpD / 12 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Meditite",
+          "moves": [
+            "Focus Punch",
+            "Light Screen",
+            "Reflect",
+            "Bulk Up"
+          ],
+          "level": 16,
+          "ivs": "12 HP / 12 Atk / 12 Def / 12 SpA / 12 SpD / 12 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Makuhita @ Sitrus Berry",
+          "moves": [
+            "Arm Thrust",
+            "Vital Throw",
+            "Reversal",
+            "Bulk Up"
+          ],
+          "level": 19,
+          "ivs": "24 HP / 24 Atk / 24 Def / 24 SpA / 24 SpD / 24 Spe",
+          "moves_source": "explicit"
+        }
+      ],
+      "story_order": 2,
+      "town": "Dewford",
+      "theme": "fighting",
+      "theme_source": "editorial annotation of original gym identity"
+    },
+    {
+      "id": "TRAINER_WATTSON_1",
+      "name": "WATTSON",
+      "class": "Leader",
+      "ai": "Basic Trainer",
+      "items": "Super Potion / Super Potion",
+      "battle_format": "singles",
+      "party": [
+        {
+          "species_and_item": "Voltorb",
+          "moves": [
+            "Rollout",
+            "Spark",
+            "Self Destruct",
+            "Shock Wave"
+          ],
+          "level": 20,
+          "ivs": "24 HP / 24 Atk / 24 Def / 24 SpA / 24 SpD / 24 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Electrike",
+          "moves": [
+            "Shock Wave",
+            "Leer",
+            "Quick Attack",
+            "Howl"
+          ],
+          "level": 20,
+          "ivs": "24 HP / 24 Atk / 24 Def / 24 SpA / 24 SpD / 24 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Magneton",
+          "moves": [
+            "Supersonic",
+            "Shock Wave",
+            "Thunder Wave",
+            "Sonic Boom"
+          ],
+          "level": 22,
+          "ivs": "26 HP / 26 Atk / 26 Def / 26 SpA / 26 SpD / 26 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Manectric @ Sitrus Berry",
+          "moves": [
+            "Quick Attack",
+            "Thunder Wave",
+            "Shock Wave",
+            "Howl"
+          ],
+          "level": 24,
+          "ivs": "30 HP / 30 Atk / 30 Def / 30 SpA / 30 SpD / 30 Spe",
+          "moves_source": "explicit"
+        }
+      ],
+      "story_order": 3,
+      "town": "Mauville",
+      "theme": "electric",
+      "theme_source": "editorial annotation of original gym identity"
+    },
+    {
+      "id": "TRAINER_FLANNERY_1",
+      "name": "FLANNERY",
+      "class": "Leader",
+      "ai": "Basic Trainer",
+      "items": "Hyper Potion / Hyper Potion",
+      "battle_format": "singles",
+      "party": [
+        {
+          "species_and_item": "Numel",
+          "moves": [
+            "Overheat",
+            "Take Down",
+            "Magnitude",
+            "Sunny Day"
+          ],
+          "level": 24,
+          "ivs": "24 HP / 24 Atk / 24 Def / 24 SpA / 24 SpD / 24 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Slugma",
+          "moves": [
+            "Overheat",
+            "Smog",
+            "Light Screen",
+            "Sunny Day"
+          ],
+          "level": 24,
+          "ivs": "24 HP / 24 Atk / 24 Def / 24 SpA / 24 SpD / 24 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Camerupt",
+          "moves": [
+            "Overheat",
+            "Tackle",
+            "Sunny Day",
+            "Attract"
+          ],
+          "level": 26,
+          "ivs": "30 HP / 30 Atk / 30 Def / 30 SpA / 30 SpD / 30 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Torkoal @ White Herb",
+          "moves": [
+            "Overheat",
+            "Sunny Day",
+            "Body Slam",
+            "Attract"
+          ],
+          "level": 29,
+          "ivs": "30 HP / 30 Atk / 30 Def / 30 SpA / 30 SpD / 30 Spe",
+          "moves_source": "explicit"
+        }
+      ],
+      "story_order": 4,
+      "town": "Lavaridge",
+      "theme": "fire",
+      "theme_source": "editorial annotation of original gym identity"
+    },
+    {
+      "id": "TRAINER_NORMAN_1",
+      "name": "NORMAN",
+      "class": "Leader",
+      "ai": "Basic Trainer",
+      "items": "Hyper Potion / Hyper Potion",
+      "battle_format": "singles",
+      "party": [
+        {
+          "species_and_item": "Spinda",
+          "moves": [
+            "Teeter Dance",
+            "Psybeam",
+            "Facade",
+            "Encore"
+          ],
+          "level": 27,
+          "ivs": "24 HP / 24 Atk / 24 Def / 24 SpA / 24 SpD / 24 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Vigoroth",
+          "moves": [
+            "Slash",
+            "Facade",
+            "Encore",
+            "Feint Attack"
+          ],
+          "level": 27,
+          "ivs": "24 HP / 24 Atk / 24 Def / 24 SpA / 24 SpD / 24 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Linoone",
+          "moves": [
+            "Slash",
+            "Belly Drum",
+            "Facade",
+            "Headbutt"
+          ],
+          "level": 29,
+          "ivs": "24 HP / 24 Atk / 24 Def / 24 SpA / 24 SpD / 24 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Slaking @ Sitrus Berry",
+          "moves": [
+            "Counter",
+            "Yawn",
+            "Facade",
+            "Feint Attack"
+          ],
+          "level": 31,
+          "ivs": "30 HP / 30 Atk / 30 Def / 30 SpA / 30 SpD / 30 Spe",
+          "moves_source": "explicit"
+        }
+      ],
+      "story_order": 5,
+      "town": "Petalburg",
+      "theme": "normal",
+      "theme_source": "editorial annotation of original gym identity"
+    },
+    {
+      "id": "TRAINER_WINONA_1",
+      "name": "WINONA",
+      "class": "Leader",
+      "ai": "Basic Trainer / Risky",
+      "items": "Hyper Potion / Hyper Potion",
+      "battle_format": "singles",
+      "party": [
+        {
+          "species_and_item": "Swablu",
+          "moves": [
+            "Perish Song",
+            "Mirror Move",
+            "Safeguard",
+            "Aerial Ace"
+          ],
+          "level": 29,
+          "ivs": "25 HP / 25 Atk / 25 Def / 25 SpA / 25 SpD / 25 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Tropius",
+          "moves": [
+            "Sunny Day",
+            "Aerial Ace",
+            "Solar Beam",
+            "Synthesis"
+          ],
+          "level": 29,
+          "ivs": "25 HP / 25 Atk / 25 Def / 25 SpA / 25 SpD / 25 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Pelipper",
+          "moves": [
+            "Water Gun",
+            "Supersonic",
+            "Protect",
+            "Aerial Ace"
+          ],
+          "level": 30,
+          "ivs": "25 HP / 25 Atk / 25 Def / 25 SpA / 25 SpD / 25 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Skarmory",
+          "moves": [
+            "Sand Attack",
+            "Fury Attack",
+            "Steel Wing",
+            "Aerial Ace"
+          ],
+          "level": 31,
+          "ivs": "26 HP / 26 Atk / 26 Def / 26 SpA / 26 SpD / 26 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Altaria @ Oran Berry",
+          "moves": [
+            "Earthquake",
+            "Dragon Breath",
+            "Dragon Dance",
+            "Aerial Ace"
+          ],
+          "level": 33,
+          "ivs": "31 HP / 31 Atk / 31 Def / 31 SpA / 31 SpD / 31 Spe",
+          "moves_source": "explicit"
+        }
+      ],
+      "story_order": 6,
+      "town": "Fortree",
+      "theme": "flying",
+      "theme_source": "editorial annotation of original gym identity"
+    },
+    {
+      "id": "TRAINER_TATE_AND_LIZA_1",
+      "name": "TATE&LIZA",
+      "class": "Leader",
+      "ai": "Basic Trainer",
+      "items": "Hyper Potion / Hyper Potion / Hyper Potion / Hyper Potion",
+      "battle_format": "doubles",
+      "party": [
+        {
+          "species_and_item": "Claydol",
+          "moves": [
+            "Earthquake",
+            "Ancient Power",
+            "Psychic",
+            "Light Screen"
+          ],
+          "level": 41,
+          "ivs": "30 HP / 30 Atk / 30 Def / 30 SpA / 30 SpD / 30 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Xatu",
+          "moves": [
+            "Psychic",
+            "Sunny Day",
+            "Confuse Ray",
+            "Calm Mind"
+          ],
+          "level": 41,
+          "ivs": "30 HP / 30 Atk / 30 Def / 30 SpA / 30 SpD / 30 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Lunatone @ Sitrus Berry",
+          "moves": [
+            "Light Screen",
+            "Psychic",
+            "Hypnosis",
+            "Calm Mind"
+          ],
+          "level": 42,
+          "ivs": "30 HP / 30 Atk / 30 Def / 30 SpA / 30 SpD / 30 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Solrock @ Sitrus Berry",
+          "moves": [
+            "Sunny Day",
+            "Solar Beam",
+            "Psychic",
+            "Flamethrower"
+          ],
+          "level": 42,
+          "ivs": "30 HP / 30 Atk / 30 Def / 30 SpA / 30 SpD / 30 Spe",
+          "moves_source": "explicit"
+        }
+      ],
+      "story_order": 7,
+      "town": "Mossdeep",
+      "theme": "psychic",
+      "theme_source": "editorial annotation of original gym identity"
+    },
+    {
+      "id": "TRAINER_JUAN_1",
+      "name": "JUAN",
+      "class": "Leader",
+      "ai": "Basic Trainer",
+      "items": "Hyper Potion / Hyper Potion",
+      "battle_format": "singles",
+      "party": [
+        {
+          "species_and_item": "Luvdisc",
+          "moves": [
+            "Water Pulse",
+            "Attract",
+            "Sweet Kiss",
+            "Flail"
+          ],
+          "level": 41,
+          "ivs": "24 HP / 24 Atk / 24 Def / 24 SpA / 24 SpD / 24 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Whiscash",
+          "moves": [
+            "Rain Dance",
+            "Water Pulse",
+            "Amnesia",
+            "Earthquake"
+          ],
+          "level": 41,
+          "ivs": "24 HP / 24 Atk / 24 Def / 24 SpA / 24 SpD / 24 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Sealeo",
+          "moves": [
+            "Encore",
+            "Body Slam",
+            "Aurora Beam",
+            "Water Pulse"
+          ],
+          "level": 43,
+          "ivs": "24 HP / 24 Atk / 24 Def / 24 SpA / 24 SpD / 24 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Crawdaunt",
+          "moves": [
+            "Water Pulse",
+            "Crabhammer",
+            "Taunt",
+            "Leer"
+          ],
+          "level": 43,
+          "ivs": "24 HP / 24 Atk / 24 Def / 24 SpA / 24 SpD / 24 Spe",
+          "moves_source": "explicit"
+        },
+        {
+          "species_and_item": "Kingdra @ Chesto Berry",
+          "moves": [
+            "Water Pulse",
+            "Double Team",
+            "Ice Beam",
+            "Rest"
+          ],
+          "level": 46,
+          "ivs": "30 HP / 30 Atk / 30 Def / 30 SpA / 30 SpD / 30 Spe",
+          "moves_source": "explicit"
+        }
+      ],
+      "story_order": 8,
+      "town": "Sootopolis",
+      "theme": "water",
+      "theme_source": "editorial annotation of original gym identity"
+    }
+  ],
+  "design_references": [
+    {
+      "url": "https://github.com/resetes12/pokeemerald",
+      "lesson": "Modern Emerald separates level caps, party limits, items and IV/EV settings. Treat these as separate challenge axes, not one opaque difficulty score."
+    },
+    {
+      "url": "https://github.com/segabl/exalted-emerald",
+      "lesson": "Exalted Emerald describes rematch party growth and AI/level changes. Preserve character identity while changing team strength deliberately."
+    }
+  ],
+  "reuse": "Design observations only. No donor code or assets copied; public visibility alone does not grant reuse permission."
+}

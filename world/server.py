@@ -233,6 +233,8 @@ class WorldServer:
                 state_json, tiles = self._validated(dict(state=json.loads(row[2]),
                     tiles=[dict(zip(keys, tile)) for tile in stored]))
                 objects = validate_objects(json.loads(row[4]))
+                from .characters import validate_transition
+                validate_transition(json.loads(state_json), json.loads(state_json), objects, self.db)
                 if any((obj['group'], obj['num']) in (self.cave_map, self.wilds_map) for obj in objects):
                     raise ValueError('persisted object targets generated cave')
                 if type(row[5]) is not int or row[5] < 0:
@@ -531,6 +533,11 @@ class WorldServer:
                 continue
             lines.append('OBJECT ' + obj['id'] + ' ' + ' '.join(str(obj[k]) for k in ('group','num','x','y','gfx'))
                          + ' ' + obj['text'].encode('ascii').hex())
+            if conn.get('character_capable'):
+                from .characters import records
+                character = records(self.module_state).get(obj['id'])
+                if character and character['status'] == 'active':
+                    lines.append('CHARACTER ' + obj['id'] + ' ' + str(character['version']))
         meeting = conn.get('meeting')
         if conn.get('social') and meeting:
             lines.append('MEET ' + ' '.join(str(meeting[k]) for k in
@@ -581,6 +588,9 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                character_capable = role.endswith('CHAR1')
+                if character_capable:
+                    role = role[:-5]
                 rules_version = 3 if role.endswith('RULES3') else 2 if role.endswith('RULES2') else 1 if role.endswith('RULES1') else 0
                 rules_capable = rules_version != 0
                 if rules_capable:
@@ -618,6 +628,9 @@ class WorldServer:
                 travel = role in ('SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
                 social = role in ('SOCIAL', 'SOCIALCHAT', 'SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
                 link = role == 'LINK'
+                if character_capable and not social:
+                    self._error(conn, 'AUTH')
+                    return
                 if rules_capable and not social:
                     self._error(conn, 'AUTH')
                     return
@@ -676,6 +689,7 @@ class WorldServer:
                     return
                 conn['id'] = name
                 conn['social'] = social
+                conn['character_capable'] = character_capable
                 conn['rules_capable'] = rules_capable
                 conn['rules_version'] = rules_version
                 conn['region_capable'] = region_capable
@@ -825,6 +839,17 @@ class WorldServer:
                 if raw.decode('ascii') != ' '.join(fields):
                     raise ValueError('noncanonical chat line')
                 self._chat(conn, fields)
+                return
+            if fields and fields[0] in ('CHARACTER_CHALLENGE', 'CHARACTER_RESULT'):
+                from .characters import challenge, report_result
+                try:
+                    if raw.decode('ascii') != ' '.join(fields):
+                        raise ValueError('noncanonical character request')
+                    reply = (challenge if fields[0] == 'CHARACTER_CHALLENGE' else report_result)(self, conn, fields)
+                    self._queue(conn, reply)
+                except ValueError:
+                    rejected = fields[1] if len(fields) > 1 and fields[1].isdigit() and len(fields[1]) <= 10 else '0'
+                    self._queue(conn, 'CHARACTER_REJECT ' + rejected + '\n')
                 return
             if fields and fields[0] == 'INTERACT':
                 self._interact(conn, fields)
@@ -1681,6 +1706,7 @@ class WorldServer:
         rows = self.db.execute("SELECT seq,data FROM events WHERE kind='interaction' AND seq>? ORDER BY seq LIMIT 64",
                                (self.interaction_cursor,)).fetchall()
         return dict(players=self.inspect()['players'], revision=self.revision, tick=self.tick,
+                    world_history=self.memory.context(self),
                     interactions=[dict(json.loads(data), seq=seq) for seq, data in rows])
 
     def _deploy(self, source, tests, context, state):
@@ -1731,6 +1757,8 @@ class WorldServer:
                 candidate, result = future.result()
                 state_json, tiles = self._validated(result)
                 objects = result.get('objects', [])
+                from .characters import validate_transition
+                character_changes = validate_transition(self.module_state, result['state'], objects, self.db)
                 changed = (kind == 'deploy' or result['state'] != self.module_state or tiles != self.tiles
                            or objects != self.objects or cursor != self.interaction_cursor)
                 if changed:
@@ -1745,6 +1773,10 @@ class WorldServer:
                                 places=overlay_places(self.tiles + tiles, self.objects + objects),
                                 before=dict(tiles=self.tiles, objects=self.objects),
                                 after=dict(tiles=tiles, objects=objects)))
+                        for change in character_changes:
+                            change['places'] = overlay_places([], [obj for obj in self.objects + objects
+                                if obj['id'] == change['character_id']])
+                            self.revision = self.memory.append('character_changed', change)
                         if kind == 'deploy':
                             self.db.execute('INSERT OR REPLACE INTO status VALUES(1,NULL)')
                     self.candidate, self.module_state, self.tiles = candidate, json.loads(state_json), tiles

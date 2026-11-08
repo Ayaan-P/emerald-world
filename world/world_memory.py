@@ -60,6 +60,9 @@ def evidence_index(event, *, current_catalog=False):
                 place = native_place(*key[:2])
                 if place and preserved is None:
                     places.add(place)
+    elif event.get('event') == 'character_changed':
+        words.extend((event['character_id'], event['after']['name'], event['after']['role'],
+                      event['after']['reason'], *event['after']['goals']))
     elif event.get('event') == 'guild_goal_completed':
         words.extend((event['guild_name'],event['goal_kind'],'completed guild goal'))
     elif event.get('event') in ('area_activated','region_opened'):

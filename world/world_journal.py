@@ -29,6 +29,15 @@ def describe(event, place=None):
         details = [f"({t['x']}, {t['y']}): {t['before']} → {t['after']}" for t in event['tiles'][:8]]
         if len(event['tiles']) > 8:
             details.append(str(len(event['tiles']) - 8) + ' more changed cells in this record.')
+    elif kind == 'character_changed':
+        character = event['after']
+        title = character['name'] + ' continued their story'
+        details = [character['role'], 'Status: ' + character['status'],
+                   'Authored motivation: ' + character['reason']]
+        details.extend('Goal: ' + goal for goal in character['goals'])
+        details.append('Team plan: ' + ', '.join('species ' + str(mon['species']) +
+                       ' at level ' + str(mon['level']) for mon in character['team']))
+        details.append('This is an authored character change, not proof of a battle or catch.')
     elif kind == 'guild_goal_completed':
         title = 'Guild '+event['goal_kind']+' completed'
         details = [event['guild_name']+' completed its '+event['goal_kind']+' goal.',
