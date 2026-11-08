@@ -795,7 +795,7 @@ class WorldServer:
                     self._event('join', name)
                 self._queue(conn, f'WELCOME 1 {name} {self.revision}\n')
                 if core_story_capable:
-                    self._queue(conn,'CORE READY 1\n')
+                    self._queue(conn,'CORE READY 1 '+self.memory.world_id+'\n')
                 if region_capable:
                     self._queue(conn,'REGION READY 1\n')
                 if social and rules_capable:
@@ -809,11 +809,24 @@ class WorldServer:
                 self._control_line(conn, raw)
                 return
             if fields and fields[0] == 'CORE':
+                nonce=None
                 try:
-                    result = self.core_story.handle(conn, fields)
-                    self._queue(conn, 'CORE RESULT ' + json.dumps(result,sort_keys=True,separators=(',', ':')).encode().hex() + '\n')
+                    if len(fields)==6:
+                        if not fields[5].isascii() or not fields[5].isdigit() or not 1<=int(fields[5])<=4294967295:
+                            raise ValueError('Invalid canonical request nonce.')
+                        nonce=fields[5]
+                    result = self.core_story.handle(conn, fields[:5] if nonce else fields)
+                    if nonce:
+                        prefix='CORE REPLY '+nonce+' '+fields[1]+' '+fields[2]+' '+fields[3]+' '
+                        if fields[2]=='OFFER':
+                            reply=result['world_id']+' '+result['digest']+' '+(result['briefing']+' '+result['objective']).encode().hex()
+                        else:
+                            reply='OK'
+                        self._queue(conn,prefix+reply+'\n')
+                    else:
+                        self._queue(conn, 'CORE RESULT ' + json.dumps(result,sort_keys=True,separators=(',', ':')).encode().hex() + '\n')
                 except ValueError:
-                    self._queue(conn, 'CORE REFUSED\n')
+                    self._queue(conn, 'CORE REFUSED'+(' '+nonce if nonce else '')+'\n')
                 return
             if fields and fields[0] == 'REGION':
                 if len(fields)!=3 or fields[1] not in ('SELECT','LIST') or raw.decode('ascii')!=' '.join(fields):

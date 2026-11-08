@@ -35,7 +35,7 @@ CHECKPOINTS = {
         'changed': 'Devon received a warning about the Woods ambush. Their courier asks you to protect Peeko first, then recover the stolen goods.',
         'objective': 'Defeat the Aqua grunt and finish the Peeko rescue.'},
     'devon_return': {'map': 'RustboroCity_DevonCorp_3F', 'requires': 'goods_recovered',
-        'completed': None, 'outcome': 'devon_goods_secured',
+        'completed': 'devon_met', 'outcome': 'devon_goods_secured',
         'hook': 'RustboroCity_DevonCorp_3F_EventScript_MeetPresident before MrStoneIHaveFavor',
         'baseline': 'Devon is waiting for news of the stolen goods.',
         'changed': 'Word of the Rusturf rescue has reached Devon. The staff recognize the explorers who kept the delivery route open.',
@@ -89,6 +89,21 @@ class CoreStory:
         _, run, action, key, confirmation = fields
         trainer = conn['id']
         with self.db:
+            if action == 'SYNC' and confirmation == 'private':
+                if key not in ('0','1','3','7'):
+                    raise ValueError('Invalid canonical progress snapshot.')
+                if not conn.get('state') or time.monotonic()-conn.get('state_time',0)>3:
+                    raise ValueError('Native field snapshot is unavailable.')
+                names=('woods_rescued','goods_recovered','devon_met')
+                old={row[0] for row in self.db.execute(
+                    'SELECT beat FROM core_story_progress WHERE trainer=? AND run=?',(trainer,run))}
+                current={name for i,name in enumerate(names) if int(key)&(1<<i)}
+                if old-current:
+                    self.db.execute('DELETE FROM core_story_offers WHERE trainer=? AND run=?',(trainer,run))
+                self.db.execute('DELETE FROM core_story_progress WHERE trainer=? AND run=?',(trainer,run))
+                self.db.executemany('INSERT INTO core_story_progress VALUES(?,?,?)',
+                                    ((trainer,run,name) for name in current))
+                return dict(schema=1,run=run,progress=int(key),source='native_client_attestation')
             if action == 'REPORT' and confirmation == 'complete':
                 beat = BEATS.get(key)
                 if beat is None:
