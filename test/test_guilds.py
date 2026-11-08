@@ -12,6 +12,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 from world import guilds
 from world.guild_chat import GuildChat
+from world.landmark_survey import LandmarkSurvey
 
 def database(path=':memory:'):
     db=sqlite3.connect(path)
@@ -153,11 +154,13 @@ class ChatIntegrationTests(unittest.TestCase):
             def _event(self,*args):pass
             def _flush_states(self,force=False):pass
             def _link_presence(self):return {}
+            def _connection_cave(self,conn):return None
             def _deliver_links(self,msg):pass
             def _schedule_presence(self,now):pass
         self.db=database();self.s=Server();self.s.db=self.db;self.s.guilds=guilds.Guilds(self.db,{(0,9):{'name':'Route101'}});self.s.lock=threading.RLock();self.s.chat_serial=0;self.s.guild_chat=GuildChat(self.s,lambda *args:{'name':'Route101'},3)
         self.s.cave_map=None;self.s.wilds_map=None;self.s.shared_cave=None;self.s.pending_states={};self.s.last_presence_broadcast=0
         self.s.revision=1;self.s.tiles=[];self.s.objects=[]
+        self.s.landmark_survey=LandmarkSurvey(self.s)
         class Rally:
             def snapshot(self,conn):return []
         self.s.rally=Rally()

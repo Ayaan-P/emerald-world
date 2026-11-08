@@ -1039,3 +1039,11 @@ a subsequent destination. No automatic live-world update or battle outcome is
 inferred. The native counterpart must be built and paired before claiming these
 maps can be played; this candidate is an app/protocol extension, not evidence
 that an older engine pin already supports CAVE17.
+
+### Generated expedition destinations and authored wildlife
+
+Generated guild expeditions now bind to an archived logical place and its exact template revision. `/guild expedition start here COUNT` uses fresh, authenticated, acknowledged generated-map presence, never a client-supplied destination identity. Native `GeneratedWorld_*` map aliases are rejected as ordinary expedition goals. Replacing the active shared template pauses credit for its old revision; restoring that exact revision makes it reachable again. Public progress keeps the place/revision context for subsequent character chapters.
+
+The app also reconciles the published generated-character offer protocol: `PLACEQUEST1` plus `CHARQUEST1` negotiates a labeled destination and requires explicit acceptance through the existing character authority path. No automatic travel or world activation occurs. CAVE17 destinations require the distinct `cave_xl_wildlife` capability, not CAVE16 alone. Population bytes are part of the template hash, so changing only species/levels invalidates an old destination revision.
+
+Validation includes actual app offer consent, authenticated arrivals, guild completion and restart for both plain XL and authored-wildlife XL, plus CAVE16 refusal and population-only replacement. These are in-process authority tests, not a live game acceptance run. This candidate deliberately retains the published privacy engine pin `1b34f436`; that engine does not include CAVE17 or PLACEQUEST1. Their app protocol paths are prepared and tested, but are not usable in that pinned game binary. Native wildlife publication remains blocked independently; no unsupported engine pin or walking implementation is included here.

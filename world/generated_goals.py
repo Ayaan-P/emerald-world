@@ -1,0 +1,57 @@
+"""Stable-place/exact-revision goals over authenticated generated-map presence."""
+import hashlib
+import re
+import time
+
+
+def resolve_place(server, place_id, revision):
+    from .guilds import GuildError
+    from .shared_cave import SharedCave
+    if (type(place_id) is not str or not re.fullmatch(r'area:[0-9a-f-]{36}',place_id)
+            or type(revision) is not str or not re.fullmatch('[0-9a-f]{64}',revision)
+            or not server.archive_generated_areas):
+        raise GuildError('Generated expedition destination is unavailable.')
+    row=server.db.execute('''SELECT a.template,a.label,r.place_id FROM generated_area_archive a
+        JOIN world_places p ON p.revision=a.identity
+        LEFT JOIN world_region_revisions r ON r.revision=a.identity
+        WHERE p.place_id=? AND a.identity=?''',(place_id,revision)).fetchone()
+    if row is None or hashlib.sha256(row[0]).hexdigest()!=revision:
+        raise GuildError('Generated expedition destination is unavailable.')
+    cave=SharedCave(row[0])
+    if cave.version not in (16,17) and not (cave.version==1 and row[2]==place_id):
+        raise GuildError('This generated destination does not support expeditions.')
+    label=''.join(c if c.isascii() and (c.isalnum() or c in " .,'!?-") else ' ' for c in (row[1] or 'Generated destination')).strip()[:40] or 'Generated destination'
+    return dict(place_id=place_id,revision=revision,label=label)
+
+
+def observed_place(server,conn,freshness=5):
+    """No client-chosen place IDs: derive scope from the admitted template."""
+    from .guilds import GuildError
+    state=conn.get('state');stamp=conn.get('state_time')
+    if (server.peers.get(conn.get('id')) is not conn or conn.get('closing') or not state or not state[6]
+            or stamp is None or not 0<=time.monotonic()-stamp<=freshness):return None
+    cave=server._connection_cave(conn)
+    if cave is None or conn.get('cave_ack')!=cave.identity:return None
+    if cave.version==17 and not conn.get('cave_xl_wildlife'):return None
+    expected=server.wilds_map if cave.version in (16,17) else server.cave_map if cave.version==1 and conn.get('region_cave') else None
+    if expected is None or tuple(state[:2])!=expected or not cave.walkable(state[2],state[3]):return None
+    row=server.db.execute('SELECT place_id FROM world_places WHERE revision=?',(cave.identity,)).fetchone()
+    if row is None:return None
+    try:return resolve_place(server,row[0],cave.identity)
+    except GuildError:return None
+
+
+def destination_available(server,conn,place_id,revision):
+    """No automatic travel/activation: offer only destinations this client can enter."""
+    if server.shared_cave and server.shared_cave.identity==revision and server.shared_cave.version in (16,17):
+        return bool(conn.get('cave_xl_wildlife' if server.shared_cave.version==17 else 'cave_xl'))
+    return bool(conn.get('region_capable') and server.db.execute(
+        'SELECT 1 FROM world_region_revisions WHERE place_id=? AND revision=?',(place_id,revision)).fetchone())
+
+
+def validate_offer_places(server,state):
+    from .characters import records
+    for character in records(state).values():
+        offer=character.get('offer')
+        if offer and offer['place_id'].startswith('area:'):
+            resolve_place(server,offer['place_id'],offer['region_revision'])
