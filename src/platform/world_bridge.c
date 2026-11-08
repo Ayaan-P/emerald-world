@@ -150,6 +150,12 @@ static struct {
 #endif
 #endif
 #endif
+#if GENERATED_WORLD_REGIONS
+    bool8 regionProbe, regionLegacy, regionAvailable, regionSelected;
+    unsigned regionPhase, regionTimeout;
+    char regionRequest[42];
+    const char *regionStatus;
+#endif
     enum CaveState caveState;
     unsigned caveTimeout, caveRetry;
     char caveExpected[WORLD_CAVE_ID + 1];
@@ -277,6 +283,9 @@ static bool8 MapCoords(unsigned group, unsigned num, unsigned x, unsigned y)
 #if GENERATED_MAP_READY
     if (IsGeneratedCaveMap(group, num))
         return sWorld.connected && sWorld.caveAvailable && sWorld.caveState == CAVE_READY
+#if GENERATED_WORLD_REGIONS
+        && !sWorld.regionPhase
+#endif
 #if GENERATED_MAP_WILDS
             && ((sWorld.caveWire.version == 6 || sWorld.caveWire.version == 7 || sWorld.caveWire.version == 8 || sWorld.caveWire.version == 9 || sWorld.caveWire.version == 10) == (group == MAP_GROUP(MAP_GENERATED_WORLD_WILDS)
                                                 && num == MAP_NUM(MAP_GENERATED_WORLD_WILDS)))
@@ -457,6 +466,12 @@ static void Disconnect(void)
     sWorld.travelProbe = sWorld.travelAvailable = FALSE;
 #if GENERATED_MAP_READY
     sWorld.caveProbe = sWorld.caveAvailable = sWorld.caveReturning = FALSE;
+#if GENERATED_WORLD_REGIONS
+    sWorld.regionProbe = sWorld.regionAvailable = sWorld.regionSelected = FALSE;
+    sWorld.regionPhase = sWorld.regionTimeout = 0;
+    sWorld.regionRequest[0] = 0;
+    sWorld.regionStatus = NULL;
+#endif
 #if GENERATED_WORLD_XL
     sWorld.caveV10Probe=FALSE;
 #endif
@@ -519,6 +534,9 @@ bool8 WorldBridge_GeneratedCaveReady(void)
 {
 #if GENERATED_MAP_READY
     return sWorld.connected && sWorld.caveAvailable && sWorld.caveState == CAVE_READY
+#if GENERATED_WORLD_REGIONS
+        && !sWorld.regionPhase
+#endif
         && sWorld.snapshotAge <= 180;
 #else
     return FALSE;
@@ -715,6 +733,9 @@ invalid:
 static bool8 CaveProbeRejected(unsigned n, char **tokens)
 {
     if (sWorld.caveProbe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
+#if GENERATED_WORLD_REGIONS
+        if (sWorld.regionProbe) { sWorld.regionLegacy = TRUE; return TRUE; }
+#endif
 #if GENERATED_WORLD_XL
         if(sWorld.caveV10Probe){sWorld.caveV10Legacy=TRUE;return TRUE;}
 #endif
@@ -1102,6 +1123,58 @@ static bool8 CaveLine(unsigned n, char **tokens)
 }
 #endif
 
+#if GENERATED_WORLD_REGIONS
+static bool8 RegionIdentifier(const char *text)
+{
+    unsigned i;
+    if (strlen(text) != 41 || strncmp(text, "area:", 5)) return FALSE;
+    for (i = 5; i < 41; i++) {
+        if (i == 13 || i == 18 || i == 23 || i == 28) {
+            if (text[i] != '-') return FALSE;
+        } else if (!((text[i] >= '0' && text[i] <= '9') || (text[i] >= 'a' && text[i] <= 'f'))) return FALSE;
+    }
+    return TRUE;
+}
+
+static bool8 RegionQueue(const char *place)
+{
+    if (!sWorld.connected || !sWorld.regionAvailable || sWorld.regionPhase
+     || !RegionIdentifier(place) || GeneratedMap_IsInside() || GeneratedMap_EntryPending()) return FALSE;
+    strcpy(sWorld.regionRequest, place);
+    sWorld.regionPhase = 1;
+    sWorld.regionTimeout = 600;
+    sWorld.regionStatus = "close chat to select";
+    return TRUE;
+}
+
+static bool8 RegionLine(unsigned n, char **tokens)
+{
+    if (!sWorld.regionProbe) return FALSE;
+    if (n == 3 && !strcmp(tokens[1], "READY") && !strcmp(tokens[2], "1")) {
+        if (sWorld.regionAvailable) return FALSE;
+        sWorld.regionAvailable = TRUE;
+        return TRUE;
+    }
+    if (!sWorld.regionAvailable || sWorld.regionPhase != 3) return FALSE;
+    if (n == 2 && !strcmp(tokens[1], "REFUSED")) {
+        sWorld.regionPhase = sWorld.regionTimeout = 0;
+        sWorld.regionStatus = "region refused";
+        return TRUE;
+    }
+    if (n == 4 && !strcmp(tokens[1], "SELECTED")
+     && !strcmp(tokens[2], sWorld.regionRequest) && WorldCaveWire_ValidId(tokens[3])
+     && !GeneratedMap_IsInside() && !GeneratedMap_EntryPending()) {
+        char *reset[] = {"CAVE", "RESET", tokens[3]};
+        if (!CaveLine(3, reset)) return FALSE;
+        sWorld.regionPhase = sWorld.regionTimeout = 0;
+        sWorld.regionSelected = TRUE;
+        sWorld.regionStatus = NULL;
+        return TRUE;
+    }
+    return FALSE;
+}
+#endif
+
 static bool8 Line(char *line)
 {
     char *tokens[12], *save, *p;
@@ -1112,6 +1185,9 @@ static bool8 Line(char *line)
     }
     if (!n) return FALSE;
     if (!sWorld.connected) {
+#if GENERATED_WORLD_REGIONS
+        if (sWorld.regionProbe && CaveProbeRejected(n, tokens)) return FALSE;
+#endif
 #if WORLD_EXTENDED_OBJECTS
         if (sWorld.peer32Probe && n == 2 && !strcmp(tokens[0], "ERROR") && !strcmp(tokens[1], "AUTH")) {
             sWorld.peer32Legacy = TRUE;
@@ -1162,6 +1238,9 @@ static bool8 Line(char *line)
     }
 #if GENERATED_MAP_READY
     if (!strcmp(tokens[0], "CAVE")) return CaveLine(n, tokens);
+#if GENERATED_WORLD_REGIONS
+    if (!strcmp(tokens[0], "REGION")) return RegionLine(n, tokens);
+#endif
 #endif
     if (!strcmp(tokens[0], "BEGIN")) {
         if (n != 2 || sWorld.staging || !Decimal(tokens[1], &v[0]) || v[0] < sWorld.live.revision) return FALSE;
@@ -1432,13 +1511,19 @@ static void QueueHello(bool8 headless)
 #else
 #define WB_PEER_SUFFIX ""
 #endif
+#if GENERATED_WORLD_REGIONS
+    sWorld.regionProbe = sWorld.caveProbe && !sWorld.regionLegacy;
+#define WB_REGION_SUFFIX (sWorld.regionProbe ? "REGION1" : "")
+#else
+#define WB_REGION_SUFFIX ""
+#endif
 #ifdef _WIN32
     (void)headless;
     sWorld.chatProbe = FALSE;
     sWorld.travelProbe = !sWorld.travelLegacy;
     role = sWorld.rallyProbe ? "SOCIALTRAVELRALLY" : sWorld.travelProbe ? "SOCIALTRAVEL" : "SOCIAL";
     sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
-        "EWLOCAL1 %s\nHELLO 1 %s %s %s%s%s\n", sWorld.loopbackToken, sWorld.trainer, sWorld.token, role, WB_PEER_SUFFIX, suffix);
+        "EWLOCAL1 %s\nHELLO 1 %s %s %s%s%s%s\n", sWorld.loopbackToken, sWorld.trainer, sWorld.token, role, WB_PEER_SUFFIX, suffix, WB_REGION_SUFFIX);
 #else
     sWorld.chatProbe = !headless && !sWorld.chatLegacy;
     sWorld.travelProbe = !sWorld.travelLegacy;
@@ -1446,9 +1531,10 @@ static void QueueHello(bool8 headless)
         : sWorld.travelProbe ? (sWorld.chatProbe ? "SOCIALTRAVELCHAT" : "SOCIALTRAVEL")
         : (sWorld.chatProbe ? "SOCIALCHAT" : "SOCIAL");
     sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
-        "HELLO 1 %s %s %s%s%s\n", sWorld.trainer, sWorld.token, role, WB_PEER_SUFFIX, suffix);
+        "HELLO 1 %s %s %s%s%s%s\n", sWorld.trainer, sWorld.token, role, WB_PEER_SUFFIX, suffix, WB_REGION_SUFFIX);
 #endif
 #undef WB_PEER_SUFFIX
+#undef WB_REGION_SUFFIX
 }
 
 static void Flush(void)
@@ -1628,6 +1714,9 @@ int WorldBridge_ChatSend(const char *target, const char *text)
         hex[2*i] = "0123456789abcdef"[c >> 4];
         hex[2*i+1] = "0123456789abcdef"[c & 15];
     }
+#if GENERATED_WORLD_REGIONS
+    if (!strcmp(target, "*") && !strncmp(text, "/region ", 8)) return RegionQueue(text + 8);
+#endif
     if (!visible) return 0;
     hex[2*i] = 0;
     sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
@@ -1660,6 +1749,11 @@ unsigned WorldBridge_ChatCount(void)
 
 const char *WorldBridge_ChatStatus(void)
 {
+#if GENERATED_WORLD_REGIONS
+    if (sWorld.connected && sWorld.regionStatus) return sWorld.regionStatus;
+    if (sWorld.connected && sWorld.regionSelected)
+        return WorldBridge_GeneratedCaveReady() ? "region ready: use WORLD" : "region loading";
+#endif
     return !sWorld.connected ? "offline" : !sWorld.chatAvailable ? "unsupported" : sWorld.live.chatStatus;
 }
 
@@ -1820,6 +1914,36 @@ static void SendState(void)
         ready, party, bag);
     Flush();
 }
+
+#if GENERATED_WORLD_REGIONS
+static void RegionPump(void)
+{
+    if (!sWorld.connected || !sWorld.regionPhase) return;
+    if (!sWorld.regionTimeout || !--sWorld.regionTimeout) {
+        /* An unanswered SELECT may already have changed server admission.
+         * Disconnect rather than guessing or retrying against a stale layout. */
+        if (sWorld.regionPhase == 3) Disconnect();
+        else {
+            sWorld.regionPhase = 0;
+            sWorld.regionStatus = "region request expired";
+        }
+        return;
+    }
+    if (sWorld.regionPhase == 3 || sWorld.outputSize || !sWorld.fieldKnown
+     || !PresenceReady() || GeneratedMap_IsInside() || GeneratedMap_EntryPending()
+     || (sWorld.caveState != CAVE_READY && sWorld.caveState != CAVE_DISABLED)) return;
+    if (sWorld.regionPhase == 1) {
+        SendState();
+        sWorld.regionPhase = 2;
+        return;
+    }
+    sWorld.outputSize = snprintf(sWorld.output, sizeof(sWorld.output),
+        "REGION SELECT %s\n", sWorld.regionRequest);
+    sWorld.regionPhase = 3;
+    sWorld.regionStatus = "selecting region";
+    Flush();
+}
+#endif
 
 /* A world may contain many more humans than the wire relevance window or
  * stock sixteen-object pool. Spend only genuinely free/owned slots, nearest
@@ -2364,6 +2488,9 @@ void WorldBridge_AfterFrame(u32 frame)
     SyncDialogue();
     SyncEngine();
     if (frame % 6 == 0) SendState();
+#if GENERATED_WORLD_REGIONS
+    RegionPump();
+#endif
     snprintf(path, sizeof(path), "%s.tmp", sWorld.telemetry);
     file = NativeFile_Open(path, "w");
     if (!file) return;

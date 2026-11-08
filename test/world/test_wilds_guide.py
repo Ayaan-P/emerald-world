@@ -1,4 +1,5 @@
 """Offline generated wilds guide: inert text, safe geometry, native layout."""
+from native_party_fixture import write_party_fixture
 from pathlib import Path
 from collections import deque
 import json
@@ -102,7 +103,7 @@ int main(void){u8 meta[59],badmeta[59],data[3969],bad[3969];struct MapLayout bas
  assert(!GeneratedMap_StageGuidedWilds(badmeta,sizeof(badmeta),data,sizeof(data)));assert(gGeneratedWildsGuideText[0]==0xd1);
  online=1;assert(!GeneratedMap_StageGuidedWilds(meta,sizeof(meta),data,sizeof(data)));online=0;
  events.warpCount=1;events.warps=(const void*)0x1;gMapHeader.mapType=1;gMapHeader.mapLayout=&base;gMapHeader.events=&events;save.location=(struct WarpData){3,4,0,8,9};
- assert(GeneratedMap_Enter());save.location=destination;layout=GeneratedMap_ResolveLayout(&base);
+ extern u8 gPlayerPartyCount;gPlayerPartyCount=0;assert(!GeneratedMap_Enter());gPlayerPartyCount=1;assert(GeneratedMap_Enter());save.location=destination;layout=GeneratedMap_ResolveLayout(&base);
  assert(layout->width==63 && layout->height==63 && layout->map[61*63+61]==0x3024);
  assert(gMapHeader.events->warpCount==1 && gMapHeader.events->warps==(const void*)0x1);
  assert(gMapHeader.events->objectEventCount==1 && gMapHeader.events->objectEvents[0].x==2 && gMapHeader.events->objectEvents[0].y==1);
@@ -128,6 +129,7 @@ int main(void){u8 meta[59],badmeta[59],data[3969],bad[3969];struct MapLayout bas
             (p/'constants/maps.h').write_text(f'#define MAP_GENERATED_WORLD_CAVE ({group}<<8)\n#define MAP_GENERATED_WORLD_WILDS (({group}<<8)|1)\n#define MAP_GROUP(x) ((x)>>8)\n#define MAP_NUM(x) ((x)&255)\n#define WARP_ID_NONE (-1)\n')
             (p/'test.c').write_text(code)
             cmd=['cc','-std=gnu99','-Wall','-Wextra','-Werror','-DPORTABLE','-DGENERATED_MAP_READY=1','-DGENERATED_MAP_AUTOTILE=1','-DGENERATED_MAP_LARGE=1','-DGENERATED_MAP_WILDS=1','-DGENERATED_WILDS_GUIDE=1','-iquote',str(p),str(ROOT/'src/platform/generated_map.c'),str(p/'test.c'),'-o',str(p/'test')]
+            cmd.insert(-2,str(write_party_fixture(p)))
             build=subprocess.run(cmd,capture_output=True,text=True);self.assertEqual(build.returncode,0,build.stderr)
             cells=wilds_guide.encode(cave_blueprint.proposal_from_blueprint(DOC,side=63),7,'Welcome!')[8:]
             result=subprocess.run([str(p/'test')],input=cells,capture_output=True);self.assertEqual(result.returncode,0,result.stderr.decode())

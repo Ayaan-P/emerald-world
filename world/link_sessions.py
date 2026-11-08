@@ -34,6 +34,13 @@ def _operation(method):
     return call
 
 
+class RegionPresence(dict):
+    """Authority-only place scopes; native seven-field STATE remains unchanged."""
+    def __init__(self, states, scopes):
+        super().__init__(states)
+        self.scopes = scopes
+
+
 class LinkError(ValueError):
     def __init__(self, code, events=()):
         super().__init__(code)
@@ -147,6 +154,8 @@ class LinkSessions:
     def _near(presence, a, b, *, coop=False):
         if not isinstance(presence, dict):
             raise LinkError('invalid_presence')
+        if isinstance(presence, RegionPresence) and presence.scopes.get(a) != presence.scopes.get(b):
+            raise LinkError('different_region')
         states = []
         for actor in (a, b):
             s = presence.get(actor)

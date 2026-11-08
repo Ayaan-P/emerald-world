@@ -1,0 +1,131 @@
+"""Read-only local-owner journal derived from committed world history."""
+import json
+import re
+import sqlite3
+from .rules_ui import _owned_server
+from .session import SessionError
+from .world_memory import native_place
+
+
+def _label(place):
+    if place.startswith('native:'):
+        return re.sub(r'(?<=[a-z0-9])(?=[A-Z])', ' ', place[7:]).replace('_', ' ')
+    return 'Generated place'
+
+
+def describe(event, place=None):
+    """Describe only the actual structural change, never a claimed story outcome."""
+    kind = event['event']
+    details = []
+    if kind == 'area_activated':
+        title = 'Area activated'
+        details = [event.get('label') or 'Generated area',
+                   'Continues the same recorded place.' if event.get('continued') else 'This content revision became active.']
+    elif kind == 'area_named':
+        title = 'Place renamed'
+        details = [event['before'] + ' → ' + event['after']]
+    elif kind == 'terrain_changed':
+        title = str(len(event['tiles'])) + ' terrain cells changed'
+        details = [f"({t['x']}, {t['y']}): {t['before']} → {t['after']}" for t in event['tiles'][:8]]
+        if len(event['tiles']) > 8:
+            details.append(str(len(event['tiles']) - 8) + ' more changed cells in this record.')
+    elif kind == 'guild_goal_completed':
+        title = 'Guild '+event['goal_kind']+' completed'
+        details = [event['guild_name']+' completed its '+event['goal_kind']+' goal.',
+                   str(event['credited'])+' credited toward a goal of '+str(event['target'])+'.',
+                   str(event['awarded_guild_xp'])+' guild XP awarded by the authority.',
+                   'Based on authenticated client presence reports, not independently simulated travel.']
+    elif kind == 'mechanic_changed':
+        title = 'Shared world content changed'
+        old = {obj['id']:obj for obj in event['before']['objects']}
+        new = {obj['id']:obj for obj in event['after']['objects']}
+        for identity in sorted(old.keys() | new.keys()):
+            a, b = old.get(identity), new.get(identity)
+            if place is not None and not any(obj and native_place(obj['group'],obj['num']) == place for obj in (a,b)):
+                continue
+            if a == b:
+                continue
+            if a is None:
+                details.append(f"NPC {identity} appeared at ({b['x']}, {b['y']}).")
+                details.append('Dialogue: ' + b['text'])
+            elif b is None:
+                details.append('NPC ' + identity + ' was removed from the shared overlay.')
+            else:
+                if a['text'] != b['text']:
+                    details.append('NPC ' + identity + ' dialogue changed: ' + a['text'] + ' → ' + b['text'])
+                if (a['group'],a['num'],a['x'],a['y']) != (b['group'],b['num'],b['x'],b['y']):
+                    details.append(f"NPC {identity} moved from ({a['x']}, {a['y']}) to ({b['x']}, {b['y']}).")
+                if a['gfx'] != b['gfx']:
+                    details.append('NPC ' + identity + ' appearance changed.')
+        old_tiles = {tuple(t[:4]):t for t in event['before']['tiles']}
+        new_tiles = {tuple(t[:4]):t for t in event['after']['tiles']}
+        count = sum(old_tiles.get(k) != new_tiles.get(k) for k in old_tiles.keys() | new_tiles.keys()
+                    if place is None or native_place(*k[:2]) == place)
+        if count:
+            details.append(str(count) + ' shared map-overlay cells changed.')
+        if not details:
+            details = ['Mechanic source committed without a visible overlay change.']
+    else:
+        title, details = 'Recorded world change', ['See the authority record for this event.']
+    return dict(seq=event['seq'], recorded_at=event['recorded_at'], title=title, details=details,
+                evidence='authority_commit', places=event.get('changed_places',event.get('places',[event['place_id']] if event.get('place_id') else [])))
+
+
+def read_journal(session, worlds, payload):
+    if (type(payload) is not dict or not {'world'} <= set(payload)
+            or not set(payload) <= {'world','place_id','through','before','world_id'}
+            or type(payload['world']) is not str or payload['world'] not in {w['key'] for w in worlds}):
+        raise SessionError('Choose a local world owned by this launcher.')
+    server = _owned_server(session,payload['world'])
+    if server is None:
+        raise SessionError('Open this local host to read its journal. The game can stay closed.')
+    try:
+        with server.lock:
+            memory = getattr(server,'memory',None)
+            if memory is None:
+                raise SessionError('This host does not provide a world journal yet.')
+            if 'world_id' in payload and payload['world_id'] != memory.world_id:
+                raise SessionError('This world changed. Refresh its journal.')
+            head = server.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
+            through = payload.get('through',head)
+            before = payload.get('before')
+            place = payload.get('place_id')
+            if (type(through) is not int or not 0 <= through <= head or
+                    (before is not None and (type(before) is not int or not 1 <= before <= through)) or
+                    (place is not None and (type(place) is not str or not 1 <= len(place) <= 128))):
+                raise ValueError('invalid journal boundary')
+            if ('through' in payload or before is not None) and payload.get('world_id') != memory.world_id:
+                raise SessionError('Refresh the journal before reading older entries.')
+            active = server.shared_cave.identity if server.shared_cave else None
+            places = []
+            rows = server.db.execute('SELECT DISTINCT place_id FROM world_memory_place_events ORDER BY place_id LIMIT 101').fetchall()
+            for (identity,) in rows[:100]:
+                label, active_here = _label(identity), False
+                if identity.startswith('area:') and server.archive_generated_areas:
+                    row = server.db.execute('''SELECT a.label,a.identity FROM generated_area_archive a
+                        JOIN world_places p ON a.identity=p.revision WHERE p.place_id=?
+                        ORDER BY (a.identity=?) DESC,a.created DESC,a.identity LIMIT 1''',(identity,active or '')).fetchone()
+                    if row:
+                        label, active_here = row[0], row[1] == active
+                places.append(dict(id=identity,label=label,active=active_here))
+            query = "SELECT seq,data FROM events WHERE kind='world_memory' AND seq<=?"
+            args = [through]
+            if before is not None:
+                query += ' AND seq<?'
+                args.append(before)
+            if place is not None:
+                query += ' AND seq IN (SELECT seq FROM world_memory_place_events WHERE place_id=?)'
+                args.append(place)
+            records = server.db.execute(query+' ORDER BY seq DESC LIMIT 21',args).fetchall()
+            entries = [describe(dict(seq=seq,**json.loads(data)),place) for seq,data in records[:20]]
+            current = dict(objects=[dict(id=o['id'],text=o['text'],x=o['x'],y=o['y']) for o in server.objects
+                                    if place is None or native_place(o['group'],o['num']) == place],
+                           active_area=next((p for p in places if p['active']),None))
+            return dict(world_id=memory.world_id,through=through,entries=entries,places=places,
+                        places_truncated=len(rows)>100,current=current,
+                        before=entries[-1]['seq'] if entries else None,has_more=len(records)>20,
+                        coverage_start_seq=int(server.db.execute("SELECT value FROM world_memory_metadata WHERE key='coverage_start_seq'").fetchone()[0]))
+    except SessionError:
+        raise
+    except (ValueError,TypeError,KeyError,sqlite3.Error):
+        raise SessionError('The journal could not be read. Refresh and try again.') from None

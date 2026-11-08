@@ -1,0 +1,10 @@
+.world-journal { max-width: 960px; }
+.journal-tools { display: flex; align-items: end; gap: 1rem; margin: 1.5rem 0; flex-wrap: wrap; }
+.journal-tools label { display: grid; gap: .4rem; flex: 1; min-width: 220px; }
+.journal-tools select { padding: .65rem; border-radius: .5rem; color: inherit; background: var(--panel, #202523); border: 1px solid #68736b; }
+.journal-now { border: 1px solid #68736b; border-radius: .75rem; padding: 1rem; margin: 1rem 0; }
+.journal-entries { list-style: none; padding: 0; }
+.journal-entries > li { border-left: 2px solid #688b71; padding: 0 0 1.5rem 1.2rem; margin-left: .35rem; }
+.journal-entries h2, .journal-now h2 { font-size: 1.1rem; margin: .5rem 0; }
+.journal-entries ul, .journal-now ul { padding-left: 1.2rem; overflow-wrap: anywhere; }
+.journal-entry-meta { font-size: .8rem; opacity: .7; }
