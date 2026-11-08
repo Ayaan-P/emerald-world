@@ -176,7 +176,12 @@ class WindowsGuestSession:
     creates the profile/config and gateway without starting a game. start()
     launches the normal interactive child. close() stops child before unlocking.
     """
-    def __init__(self, host, port, pin, invitation, *, data_root=None, binary=None):
+    def __init__(self, host, port, pin, invitation, *, data_root=None, binary=None, engine='vanilla'):
+        if engine not in ('vanilla', 'expansion-native'):
+            raise ValueError('unsupported engine')
+        if engine == 'expansion-native' and binary is None:
+            raise ValueError('Expansion requires its verified engine, no legacy fallback')
+        self.engine = engine
         if type(pin) is not str or not _HEX.fullmatch(pin):
             raise ValueError('invalid certificate pin')
         if (type(host) is not str or not host or len(host) > 253
@@ -201,7 +206,10 @@ class WindowsGuestSession:
         trainer_directory = hashlib.sha256(self.trainer.encode('ascii')).hexdigest()
         # The caller's data root is trusted, including Windows short-name or
         # junction aliases. Resolve only that boundary, never an untrusted child.
-        profile = Path(data_root).resolve() / namespace / trainer_directory
+        boundary = Path(data_root).resolve()
+        if self.engine == 'expansion-native':
+            boundary = boundary / 'expansion-native'
+        profile = boundary / namespace / trainer_directory
         self.paths = {'profile': profile, 'save': profile/'game.sav',
                       'settings': profile/'pokeemerald.ini', 'config': profile/'world.conf',
                       'telemetry': profile/'telemetry.json'}
@@ -251,8 +259,21 @@ class WindowsGuestSession:
         binary = self.binary if self.binary is not None else locate_game()
         if not binary.is_file():
             raise ValueError('packaged game is missing')
+        if self.engine == 'expansion-native':
+            return [str(binary), '--data-dir', str(self.paths['profile']),
+                    '--save', str(self.paths['save']),
+                    '--rtc-offset', str(self.paths['profile']/'clock.rtc')]
         return [str(binary), '--save', str(self.paths['save']),
                 '--config', str(self.paths['settings']), '--world-config', str(self.paths['config'])]
+
+    def game_environment(self):
+        if self.engine != 'expansion-native':
+            return None
+        # Do not inherit agent/replay/offline world controls from the launcher.
+        env = {k: v for k, v in os.environ.items() if not k.startswith('EW_')}
+        env['EW_WORLD_CONFIG'] = str(self.paths['config'])
+        env['EW_WORLD_HEADLESS'] = '0'
+        return env
 
     def start(self):
         with self._guard:
@@ -266,7 +287,7 @@ class WindowsGuestSession:
                 # No agent controls, dummy SDL drivers, shell or hidden-window flags.
                 self.child = subprocess.Popen(command, cwd=str(self.paths['profile']),
                                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                              stderr=subprocess.DEVNULL, shell=False)
+                                              stderr=subprocess.DEVNULL, shell=False, env=self.game_environment())
             except (OSError, ValueError, RuntimeError):
                 self.close()
                 raise RuntimeError('could not launch game') from None

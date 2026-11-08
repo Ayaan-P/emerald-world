@@ -64,11 +64,16 @@ def preflight(app, app_pin, engine_pin):
     return engine, sdk
 
 
-def sandbox(engine):
+def sandbox(engine, multilib=None):
     # No network and no inherited credential environment. Only the dedicated
     # engine checkout is writable. Build tools and app sources are read-only.
+    mounts = []
+    if multilib is not None:
+        multilib = plain_path(multilib)
+        mounts = ['--ro-bind', str(multilib/'lib32'), '/lib32',
+                  '--ro-bind', str(multilib/'lib32/ld-linux.so.2'), '/lib/ld-linux.so.2']
     return ['bwrap', '--unshare-net', '--die-with-parent', '--new-session',
-            '--ro-bind', '/', '/', '--bind', str(engine), str(engine),
+            '--ro-bind', '/', '/', *mounts, '--bind', str(engine), str(engine),
             '--tmpfs', '/tmp', '--dir', '/tmp/expansion-build-home',
             '--dev', '/dev', '--proc', '/proc', '--clearenv',
             '--setenv', 'PATH', os.environ.get('PATH', '/usr/bin:/bin'),
@@ -83,6 +88,7 @@ def main(argv=None):
     parser.add_argument('--app-pin', required=True)
     parser.add_argument('--engine-pin', required=True)
     parser.add_argument('--jobs', type=int, default=4)
+    parser.add_argument('--multilib-sysroot', type=Path, help='existing private multilib loader root; compiler wrappers on PATH must use it')
     parser.add_argument('--check', action='store_true')
     args = parser.parse_args(argv)
     try:
@@ -90,7 +96,7 @@ def main(argv=None):
             raise ValueError('--jobs must be positive')
         app = plain_path(args.app)
         engine, sdk = preflight(app, args.app_pin, args.engine_pin)
-        isolated = sandbox(engine)
+        isolated = sandbox(engine, args.multilib_sysroot)
         subprocess.run(isolated + ['true'], check=True)
         # The data checks run a 32-bit reference program even for a 64-bit PE.
         subprocess.run(isolated + ['bash', '-c',

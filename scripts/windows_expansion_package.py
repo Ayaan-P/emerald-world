@@ -62,7 +62,7 @@ def check_pe(data, *, dll=False):
         raise ValueError('Expected x64 PE32+ DLL' if dll else 'Expected x64 PE32+ executable')
 
 FLAGS = {'BITS': '64', 'TARGET_OS': 'windows', 'EW_REGION_STATE': '1',
-         'EW_KANTO_CONTENT': '1', 'GENERATED_WORLD_REGIONS': '1', 'MAP_VERSION': 'combined'}
+         'EW_KANTO_CONTENT': '1', 'GENERATED_WORLD_REGIONS': '0', 'MAP_VERSION': 'combined'}
 SECRET = re.compile(rb'-----BEGIN (?:[A-Z ]*PRIVATE KEY)-----|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|sk-(?:proj-)?[A-Za-z0-9_-]{30,}|AKIA[A-Z0-9]{16}')
 DATA = {'world/expansion_species.json', 'world/map_catalog.json', 'world/trainer_reference.json'}
 ENTRY = 'scripts/windows_expansion_entry.py'

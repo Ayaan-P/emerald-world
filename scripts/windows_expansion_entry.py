@@ -18,7 +18,7 @@ def verify(root):
     build = manifest.get('build', {})
     if (manifest.get('engine') != 'expansion-native' or build.get('engine') != 'expansion-native'
             or build.get('flags') != {'BITS': '64', 'TARGET_OS': 'windows', 'EW_REGION_STATE': '1',
-                'EW_KANTO_CONTENT': '1', 'GENERATED_WORLD_REGIONS': '1', 'MAP_VERSION': 'combined'}):
+                'EW_KANTO_CONTENT': '1', 'GENERATED_WORLD_REGIONS': '0', 'MAP_VERSION': 'combined'}):
         raise ValueError('Not the matched Expansion Windows cohort')
     files = manifest.get('files', {})
     required = {'scripts/windows_expansion_entry.py', 'world/windows_client.py',
@@ -82,7 +82,7 @@ def main(argv=None):
                 local = os.environ.get('LOCALAPPDATA')
                 if not local:
                     raise ValueError('LOCALAPPDATA is required for private Expansion profiles')
-                kwargs.update(binary=binary, data_root=Path(local)/'EmeraldWorld'/'expansion-native')
+                kwargs.update(binary=binary, data_root=Path(local)/'EmeraldWorld', engine='expansion-native')
                 super().__init__(host, port, pin, invitation, **kwargs)
         guest.WindowsGuestSession = ExpansionGuestSession
         guest.locate_game = lambda **kwargs: binary

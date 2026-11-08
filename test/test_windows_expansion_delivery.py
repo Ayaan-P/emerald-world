@@ -28,6 +28,45 @@ def pe(dll=False):
 
 
 class DeliveryTests(unittest.TestCase):
+    def test_regions_match_approved_linux_cohort(self):
+        self.assertEqual(load().FLAGS['GENERATED_WORLD_REGIONS'], '0')
+
+    def test_expansion_guest_uses_native_cli_and_private_environment(self):
+        import json
+        import os
+        import tempfile
+        from world.windows_client import WindowsGuestSession
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            invitation = root/'invitation.json'
+            invitation.write_text(json.dumps({'trainer': 'Tester', 'token': 'a'*64}))
+            binary = root/'pokeemerald-native.exe'
+            binary.write_bytes(b'test fixture, not executable')
+            session = WindowsGuestSession('localhost', 8765, 'b'*64, invitation,
+                data_root=root/'profiles', binary=binary, engine='expansion-native')
+            try:
+                session.prepare()
+                args = session.game_args()
+                self.assertNotIn('--world-config', args)
+                self.assertNotIn('--config', args)
+                self.assertIn('--data-dir', args)
+                self.assertIn('--rtc-offset', args)
+                self.assertIn('expansion-native', session.paths['profile'].parts)
+                env = session.game_environment()
+                self.assertEqual(env['EW_WORLD_CONFIG'], str(session.paths['config']))
+                self.assertNotIn('EW_PLAYER_CONTROL', env)
+                self.assertEqual(session.paths['save'].parent, session.paths['profile'])
+            finally:
+                session.close()
+
+    def test_build_sandbox_supports_private_multilib_without_global_install(self):
+        import sys
+        sys.path.insert(0, str(ROOT/'scripts'))
+        import windows_expansion_build as build
+        args = build.sandbox(Path('/engine'), Path('/private/multilib'))
+        self.assertIn('/private/multilib/lib32/ld-linux.so.2', args)
+        self.assertIn('/lib/ld-linux.so.2', args)
+
     def test_actual_x64_pe_required_not_mz_or_elf(self):
         self.assertTrue(SCRIPT.exists(), 'missing Expansion-specific PE verifier')
         delivery = load()
@@ -69,7 +108,7 @@ class DeliveryTests(unittest.TestCase):
         self.assertTrue(hasattr(d, 'verify_receipt'), 'missing build receipt verifier')
         receipt = {'schema': 1, 'engine': 'expansion-native', 'app_commit': 'a'*40,
                    'engine_commit': 'b'*40, 'flags': {'BITS': '64', 'TARGET_OS': 'windows',
-                   'EW_REGION_STATE': '1', 'EW_KANTO_CONTENT': '1', 'GENERATED_WORLD_REGIONS': '1',
+                   'EW_REGION_STATE': '1', 'EW_KANTO_CONTENT': '1', 'GENERATED_WORLD_REGIONS': '0',
                    'MAP_VERSION': 'combined'}, 'binary_sha256': d.sha256(pe()),
                    'integration_sha256': d.sha256(b'flags'), 'command': ['make'], 'tools': {'gcc': 'test'}}
         d.verify_receipt(receipt, 'a'*40, 'b'*40, pe(), b'flags')
