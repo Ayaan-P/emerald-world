@@ -91,3 +91,11 @@ The player need not have visited the destination to accept. The NPC must still b
 Actual goal progress uses the existing exact-place/revision, fresh acknowledged presence rules. Replacement pauses that goal until its exact revision returns. Completion and XP are committed through existing guild rules before public character history. Turning chronicle OFF after acceptance preserves private completion without advancing the public character story. Goal, offer receipt and destination binding share one transaction; a failed binding leaves no partial accepted goal.
 
 Tests cover real acceptance, two authenticated destination arrivals, authoritative completion/XP, character team change, private completion, incompatible clients, inactive destinations and transaction rollback. The paired native component tests exercise actual offer parsing and explicit consent. This is not a linked rendered playthrough or deployment claim.
+
+## Relationships with playable consequences
+
+Existing authored actions can change a character's relationships with other registered fictional NPCs. A chapter can now respond to a committed `character_changed` event using `character_id`, `relationship_target`, and the exact `relationship` label. The bounded public history feed supplies only relationship deltas. Retaining an alliance while later changing a team is not another alliance event. Other NPC targets and self-relations cannot accidentally match the condition.
+
+This lets one recurring character's history-grounded decision affect another character that players encounter. The tested example completes an actual public expedition, authors the researcher's alliance with a trail mentor using that goal as evidence, and waits until the relationship change is committed. The mentor then changes visible dialogue/team and offers a new Route101 expedition through the existing native consent UI. Two authenticated guild members complete it through existing goal accounting and rewards; restart preserves the resulting characters.
+
+Relationships here are authored fictional-world facts, not personality scores for human players or inferred private friendships. No model is called automatically and no relationship is asserted before its authority transaction commits. This extends the existing character action/chapter framework without another social ledger or native protocol.

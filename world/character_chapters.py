@@ -14,7 +14,7 @@ EVENT_FIELDS = {
     'area_named': {'place_id', 'before', 'after'},
     'region_opened': {'place_id', 'label'},
     'guild_goal_completed': {'place_id', 'goal_kind', 'guild_name', 'character_id', 'character_offer_id', 'character_offer_revision', 'region_revision'},
-    'character_changed': {'character_id', 'character_status'},
+    'character_changed': {'character_id', 'character_status', 'relationship_target', 'relationship'},
 }
 
 
@@ -47,6 +47,11 @@ def validate_plan(plan):
               or len(condition)<2 or any((type(v) is not int or not 1<=v<=2**31-1) if k=='character_offer_revision'
                   else (type(v) is not str or not 1<=len(v)<=160) for k,v in condition.items())):
             raise ValueError('chapter needs a specific public-event condition')
+        if index and ('relationship_target' in condition or 'relationship' in condition):
+            if (condition['event']!='character_changed' or not {'character_id','relationship_target','relationship'}<=set(condition)
+                    or not re.fullmatch('[A-Za-z0-9_-]{1,24}',condition['relationship_target'])
+                    or condition['character_id']==condition['relationship_target'] or len(condition['relationship'])>120):
+                raise ValueError('relationship chapter requires actor, other NPC target and exact authored relationship')
         if index and condition['event']=='landmark_discovery_shared':
             if set(condition)!={'event','place_id','revision','landmark'} or not re.fullmatch('[0-9a-f]{64}',condition['revision']) or not re.fullmatch(r'area:[0-9a-f-]{36}',condition['place_id']) or not re.fullmatch('[a-z][a-z0-9_]{0,23}',condition['landmark']):
                 raise ValueError('landmark chapters require exact place, revision and landmark')
@@ -127,7 +132,11 @@ def chapter_step(plan, definition, published_after, context, result):
         next_index=None
         for target in targets:
             candidate=next(i for i,c in enumerate(plan['chapters']) if c['id']==target)
-            if all(event.get(k)==v for k,v in plan['chapters'][candidate]['when'].items()):
+            condition=plan['chapters'][candidate]['when']
+            matched=all(event.get(k)==v for k,v in condition.items() if k not in ('relationship_target','relationship'))
+            if 'relationship_target' in condition:
+                matched=matched and event.get('relationship_changes',{}).get(condition['relationship_target'])==condition['relationship']
+            if matched:
                 next_index=candidate
                 break
         if next_index is None:continue
@@ -184,6 +193,7 @@ def contract():
             'chapter_fields':['id','when','goals','team','status','object','reason'],
             'branching':'optional next lists up to eight later chapter ids; default is the next chapter; [] ends the story; earliest recorded matching event chooses one route, declaration order breaks simultaneous matches; skipped routes never run; all chapters must be reachable',
             'optional_chapter_field':'offer: validated expedition offer; requires explicit native acceptance and pre-existing guild chronicle ON',
+            'relationships':'character_changed may match character_id + relationship_target + exact relationship label; only an actual newly committed NPC relationship delta qualifies, not unrelated later team changes; authored fictional relationship, not a human/player judgment',
             'landmark_privacy':'only explicitly shared landmark_discovery_shared events may trigger a chapter; require exact place_id, revision and landmark; private visits and unconfirmed share prompts never enter this feed',
             'scope':'shared-world characters respond to public events from any opted-in guild; guild_name is a literal name, not stable identity; an offered expedition completion must match its exact character_id, character_offer_id and character_offer_revision',
             'first_when':None,'later_when':'exact public event plus at least one listed field, all comparisons must match',

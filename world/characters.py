@@ -207,6 +207,9 @@ def history_feed(db, state):
         elif original['event'] == 'character_changed':
             character = original['after']
             event.update(character_version=character['version'], character_status=character['status'])
+            before=(original.get('before') or {}).get('relationships',{})
+            after=character.get('relationships',{})
+            event['relationship_changes']={target:after.get(target) for target in sorted(before.keys()|after.keys()) if before.get(target)!=after.get(target)}
         elif original['event'] == 'terrain_changed':
             event['changed_cell_count'] = len(original['tiles'])
         elif original['event'] == 'guild_goal_completed':
