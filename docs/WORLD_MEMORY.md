@@ -691,3 +691,86 @@ in this execution environment. No full Expansion build, two-native-client
 playthrough, graphical rendering, WAN session or seamless portal acceptance is
 claimed. The offline XL progress system is separate; this plain-cave selection
 path does not migrate private story flags, event graphs or finite progress slots.
+
+## Custom terrain-aware routes (independent generator)
+
+`world.route_landscape` accepts a bounded original plan of arbitrary landmark
+clearings, rectangular terrain reservations, a seed and up to four alternate
+routes. It builds a spanning route network using deterministic A* around the
+reservations. Extra routes must carve new terrain outside the endpoint clearings;
+they cannot simply claim that an existing path is a new loop. Plans that separate
+required landmarks fail instead of erasing reserved terrain.
+
+Run `python -m world.route_landscape plan.json area.ewmap --report routes.json`.
+The plan has exactly `seed`, `landmarks`, `reservations` and `loops`. Landmarks
+have unique lowercase `id`, integer `x`, `y` and `radius` (2..10). Use 2..12
+landmarks inside the 127-square map, leaving the native entry at (1,1) and exit
+at (125,125) available. Reservations are [x,y,width,height] rectangles inside
+the perimeter. Outputs must not exist. The report contains measured paths,
+newly carved tiles and the actual content revision, not authoritative history.
+
+This emits the existing EWGMAP0A format and reuses native validation and ordinary
+owner publication/persistence. It does not create a new region registry or save
+system. The CLI only writes local requested files; it does not contact a server.
+A generation report is not proof of publication. Reserved terrain uses existing
+impassable XL graphics, not new biome artwork, water simulation or licensed
+assets. Native entry/exit, quests and inter-map portals are unchanged.
+
+This generator uses the existing single active XL publication path; it does not
+extend outdoor regional admission. The generator and existing authority persist
+its geometry and logical place identity across restart in component tests. Full
+native playthrough remains outstanding.
+
+### History-informed route author
+
+`python -m world.author_routes 'A mountain divide with an orchard and lookout' --output new.ewmap`
+uses the same version-pinned, tool-disabled author adapter as `author_cave`.
+The provider returns only the route plan schema, compiled and validated into
+ordinary XL geometry. The theme is sent to the provider and usage may be charged.
+Add `--history-socket /path/to/admin.sock` to read matching public committed
+history for this offline proposal. Trainer observations and saves are not sent.
+
+For explicit shared activation, use `--activate-shared /path/to/admin.sock
+--label 'Orchard Divide'` instead of `--output`. This requires persistent area
+archiving and automatically recalls history from that same authority. Publication
+uses its existing world/sequence guard, archive and occupancy checks. Old places
+remain archived; a concurrent change rejects activation rather than overwriting
+new activity. A committed activation cites the recalled sequence evidence. This
+records provenance, not proof that a model's narrative interpretation is true.
+
+This activates the existing single shared destination slot. It does not extend
+regional admission to outdoor maps, add portals, or connect canonical regions.
+Compatible native XL clients are still required. Tests exercise actual authority
+persistence and validation with deterministic fake provider responses, not a paid
+model call or linked native gameplay session.
+
+### Characters at generated landmarks
+
+`world.route_characters.bind_landmarks(character_plan, blob, route_report,
+chapter_landmarks)` binds each active chapter to a named clearing from the route
+report. It returns an ordinary validated character plan with the exact XL content
+revision and generated-map coordinates. It does not deploy a mechanic or replace
+a map. The existing character compiler, staging and authority checks still apply,
+including joint NPC collision validation so characters cannot seal a route.
+
+The integrated fixture follows a real public expedition outcome through route
+authoring and shared activation, places a researcher at camp, authenticates a
+client and challenges that character, then uses a later committed guild meetup to
+motivate an authored move to the lookout and a new team. Restart preserves the
+map, character and evidence. Model output and sandbox execution are fixture
+boundaries; the reducer, authority commits, authentication and scoped wire are
+exercised. Team evolution is authored fiction, not proof of a battle or catch.
+
+The paired draft pins the CHARREG1 engine at `80bf5672c7caa43c39888007300683519bcd7fbb`.
+The existing XL feature cohort enables shared-slot character scope;
+`GENERATED_WORLD_REGIONS` remains opt-in and is not needed for shared XL NPCs.
+Neither this fixture nor a matching wire response proves a linked native gameplay
+session. Outdoor multi-region selection remains outside
+this slice; archived characters appear only when their exact shared map is active.
+
+Paired-source verification reconstructed the complete engine tree and matched
+`326d99cbef8e48d241343024ee8be5c6587abe19`, the published tree for that pin.
+The local reconstruction's commit metadata is not a clean pinned submodule;
+source-tree equality is the verified result. An actual native build stopped at
+`tools/gbagfx` because `png.h` is missing; SDL2/libpng development packages are
+also unavailable. No linked binary or two-client playthrough is claimed.
