@@ -15,6 +15,7 @@ import WorldOptions from './WorldOptions';
 import PersonalSettings from './PersonalSettings';
 import LocalFriends from './LocalFriends';
 import TerrainEditor from './TerrainEditor';
+import { saveImportLimit } from './save-import';
 
 const empty = { local_worlds: [], local_host: false, cave_authoring: false, cave_persistent: false, worlds: [], offline_saves: [], presence: null, hosting: { available: false, backup_available: false, enrolled: false, loaded: false, worlds: [], pending: null }, setup: [], connected: false, world_key: null, offline_world_key: null, trainer: null, games: [], status: 'Choose a world to begin.' };
 
@@ -236,12 +237,13 @@ export function App() {
     const request = ++seedRequest.current;
     setSoloSeed(null); setSoloSeedName(''); setSeedLoading(false); setError('');
     if (!file) return;
-    if (!file.size || file.size > 131072) { setError('Choose a nonempty save file no larger than 128 KiB.'); return; }
+    const limit = saveImportLimit(state);
+    if (!file.size || file.size > limit) { setError(`Choose a nonempty save file no larger than ${limit.toLocaleString()} bytes.`); return; }
     setSeedLoading(true);
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
       if (request !== seedRequest.current) return;
-      if (!bytes.length || bytes.length > 131072) throw new Error();
+      if (!bytes.length || bytes.length > limit) throw new Error();
       let binary = '';
       for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
       setSoloSeed(btoa(binary)); setSoloSeedName(file.name);
