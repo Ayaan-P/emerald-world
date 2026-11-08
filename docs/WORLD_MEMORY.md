@@ -976,3 +976,37 @@ through the actual Expansion C wire codec, including corruption rejection.
 The codec test requires `EW_NATIVE_SOURCE` pointing at verified engine source.
 Native rendered playthrough remains unverified; no bridge, elevation, surfing or
 new biome-art behavior is added.
+
+### Authored journeys, forks and mandatory passages
+
+A route plan may now include `journey` with `connections` and `required`, and set
+`loops` to zero. Connections are up to 32 distinct undirected pairs naming
+landmarks or the reserved `entry`/`exit` endpoints. They must connect every site.
+The agent chooses the adventure graph rather than accepting nearest-neighbor
+connections. For example: entry → camp; camp → west and east; west/east →
+sanctuary; sanctuary → exit. Adding camp → sanctuary requests a real shortcut.
+
+The compiler routes these edges in declared order, with water separation from
+unrelated corridors and clearings. Impossible crossings fail rather than adding
+unrequested shortcuts. `required` names landmark clearings every entry-to-exit
+path must pass through. After carving, the compiler removes each required
+clearing in turn and searches the actual tile graph; a surviving bypass rejects
+the candidate. In the fork example, camp and sanctuary can be required while
+west and east cannot. This is geographic passage through a clearing, not a quest
+lock, interaction requirement, or proof that the player spoke to an NPC.
+
+The existing constrained author, archive, explicit activation and history guards
+all apply. An integration fixture follows a voluntarily shared camp discovery
+into a new fork/rejoin destination citing that public sequence. Actual native
+codec tests include journeys containing each coastal landform and corruption
+rejection. No new engine protocol, encounter table, reward or live trigger is
+introduced. Native rendered acceptance is still separate.
+
+Design inspiration: Dormans' distinction between mission structure and spatial
+layout ([paper](https://pcgworkshop.com/archive/dormans2010adventures.pdf)), and
+Red Blob Games' use of graph search for pathfinding and map analysis
+([introduction](https://www.redblobgames.com/pathfinding/a-star/introduction.html)).
+The implementation is original and intentionally limited to the game's existing
+walkable-ground/blocked-water XL format. Existing custom wildlife tables belong
+to other cave formats; this feature does not mislabel terrain shapes as new
+encounter-bearing biomes.
