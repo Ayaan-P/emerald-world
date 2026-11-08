@@ -12,7 +12,7 @@ from .settlement_plans import compile_settlement
 from .xl_wilds import encode
 
 
-def author_settlement(socket, theme, outcome_seq, *, apply=False, timeout=120):
+def author_settlement(socket, theme, outcome_seq, *, apply=False, timeout=120, expected_world_id=None, expected_place_id=None):
     author_cave.prompt_for(theme)
     if type(outcome_seq) is not int or outcome_seq<1 or type(apply) is not bool:
         raise ValueError('invalid outcome or apply mode')
@@ -23,6 +23,9 @@ def author_settlement(socket, theme, outcome_seq, *, apply=False, timeout=120):
         return response
     inspection = call(dict(command='inspect'))
     memory = inspection['world_memory']; active = memory['active_area']
+    if ((expected_world_id is not None and expected_world_id != memory['world_id'])
+            or (expected_place_id is not None and expected_place_id != active.get('place_id'))):
+        raise ValueError('queued growth belongs to another world or place')
     saved = call(dict(command='inspect_saved_place', revision=active['revision']))
     history = call(dict(command='world_history', after=outcome_seq-1, through=memory['through'], limit=1))
     if (saved['world_id'] != memory['world_id'] or saved['captured_at_seq'] != memory['through']

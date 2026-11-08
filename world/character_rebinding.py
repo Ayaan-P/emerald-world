@@ -76,6 +76,10 @@ def persist(server, continuation, place_id, previous, revision):
     else:
         server.db.execute('INSERT INTO module(singleton,source,sha256,state,tiles,objects,interaction_cursor) VALUES(1,?,?,?,?,?,?)',
             (candidate.source, candidate.sha256, json.dumps(state), json.dumps(tiles), json.dumps(objects), cursor))
+    if continuation.get('founding'):
+        founding=continuation['founding'];offer=founding['offer']
+        server.db.execute('INSERT INTO settlement_foundings VALUES(?,?,?,?,?,?)',
+            (founding['outcome_seq'],founding['resident_id'],place_id,revision,offer['id'],offer['revision']))
     if continuation.get('clear_error'):
         server.db.execute('INSERT OR REPLACE INTO status VALUES(1,NULL)')
     server.memory.append('mechanic_changed', dict(module_hash=candidate.sha256,

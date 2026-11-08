@@ -891,3 +891,46 @@ this environment and failed because bubblewrap could not create a NETLINK_ROUTE
 socket. The real authority returned refusal with the map unchanged and steward
 absent. No weaker execution route was used. Native build/rendering limits above
 also remain; these protocol/component tests are not a linked gameplay session.
+
+### Player-driven settlement growth
+
+The existing opt-in GM runtime accepts `--settlement-growth-theme 'Extend the
+surveyed frontier'` on its `run` command. This explicitly permits later eligible
+steward completions to invoke the constrained settlement author and publish a
+new inhabited expansion. Provider usage may be charged. The option is absent
+by default. It shares the existing durable queue, runtime lock and minimum
+author interval; no second background daemon or implicit provider is introduced.
+Use `--no-events` if this runtime should react only to settlement completions
+rather than also handling its existing selected-player event tasks.
+
+The first enabled inspection establishes a baseline without authoring old
+outcomes. Later genuine public completions must match the offer ID/revision of
+a recorded settlement steward in the currently active logical place. Arbitrary
+guild achievements do not trigger growth. Per-place cursors defer other archived
+places instead of discarding their outcomes. A verified completion remains valid
+if its steward is now away; publication still requires its logical place active.
+Each founding stores an outcome receipt in the same transaction as geometry,
+source, NPCs and history. An outcome can found at most one settlement, including
+manual publication. Old camps without these new receipts are not retroactively
+classified as automatic growth triggers.
+
+Each selected outcome gets a stable world/sequence queue identity. Failed or
+interrupted author/publication requests are terminal and never automatically
+replayed. Omitting the growth option prevents queued growth work from running.
+Re-enabling permits queued work, subject to a fresh exact-world/place check.
+The authority again checks current geometry, occupancy and all existing staging
+rules. Capacity limits surface in runtime status rather than invoking authors
+that cannot add another character. A successful settlement publishes its exact
+staged source reference back to the existing GM queue so later ordinary agent
+work can preserve the newly inhabited world behavior.
+
+The integrated fixture uses a genuine authenticated steward-offer acceptance and
+guild completion, discovers it through the production authority query, and runs
+the existing GM step through an authored second inhabited revision. It verifies
+exactly-once consumption, restart, source continuity and no unrelated-place
+leakage. Provider output and sandbox success remain substitutes. The actual
+author adapter was separately invoked for preflight and refused this environment's
+`codex-cli 0.167.0-alpha.4`, because its security-reviewed allowlist requires
+`0.156.1`. The gate was not changed and no model call occurred. The previous
+sandbox and native build blockers remain. Nothing here enables growth in a live
+world merely by merging or starting the ordinary default launcher.

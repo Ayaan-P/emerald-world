@@ -91,12 +91,12 @@ class IntentQueue:
             self.db.execute('INSERT OR REPLACE INTO purposes VALUES(?,?)', (player, text))
         return request_id
 
-    def claim(self, *, min_interval=0):
+    def claim(self, *, min_interval=0, allow_settlements=True, settlement_place=None):
         if type(min_interval) not in (int, float) or not math.isfinite(min_interval) or not 0 <= min_interval <= 3600:
             raise ValueError('min_interval must be finite in [0,3600] seconds')
         with self.db:
             self.db.execute('BEGIN IMMEDIATE')
-            row = self.db.execute("SELECT * FROM requests WHERE status='queued' ORDER BY seq LIMIT 1").fetchone()
+            row = self.db.execute("SELECT * FROM requests WHERE status='queued' AND (? OR kind!='settlement') AND (? IS NULL OR kind!='settlement' OR json_extract(result,'$.place_id')=?) ORDER BY seq LIMIT 1", (allow_settlements,settlement_place,settlement_place)).fetchone()
             if row is None:
                 return None
             now = time.time()
@@ -216,6 +216,42 @@ class IntentQueue:
             self.db.execute("DELETE FROM requests WHERE kind='event' AND status NOT IN ('queued','running') AND seq NOT IN (SELECT seq FROM requests WHERE kind='event' AND status NOT IN ('queued','running') ORDER BY seq DESC LIMIT 64)")
         return identifier
 
+    def settlement_cursor(self, place_id):
+        row=self.db.execute("SELECT value FROM metadata WHERE key='settlement_growth'").fetchone()
+        if not row:return None
+        value=json.loads(row[0])
+        return dict(world_id=value['world_id'],cursor=value['places'].get(place_id,value['baseline']))
+
+    def observe_settlements(self, page, theme):
+        if (type(page) is not dict or page.get('ok') is not True or type(page.get('world_id')) is not str
+                or type(page.get('through')) is not int or type(page.get('cursor')) is not int
+                or not 0<=page['cursor']<=page['through'] or type(page.get('candidates')) is not list
+                or len(page['candidates'])>32 or (page.get('place_id') is not None and type(page['place_id']) is not str)):
+            raise ValueError('invalid settlement growth page')
+        place=page.get('place_id')
+        previous=self.settlement_cursor(place)
+        if previous and (previous['world_id']!=page['world_id'] or page['cursor']<previous['cursor']):
+            raise ValueError('settlement authority or cursor changed')
+        with self.db:
+            row=self.db.execute("SELECT value FROM metadata WHERE key='settlement_growth'").fetchone()
+            value=json.loads(row[0]) if row else dict(world_id=page['world_id'],baseline=page['through'],places={})
+            # One initial opt-in boundary, but independent logical-place cursors.
+            # Visiting B never acknowledges outcomes belonging to archived A.
+            if previous and not page.get('blocked'):
+                last=previous['cursor']
+                for event in page['candidates']:
+                    if (type(event) is not dict or type(event.get('seq')) is not int
+                            or not last<event['seq']<=page['cursor']):
+                        raise ValueError('invalid settlement outcome')
+                    last=event['seq']
+                    identity='settlement:'+page['world_id']+':'+str(event['seq'])
+                    payload=dict(world_id=page['world_id'],place_id=place,outcome_seq=event['seq'])
+                    self.db.execute("INSERT OR IGNORE INTO requests(id,player,text,kind,status,created,result) VALUES(?,?,?,?,?,?,?)",
+                        (identity,'',theme,'settlement','queued',time.time(),json.dumps(payload)))
+            if place is not None and not page.get('blocked'):
+                value['places'][place]=page['cursor'] if previous else page['through']
+            self.db.execute("INSERT OR REPLACE INTO metadata VALUES('settlement_growth',?)",(json.dumps(value),))
+
     def set_runtime(self, value):
         with self.db:
             self.db.execute("INSERT OR REPLACE INTO metadata VALUES('runtime',?)", (json.dumps(value, allow_nan=False),))
@@ -243,7 +279,7 @@ class RuntimeGM:
     or run(stop_event) for polling. Do not call step concurrently on one object.
     """
     def __init__(self, state_dir, socket_path, *, model, timeout=120, poll_interval=2,
-                 observe_events=True, min_author_interval=15):
+                 observe_events=True, min_author_interval=15, settlement_growth_theme=None):
         validate_config(model, timeout, poll_interval)
         if (type(min_author_interval) not in (int, float) or not math.isfinite(min_author_interval)
                 or not 0 <= min_author_interval <= 3600):
@@ -253,6 +289,9 @@ class RuntimeGM:
         self.root = Path(state_dir).resolve()
         self.socket_path = socket_path
         self.model, self.timeout, self.poll_interval = model, timeout, poll_interval
+        if settlement_growth_theme is not None and (type(settlement_growth_theme) is not str or not settlement_growth_theme.strip() or len(settlement_growth_theme.encode())>2000):
+            raise ValueError('growth theme must be nonempty and at most 2000 bytes')
+        self.settlement_growth_theme=settlement_growth_theme
         self.observe_events = observe_events
         self.min_author_interval = min_author_interval
         self.queue = IntentQueue(state_dir)
@@ -310,6 +349,7 @@ class RuntimeGM:
 
     def step(self):
         from world import gm
+        growth_blocked=None;place=None
         try:
             inspection = gm.admin_request(self.socket_path, {'command': 'inspect'}, self.timeout)
             if inspection.get('ok') is not True:
@@ -319,13 +359,22 @@ class RuntimeGM:
                                           self.timeout)
             self.queue.observe_events(event_page, enqueue=self.observe_events)
             self.queue.observe(inspection, enqueue=self.observe_events)
+            if self.settlement_growth_theme is not None:
+                place=inspection.get('world_memory',{}).get('active_area',{}).get('place_id')
+                cursor=self.queue.settlement_cursor(place)
+                page=gm.admin_request(self.socket_path,dict(command='settlement_growth',after=cursor['cursor'] if cursor else 0,
+                    expected_world_id=inspection['world_memory']['world_id'],expected_place_id=place),self.timeout)
+                self.queue.observe_settlements(page,self.settlement_growth_theme)
+                growth_blocked=page.get('blocked')
         except (OSError, ValueError, TimeoutError) as exc:
             self.queue.set_runtime({'state': 'inspection_failed', 'model': self.model,
                                     'error': type(exc).__name__, 'at': time.time()})
             return None
-        item = self.queue.claim(min_interval=self.min_author_interval)
+        item = self.queue.claim(min_interval=self.min_author_interval, allow_settlements=self.settlement_growth_theme is not None and place is not None and not growth_blocked,
+                                settlement_place=place)
         if item is None:
-            self.queue.set_runtime({'state': 'idle', 'model': self.model, 'at': time.time()})
+            self.queue.set_runtime({'state': 'idle', 'model': self.model, 'at': time.time(),
+                                    **({'growth_blocked':growth_blocked} if growth_blocked else {})})
             return None
         self.queue.set_runtime({'state': 'authoring', 'model': self.model,
                                 'request_id': item['id'], 'at': time.time()})
@@ -335,7 +384,17 @@ class RuntimeGM:
                                'previous_source': self._previous_source(inspection),
                                'selected_purposes': self.queue.status()['purposes'],
                                'observed_event': json.loads(item['result']) if item['result'] else None}
-            report = gm.author_and_deploy(self.root, self.socket_path, item['text'],
+            if item['kind']=='settlement':
+                from world.author_settlement import author_settlement
+                outcome=json.loads(item['result'])
+                path=Path(self.socket_path)
+                admin=(path.parent.parent/'admin.sock' if path.parent.name=='transport' else Path(str(path)+'.admin'))
+                report=author_settlement(admin,self.settlement_growth_theme,outcome['outcome_seq'],apply=True,timeout=self.timeout,
+                    expected_world_id=outcome['world_id'],expected_place_id=outcome['place_id'])
+                if report.get('applied') and report.get('commit'):
+                    report.update({key:report['commit'][key] for key in ('source_path','source_sha256')})
+            else:
+                report = gm.author_and_deploy(self.root, self.socket_path, item['text'],
                                           luna_author_argv(self.model, self.timeout), self.timeout,
                                           runtime_context=runtime_context)
             report['runtime_model'] = self.model
@@ -451,6 +510,7 @@ def main(argv=None):
     run.add_argument('--min-author-interval', type=float, default=15,
                      help='durable minimum seconds between author starts (default 15)')
     run.add_argument('--no-events', action='store_true')
+    run.add_argument('--settlement-growth-theme', help='Explicitly authorize future steward completions to invoke the author and publish inhabited growth; provider charges may apply')
     run.add_argument('--once', action='store_true')
     author = sub.add_parser('author', help='trusted Codex CLI adapter; prompt on stdin')
     author.add_argument('--model', required=True, choices=[MODEL])
@@ -498,7 +558,8 @@ def main(argv=None):
             try:
                 with RuntimeGM(args.state_dir, args.socket, model=args.model, timeout=args.timeout,
                                poll_interval=args.poll_interval, observe_events=not args.no_events,
-                               min_author_interval=args.min_author_interval) as worker:
+                               min_author_interval=args.min_author_interval,
+                               settlement_growth_theme=args.settlement_growth_theme) as worker:
                     if args.once:
                         result = worker.step()
                         print(json.dumps(result, sort_keys=True))

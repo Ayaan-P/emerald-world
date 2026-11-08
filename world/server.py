@@ -148,6 +148,10 @@ class WorldServer:
             CREATE TABLE IF NOT EXISTS status (
                 singleton INTEGER PRIMARY KEY CHECK(singleton=1), error TEXT);
         ''')
+        self.db.execute('''CREATE TABLE IF NOT EXISTS settlement_foundings (
+            outcome_seq INTEGER PRIMARY KEY, resident_id TEXT UNIQUE NOT NULL,
+            place_id TEXT NOT NULL, revision TEXT NOT NULL,
+            offer_id TEXT NOT NULL, offer_revision INTEGER NOT NULL)''')
         columns = {row[1] for row in self.db.execute('PRAGMA table_info(module)')}
         if 'objects' not in columns:
             self.db.execute("ALTER TABLE module ADD COLUMN objects TEXT NOT NULL DEFAULT '[]'")
@@ -1546,6 +1550,15 @@ class WorldServer:
                     result = dict(ok=True, id=self._replace_cave(blob, label=request.get('label'), previous_revision=request.get('previous_revision'), **guard), persistent=self.persist_generated_cave)
                 except ValueError as exc:
                     # Expected validation/occupancy refusal is not a mechanic error.
+                    result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'settlement_growth':
+                try:
+                    if not set(request) <= {'command','after','limit','expected_world_id','expected_place_id'}:
+                        raise ValueError('invalid growth inspection')
+                    from .settlement_growth import candidates
+                    result = candidates(self, request.get('after',0), request.get('limit',16),
+                        expected_world_id=request.get('expected_world_id'),expected_place_id=request.get('expected_place_id'))
+                except ValueError as exc:
                     result = dict(ok=False, error=str(exc))
             elif request.get('command') == 'found_settlement':
                 try:
