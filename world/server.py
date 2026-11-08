@@ -31,7 +31,7 @@ from .world_memory import object_content, overlay_places, terrain_delta
 MAX_QUEUE = 65536
 MAX_LINE = 1024
 MAX_CONTROL_LINE = 16384
-MAX_ADMIN_LINE = 24576  # Bounded base64 transport for one 127x127 template.
+MAX_ADMIN_LINE = 163840  # One XL template plus bounded owner route artifact.
 MAX_PEERS = 8
 MAX_PEERS_EXTENDED = 32
 MAX_PEERS_INTERMEDIATE = 16
@@ -1201,11 +1201,14 @@ class WorldServer:
                 self._queue(conn, json.dumps(future.result(), ensure_ascii=True) + '\n')
         self.control_jobs = remaining
 
-    def _persist_cave(self, blob, *, label=None, previous_revision=None, history_evidence=None, character_continuation=None):
+    def _persist_cave(self, blob, *, label=None, previous_revision=None, history_evidence=None, character_continuation=None, route_artifact=None):
         if not self.persist_generated_cave:
             return
         try:
             with self.db:
+                if route_artifact is not None:
+                    from .route_artifacts import archive
+                    archive(self, route_artifact, blob)
                 previous = self.db.execute('SELECT template FROM generated_cave WHERE singleton=1').fetchone()
                 identity = hashlib.sha256(blob).hexdigest()
                 if previous_revision is not None:
@@ -1247,8 +1250,12 @@ class WorldServer:
         except sqlite3.Error:
             raise ValueError('generated cave could not be persisted') from None
 
-    def _replace_cave(self, blob, *, label=None, previous_revision=None, expected_world_id=None, expected_sequence=None, history_evidence=None, character_continuation=None):
+    def _replace_cave(self, blob, *, label=None, previous_revision=None, expected_world_id=None, expected_sequence=None, history_evidence=None, character_continuation=None, route_artifact=None):
         from .shared_cave import SharedCave
+        if route_artifact is not None:
+            from .route_artifacts import validate
+            if not self.archive_generated_areas:raise ValueError('route artifacts require persistent archive')
+            validate(route_artifact, blob)
         candidate = SharedCave(blob)  # validate completely before mutating anything
         if previous_revision is not None and (not self.persist_generated_cave or type(previous_revision) is not str or not re.fullmatch(r'[0-9a-f]{64}', previous_revision)):
             raise ValueError('invalid previous area revision')
@@ -1270,7 +1277,7 @@ class WorldServer:
             if (self.wilds_map if candidate.version in (6, 7, 8, 9, 16, 17) else self.cave_map) is None:
                 raise ValueError('generated map missing from catalog')
             if self.shared_cave and candidate.identity == self.shared_cave.identity:
-                self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence, character_continuation=character_continuation)
+                self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence, character_continuation=character_continuation, route_artifact=route_artifact)
                 return candidate.identity
             peers = [peer for peer in self.peers.values() if not peer.get('closing') and not peer.get('region_cave')]
             if any(peer.get('in_generated_cave') or
@@ -1282,7 +1289,7 @@ class WorldServer:
             if any(len(peer['out']) + len(message) > MAX_QUEUE for peer in recipients):
                 raise ValueError('generated cave update is busy')
             old_id = self.shared_cave.identity if self.shared_cave else None
-            self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence, character_continuation=character_continuation)
+            self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence, character_continuation=character_continuation, route_artifact=route_artifact)
             self.shared_cave = candidate
             self._terrain_walk_cache = None
             for peer in recipients:
@@ -1552,7 +1559,7 @@ class WorldServer:
             request = json.loads(raw)
             if request.get('command') == 'replace_cave':
                 try:
-                    if (not {'command', 'template'} <= set(request) or not set(request) <= {'command', 'template', 'label', 'previous_revision', 'expected_world_id', 'expected_sequence', 'history_evidence'}
+                    if (not {'command', 'template'} <= set(request) or not set(request) <= {'command', 'template', 'label', 'previous_revision', 'expected_world_id', 'expected_sequence', 'history_evidence', 'route_artifact'}
                             or type(request['template']) is not str):
                         raise ValueError('invalid cave request')
                     try:
@@ -1565,13 +1572,16 @@ class WorldServer:
                     if set(request)&guards and not guards<=set(request):
                         raise ValueError('incomplete world publication guard')
                     guard={key:request[key] for key in guards if key in request}
-                    result = dict(ok=True, id=self._replace_cave(blob, label=request.get('label'), previous_revision=request.get('previous_revision'), **guard), persistent=self.persist_generated_cave)
+                    result = dict(ok=True, id=self._replace_cave(blob, label=request.get('label'), previous_revision=request.get('previous_revision'), route_artifact=request.get('route_artifact'), **guard), persistent=self.persist_generated_cave)
                 except ValueError as exc:
                     # Expected validation/occupancy refusal is not a mechanic error.
                     result = dict(ok=False, error=str(exc))
             elif request.get('command') == 'register_survey':
-                if set(request) != {'command','plan'}:raise ValueError('invalid survey registration')
-                result = self.landmark_survey.register(request['plan'])
+                if set(request) == {'command','revision'}:
+                    result = self.landmark_survey.register_revision(request['revision'])
+                elif set(request) == {'command','plan'}:
+                    result = self.landmark_survey.register(request['plan'])
+                else:raise ValueError('invalid survey registration')
             elif request.get('command') == 'found_settlement':
                 try:
                     from .settlement_plans import begin

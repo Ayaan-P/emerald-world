@@ -1047,3 +1047,17 @@ Generated guild expeditions now bind to an archived logical place and its exact 
 The app also reconciles the published generated-character offer protocol: `PLACEQUEST1` plus `CHARQUEST1` negotiates a labeled destination and requires explicit acceptance through the existing character authority path. No automatic travel or world activation occurs. CAVE17 destinations require the distinct `cave_xl_wildlife` capability, not CAVE16 alone. Population bytes are part of the template hash, so changing only species/levels invalidates an old destination revision.
 
 Validation includes actual app offer consent, authenticated arrivals, guild completion and restart for both plain XL and authored-wildlife XL, plus CAVE16 refusal and population-only replacement. These are in-process authority tests, not a live game acceptance run. This candidate deliberately retains the published privacy engine pin `1b34f436`; that engine does not include CAVE17 or PLACEQUEST1. Their app protocol paths are prepared and tested, but are not usable in that pinned game binary. Native wildlife publication remains blocked independently; no unsupported engine pin or walking implementation is included here.
+
+### Recoverable authored route recipes
+
+The route author retains the validated plan and derived compiler report. Shared activation sends a bounded version-1 artifact with the exact map bytes; the owner authority recompiles it and checks the report and revision, then archives it in the same SQLite transaction as map activation/history. A different artifact cannot overwrite that revision's original recipe. No model prompt, raw provider reply, recalled history, trainer identity or private progress is included. This checks reproducibility and archive integrity, not cryptographic proof of who authored a file.
+
+After shared authoring, including after authority restart, register the saved landmark survey with:
+
+```sh
+python -m world.landmark_survey --revision EXACT_REVISION --admin-socket ADMIN_SOCKET
+```
+
+Registration reloads and validates the recipe against archived map bytes. It does not activate a different map, publish player visits, or start a player's survey. Players still opt in with `/explore start` after entering and acknowledging that revision. The integration test generates a provider fixture through the actual author command, publishes through the real admin dispatcher, restarts the authority, registers by revision, freshly authenticates/re-enters and records a private discovery. It is not proof of native in-place save/resume; normal play still leaves the generated map before saving and re-enters the archived revision after restart.
+
+Offline output `route.ewmap` now also writes `route.ewmap.route.json`, which the survey CLI accepts after the matching map has been archived. Both paths are exclusive-create and never overwrite existing files. The recipe is written first: if writing the map fails, the durable recipe remains available for recovery rather than being silently discarded. The compiler format is versioned; a future compiler change that cannot reproduce old bytes must reject registration rather than reinterpret a stored route.

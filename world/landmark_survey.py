@@ -16,6 +16,7 @@ class LandmarkSurvey:
     def __init__(self, server):
         self.server=server
         server.db.executescript('''
+            CREATE TABLE IF NOT EXISTS route_artifacts (revision TEXT PRIMARY KEY, artifact TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS survey_routes (revision TEXT PRIMARY KEY, sites TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS survey_sessions (trainer TEXT PRIMARY KEY, revision TEXT NOT NULL, active INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS survey_publications (revision TEXT, landmark TEXT, seq INTEGER NOT NULL,
@@ -38,6 +39,11 @@ class LandmarkSurvey:
             if old and old[0]!=encoded:raise ValueError('survey landmarks are already fixed for this revision')
             with s.db:s.db.execute('INSERT OR IGNORE INTO survey_routes VALUES (?,?)',(report['revision'],encoded))
         return dict(ok=True,revision=report['revision'],landmarks=len(sites))
+
+    def register_revision(self, revision):
+        from .route_artifacts import load
+        with self.server.lock:
+            return self.register(load(self.server, revision)['plan'])
 
     def scope(self, conn):
         s=self.server;state=conn.get('state');cave=s._connection_cave(conn)
@@ -133,13 +139,23 @@ class LandmarkSurvey:
 
 def main(argv=None):
     parser=argparse.ArgumentParser(description='Register an archived route map survey without activating or changing terrain.')
-    parser.add_argument('plan',type=Path);parser.add_argument('--admin-socket',required=True)
+    parser.add_argument('plan',type=Path,nargs='?');parser.add_argument('--revision')
+    parser.add_argument('--admin-socket',required=True)
     args=parser.parse_args(argv)
-    with args.plan.open('rb') as stream:raw=stream.read(MAX_INPUT+1)
-    if len(raw)>MAX_INPUT:parser.error('plan too large')
+    if (args.plan is None) == (args.revision is None):parser.error('provide a plan/artifact file or --revision')
     from .client import admin_request
-    plan=json.loads(raw);compile_plan(plan)
-    result=admin_request('',dict(command='register_survey',plan=plan),admin_path=args.admin_socket)
+    if args.revision is not None:
+        request=dict(command='register_survey',revision=args.revision)
+    else:
+        with args.plan.open('rb') as stream:raw=stream.read(MAX_INPUT*8+1)
+        if len(raw)>MAX_INPUT*8:parser.error('artifact too large')
+        plan=json.loads(raw)
+        if type(plan) is dict and 'schema' in plan:
+            from .route_artifacts import validate
+            validate(plan);plan=plan['plan']
+        compile_plan(plan)
+        request=dict(command='register_survey',plan=plan)
+    result=admin_request('',request,admin_path=args.admin_socket)
     if result.get('ok') is not True:parser.error(result.get('error','survey registration refused'))
     print(json.dumps(result))
 
