@@ -63,3 +63,39 @@ Use an existing dedicated game display, not the host desktop display. Alternativ
 - Acceptance reports, review and full test logs are under `/home/ayaan/projects/emerald-world-research`.
 
 Not a claim of an unattended autonomous bot, internet two-human playtesting, shared battles/trading, or full Platinum Together parity. Luna remains the separate optional in-game GM.
+
+## RC12 candidate: cooperative field relays
+
+With the matched RC12 private-command client and server, two guildmates can race
+an ordered course together on the ordinary Petalburg map. This is movement play,
+not a story puzzle. Open Local worlds → Author content → Cooperative field relay
+for the instructions and installed courses. No content installation is required.
+
+- Both players join the same guild using the existing voluntary invite/accept flow.
+- First runner sends `/guild relay start petalburg_relay1`; the second sends
+  `/guild relay join CODE` using the private invitation shared by the first runner.
+- `/guild relay status` gives each runner their own start pad and directions.
+  Each stands there and sends `/guild relay ready`. Remain on the pads for the
+  three-second countdown, then the first runner follows the checkpoint notices.
+- Only the current baton runner advances checkpoints, in order. At the final
+  checkpoint, meet the next runner on the adjacent handoff pad. The baton passes
+  automatically, then the next runner completes their leg. Chat's existing strip
+  shows checkpoint notices while moving; no text entry is needed during a leg.
+- `/guild relay records` shows only completed times you participated in. Splits,
+  team best and the final time are reported privately. `/guild relay leave`
+  cancels for the whole team. Menus and battles keep the clock running; disconnect,
+  guild departure or prolonged missing presence cancels rather than recording a
+  partial finish. Completed records survive restart; active attempts do not.
+
+The bundled course has source-checked walkable ground and avoids authored NPC
+movement bounds. Rendered two-client play and route feel still need Maya's QA.
+These are recreational records based on reported player positions, not an
+anti-cheat competition. No native save, Pokemon, inventory or XP reward changes.
+
+Owners can publish additional immutable courses through `publish_relay_course`
+with a `course` matching `world.field_relays.COURSE`: two to four ordered legs,
+each with a distinct start pad and two to eight checkpoints, and a 30–900 second
+limit. Coordinates are `[map_group,map_number,x,y]`; successive handoff pads must
+be adjacent distinct tiles on one standard map. Generated maps are excluded.
+Owners must check actual collision and paths for new courses before hosting;
+coordinate validation alone cannot prove a custom route is walkable.
