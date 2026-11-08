@@ -27,10 +27,10 @@ import subprocess
 from .launcher import REPO
 from .session import DesktopSession, SessionError
 from .transport import read_invitation
+from .save_limits import save_size_limit, encoded_save_limit, save_size_label
 
 DIST = REPO / 'launcher-web' / 'dist'
-MAX_BODY = 180000
-MAX_SAVE = 131072
+MAX_BODY = encoded_save_limit('expansion-native') + 4096
 
 
 class LauncherBridge:
@@ -334,7 +334,8 @@ class LauncherBridge:
                     'trainer': self.session.remote_trainer,
                     'world_key': self.session.state.name if self.session.state is not None else None,
                     'offline_world_key': offline_world_key,
-                    'games': live_games, 'status': self.session.status, 'engine': self.engine, **area_projection}
+                    'games': live_games, 'status': self.session.status, 'engine': self.engine,
+                    'save_import_max_bytes': save_size_limit(self.engine), **area_projection}
 
     def stop_browser_input(self):
         # Also used by launcher shutdown. Serialize teardown with HTTP lifecycle
@@ -608,14 +609,14 @@ class LauncherBridge:
                 if seed is None:
                     self._start_offline(world, trainer)
                 else:
-                    if not isinstance(seed, str) or len(seed) > 174800:
-                        raise SessionError('Choose a save file no larger than 128 KiB.')
+                    if not isinstance(seed, str) or len(seed) > encoded_save_limit(self.engine):
+                        raise SessionError(f'Choose a save file no larger than {save_size_label(self.engine)}.')
                     try:
                         data = base64.b64decode(seed, validate=True)
                     except (ValueError, binascii.Error):
                         raise SessionError('That save file could not be read.') from None
-                    if not 0 < len(data) <= MAX_SAVE:
-                        raise SessionError('Choose a nonempty save file no larger than 128 KiB.')
+                    if not 0 < len(data) <= save_size_limit(self.engine):
+                        raise SessionError(f'Choose a nonempty save file no larger than {save_size_label(self.engine)}.')
                     with tempfile.TemporaryDirectory(prefix='emerald-save-') as directory:
                         path = Path(directory) / 'seed.sav'
                         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
