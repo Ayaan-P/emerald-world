@@ -1020,7 +1020,7 @@ class WorldServer:
                 self._queue(conn, json.dumps(future.result(), ensure_ascii=True) + '\n')
         self.control_jobs = remaining
 
-    def _persist_cave(self, blob, *, label=None, previous_revision=None):
+    def _persist_cave(self, blob, *, label=None, previous_revision=None, history_evidence=None):
         if not self.persist_generated_cave:
             return
         try:
@@ -1049,12 +1049,13 @@ class WorldServer:
                     self.memory.append('area_activated', dict(place_id=place_id, revision=identity,
                                        label=display if self.archive_generated_areas else label,
                                        previous_revision=hashlib.sha256(previous[0]).hexdigest() if previous else None,
-                                       continued=previous_revision is not None))
+                                       continued=previous_revision is not None,
+                                       **({'history_evidence':history_evidence} if history_evidence is not None else {})))
             self.revision = self.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
         except sqlite3.Error:
             raise ValueError('generated cave could not be persisted') from None
 
-    def _replace_cave(self, blob, *, label=None, previous_revision=None):
+    def _replace_cave(self, blob, *, label=None, previous_revision=None, expected_world_id=None, expected_sequence=None, history_evidence=None):
         from .shared_cave import SharedCave
         candidate = SharedCave(blob)  # validate completely before mutating anything
         if previous_revision is not None and (not self.persist_generated_cave or type(previous_revision) is not str or not re.fullmatch(r'[0-9a-f]{64}', previous_revision)):
@@ -1062,10 +1063,22 @@ class WorldServer:
         if label is not None and (type(label) is not str or not label.strip() or len(label) > 80 or any(ord(c) < 32 or ord(c) == 127 for c in label)):
             raise ValueError('invalid generated area label')
         with self.lock:
+            if expected_world_id is not None or expected_sequence is not None or history_evidence is not None:
+                if (not self.archive_generated_areas or expected_world_id != self.memory.world_id
+                        or type(expected_sequence) is not int
+                        or expected_sequence != self.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]):
+                    raise ValueError('world changed; inspect before authoring again')
+                if (type(history_evidence) is not list or len(history_evidence)>32
+                        or any(type(seq) is not int or seq<=0 for seq in history_evidence)
+                        or len(set(history_evidence))!=len(history_evidence)):
+                    raise ValueError('invalid history evidence')
+                for seq in history_evidence:
+                    if self.db.execute("SELECT 1 FROM events WHERE seq=? AND kind='world_memory'",(seq,)).fetchone() is None:
+                        raise ValueError('history evidence unavailable')
             if (self.wilds_map if candidate.version in (6, 7, 8, 9, 16) else self.cave_map) is None:
                 raise ValueError('generated map missing from catalog')
             if self.shared_cave and candidate.identity == self.shared_cave.identity:
-                self._persist_cave(blob, label=label, previous_revision=previous_revision)
+                self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence)
                 return candidate.identity
             peers = [peer for peer in self.peers.values() if not peer.get('closing')]
             if any(peer.get('in_generated_cave') or
@@ -1077,7 +1090,7 @@ class WorldServer:
             if any(len(peer['out']) + len(message) > MAX_QUEUE for peer in recipients):
                 raise ValueError('generated cave update is busy')
             old_id = self.shared_cave.identity if self.shared_cave else None
-            self._persist_cave(blob, label=label, previous_revision=previous_revision)
+            self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence)
             self.shared_cave = candidate
             self._terrain_walk_cache = None
             for peer in recipients:
@@ -1347,7 +1360,7 @@ class WorldServer:
             request = json.loads(raw)
             if request.get('command') == 'replace_cave':
                 try:
-                    if (not {'command', 'template'} <= set(request) or not set(request) <= {'command', 'template', 'label', 'previous_revision'}
+                    if (not {'command', 'template'} <= set(request) or not set(request) <= {'command', 'template', 'label', 'previous_revision', 'expected_world_id', 'expected_sequence', 'history_evidence'}
                             or type(request['template']) is not str):
                         raise ValueError('invalid cave request')
                     try:
@@ -1356,7 +1369,11 @@ class WorldServer:
                         raise ValueError('invalid cave encoding') from None
                     if base64.b64encode(blob).decode('ascii') != request['template']:
                         raise ValueError('noncanonical cave encoding')
-                    result = dict(ok=True, id=self._replace_cave(blob, label=request.get('label'), previous_revision=request.get('previous_revision')), persistent=self.persist_generated_cave)
+                    guards={'expected_world_id','expected_sequence','history_evidence'}
+                    if set(request)&guards and not guards<=set(request):
+                        raise ValueError('incomplete world publication guard')
+                    guard={key:request[key] for key in guards if key in request}
+                    result = dict(ok=True, id=self._replace_cave(blob, label=request.get('label'), previous_revision=request.get('previous_revision'), **guard), persistent=self.persist_generated_cave)
                 except ValueError as exc:
                     # Expected validation/occupancy refusal is not a mechanic error.
                     result = dict(ok=False, error=str(exc))

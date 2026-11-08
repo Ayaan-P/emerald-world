@@ -406,3 +406,52 @@ failure. Preview/private-data and invalid/protected-cell cases are included. The
 aggregate has 107 passing Python tests. This is a deterministic author fixture, not a
 live model/provider call or native playthrough. Native build/headless remain blocked by
 missing png.h and the resulting absent binary. No live world was changed.
+
+## Build a new destination from a recorded outcome
+
+The existing `world.author_cave` command now accepts `--world-history` with an
+explicit admin destination and optional `--label`. It retrieves matching public
+history before calling its existing tool-disabled author. Existing cave, wildlife,
+shared guide and cast modes keep their production compilers and validators.
+
+```sh
+python3 -m world.author_cave 'Honor the Redwood expedition with a refuge' \
+  --admin-socket /path/to/admin.sock --world-history \
+  --label 'Redwood Refuge' --shared-guided-wilds
+```
+
+This is an explicit generation **and publication** command using the provider's
+normal model usage. Matching public history and the design request are sent to
+that provider. Private trainer identities, saves, party hashes and intentions are
+not included. Without the new flag, the existing author workflow is unchanged.
+History-aware publication requires the persistent generated-area archive.
+
+The compiled destination activates only if the same world and event sequence
+still match the inspected context, while holding the authority lock. Existing
+occupancy and connection-capacity checks still apply. A concurrent world change
+rejects publication rather than using a stale historical picture. There is no
+automatic retry. The activation event retains the sequences supplied to the author
+as `history_evidence`; these are context provenance, not a claim that the model
+relied on every record or interpreted them correctly.
+
+A genuinely new template receives its own stable place ID and the earlier place
+remains in the archive. Identical content retains the existing content identity;
+the system does not fabricate a distinct place just because a model returned it
+again. Naming does not establish lineage. This workflow creates a new destination,
+whereas `continue_area` edits the existing place without changing its story key.
+It does not create portals, run both regions simultaneously or record a player visit.
+
+The end-to-end fixture completes an opted-in guild expedition through the real
+guild authority, feeds that recorded reward into the real author/compiler flow
+with a deterministic provider response, and publishes a named guided refuge.
+The guide's actual encoded dialogue references the completed goal. Restart keeps
+the new template, stable identity and evidence; the old camp can still be restored.
+A concurrent rename rejects publication and leaves the original world intact.
+This is not a live provider call or native game acceptance.
+
+Expanded validation ran 154 checks: 150 passed, while four existing native guide/
+cast compilation fixtures failed because their compile environment could not find
+`pokemon.h`. No native source was changed in this iteration. The full native build
+also remains blocked by missing `png.h`, and headless has no resulting executable.
+Python compilation and whitespace validation pass. These limits are not reported
+as passing native tests.
