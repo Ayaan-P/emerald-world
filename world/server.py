@@ -141,6 +141,8 @@ class WorldServer:
         self.memory = WorldMemory(self.db)
         self.guilds = Guilds(self.db, catalog_maps(), record_outcome=self.memory.append)
         self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
+        from .landmark_survey import LandmarkSurvey
+        self.landmark_survey = LandmarkSurvey(self)
         self.db.executescript('''
             CREATE TABLE IF NOT EXISTS module (
                 singleton INTEGER PRIMARY KEY CHECK(singleton=1), source TEXT,
@@ -955,6 +957,7 @@ class WorldServer:
                 if changed or now - self.last_presence_broadcast >= PRESENCE_HEARTBEAT_INTERVAL:
                     self._schedule_presence(now)
                 self.guild_chat.observe(conn, state)
+                self.landmark_survey.observe(conn)
         except (UnicodeError, ValueError):
             self._error(conn, 'MALFORMED')
 
@@ -987,6 +990,8 @@ class WorldServer:
             self._queue(conn, self._snapshot(conn))
             return
         conn['chat_credit'] = credit - 1
+        if fields[2] == '*' and self.landmark_survey.handle(conn, text.decode('ascii')):
+            return
         if fields[2] == '*' and self.guild_chat.handle(conn, text.decode('ascii')):
             return
         self.chat_serial += 1
@@ -1547,6 +1552,9 @@ class WorldServer:
                 except ValueError as exc:
                     # Expected validation/occupancy refusal is not a mechanic error.
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'register_survey':
+                if set(request) != {'command','plan'}:raise ValueError('invalid survey registration')
+                result = self.landmark_survey.register(request['plan'])
             elif request.get('command') == 'found_settlement':
                 try:
                     from .settlement_plans import begin

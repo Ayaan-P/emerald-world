@@ -891,3 +891,28 @@ this environment and failed because bubblewrap could not create a NETLINK_ROUTE
 socket. The real authority returned refusal with the map unchanged and steward
 absent. No weaker execution route was used. Native build/rendering limits above
 also remain; these protocol/component tests are not a linked gameplay session.
+
+### Private landmark surveys
+
+After publishing a route template, the owner can register the same route plan:
+`python -m world.landmark_survey plan.json --admin-socket /path/to/admin.sock`.
+Registration recompiles the plan, requires byte-for-byte equality with an archived
+XL template, and fixes its named clearings for that revision. It does not activate
+or modify terrain. Only this owner-admin path can register surveys.
+
+Inside that acknowledged map, a player types `/explore start` using existing
+native chat. `/explore status` shows progress and the nearest undiscovered
+clearing's coordinates; `/explore stop` pauses it. Reaching within one tile of a
+clearing center records a discovery and sends a private chat message. All
+landmarks can be explored in any order. Completion and partial progress survive
+server restart. Starting again resumes that revision, while starting in another
+registered map selects its separate progress.
+
+This is opt-in personal exploration, with no rewards or anti-cheat claim.
+Validated client-reported presence is the evidence, not a server simulation of
+travel. Trainer discoveries are neither public world history nor model context,
+and other players do not receive the messages. Old-revision surveys pause when
+the map changes; reactivating the exact archived map allows them to continue.
+Landmarks are coordinate destinations in existing geometry, not new sign art.
+Clients need their existing interactive chat path; this adds no Windows/headless
+chat UI and does not change native region admission.
