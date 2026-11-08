@@ -4,14 +4,16 @@ A native PC Pokémon Emerald world built from [pret's decompilation](https://git
 
 ## Start here
 
-- **Players:** [RC10 version and source handoff](docs/RC10_EXPANSION_HANDOFF.md), [Linux player installation](docs/linux-packaging.md).
+- **Players:** [current source and private release handoff](docs/RC12_BUILD_RELEASE.md), [Linux player installation](docs/linux-packaging.md).
 - **Developers and agents:** [development rules and port invariants](CLAUDE.md), [native build instructions](INSTALL_PC.md).
 - **Finding the right document:** [documentation index](docs/README.md).
 - **What landed versus what is next:** [integration status](docs/INTEGRATION_STATUS.md).
 
 ## Current release and source
 
-`main` contains **RC10**, including the rc10.10 multiplayer and native-engine fixes. The app pins the matching source in [Ayaan-P/pokeemerald-expansion-native](https://github.com/Ayaan-P/pokeemerald-expansion-native), whose default `main` branch carries that engine checkpoint. See [the RC10 handoff and build instructions](docs/RC10_EXPANSION_HANDOFF.md). Published downloadable packages on [GitHub Releases](https://github.com/Ayaan-P/emerald-world/releases) currently remain RC9; pulling source does not update an installed package or shortcut.
+This branch is an **RC12 source candidate**, not a published or installed RC12 release. The delivered RC11 line is the release baseline. Its source/build decision is recorded in [RC11-RELEASE-DECISION.json](docs/releases/RC11-RELEASE-DECISION.json). Candidate verification does not establish a new package or hosted deployment. Public downloadable packages on [GitHub Releases](https://github.com/Ayaan-P/emerald-world/releases) remain RC9.
+
+The matching Expansion engine repository is private. Source builds and CI need separately approved read access to it. An app checkout alone, or the public app's `GITHUB_TOKEN`, cannot fetch that engine. See [the release cohort, access prerequisite and source handoff](docs/RC12_BUILD_RELEASE.md). Pulling source does not update an installed package or shortcut.
 
 For an existing source checkout:
 
@@ -21,9 +23,9 @@ git submodule sync --recursive
 git submodule update --init --recursive
 ```
 
-RC10 retains the Expansion campaign, shared exploration and tagged co-op, modern species catalogue, generated areas, guilds and independent trainer saves. It adds reviewed world/personal settings and the native battle, capture/naming, PC, WORLD menu, co-op admission and scheduling fixes. World permissions still require eligible Pokémon and equipment; test-kit Pokémon/items are not bundled into fresh saves. Kanto and unfinished world-history/multi-place drafts are not included.
+The pinned release cohort includes combined Hoenn/Kanto content and regional trainer state. Connected generated-world regions remain disabled (`GENERATED_WORLD_REGIONS=0`). World permissions still require eligible Pokémon and equipment. Test-kit Pokémon/items are not bundled into fresh saves. Candidate additions require their own acceptance and are not evidence of a delivered RC12 package.
 
-Expansion and vanilla have separate binaries, profiles and protocol cohorts. Do not import older vanilla saves into Expansion. The root `src/` is the older engine; RC10 game-side development belongs under `engines/expansion-native/src/world/` and that submodule's `include/platform/`. Build RC10 with `scripts/build_expansion.py` using the source setup below. Root `make linux` still builds the historical vanilla engine.
+Expansion and vanilla have separate binaries, profiles and protocol cohorts. Do not import older vanilla saves into Expansion. The root `src/` is the older engine; Expansion game-side development belongs under `engines/expansion-native/src/world/` and that submodule's `include/platform/`. Build the pinned release cohort with `scripts/build_expansion.py` using the source setup below. Root `make linux` still builds the historical vanilla engine.
 
 ## Launcher and game
 
@@ -36,13 +38,15 @@ Expansion and vanilla have separate binaries, profiles and protocol cohorts. Do 
 
 A selected launcher session is not proof that the native game is connected. Game connection and nearby trainers use fresh native telemetry. In-page preview is optional; the native game still runs separately.
 
-## Build and open RC10 from source on Linux
+## Build and open the pinned source cohort on Linux
 
-Use system Python 3.11+, a C/C++ toolchain, GNU make 4.2+, pkg-config, libpng and SDL2 development files. The 64-bit engine also needs a working 32-bit C toolchain for its mandatory ABI checks. The sandboxed desktop game needs Bubblewrap, Xephyr, a browser and X11/XWayland with permitted user namespaces. The React source build needs Node.js/npm. See [INSTALL_PC.md](INSTALL_PC.md) for dependency guidance. The builder installs nothing and makes no network requests.
+Use system Python 3.11+, a C/C++ toolchain, GNU make 4.3+, pkg-config, libpng and SDL2 development files. The 64-bit engine also needs a working 32-bit C toolchain for its mandatory ABI checks. The sandboxed desktop game needs Bubblewrap, Xephyr, a browser and X11/XWayland with permitted user namespaces. The React source build needs Node.js/npm. See [INSTALL_PC.md](INSTALL_PC.md) for dependency guidance. The builder installs nothing and makes no network requests.
 
 ```sh
-git clone --branch main --recurse-submodules https://github.com/Ayaan-P/emerald-world.git
+git clone --branch main https://github.com/Ayaan-P/emerald-world.git
 cd emerald-world
+# Requires approved read access to the private engine repository.
+git submodule update --init engines/expansion-native
 
 # Checks the engine pin and build dependencies without changing source files.
 python3 scripts/build_expansion.py --check
@@ -60,7 +64,7 @@ The web launcher defaults to Expansion and only discovers `build/expansion-nativ
 
 After the source update commands above, rebuild with `python3 scripts/build_expansion.py`, rebuild `launcher-web`, then run `python3 -m world.web_launcher`. No `/tmp` assets, local checkpoint or private sysroot is required when system dependencies are installed. Developers who deliberately use extracted dependencies can pass `--sysroot` and `--multilib-sysroot` to both the builder and its `--check` mode. Do not use `--development` for an ordinary source build; it explicitly permits uncommitted or descendant engine integration work.
 
-The root vanilla build and its asset-restoration instructions remain in [INSTALL_PC.md](INSTALL_PC.md) for historical port work. They are not RC10 prerequisites. Generated build inputs and executables stay out of Git.
+The root vanilla build and its asset-restoration instructions remain in [INSTALL_PC.md](INSTALL_PC.md) for historical port work. They are not Expansion prerequisites. Generated build inputs and executables stay out of Git.
 
 The tkinter launcher remains a legacy/operator fallback. Its old UI labels are not the React player's instructions. For dedicated server operation and private invitations, see [deploy/README.md](deploy/README.md). A packaged player install needs neither npm nor a source checkout; use [the package guide](docs/linux-packaging.md).
 
