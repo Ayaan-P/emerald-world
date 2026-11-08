@@ -180,14 +180,14 @@ typedef unsigned char bool8;
 #define FALSE 0
 #define GENERATED_MAP_READY 1
 #define GENERATED_CAVE_PROFILES 1
-static struct {bool8 rallyProbe,rallyLegacy,travelProbe,travelLegacy,chatProbe,chatLegacy,caveProbe,caveLegacy,caveV2Probe,caveV2Legacy;char trainer[25],token[65],output[4096];int outputSize;} sWorld;
+static struct {bool8 rallyProbe,rallyLegacy,travelProbe,travelLegacy,chatProbe,chatLegacy,commandsProbe,commandsLegacy,caveProbe,caveLegacy,caveV2Probe,caveV2Legacy;char trainer[25],token[65],output[4096];int outputSize;} sWorld;
 ''' + function(src,'CaveProbeRejected') + function(src,'QueueHello') + r'''
 int main(void){char *err[]={"ERROR","AUTH"};strcpy(sWorld.trainer,"alice");strcpy(sWorld.token,"token");
- QueueHello(0);assert(strstr(sWorld.output,"SOCIALTRAVELCHATRALLYCAVE2\n") && sWorld.caveV2Probe);
+ sWorld.commandsLegacy=1;QueueHello(0);assert(strstr(sWorld.output,"SOCIALTRAVELCHATRALLYCAVE2\n") && sWorld.caveV2Probe);
  assert(CaveProbeRejected(2,err)&&sWorld.caveV2Legacy&&!sWorld.caveLegacy);
- QueueHello(0);assert(strstr(sWorld.output,"SOCIALTRAVELCHATRALLYCAVE\n")&&!sWorld.caveV2Probe);
+ sWorld.commandsLegacy=1;QueueHello(0);assert(strstr(sWorld.output,"SOCIALTRAVELCHATRALLYCAVE\n")&&!sWorld.caveV2Probe);
  assert(CaveProbeRejected(2,err)&&sWorld.caveLegacy);
- QueueHello(0);assert(strstr(sWorld.output,"SOCIALTRAVELCHATRALLY\n")&&!sWorld.caveProbe);
+ sWorld.commandsLegacy=1;QueueHello(0);assert(strstr(sWorld.output,"SOCIALTRAVELCHATRALLY\n")&&!sWorld.caveProbe);
  return 0;}
 '''
         with tempfile.TemporaryDirectory() as tmp:

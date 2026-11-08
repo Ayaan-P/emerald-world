@@ -24,6 +24,7 @@ from .mechanics import validate_objects
 from .link_protocol import LinkProtocol
 from .guilds import Guilds
 from .guild_chat import GuildChat
+from .private_commands import route as route_private_command, STORY, MYSTERY, GUILD, EXPLORE
 from .world_rules import WorldRules
 from .rally import RallyCoordinator
 from .world_memory import object_content, overlay_places, terrain_delta
@@ -558,6 +559,11 @@ class WorldServer:
             lines.append('MEET ' + ' '.join(str(meeting[k]) for k in
                 ('seq','player','target','group','num','x','y','signal')))
         if conn.get('chat'):
+            if conn.get('private_commands'):
+                mask = GUILD | EXPLORE
+                if getattr(self, 'opportunity_chat', None):mask |= STORY
+                if getattr(self, 'mysteries', None):mask |= MYSTERY
+                lines.append(f'COMMANDS 1 {mask}')
             lines += ['CHATMSG ' + ' '.join(map(str, message)) for message in conn['chat_history']]
             lines.append('CHATSTATUS ' + conn['chat_status'])
         lines += self.rally.snapshot(conn)
@@ -603,6 +609,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                private_commands = role.endswith('COMMANDS1')
+                if private_commands:role=role[:-9]
                 character_walk_capable = role.endswith('CHARWALK1')
                 if character_walk_capable:role=role[:-9]
                 character_region_capable = role.endswith('CHARREG1')
@@ -657,6 +665,9 @@ class WorldServer:
                     self._error(conn, 'AUTH')
                     return
                 if character_quest_capable and not character_capable:
+                    self._error(conn, 'AUTH')
+                    return
+                if private_commands and not chat_capable:
                     self._error(conn, 'AUTH')
                     return
                 if character_capable and not social:
@@ -720,6 +731,7 @@ class WorldServer:
                     return
                 conn['id'] = name
                 conn['social'] = social
+                conn['private_commands'] = private_commands
                 conn['character_walk_capable'] = character_walk_capable
                 conn['character_region_capable'] = character_region_capable
                 conn['character_capable'] = character_capable
@@ -1003,9 +1015,7 @@ class WorldServer:
             self._queue(conn, self._snapshot(conn))
             return
         conn['chat_credit'] = credit - 1
-        if fields[2] == '*' and self.landmark_survey.handle(conn, text.decode('ascii')):
-            return
-        if fields[2] == '*' and self.guild_chat.handle(conn, text.decode('ascii')):
+        if route_private_command(self, conn, fields[2], text.decode('ascii')):
             return
         self.chat_serial += 1
         message = (self.chat_serial, conn['id'], fields[2], fields[3])

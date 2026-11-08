@@ -21,6 +21,7 @@ class TrainerInteractions(unittest.TestCase):
 #include <stdlib.h>
 #include <limits.h>
 #include "platform/world_rally.h"
+#include "platform/chat_command_gate.h"
 #define TRUE 1
 #define FALSE 0
 #define ARRAY_COUNT(a) (sizeof(a)/sizeof((a)[0]))
