@@ -166,3 +166,14 @@ class IntentClient(WorldClient):
 
     def intent_status(self, identifier):
         return self._request(dict(command='intent_status', id=identifier))
+
+
+class CampaignClient(IntentClient):
+    """Private campaign controls. This does not launch battles or edit native saves."""
+    def campaigns(self):return self._request(dict(command='campaign_list'))
+    def campaign_runs(self):return self._request(dict(command='campaign_runs'))
+    def campaign_status(self,run):return self._request(dict(command='campaign_status',run=run))
+    def start_campaign(self,definition,request_id):
+        return self._request(dict(command='campaign_start',definition=definition,request_id=request_id))
+    def campaign_action(self,run,revision,action,value,request_id):
+        return self._request(dict(command='campaign_act',run=run,expected_revision=revision,action=action,value=value,request_id=request_id))

@@ -1,0 +1,225 @@
+{
+  "title": "Emerald Sprint",
+  "start": "opening",
+  "members": {
+    "partner": {
+      "name": "Your Treecko",
+      "mon": {
+        "species": 252,
+        "level": 50
+      }
+    },
+    "wally": {
+      "name": "Wally and Ralts",
+      "mon": {
+        "species": 280,
+        "level": 50
+      }
+    },
+    "may": {
+      "name": "May and Torchic",
+      "mon": {
+        "species": 255,
+        "level": 50
+      }
+    },
+    "scout": {
+      "name": "Coastal scout and Swellow",
+      "mon": {
+        "species": 277,
+        "level": 50
+      }
+    }
+  },
+  "initial": [
+    "partner"
+  ],
+  "nodes": {
+    "opening": {
+      "kind": "scene",
+      "text": "An Emerald-inspired sprint: important battles, allies and decisions. These are authored level-50 teams, not canonical trainer rosters.",
+      "next": "ally"
+    },
+    "ally": {
+      "kind": "choice",
+      "text": "Who will join your road to the League?",
+      "options": [
+        {
+          "id": "wally",
+          "text": "Travel with Wally and Ralts.",
+          "next": "recruit_wally"
+        },
+        {
+          "id": "may",
+          "text": "Travel with May and Torchic.",
+          "next": "recruit_may"
+        }
+      ]
+    },
+    "recruit_wally": {
+      "kind": "recruit",
+      "text": "Wally offers his partnership for this run.",
+      "member": "wally",
+      "next": "boss_0"
+    },
+    "recruit_may": {
+      "kind": "recruit",
+      "text": "May offers her partnership for this run.",
+      "member": "may",
+      "next": "boss_0"
+    },
+    "recruit_scout": {
+      "kind": "recruit",
+      "text": "A coastal scout asks to join before the League.",
+      "member": "scout",
+      "next": "boss_8"
+    },
+    "ending": {
+      "kind": "end",
+      "text": "The condensed journey is complete. Your run roster belongs to this campaign, not your normal trainer save."
+    },
+    "boss_0": {
+      "kind": "battle",
+      "text": "Challenge Roxanne. Return here after a defeat to retry or revise your squad.",
+      "enemy": [
+        {
+          "species": 299,
+          "level": 50
+        }
+      ],
+      "next": "boss_1"
+    },
+    "boss_1": {
+      "kind": "battle",
+      "text": "Challenge Brawly. Return here after a defeat to retry or revise your squad.",
+      "enemy": [
+        {
+          "species": 297,
+          "level": 50
+        }
+      ],
+      "next": "boss_2"
+    },
+    "boss_2": {
+      "kind": "battle",
+      "text": "Challenge Wattson. Return here after a defeat to retry or revise your squad.",
+      "enemy": [
+        {
+          "species": 310,
+          "level": 50
+        }
+      ],
+      "next": "boss_3"
+    },
+    "boss_3": {
+      "kind": "battle",
+      "text": "Challenge Flannery. Return here after a defeat to retry or revise your squad.",
+      "enemy": [
+        {
+          "species": 324,
+          "level": 50
+        }
+      ],
+      "next": "boss_4"
+    },
+    "boss_4": {
+      "kind": "battle",
+      "text": "Challenge Norman. Return here after a defeat to retry or revise your squad.",
+      "enemy": [
+        {
+          "species": 289,
+          "level": 50
+        }
+      ],
+      "next": "boss_5"
+    },
+    "boss_5": {
+      "kind": "battle",
+      "text": "Challenge Winona. Return here after a defeat to retry or revise your squad.",
+      "enemy": [
+        {
+          "species": 334,
+          "level": 50
+        }
+      ],
+      "next": "boss_6"
+    },
+    "boss_6": {
+      "kind": "battle",
+      "text": "Challenge Tate and Liza. Return here after a defeat to retry or revise your squad.",
+      "enemy": [
+        {
+          "species": 338,
+          "level": 50
+        }
+      ],
+      "next": "boss_7"
+    },
+    "boss_7": {
+      "kind": "battle",
+      "text": "Challenge Juan. Return here after a defeat to retry or revise your squad.",
+      "enemy": [
+        {
+          "species": 230,
+          "level": 50
+        }
+      ],
+      "next": "recruit_scout"
+    },
+    "boss_8": {
+      "kind": "battle",
+      "text": "Challenge Sidney. Return here after a defeat to retry or revise your squad.",
+      "enemy": [
+        {
+          "species": 359,
+          "level": 50
+        }
+      ],
+      "next": "boss_9"
+    },
+    "boss_9": {
+      "kind": "battle",
+      "text": "Challenge Phoebe. Return here after a defeat to retry or revise your squad.",
+      "enemy": [
+        {
+          "species": 356,
+          "level": 50
+        }
+      ],
+      "next": "boss_10"
+    },
+    "boss_10": {
+      "kind": "battle",
+      "text": "Challenge Glacia. Return here after a defeat to retry or revise your squad.",
+      "enemy": [
+        {
+          "species": 365,
+          "level": 50
+        }
+      ],
+      "next": "boss_11"
+    },
+    "boss_11": {
+      "kind": "battle",
+      "text": "Challenge Drake. Return here after a defeat to retry or revise your squad.",
+      "enemy": [
+        {
+          "species": 373,
+          "level": 50
+        }
+      ],
+      "next": "boss_12"
+    },
+    "boss_12": {
+      "kind": "battle",
+      "text": "Challenge Wallace. Return here after a defeat to retry or revise your squad.",
+      "enemy": [
+        {
+          "species": 350,
+          "level": 50
+        }
+      ],
+      "next": "ending"
+    }
+  }
+}
