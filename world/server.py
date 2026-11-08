@@ -136,6 +136,8 @@ class WorldServer:
             CREATE INDEX IF NOT EXISTS events_kind_seq ON events(kind,seq);
         ''')
         self.world_rules = WorldRules(self.db)
+        from .campaigns import Campaigns
+        self.campaigns = Campaigns(self.db)
         self.guilds = Guilds(self.db, catalog_maps())
         self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
         self.db.executescript('''
@@ -945,6 +947,12 @@ class WorldServer:
             request = json.loads(raw)
             if type(request) is not dict:
                 raise ValueError('control request must be an object')
+            if type(request.get('command')) is str and request['command'].startswith('campaign_'):
+                try:
+                    with self.lock:result=self.campaigns.request(conn['id'],request)
+                except sqlite3.Error as exc:raise ValueError('campaign transaction failed; refresh before retrying') from exc
+                self._queue(conn,json.dumps(result,ensure_ascii=True)+'\n')
+                return
             if request.get('command') == 'intent':
                 if set(request) != {'command', 'request_id', 'text'}:
                     raise ValueError('invalid intent fields')
@@ -1397,6 +1405,14 @@ class WorldServer:
                             raise ValueError('invalid world rules request')
                 except ValueError as exc:
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') in ('campaign_publish','campaign_report'):
+                try:
+                    with self.lock:
+                        if request['command']=='campaign_publish':
+                            if set(request)!={'command','definition'}:raise ValueError('invalid campaign publication')
+                            result=self.campaigns.publish(request['definition'])
+                        else:result=self.campaigns.report(request)
+                except (ValueError,TypeError,sqlite3.Error) as exc:result=dict(ok=False,error='campaign request refused: '+str(exc))
             elif request.get('command') == 'host_controls':
                 try:
                     result = self.host_controls.request(request, self)
