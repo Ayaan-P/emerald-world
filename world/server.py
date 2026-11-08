@@ -499,6 +499,7 @@ class WorldServer:
 
     def _snapshot(self, conn):
         lines = ['BEGIN ' + str(self.revision)]
+        if conn.get('mount_capable'):lines.append('MOUNTS 1')
         # World population is not the fixed native render-array capacity.
         # Select deterministically by proximity; no extra wire fields are added.
         origin = conn.get('state')
@@ -520,6 +521,9 @@ class WorldServer:
             candidates.append((distance, name, state))
         for _, name, state in sorted(candidates)[:conn.get('peer_limit', MAX_PEERS)]:
             lines.append('PEER ' + name + ' ' + ' '.join(map(str, state)))
+            mount=self.peers[name].get('mount',(0,0))
+            if conn.get('mount_capable') and mount[0] and state[6] and time.monotonic()-self.peers[name].get('state_time',0)<=3:
+                lines.append(f'RIDER {name} {mount[0]} {mount[1]}')
         if conn.get('travel'):
             # Separate from render relevance. Include every field occupant so
             # a ninth trainer cannot become an invisible occupied landing tile.
@@ -621,6 +625,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                mount_capable = role.endswith('MOUNTS1')
+                if mount_capable:role=role[:-7]
                 private_commands = role.endswith('COMMANDS1')
                 if private_commands:role=role[:-9]
                 character_walk_capable = role.endswith('CHARWALK1')
@@ -679,6 +685,7 @@ class WorldServer:
                 if character_quest_capable and not character_capable:
                     self._error(conn, 'AUTH')
                     return
+                if mount_capable and not private_commands:raise ValueError('mounts require private command negotiation')
                 if private_commands and not chat_capable:
                     self._error(conn, 'AUTH')
                     return
@@ -743,6 +750,8 @@ class WorldServer:
                     return
                 conn['id'] = name
                 conn['social'] = social
+                conn['mount_capable'] = mount_capable
+                conn['mount'] = (0, 0)
                 conn['private_commands'] = private_commands
                 conn['character_walk_capable'] = character_walk_capable
                 conn['character_region_capable'] = character_region_capable
@@ -937,6 +946,13 @@ class WorldServer:
                 # FIELD keeps a visible trainer on the map while walking or using
                 # a menu. Its ready bit still gates every interaction. Legacy STATE
                 # retains its canonical absent representation and validation.
+                mount=(0,0);mount_trail="."
+                if fields and fields[0] in ('MSTATE','MFIELD'):
+                    if not conn.get('mount_capable') or len(fields)!=14:raise ValueError('unnegotiated mount state')
+                    mount=(bounded(fields[11],0,65535),bounded(fields[12],0,3))
+                    if mount[0] not in (0,59,78,85,234) or (not mount[0] and mount[1]):raise ValueError('invalid mount')
+                    mount_trail=fields[13]
+                    fields=[fields[0][1:]]+fields[1:11]
                 field = bool(fields and fields[0] == 'FIELD' and conn.get('social'))
                 if len(fields) != 11 or (fields[0] != 'STATE' and not field):
                     raise ValueError('state shape')
@@ -967,6 +983,9 @@ class WorldServer:
                     raise ValueError('noncanonical unready state')
                 if not all(HASH.fullmatch(h) for h in fields[9:]):
                     raise ValueError('hash')
+                if mount[0] and (not state[6] or tuple(state[:2]) in (self.cave_map,self.wilds_map)):raise ValueError('inactive mount')
+                from .mount_motion import decode as decode_mount_motion
+                trail,lost=decode_mount_motion(mount_trail,conn.get('state'),state,conn.get('mount',(0,0)),mount,0<=time.monotonic()-conn.get('state_time',0)<=3)
                 data = dict(id=conn['id'], seq=seq, state=state, party_hash=fields[9], bag_hash=fields[10])
                 hashes = tuple(fields[9:])
                 previous = self.db.execute('SELECT party_hash,bag_hash FROM identities WHERE id=?', (conn['id'],)).fetchone()
@@ -983,7 +1002,10 @@ class WorldServer:
                 # An identical report can revive a previously expired friend.
                 became_fresh = (last_state is not None and
                                 int((TRAVEL_FRESH_SECONDS - (now - last_state)) * 60) <= 0)
-                changed = (conn.get('state') != state or bool(conn.get('field')) != field or hashes != previous or became_fresh)
+                changed = (conn.get('mount',(0,0)) != mount or conn.get('state') != state or bool(conn.get('field')) != field or hashes != previous or became_fresh)
+                conn['motion_previous'] = (conn.get('state'),conn.get('state_time'),conn.get('mount',(0,0)))
+                conn['mount_trail'],conn['mount_trail_lost'] = trail,lost
+                conn['mount'] = mount
                 conn['seq'], conn['state'], conn['field'] = seq, state, field
                 if tuple(state[:2]) in (self.cave_map, self.wilds_map):
                     conn['in_generated_cave'] = True

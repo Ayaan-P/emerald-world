@@ -19,7 +19,8 @@ def encoded(value):return json.dumps(value,sort_keys=True,separators=(',',':'),a
 
 
 def validate(course,coords,generated):
-    if type(course) is not dict or set(course)!={'id','title','limit','legs'} or len(encoded(course))>8192:raise ValueError('Invalid relay course.')
+    if type(course) is not dict or set(course) not in ({'id','title','limit','legs'},{'id','title','limit','legs','mounted'}) or len(encoded(course))>8192:raise ValueError('Invalid relay course.')
+    if 'mounted' in course and type(course['mounted']) is not bool:raise ValueError('Invalid mounted requirement.')
     if type(course['id']) is not str or not re.fullmatch('[a-z][a-z0-9_]{0,23}',course['id']):raise ValueError('Invalid course identifier.')
     if type(course['title']) is not str or not 1<=len(course['title'])<=55 or any(not 32<=ord(c)<=126 for c in course['title']):raise ValueError('Invalid course title.')
     if type(course['limit']) is not int or not 30<=course['limit']<=900:raise ValueError('Relay limit must be 30..900 seconds.')
@@ -47,6 +48,8 @@ class FieldRelays:
           CREATE TABLE IF NOT EXISTS relay_records(run TEXT PRIMARY KEY,course TEXT NOT NULL,team TEXT NOT NULL,milliseconds INTEGER NOT NULL,splits TEXT NOT NULL);
         ''');self.db.commit()
         self.publish(COURSE)
+        mounted=json.loads(encoded(COURSE));mounted.update(id="petalburg_mount1",title="Petalburg Pokemon Mount Relay",mounted=True)
+        self.publish(mounted)
 
     def publish(self,course):
         validate(course,self.coords,(self.s.cave_map,self.s.wilds_map));document=encoded(course)
@@ -143,15 +146,31 @@ class FieldRelays:
             self._end(run,'Relay cancelled by a runner. No time was recorded.')
             return ['You left the relay.']
         if words==['ready']:
+            if run['course'].get('mounted') and (not conn.get('mount_capable') or not conn.get('mount',(0,0))[0]):raise GuildError('Mount a supported party Pokemon first: /mount 1..6')
             if run['phase']!='lobby':raise GuildError('The relay already started.')
             role=run['members'].index(conn)
             if not self._at(conn,run['course']['legs'][role]['start'],now):raise GuildError('Stand ready at your start pad. Use /guild relay status for directions.')
             run['ready'].add(trainer)
             if len(run['ready'])==len(run['course']['legs']):
                 run['phase']='countdown';run['started']=now+3
+                run['mounts']=[c.get('mount',(0,0)) for c in run['members']]
                 self._tell(run,['Relay starts in three seconds. Stay on your pads. Timer continues through menus and battles.'])
             return ['Ready. Keep standing on your pad.']
         raise GuildError('Use /guild relay list, start COURSE, join CODE, ready, status, records, or leave.')
+
+    def _checkpoint_hit(self,run,conn,target,now):
+        if not run['course'].get('mounted'):return self._at(conn,target,now)
+        if not self._fresh(conn,now):return False
+        seq=conn['seq'];old_seq,index=run.get('trace_cursor',{}).get(conn['id'],(-1,-1))
+        if old_seq!=seq:index=-1
+        trail=conn.get('mount_trail',[])
+        for i,point in enumerate(trail):
+            if i>index and point==target:
+                run.setdefault('trace_cursor',{})[conn['id']]=(seq,i)
+                return True
+        # An exact current position remains a valid witness, without inventing
+        # any intermediate visit on a diagonal, warp or congested sample.
+        return self._at(conn,target,now)
 
     def tick(self):
         now=self.clock()
@@ -162,12 +181,15 @@ class FieldRelays:
             if run['phase']=='lobby':
                 if now>run['until']:self._end(run,'Relay invitation expired. Start a new relay when ready.')
                 continue
+            if course.get('mounted') and (any(not c.get('mount',(0,0))[0] or c.get('mount')!=run['mounts'][i] for i,c in enumerate(run['members'])) or any(c.get('mount_trail_lost') for c in run['members'])):
+                self._end(run,'Mounted relay cancelled: mount changed or movement reports were incomplete. No time recorded.');continue
             if run['phase']=='countdown':
                 if not all(self._at(c,course['legs'][i]['start'],now) for i,c in enumerate(run['members'])):
                     run['phase']='lobby';run['ready'].clear()
                     self._tell(run,['Countdown cancelled. Return to your pads and ready again.']);continue
                 if now<run['started']:continue
                 run['phase']='running'
+                run['trace_cursor']={c['id']:(c['seq'],len(c.get('mount_trail',[]))-1) for c in run['members']}
                 self._tell(run,['Go! '+run['members'][0]['id']+' runs first.', 'Next checkpoint: '+self._location(self._target(run))])
             if now-run['started']>course['limit']:
                 self._end(run,'Relay time limit reached. No completed time recorded.');continue
@@ -178,9 +200,10 @@ class FieldRelays:
                 incoming=run['members'][run['leg']+1]
                 if self._at(runner,self._target(run),now) and self._at(incoming,course['legs'][run['leg']+1]['start'],now):
                     run['leg']+=1;run['checkpoint']=0;run['phase']='running'
+                    run.setdefault('trace_cursor',{})[incoming['id']]=(incoming['seq'],len(incoming.get('mount_trail',[]))-1)
                     self._tell(run,['Baton handed to '+incoming['id']+'.','Next checkpoint: '+self._location(self._target(run))])
                 continue
-            if not self._at(runner,self._target(run),now):continue
+            if not self._checkpoint_hit(run,runner,self._target(run),now):continue
             if run['checkpoint']+1<len(course['legs'][run['leg']]['checkpoints']):
                 run['checkpoint']+=1
                 self._tell(run,['Checkpoint cleared. Next: '+self._location(self._target(run))]);continue

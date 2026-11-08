@@ -159,3 +159,35 @@ installer as its next step. After finishing a mystery, `/story` at its final
 location exposes eligible follow-up choices; board browsing never reads those
 choices. Existing direct mode commands remain available. No automatic queue,
 matchmaking, teleportation or public score sharing is implied.
+
+## Mounted Pokemon relay candidate
+
+This adds actual native ground mounts, not a speed bonus to a trainer footrace.
+Use the paired mount-enabled native #24 and matching app candidate. Once the
+session acknowledges MOUNTS1, `/mount SLOT` (1–6) selects your own conscious,
+hatched Rapidash, Arcanine, Dodrio or Stantler. `/mount off` dismounts. No Pokemon
+are granted and no party/save edits occur; a supported party member is required.
+Mounting is limited to ordinary outdoor towns/cities/routes on foot. Existing
+collision rules remain in charge; this does not grant Surf, Fly, Dive or ledge
+bypasses. Menus, battles, warps, party changes and saving dismount safely.
+
+`/guild play start relay petalburg_mount1` selects the mounted relay. Both
+participants mount, join and ready at their own pads. Changing/dismounting during
+the countdown or race cancels the attempt. The original `petalburg_relay1`
+remains a trainer footrace. Mounted results have a separate immutable course ID.
+
+Native movement records each observed tile every frame and batches up to 16
+ordered witnesses with the next field sample. Turns are preserved; no line is
+drawn between distant endpoints. Overflow, noncontiguous movement or prolonged
+report gaps cancel a mounted attempt rather than inventing crossings. This is
+still client-attested recreational timing, not an anti-cheat guarantee.
+
+Matched peers receive mount species/variant alongside the same field sequence.
+Remote composition reuses their existing trainer sprite to avoid replacing its
+palette; local composition uses the stock rider pose. No external rider assets
+were imported. Resource exhaustion can leave a remote trainer visible without
+its mount; it never hides the trainer or destroys an unrelated reused sprite.
+Full native compilation, actual two-client visuals, sprite alignment and race
+feel still need Maya's QA. Headless C adapters/serializer tests are not a native
+playtest. Old clients receive ordinary peer snapshots, and old servers disable
+mount selection through capability fallback.

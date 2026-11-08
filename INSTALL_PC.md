@@ -155,8 +155,10 @@ Verified source inputs at preparation:
 - Native main: `7d463da5613d9aa3c19f444c22de0be4424e2458`.
 - Native #23 paired privacy client: `984165808a45aaaaa7c7169c228ef1a1480ab6d0`.
 
-The native gitlink and `scripts/build_expansion.py` pin both point at #23.
-Native #23 remains independently reviewable; its source must be available to the
+- Native #24 mounts and matched witness protocol: `488796e4959eb7f9d658abc7e8313e138acb3c87`.
+
+The native gitlink and `scripts/build_expansion.py` pin both point at #24.
+Native #24 (including #23) remains independently reviewable; its source must be available to the
 build account. In a separate clean checkout, initialize the pinned submodule,
 run `python3 scripts/build_expansion.py --check`, then use the supported build
 instructions above. Do not reset a dirty integration checkout or substitute an
@@ -185,12 +187,13 @@ If the native commit is rebased during integration, update both pins together.
 The paired client is required: capability negotiation and unknown/slash-command
 fail-closed behavior must survive old-server connection, reconnect and forged
 chat replies. Do not expose private activity features using an old client.
-Native #23 tests compile real parser/send/disconnect functions; app tests cover
+Native tests compile real parser/send/disconnect functions plus mount adapter
+and ordered tile witness code; app tests cover
 private routing and the real in-memory CHAT/STATE activity paths. None of these
 assert that a rendered two-client playtest happened.
 
-Local candidate verification: 61 activity/content/privacy Python checks,
-147 launcher UI tests and a production launcher build passed before pinning.
+Local candidate verification: 65 activity/content/privacy/mount Python checks,
+148 launcher UI tests and a production launcher build passed before pinning.
 The five build-setup tests and native focused C privacy test also pass.
 Full native compilation and rendered/internet multiplayer remain unverified in
 this environment. Existing baseline CI had a private native-submodule checkout
@@ -203,3 +206,15 @@ source-checked stations/bases, relay handoff and flag tag feel, disconnect/rejoi
 completed-result restart persistence, and confirmation that independent normal
 saves remain unchanged by these activities. Source collision/BFS checks are not
 visual route QA. Field records use reported positions, not anti-cheat authority.
+
+
+Mounted extension: `/mount SLOT` selects an owned conscious supported party
+Pokemon. `/guild play start relay petalburg_mount1` is the distinct mounted
+course. No Pokemon are granted. MOUNTS1 must be negotiated; no mounted race runs
+on a foot-only/legacy peer. The paired protocol carries exact per-frame tile
+witnesses so faster movement and turns survive six-frame network sampling.
+Overflow or lost continuity cancels instead of inventing checkpoint visits.
+Remote mounts use bounded extra sprites/palettes; resource exhaustion preserves
+the trainer but may omit its mount. Add actual rider alignment, full native
+compilation, two-client mount visibility, fastest turns and delayed-network race
+behavior to Maya's acceptance checks. No such rendered playtest is claimed here.

@@ -11,7 +11,7 @@ A native PC Pokémon Emerald world built from [pret's decompilation](https://git
 
 ## Current release and source
 
-This branch is the **RC12 multiplayer field-activities candidate**, not a released build or a claim of completed native QA. It contains the cumulative app stack #279–283 on app main `80b14ebfbfd4dd4da2dc16d886a37f0db1f45516` and pins the paired native privacy client `984165808a45aaaaa7c7169c228ef1a1480ab6d0` (#23). Pulling source does not update an installed package or shortcut. See [candidate handoff](INSTALL_PC.md#rc12-cumulative-candidate-handoff) for exact dependencies, player entry and remaining checks.
+This branch is the **RC12 multiplayer field-activities candidate**, not a released build or a claim of completed native QA. It contains the cumulative app stack #279–283 on app main `80b14ebfbfd4dd4da2dc16d886a37f0db1f45516` and pins the paired native mount/privacy client `488796e4959eb7f9d658abc7e8313e138acb3c87` (#24, including #23). Pulling source does not update an installed package or shortcut. See [candidate handoff](INSTALL_PC.md#rc12-cumulative-candidate-handoff) for exact dependencies, player entry and remaining checks.
 
 For an existing source checkout:
 
@@ -122,7 +122,12 @@ completed run satisfy that prerequisite. The server evaluates availability and
 commits choices with idempotent receipts; agents author content rather than
 asserting that a player completed it.
 
-## RC12 candidate: cooperative field relays
+## RC12 candidate: mounted Pokemon and field relays
+
+Matched native clients can ride their own supported conscious party Pokemon with
+`/mount SLOT` and enter `petalburg_mount1`, a mounted relay using exact tile
+witnesses rather than interpolated network positions. No Pokemon are granted;
+see [mount requirements](world/PLAYER_CLIENT.md#mounted-pokemon-relay-candidate).
 
 Two to four guildmates can run ordered checkpoints, physically pass a baton on
 adjacent pads and improve durable private team times. The included Petalburg

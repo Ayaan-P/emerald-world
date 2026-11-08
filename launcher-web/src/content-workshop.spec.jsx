@@ -104,3 +104,10 @@ it('unifies installed games and explicit guild invitation consent without publis
   expect(screen.getByText(/No puzzle pack is installed here yet/)).toBeTruthy();
   expect(request).toHaveBeenCalledTimes(1);
 });
+it('distinguishes the actual mounted course from the trainer footrace and explains party requirements', async () => {
+  render(<ContentWorkshop {...props} onRequest={vi.fn(async()=>info)}/>);
+  await screen.findByLabelText('Content type');
+  fireEvent.change(screen.getByLabelText('Content type'),{target:{value:'relay'}});
+  expect(screen.getByText(/No Pokemon are granted by this mode/)).toBeTruthy();
+  expect(screen.getByText(/Missing or overflowed movement reports cancel/)).toBeTruthy();
+});
