@@ -19,6 +19,14 @@ class Guilds:
             CREATE TABLE IF NOT EXISTS guilds (
                 id INTEGER PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE,
                 leader TEXT NOT NULL UNIQUE);
+            CREATE TABLE IF NOT EXISTS guild_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id INTEGER NOT NULL,
+                kind TEXT NOT NULL, title TEXT NOT NULL, map_name TEXT NOT NULL,
+                goal INTEGER NOT NULL, complete INTEGER NOT NULL DEFAULT 0);
+            CREATE TABLE IF NOT EXISTS guild_event_visits (
+                event_id INTEGER NOT NULL, trainer TEXT NOT NULL,
+                PRIMARY KEY(event_id, trainer));
+            CREATE INDEX IF NOT EXISTS guild_events_guild ON guild_events(guild_id,id);
             CREATE TABLE IF NOT EXISTS guild_stats (
                 guild_id INTEGER PRIMARY KEY, xp INTEGER NOT NULL DEFAULT 0,
                 expeditions INTEGER NOT NULL DEFAULT 0, meetups INTEGER NOT NULL DEFAULT 0);
@@ -73,14 +81,18 @@ class Guilds:
             raise GuildError('Invalid guild command.')
         words = command.split()
         if not words or words == ['help']:
-            return ['protocol 1', '/guild create NAME | /guild invite TRAINER', '/guild list | /guild standings | /guild apply NAME | /guild invites', '/guild applications | /guild approve TRAINER | /guild reject TRAINER', '/guild info | /guild roster | /guild online | /guild leave', '/guild expedition and /guild meet show group goals.', '/guild post MESSAGE | /guild board | /guild clear', '/guild kick TRAINER | /guild transfer TRAINER | /guild disband', '/g MESSAGE sends guild-only chat.']
+            return ['protocol 1', '/guild create NAME | /guild invite TRAINER', '/guild list | /guild standings | /guild apply NAME | /guild invites', '/guild applications | /guild approve TRAINER | /guild reject TRAINER', '/guild info | /guild roster | /guild online | /guild leave', '/guild event starts a guild-wide journey: /guild event start here COUNT TITLE', '/guild event arrive ID | visit | list | cancel', '/guild post story ID CLUE adds a clue to the guild board.', '/guild expedition and /guild meet show group goals.', '/guild post MESSAGE | /guild board | /guild clear', '/guild kick TRAINER | /guild transfer TRAINER | /guild disband', '/g MESSAGE sends guild-only chat.']
         op, args = words[0].lower(), words[1:]
         if op in ('list','standings','apply','applications','approve','reject'):
             return self.recruit(trainer, op, args)
         if op == 'meet':
             return self.meet(trainer, args)
+        if op == 'event':
+            return self.event(trainer, args)
         if op == 'expedition':
             return self.expedition(trainer, args)
+        if op == 'post' and len(args) >= 2 and args[0].lower() == 'story':
+            return self.story_post(trainer, args[1:])
         if op in ('post','board','clear'):
             return self.board(trainer, op, command[len(words[0]):].strip())
         arity = {'create':1,'invite':1,'accept':1,'decline':1,'invites':0,'info':0,'roster':0,'leave':0,'kick':1,'transfer':1,'disband':0}
@@ -112,6 +124,7 @@ class Guilds:
                     return [f'Invited {arg} to {guild[1]}.']
                 if not self.db.execute('SELECT 1 FROM guild_members WHERE trainer=? AND guild_id=?',(arg,guild[0])).fetchone(): raise GuildError('Trainer is not in your guild.')
                 if op=='kick':
+                    self.db.execute('DELETE FROM guild_event_visits WHERE trainer=?',(arg,))
                     self.db.execute('DELETE FROM guild_members WHERE trainer=?',(arg,))
                     return [f'Removed {arg} from {guild[1]}.']
                 self.db.execute('UPDATE guilds SET leader=? WHERE id=?',(arg,guild[0]))
@@ -141,6 +154,7 @@ class Guilds:
             guild=self._require(trainer)
             if op=='leave':
                 if guild[2]==trainer: raise GuildError('Transfer leadership or disband first.')
+                self.db.execute('DELETE FROM guild_event_visits WHERE trainer=?',(trainer,))
                 self.db.execute('DELETE FROM guild_members WHERE trainer=?',(trainer,))
                 return [f'Left {guild[1]}.']
             self._require(trainer,leader=True)
@@ -148,6 +162,8 @@ class Guilds:
             self.db.execute('DELETE FROM guild_applications WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_expedition_visits WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_expeditions WHERE guild_id=?',(guild[0],))
+            self.db.execute('DELETE FROM guild_event_visits WHERE event_id IN (SELECT id FROM guild_events WHERE guild_id=?)',(guild[0],))
+            self.db.execute('DELETE FROM guild_events WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_meetups WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_posts WHERE guild_id=?',(guild[0],))
             self.db.execute('DELETE FROM guild_stats WHERE guild_id=?',(guild[0],))
@@ -290,6 +306,85 @@ class Guilds:
             self.db.execute('DELETE FROM guild_expedition_visits WHERE guild_id=?',(guild[0],))
             self.db.execute('INSERT OR REPLACE INTO guild_expeditions VALUES(?,?,?,0)',(guild[0],name,goal))
             return [f'Expedition started: {goal} trainers visit {name}.']
+
+    def event(self, trainer, args):
+        """A replayable guild objective that gives members a shared destination."""
+        if not args or args == ['list']:
+            with self.db:
+                guild = self._require(trainer)
+                rows = self.db.execute('SELECT id,title,map_name,goal,complete FROM guild_events WHERE guild_id=? ORDER BY id DESC LIMIT 5', (guild[0],)).fetchall()
+                if not rows: return ['No guild journeys yet. Leader: /guild event start here COUNT TITLE']
+                return [f'#{event_id} {title} at {map_name}: {self.db.execute("SELECT COUNT(*) FROM guild_event_visits WHERE event_id=?", (event_id,)).fetchone()[0]}/{goal} explorers ({"complete" if complete else "active"}).' for event_id,title,map_name,goal,complete in reversed(rows)]
+        with self.db:
+            guild = self._require(trainer)
+            op = args[0].lower()
+            if op not in ('cancel', 'visit', 'arrive', 'start'):
+                raise GuildError('Use /guild event start here COUNT TITLE, /guild event arrive ID, visit or cancel.')
+            if op == 'cancel' and len(args) == 1:
+                self._require(trainer, leader=True)
+                active = self.db.execute('SELECT id FROM guild_events WHERE guild_id=? AND complete=0', (guild[0],)).fetchone()
+                if not active:
+                    return ['No active guild journey.']
+                self.db.execute('DELETE FROM guild_event_visits WHERE event_id IN (SELECT id FROM guild_events WHERE guild_id=? AND complete=0)', (guild[0],))
+                self.db.execute('UPDATE guild_events SET complete=1 WHERE guild_id=? AND complete=0', (guild[0],))
+                return ['Guild journey cancelled.']
+            if op == 'visit' and len(args) == 1:
+                active = self.db.execute('SELECT id,map_name,goal FROM guild_events WHERE guild_id=? AND complete=0 ORDER BY id DESC LIMIT 1', (guild[0],)).fetchone()
+                if not active: return ['No active guild journey.']
+                return [f'Journey #{active[0]}: {active[1]}, {active[2]} members needed. Use /guild event arrive ID in the field.']
+
+            if op == 'arrive' and len(args) == 2 and args[1].isascii() and args[1].isdecimal() and len(args[1]) <= 10:
+                event_id = int(args[1])
+                row = self.db.execute('SELECT guild_id,map_name,goal,complete FROM guild_events WHERE id=?', (event_id,)).fetchone()
+                if not row or row[0] != guild[0] or row[3]:
+                    raise GuildError('That guild journey is no longer active.')
+                self.db.execute('INSERT OR IGNORE INTO guild_event_visits(event_id,trainer) VALUES(?,?)', (event_id, trainer))
+                count = self.db.execute('SELECT COUNT(*) FROM guild_event_visits WHERE event_id=?', (event_id,)).fetchone()[0]
+                if count >= row[2]:
+                    self.db.execute('UPDATE guild_events SET complete=1 WHERE id=? AND complete=0', (event_id,))
+                    self.db.execute('UPDATE guild_stats SET xp=MIN(xp+20,1000000000),expeditions=MIN(expeditions+1,1000000000) WHERE guild_id=?', (guild[0],))
+                    return [f'Guild journey complete at {row[1]}! {count} members found the place. The guild earned 20 XP.']
+                return [f'You reached {row[1]}. {count}/{row[2]} guild members have arrived.']
+            if op != 'start' or len(args) < 5 or args[1].lower() != 'here':
+                raise GuildError('Use /guild event start here COUNT MAP TITLE, /guild event arrive ID, visit or cancel.')
+            self._require(trainer, leader=True)
+            if not args[2].isascii() or not args[2].isdecimal() or len(args[2]) > 2:
+                raise GuildError('COUNT must be a number from 2 through your guild size.')
+            name = self.maps.get(args[3].lower())
+            if not name:
+                raise GuildError('Unknown map. Use a canonical World map name.')
+            title = ' '.join(args[4:]).strip()
+            if not 1 <= len(title) <= 48 or not title.isascii() or any(ord(c) < 32 or ord(c) > 126 for c in title):
+                raise GuildError('Use a 1-48 character printable ASCII journey title.')
+            goal = int(args[2])
+            count = self.db.execute('SELECT COUNT(*) FROM guild_members WHERE guild_id=?', (guild[0],)).fetchone()[0]
+            if not 2 <= goal <= min(count, MAX_MEMBERS):
+                raise GuildError('COUNT must be 2 through your current guild size.')
+            active = self.db.execute('SELECT 1 FROM guild_events WHERE guild_id=? AND complete=0', (guild[0],)).fetchone()
+            if active:
+                raise GuildError('Finish or cancel the active guild story first.')
+            cur = self.db.execute('INSERT INTO guild_events(guild_id,kind,title,map_name,goal) VALUES(?,?,?,?,?)',
+                                  (guild[0], 'discovery', title, name, goal))
+            self.db.execute('INSERT INTO guild_event_visits(event_id,trainer) VALUES(?,?)', (cur.lastrowid, trainer))
+            return [f'Guild story started: {title}. Meet {goal} members at {name}; you are already counted.']
+
+    def story_post(self, trainer, args):
+        """Give guild members a player-written clue for their active shared journey."""
+        if len(args) < 2 or not args[0].isascii() or not args[0].isdecimal() or len(args[0]) > 10:
+            raise GuildError('Use /guild post story ID followed by a 1-70 character clue.')
+        event_id = int(args[0])
+        clue = ' '.join(args[1:]).strip()
+        if not 1 <= len(clue) <= 70 or not clue.isascii() or any(ord(c) < 32 or ord(c) > 126 for c in clue):
+            raise GuildError('Use a 1-70 character printable ASCII clue.')
+        with self.db:
+            guild = self._require(trainer)
+            row = self.db.execute('SELECT guild_id,complete FROM guild_events WHERE id=?', (event_id,)).fetchone()
+            if not row or row[0] != guild[0] or row[1]:
+                raise GuildError('That guild journey is no longer active.')
+            body = f'[Journey #{event_id} clue] {clue}'
+            self.db.execute('INSERT INTO guild_posts(guild_id,trainer,body) VALUES(?,?,?)', (guild[0], trainer, body))
+            self.db.execute('DELETE FROM guild_posts WHERE guild_id=? AND id NOT IN (SELECT id FROM guild_posts WHERE guild_id=? ORDER BY id DESC LIMIT 20)', (guild[0], guild[0]))
+            return ['Clue added to the guild board.']
 
     def visit(self, trainer, map_name):
         """Record a distinct member's validated field report, returning completion recipients."""
