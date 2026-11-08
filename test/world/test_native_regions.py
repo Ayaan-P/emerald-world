@@ -47,10 +47,10 @@ struct Save save,*gSaveBlock1Ptr=&save;__typeof__(gMain) gMain;__typeof__(gMapHe
 enum CaveState {CAVE_DISABLED,CAVE_IDLE,CAVE_WAIT,CAVE_WAIT_RESET,CAVE_ACK,CAVE_WAIT_OK,CAVE_READY,CAVE_MISMATCH,CAVE_RETURN_NONE};
 static struct {
  bool8 connected,caveAvailable,staging,caveReturning,caveProbe,caveLegacy;
- bool8 regionProbe,regionLegacy,regionAvailable,regionSelected;
+ bool8 regionProbe,regionLegacy,regionAvailable,regionSelected,exploreAvailable;
  bool8 rallyProbe,rallyLegacy,travelProbe,travelLegacy,chatProbe,chatLegacy,chatAvailable,fieldKnown;
  enum CaveState caveState;
- unsigned caveTimeout,caveRetry,snapshotAge,regionPhase,regionTimeout,seq;
+ unsigned caveTimeout,caveRetry,snapshotAge,regionPhase,regionTimeout,seq,exploreProbeSeq;
  char caveExpected[65],regionRequest[42],trainer[25],token[65];
  const char *regionStatus;
  struct WorldCaveWire caveWire;

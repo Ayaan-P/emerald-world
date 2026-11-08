@@ -1333,3 +1333,37 @@ defaults, stale/unacknowledged refusal, cancellation, rollback/retry, and an act
 cell-by-cell circuit after restoring the exact old map. Native rendered play is
 not demonstrated by this fixture. This uses existing chat and presence transport
 and does not change engine pins, live worlds or release integration.
+
+
+## Independent generated atlases
+
+`python -m world.region_atlas atlas.json --admin-socket ADMIN_SOCKET` previews
+an atlas. Add `--apply` to publish it to the existing native destination menu.
+The owner supplies a bounded data plan with `title` and 2..8 `regions`, each
+containing a distinct `label` and an existing room/link `blueprint`. Labels are
+1..20 plain ASCII characters so players can recognize them in the menu. Use
+rooms, rounded, organic or maze blueprint styles for distinct layouts. The
+compiler validates every map before admitting any. Identical geometry cannot
+masquerade as multiple places, and existing labels or pinned places are never
+overwritten. Preview checks the world identity and history sequence without
+creating archive rows, place identities or public history.
+
+Publication archives all map bytes, the replayable plan, stable place identities,
+independent region pins and actual `region_opened` history in one transaction.
+A late failure adds nothing. Repeating a successful publication returns the same
+manifest after verifying the archived geometry and pins, even after restart.
+Players already inside another selected region or the shared default map keep
+their exact admission. The new destinations appear through the existing paged
+REGION1 menu. Players leave their current generated area before selecting and
+entering another, retaining ordinary map checks and same-region multiplayer
+visibility. Publication does not activate the shared slot, reset mechanics or
+move trainers. No generated-area save behavior is changed.
+
+This atlas format intentionally matches currently supported independent plain
+31-by-31 cave destinations. It does not provide seamless borders, overworld
+cities, Kanto/Johto/Sinnoh replicas, XL region admission, wildlife or new native
+protocols. Those require distinct systems and native integration. The concrete
+fixture publishes Tide Vault, Moss Library and Star Observatory while existing
+players remain inside, enters different destinations concurrently, changes
+regions, restarts and returns through real authority/client protocol dispatch.
+This is not a rendered native playthrough or an actual model-provider run.

@@ -176,6 +176,7 @@ class WorldServer:
                     self.db.execute('INSERT OR IGNORE INTO generated_area_archive (identity,label,kind,template,created) VALUES (?,?,?,?,?)',
                                     (self.shared_cave.identity, 'Outdoor area' if kind == 'wilds' else 'Cave', kind, row[0], int(time.time())))
         if self.archive_generated_areas:
+            self.db.execute('CREATE TABLE IF NOT EXISTS world_region_atlases (identity TEXT PRIMARY KEY, plan TEXT NOT NULL, result TEXT NOT NULL)')
             self.db.execute('CREATE TABLE IF NOT EXISTS world_region_revisions (place_id TEXT PRIMARY KEY, revision TEXT NOT NULL UNIQUE)')
             for (identity,) in self.db.execute('SELECT identity FROM generated_area_archive').fetchall():
                 self.memory.place(identity)
@@ -1727,6 +1728,12 @@ class WorldServer:
                     # A busy activity or refused host action is not a failing
                     # mechanic module. Do not replace its persisted status.
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') in ('preview_atlas','publish_atlas'):
+                try:
+                    from .region_atlas import publish
+                    result=publish(self,request)
+                except (ValueError,TypeError) as exc:
+                    result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'open_region':
                 try:
                     if set(request)!={'command','revision'}:
