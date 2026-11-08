@@ -1733,6 +1733,11 @@ static void Fingerprint(const void *data, size_t size, char out[17])
 
 int WorldBridge_ChatCommandAllowed(const char *target, const char *text)
 {
+#if GENERATED_WORLD_REGIONS
+    /* This local command uses REGION SELECT, never a CHAT packet. */
+    if (sWorld.connected && sWorld.chatAvailable && sWorld.regionAvailable
+     && !strcmp(target, "*") && !strncmp(text, "/region ", 8)) return RegionIdentifier(text + 8);
+#endif
     return sWorld.connected && sWorld.chatAvailable
         && ChatCommandGate_Allowed(sWorld.live.commandMask, target, text);
 }
