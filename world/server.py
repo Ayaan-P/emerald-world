@@ -26,6 +26,7 @@ from .guilds import Guilds
 from .guild_chat import GuildChat
 from .world_rules import WorldRules
 from .rally import RallyCoordinator
+from .world_memory import object_content, overlay_places, terrain_delta
 
 MAX_QUEUE = 65536
 MAX_LINE = 1024
@@ -136,7 +137,9 @@ class WorldServer:
             CREATE INDEX IF NOT EXISTS events_kind_seq ON events(kind,seq);
         ''')
         self.world_rules = WorldRules(self.db)
-        self.guilds = Guilds(self.db, catalog_maps())
+        from .world_memory import WorldMemory
+        self.memory = WorldMemory(self.db)
+        self.guilds = Guilds(self.db, catalog_maps(), record_outcome=self.memory.append)
         self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
         self.db.executescript('''
             CREATE TABLE IF NOT EXISTS module (
@@ -156,6 +159,7 @@ class WorldServer:
             row = self.db.execute('SELECT template FROM generated_cave WHERE singleton=1').fetchone()
             if row is not None:
                 self.shared_cave = SharedCave(row[0])
+                self.memory.place(self.shared_cave.identity)
                 if (self.wilds_map if self.shared_cave.version in (6, 7, 8, 9, 16) else self.cave_map) is None:
                     raise ValueError('generated map missing from catalog')
             if self.archive_generated_areas:
@@ -165,6 +169,10 @@ class WorldServer:
                     kind = 'wilds' if self.shared_cave.version in (6, 7, 8, 9, 16) else 'cave'
                     self.db.execute('INSERT OR IGNORE INTO generated_area_archive (identity,label,kind,template,created) VALUES (?,?,?,?,?)',
                                     (self.shared_cave.identity, 'Outdoor area' if kind == 'wilds' else 'Cave', kind, row[0], int(time.time())))
+        if self.archive_generated_areas:
+            self.db.execute('CREATE TABLE IF NOT EXISTS world_region_revisions (place_id TEXT PRIMARY KEY, revision TEXT NOT NULL UNIQUE)')
+            for (identity,) in self.db.execute('SELECT identity FROM generated_area_archive').fetchall():
+                self.memory.place(identity)
         self.db.commit()
         os.chmod(self.root / 'world.sqlite3', 0o600)
         from .host_controls import HostControls
@@ -225,8 +233,10 @@ class WorldServer:
                 state_json, tiles = self._validated(dict(state=json.loads(row[2]),
                     tiles=[dict(zip(keys, tile)) for tile in stored]))
                 objects = validate_objects(json.loads(row[4]))
-                if any((obj['group'], obj['num']) in (self.cave_map, self.wilds_map) for obj in objects):
-                    raise ValueError('persisted object targets generated cave')
+                from .characters import validate_transition
+                validate_transition(json.loads(state_json), json.loads(state_json), objects, self.db)
+                from .region_characters import validate_region_objects
+                validate_region_objects(self,objects,json.loads(state_json))
                 if type(row[5]) is not int or row[5] < 0:
                     raise ValueError('invalid interaction cursor')
                 self.module_state, self.tiles, self.objects = json.loads(state_json), tiles, objects
@@ -396,6 +406,80 @@ class WorldServer:
                 self._event('leave', conn['id'])
             self._broadcast()
 
+    def _connection_cave(self, conn):
+        return conn.get('region_cave') or self.shared_cave
+
+    def _region_scope(self, conn):
+        cave = self._connection_cave(conn)
+        return cave.identity if cave and conn.get('cave_ack') == cave.identity else None
+
+    def open_region(self, revision):
+        """Owner pins one immutable plain-cave revision per logical place."""
+        from .shared_cave import SharedCave
+        with self.lock:
+            if not self.archive_generated_areas or type(revision) is not str or not re.fullmatch('[0-9a-f]{64}',revision):
+                raise ValueError('persistent archived revision required')
+            row=self.db.execute('SELECT template,label FROM generated_area_archive WHERE identity=?',(revision,)).fetchone()
+            if row is None or hashlib.sha256(row[0]).hexdigest()!=revision:
+                raise ValueError('archived region unavailable')
+            cave=SharedCave(row[0])
+            if cave.version!=1:
+                raise ValueError('REGION1 supports immutable plain caves only')
+            place=self.memory.place(revision)
+            existing=self.db.execute('SELECT revision FROM world_region_revisions WHERE place_id=?',(place,)).fetchone()
+            if existing and existing[0]!=revision:
+                raise ValueError('region already pins a different revision')
+            if not existing:
+                with self.db:
+                    self.db.execute('INSERT INTO world_region_revisions VALUES (?,?)',(place,revision))
+                    self.memory.append('region_opened',dict(place_id=place,revision=revision,label=row[1]))
+                self.revision=self.db.execute('SELECT max(seq) FROM events').fetchone()[0]
+            return dict(ok=True,place_id=place,revision=revision,changed=existing is None)
+
+    def _list_regions(self, conn, offset):
+        """Public, bounded menu of owner-opened immutable destinations."""
+        if (not conn.get('region_capable') or not self.archive_generated_areas
+                or not re.fullmatch(r'0|[1-9][0-9]{0,8}', offset)):
+            raise ValueError('region list unavailable')
+        start=int(offset)
+        rows=self.db.execute("""SELECT r.place_id,a.label FROM world_region_revisions r
+            JOIN generated_area_archive a ON a.identity=r.revision
+            ORDER BY r.place_id LIMIT 5 OFFSET ?""",(start,)).fetchall()
+        next_page=start+4 if len(rows)>4 else 0
+        self._queue(conn,f'REGION BEGIN {start} {min(len(rows),4)} {next_page}\n')
+        for place,label in rows[:4]:
+            # Native labels are bounded literals, never engine text commands.
+            safe=''.join(c if c.isascii() and (c.isalnum() or c in " .,'!?-") else ' '
+                         for c in (label or 'Unnamed place')).strip()[:20] or 'Unnamed place'
+            self._queue(conn,f'REGION PLACE {place} {safe.encode("ascii").hex()}\n')
+        self._queue(conn,'REGION END\n')
+
+    def _select_region(self, conn, place):
+        from .shared_cave import SharedCave
+        with self.lock:
+            if not conn.get('region_capable') or not self.archive_generated_areas:
+                raise ValueError('region selection unavailable')
+            state=conn.get('state')
+            if (not state or not state[6] or conn.get('in_generated_cave')
+                    or tuple(state[:2]) in (self.cave_map,self.wilds_map)
+                    or time.monotonic()-conn.get('state_time',0)>5
+                    or self.link_protocol.busy(conn['id']) or self.rally.current(conn) is not None):
+                raise ValueError('leave generated areas and finish activities before selecting a region')
+            row=self.db.execute("""SELECT a.template,r.revision FROM world_region_revisions r
+                JOIN generated_area_archive a ON a.identity=r.revision WHERE r.place_id=?""",(place,)).fetchone()
+            if row is None or hashlib.sha256(row[0]).hexdigest()!=row[1]:
+                raise ValueError('region unavailable')
+            cave=SharedCave(row[0])
+            if cave.version!=1:
+                raise ValueError('region format unavailable')
+            conn['region_cave']=cave
+            conn['region_place']=place
+            conn['cave_offer']=conn['cave_ack']=None
+            conn['cave_transfer_pending']=False
+            conn['cave_revoked']=[]
+            conn['cave_next']=0
+            self._queue(conn,'REGION SELECTED '+place+' '+cave.identity+'\n')
+
     def _snapshot(self, conn):
         lines = ['BEGIN ' + str(self.revision)]
         # World population is not the fixed native render-array capacity.
@@ -410,8 +494,8 @@ class WorldServer:
             # A new or legacy connection with no field state must never see
             # generated-cave peers in its first generic snapshot.
             if tuple(state[:2]) in (self.cave_map, self.wilds_map):
-                if (origin is None or tuple(origin[:2]) != tuple(state[:2]) or self.shared_cave is None
-                        or conn.get('cave_ack') != self.shared_cave.identity):
+                if (origin is None or tuple(origin[:2]) != tuple(state[:2])
+                        or self._region_scope(conn) is None or self._region_scope(conn) != self._region_scope(peer)):
                     continue
             if origin is not None and state[:2] != origin[:2]:
                 continue
@@ -445,10 +529,21 @@ class WorldServer:
         lines += ['TILE ' + ' '.join(map(str, tile)) for tile in self.tiles
                   if tuple(tile[:2]) not in (self.cave_map, self.wilds_map)]
         for obj in self.objects:
+            prefix='OBJECT '
             if (obj['group'], obj['num']) in (self.cave_map, self.wilds_map):
-                continue
-            lines.append('OBJECT ' + obj['id'] + ' ' + ' '.join(str(obj[k]) for k in ('group','num','x','y','gfx'))
+                from .region_characters import scoped
+                if not scoped(self,conn,obj,obj.get('region_revision')):continue
+                prefix='REGION_OBJECT '+obj['region_revision']+' '
+            lines.append(prefix + obj['id'] + ' ' + ' '.join(str(obj[k]) for k in ('group','num','x','y','gfx'))
                          + ' ' + obj['text'].encode('ascii').hex())
+            if conn.get('character_capable'):
+                from .characters import records
+                character = records(self.module_state).get(obj['id'])
+                if character and character['status'] == 'active':
+                    lines.append('CHARACTER ' + obj['id'] + ' ' + str(character['version']))
+                    if conn.get('character_quest_capable') and character.get('offer'):
+                        offer=character['offer']
+                        lines.append('CHARACTER_OFFER '+ ' '.join(map(str,[obj['id'],character['version'],offer['id'],offer['revision'],offer['target'],offer['place_id'][7:]])))
         meeting = conn.get('meeting')
         if conn.get('social') and meeting:
             lines.append('MEET ' + ' '.join(str(meeting[k]) for k in
@@ -468,13 +563,15 @@ class WorldServer:
                 self._queue(conn, self._snapshot(conn))
 
     def _link_presence(self):
-        # Cave battle admission requires the exact current instance identity.
-        # Non-cave activity retains its ordinary presence and ownership checks.
-        return {name: peer['state'] for name, peer in self.peers.items()
+        from .link_sessions import RegionPresence
+        states={name:peer['state'] for name,peer in self.peers.items()
                 if peer['state'] is not None and not peer.get('closing')
-                and (tuple(peer['state'][:2]) not in (self.cave_map, self.wilds_map)
-                     or (self.shared_cave is not None and
-                         peer.get('cave_ack') == self.shared_cave.identity))}
+                and (tuple(peer['state'][:2]) not in (self.cave_map,self.wilds_map)
+                     or self._region_scope(peer) is not None)}
+        scopes={name:self._region_scope(self.peers[name])
+                if tuple(state[:2]) in (self.cave_map,self.wilds_map) else None
+                for name,state in states.items()}
+        return RegionPresence(states,scopes)
 
     def _schedule_presence(self, now):
         if not self.presence_dirty:
@@ -497,10 +594,21 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                character_region_capable = role.endswith('CHARREG1')
+                if character_region_capable:role=role[:-8]
+                character_quest_capable = role.endswith('CHARQUEST1')
+                if character_quest_capable:
+                    role = role[:-10]
+                character_capable = role.endswith('CHAR1')
+                if character_capable:
+                    role = role[:-5]
                 rules_version = 3 if role.endswith('RULES3') else 2 if role.endswith('RULES2') else 1 if role.endswith('RULES1') else 0
                 rules_capable = rules_version != 0
                 if rules_capable:
                     role = role[:-6]
+                region_capable = role.endswith('REGION1')
+                if region_capable:
+                    role = role[:-7]
                 cave_xl = role.endswith('CAVE16')
                 cave_expansion_large = cave_xl or role.endswith('CAVE11')
                 cave_expansion = cave_expansion_large or role.endswith('CAVE10')
@@ -531,8 +639,20 @@ class WorldServer:
                 travel = role in ('SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
                 social = role in ('SOCIAL', 'SOCIALCHAT', 'SOCIALTRAVEL', 'SOCIALTRAVELCHAT', 'SOCIALTRAVELRALLY', 'SOCIALTRAVELCHATRALLY')
                 link = role == 'LINK'
+                if character_region_capable and not (character_capable and (region_capable or cave_xl)):
+                    self._error(conn, 'AUTH')
+                    return
+                if character_quest_capable and not character_capable:
+                    self._error(conn, 'AUTH')
+                    return
+                if character_capable and not social:
+                    self._error(conn, 'AUTH')
+                    return
                 if rules_capable and not social:
                     self._error(conn, 'AUTH')
+                    return
+                if region_capable and (not social or not cave_capable):
+                    self._error(conn,'AUTH')
                     return
                 if cave_capable and not social:
                     self._error(conn, 'AUTH')
@@ -586,8 +706,12 @@ class WorldServer:
                     return
                 conn['id'] = name
                 conn['social'] = social
+                conn['character_region_capable'] = character_region_capable
+                conn['character_capable'] = character_capable
+                conn['character_quest_capable'] = character_quest_capable
                 conn['rules_capable'] = rules_capable
                 conn['rules_version'] = rules_version
+                conn['region_capable'] = region_capable
                 conn['cave_capable'] = cave_capable
                 conn['cave_profile'] = cave_profile
                 conn['cave_wildlife'] = cave_wildlife
@@ -617,6 +741,8 @@ class WorldServer:
                 with self.db:
                     self._event('join', name)
                 self._queue(conn, f'WELCOME 1 {name} {self.revision}\n')
+                if region_capable:
+                    self._queue(conn,'REGION READY 1\n')
                 if social and rules_capable:
                     self._queue(conn, self.world_rules.line(rules_version))
                 self._broadcast()
@@ -626,6 +752,18 @@ class WorldServer:
                 return
             if conn.get('control'):
                 self._control_line(conn, raw)
+                return
+            if fields and fields[0] == 'REGION':
+                if len(fields)!=3 or fields[1] not in ('SELECT','LIST') or raw.decode('ascii')!=' '.join(fields):
+                    self._error(conn,'REGION')
+                    return
+                try:
+                    if fields[1]=='LIST':
+                        self._list_regions(conn,fields[2])
+                    else:
+                        self._select_region(conn,fields[2])
+                except ValueError:
+                    self._queue(conn,'REGION REFUSED\n')
                 return
             if fields and fields[0] == 'CAVE':
                 if raw.decode('ascii') != ' '.join(fields):
@@ -639,7 +777,7 @@ class WorldServer:
                         self._error(conn,'CAVE');return
                     revision=bounded(fields[3],0,2147483647)
                     with self.lock:
-                        cave=self.shared_cave
+                        cave=self._connection_cave(conn)
                         if cave and cave.version==9 and cave.identity==fields[2] and conn.get('cave_ack')==fields[2] and revision<=self._active_terrain()[0]:
                             old=conn.get('terrain_report');phase=fields[4].lower()
                             if not old or old['identity']!=fields[2] or revision>old['revision'] or (revision==old['revision'] and not (old['phase']=='applied' and phase=='staged')):
@@ -653,21 +791,22 @@ class WorldServer:
                     return
                 if fields == ['CAVE', 'GET']:
                     with self.lock:
-                        if (self.shared_cave is None
-                                or (self.shared_cave.version == 16 and not conn.get('cave_xl'))
-                                or (self.shared_cave.version == 9 and not conn.get('cave_events'))
-                                or (self.shared_cave.version == 9 and self._active_terrain()[1]!=b'\0' and not conn.get('cave_terrain'))
-                                or (self.shared_cave.version == 9 and self._terrain_requires_geometry() and not conn.get('cave_geometry'))
-                                or (self.shared_cave.version == 9 and self._terrain_requires_large() and not conn.get('cave_large_terrain'))
-                                or (self.shared_cave.version == 8 and not conn.get('cave_cast'))
-                                or (self.shared_cave.version == 7 and not conn.get('cave_guide'))
-                                or (self.shared_cave.version == 6 and not conn.get('cave_wilds'))
-                                or (self.shared_cave.version == 5 and (not conn.get('cave_large_wildlife') or conn.get('cave_expansion')))
-                                or (self.shared_cave.version == 10 and not conn.get('cave_expansion'))
-                                or (self.shared_cave.version == 11 and not conn.get('cave_expansion_large'))
-                                or (self.shared_cave.version == 4 and not conn.get('cave_large'))
-                                or (self.shared_cave.version == 3 and (not conn.get('cave_wildlife') or conn.get('cave_expansion')))
-                                or (self.shared_cave.profile is not None and not conn.get('cave_profile'))):
+                        cave=self._connection_cave(conn)
+                        if (cave is None
+                                or (cave.version == 16 and not conn.get('cave_xl'))
+                                or (cave.version == 9 and not conn.get('cave_events'))
+                                or (cave.version == 9 and self._active_terrain()[1]!=b'\0' and not conn.get('cave_terrain'))
+                                or (cave.version == 9 and self._terrain_requires_geometry() and not conn.get('cave_geometry'))
+                                or (cave.version == 9 and self._terrain_requires_large() and not conn.get('cave_large_terrain'))
+                                or (cave.version == 8 and not conn.get('cave_cast'))
+                                or (cave.version == 7 and not conn.get('cave_guide'))
+                                or (cave.version == 6 and not conn.get('cave_wilds'))
+                                or (cave.version == 5 and (not conn.get('cave_large_wildlife') or conn.get('cave_expansion')))
+                                or (cave.version == 10 and not conn.get('cave_expansion'))
+                                or (cave.version == 11 and not conn.get('cave_expansion_large'))
+                                or (cave.version == 4 and not conn.get('cave_large'))
+                                or (cave.version == 3 and (not conn.get('cave_wildlife') or conn.get('cave_expansion')))
+                                or (cave.profile is not None and not conn.get('cave_profile'))):
                             conn['cave_offer'] = None
                             self._queue(conn, 'CAVE NONE\n')
                             return
@@ -676,31 +815,32 @@ class WorldServer:
                             self._queue(conn, 'CAVE BUSY\n')
                             return
                         conn['cave_next'] = now + .5
-                        terrain = self._active_terrain() if self.shared_cave.version==9 and conn.get('cave_terrain') else None
-                        frames = self.shared_cave.frames(terrain=terrain,terrain_large=bool(conn.get('cave_large_terrain')))
+                        terrain = self._active_terrain() if cave.version==9 and conn.get('cave_terrain') else None
+                        frames = cave.frames(terrain=terrain,terrain_large=bool(conn.get('cave_large_terrain')))
                         if len(conn['out']) + len(frames) > MAX_QUEUE:
                             self._queue(conn, 'CAVE BUSY\n')
                             return
-                        conn['cave_offer'] = self.shared_cave.identity
+                        conn['cave_offer'] = cave.identity
                         conn['cave_transfer_pending'] = True
-                        conn['cave_offer_terrain_rev'] = self._active_terrain()[0] if self.shared_cave.version==9 else 0
+                        conn['cave_offer_terrain_rev'] = self._active_terrain()[0] if cave.version==9 else 0
                         self._queue(conn, frames)
                         return
                 if len(fields) == 3 and fields[1] == 'ACK' and re.fullmatch(r'[0-9a-f]{64}', fields[2]):
                     with self.lock:
-                        if (self.shared_cave and conn.get('cave_offer') == self.shared_cave.identity
-                                and secrets.compare_digest(fields[2], self.shared_cave.identity)
-                                and self.shared_cave.version==9 and conn.get('cave_offer_terrain_rev')!=self._active_terrain()[0]):
-                            conn['cave_offer']=None;conn['cave_transfer_pending']=False;self._queue(conn,'CAVE RESET '+self.shared_cave.identity+'\n');return
-                        if (self.shared_cave and conn.get('cave_offer') == self.shared_cave.identity
-                                and secrets.compare_digest(fields[2], self.shared_cave.identity)):
-                            conn['cave_ack'] = self.shared_cave.identity
+                        cave=self._connection_cave(conn)
+                        if (cave and conn.get('cave_offer') == cave.identity
+                                and secrets.compare_digest(fields[2], cave.identity)
+                                and cave.version==9 and conn.get('cave_offer_terrain_rev')!=self._active_terrain()[0]):
+                            conn['cave_offer']=None;conn['cave_transfer_pending']=False;self._queue(conn,'CAVE RESET '+cave.identity+'\n');return
+                        if (cave and conn.get('cave_offer') == cave.identity
+                                and secrets.compare_digest(fields[2], cave.identity)):
+                            conn['cave_ack'] = cave.identity
                             conn['terrain_report'] = None
                             conn['cave_transfer_pending'] = False
                             conn['cave_revoked'] = []
-                            self._queue(conn, 'CAVE OK ' + self.shared_cave.identity + '\n')
-                        elif self.shared_cave and fields[2] in conn.get('cave_revoked', ()):
-                            self._queue(conn, 'CAVE RESET ' + self.shared_cave.identity + '\n')
+                            self._queue(conn, 'CAVE OK ' + cave.identity + '\n')
+                        elif cave and fields[2] in conn.get('cave_revoked', ()):
+                            self._queue(conn, 'CAVE RESET ' + cave.identity + '\n')
                         else:
                             self._error(conn, 'CAVE')
                         return
@@ -719,7 +859,30 @@ class WorldServer:
                     raise ValueError('noncanonical chat line')
                 self._chat(conn, fields)
                 return
-            if fields and fields[0] == 'INTERACT':
+            if fields and fields[0] in ('CHARACTER_ACCEPT','CHARACTER_ACCEPT_REGION'):
+                from .characters import accept_offer, CharacterOfferError
+                try:
+                    with self.lock:
+                        if raw.decode('ascii') != ' '.join(fields):
+                            raise CharacterOfferError('STALE')
+                        self._queue(conn,accept_offer(self,conn,fields))
+                except (CharacterOfferError,sqlite3.Error) as exc:
+                    code=str(exc) if isinstance(exc,CharacterOfferError) else 'REFUSED'
+                    nonce=fields[1] if len(fields)>1 and fields[1].isdigit() and len(fields[1])<=10 else '0'
+                    self._queue(conn,'CHARACTER_OFFER_REJECT '+nonce+' '+code+'\n')
+                return
+            if fields and fields[0] in ('CHARACTER_CHALLENGE', 'CHARACTER_CHALLENGE_REGION', 'CHARACTER_RESULT'):
+                from .characters import challenge, report_result
+                try:
+                    if raw.decode('ascii') != ' '.join(fields):
+                        raise ValueError('noncanonical character request')
+                    reply = (challenge if fields[0] in ('CHARACTER_CHALLENGE','CHARACTER_CHALLENGE_REGION') else report_result)(self, conn, fields)
+                    self._queue(conn, reply)
+                except ValueError:
+                    rejected = fields[1] if len(fields) > 1 and fields[1].isdigit() and len(fields[1]) <= 10 else '0'
+                    self._queue(conn, 'CHARACTER_REJECT ' + rejected + '\n')
+                return
+            if fields and fields[0] in ('INTERACT','INTERACT_REGION'):
                 self._interact(conn, fields)
                 return
             if fields and fields[0] == 'MEET':
@@ -745,16 +908,17 @@ class WorldServer:
                 limits = [255, 255, 32767, 32767, 4, 65535, 1]
                 state = [bounded(v, 0, limit) for v, limit in zip(fields[2:9], limits)]
                 if tuple(state[:2]) in (self.cave_map, self.wilds_map):
-                    active_map = self.wilds_map if self.shared_cave and self.shared_cave.version in (6, 7, 8, 9, 16) else self.cave_map
+                    cave=self._connection_cave(conn)
+                    active_map = self.wilds_map if cave and cave.version in (6, 7, 8, 9, 16) else self.cave_map
                     if tuple(state[:2]) != active_map:
                         raise ValueError('wrong generated map')
-                    if (self.shared_cave and conn.get('cave_capable') and conn.get('cave_revoked')
-                            and conn.get('cave_ack') != self.shared_cave.identity):
-                        self._queue(conn, 'CAVE RESET ' + self.shared_cave.identity + '\n')
+                    if (cave and conn.get('cave_capable') and conn.get('cave_revoked')
+                            and conn.get('cave_ack') != cave.identity):
+                        self._queue(conn, 'CAVE RESET ' + cave.identity + '\n')
                         return
-                    if (self.shared_cave is None or conn.get('cave_ack') != self.shared_cave.identity
+                    if (cave is None or conn.get('cave_ack') != cave.identity
                             or self.rally.current(conn) is not None
-                            or not self._active_walkable(state[2], state[3])):
+                            or not (cave.walkable(state[2],state[3]) if conn.get('region_cave') else self._active_walkable(state[2], state[3]))):
                         raise ValueError('unadmitted cave state')
                 else:
                     validate_coords(*state[:4])
@@ -866,10 +1030,9 @@ class WorldServer:
                 return
             origin, destination = conn['presence'], other['presence']
             if origin.get('in_generated_cave') or destination.get('in_generated_cave'):
-                same_instance = (self.shared_cave is not None
+                same_instance = (self._region_scope(origin) is not None
                     and origin.get('in_generated_cave') and destination.get('in_generated_cave')
-                    and origin.get('cave_ack') == self.shared_cave.identity
-                    and destination.get('cave_ack') == self.shared_cave.identity)
+                    and self._region_scope(origin) == self._region_scope(destination))
                 if not same_instance or (fields[0] == b'L' and fields[2] != b'4'):
                     channel = 'T' if fields[0] == b'T' else 'L'
                     self._queue(conn, f'{channel} ERROR UNAVAILABLE\n')
@@ -913,16 +1076,18 @@ class WorldServer:
         self._broadcast()
 
     def _interact(self, conn, fields):
-        if len(fields) != 3 or not ID.fullmatch(fields[2]):
+        region=fields[0]=='INTERACT_REGION'
+        if len(fields) != (4 if region else 3) or not ID.fullmatch(fields[2]):
             raise ValueError('invalid interaction')
         seq = bounded(fields[1], 0, 2**63 - 1)
         if seq <= conn['seq']:
             self._error(conn, 'STALE')
             return
         state = conn['state']
-        if state and tuple(state[:2]) in (self.cave_map, self.wilds_map):
-            raise ValueError('generated cave interactions unavailable')
         obj = next((o for o in self.objects if o['id'] == fields[2]), None)
+        from .region_characters import scoped
+        if not scoped(self,conn,obj,fields[3] if region else None):raise ValueError('interaction region mismatch')
+        if region and time.monotonic()-conn.get('state_time',0)>5:raise ValueError('stale region interaction')
         if not state or not state[6] or not obj or state[:2] != [obj['group'], obj['num']]:
             raise ValueError('interaction unavailable')
         dx, dy = {1:(0,1), 2:(0,-1), 3:(-1,0), 4:(1,0)}[state[4]]
@@ -931,9 +1096,10 @@ class WorldServer:
         now = time.monotonic()
         if now - conn.get('last_interaction', -1) < .2:
             raise ValueError('interaction rate exceeded')
+        scope=dict(region_revision=obj['region_revision'],place_id=self.memory.place(obj['region_revision'])) if region else {}
         with self.db:
             self._event('interaction', dict(player=conn['id'], object=obj['id'],
-                group=obj['group'], num=obj['num'], x=obj['x'], y=obj['y']))
+                group=obj['group'], num=obj['num'], x=obj['x'], y=obj['y'],**scope))
         conn['seq'], conn['last_interaction'] = seq, now
         self._broadcast()
 
@@ -1013,35 +1179,67 @@ class WorldServer:
                 self._queue(conn, json.dumps(future.result(), ensure_ascii=True) + '\n')
         self.control_jobs = remaining
 
-    def _persist_cave(self, blob, *, label=None):
+    def _persist_cave(self, blob, *, label=None, previous_revision=None, history_evidence=None):
         if not self.persist_generated_cave:
             return
         try:
             with self.db:
+                previous = self.db.execute('SELECT template FROM generated_cave WHERE singleton=1').fetchone()
+                identity = hashlib.sha256(blob).hexdigest()
+                if previous_revision is not None:
+                    if previous is None or hashlib.sha256(previous[0]).hexdigest() != previous_revision:
+                        raise ValueError('active area revision changed')
+                    place_id = self.memory.continue_place(previous_revision, identity)
+                else:
+                    place_id = self.memory.place(identity)
                 self.db.execute('INSERT OR REPLACE INTO generated_cave (singleton, template) VALUES (1, ?)', (blob,))
                 if self.archive_generated_areas:
                     identity = hashlib.sha256(blob).hexdigest()
                     kind = 'wilds' if blob[:8] in (b'EWGMAP06', b'EWGMAP07', b'EWGMAP08', b'EWGMAP09', b'EWGMAP0A') else 'cave'
-                    display = label if label is not None else ('Outdoor area' if kind == 'wilds' else 'Cave')
+                    prior_name = self.db.execute('SELECT label FROM generated_area_archive WHERE identity=?', (identity,)).fetchone()
+                    display = label if label is not None else (prior_name[0] if prior_name else ('Outdoor area' if kind == 'wilds' else 'Cave'))
                     self.db.execute('INSERT OR IGNORE INTO generated_area_archive (identity,label,kind,template,created) VALUES (?,?,?,?,?)',
                                     (identity, display, kind, blob, int(time.time())))
                     if label is not None:
                         self.db.execute('UPDATE generated_area_archive SET label=? WHERE identity=?', (label, identity))
+                        if prior_name and prior_name[0] != label:
+                            self.memory.append('area_named', dict(place_id=place_id, revision=identity, before=prior_name[0], after=label))
+                if previous is None or previous[0] != blob:
+                    self.memory.append('area_activated', dict(place_id=place_id, revision=identity,
+                                       label=display if self.archive_generated_areas else label,
+                                       previous_revision=hashlib.sha256(previous[0]).hexdigest() if previous else None,
+                                       continued=previous_revision is not None,
+                                       **({'history_evidence':history_evidence} if history_evidence is not None else {})))
+            self.revision = self.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
         except sqlite3.Error:
             raise ValueError('generated cave could not be persisted') from None
 
-    def _replace_cave(self, blob, *, label=None):
+    def _replace_cave(self, blob, *, label=None, previous_revision=None, expected_world_id=None, expected_sequence=None, history_evidence=None):
         from .shared_cave import SharedCave
         candidate = SharedCave(blob)  # validate completely before mutating anything
+        if previous_revision is not None and (not self.persist_generated_cave or type(previous_revision) is not str or not re.fullmatch(r'[0-9a-f]{64}', previous_revision)):
+            raise ValueError('invalid previous area revision')
         if label is not None and (type(label) is not str or not label.strip() or len(label) > 80 or any(ord(c) < 32 or ord(c) == 127 for c in label)):
             raise ValueError('invalid generated area label')
         with self.lock:
+            if expected_world_id is not None or expected_sequence is not None or history_evidence is not None:
+                if (not self.archive_generated_areas or expected_world_id != self.memory.world_id
+                        or type(expected_sequence) is not int
+                        or expected_sequence != self.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]):
+                    raise ValueError('world changed; inspect before authoring again')
+                if (type(history_evidence) is not list or len(history_evidence)>32
+                        or any(type(seq) is not int or seq<=0 for seq in history_evidence)
+                        or len(set(history_evidence))!=len(history_evidence)):
+                    raise ValueError('invalid history evidence')
+                for seq in history_evidence:
+                    if self.db.execute("SELECT 1 FROM events WHERE seq=? AND kind='world_memory'",(seq,)).fetchone() is None:
+                        raise ValueError('history evidence unavailable')
             if (self.wilds_map if candidate.version in (6, 7, 8, 9, 16) else self.cave_map) is None:
                 raise ValueError('generated map missing from catalog')
             if self.shared_cave and candidate.identity == self.shared_cave.identity:
-                self._persist_cave(blob, label=label)
+                self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence)
                 return candidate.identity
-            peers = [peer for peer in self.peers.values() if not peer.get('closing')]
+            peers = [peer for peer in self.peers.values() if not peer.get('closing') and not peer.get('region_cave')]
             if any(peer.get('in_generated_cave') or
                    (peer.get('state') is not None and tuple(peer['state'][:2]) in (self.cave_map, self.wilds_map))
                    for peer in peers):
@@ -1051,7 +1249,7 @@ class WorldServer:
             if any(len(peer['out']) + len(message) > MAX_QUEUE for peer in recipients):
                 raise ValueError('generated cave update is busy')
             old_id = self.shared_cave.identity if self.shared_cave else None
-            self._persist_cave(blob, label=label)
+            self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence)
             self.shared_cave = candidate
             self._terrain_walk_cache = None
             for peer in recipients:
@@ -1129,7 +1327,7 @@ class WorldServer:
             merged.update(changes);payload=encode(cave,merged)
             if payload==old:return {'ok':True,'identity':identity,'revision':revision,'tiles':len(merged),'changed':False}
             if revision>=2147483647:raise ValueError('terrain revision exhausted')
-            peers=[p for p in self.peers.values() if not p.get('closing') and p.get('cave_capable')]
+            peers=[p for p in self.peers.values() if not p.get('closing') and p.get('cave_capable') and not p.get('region_cave')]
             from .shared_terrain import needs_geometry,needs_large,frames as terrain_frames
             geometry=needs_geometry(cave,payload);large=needs_large(payload)
             def compatible(p):return bool(p.get('cave_terrain') and (not geometry or p.get('cave_geometry')) and (not large or p.get('cave_large_terrain')))
@@ -1140,7 +1338,12 @@ class WorldServer:
             updates=[(p,terrain_frames(identity,revision,payload,bool(p.get('cave_large_terrain')))) for p in targets]
             if any(len(p['out'])+len(update)>MAX_QUEUE for p,update in updates) or any(len(p['out'])+len(reset)>MAX_QUEUE for p in legacy):raise ValueError('trainer connection is busy')
             try:
-                with self.db:self.db.execute('INSERT OR REPLACE INTO generated_area_terrain(identity,revision,payload) VALUES(?,?,?)',(identity,revision,payload))
+                with self.db:
+                    self.db.execute('INSERT OR REPLACE INTO generated_area_terrain(identity,revision,payload) VALUES(?,?,?)',(identity,revision,payload))
+                    self.memory.append('terrain_changed', dict(place_id=self.memory.place(identity),
+                                       revision=identity, terrain_revision=revision,
+                                       tiles=terrain_delta(cave, old, payload)))
+                self.revision = self.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
             except sqlite3.Error:
                 raise ValueError('shared terrain could not be persisted') from None
             from .shared_terrain import project
@@ -1166,7 +1369,7 @@ class WorldServer:
                     except Exception:peer['closing']=True
             return {'ok':True,'identity':identity,'revision':revision,'tiles':len(merged),'changed':True,'queued':queued,'delivery_failed':delivery_failed}
 
-    def set_shared_geometry(self, identity, tiles, replace=False):
+    def set_shared_geometry(self, identity, tiles, replace=False, *, expected_world_id=None, expected_revision=None, history_evidence=None):
         """Commit connected terrain geometry only while the generated area is empty."""
         from .shared_terrain import validate,encode,project
         if type(identity) is not str or not re.fullmatch(r'[0-9a-f]{64}',identity) or type(tiles) is not list or type(replace) is not bool or len(tiles)>512 or (not tiles and not replace):raise ValueError('invalid shared geometry request')
@@ -1181,9 +1384,20 @@ class WorldServer:
             if not self.archive_generated_areas or not cave or cave.version!=9 or cave.identity!=identity:raise ValueError('durable active event area required')
             stored=self.db.execute('SELECT template FROM generated_cave WHERE singleton=1').fetchone()
             if stored is None or type(stored[0]) is not bytes or hashlib.sha256(stored[0]).hexdigest()!=identity:raise ValueError('publish the active event area before editing geometry')
-            peers=[p for p in self.peers.values() if not p.get('closing') and p.get('cave_capable')]
+            peers=[p for p in self.peers.values() if not p.get('closing') and p.get('cave_capable') and not p.get('region_cave')]
             if any(p.get('in_generated_cave') or (p.get('state') is not None and tuple(p['state'][:2]) in (self.cave_map,self.wilds_map)) for p in peers):raise ValueError('all trainers must leave the generated area')
             revision,old=self._active_terrain();merged={} if replace else validate(cave,old)
+            if expected_world_id is not None or expected_revision is not None or history_evidence is not None:
+                if (expected_world_id != self.memory.world_id or type(expected_revision) is not int
+                        or expected_revision != revision):
+                    raise ValueError('world or terrain changed; inspect before authoring again')
+                if (type(history_evidence) is not list or len(history_evidence)>16
+                        or any(type(seq) is not int or seq<=0 for seq in history_evidence)
+                        or len(set(history_evidence))!=len(history_evidence)):
+                    raise ValueError('invalid history evidence')
+                for seq in history_evidence:
+                    if self.db.execute("SELECT 1 FROM events WHERE seq=? AND kind='world_memory'",(seq,)).fetchone() is None:
+                        raise ValueError('history evidence unavailable')
             npcs={(cave.cast[2+61*i],cave.cast[3+61*i]) for i in range(cave.cast[0])}
             for (x,y),kind in changes.items():
                 if not 0<x<62 or not 0<y<62 or (x,y) in npcs or (x,y) in ((1,1),(61,60),(61,61)):raise ValueError('protected geometry cell')
@@ -1196,7 +1410,13 @@ class WorldServer:
             if any(len(p['out'])+len(reset)>MAX_QUEUE for p in recipients):raise ValueError('trainer connection is busy')
             revision+=1
             try:
-                with self.db:self.db.execute('INSERT OR REPLACE INTO generated_area_terrain(identity,revision,payload) VALUES(?,?,?)',(identity,revision,payload))
+                with self.db:
+                    self.db.execute('INSERT OR REPLACE INTO generated_area_terrain(identity,revision,payload) VALUES(?,?,?)',(identity,revision,payload))
+                    self.memory.append('terrain_changed', dict(place_id=self.memory.place(identity),
+                                       revision=identity, terrain_revision=revision,
+                                       tiles=terrain_delta(cave, old, payload),
+                                       **({'history_evidence':history_evidence} if history_evidence is not None else {})))
+                self.revision = self.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
             except sqlite3.Error:raise ValueError('shared geometry could not be persisted') from None
             self._terrain_walk_cache=(identity,revision,project(cave,payload));queued=0;delivery_failed=0
             for peer in recipients:
@@ -1299,7 +1519,7 @@ class WorldServer:
             request = json.loads(raw)
             if request.get('command') == 'replace_cave':
                 try:
-                    if (set(request) not in ({'command', 'template'}, {'command', 'template', 'label'})
+                    if (not {'command', 'template'} <= set(request) or not set(request) <= {'command', 'template', 'label', 'previous_revision', 'expected_world_id', 'expected_sequence', 'history_evidence'}
                             or type(request['template']) is not str):
                         raise ValueError('invalid cave request')
                     try:
@@ -1308,7 +1528,11 @@ class WorldServer:
                         raise ValueError('invalid cave encoding') from None
                     if base64.b64encode(blob).decode('ascii') != request['template']:
                         raise ValueError('noncanonical cave encoding')
-                    result = dict(ok=True, id=self._replace_cave(blob, label=request.get('label')), persistent=self.persist_generated_cave)
+                    guards={'expected_world_id','expected_sequence','history_evidence'}
+                    if set(request)&guards and not guards<=set(request):
+                        raise ValueError('incomplete world publication guard')
+                    guard={key:request[key] for key in guards if key in request}
+                    result = dict(ok=True, id=self._replace_cave(blob, label=request.get('label'), previous_revision=request.get('previous_revision'), **guard), persistent=self.persist_generated_cave)
                 except ValueError as exc:
                     # Expected validation/occupancy refusal is not a mechanic error.
                     result = dict(ok=False, error=str(exc))
@@ -1341,8 +1565,11 @@ class WorldServer:
                     result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'set_shared_geometry':
                 try:
-                    if set(request) not in ({'command','identity','tiles'},{'command','identity','tiles','replace'}):raise ValueError('invalid shared geometry request')
-                    result=self.set_shared_geometry(request['identity'],request['tiles'],request.get('replace',False))
+                    fields={'command','identity','tiles'}
+                    guarded=fields|{'expected_world_id','expected_revision','history_evidence'}
+                    if set(request) not in (fields,fields|{'replace'},guarded):raise ValueError('invalid shared geometry request')
+                    guard={key:request[key] for key in ('expected_world_id','expected_revision','history_evidence') if key in request}
+                    result=self.set_shared_geometry(request['identity'],request['tiles'],request.get('replace',False),**guard)
                 except ValueError as exc:
                     result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'inspect_shared_terrain':
@@ -1404,6 +1631,43 @@ class WorldServer:
                     # A busy activity or refused host action is not a failing
                     # mechanic module. Do not replace its persisted status.
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'open_region':
+                try:
+                    if set(request)!={'command','revision'}:
+                        raise ValueError('invalid region request')
+                    result=self.open_region(request['revision'])
+                except ValueError as exc:
+                    result=dict(ok=False,error=str(exc))
+            elif request.get('command') == 'saved_places':
+                try:
+                    if not set(request) <= {'command','after','limit'}:
+                        raise ValueError('invalid saved places request')
+                    result = dict(ok=True, **self.memory.saved_places(self, **{k:v for k,v in request.items() if k!='command'}))
+                except (ValueError, TypeError) as exc:
+                    result = dict(ok=False,error=str(exc))
+            elif request.get('command') == 'inspect_saved_place':
+                try:
+                    if set(request) != {'command','revision'}:
+                        raise ValueError('invalid saved place inspection')
+                    result = dict(ok=True, **self.memory.inspect_saved_place(self,request['revision']))
+                except ValueError as exc:
+                    result = dict(ok=False,error=str(exc))
+            elif request.get('command') == 'world_recall':
+                try:
+                    if not {'command', 'through'} <= set(request) or not set(request) <= {'command', 'through', 'places', 'terms'}:
+                        raise ValueError('invalid recall request')
+                    result = dict(ok=True, **self.memory.recall(**{k:v for k,v in request.items() if k != 'command'}))
+                    result['saved_places'] = self.memory.saved_places(self, places=result['places'], terms=result['terms'])
+                except (ValueError, TypeError) as exc:
+                    result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'world_history':
+                try:
+                    if not set(request) <= {'command', 'after', 'limit', 'place_id', 'through'}:
+                        raise ValueError('invalid history request')
+                    result = dict(ok=True, world_id=self.memory.world_id,
+                                  **self.memory.history(**{k:v for k,v in request.items() if k != 'command'}))
+                except ValueError as exc:
+                    result = dict(ok=False, error=str(exc))
             elif request.get('command') == 'events_since':
                 cursor, limit = request.get('cursor', 0), request.get('limit', 64)
                 if type(cursor) is not int or not 0 <= cursor <= 2**63-1 or type(limit) is not int or not 1 <= limit <= 64:
@@ -1435,9 +1699,14 @@ class WorldServer:
                 player = dict(id=name, party_hash=row[0], bag_hash=row[1], save_path=row[2])
                 if conn['state'] is not None:
                     player.update(zip(('group','num','x','y','facing','gfx','ready'), conn['state']))
+                if conn.get('in_generated_cave') and self._region_scope(conn):
+                    revision=self._region_scope(conn)
+                    place=self.db.execute('SELECT place_id FROM world_places WHERE revision=?',(revision,)).fetchone()
+                    player['generated_place']=dict(place_id=place[0] if place else None,revision=revision)
                 player['meeting'] = conn.get('meeting')
                 players.append(player)
             return dict(ok=True, revision=self.revision, players=players,
+                        world_memory=self.memory.context(self),
                         sharing=(dict(endpoint=self.sharing['endpoint'], listen=getattr(self, 'sharing_listen', None))
                                  if self.sharing else None),
                         capacity=dict(players=self.max_players, controls=self.max_controls,
@@ -1470,7 +1739,10 @@ class WorldServer:
         # Failed candidates retry these same durable event IDs, never lose them.
         rows = self.db.execute("SELECT seq,data FROM events WHERE kind='interaction' AND seq>? ORDER BY seq LIMIT 64",
                                (self.interaction_cursor,)).fetchall()
+        from .characters import history_feed
         return dict(players=self.inspect()['players'], revision=self.revision, tick=self.tick,
+                    character_history=history_feed(self.db, self.module_state),
+                    world_history=self.memory.context(self),
                     interactions=[dict(json.loads(data), seq=seq) for seq, data in rows])
 
     def _deploy(self, source, tests, context, state):
@@ -1489,8 +1761,8 @@ class WorldServer:
         from .build_catalog import catalog_maps
         reserved = {(g, n) for (g, n), item in catalog_maps().items()
                     if item.get('name') in ('GeneratedWorld_Cave', 'GeneratedWorld_Wilds')}
-        if any((obj['group'], obj['num']) in reserved for obj in objects):
-            raise ValueError('generated cave cannot have mutable objects')
+        if any((obj['group'], obj['num']) in reserved and 'region_revision' not in obj for obj in objects):
+            raise ValueError('generated objects require immutable region scope')
         if type(tiles) is not list or len(tiles) > MAX_TILES:
             raise ValueError('invalid tiles')
         keys = ('group', 'num', 'x', 'y', 'metatile', 'collision')
@@ -1521,6 +1793,10 @@ class WorldServer:
                 candidate, result = future.result()
                 state_json, tiles = self._validated(result)
                 objects = result.get('objects', [])
+                from .region_characters import validate_region_objects
+                validate_region_objects(self,objects,result['state'])
+                from .characters import validate_transition
+                character_changes = validate_transition(self.module_state, result['state'], objects, self.db)
                 changed = (kind == 'deploy' or result['state'] != self.module_state or tiles != self.tiles
                            or objects != self.objects or cursor != self.interaction_cursor)
                 if changed:
@@ -1528,6 +1804,17 @@ class WorldServer:
                         self.db.execute('INSERT OR REPLACE INTO module(singleton,source,sha256,state,tiles,objects,interaction_cursor) VALUES(1,?,?,?,?,?,?)',
                                         (candidate.source, candidate.sha256, state_json, json.dumps(tiles), json.dumps(objects), cursor))
                         self._event(kind, dict(module_hash=candidate.sha256, tiles=tiles))
+                        if kind == 'deploy' or tiles != self.tiles or object_content(objects) != object_content(self.objects):
+                            self.revision = self.memory.append('mechanic_changed', dict(
+                                module_hash=candidate.sha256, previous_module_hash=self.candidate.sha256 if self.candidate else None,
+                                cause=kind, interaction_cursor=cursor,
+                                places=overlay_places(self.tiles + tiles, self.objects + objects,self.db),
+                                before=dict(tiles=self.tiles, objects=self.objects),
+                                after=dict(tiles=tiles, objects=objects)))
+                        for change in character_changes:
+                            change['places'] = overlay_places([], [obj for obj in self.objects + objects
+                                if obj['id'] == change['character_id']],self.db)
+                            self.revision = self.memory.append('character_changed', change)
                         if kind == 'deploy':
                             self.db.execute('INSERT OR REPLACE INTO status VALUES(1,NULL)')
                     self.candidate, self.module_state, self.tiles = candidate, json.loads(state_json), tiles
@@ -1537,6 +1824,7 @@ class WorldServer:
                     self._broadcast()
                 response = dict(ok=True, revision=self.revision, module_hash=candidate.sha256)
             except Exception as exc:
+                self.revision = self.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
                 self._record_error(exc)
                 response = dict(ok=False, error=self.module_error)
             if conn is not None and conn['sock'] in self.connections:

@@ -52,14 +52,20 @@ class GuildChat:
                     command=text[6:].strip();words=command.split()
                     if words and words[0].lower()=='online': lines=self.online(conn['id'],words[1:])
                     else:
+                        generated=None
                         if (len(words)==4 and words[0].lower() in ('expedition','meet')
                                 and words[1].lower()=='start' and words[2].lower()=='here'):
                             state=conn.get('state')
                             fresh=conn.get('state_time') is not None and time.monotonic()-conn['state_time']<=self.freshness
-                            if not state or not fresh or not state[6] or tuple(state[:2]) in (s.cave_map,s.wilds_map):
-                                raise GuildError('Stand ready on a standard map before starting here.')
-                            command=f'{words[0].lower()} start {self.validate_coords(*state[:4])["name"]} {words[3]}'
-                        lines=s.guilds.command(conn['id'],command)
+                            if not state or not fresh or not state[6]:
+                                raise GuildError('Stand ready in the destination before starting here.')
+                            if tuple(state[:2]) in (s.cave_map,s.wilds_map):
+                                from .generated_goals import observed_place
+                                generated=observed_place(s,conn,self.freshness)
+                                if words[0].lower()!='expedition' or generated is None:
+                                    raise GuildError('Only expeditions in admitted immutable places are supported here.')
+                            else:command=f'{words[0].lower()} start {self.validate_coords(*state[:4])["name"]} {words[3]}'
+                        lines=(s.guilds.expedition(conn['id'],['start','here',words[3]],place=generated) if generated else s.guilds.command(conn['id'],command))
                         self.epoch+=1
                 except GuildError as exc: lines=[str(exc)]
                 for line in lines: self.message(conn,conn['id'],'Guild: '+line)
@@ -107,20 +113,31 @@ class GuildChat:
     def observe(self, conn, state):
         """Advance expeditions from authenticated, validated ready field states."""
         s=self.server
-        if not state[6] or tuple(state[:2]) in (s.cave_map,s.wilds_map):
+        if not state[6]:
             conn.pop('guild_visit_key',None)
             conn.pop('guild_last_ready_time',None)
             return
+        generated=None
+        if tuple(state[:2]) in (s.cave_map,s.wilds_map):
+            from .generated_goals import observed_place
+            generated=observed_place(s,conn,self.freshness)
+            if generated is None:
+                conn.pop('guild_visit_key',None);return
         now=time.monotonic();last=conn.get('guild_last_ready_time')
         conn['guild_last_ready_time']=now
-        key=(self.epoch,state[0],state[1])
+        key=(self.epoch,state[0],state[1],generated['revision'] if generated else None)
         if conn.get('guild_visit_key')==key and last is not None and now-last<=self.freshness: return
         conn['guild_visit_key']=key
-        map_name=self.validate_coords(*state[:4])['name']
-        completed=s.guilds.visit(conn['id'],map_name)
+        map_name=generated['label'] if generated else self.validate_coords(*state[:4])['name']
+        try:
+            completed=s.guilds.visit(conn['id'],map_name,place=generated) if generated else s.guilds.visit(conn['id'],map_name)
+        except GuildError as exc:
+            self._outcome_error(conn,exc)
+            return
         if completed:
             _,destination,goal,members=completed
             self._announce(conn,members,f'Guild expedition complete: {destination} ({goal} trainers). +10 guild XP.')
+        if generated:return
         if s.guilds.active_meet(conn['id'],map_name):
             now=time.monotonic();ready=[]
             for name,peer in s.peers.items():
@@ -128,13 +145,27 @@ class GuildChat:
                 if (not peer.get('closing') and other and other[6] and observed is not None
                         and now-observed<=self.freshness and other[:2]==state[:2]):
                     ready.append(name)
-            completed=s.guilds.complete_meet(conn['id'],map_name,ready)
+            try:
+                completed=s.guilds.complete_meet(conn['id'],map_name,ready)
+            except GuildError as exc:
+                self._outcome_error(conn,exc)
+                return
             if completed:
                 _,destination,goal,members=completed
                 self._announce(conn,members,f'Guild meetup complete: {goal} trainers together at {destination}. +15 guild XP.')
 
+    def _outcome_error(self, conn, error):
+        # The completion transaction rolled back. Do not suppress the next
+        # otherwise-identical valid presence report as an already-counted visit.
+        conn.pop('guild_visit_key',None)
+        if conn.get('chat'):
+            self.message(conn,conn['id'],'Guild: '+str(error))
+            self.server._queue(conn,self.server._snapshot(conn))
+
     def _announce(self, conn, members, text):
         s=self.server
+        if getattr(s,'memory',None) is not None:
+            s.revision=s.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
         for name in members:
             recipient=s.peers.get(name)
             if recipient and recipient.get('chat') and not recipient.get('closing'):

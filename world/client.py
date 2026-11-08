@@ -22,26 +22,31 @@ def admin_request(socket_path, request, timeout=5, admin_path=None):
 
 class WorldClient:
     """A single authenticated session. Each snapshot replaces the previous one."""
-    def __init__(self, socket_path, trainer_id, token, timeout=5, *, control=False, social=False):
+    def __init__(self, socket_path, trainer_id, token, timeout=5, *, control=False, social=False, regions=False):
         from .server import ID, HEX
         if not ID.fullmatch(trainer_id) or not HEX.fullmatch(token):
             raise ValueError('invalid credentials')
+        if regions and control:
+            raise ValueError('regions require a presence connection')
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.sock.settimeout(timeout)
         self.stream = None
         self.control = control
-        self.social = social
+        self.regions = regions
+        self.social = social or regions
         self.trainer_id = trainer_id
         try:
             self.sock.connect(str(socket_path))
             self.stream = self.sock.makefile('rb')
-            suffix = ' CONTROL' if control else (' SOCIAL' if social else '')
+            suffix = ' SOCIALCAVEREGION1' if regions else ' CONTROL' if control else (' SOCIAL' if social else '')
             self.sock.sendall(f'HELLO 1 {trainer_id} {token}{suffix}\n'.encode('ascii'))
             welcome = self._line().split()
             if (len(welcome) != (5 if control else 4) or welcome[:3] != ['WELCOME', '1', trainer_id]
                     or (control and welcome[4] != 'CONTROL')):
                 raise ValueError('invalid welcome')
             self.revision = int(welcome[3])
+            if regions and self._line() != 'REGION READY 1':
+                raise ValueError('region capability unavailable')
         except BaseException:
             self.close()
             raise
@@ -83,8 +88,8 @@ class WorldClient:
         bounded(str(seq), 0, 2**63-1)
         self.sock.sendall(f'MEET {seq} {trainer_id}\n'.encode('ascii'))
 
-    def snapshot(self):
-        begin = self._line().split()
+    def snapshot(self, *, _begin=None):
+        begin = (_begin if _begin is not None else self._line()).split()
         if len(begin) != 2 or begin[0] != 'BEGIN':
             raise ValueError('missing BEGIN')
         peers, tiles, objects = {}, [], []
@@ -138,6 +143,54 @@ class WorldClient:
 
     def __exit__(self, *args):
         self.close()
+
+
+class RegionClient(WorldClient):
+    """Experimental protocol client, not a native warp or simulated movement."""
+    def __init__(self, socket_path, trainer_id, token, timeout=5):
+        super().__init__(socket_path,trainer_id,token,timeout,regions=True)
+        self.last_snapshot=None
+
+    def _region_response(self):
+        for _ in range(64):
+            line=self._line()
+            if line.startswith('BEGIN '):
+                self.last_snapshot=self.snapshot(_begin=line)
+            else:
+                return line
+        raise ValueError('too many snapshots while waiting for region response')
+
+    def select_region(self, place_id):
+        import re
+        from .shared_cave import SharedCave
+        if type(place_id) is not str or not re.fullmatch(r'area:[0-9a-f-]{36}',place_id):
+            raise ValueError('invalid place identity')
+        self.sock.sendall(('REGION SELECT '+place_id+'\n').encode('ascii'))
+        response=self._region_response().split()
+        if len(response)!=4 or response[:3]!=['REGION','SELECTED',place_id]:
+            raise ValueError('region selection refused')
+        revision=response[3]
+        if not re.fullmatch('[0-9a-f]{64}',revision):
+            raise ValueError('invalid region revision')
+        self.sock.sendall(b'CAVE GET\n')
+        if self._region_response()!='CAVE BEGIN '+revision:
+            raise ValueError('region template unavailable')
+        rows=[]
+        for index in range(31):
+            row=self._line().split()
+            if len(row)!=5 or row[:4]!=['CAVE','ROW',revision,str(index)]:
+                raise ValueError('invalid region row')
+            rows.append(row[4])
+        if self._line()!='CAVE END '+revision:
+            raise ValueError('invalid region end')
+        blob=b'EWGMAP01'+''.join(rows).encode('ascii')
+        cave=SharedCave(blob)
+        if cave.identity!=revision:
+            raise ValueError('region template digest mismatch')
+        self.sock.sendall(('CAVE ACK '+revision+'\n').encode('ascii'))
+        if self._region_response()!='CAVE OK '+revision:
+            raise ValueError('region admission rejected')
+        return dict(place_id=place_id,revision=revision,template=blob)
 
 
 class IntentClient(WorldClient):
