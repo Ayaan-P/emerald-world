@@ -1239,6 +1239,14 @@ class WorldServer:
                                        previous_revision=hashlib.sha256(previous[0]).hexdigest() if previous else None,
                                        continued=previous_revision is not None,
                                        **({'history_evidence':history_evidence} if history_evidence is not None else {})))
+                if (route_artifact is not None and route_artifact['schema']==2
+                        and route_artifact['construction'].get('kind')=='survey_trail'):
+                    construction=route_artifact['report']['construction']
+                    self.memory.append('trail_opened',dict(place_id=place_id,revision=identity,
+                        previous_revision=previous_revision,start=construction['sites'][0],end=construction['sites'][1],
+                        old_steps=construction['old_steps'],new_steps=construction['new_steps'],
+                        added_walkable_tiles=construction['added_walkable_tiles'],history_evidence=history_evidence or [],
+                        basis='validated_committed_geometry_not_player_travel'))
                 if route_artifact is not None and route_artifact['schema']==2:
                     self.landmark_survey.continue_revision(route_artifact)
                 if character_continuation is not None:
@@ -1612,6 +1620,12 @@ class WorldServer:
                     return
                 except ValueError as exc:
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') in ('preview_trail','construct_trail'):
+                try:
+                    from .trail_projects import construct
+                    result=construct(self,request)
+                except ValueError as exc:
+                    result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'construct_outpost':
                 try:
                     from .frontier_outposts import construct

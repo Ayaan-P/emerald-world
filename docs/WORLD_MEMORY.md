@@ -1257,3 +1257,47 @@ The real GM adapter emits one compiled candidate and still refuses when sandbox
 publication is rejected. Provider output and sandbox success are fixture
 boundaries; no rendered native caravan, paid model invocation, live-world edit
 or deployment is claimed. No engine pin, new command or new protocol is added.
+
+### Survey-backed shortcut trails
+
+Two explicitly shared landmark discoveries in the same current revision can
+support a physical route improvement. The owner previews it with:
+
+`python -m world.trail_projects camp ruins --label 'Surveyors Causeway' --admin-socket ADMIN_SOCKET`
+
+Add `--apply` to request publication after everyone leaves the generated area.
+Preview is read-only and reports the old/new terrain walking distance, new tiles
+and actual path. Publication rechecks the exact world, history boundary and map
+revision; pending mechanics/battles, immutable-region bindings and normal joint
+actor/geometry validation still apply. A preview is not publication approval.
+Private visits or discoveries from another revision cannot qualify a project.
+There is no automatic construction, reward, currency spend or model invocation.
+
+The compiler adds an ordinary grass walking trail through previously impassable
+terrain, using existing native art rather than promising a new bridge sprite.
+It preserves every existing walkable tile, the boundary and entry/exit, original
+reserved terrain, protected coastal water, and the bounding area around recorded
+landmarks/outposts. It refuses mandatory-passage journeys instead of quietly
+weakening their topology. A project must shorten the terrain route by at least
+four steps and add at most 128 walking cells. Distances describe terrain geometry,
+not guaranteed travel time around moving players or residents.
+
+The new exact revision preserves the logical place, ordered authored wildlife
+bytes, unchanged resident positions/source behavior, and valid survey evidence.
+A replayable construction recipe is archived atomically; old revisions remain
+available. No new landmark or current-revision arrival is fabricated. The actual
+`trail_opened` public event records endpoints, old/new terrain distance and the
+two source discovery records in the same transaction. The player chronicle and
+bounded character-history feed expose this committed change, allowing subsequent
+agent-authored stories to respond to a real opened route, not a narrative claim.
+
+The concrete authority fixture opens a 100-cell causeway and shortens the
+camp-to-ruins terrain route from 249 to 113 steps. Tests cover actual private
+visits and explicit sharing, read-only preview, occupied/stale refusal,
+publication, every new path cell through authenticated presence, resident
+rebinding, survey inheritance, restart, reservation preservation and exact
+CAVE17 population retention. Artifact-write and trail-history-write failures
+roll back the entire change. This is app/geometry acceptance, not a linked native
+rendered session. Plain XL uses existing CAVE16 support; authored-wildlife XL
+still needs the separate unpublished CAVE17 native integration. No engine pin,
+release integration branch, live world or deployment is changed by this draft.

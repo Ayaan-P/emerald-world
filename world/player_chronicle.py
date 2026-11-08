@@ -30,6 +30,9 @@ def _describe(event):
     if kind=='landmark_discovery_shared':
         return ['A player explicitly shared a visit to '+_text(event.get('landmark','a landmark'),40)+'.',
                 'That arrival was client-reported; private visits are not included.']
+    if kind=='trail_opened':
+        return ['Trail opened: '+_text(event.get('start',''),32)+' to '+_text(event.get('end',''),32)+'.',
+                'Terrain distance: '+_text(event.get('old_steps','?'),8)+' to '+_text(event.get('new_steps','?'),8)+' steps. Player travel is not inferred.']
     if kind=='terrain_changed':
         return ['Shared terrain changed in this place.']
     if kind=='mechanic_changed':

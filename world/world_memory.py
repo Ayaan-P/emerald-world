@@ -80,6 +80,8 @@ def evidence_index(event, *, current_catalog=False):
         words.extend((event['before'], event['after']))
     elif event.get('event') == 'landmark_discovery_shared':
         words.append(event['landmark'])
+    elif event.get('event') == 'trail_opened':
+        words.extend((event['start'],event['end'],'opened walking trail shortcut'))
     elif event.get('event') == 'terrain_changed':
         words.extend(sorted({tile[key] for tile in event['tiles'] for key in ('before','after')}))
     words.extend(sorted(places))

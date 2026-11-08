@@ -10,6 +10,7 @@ import re
 
 EVENT_FIELDS = {
     'landmark_discovery_shared': {'place_id', 'revision', 'landmark'},
+    'trail_opened': {'place_id','revision','start','end'},
     'area_activated': {'place_id', 'label'},
     'area_named': {'place_id', 'before', 'after'},
     'region_opened': {'place_id', 'label'},

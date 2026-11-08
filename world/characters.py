@@ -209,6 +209,9 @@ def history_feed(db, state):
         elif original['event'] == 'character_changed':
             character = original['after']
             event.update(character_version=character['version'], character_status=character['status'])
+        elif original['event'] == 'trail_opened':
+            event.update(start=original['start'],end=original['end'],revision=original['revision'],
+                         old_steps=original['old_steps'],new_steps=original['new_steps'])
         elif original['event'] == 'terrain_changed':
             event['changed_cell_count'] = len(original['tiles'])
         elif original['event'] == 'guild_goal_completed':

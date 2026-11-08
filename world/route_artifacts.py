@@ -78,7 +78,12 @@ def derived(parent, parent_blob, blob, construction):
     import hashlib
     from .frontier_outposts import compile_outpost
     from .shared_cave import SharedCave
-    compiled, construction_report = compile_outpost(parent_blob, construction)
+    trail=type(construction) is dict and construction.get('kind')=='survey_trail'
+    if trail:
+        from .trail_projects import compile_trail
+        compiled,construction_report=compile_trail(parent_blob,construction)
+    else:
+        compiled, construction_report = compile_outpost(parent_blob, construction)
     if compiled != blob:
         raise ValueError('construction artifact does not reproduce map')
     before, after = SharedCave(parent_blob), SharedCave(blob)
@@ -91,12 +96,15 @@ def derived(parent, parent_blob, blob, construction):
                   for y in range(max(0,site['y']-radius),min(127,site['y']+radius+1))
                   for x in range(max(0,site['x']-radius),min(127,site['x']+radius+1)))
         (retained if equal else changed).append(site['id'])
-    identifier='outpost_'+hashlib.sha256(blob).hexdigest()[:12]
-    landmarks.append(dict(id=identifier,x=construction['x']+construction['width']//2,
-                          y=construction['y']+construction['height']//2,
-                          radius=max(construction['width'],construction['height'])//2+1))
+    added=[]
+    if not trail:
+        identifier='outpost_'+hashlib.sha256(blob).hexdigest()[:12]
+        landmarks.append(dict(id=identifier,x=construction['x']+construction['width']//2,
+                              y=construction['y']+construction['height']//2,
+                              radius=max(construction['width'],construction['height'])//2+1))
+        added=[identifier]
     return dict(schema=2,revision=after.identity,parent=before.identity,construction=construction,
-                report=dict(landmarks=landmarks,retained=retained,changed=changed,new=[identifier],
+                report=dict(landmarks=landmarks,retained=retained,changed=changed,new=added,
                             construction=construction_report))
 
 
