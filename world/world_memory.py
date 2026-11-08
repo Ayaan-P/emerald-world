@@ -67,6 +67,9 @@ def evidence_index(event, *, current_catalog=False):
                 if place and preserved is None:
                     places.add(place)
     elif event.get('event') == 'character_changed':
+        # Character commits already carry canonical places from their visible objects.
+        # Preserve these identities even when an older changed_places field was empty.
+        places.update(event.get('places', []))
         words.extend((event['character_id'], event['after']['name'], event['after']['role'],
                       event['after']['reason'], *event['after']['goals']))
     elif event.get('event') == 'guild_goal_completed':
@@ -75,6 +78,10 @@ def evidence_index(event, *, current_catalog=False):
         words.append(event.get('label') or '')
     elif event.get('event') == 'area_named':
         words.extend((event['before'], event['after']))
+    elif event.get('event') == 'landmark_discovery_shared':
+        words.append(event['landmark'])
+    elif event.get('event') == 'trail_opened':
+        words.extend((event['start'],event['end'],'opened walking trail shortcut'))
     elif event.get('event') == 'terrain_changed':
         words.extend(sorted({tile[key] for tile in event['tiles'] for key in ('before','after')}))
     words.extend(sorted(places))
@@ -109,6 +116,19 @@ class WorldMemory:
                 break
             for seq, data in rows:
                 self._index(seq, json.loads(data))
+        # Repair the old character-place projection, not the original event evidence.
+        if db.execute("SELECT 1 FROM world_memory_metadata WHERE key='character_place_index_v1'").fetchone() is None:
+            cursor=0
+            while True:
+                rows=db.execute("SELECT seq,data FROM events WHERE kind='world_memory' AND seq>? ORDER BY seq LIMIT 256",(cursor,)).fetchall()
+                if not rows:break
+                for seq,data in rows:
+                    event=json.loads(data)
+                    if event.get('event')=='character_changed':
+                        db.executemany('INSERT OR IGNORE INTO world_memory_place_events VALUES (?,?)',
+                                       ((place,seq) for place in event.get('places',[])))
+                cursor=rows[-1][0]
+            db.execute("INSERT INTO world_memory_metadata VALUES ('character_place_index_v1','1')")
         db.commit()
         self.world_id = db.execute("SELECT value FROM world_memory_metadata WHERE key='world_id'").fetchone()[0]
 
@@ -276,12 +296,14 @@ class WorldMemory:
         if row is None or hashlib.sha256(row[0]).hexdigest()!=revision:
             raise ValueError('saved revision unavailable')
         cave=SharedCave(row[0])
+        from .route_encounters import context as encounter_context
         terrain=self.db.execute('SELECT revision,payload FROM generated_area_terrain WHERE identity=?',(revision,)).fetchone()
         overrides=terrain_delta(cave,b'\0',terrain[1]) if terrain and cave.version==9 else []
         return dict(world_id=self.world_id,
                     captured_at_seq=self.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0],
                     revision=revision,label=row[1],place_id=row[2],template_version=cave.version,
                     active=bool(server.shared_cave and server.shared_cave.identity==revision),
+                    encounters=encounter_context(cave),
                     side=cave.side,rows=[line.decode('ascii') for line in cave._rows],
                     terrain_revision=terrain[0] if terrain else 0,terrain_overrides=overrides,
                     layout='saved_base_with_explicit_terrain_overrides',
@@ -323,6 +345,8 @@ class WorldMemory:
             label = self.db.execute('SELECT label FROM generated_area_archive WHERE identity=?', (active,)).fetchone() if server.archive_generated_areas else None
             active_area['label'] = label[0] if label else None
             active_area['template_version'] = server.shared_cave.version
+            from .route_encounters import context as encounter_context
+            active_area['encounters'] = encounter_context(server.shared_cave)
             terrain_revision, payload = server._active_terrain()
             active_area['terrain_revision'] = terrain_revision
             overrides = terrain_delta(server.shared_cave, b'\0', payload) if server.shared_cave.version == 9 else []

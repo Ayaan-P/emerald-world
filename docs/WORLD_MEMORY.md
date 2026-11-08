@@ -892,6 +892,175 @@ socket. The real authority returned refusal with the map unchanged and steward
 absent. No weaker execution route was used. Native build/rendering limits above
 also remain; these protocol/component tests are not a linked gameplay session.
 
+### Private landmark surveys
+
+After publishing a route template, the owner can register the same route plan:
+`python -m world.landmark_survey plan.json --admin-socket /path/to/admin.sock`.
+Registration recompiles the plan, requires byte-for-byte equality with an archived
+XL template, and fixes its named clearings for that revision. It does not activate
+or modify terrain. Only this owner-admin path can register surveys.
+
+Inside that acknowledged map, a player types `/explore start` using existing
+native chat. `/explore status` shows progress and the nearest undiscovered
+clearing's coordinates; `/explore stop` pauses it. Reaching within one tile of a
+clearing center records a discovery and sends a private chat message. All
+landmarks can be explored in any order. Completion and partial progress survive
+server restart. Starting again resumes that revision, while starting in another
+registered map selects its separate progress.
+
+This is opt-in personal exploration, with no rewards or anti-cheat claim.
+Validated client-reported presence is the evidence, not a server simulation of
+travel. Trainer discoveries stay out of public world history and model context by
+default, and other players do not receive the private messages. Old-revision surveys pause when
+the map changes; reactivating the exact archived map allows them to continue.
+Landmarks are coordinate destinations in existing geometry, not new sign art.
+Clients need their existing interactive chat path; this adds no Windows/headless
+chat UI and does not change native region admission.
+
+A player can deliberately share one discovered landmark while standing beside it:
+`/explore share camp` previews the public data and permanence. Only
+`/explore share camp confirm` publishes. The public record contains the landmark
+name, coordinates, exact map revision and durable place identity, not the player's
+name or other discoveries. This permission applies only to that arrival, not
+future surveys. The shared discovery can be recalled by landmark name and used
+as evidence for later authored destinations. It confirms consent and validated
+client-reported presence, not independently simulated travel. Repeated sharing
+of the same landmark/revision reuses its existing milestone. Publication and its
+receipt commit together; failed writes leave the private discovery intact.
+
+The end-to-end fixture follows an authenticated survey arrival through explicit
+sharing, public recall and the existing guarded route-author publication. The
+new destination cites the shared event, and the receipt survives restart. Model
+output is a deterministic fixture; this is not an automatic world-building
+trigger or proof of a live model/native game session.
+
+Native compatibility privacy boundary: updated outer native clients gate public
+`/explore` commands at `WorldBridge_ChatSend`, not only the composer. The first
+attempt sends only the fixed harmless `/explore protocol 1` probe and retains the
+private draft. A dedicated sequence-matched authority response enables commands
+for that connection; the player must submit again. Old servers may broadcast the
+probe, but never receive the held discovery command from this updated client.
+Chat messages cannot masquerade as protocol readiness. Disconnect and reconnect
+clear support, and an unanswered probe never releases a queued private command.
+
+This does not protect older clients or arbitrary custom clients. Those clients
+can expose slash-command text on old servers. The paired draft now pins actual
+Expansion guard commit `1b34f4360bf8248a337c024acbc68b238bebf738` in both
+the gitlink and build script. Its bridge and composer sources match the published
+engine files. This pin includes the privacy guard, not unpublished character
+walking. Explicit public-discovery confirmation remains required after capability
+negotiation. Production source fixtures and object compilation passed; a linked
+build of this newer guard and live network acceptance remain unverified.
+
+### Coastal route geography
+
+Each route landmark can now specify `landform` (`round`, `lagoon`, `cove`, or
+`headland`) and `facing` (`east`, `south`, `west`, or `north`). Defaults preserve
+old round plans. Round radius accepts 2..20; coastal forms require 6..20. Centers
+remain walkable for surveys and characters. Lagoon pools create a connected
+shore circuit, coves cut an inlet through the clearing edge, and headlands taper
+into narrow peninsulas. These are actual tile changes in ordinary shared XL map
+bytes, using existing native grass and blocked water, not new elevation or art.
+
+The route author receives this schema and may choose contrasting forms. The
+compiler reserves their water cuts before route search: paths must go around
+pools and inlets instead of filling them. Overlapping landmark footprints and
+unreachable plans fail validation. Reports expose the exact protected water cells
+for inspection; those cells are not an additional runtime state system. Reusing
+this plan with surveys or settlement construction does not grant permission to
+change an existing world.
+
+Tests compare all twelve form/orientation combinations, check protected water
+and landmark access, exercise constrained author compilation, and feed each form
+through the actual Expansion C wire codec, including corruption rejection.
+The codec test requires `EW_NATIVE_SOURCE` pointing at verified engine source.
+Native rendered playthrough remains unverified; no bridge, elevation, surfing or
+new biome-art behavior is added.
+
+### Authored journeys, forks and mandatory passages
+
+A route plan may now include `journey` with `connections` and `required`, and set
+`loops` to zero. Connections are up to 32 distinct undirected pairs naming
+landmarks or the reserved `entry`/`exit` endpoints. They must connect every site.
+The agent chooses the adventure graph rather than accepting nearest-neighbor
+connections. For example: entry → camp; camp → west and east; west/east →
+sanctuary; sanctuary → exit. Adding camp → sanctuary requests a real shortcut.
+
+The compiler routes these edges in declared order, with water separation from
+unrelated corridors and clearings. Impossible crossings fail rather than adding
+unrequested shortcuts. `required` names landmark clearings every entry-to-exit
+path must pass through. After carving, the compiler removes each required
+clearing in turn and searches the actual tile graph; a surviving bypass rejects
+the candidate. In the fork example, camp and sanctuary can be required while
+west and east cannot. This is geographic passage through a clearing, not a quest
+lock, interaction requirement, or proof that the player spoke to an NPC.
+
+The existing constrained author, archive, explicit activation and history guards
+all apply. An integration fixture follows a voluntarily shared camp discovery
+into a new fork/rejoin destination citing that public sequence. Actual native
+codec tests include journeys containing each coastal landform and corruption
+rejection. No new engine protocol, encounter table, reward or live trigger is
+introduced. Native rendered acceptance is still separate.
+
+Design inspiration: Dormans' distinction between mission structure and spatial
+layout ([paper](https://pcgworkshop.com/archive/dormans2010adventures.pdf)), and
+Red Blob Games' use of graph search for pathfinding and map analysis
+([introduction](https://www.redblobgames.com/pathfinding/a-star/introduction.html)).
+The implementation is original and intentionally limited to the game's existing
+walkable-ground/blocked-water XL format. Existing custom wildlife tables belong
+to other cave formats; this feature does not mislabel terrain shapes as new
+encounter-bearing biomes.
+
+### Authored XL encounter populations (CAVE17 candidate)
+
+`world.author_routes --encounters` explicitly asks the constrained author for an
+encounter population in addition to route geometry. The plan's optional
+`encounters` object has `rate` (1..100) and exactly twelve `wildlife` entries,
+each with an enabled Expansion species name and a level (1..100). Native slot
+weights are 20,20,10,10,10,10,5,5,4,4,1,1 percent. The report combines repeated
+species/level entries using those weights. Rate is a native encounter parameter,
+not a promised per-step probability. No private trainer party is used to infer
+levels, and this single population applies across the destination, not separate
+per-landmark habitats.
+
+The new immutable format is `EWGMAP17`, followed by 37 bytes (rate and twelve
+little-endian species IDs/levels), followed by the existing 127x127 geometry.
+Its digest covers the table as well as every cell. Only an explicit `CAVE17`
+client receives `XLWILDLIFE` plus `CAVE WILD` and the rows. Older `CAVE16` clients
+receive no map instead of silently discarding the table. Existing archive,
+occupancy and history guards apply; changing wildlife changes the exact revision.
+Surveys and characters bind to that exact immutable revision. Outpost construction
+still rejects this format rather than erasing its encounter data.
+
+Archive inspection and the active public context expose the bounded authored
+population, clearly distinguished from observed wildlife, catches or player
+progress. The history-informed author can use that public context when proposing
+a subsequent destination. No automatic live-world update or battle outcome is
+inferred. The native counterpart must be built and paired before claiming these
+maps can be played; this candidate is an app/protocol extension, not evidence
+that an older engine pin already supports CAVE17.
+
+### Generated expedition destinations and authored wildlife
+
+Generated guild expeditions now bind to an archived logical place and its exact template revision. `/guild expedition start here COUNT` uses fresh, authenticated, acknowledged generated-map presence, never a client-supplied destination identity. Native `GeneratedWorld_*` map aliases are rejected as ordinary expedition goals. Replacing the active shared template pauses credit for its old revision; restoring that exact revision makes it reachable again. Public progress keeps the place/revision context for subsequent character chapters.
+
+The app also reconciles the published generated-character offer protocol: `PLACEQUEST1` plus `CHARQUEST1` negotiates a labeled destination and requires explicit acceptance through the existing character authority path. No automatic travel or world activation occurs. CAVE17 destinations require the distinct `cave_xl_wildlife` capability, not CAVE16 alone. Population bytes are part of the template hash, so changing only species/levels invalidates an old destination revision.
+
+Validation includes actual app offer consent, authenticated arrivals, guild completion and restart for both plain XL and authored-wildlife XL, plus CAVE16 refusal and population-only replacement. These are in-process authority tests, not a live game acceptance run. This candidate deliberately retains the published privacy engine pin `1b34f436`; that engine does not include CAVE17 or PLACEQUEST1. Their app protocol paths are prepared and tested, but are not usable in that pinned game binary. Native wildlife publication remains blocked independently; no unsupported engine pin or walking implementation is included here.
+
+### Recoverable authored route recipes
+
+The route author retains the validated plan and derived compiler report. Shared activation sends a bounded version-1 artifact with the exact map bytes; the owner authority recompiles it and checks the report and revision, then archives it in the same SQLite transaction as map activation/history. A different artifact cannot overwrite that revision's original recipe. No model prompt, raw provider reply, recalled history, trainer identity or private progress is included. This checks reproducibility and archive integrity, not cryptographic proof of who authored a file.
+
+After shared authoring, including after authority restart, register the saved landmark survey with:
+
+```sh
+python -m world.landmark_survey --revision EXACT_REVISION --admin-socket ADMIN_SOCKET
+```
+
+Registration reloads and validates the recipe against archived map bytes. It does not activate a different map, publish player visits, or start a player's survey. Players still opt in with `/explore start` after entering and acknowledging that revision. The integration test generates a provider fixture through the actual author command, publishes through the real admin dispatcher, restarts the authority, registers by revision, freshly authenticates/re-enters and records a private discovery. It is not proof of native in-place save/resume; normal play still leaves the generated map before saving and re-enters the archived revision after restart.
+
+Offline output `route.ewmap` now also writes `route.ewmap.route.json`, which the survey CLI accepts after the matching map has been archived. Both paths are exclusive-create and never overwrite existing files. The recipe is written first: if writing the map fails, the durable recipe remains available for recovery rather than being silently discarded. The compiler format is versioned; a future compiler change that cannot reproduce old bytes must reject registration rather than reinterpret a stored route.
 ### Player-driven settlement growth
 
 The existing opt-in GM runtime accepts `--settlement-growth-theme 'Extend the
@@ -960,3 +1129,241 @@ after an actual fixture-sandbox founding whose response is treated as lost,
 pre-publication retries, pending-write deferral, wrong-scope/revision rejection,
 and preservation of interrupted identity/stage. This does not establish live
 model invocation or native gameplay; the documented runtime blockers remain.
+
+### Survey and settlement draft reconciliation
+
+This draft includes settlement growth and receipt recovery from frontier-outposts f09a52ad while retaining survey recipe persistence and the privacy-enabled native pin 1b34f436 in both the gitlink and builder. The initial reconciliation kept growth/construction format16-only. The subsequent encounter-preserving extension below adds format17 without downgrading its population. Terrain construction produces a new exact revision; old artifacts remain archived, and the derived exploration continuity described below applies only to verifiably unchanged sites. Native release integration remains separate.
+
+### Encounter-preserving settlement construction
+
+The app's outpost compiler, settlement author and opt-in growth consumer now accept format16 and format17. Construction changes only geometry: all 37 authored encounter bytes (rate and ordered species/level slots) are copied unchanged into the new digest-bound template. Owner inspection includes those ordered authored slots, and preview reconstruction must reproduce the exact archived revision before any plan is sent to the authority. Percentages are never used to approximate a table.
+
+The existing guarded publication and character rebinding transaction preserves the logical place and migrates unchanged resident positions to the new exact revision. Archived old geometry remains available. Original survey recipes and arrival records remain bound to their original revision. Supported construction now creates a separately replayable derived artifact and carries only unchanged-site evidence as described below. Older CAVE16 clients still receive CAVE NONE for these maps.
+
+Tests cover actual app author preview/publication, surviving prior residents, explicit NPC offer consent, guild completion, dialogue changes and authority restart while retaining every encounter byte. Constructed frames pass the actual local CAVE17 native decoder; tampered inspection slots fail their hash check. These are in-process authority and C component checks, not deployed gameplay. The pinned published engine remains 1b34f436, without CAVE17, and the native CAVE17 upload is still blocked. No denied native operation was retried.
+
+### Exploration continuity through construction
+
+For an authored route with a validated recipe, both direct outpost construction and inhabited settlement construction now archive a schema-2 derivation: parent revision, exact construction parameters, new revision, and a recomputable landmark report. Loading it replays the original route and every construction in order against archived bytes. This is a new recipe, not a relabeled old map or a claim that its original journey graph still holds. Legacy maps without route recipes remain supported for construction but cannot invent landmark ancestry.
+
+Landmark IDs and centers survive. A landmark retains prior exploration evidence only when every tile in its radius-bounded square is identical before and after construction. A changed site's identity remains recognizable but requires a new visit; the new outpost gets its own stable named landmark and starts unexplored. Later construction applies the same check to earlier outposts. This is local landmark continuity, not a claim that the entire surrounding route is unchanged.
+
+If the old survey was registered, the new survey and existing opted-in survey sessions advance atomically with map and resident persistence. Private inherited evidence points back to the original observed revision in a separate table. Original visit records are never rewritten, and inherited evidence does not create a current arrival or permit publishing a discovery without a real new-revision visit. The player's progress text explicitly distinguishes retained landmarks. Paused surveys stay paused; other players gain no progress. No discovery is automatically shared publicly. If the survey was not registered, the owner can register the derived revision later through the existing revision command.
+
+Tests exercise both plain XL and CAVE17: explore a lagoon and camp, leave the map, construct a station that changes the lagoon but not the camp, restart/re-enter, retain only camp evidence, then discover the changed lagoon and new station. Actual inhabited-settlement authority commits, artifact tampering and failed persistence rollback are covered too. This is app-authority validation, not a new native save/resume or live multiplayer claim.
+
+### Resident-authored private guidance
+
+Persistent NPC chapters/actions can opt into `services: ["guide"]`. In a registered generated-map survey, a player standing adjacent and facing that resident can use `/explore guide NPC_ID`. The server requires fresh authenticated ready presence, exact acknowledged revision, the resident's explicit active service, negotiated generated-character support and the player's active private survey. It finds a shortest currently clear walking route over the actual archived tiles, avoiding resident and fresh ready-player positions. `/explore directions` refreshes up to three turns as the player walks; it does not move the player.
+
+Guide targets and notes are private and survive authority restart. Already visited or validly inherited landmarks are not proposed as unexplored. Directions alone never mark an arrival, share a discovery, grant rewards or advance public history. Normal observed arrival records the discovery privately, and the separate explicit share command remains necessary for public character reactions. After terrain changes, old revision notes require asking a guide again; they are not silently retargeted.
+
+This uses the existing protected `/explore` chat commands and published engine 1b34's CHARREG1 support on interactive chat-capable clients. It introduces no native walking, PLACEQUEST1 or CAVE17 requirement for plain XL guidance. App tests cover actual chat commands and tile-by-tile reported movement, privacy, explicit later sharing, restart, inherited evidence and unsupported-client refusal. Native rendered acceptance of this new guide interaction has not been run.
+
+
+### Read the place's past while exploring
+
+In an acknowledged generated XL destination, `/explore history` privately shows
+three recent public records for that logical place. `/explore history older`
+continues backward at the same fixed record boundary. Refresh starts at the
+latest committed record. Earlier revisions are explicitly labeled as history,
+not the current terrain. No survey opt-in or public discovery is needed merely
+to read already-public history. `/explore` advertises the command.
+
+The view includes recorded activations, names, authored character changes,
+explicitly published discoveries and opted-in actual guild outcomes. Character
+motives are labeled authored; guild XP is an authority award and travel remains
+client-reported. Unknown event types have a generic description, never a raw
+payload. Output is ASCII-safe and bounded to eight existing chat lines per page.
+Private visits, trainer data, battle reports, prompts and arbitrary module state
+are not exposed. Reading does not create world events, publish discoveries or
+change survey progress. Replies go only to the requesting player.
+
+Page cursors are connection-local and tied to world, logical place and exact
+revision. Changing destinations or reconnecting requires a fresh history read.
+A one-time projection repair indexes canonical place identities already present
+in older character records; it does not rewrite events, dates or sequences.
+This fixes previously missing resident stories in place-filtered history and
+also makes them available to the existing place-aware retrieval paths.
+
+Authority tests cover real discovery before/after explicit publication, actual
+guild completion with publication off/on, committed character changes, restart,
+old-index repair, unrelated-place isolation, fixed pagination and control-text
+sanitization. This uses existing protected exploration chat commands, with no
+engine pin, native movement or new artwork. Native rendered gameplay has not
+been verified for this new command.
+
+
+### Collective discoveries change a resident's role
+
+An authored character chapter can now wait for `when: {"all": [condition,
+condition]}` with two to four distinct public-event conditions. The existing
+single-condition format remains valid. For example, a researcher can remain at
+camp until players explicitly share both the orchard and ruins, then relocate
+to the lookout with new dialogue, an authored team and the existing guide
+service. The conditions may arrive in either order from different players.
+This is an optional reusable authoring contract, not a globally installed NPC.
+
+Partial matches are retained in the character's existing durable chapter state.
+Only events newer than publication and observed while that chapter is a possible
+next choice count. One event can satisfy at most one outstanding requirement;
+replayed records never count twice. The first eligible completed branch wins and
+discards other branches' partial matches. All matched original sequence numbers
+become the changed character's public evidence. Offered guild outcomes still
+require the exact character and offer revision; discovery conditions still need
+the exact place, map revision and landmark. Private visits never enter this feed.
+
+The native object relocation, dialogue, team and optional service are the same
+validated chapter effects as before, not new engine protocols. The compiler
+continues through the existing sandbox staging and atomic authority commit.
+Agent context advertises the bounded conjunction. It does not automatically
+author or deploy a character, relax validation, grant rewards, or infer battles
+and catches from narrative team changes.
+
+The integrated fixture uses two authenticated explorers, real private survey
+arrivals and explicit sharing. A first public report persists across restart;
+a second explorer's complementary report moves the researcher to the lookout,
+changes dialogue, enables guidance and produces the new frozen challenge team
+through the actual app protocol. Partial progress and replay do not grow the
+team. The authored plan and successful sandbox execution are fixture boundaries;
+no model call, native rendered session or live-world deployment is claimed.
+
+
+### History-driven travelling casts
+
+The GM can propose `{"character_ensemble": [plans], "tests": "Python tests"}`
+for two to four new persistent residents in one publication. Every plan uses the
+existing chapter contract. A caravan can begin away, arrive together when an
+explicitly shared route report is committed, offer a guide and a distinct field
+challenger at separate positions, and move its camp after another public report.
+This is reusable authoring support, not a forced preset or automatic live event.
+
+Compilation reserves the existing eight-character/object capacity, rejects
+reused identities and conflicting initial positions, and wraps the exact prior
+source so unrelated behavior remains intact. The resulting single source and
+test artifact go through normal sandbox staging. Later cast transitions still
+use the authority's joint geometry/collision validation and atomic module,
+character-history and source transaction. A failed resident record cannot leave
+half a gathering published. Individual residents keep their durable identities,
+chapter evidence, teams and opt-in services through restart.
+
+The concrete app fixture begins with an empty clearing. A private visit does
+nothing; an explicitly shared ruins report brings a guide and challenger into
+the actual region-object snapshot. Existing guide chat returns a private route,
+and the native challenge dispatcher freezes the trainer's authored team. The
+whole cast survives restart and moves to the lookout after the orchard report.
+A failure on the second resident's history record rolls back both residents.
+The real GM adapter emits one compiled candidate and still refuses when sandbox
+publication is rejected. Provider output and sandbox success are fixture
+boundaries; no rendered native caravan, paid model invocation, live-world edit
+or deployment is claimed. No engine pin, new command or new protocol is added.
+
+### Survey-backed shortcut trails
+
+Two explicitly shared landmark discoveries in the same current revision can
+support a physical route improvement. The owner previews it with:
+
+`python -m world.trail_projects camp ruins --label 'Surveyors Causeway' --admin-socket ADMIN_SOCKET`
+
+Add `--apply` to request publication after everyone leaves the generated area.
+Preview is read-only and reports the old/new terrain walking distance, new tiles
+and actual path. Publication rechecks the exact world, history boundary and map
+revision; pending mechanics/battles, immutable-region bindings and normal joint
+actor/geometry validation still apply. A preview is not publication approval.
+Private visits or discoveries from another revision cannot qualify a project.
+There is no automatic construction, reward, currency spend or model invocation.
+
+The compiler adds an ordinary grass walking trail through previously impassable
+terrain, using existing native art rather than promising a new bridge sprite.
+It preserves every existing walkable tile, the boundary and entry/exit, original
+reserved terrain, protected coastal water, and the bounding area around recorded
+landmarks/outposts. It refuses mandatory-passage journeys instead of quietly
+weakening their topology. A project must shorten the terrain route by at least
+four steps and add at most 128 walking cells. Distances describe terrain geometry,
+not guaranteed travel time around moving players or residents.
+
+The new exact revision preserves the logical place, ordered authored wildlife
+bytes, unchanged resident positions/source behavior, and valid survey evidence.
+A replayable construction recipe is archived atomically; old revisions remain
+available. No new landmark or current-revision arrival is fabricated. The actual
+`trail_opened` public event records endpoints, old/new terrain distance and the
+two source discovery records in the same transaction. The player chronicle and
+bounded character-history feed expose this committed change, allowing subsequent
+agent-authored stories to respond to a real opened route, not a narrative claim.
+
+The concrete authority fixture opens a 100-cell causeway and shortens the
+camp-to-ruins terrain route from 249 to 113 steps. Tests cover actual private
+visits and explicit sharing, read-only preview, occupied/stale refusal,
+publication, every new path cell through authenticated presence, resident
+rebinding, survey inheritance, restart, reservation preservation and exact
+CAVE17 population retention. Artifact-write and trail-history-write failures
+roll back the entire change. This is app/geometry acceptance, not a linked native
+rendered session. Plain XL uses existing CAVE16 support; authored-wildlife XL
+still needs the separate unpublished CAVE17 native integration. No engine pin,
+release integration branch, live world or deployment is changed by this draft.
+
+
+## Cooperative survey expeditions
+
+Inside a registered generated survey, a guild leader can start
+`/guild expedition survey here COUNT`. Every credited member must reach every
+clearing on that exact revision after the expedition starts. Entry alone, old
+private discoveries and inherited survey progress never count. Members can
+spread out and finish at different times. `/guild expedition` shows their own
+remaining fieldwork, and new clearing arrivals send private progress hints.
+Completing the requested number of full circuits awards the existing 10 guild
+XP once and announces the outcome to guild members. It does not change saves,
+give items, capture creatures, teleport players or grant battle rewards.
+
+The accepted clearing coordinates are frozen with the goal. Partial circuits
+survive restart and pause on other revisions, including changed terrain sharing
+the same logical place. Cancel/replacement/disband clears that goal's fieldwork.
+These are authenticated, acknowledged client position reports, not independently
+simulated travel or anti-cheat proof. Personal `/explore` progress is separate.
+Existing chronicle opt-in controls publication: only a completed aggregate
+`guild_goal_completed` event with `goal_kind: survey`, place/revision, guild name,
+count and XP enters public history. It carries no member names or individual
+clearing trails. Existing character chapters can match this outcome to change
+resident stories. History-write failure rolls back the final arrival, credit and
+award together, allowing the next position report to retry.
+
+The authority fixture covers two members, four clearings each, partial progress
+across restart, aggregate publication and character-history consumption, private
+defaults, stale/unacknowledged refusal, cancellation, rollback/retry, and an actual
+cell-by-cell circuit after restoring the exact old map. Native rendered play is
+not demonstrated by this fixture. This uses existing chat and presence transport
+and does not change engine pins, live worlds or release integration.
+
+
+## Independent generated atlases
+
+`python -m world.region_atlas atlas.json --admin-socket ADMIN_SOCKET` previews
+an atlas. Add `--apply` to publish it to the existing native destination menu.
+The owner supplies a bounded data plan with `title` and 2..8 `regions`, each
+containing a distinct `label` and an existing room/link `blueprint`. Labels are
+1..20 plain ASCII characters so players can recognize them in the menu. Use
+rooms, rounded, organic or maze blueprint styles for distinct layouts. The
+compiler validates every map before admitting any. Identical geometry cannot
+masquerade as multiple places, and existing labels or pinned places are never
+overwritten. Preview checks the world identity and history sequence without
+creating archive rows, place identities or public history.
+
+Publication archives all map bytes, the replayable plan, stable place identities,
+independent region pins and actual `region_opened` history in one transaction.
+A late failure adds nothing. Repeating a successful publication returns the same
+manifest after verifying the archived geometry and pins, even after restart.
+Players already inside another selected region or the shared default map keep
+their exact admission. The new destinations appear through the existing paged
+REGION1 menu. Players leave their current generated area before selecting and
+entering another, retaining ordinary map checks and same-region multiplayer
+visibility. Publication does not activate the shared slot, reset mechanics or
+move trainers. No generated-area save behavior is changed.
+
+This atlas format intentionally matches currently supported independent plain
+31-by-31 cave destinations. It does not provide seamless borders, overworld
+cities, Kanto/Johto/Sinnoh replicas, XL region admission, wildlife or new native
+protocols. Those require distinct systems and native integration. The concrete
+fixture publishes Tide Vault, Moss Library and Star Observatory while existing
+players remain inside, enters different destinations concurrently, changes
+regions, restarts and returns through real authority/client protocol dispatch.
+This is not a rendered native playthrough or an actual model-provider run.

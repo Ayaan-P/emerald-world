@@ -29,7 +29,7 @@ def publish_blueprint(path, admin_socket, *, previous_revision=None):
     return publish_bytes(blob, admin_socket, previous_revision=previous_revision)
 
 
-def publish_bytes(blob, admin_socket, *, label=None, previous_revision=None, world_history=None):
+def publish_bytes(blob, admin_socket, *, label=None, previous_revision=None, world_history=None, route_artifact=None):
     # Validate again using the authority's production format before touching admin.
     cave = SharedCave(blob)
     request = {'command': 'replace_cave', 'template': base64.b64encode(blob).decode('ascii')}
@@ -46,6 +46,10 @@ def publish_bytes(blob, admin_socket, *, label=None, previous_revision=None, wor
     if world_history is not None:
         request.update(expected_world_id=world_history['world_id'],expected_sequence=world_history['through'],
                        history_evidence=[event['seq'] for event in world_history['events']])
+    if route_artifact is not None:
+        from .route_artifacts import validate
+        validate(route_artifact, blob)
+        request['route_artifact'] = route_artifact
     response = admin_request('', request, admin_path=admin_socket)
     if (type(response) is not dict or response.get('ok') is not True
             or response.get('id') != cave.identity or type(response.get('persistent')) is not bool):

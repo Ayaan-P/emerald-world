@@ -31,7 +31,7 @@ from .world_memory import object_content, overlay_places, terrain_delta
 MAX_QUEUE = 65536
 MAX_LINE = 1024
 MAX_CONTROL_LINE = 16384
-MAX_ADMIN_LINE = 24576  # Bounded base64 transport for one 127x127 template.
+MAX_ADMIN_LINE = 163840  # One XL template plus bounded owner route artifact.
 MAX_PEERS = 8
 MAX_PEERS_EXTENDED = 32
 MAX_PEERS_INTERMEDIATE = 16
@@ -82,7 +82,7 @@ class WorldServer:
         self.archive_generated_areas = archive_generated_areas
         self.shared_cave = SharedCave(cave_template) if cave_template is not None else None
         self._terrain_walk_cache = None
-        if self.shared_cave and (self.wilds_map if self.shared_cave.version in (6, 7, 8, 9, 16) else self.cave_map) is None:
+        if self.shared_cave and (self.wilds_map if self.shared_cave.version in (6, 7, 8, 9, 16, 17) else self.cave_map) is None:
             raise ValueError('generated map missing from catalog')
         if type(max_players) is not int or not 1 <= max_players <= 64:
             raise ValueError('max_players must be between 1 and 64')
@@ -141,6 +141,8 @@ class WorldServer:
         self.memory = WorldMemory(self.db)
         self.guilds = Guilds(self.db, catalog_maps(), record_outcome=self.memory.append)
         self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
+        from .landmark_survey import LandmarkSurvey
+        self.landmark_survey = LandmarkSurvey(self)
         self.db.executescript('''
             CREATE TABLE IF NOT EXISTS module (
                 singleton INTEGER PRIMARY KEY CHECK(singleton=1), source TEXT,
@@ -164,16 +166,17 @@ class WorldServer:
             if row is not None:
                 self.shared_cave = SharedCave(row[0])
                 self.memory.place(self.shared_cave.identity)
-                if (self.wilds_map if self.shared_cave.version in (6, 7, 8, 9, 16) else self.cave_map) is None:
+                if (self.wilds_map if self.shared_cave.version in (6, 7, 8, 9, 16, 17) else self.cave_map) is None:
                     raise ValueError('generated map missing from catalog')
             if self.archive_generated_areas:
                 self.db.execute('CREATE TABLE IF NOT EXISTS generated_area_terrain (identity TEXT PRIMARY KEY, revision INTEGER NOT NULL, payload BLOB NOT NULL)')
                 self.db.execute('CREATE TABLE IF NOT EXISTS generated_area_archive (identity TEXT PRIMARY KEY, label TEXT NOT NULL, kind TEXT NOT NULL, template BLOB NOT NULL, created INTEGER NOT NULL)')
                 if row is not None:
-                    kind = 'wilds' if self.shared_cave.version in (6, 7, 8, 9, 16) else 'cave'
+                    kind = 'wilds' if self.shared_cave.version in (6, 7, 8, 9, 16, 17) else 'cave'
                     self.db.execute('INSERT OR IGNORE INTO generated_area_archive (identity,label,kind,template,created) VALUES (?,?,?,?,?)',
                                     (self.shared_cave.identity, 'Outdoor area' if kind == 'wilds' else 'Cave', kind, row[0], int(time.time())))
         if self.archive_generated_areas:
+            self.db.execute('CREATE TABLE IF NOT EXISTS world_region_atlases (identity TEXT PRIMARY KEY, plan TEXT NOT NULL, result TEXT NOT NULL)')
             self.db.execute('CREATE TABLE IF NOT EXISTS world_region_revisions (place_id TEXT PRIMARY KEY, revision TEXT NOT NULL UNIQUE)')
             for (identity,) in self.db.execute('SELECT identity FROM generated_area_archive').fetchall():
                 self.memory.place(identity)
@@ -241,6 +244,8 @@ class WorldServer:
                 validate_transition(json.loads(state_json), json.loads(state_json), objects, self.db)
                 from .region_characters import validate_region_objects
                 validate_region_objects(self,objects,json.loads(state_json))
+                from .generated_goals import validate_offer_places
+                validate_offer_places(self,json.loads(state_json))
                 if type(row[5]) is not int or row[5] < 0:
                     raise ValueError('invalid interaction cursor')
                 self.module_state, self.tiles, self.objects = json.loads(state_json), tiles, objects
@@ -547,7 +552,13 @@ class WorldServer:
                     lines.append('CHARACTER ' + obj['id'] + ' ' + str(character['version']))
                     if conn.get('character_quest_capable') and character.get('offer'):
                         offer=character['offer']
-                        lines.append('CHARACTER_OFFER '+ ' '.join(map(str,[obj['id'],character['version'],offer['id'],offer['revision'],offer['target'],offer['place_id'][7:]])))
+                        if offer['place_id'].startswith('area:'):
+                            from .generated_goals import resolve_place,destination_available
+                            if conn.get('place_quest_capable') and destination_available(self,conn,offer['place_id'],offer['region_revision']):
+                                place=resolve_place(self,offer['place_id'],offer['region_revision'])
+                                lines.append('CHARACTER_PLACE_OFFER '+' '.join(map(str,[obj['id'],character['version'],offer['id'],offer['revision'],offer['target'],place['place_id'],place['revision'],place['label'].encode('ascii').hex()])))
+                        else:
+                            lines.append('CHARACTER_OFFER '+ ' '.join(map(str,[obj['id'],character['version'],offer['id'],offer['revision'],offer['target'],offer['place_id'][7:]])))
         meeting = conn.get('meeting')
         if conn.get('social') and meeting:
             lines.append('MEET ' + ' '.join(str(meeting[k]) for k in
@@ -598,6 +609,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                place_quest_capable=role.endswith('PLACEQUEST1')
+                if place_quest_capable:role=role[:-11]
                 character_region_capable = role.endswith('CHARREG1')
                 if character_region_capable:role=role[:-8]
                 character_quest_capable = role.endswith('CHARQUEST1')
@@ -613,7 +626,8 @@ class WorldServer:
                 region_capable = role.endswith('REGION1')
                 if region_capable:
                     role = role[:-7]
-                cave_xl = role.endswith('CAVE16')
+                cave_xl_wildlife = role.endswith('CAVE17')
+                cave_xl = cave_xl_wildlife or role.endswith('CAVE16')
                 cave_expansion_large = cave_xl or role.endswith('CAVE11')
                 cave_expansion = cave_expansion_large or role.endswith('CAVE10')
                 cave_large_terrain = cave_xl or role.endswith('CAVE9H')
@@ -645,6 +659,9 @@ class WorldServer:
                 link = role == 'LINK'
                 if character_region_capable and not (character_capable and (region_capable or cave_xl)):
                     self._error(conn, 'AUTH')
+                    return
+                if place_quest_capable and not character_quest_capable:
+                    self._error(conn,'AUTH')
                     return
                 if character_quest_capable and not character_capable:
                     self._error(conn, 'AUTH')
@@ -712,6 +729,7 @@ class WorldServer:
                 conn['social'] = social
                 conn['character_region_capable'] = character_region_capable
                 conn['character_capable'] = character_capable
+                conn['place_quest_capable']=place_quest_capable
                 conn['character_quest_capable'] = character_quest_capable
                 conn['rules_capable'] = rules_capable
                 conn['rules_version'] = rules_version
@@ -728,6 +746,7 @@ class WorldServer:
                 conn['cave_terrain'] = cave_terrain
                 conn['cave_geometry'] = cave_geometry
                 conn['cave_large_terrain'] = cave_large_terrain
+                conn['cave_xl_wildlife'] = cave_xl_wildlife
                 conn['cave_xl'] = cave_xl
                 conn['cave_expansion'] = cave_expansion
                 conn['cave_expansion_large'] = cave_expansion_large
@@ -797,6 +816,7 @@ class WorldServer:
                     with self.lock:
                         cave=self._connection_cave(conn)
                         if (cave is None
+                                or (cave.version == 17 and not conn.get('cave_xl_wildlife'))
                                 or (cave.version == 16 and not conn.get('cave_xl'))
                                 or (cave.version == 9 and not conn.get('cave_events'))
                                 or (cave.version == 9 and self._active_terrain()[1]!=b'\0' and not conn.get('cave_terrain'))
@@ -913,7 +933,7 @@ class WorldServer:
                 state = [bounded(v, 0, limit) for v, limit in zip(fields[2:9], limits)]
                 if tuple(state[:2]) in (self.cave_map, self.wilds_map):
                     cave=self._connection_cave(conn)
-                    active_map = self.wilds_map if cave and cave.version in (6, 7, 8, 9, 16) else self.cave_map
+                    active_map = self.wilds_map if cave and cave.version in (6, 7, 8, 9, 16, 17) else self.cave_map
                     if tuple(state[:2]) != active_map:
                         raise ValueError('wrong generated map')
                     if (cave and conn.get('cave_capable') and conn.get('cave_revoked')
@@ -959,6 +979,7 @@ class WorldServer:
                 if changed or now - self.last_presence_broadcast >= PRESENCE_HEARTBEAT_INTERVAL:
                     self._schedule_presence(now)
                 self.guild_chat.observe(conn, state)
+                self.landmark_survey.observe(conn)
         except (UnicodeError, ValueError):
             self._error(conn, 'MALFORMED')
 
@@ -991,6 +1012,8 @@ class WorldServer:
             self._queue(conn, self._snapshot(conn))
             return
         conn['chat_credit'] = credit - 1
+        if fields[2] == '*' and self.landmark_survey.handle(conn, text.decode('ascii')):
+            return
         if fields[2] == '*' and self.guild_chat.handle(conn, text.decode('ascii')):
             return
         self.chat_serial += 1
@@ -1183,11 +1206,14 @@ class WorldServer:
                 self._queue(conn, json.dumps(future.result(), ensure_ascii=True) + '\n')
         self.control_jobs = remaining
 
-    def _persist_cave(self, blob, *, label=None, previous_revision=None, history_evidence=None, character_continuation=None):
+    def _persist_cave(self, blob, *, label=None, previous_revision=None, history_evidence=None, character_continuation=None, route_artifact=None):
         if not self.persist_generated_cave:
             return
         try:
             with self.db:
+                if route_artifact is not None:
+                    from .route_artifacts import archive
+                    archive(self, route_artifact, blob)
                 previous = self.db.execute('SELECT template FROM generated_cave WHERE singleton=1').fetchone()
                 identity = hashlib.sha256(blob).hexdigest()
                 if previous_revision is not None:
@@ -1214,6 +1240,16 @@ class WorldServer:
                                        previous_revision=hashlib.sha256(previous[0]).hexdigest() if previous else None,
                                        continued=previous_revision is not None,
                                        **({'history_evidence':history_evidence} if history_evidence is not None else {})))
+                if (route_artifact is not None and route_artifact['schema']==2
+                        and route_artifact['construction'].get('kind')=='survey_trail'):
+                    construction=route_artifact['report']['construction']
+                    self.memory.append('trail_opened',dict(place_id=place_id,revision=identity,
+                        previous_revision=previous_revision,start=construction['sites'][0],end=construction['sites'][1],
+                        old_steps=construction['old_steps'],new_steps=construction['new_steps'],
+                        added_walkable_tiles=construction['added_walkable_tiles'],history_evidence=history_evidence or [],
+                        basis='validated_committed_geometry_not_player_travel'))
+                if route_artifact is not None and route_artifact['schema']==2:
+                    self.landmark_survey.continue_revision(route_artifact)
                 if character_continuation is not None:
                     from .character_rebinding import persist
                     persist(self, character_continuation, place_id, previous_revision, identity)
@@ -1229,8 +1265,14 @@ class WorldServer:
         except sqlite3.Error:
             raise ValueError('generated cave could not be persisted') from None
 
-    def _replace_cave(self, blob, *, label=None, previous_revision=None, expected_world_id=None, expected_sequence=None, history_evidence=None, character_continuation=None):
+    def _replace_cave(self, blob, *, label=None, previous_revision=None, expected_world_id=None, expected_sequence=None, history_evidence=None, character_continuation=None, route_artifact=None):
         from .shared_cave import SharedCave
+        if route_artifact is not None:
+            from .route_artifacts import validate
+            if not self.archive_generated_areas:raise ValueError('route artifacts require persistent archive')
+            validate(route_artifact, blob, self)
+            if route_artifact.get('schema')==2 and route_artifact['parent']!=previous_revision:
+                raise ValueError('derived route must continue its exact parent')
         candidate = SharedCave(blob)  # validate completely before mutating anything
         if previous_revision is not None and (not self.persist_generated_cave or type(previous_revision) is not str or not re.fullmatch(r'[0-9a-f]{64}', previous_revision)):
             raise ValueError('invalid previous area revision')
@@ -1249,10 +1291,10 @@ class WorldServer:
                 for seq in history_evidence:
                     if self.db.execute("SELECT 1 FROM events WHERE seq=? AND kind='world_memory'",(seq,)).fetchone() is None:
                         raise ValueError('history evidence unavailable')
-            if (self.wilds_map if candidate.version in (6, 7, 8, 9, 16) else self.cave_map) is None:
+            if (self.wilds_map if candidate.version in (6, 7, 8, 9, 16, 17) else self.cave_map) is None:
                 raise ValueError('generated map missing from catalog')
             if self.shared_cave and candidate.identity == self.shared_cave.identity:
-                self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence, character_continuation=character_continuation)
+                self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence, character_continuation=character_continuation, route_artifact=route_artifact)
                 return candidate.identity
             peers = [peer for peer in self.peers.values() if not peer.get('closing') and not peer.get('region_cave')]
             if any(peer.get('in_generated_cave') or
@@ -1264,7 +1306,7 @@ class WorldServer:
             if any(len(peer['out']) + len(message) > MAX_QUEUE for peer in recipients):
                 raise ValueError('generated cave update is busy')
             old_id = self.shared_cave.identity if self.shared_cave else None
-            self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence, character_continuation=character_continuation)
+            self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence, character_continuation=character_continuation, route_artifact=route_artifact)
             self.shared_cave = candidate
             self._terrain_walk_cache = None
             for peer in recipients:
@@ -1534,7 +1576,7 @@ class WorldServer:
             request = json.loads(raw)
             if request.get('command') == 'replace_cave':
                 try:
-                    if (not {'command', 'template'} <= set(request) or not set(request) <= {'command', 'template', 'label', 'previous_revision', 'expected_world_id', 'expected_sequence', 'history_evidence'}
+                    if (not {'command', 'template'} <= set(request) or not set(request) <= {'command', 'template', 'label', 'previous_revision', 'expected_world_id', 'expected_sequence', 'history_evidence', 'route_artifact'}
                             or type(request['template']) is not str):
                         raise ValueError('invalid cave request')
                     try:
@@ -1547,10 +1589,16 @@ class WorldServer:
                     if set(request)&guards and not guards<=set(request):
                         raise ValueError('incomplete world publication guard')
                     guard={key:request[key] for key in guards if key in request}
-                    result = dict(ok=True, id=self._replace_cave(blob, label=request.get('label'), previous_revision=request.get('previous_revision'), **guard), persistent=self.persist_generated_cave)
+                    result = dict(ok=True, id=self._replace_cave(blob, label=request.get('label'), previous_revision=request.get('previous_revision'), route_artifact=request.get('route_artifact'), **guard), persistent=self.persist_generated_cave)
                 except ValueError as exc:
                     # Expected validation/occupancy refusal is not a mechanic error.
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'register_survey':
+                if set(request) == {'command','revision'}:
+                    result = self.landmark_survey.register_revision(request['revision'])
+                elif set(request) == {'command','plan'}:
+                    result = self.landmark_survey.register(request['plan'])
+                else:raise ValueError('invalid survey registration')
             elif request.get('command') == 'settlement_growth':
                 try:
                     if not set(request) <= {'command','after','limit','expected_world_id','expected_place_id'}:
@@ -1573,6 +1621,12 @@ class WorldServer:
                     return
                 except ValueError as exc:
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') in ('preview_trail','construct_trail'):
+                try:
+                    from .trail_projects import construct
+                    result=construct(self,request)
+                except ValueError as exc:
+                    result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'construct_outpost':
                 try:
                     from .frontier_outposts import construct
@@ -1674,6 +1728,12 @@ class WorldServer:
                     # A busy activity or refused host action is not a failing
                     # mechanic module. Do not replace its persisted status.
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') in ('preview_atlas','publish_atlas'):
+                try:
+                    from .region_atlas import publish
+                    result=publish(self,request)
+                except (ValueError,TypeError) as exc:
+                    result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'open_region':
                 try:
                     if set(request)!={'command','revision'}:
@@ -1848,6 +1908,8 @@ class WorldServer:
                 objects = result.get('objects', [])
                 from .region_characters import validate_region_objects
                 validate_region_objects(self,objects,result['state'])
+                from .generated_goals import validate_offer_places
+                validate_offer_places(self,result['state'])
                 from .characters import validate_transition
                 character_changes = validate_transition(self.module_state, result['state'], objects, self.db)
                 changed = (kind == 'deploy' or result['state'] != self.module_state or tiles != self.tiles

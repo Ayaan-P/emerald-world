@@ -30,7 +30,7 @@ Routes go around reservations, rather than drawing L-shaped lines through them.
 The spanning network connects every clearing and both native return endpoints.
 Requested additional routes must use new terrain outside their endpoint areas.
 """
-    if type(plan) is not dict or set(plan)!={'seed','landmarks','reservations','loops'}:
+    if type(plan) is not dict or not {'seed','landmarks','reservations','loops'}<=set(plan) or set(plan)-{'seed','landmarks','reservations','loops','journey','encounters'}:
         raise ValueError('expected seed, landmarks, reservations and loops')
     seed=plan['seed'];loops=plan['loops'];landmarks=plan['landmarks'];reservations=plan['reservations']
     if type(seed) is not int or not 0<=seed<2**32 or type(loops) is not int or not 0<=loops<=4:
@@ -48,31 +48,82 @@ Requested additional routes must use new terrain outside their endpoint areas.
             raise ValueError('reservation outside interior')
         blocked.update((xx,yy) for xx in range(x,x+w) for yy in range(y,y+h))
     for item in landmarks:
-        if type(item) is not dict or set(item)!={'id','x','y','radius'}:
+        if type(item) is not dict or not {'id','x','y','radius'}<=set(item) or set(item)-{'id','x','y','radius','landform','facing'}:
             raise ValueError('landmark needs id, x, y and radius')
         name=item['id'];x=item['x'];y=item['y'];r=item['radius']
+        form=item.get('landform','round');facing=item.get('facing','east')
+        if form not in ('round','lagoon','cove','headland') or facing not in ('east','south','west','north'):
+            raise ValueError('invalid coastal landform or facing')
         if type(name) is not str or not re.fullmatch('[a-z][a-z0-9_]{0,23}',name) or name in ids:
             raise ValueError('landmark identities must be unique bounded names')
-        if any(type(v) is not int for v in (x,y,r)) or not 2<=r<=10 or min(x-r,y-r)<1 or max(x+r,y+r)>125:
+        if any(type(v) is not int for v in (x,y,r)) or not (2 if form=='round' else 6)<=r<=20 or min(x-r,y-r)<1 or max(x+r,y+r)>125:
             raise ValueError('landmark outside interior')
         ids.add(name);sites.append(dict(item))
     sites.append(dict(id='exit',x=125,y=125,radius=1))
-    walk=set();centers=[]
+    journey=plan.get('journey')
+    named={site['id']:i for i,site in enumerate(sites)}
+    planned=[];required=[]
+    if journey is not None:
+        if type(journey) is not dict or set(journey)!={'connections','required'} or loops!=0:
+            raise ValueError('journey needs connections and required, with loops zero')
+        connections=journey['connections'];required=journey['required']
+        if type(connections) is not list or not 1<=len(connections)<=32 or type(required) is not list or len(required)>12:
+            raise ValueError('invalid journey size')
+        if any(type(name) is not str or name not in named or name in ('entry','exit') for name in required) or len(set(required))!=len(required):
+            raise ValueError('required passage names must be distinct landmarks')
+        for edge in connections:
+            if type(edge) is not list or len(edge)!=2 or any(type(name) is not str or name not in named for name in edge) or edge[0]==edge[1]:
+                raise ValueError('connection must name two different sites')
+            pair=tuple(sorted(named[name] for name in edge))
+            if pair in planned:raise ValueError('duplicate journey connection')
+            planned.append(pair)
+        reached={0}
+        while True:
+            expanded=reached|{b for a,b in planned if a in reached}|{a for a,b in planned if b in reached}
+            if expanded==reached:break
+            reached=expanded
+        if len(reached)!=len(sites):raise ValueError('journey must connect every landmark, entry and exit')
+    walk=set();centers=[];coastal_water=set();footprints=set();clearings=[]
     for site in sites:
         x,y,r=site['x'],site['y'],site['radius'];centers.append((x,y))
         clearing={(xx,yy) for xx in range(max(1,x-r),min(126,x+r+1))
                   for yy in range(max(1,y-r),min(126,y+r+1)) if (xx-x)**2+(yy-y)**2<=r*r}
         if clearing&blocked:raise ValueError('reserved terrain overlaps a landmark or native endpoint')
-        if site['id'] not in ('entry','exit') and clearing&walk:
+        if site['id'] not in ('entry','exit') and clearing&footprints:
             raise ValueError('landmark clearings overlap')
-        walk.update(clearing)
+        footprints.update(clearing)
+        form=site.get('landform','round');facing=site.get('facing','east')
+        def local(point):
+            dx,dy=point[0]-x,point[1]-y
+            return {'east':(dx,dy),'south':(dy,-dx),'west':(-dx,-dy),'north':(-dy,dx)}[facing]
+        water=set()
+        for point in clearing:
+            u,v=local(point)
+            if form=='lagoon' and (u-r//2)**2+v*v<=(r//3)**2:
+                water.add(point)
+            elif form=='cove' and (u-r)**2+v*v<=(r*2//3)**2:
+                water.add(point)
+            elif form=='headland' and u>r//3 and abs(v)>max(1,(r-u)//3):
+                water.add(point)
+        clearing-=water
+        coastal_water.update(water)
+        walk.update(clearing);clearings.append(clearing)
+    # Water cuts are semantic geography, not cheap empty space for route carving.
+    blocked.update(coastal_water)
     # Seed affects route preference, not global process randomness or save state.
     costs={(x,y):10+hashlib.sha256(f'{seed}:{x//4}:{y//4}'.encode('ascii')).digest()[0]%7
            for x in range(1,126) for y in range(1,126)}
 
-    def route(a,b,extra=False):
+    def route(a,b,extra=False,authored=False):
         start,goal=centers[a],centers[b]
         avoid=set(blocked)
+        if authored:
+            # Keep unrelated paths separated by water; named endpoint clearings
+            # are the only intended junctions. Never repair an impossible graph
+            # by silently adding an unrequested shortcut.
+            for x,y in walk:
+                if all(_distance((x,y),centers[i])>sites[i]['radius']+2 for i in (a,b)):
+                    avoid.update(((x,y),(x-1,y),(x+1,y),(x,y-1),(x,y+1)))
         if extra:
             for p in walk:
                 if all(_distance(p,centers[i])>sites[i]['radius']+3 for i in (a,b)):
@@ -100,7 +151,11 @@ Requested additional routes must use new terrain outside their endpoint areas.
         new=len(set(path)-walk);walk.update(path);edges.append(tuple(sorted((a,b))))
         records.append(dict(source=sites[a]['id'],target=sites[b]['id'],kind=kind,
                             steps=len(path)-1,new_tiles=new,path=[list(p) for p in path]))
-    while len(connected)<len(sites):
+    for a,b in planned:
+        path=route(a,b,authored=True)
+        if path is None:raise ValueError('journey cannot be carved without crossing another route')
+        add(a,b,path,'authored')
+    while journey is None and len(connected)<len(sites):
         candidates=sorted((_distance(centers[a],centers[b]),a,b) for a in connected for b in range(len(sites)) if b not in connected)
         for _,a,b in candidates:
             path=route(a,b)
@@ -114,16 +169,30 @@ Requested additional routes must use new terrain outside their endpoint areas.
         if path is not None and len(set(path)-walk)>4:
             add(a,b,path,'alternate');added+=1
     if added!=loops:raise ValueError('cannot fit requested alternate routes around reservations')
+    for name in required:
+        available=walk-clearings[named[name]]
+        seen={(1,1)};pending=deque(seen)
+        while pending:
+            x,y=pending.popleft()
+            for p in ((x-1,y),(x+1,y),(x,y-1),(x,y+1)):
+                if p in available and p not in seen:seen.add(p);pending.append(p)
+        if (125,125) in seen:
+            raise ValueError('required landmark can be bypassed in final geometry: '+name)
     rows=[''.join('.' if (x,y) in walk else '#' for x in range(SIDE)) for y in range(SIDE)]
-    blob=encode(dict(rows=rows,spawn=[1,1],exit=[125,125]));cave=SharedCave(blob)
+    blob=encode(dict(rows=rows,spawn=[1,1],exit=[125,125]))
+    population=None
+    if 'encounters' in plan:
+        from .route_encounters import encode as encode_encounters, population as summarize_population
+        blob=encode_encounters(blob,plan['encounters']);population=summarize_population(plan['encounters'])
+    cave=SharedCave(blob)
     distance={(1,1):0};queue=deque(distance)
     while queue:
         x,y=queue.popleft()
         for p in ((x-1,y),(x+1,y),(x,y-1),(x,y+1)):
             if p in walk and p not in distance:distance[p]=distance[x,y]+1;queue.append(p)
     return blob,dict(schema=1,generator='reserved-terrain-routes-1',revision=cave.identity,
-        landmarks=sites,routes=records,walkable_tiles=len(walk),entry_to_exit_steps=distance[125,125],
-        limitations='Geometry only. Reservations are impassable terrain, not new water/mountain art, quests or inter-map portals.')
+        landmarks=sites,routes=records,encounter_population=population,required_passages=required,protected_coastal_water=[list(p) for p in sorted(coastal_water)],walkable_tiles=len(walk),entry_to_exit_steps=distance[125,125],
+        limitations='Geometry uses the existing grass/water palette. No elevation, new biome art, quests or inter-map portals.')
 
 
 def main(argv=None):

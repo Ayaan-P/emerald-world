@@ -25,7 +25,7 @@ def records(state):
     for identity, character in value.items():
         if type(identity) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}', identity):
             raise ValueError('invalid character identity')
-        if type(character) is not dict or not FIELDS <= set(character) or set(character)-FIELDS-{'offer'}:
+        if type(character) is not dict or not FIELDS <= set(character) or set(character)-FIELDS-{'offer','services'}:
             raise ValueError('invalid character fields')
         if type(character['version']) is not int or not 1 <= character['version'] <= 2**31-1:
             raise ValueError('invalid character version')
@@ -38,6 +38,9 @@ def records(state):
             validate_offer(character['offer'])
             if character['status'] != 'active':
                 raise ValueError('only active characters may offer an expedition')
+        services=character.get('services',[])
+        if type(services) is not list or len(services)>1 or any(service!='guide' for service in services):
+            raise ValueError('unsupported character service')
         goals = character['goals']
         if type(goals) is not list or len(goals) > 4:
             raise ValueError('invalid character goals')
@@ -103,7 +106,8 @@ def author_contract():
     return {
         'state_key': KEY,
         'record_fields': sorted(FIELDS),
-        'optional_offer': {'id':'stable offer ID','revision':'positive revision, increase when destination/count changes','kind':'expedition','place_id':'native:canonical map','target':'1..50 guild members'},
+        'optional_services':['guide: private adjacent survey directions via /explore guide NPC_ID'],
+        'optional_offer': {'id':'stable offer ID','revision':'positive revision, increase when destination/count changes','kind':'expedition','place_id':'native:canonical map or area:UUID with required region_revision64hex','target':'1..50 guild members','region_revision':'required64hex only for area:UUID destinations'},
         'offer_consent':'CHARQUEST1 native explicit acceptance; guild leader only, existing chronicle ON required, never toggle publication; completion uses existing guild authority',
         'team_member': {'species': 'enabled numeric species ID', 'level': 'integer 1..100'},
         'presence': 'active requires a matching top-level objects entry; away/retired must not render',
@@ -193,15 +197,21 @@ def history_feed(db, state):
         original = json.loads(raw)
         event = dict(seq=seq, event=original['event'], evidence=original.get('evidence'),
                      recorded_at=original['recorded_at'], details='bounded_summary_full_event_in_world_history')
-        for key in ('place_id', 'label', 'character_id', 'character_offer_id', 'goal_kind', 'guild_name'):
+        for key in ('place_id', 'label', 'character_id', 'character_offer_id', 'goal_kind', 'guild_name', 'region_revision'):
             value = original.get(key)
             if type(value) is str:
                 event[key] = value[:160]
+        if original['event']=='landmark_discovery_shared':
+            event.update(place_id=original['place_id'],revision=original['revision'],landmark=original['landmark'],
+                         x=original['x'],y=original['y'],publication=original['publication'],basis=original['basis'])
         if original['event'] == 'area_named':
             event.update(before=original['before'][:160], after=original['after'][:160])
         elif original['event'] == 'character_changed':
             character = original['after']
             event.update(character_version=character['version'], character_status=character['status'])
+        elif original['event'] == 'trail_opened':
+            event.update(start=original['start'],end=original['end'],revision=original['revision'],
+                         old_steps=original['old_steps'],new_steps=original['new_steps'])
         elif original['event'] == 'terrain_changed':
             event['changed_cell_count'] = len(original['tiles'])
         elif original['event'] == 'guild_goal_completed':
@@ -224,7 +234,7 @@ def validate_history_cursor(before, after, db):
 
 def validate_offer(offer):
     from .build_catalog import catalog_maps
-    if type(offer) is not dict or set(offer) != {'id','revision','kind','place_id','target'}:
+    if type(offer) is not dict or set(offer)-{'region_revision'} != {'id','revision','kind','place_id','target'}:
         raise ValueError('invalid character expedition offer')
     if type(offer['id']) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}',offer['id']):
         raise ValueError('invalid offer identity')
@@ -233,6 +243,11 @@ def validate_offer(offer):
     if offer['kind'] != 'expedition' or type(offer['target']) is not int or not 1 <= offer['target'] <= 50:
         raise ValueError('invalid offer objective')
     place=offer['place_id']
+    if type(place) is str and place.startswith('area:'):
+        if not re.fullmatch(r'area:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}',place) or type(offer.get('region_revision')) is not str or not re.fullmatch('[0-9a-f]{64}',offer['region_revision']):
+            raise ValueError('generated offer requires exact place and region revision')
+        return offer
+    if 'region_revision' in offer:raise ValueError('native offers must omit region_revision')
     if type(place) is not str or not place.startswith('native:'):
         raise ValueError('offer destination must be a native map')
     name=place[7:]
@@ -289,9 +304,16 @@ def accept_offer(server, conn, fields):
         if current and not current[0]:raise CharacterOfferError('ACTIVE')
         count=server.db.execute('SELECT COUNT(*) FROM guild_members WHERE guild_id=?',(guild[0],)).fetchone()[0]
         if offer['target']>count:raise CharacterOfferError('MEMBERS')
+    place=None
+    if offer['place_id'].startswith('area:'):
+        from .generated_goals import resolve_place,destination_available
+        if not conn.get('place_quest_capable') or not destination_available(server,conn,offer['place_id'],offer['region_revision']):
+            raise CharacterOfferError('UNAVAILABLE')
+        try:place=resolve_place(server,offer['place_id'],offer['region_revision'])
+        except GuildError:raise CharacterOfferError('UNAVAILABLE') from None
     try:
-        server.guilds.expedition(conn['id'],['start',offer['place_id'][7:],str(offer['target'])],
-                                character_offer=(fields[2],offer['id'],revision))
+        server.guilds.expedition(conn['id'],['start','here' if place else offer['place_id'][7:],str(offer['target'])],
+                                character_offer=(fields[2],offer['id'],revision),place=place)
     except GuildError as exc:
         raise CharacterOfferError('REFUSED') from exc
     conn['seq']=seq

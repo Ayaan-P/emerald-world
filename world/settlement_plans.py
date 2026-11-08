@@ -104,10 +104,12 @@ def finish(server, staged, cursor):
                         ids=prepared['ids'], state=json.loads(state_json), tiles=tiles, cursor=cursor, clear_error=True,
                         founding=dict(outcome_seq=request['outcome_seq'],resident_id=resident,
                             offer=prepared['character']['chapters'][0]['offer']))
+    from .route_artifacts import derive
+    artifact=derive(server,request['previous_revision'],prepared['blob'],request['plan']['construction'])
     revision = server._replace_cave(prepared['blob'], label=request['plan']['label'],
         previous_revision=request['previous_revision'], expected_world_id=request['expected_world_id'],
         expected_sequence=request['expected_sequence'], history_evidence=[request['outcome_seq']],
-        character_continuation=continuation)
+        character_continuation=continuation, route_artifact=artifact)
     return dict(ok=True, revision=revision, place_id=server.memory.place(revision),
                 resident=resident, construction=prepared['report'], persistent=True,
                 outcome_seq=request['outcome_seq'],source_path=prepared['source_path'],source_sha256=candidate.sha256)

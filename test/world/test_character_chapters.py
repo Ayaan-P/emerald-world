@@ -44,6 +44,32 @@ class CharacterChapterTests(unittest.TestCase):
         p=plan();p['chapters'][0]['object']['id']='other'
         with self.assertRaises(ValueError):validate_plan(p)
 
+    def test_shared_discovery_requires_exact_public_landmark_scope(self):
+        p=plan();p['chapters'][1]['when']=dict(event='landmark_discovery_shared',
+            place_id='area:11111111-1111-1111-1111-111111111111',revision='a'*64,landmark='lookout')
+        validate_plan(p)
+        for key in ('place_id','revision','landmark'):
+            bad=deepcopy(p);bad['chapters'][1]['when'].pop(key)
+            with self.assertRaisesRegex(ValueError,'exact place'):validate_plan(bad)
+        for event in ('survey_visit','landmark_discovered','private_exploration'):
+            bad=deepcopy(p);bad['chapters'][1]['when']['event']=event
+            with self.assertRaises(ValueError):validate_plan(bad)
+        base=dict(state={},tiles=[],objects=[])
+        wrong=dict(p['chapters'][1]['when'],seq=1,revision='b'*64)
+        result=chapter_step(p,'discovery',0,{'character_history':{'events':[wrong],'through':1}},base)
+        self.assertEqual(result['state']['world_character_chapters'][p['id']]['chapter'],0)
+        shared=dict(p['chapters'][1]['when'],seq=2)
+        result=chapter_step(p,'discovery',0,{'character_history':{'events':[shared],'through':2}},result)
+        self.assertEqual(result['state']['world_character_chapters'][p['id']]['chapter'],1)
+        self.assertEqual(result['state']['world_characters'][p['id']]['evidence'],[2])
+
+    def test_guidance_is_an_explicit_authored_service(self):
+        p=plan();p['chapters'][0]['services']=['guide'];validate_plan(p)
+        result=chapter_step(p,'guide',0,{'character_history':{'events':[],'through':0}},dict(state={},tiles=[],objects=[]))
+        self.assertEqual(result['state']['world_characters'][p['id']]['services'],['guide'])
+        p['chapters'][0]['services']=['auto_publish']
+        with self.assertRaises(ValueError):validate_plan(p)
+
     def test_compile_requires_exact_previous_source_and_known_evidence(self):
         p=plan();p['origin_evidence']=[42]
         with self.assertRaises(ValueError):compile_plan(p,{'state':{}})

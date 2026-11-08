@@ -63,7 +63,9 @@ static void Submit(void)
         return;
     }
     if (!WorldBridge_ChatSend(target, text)) {
-        strcpy(sChat.hint, "Not sent. Check connection or try again.");
+        strcpy(sChat.hint, !strncmp(text, "/explore", 8)
+            ? "Not sent. Checking survey support; retry after server reply."
+            : "Not sent. Check connection or try again.");
         return;
     }
     /* The server's echo is the delivery receipt, never a fabricated local line. */

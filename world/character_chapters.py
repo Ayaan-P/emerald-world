@@ -9,12 +9,35 @@ import json
 import re
 
 EVENT_FIELDS = {
+    'landmark_discovery_shared': {'place_id', 'revision', 'landmark'},
+    'trail_opened': {'place_id','revision','start','end'},
     'area_activated': {'place_id', 'label'},
     'area_named': {'place_id', 'before', 'after'},
     'region_opened': {'place_id', 'label'},
-    'guild_goal_completed': {'place_id', 'goal_kind', 'guild_name', 'character_id', 'character_offer_id', 'character_offer_revision'},
+    'guild_goal_completed': {'place_id', 'goal_kind', 'guild_name', 'character_id', 'character_offer_id', 'character_offer_revision', 'region_revision'},
     'character_changed': {'character_id', 'character_status'},
 }
+
+
+def conditions(when):
+    """A bounded conjunction of distinct public milestones, or one legacy trigger."""
+    if type(when) is dict and set(when)=={'all'}:
+        items=when['all']
+        if type(items) is not list or not 2<=len(items)<=4:
+            raise ValueError('all requires two to four public milestones')
+        if len({json.dumps(item,sort_keys=True) for item in items})!=len(items):
+            raise ValueError('public milestones must be distinct')
+    else:items=[when]
+    for condition in items:
+        if (type(condition) is not dict or type(condition.get('event')) is not str or condition.get('event') not in EVENT_FIELDS
+              or not set(condition) <= EVENT_FIELDS[condition['event']] | {'event'}
+              or len(condition)<2 or any((type(v) is not int or not 1<=v<=2**31-1) if k=='character_offer_revision'
+                  else (type(v) is not str or not 1<=len(v)<=160) for k,v in condition.items())):
+            raise ValueError('chapter needs a specific public-event condition')
+        if condition['event']=='landmark_discovery_shared':
+            if set(condition)!={'event','place_id','revision','landmark'} or not re.fullmatch('[0-9a-f]{64}',condition['revision']) or not re.fullmatch(r'area:[0-9a-f-]{36}',condition['place_id']) or not re.fullmatch('[a-z][a-z0-9_]{0,23}',condition['landmark']):
+                raise ValueError('landmark chapters require exact place, revision and landmark')
+    return items
 
 
 def validate_plan(plan):
@@ -32,7 +55,7 @@ def validate_plan(plan):
     identities=set()
     for index,chapter in enumerate(chapters):
         if (type(chapter) is not dict or not {'id','when','goals','team','status','object','reason'} <= set(chapter)
-                or set(chapter)-{'id','when','goals','team','status','object','reason','offer','next'}):
+                or set(chapter)-{'id','when','goals','team','status','object','reason','offer','next','services'}):
             raise ValueError('invalid chapter fields')
         identity=chapter['id']
         if type(identity) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}',identity) or identity in identities:
@@ -41,15 +64,12 @@ def validate_plan(plan):
         condition=chapter['when']
         if index == 0:
             if condition is not None:raise ValueError('first chapter starts on approved publication')
-        elif (type(condition) is not dict or type(condition.get('event')) is not str or condition.get('event') not in EVENT_FIELDS
-              or not set(condition) <= EVENT_FIELDS[condition['event']] | {'event'}
-              or len(condition)<2 or any((type(v) is not int or not 1<=v<=2**31-1) if k=='character_offer_revision'
-                  else (type(v) is not str or not 1<=len(v)<=160) for k,v in condition.items())):
-            raise ValueError('chapter needs a specific public-event condition')
+        else:conditions(condition)
         character=dict(version=1,name=plan['name'],role=plan['role'],goals=chapter['goals'],relationships={},
                        team=chapter['team'],status=chapter['status'],object_id=plan['id'],
                        evidence=plan['origin_evidence'],reason=chapter['reason'])
         if chapter.get('offer') is not None:character['offer']=chapter['offer']
+        if 'services' in chapter:character['services']=chapter['services']
         records({'world_characters':{plan['id']:character}})
         obj=chapter['object']
         if chapter['status']=='active':
@@ -78,10 +98,11 @@ def validate_plan(plan):
             reached.add(positions[target])
             condition=chapters[positions[target]]['when']
             offer=chapter.get('offer')
-            if offer and condition['event']=='guild_goal_completed':
+            for requirement in conditions(condition):
+                if not offer or requirement['event']!='guild_goal_completed':continue
                 expected={'character_id':plan['id'],'character_offer_id':offer['id'],
                           'character_offer_revision':offer['revision']}
-                if any(condition.get(key)!=value for key,value in expected.items()):
+                if any(requirement.get(key)!=value for key,value in expected.items()):
                     raise ValueError('offered expedition completion requires exact character and offer identity')
     return json.loads(json.dumps(plan))
 
@@ -107,6 +128,7 @@ def chapter_step(plan, definition, published_after, context, result):
             relationships={},team=chapter['team'],status=chapter['status'],object_id=identity,
             evidence=plan['origin_evidence'],reason=chapter['reason'])
         if chapter.get('offer') is not None:cast[identity]['offer']=chapter['offer']
+        if 'services' in chapter:cast[identity]['services']=chapter['services']
         original=None
     else:
         if progress['definition'] != definition:
@@ -123,16 +145,31 @@ def chapter_step(plan, definition, published_after, context, result):
         next_index=None
         for target in targets:
             candidate=next(i for i,c in enumerate(plan['chapters']) if c['id']==target)
-            if all(event.get(k)==v for k,v in plan['chapters'][candidate]['when'].items()):
-                next_index=candidate
-                break
+            condition=plan['chapters'][candidate]['when']
+            if 'all' in condition:
+                matches=progress.setdefault('milestones',{}).setdefault(target,{})
+                # One public event can satisfy at most one outstanding requirement.
+                for index,requirement in enumerate(condition['all']):
+                    if str(index) not in matches and all(event.get(k)==v for k,v in requirement.items()):
+                        matches[str(index)]=event['seq']
+                        break
+                if len(matches)!=len(condition['all']):continue
+                evidence=sorted(matches.values())
+            else:
+                if not all(event.get(k)==v for k,v in condition.items()):continue
+                evidence=[event['seq']]
+            next_index=candidate
+            break
         if next_index is None:continue
         chapter=plan['chapters'][next_index]
         progress['chapter']=next_index
+        progress.pop('milestones',None)
         cast[identity].update(goals=chapter['goals'],team=chapter['team'],status=chapter['status'],
-                              evidence=[event['seq']],reason=chapter['reason'])
+                              evidence=evidence,reason=chapter['reason'])
+        cast[identity].pop('services',None)
         cast[identity].pop('offer',None)
         if chapter.get('offer') is not None:cast[identity]['offer']=chapter['offer']
+        if 'services' in chapter:cast[identity]['services']=chapter['services']
     character=cast[identity]
     if original is not None and character != original:
         character['version']=original['version']+1
@@ -179,8 +216,11 @@ def contract():
             'plan_fields':['id','name','role','origin_evidence','chapters'],
             'chapter_fields':['id','when','goals','team','status','object','reason'],
             'branching':'optional next lists up to eight later chapter ids; default is the next chapter; [] ends the story; earliest recorded matching event chooses one route, declaration order breaks simultaneous matches; skipped routes never run; all chapters must be reachable',
+            'optional_services':['guide'],
             'optional_chapter_field':'offer: validated expedition offer; requires explicit native acceptance and pre-existing guild chronicle ON',
+            'landmark_privacy':'only explicitly shared landmark_discovery_shared events may trigger a chapter; require exact place_id, revision and landmark; private visits and unconfirmed share prompts never enter this feed',
             'scope':'shared-world characters respond to public events from any opted-in guild; guild_name is a literal name, not stable identity; an offered expedition completion must match its exact character_id, character_offer_id and character_offer_revision',
+            'multi_milestone':'when may instead be {all: [two to four distinct event conditions]}; collect in either order only while that chapter is a reachable next choice; each record satisfies at most one requirement; partial evidence survives restart; no private-event or replay credit',
             'first_when':None,'later_when':'exact public event plus at least one listed field, all comparisons must match',
             'events':{name:sorted(fields) for name,fields in EVENT_FIELDS.items()},
             'limits':'one new stable character, up to sixteen authored chapters; native maps or explicitly scoped opened immutable generated regions or archived shared XL revisions; 16 KiB plan',
