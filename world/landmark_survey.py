@@ -139,6 +139,12 @@ class LandmarkSurvey:
             command=text.split()[1:]
             if command==['protocol','1']:
                 s._queue(conn,f'EXPLORE_READY {conn["seq"]}\n');return True
+            if len(command)==2 and command[0]=='guide':
+                from .character_guides import guide
+                self.reply(conn,guide(s,conn,command[1]));return True
+            if command==['directions']:
+                from .character_guides import directions
+                self.reply(conn,directions(s,conn));return True
             if command==['start']:
                 revision=self.scope(conn)
                 if not revision or not s.db.execute('SELECT 1 FROM survey_routes WHERE revision=?',(revision,)).fetchone():
@@ -150,7 +156,7 @@ class LandmarkSurvey:
             elif command==['stop']:
                 with s.db:s.db.execute('UPDATE survey_sessions SET active=0 WHERE trainer=?',(conn['id'],))
             elif command not in ([],['status']):
-                self.reply(conn,['Use /explore start, status, stop, or share LANDMARK.']);return True
+                self.reply(conn,['Use /explore start, status, stop, share LANDMARK, guide NPC_ID, or directions.']);return True
             self.reply(conn,self.lines(conn))
         return True
 

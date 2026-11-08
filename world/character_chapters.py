@@ -33,7 +33,7 @@ def validate_plan(plan):
     identities=set()
     for index,chapter in enumerate(chapters):
         if (type(chapter) is not dict or not {'id','when','goals','team','status','object','reason'} <= set(chapter)
-                or set(chapter)-{'id','when','goals','team','status','object','reason','offer','next'}):
+                or set(chapter)-{'id','when','goals','team','status','object','reason','offer','next','services'}):
             raise ValueError('invalid chapter fields')
         identity=chapter['id']
         if type(identity) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}',identity) or identity in identities:
@@ -54,6 +54,7 @@ def validate_plan(plan):
                        team=chapter['team'],status=chapter['status'],object_id=plan['id'],
                        evidence=plan['origin_evidence'],reason=chapter['reason'])
         if chapter.get('offer') is not None:character['offer']=chapter['offer']
+        if 'services' in chapter:character['services']=chapter['services']
         records({'world_characters':{plan['id']:character}})
         obj=chapter['object']
         if chapter['status']=='active':
@@ -111,6 +112,7 @@ def chapter_step(plan, definition, published_after, context, result):
             relationships={},team=chapter['team'],status=chapter['status'],object_id=identity,
             evidence=plan['origin_evidence'],reason=chapter['reason'])
         if chapter.get('offer') is not None:cast[identity]['offer']=chapter['offer']
+        if 'services' in chapter:cast[identity]['services']=chapter['services']
         original=None
     else:
         if progress['definition'] != definition:
@@ -135,8 +137,10 @@ def chapter_step(plan, definition, published_after, context, result):
         progress['chapter']=next_index
         cast[identity].update(goals=chapter['goals'],team=chapter['team'],status=chapter['status'],
                               evidence=[event['seq']],reason=chapter['reason'])
+        cast[identity].pop('services',None)
         cast[identity].pop('offer',None)
         if chapter.get('offer') is not None:cast[identity]['offer']=chapter['offer']
+        if 'services' in chapter:cast[identity]['services']=chapter['services']
     character=cast[identity]
     if original is not None and character != original:
         character['version']=original['version']+1
@@ -183,6 +187,7 @@ def contract():
             'plan_fields':['id','name','role','origin_evidence','chapters'],
             'chapter_fields':['id','when','goals','team','status','object','reason'],
             'branching':'optional next lists up to eight later chapter ids; default is the next chapter; [] ends the story; earliest recorded matching event chooses one route, declaration order breaks simultaneous matches; skipped routes never run; all chapters must be reachable',
+            'optional_services':['guide'],
             'optional_chapter_field':'offer: validated expedition offer; requires explicit native acceptance and pre-existing guild chronicle ON',
             'landmark_privacy':'only explicitly shared landmark_discovery_shared events may trigger a chapter; require exact place_id, revision and landmark; private visits and unconfirmed share prompts never enter this feed',
             'scope':'shared-world characters respond to public events from any opted-in guild; guild_name is a literal name, not stable identity; an offered expedition completion must match its exact character_id, character_offer_id and character_offer_revision',

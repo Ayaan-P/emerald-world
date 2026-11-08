@@ -25,7 +25,7 @@ def records(state):
     for identity, character in value.items():
         if type(identity) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}', identity):
             raise ValueError('invalid character identity')
-        if type(character) is not dict or not FIELDS <= set(character) or set(character)-FIELDS-{'offer'}:
+        if type(character) is not dict or not FIELDS <= set(character) or set(character)-FIELDS-{'offer','services'}:
             raise ValueError('invalid character fields')
         if type(character['version']) is not int or not 1 <= character['version'] <= 2**31-1:
             raise ValueError('invalid character version')
@@ -38,6 +38,9 @@ def records(state):
             validate_offer(character['offer'])
             if character['status'] != 'active':
                 raise ValueError('only active characters may offer an expedition')
+        services=character.get('services',[])
+        if type(services) is not list or len(services)>1 or any(service!='guide' for service in services):
+            raise ValueError('unsupported character service')
         goals = character['goals']
         if type(goals) is not list or len(goals) > 4:
             raise ValueError('invalid character goals')
@@ -103,6 +106,7 @@ def author_contract():
     return {
         'state_key': KEY,
         'record_fields': sorted(FIELDS),
+        'optional_services':['guide: private adjacent survey directions via /explore guide NPC_ID'],
         'optional_offer': {'id':'stable offer ID','revision':'positive revision, increase when destination/count changes','kind':'expedition','place_id':'native:canonical map or area:UUID with required region_revision64hex','target':'1..50 guild members','region_revision':'required64hex only for area:UUID destinations'},
         'offer_consent':'CHARQUEST1 native explicit acceptance; guild leader only, existing chronicle ON required, never toggle publication; completion uses existing guild authority',
         'team_member': {'species': 'enabled numeric species ID', 'level': 'integer 1..100'},
