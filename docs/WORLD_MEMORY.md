@@ -761,8 +761,16 @@ map, character and evidence. Model output and sandbox execution are fixture
 boundaries; the reducer, authority commits, authentication and scoped wire are
 exercised. Team evolution is authored fiction, not proof of a battle or catch.
 
-Generated-character native presentation requires the separate CHARREG1 engine
-changes. This app branch preserves its existing engine pin, which does not yet
-include those changes. Neither this fixture nor a matching wire response proves
-a linked native gameplay session. Outdoor multi-region selection remains outside
+The paired draft pins the CHARREG1 engine at `80bf5672c7caa43c39888007300683519bcd7fbb`.
+The existing XL feature cohort enables shared-slot character scope;
+`GENERATED_WORLD_REGIONS` remains opt-in and is not needed for shared XL NPCs.
+Neither this fixture nor a matching wire response proves a linked native gameplay
+session. Outdoor multi-region selection remains outside
 this slice; archived characters appear only when their exact shared map is active.
+
+Paired-source verification reconstructed the complete engine tree and matched
+`326d99cbef8e48d241343024ee8be5c6587abe19`, the published tree for that pin.
+The local reconstruction's commit metadata is not a clean pinned submodule;
+source-tree equality is the verified result. An actual native build stopped at
+`tools/gbagfx` because `png.h` is missing; SDL2/libpng development packages are
+also unavailable. No linked binary or two-client playthrough is claimed.
