@@ -1764,6 +1764,10 @@ class WorldServer:
                     elif request['command']=='private_cast_finish' and set(request)=={'command','id','lease','result'}:result=finish(self,request['id'],request['lease'],request['result'])
                     else:raise ValueError('Invalid private reflection command.')
                 except ValueError as exc:result=dict(ok=False,error=str(exc))
+            elif request.get('command') == 'cast_practice_intentions':
+                from .canonical_cast import records
+                if set(request)!={'command'}:result=dict(ok=False,error='Invalid cast practice inspection')
+                else:result=dict(ok=True,world_id=self.memory.world_id,actors={key:dict(version=row['version'],intentions=[t for t in row.get('intentions',[]) if t['kind']=='practice']) for key,row in records(self.module_state).items()})
             elif request.get('command') == 'inspect':
                 result = self.inspect()
             elif request.get('command') == 'world_rules':

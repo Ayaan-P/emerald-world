@@ -12,7 +12,7 @@ def validate(row, bindings, identity):
     for task in tasks:
         if (type(task) is not dict or set(task)!={'id','kind','target','reason'}
                 or type(task['id']) is not str or not re.fullmatch('[a-z][a-z0-9_]{0,23}',task['id'])
-                or task['id'] in seen or task['kind'] not in ('letter','project','contribution')
+                or task['id'] in seen or task['kind'] not in ('letter','project','contribution','practice')
                 or type(task['reason']) is not str or not 1<=len(task['reason'])<=160
                 or any(not 32<=ord(c)<=126 for c in task['reason'])):raise ValueError('invalid retained intention')
         seen.add(task['id'])
@@ -21,7 +21,7 @@ def validate(row, bindings, identity):
         elif task['kind']=='project':
             if task['target']!='petalburg_relay':raise ValueError('unsupported project intention')
         elif type(task['target']) is not str or not re.fullmatch('[a-z][a-z0-9_]{0,23}',task['target']):
-            raise ValueError('contribution intention requires a course')
+            raise ValueError('intention target requires a bounded course or registered companion ID')
     if row.get('fulfill') is not None and (type(row['fulfill']) is not str or not re.fullmatch('[a-z][a-z0-9_]{0,23}',row['fulfill'])):
         raise ValueError('invalid intention fulfillment')
 
@@ -32,6 +32,7 @@ def selected(before, after):
     task=next((t for t in before.get('intentions',[]) if t['id']==key),None)
     if not task:raise ValueError('fulfill only a previously retained intention')
     if any(t['id']==key for t in after.get('intentions',[])):raise ValueError('fulfilled intention must leave pending agenda')
+    if task['kind']=='practice':raise ValueError('practice completion requires a verified host receipt; live fulfillment is not enabled')
     effect=after.get(task['kind'])
     if not effect or effect==before.get(task['kind']):raise ValueError('fulfillment requires a new actual action')
     target=effect.get('to') if task['kind']=='letter' else effect.get('kind') if task['kind']=='project' else effect.get('course')
@@ -66,6 +67,7 @@ def enqueue(queue, sub, character):
     if not character.get('canonical'):return None
     if queue.db.execute('SELECT count(*) FROM canonical_intent_attempts WHERE world=? AND actor=?',(sub['world'],sub['id'])).fetchone()[0]>=8:return None
     for task in character.get('intentions',[]):
+        if task['kind']=='practice':continue # Isolated host dispatcher owns this work, not the public author queue.
         if queue.db.execute('SELECT 1 FROM canonical_intent_attempts WHERE world=? AND actor=? AND intention=?',(sub['world'],sub['id'],task['id'])).fetchone():continue
         key=uuid.uuid4().hex
         packet=dict(world_id=sub['world'],id=sub['id'],expected_version=character['version'],

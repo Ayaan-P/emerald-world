@@ -4,6 +4,7 @@ Snapshots are opaque full native Pokemon bytes, tied to one executable digest.
 They are not portable saves and must never be silently migrated between builds.
 """
 import argparse
+from contextlib import nullcontext
 import hashlib
 import json
 from pathlib import Path
@@ -72,7 +73,7 @@ class Ledger:
         row=self.get(actor,individual)
         if row['state']['level']>=cap:raise ValueError('Companion is already at practice cap')
         job=uuid.uuid4().hex
-        with self.db:self.db.execute('INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?,?,NULL)',(job,actor,individual,row['engine'],row['revision'],json.dumps(row['state'],sort_keys=True),steps,cap,'queued'))
+        with (nullcontext() if self.db.in_transaction else self.db):self.db.execute('INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?,?,NULL)',(job,actor,individual,row['engine'],row['revision'],json.dumps(row['state'],sort_keys=True),steps,cap,'queued'))
         return job
     def execute(self,job,engine):
         # Claim once before external work. Interrupted running jobs are never
