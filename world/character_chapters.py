@@ -33,7 +33,7 @@ def validate_plan(plan):
     identities=set()
     for index,chapter in enumerate(chapters):
         if (type(chapter) is not dict or not {'id','when','goals','team','status','object','reason'} <= set(chapter)
-                or set(chapter)-{'id','when','goals','team','status','object','reason','offer','next','services'}):
+                or set(chapter)-{'id','when','goals','team','status','object','reason','offer','next','services','battle_portrait'}):
             raise ValueError('invalid chapter fields')
         identity=chapter['id']
         if type(identity) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}',identity) or identity in identities:
@@ -60,6 +60,7 @@ def validate_plan(plan):
                        evidence=plan['origin_evidence'],reason=chapter['reason'])
         if chapter.get('offer') is not None:character['offer']=chapter['offer']
         if 'services' in chapter:character['services']=chapter['services']
+        if 'battle_portrait' in chapter:character['battle_portrait']=chapter['battle_portrait']
         records({'world_characters':{plan['id']:character}})
         obj=chapter['object']
         if chapter['status']=='active':
@@ -118,6 +119,7 @@ def chapter_step(plan, definition, published_after, context, result):
             evidence=plan['origin_evidence'],reason=chapter['reason'])
         if chapter.get('offer') is not None:cast[identity]['offer']=chapter['offer']
         if 'services' in chapter:cast[identity]['services']=chapter['services']
+        if 'battle_portrait' in chapter:cast[identity]['battle_portrait']=chapter['battle_portrait']
         original=None
     else:
         if progress['definition'] != definition:
@@ -147,9 +149,11 @@ def chapter_step(plan, definition, published_after, context, result):
         cast[identity].update(goals=chapter['goals'],team=chapter['team'],status=chapter['status'],
                               evidence=[event['seq']],reason=chapter['reason'])
         cast[identity].pop('services',None)
+        cast[identity].pop('battle_portrait',None)
         cast[identity].pop('offer',None)
         if chapter.get('offer') is not None:cast[identity]['offer']=chapter['offer']
         if 'services' in chapter:cast[identity]['services']=chapter['services']
+        if 'battle_portrait' in chapter:cast[identity]['battle_portrait']=chapter['battle_portrait']
     character=cast[identity]
     if original is not None and character != original:
         character['version']=original['version']+1

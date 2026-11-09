@@ -613,6 +613,9 @@ class WorldServer:
                 role = fields[4] if len(fields) == 5 else ''
                 place_quest_capable=role.endswith('PLACEQUEST1')
                 if place_quest_capable:role=role[:-11]
+                character_identity_capable = role.endswith('CHARIDENT1')
+                if character_identity_capable:
+                    role = role[:-10]
                 character_walk_capable = role.endswith('CHARWALK1')
                 if character_walk_capable:role=role[:-9]
                 character_region_capable = role.endswith('CHARREG1')
@@ -670,6 +673,9 @@ class WorldServer:
                     self._error(conn,'AUTH')
                     return
                 if character_quest_capable and not character_capable:
+                    self._error(conn, 'AUTH')
+                    return
+                if character_identity_capable and not character_capable:
                     self._error(conn, 'AUTH')
                     return
                 if character_capable and not social:
@@ -733,6 +739,7 @@ class WorldServer:
                     return
                 conn['id'] = name
                 conn['social'] = social
+                conn['character_identity_capable'] = character_identity_capable
                 conn['character_walk_capable'] = character_walk_capable
                 conn['character_region_capable'] = character_region_capable
                 conn['character_capable'] = character_capable
@@ -1148,6 +1155,16 @@ class WorldServer:
             request = json.loads(raw)
             if type(request) is not dict:
                 raise ValueError('control request must be an object')
+            if request.get('command') == 'player_activity':
+                if set(request) != {'command'}:
+                    raise ValueError('invalid activity fields')
+                # CONTROL authentication supplies the identity. A launcher may
+                # neither select another trainer nor create GM work by reading.
+                from .player_activity import snapshot
+                with self.lock:
+                    activity = snapshot(self, conn['id'])
+                self._queue(conn, json.dumps(dict(ok=True, activity=activity), ensure_ascii=True) + '\n')
+                return
             if request.get('command') == 'intent':
                 if set(request) != {'command', 'request_id', 'text'}:
                     raise ValueError('invalid intent fields')

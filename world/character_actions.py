@@ -33,7 +33,7 @@ def validate_actions(actions, context):
         if type(evidence) is not list or not evidence or any(type(seq) is not int or seq not in known for seq in evidence):
             raise ValueError('actions require inspected public history evidence')
         changes=action['changes']
-        if type(changes) is not dict or set(changes)-{'goals','relationships','team','status','offer','services'}:
+        if type(changes) is not dict or set(changes)-{'goals','relationships','team','status','offer','services','battle_portrait'}:
             raise ValueError('unsupported character action changes')
         if 'walk' in action:
             path=action['walk'];obj=action['object']

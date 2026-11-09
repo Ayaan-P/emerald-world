@@ -10,6 +10,7 @@ import re
 KEY = 'world_characters'
 FIELDS = {'version', 'name', 'role', 'goals', 'relationships', 'team', 'status',
           'object_id', 'evidence', 'reason'}
+BATTLE_PORTRAITS = ('scientist', 'ruin_maniac', 'ranger_m', 'ranger_f', 'brendan', 'may')
 
 
 def _text(value, maximum):
@@ -25,8 +26,11 @@ def records(state):
     for identity, character in value.items():
         if type(identity) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}', identity):
             raise ValueError('invalid character identity')
-        if type(character) is not dict or not FIELDS <= set(character) or set(character)-FIELDS-{'offer','services'}:
+        if type(character) is not dict or not FIELDS <= set(character) or set(character)-FIELDS-{'offer','services','battle_portrait'}:
             raise ValueError('invalid character fields')
+        if ('battle_portrait' in character and
+                (type(character['battle_portrait']) is not str or character['battle_portrait'] not in BATTLE_PORTRAITS)):
+            raise ValueError('unsupported character battle portrait')
         if type(character['version']) is not int or not 1 <= character['version'] <= 2**31-1:
             raise ValueError('invalid character version')
         _text(character['name'], 32)
@@ -108,6 +112,7 @@ def author_contract():
         'record_fields': sorted(FIELDS),
         'optional_offer': {'id':'stable offer ID','revision':'positive revision, increase when destination/count changes','kind':'expedition','place_id':'native:canonical map or area:UUID with required region_revision64hex','target':'1..50 guild members','region_revision':'required64hex only for area:UUID destinations'},
         'optional_services':['guide: opts this NPC into adjacent private survey guidance through /explore guide NPC_ID'],
+        'optional_battle_portrait': {'choices': list(BATTLE_PORTRAITS), 'default': 'scientist', 'scope': 'public authored NPC presentation, never inferred from human identity or field sprite'},
         'offer_consent':'CHARQUEST1 native explicit acceptance; guild leader only, existing chronicle ON required, never toggle publication; completion uses existing guild authority',
         'team_member': {'species': 'enabled numeric species ID', 'level': 'integer 1..100'},
         'presence': 'active requires a matching top-level objects entry; away/retired must not render',
@@ -153,9 +158,23 @@ def challenge(server, conn, fields):
     if delta is None or (state[2]+delta[0], state[3]+delta[1]) != (obj['x'], obj['y']):
         raise ValueError('character challenge requires adjacent facing player')
     frozen = json.loads(json.dumps({'seq': seq, 'id': fields[2], 'version': version, 'team': character['team']}))
+    identity_fields = []
+    if conn.get('character_identity_capable'):
+        # Freeze public authored identity at the same admission boundary as the
+        # team. These bytes are a bounded glyph projection, never native text
+        # controls, inferred gender, or a human trainer/save identity.
+        import string
+        glyphs = string.ascii_letters + string.digits + " .,!?'-"
+        name = ''.join(c if c in glyphs else ' ' for c in character['name']).strip()
+        portrait = character.get('battle_portrait', 'scientist')
+        if not name or type(portrait) is not str or portrait not in BATTLE_PORTRAITS:
+            raise ValueError('character battle identity unavailable')
+        frozen.update(name=name, portrait=portrait)
+        identity_fields = [name.encode('ascii').hex(), portrait]
     conn['character_pending'] = frozen
     conn['seq'] = seq
-    return 'CHARACTER_BATTLE_V1 ' + ' '.join(map(str, [seq, fields[2], version, len(frozen['team']),
+    prefix = 'CHARACTER_BATTLE_V2 ' if identity_fields else 'CHARACTER_BATTLE_V1 '
+    return prefix + ' '.join(map(str, [seq, fields[2], version, len(frozen['team']), *identity_fields,
         *[value for mon in frozen['team'] for value in (mon['species'], mon['level'])]])) + '\n'
 
 

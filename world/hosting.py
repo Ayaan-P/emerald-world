@@ -259,6 +259,60 @@ class HostedWorldManager:
             row = self._owned(token, world_id)
             return self._result(row, row['trainer'])
 
+    @staticmethod
+    def _adventure_result(value, world_id):
+        # The consumer review needs its fixed recipe, guide and bound token, not
+        # a second copy of 127x127 geometry, source plans or 100 history records.
+        # Retain the existing 16 KiB HTTPS response boundary.
+        fields = ('world_id', 'sequence', 'identity', 'version', 'residents',
+                  'players', 'adventures', 'token', 'adventure', 'label', 'guide',
+                  'prerequisites', 'validation', 'saved', 'already_installed',
+                  'registered_revision')
+        result = {key: value[key] for key in fields if key in value}
+        # The owned hosting service, not the workshop helper, knows the exact
+        # 16-hex world ID and its human label from the hosting registry.
+        result['world'] = world_id
+        if 'report' in value:
+            result['proposed_revision'] = value['report']['revision']
+        return result
+
+    def read_adventures(self, token, world_id):
+        """Owner-only built-in catalogue; never run a provider or create content."""
+        with self.lock:
+            server = self._start_world(self._owned(token, world_id))
+            from .product_adventure import read_adventures
+            with server.lock:
+                return self._adventure_result(read_adventures(server), world_id)
+
+    def preview_adventure(self, token, world_id, adventure):
+        """Review a fixed built-in adventure, never arbitrary owner-supplied code."""
+        from .session import SessionError
+        with self.lock:
+            server = self._start_world(self._owned(token, world_id))
+            if type(adventure) is not str or not re.fullmatch('[a-z0-9-]{1,48}', adventure):
+                raise HostingError()
+            from .product_adventure import preview_adventure
+            try:
+                return self._adventure_result(preview_adventure(server, adventure), world_id)
+            except (SessionError, ValueError):
+                raise HostingError(409, 'conflict') from None
+
+    def apply_adventure(self, token, world_id, review_token, confirmed):
+        """Apply exactly one owner-reviewed built-in import through its sandbox."""
+        from .session import SessionError
+        with self.lock:
+            server = self._start_world(self._owned(token, world_id))
+            if (type(review_token) is not str or not re.fullmatch('[0-9a-f]{48}', review_token)
+                    or confirmed is not True):
+                raise HostingError()
+            from .product_adventure import apply_adventure
+            try:
+                # The helper releases/rechecks its own authority lock while staging.
+                # Do not hold an outer server lock across the sandbox operation.
+                return self._adventure_result(apply_adventure(server, review_token, confirmed=True), world_id)
+            except (SessionError, ValueError):
+                raise HostingError(409, 'conflict') from None
+
     def generated_area_status(self, token, world_id):
         """Owner-only metadata. Never return templates, paths or provider state."""
         with self.lock:
@@ -510,6 +564,19 @@ class HostingService:
                     elif self.command == 'POST' and path == '/v1/join' and set(body) == {'trainer'}:
                         result = manager.join(token, body['trainer'])
                     else:
+                        adventure_match = re.fullmatch('/v1/worlds/([0-9a-f]{16})/adventure(/preview|/apply)?', path)
+                        if adventure_match is not None:
+                            world_id, action = adventure_match.groups()
+                            if self.command == 'GET' and action is None:
+                                result = manager.read_adventures(token, world_id)
+                            elif self.command == 'POST' and action == '/preview' and set(body) == {'adventure'}:
+                                result = manager.preview_adventure(token, world_id, body['adventure'])
+                            elif self.command == 'POST' and action == '/apply' and set(body) == {'token', 'confirmed'}:
+                                result = manager.apply_adventure(token, world_id, body['token'], body['confirmed'])
+                            else:
+                                raise HostingError()
+                            self._reply(200, result)
+                            return
                         area_match = re.fullmatch('/v1/worlds/([0-9a-f]{16})/generated-areas(/activate)?', path)
                         if area_match is not None:
                             world_id, activate = area_match.groups()
