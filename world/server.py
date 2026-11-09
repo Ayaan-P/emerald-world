@@ -2224,6 +2224,8 @@ class WorldServer:
                 step_cast_world_action(self)
                 from .actor_runtime import tick as tick_actor_runtime
                 tick_actor_runtime(self)
+                from .npc_conversations import flush as flush_npc_replies
+                flush_npc_replies(self)
                 self.cast_scenes.tick()
 
     def close(self):

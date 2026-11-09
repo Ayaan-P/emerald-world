@@ -50,7 +50,10 @@ class GuildChat:
             with s.lock:
                 try:
                     command=text[6:].strip();words=command.split()
-                    if words and words[0].lower()=='cast':
+                    if words and words[0].lower()=='npc':
+                        from .npc_conversations import command as npc_command
+                        lines=npc_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='cast':
                         from .canonical_cast import guild_command
                         lines=guild_command(s,conn,words[1:])
                         self.epoch+=1
@@ -79,6 +82,7 @@ class GuildChat:
                         self.epoch+=1
                 except GuildError as exc: lines=[str(exc)]
                 if not words:lines.append('Original character field proposals: /guild cast ACTOR')
+                if not words:lines.append('Talk publicly to nearby recurring NPCs: /guild npc')
                 if not words and getattr(s, 'relays', None):lines.append('Find games and partners: /guild play')
                 for line in lines: self.message(conn,conn['id'],'Guild: '+line)
                 parts=text.split()
