@@ -20,6 +20,8 @@ def actors(state):
 
 
 def setup(queue):
+    from .canonical_intentions import setup as setup_intentions
+    setup_intentions(queue)
     queue.db.execute('''CREATE TABLE IF NOT EXISTS character_reactions(
         id TEXT PRIMARY KEY, purpose TEXT NOT NULL, world TEXT NOT NULL,
         cursor INTEGER NOT NULL)''')
@@ -118,6 +120,10 @@ def observe(queue, inspection, fetch, *, enqueue=True):
                 queued.append(identifier)
                 through = event['seq']
                 break
+            if enqueue and through==page['cursor'] and not queue.db.execute("SELECT 1 FROM requests WHERE kind='character' AND player=? AND status IN ('queued','running')",(sub['id'],)).fetchone():
+                from .canonical_intentions import enqueue as enqueue_intention
+                intent=enqueue_intention(queue,sub,character)
+                if intent:queued.append(intent)
             queue.db.execute('UPDATE character_reactions SET cursor=? WHERE id=?', (through, sub['id']))
             queue.db.execute("DELETE FROM requests WHERE kind='character' AND status NOT IN ('queued','running') AND seq NOT IN (SELECT seq FROM requests WHERE kind='character' AND status NOT IN ('queued','running') ORDER BY seq DESC LIMIT 64)")
     return queued
@@ -146,6 +152,10 @@ def prepare(context, fetch):
                if character.get('canonical') else events[0].get('character_id') == reaction['id']
                and events[0].get('character_offer_id') == offer.get('id')
                and events[0].get('character_offer_revision') == offer.get('revision')))
+    if reaction.get('intention'):
+        from .canonical_cast import decision_evidence
+        if reaction['intention'] not in character.get('intentions',[]):raise ValueError('retained intention changed')
+        matched=len(events)==1 and decision_evidence(events[0],reaction['id'],character)
     if (page.get('ok') is not True or page.get('world_id') != reaction['world_id']
             or len(events) != 1 or events[0].get('seq') != seq
             or (not character.get('canonical') and (events[0].get('event') != 'guild_goal_completed'
@@ -174,3 +184,7 @@ def check_response(response, reaction):
                     or actions[0].get('expected_version') != reaction['expected_version']
                     or reaction['evidence'] not in (actions[0].get('changes',{}).get('evidence',[]) if reaction.get('canonical') else actions[0].get('evidence', []))):
         raise ValueError('character action does not match selected actor, version and evidence')
+
+    if actions and reaction.get('intention'):
+        if actions[0].get('changes',{}).get('fulfill')!=reaction['intention']['id']:
+            raise ValueError('intention turn must execute the selected retained task or wait')

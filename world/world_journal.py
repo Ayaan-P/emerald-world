@@ -38,6 +38,10 @@ def describe(event, place=None):
         details.append('Team plan: ' + ', '.join('species ' + str(mon['species']) +
                        ' at level ' + str(mon['level']) for mon in character['team']))
         details.append('This is an authored character change, not proof of a battle or catch.')
+    elif kind == 'canonical_intention_fulfilled':
+        from .canonical_cast import BINDINGS
+        title=BINDINGS[event['character_id']]['name']+' completed a retained intention'
+        details=[event['kind']+': '+event['target'],'Actual committed action receipt: '+str(event['action_receipt'])]
     elif kind in ('canonical_contribution_proposed','canonical_contribution_resolved'):
         from .canonical_cast import BINDINGS
         title=BINDINGS[event['character_id']]['name']+' '+('offered project guidance' if kind.endswith('proposed') else 'decided on a contribution')

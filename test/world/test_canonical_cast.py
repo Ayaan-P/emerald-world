@@ -483,6 +483,66 @@ class CanonicalCastTests(unittest.TestCase):
         self.assertEqual(briefing(self.s,published['course']),[])
         self.assertEqual(self.s.db.execute('SELECT status FROM canonical_contributions').fetchall(),[('decline',)])
 
+    def test_retained_intention_initiates_real_action_without_new_player_event(self):
+        w=self.action();w['id']='canon_wally';self.apply(w)
+        a=self.action();a['changes']['intentions']=[dict(id='ask_wally',kind='letter',target='canon_wally',reason='Ask about his own practice priorities before making plans.')]
+        self.apply(a);boundary=self.s.memory.history()['through']
+        with tempfile.TemporaryDirectory() as tmp:
+            q=IntentQueue(tmp)
+            try:
+                reactions.configure(q,self.s.inspect(),'canon_rydel','Pursue retained intentions within supported affordances.')
+                self.assertEqual(len(reactions.observe(q,self.s.inspect(),self.fetch)),1)
+                turn=q.claim();packet=json.loads(turn['result'])
+                self.assertEqual(packet['intention']['id'],'ask_wally')
+                self.assertEqual(self.s.memory.history()['through'],boundary)
+                ctx=self.context();ctx['runtime'].update(kind='character',observed_event=packet)
+                reaction=reactions.prepare(ctx,self.fetch)
+                done=deepcopy(a);done['expected_version']=1
+                done['changes'].update(intentions=[],fulfill='ask_wally',letter=dict(to='canon_wally',text='Wally, what matters to you when you choose how to practice?'))
+                reactions.check_response(dict(canonical_actions=[done],tests='assert True'),reaction)
+                self.apply(done);q.finish(turn['id'],'succeeded',dict(ok=True))
+                event=next(e for e in self.s.memory.history()['events'] if e['event']=='canonical_intention_fulfilled')
+                receipt=next(e for e in self.s.memory.history()['events'] if e['seq']==event['action_receipt'])
+                self.assertEqual(receipt['event'],'canonical_letter_delivered')
+                self.assertEqual(receipt['recipient'],'canon_wally')
+                self.assertEqual(len(reactions.observe(q,self.s.inspect(),self.fetch)),1)
+                reflection=q.claim();ctx=self.context();ctx['runtime'].update(kind='character',observed_event=json.loads(reflection['result']))
+                selected=reactions.prepare(ctx,self.fetch)
+                changed=self.action(2,'I have written to Wally. I will give him room to think.')
+                changed['changes'].update(evidence=[event['seq']],goal='Wait for Wally rather than assume what he wants')
+                reactions.check_response(dict(canonical_actions=[changed],tests='assert True'),selected)
+                self.apply(changed);q.finish(reflection['id'],'succeeded',dict(ok=True))
+                self.assertEqual(reactions.observe(q,self.s.inspect(),self.fetch),[])
+                self.assertEqual(self.f.stats()[0],10)
+                q.close();q=IntentQueue(tmp)
+                self.assertEqual(reactions.observe(q,self.s.inspect(),self.fetch),[])
+                self.s.close();self.f.case.server=self.f.case.open();self.s=self.f.case.server;self.f.server=self.s
+                self.assertEqual(self.s.db.execute('SELECT intention FROM canonical_intent_receipts').fetchall(),[('ask_wally',)])
+            finally:q.close()
+
+    def test_intention_cannot_invent_completion_or_retry_interrupted_work(self):
+        w=self.action();w['id']='canon_wally';self.apply(w)
+        a=self.action();a['changes']['intentions']=[dict(id='ask_once',kind='letter',target='canon_wally',reason='Make one considered inquiry.')];self.apply(a)
+        fake=deepcopy(a);fake['expected_version']=1;fake['changes'].update(intentions=[],fulfill='ask_once')
+        with self.assertRaises(ValueError):cast.compile_actions([fake],self.context())
+        fake['changes']['letter']=dict(to='canon_rydel',text='Wrong target.')
+        with self.assertRaises(ValueError):cast.compile_actions([fake],self.context())
+        with tempfile.TemporaryDirectory() as tmp:
+            q=IntentQueue(tmp)
+            try:
+                reactions.configure(q,self.s.inspect(),'canon_rydel','Attempt retained work once.')
+                self.assertEqual(reactions.observe(q,self.s.inspect(),self.fetch,enqueue=False),[])
+                self.assertEqual(len(reactions.observe(q,self.s.inspect(),self.fetch)),1)
+                turn=q.claim();packet=json.loads(turn['result'])
+                unrelated=self.action(1)
+                with self.assertRaises(ValueError):reactions.check_response(dict(canonical_actions=[unrelated],tests='assert True'),packet)
+                q.close();q=IntentQueue(tmp) # running author is interrupted, not replayed
+                self.assertEqual(reactions.observe(q,self.s.inspect(),self.fetch),[])
+                self.assertEqual(self.s.module_state[cast.KEY]['canon_rydel']['intentions'][0]['id'],'ask_once')
+                self.assertEqual(self.s.db.execute('SELECT count(*) FROM canonical_intent_receipts').fetchone()[0],0)
+                self.assertEqual(q.db.execute('SELECT count(*) FROM canonical_intent_attempts').fetchone()[0],1)
+            finally:q.close()
+
     @unittest.skipUnless(__import__('os').environ.get('EW_NATIVE_SOURCE'),'set EW_NATIVE_SOURCE for actual native adapter pairing')
     def test_actual_authority_reply_enters_original_script_adapter(self):
         from pathlib import Path

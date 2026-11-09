@@ -48,6 +48,8 @@ class CoreStory:
         self.s = server
         self.db = server.db
         self.db.executescript('''
+        CREATE TABLE IF NOT EXISTS canonical_intent_receipts(
+            actor TEXT, intention TEXT, action_receipt INTEGER NOT NULL, PRIMARY KEY(actor,intention));
         CREATE TABLE IF NOT EXISTS canonical_contributions(
             seq INTEGER PRIMARY KEY, course TEXT NOT NULL, actor TEXT NOT NULL, owner TEXT NOT NULL,
             text TEXT NOT NULL, status TEXT NOT NULL, UNIQUE(course,actor));

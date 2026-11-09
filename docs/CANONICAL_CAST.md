@@ -238,3 +238,36 @@ persistence. Separate cases reject wrong evidence/digest and self-resolution and
 exercise a real decline. This extends the existing project rather than creating
 another race variant. It does not simulate physical attendance, training or
 private player-specific AI. 112 focused app/author/activity tests pass.
+
+## Retained intentions and bounded initiative
+
+A character can retain up to three concrete intentions, each with `id`, `kind`,
+`target` and `reason`. Supported kinds are `letter` (target another existing bound
+actor), `project` (target `petalburg_relay`) and `contribution` (target exact course).
+These are pending work, not outcomes. Existing `follow-character` enrollment and
+an explicitly configured author runtime are required; no model is started by
+saving an intention.
+
+When that followed actor has no event turn pending, its runtime may enqueue the
+next retained intention without another player event. The author either waits or
+returns a typed action with `fulfill: TASK_ID`, removes it from pending work and
+performs the exact supported action. Authority completion requires a newly committed
+letter/project/contribution receipt in the same transaction. No-op publication,
+wrong target, fake completion or previously completed task rolls back. Actual
+completion becomes evidence for one further goal-reflection turn, so a character
+can change its intention after its own work rather than only other people's chores.
+
+Attempt records survive runtime restart. Each task ID is attempted once, even if
+the author is interrupted or chooses to wait; there is no silent retry. Pending
+work remains visible in `thoughts` until deliberately revised/abandoned or fulfilled.
+The candidate caps initiative at eight attempts per actor/world in that runtime
+state. It does not automatically refill the budget or invent new work to bypass
+it. Public-event reactions still operate normally. Long-running host-controlled
+budget renewal is a separate future feature, not an unlimited autonomous loop.
+
+The regression retains Rydel's intention to ask Wally about his priorities, queues
+it with no new world/player event, executes the actual letter, verifies its action
+receipt, and then revises Rydel's goal to wait for Wally. Restart preserves the
+completion and does not replay it. Interrupted attempts remain pending without
+retry; unrelated changes and invented fulfillment are refused. 114 focused tests
+pass. No native travel, training, battle or save mutation is implied.

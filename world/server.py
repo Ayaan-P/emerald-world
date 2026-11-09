@@ -1978,6 +1978,7 @@ class WorldServer:
                                 if obj['id'] == change['character_id']],self.db)
                             self.revision = self.memory.append('character_changed', change)
                         for change in canonical_changes:
+                            effect_after=self.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
                             self.revision=self.memory.append('canonical_actor_changed',change)
                             from .canonical_cast import deliver_letter
                             deliver_letter(self,change)
@@ -1985,6 +1986,8 @@ class WorldServer:
                             publish_cast_project(self,change)
                             from .canonical_collaboration import apply as apply_cast_collaboration
                             apply_cast_collaboration(self,change)
+                            from .canonical_intentions import complete as complete_cast_intent
+                            complete_cast_intent(self,change,effect_after)
                         if kind == 'deploy':
                             self.db.execute('INSERT OR REPLACE INTO status VALUES(1,NULL)')
                     self.candidate, self.module_state, self.tiles = candidate, json.loads(state_json), tiles
