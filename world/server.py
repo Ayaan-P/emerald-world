@@ -1309,7 +1309,7 @@ class WorldServer:
                 self._queue(conn, json.dumps(future.result(), ensure_ascii=True) + '\n')
         self.control_jobs = remaining
 
-    def _persist_cave(self, blob, *, label=None, previous_revision=None, history_evidence=None, character_continuation=None, cast_construction=None):
+    def _persist_cave(self, blob, *, label=None, previous_revision=None, history_evidence=None, character_continuation=None, cast_construction=None, actor_tool_commit=None):
         if not self.persist_generated_cave:
             return
         try:
@@ -1346,6 +1346,8 @@ class WorldServer:
                 if cast_construction is not None:
                     from .canonical_construction import persist as persist_construction
                     persist_construction(self,cast_construction,previous_revision,identity,place_id)
+                if actor_tool_commit is not None:
+                    actor_tool_commit(identity,place_id)
             if character_continuation is not None:
                 self.candidate = character_continuation['candidate']
                 self.objects = character_continuation['objects']
@@ -1358,7 +1360,7 @@ class WorldServer:
         except sqlite3.Error:
             raise ValueError('generated cave could not be persisted') from None
 
-    def _replace_cave(self, blob, *, label=None, previous_revision=None, expected_world_id=None, expected_sequence=None, history_evidence=None, character_continuation=None, cast_construction=None):
+    def _replace_cave(self, blob, *, label=None, previous_revision=None, expected_world_id=None, expected_sequence=None, history_evidence=None, character_continuation=None, cast_construction=None, actor_tool_commit=None):
         from .shared_cave import SharedCave
         candidate = SharedCave(blob)  # validate completely before mutating anything
         if previous_revision is not None and (not self.persist_generated_cave or type(previous_revision) is not str or not re.fullmatch(r'[0-9a-f]{64}', previous_revision)):
@@ -1381,7 +1383,7 @@ class WorldServer:
             if (self.wilds_map if candidate.version in (6, 7, 8, 9, 16) else self.cave_map) is None:
                 raise ValueError('generated map missing from catalog')
             if self.shared_cave and candidate.identity == self.shared_cave.identity:
-                self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence, character_continuation=character_continuation, cast_construction=cast_construction)
+                self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence, character_continuation=character_continuation, cast_construction=cast_construction, actor_tool_commit=actor_tool_commit)
                 return candidate.identity
             peers = [peer for peer in self.peers.values() if not peer.get('closing') and not peer.get('region_cave')]
             if any(peer.get('in_generated_cave') or
@@ -1393,7 +1395,7 @@ class WorldServer:
             if any(len(peer['out']) + len(message) > MAX_QUEUE for peer in recipients):
                 raise ValueError('generated cave update is busy')
             old_id = self.shared_cave.identity if self.shared_cave else None
-            self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence, character_continuation=character_continuation, cast_construction=cast_construction)
+            self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence, character_continuation=character_continuation, cast_construction=cast_construction, actor_tool_commit=actor_tool_commit)
             self.shared_cave = candidate
             self._terrain_walk_cache = None
             for peer in recipients:
@@ -1916,8 +1918,10 @@ class WorldServer:
                     player['generated_place']=dict(place_id=place[0] if place else None,revision=revision)
                 player['meeting'] = conn.get('meeting')
                 players.append(player)
+            from .actor_runtime import inspect_runtime as inspect_actor_runtime
             return dict(ok=True, revision=self.revision, players=players,
                         world_memory=self.memory.context(self),
+                        actor_runtime=inspect_actor_runtime(self),
                         cast_world_actions=self.opportunities.actor_actions()[:32],
                         cast_initiatives=initiative_view(self),
                         cast_project_requests=project_request_view(self),
@@ -2166,6 +2170,8 @@ class WorldServer:
                 step_cast_construction(self)
                 from .canonical_world_actions import step as step_cast_world_action
                 step_cast_world_action(self)
+                from .actor_runtime import tick as tick_actor_runtime
+                tick_actor_runtime(self)
                 self.cast_scenes.tick()
 
     def close(self):
