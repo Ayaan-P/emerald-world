@@ -75,6 +75,8 @@ def evidence_index(event, *, current_catalog=False):
         words.extend((event['character_id'],event['intention'],event['kind'],event['target'],'fulfilled retained intention'))
     elif event.get('event') in ('canonical_contribution_proposed','canonical_contribution_resolved'):
         words.extend((event['character_id'],event['recipient'],event['course'],event.get('text',''),event.get('decision',''),'public project collaboration'))
+    elif event.get('event') in ('canonical_project_invited','canonical_project_decided'):
+        words.extend((event['character_id'],event['recipient'],event['intention'],event.get('decision','invited'),'cast cooperation'))
     elif event.get('event') == 'canonical_construction_completed':
         words.extend((event['character_id'],event['label'],'completed courtyard construction'))
     elif event.get('event') == 'canonical_study_published':

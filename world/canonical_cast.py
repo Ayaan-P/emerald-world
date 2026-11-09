@@ -39,7 +39,7 @@ def records(state):
     from .build_catalog import catalog_maps
     places={'native:'+m['name'] for m in catalog_maps().values()}
     for identity,row in value.items():
-        if type(row) is not dict or set(row)-{'worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'version','goal','dialogue','places','evidence','reason'}:
+        if type(row) is not dict or set(row)-{'cooperate','worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'version','goal','dialogue','places','evidence','reason'}:
             raise ValueError('invalid canonical actor fields')
         if type(row['version']) is not int or not 1<=row['version']<=2**31-1:raise ValueError('invalid canonical actor version')
         for field,limit in [('goal',160),('reason',240)]:
@@ -51,6 +51,8 @@ def records(state):
         validate_intentions(row,value,identity)
         from .canonical_collaboration import validate_fields
         validate_fields(row)
+        from .canonical_cooperation import validate as validate_cooperation
+        validate_cooperation(row,value,identity)
         from .canonical_construction import validate as validate_worksite
         validate_worksite(row.get('worksite'))
         from .canonical_studies import validate as validate_study
@@ -113,7 +115,9 @@ def validate_transition(before, after, objects, db):
         from .canonical_collaboration import validate_evidence
         validate_evidence(row,lambda n: json.loads(db.execute("SELECT data FROM events WHERE seq=? AND kind='world_memory'",(n,)).fetchone()[0]))
         validate_letter(row,lambda n: json.loads(db.execute("SELECT data FROM events WHERE seq=? AND kind='world_memory'",(n,)).fetchone()[0]))
-        validate_relationship_evidence(row,lambda n: json.loads(db.execute("SELECT data FROM events WHERE seq=? AND kind='world_memory'",(n,)).fetchone()[0]))
+        validate_relationship_evidence(row,lambda n: json.loads(db.execute("SELECT data FROM events WHERE seq=? AND kind='world_memory'",(n,)).fetchone()[0]),identity)
+        from .canonical_cooperation import check as check_cooperation
+        check_cooperation(old.get(identity) or {},row,identity,new,lambda n: json.loads(db.execute("SELECT data FROM events WHERE seq=? AND kind='world_memory'",(n,)).fetchone()[0]))
         changes.append(dict(character_id=identity,character_name=BINDINGS[identity]['name'],before=old.get(identity),after=row,places=sorted(set(row['places']+['native:'+BINDINGS[identity]['map']])),source='authored_public_activity_interpretation'))
     return changes
 
@@ -139,7 +143,7 @@ def compile_actions(actions, context):
     if type(actions) is not list or len(actions)!=1:raise ValueError('one bounded canonical action required')
     action=actions[0]
     if type(action) is not dict or set(action)!={'id','expected_version','changes'} or action['id'] not in BINDINGS:raise ValueError('invalid canonical action')
-    if type(action['changes']) is not dict or set(action['changes'])-{'worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'goal','dialogue','places','evidence','reason'}:raise ValueError('invalid canonical changes')
+    if type(action['changes']) is not dict or set(action['changes'])-{'cooperate','worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'goal','dialogue','places','evidence','reason'}:raise ValueError('invalid canonical changes')
     old=cast.get(action['id']);version=old['version'] if old else 0
     if type(action['expected_version']) is not int or action['expected_version']!=version:raise ValueError('stale canonical action')
     row=copy.deepcopy(action['changes']);row['version']=version+1
@@ -151,7 +155,9 @@ def compile_actions(actions, context):
     from .canonical_collaboration import validate_evidence
     validate_evidence(row,lambda n: known[n])
     validate_letter(row,lambda n: known[n])
-    validate_relationship_evidence(row,lambda n: known[n])
+    validate_relationship_evidence(row,lambda n: known[n],action['id'])
+    from .canonical_cooperation import check as check_cooperation
+    check_cooperation(old or {},row,action['id'],state[KEY],lambda n:known[n])
     previous=context.get('runtime',{}).get('previous_source')
     if type(previous) is not str or hashlib.sha256(previous.encode()).hexdigest()!=data.get('module_hash'):raise ValueError('verified active source required')
     suffix=hashlib.sha256(json.dumps(actions,sort_keys=True).encode()).hexdigest()[:16]
@@ -181,9 +187,10 @@ def response(server, conn, run, key):
 def contract():
     return dict(response='canonical_actions/tests',bindings=BINDINGS,location_aliases=LOCATION_ALIASES,
                 action_fields=['id','expected_version','changes'],
-                change_fields=['goal','dialogue','places','evidence','reason','worksite (optional authority construction plan)','study (optional archived-map exploration project)','offer (optional native map/count)','relationships (optional directional assessments)','conversation (optional private player choices)','letter (optional public cast correspondence)','project (optional playable practice course)','contribution (optional project guidance)','resolve_contribution (optional owner decision)','intentions (up to three retained tasks)','fulfill (one prior task ID)'],
+                change_fields=['goal','dialogue','places','evidence','reason','cooperate (optional independent exact project join/decline)','worksite (optional authority construction plan)','study (optional archived-map exploration project)','offer (optional native map/count)','relationships (optional directional assessments)','conversation (optional private player choices)','letter (optional public cast correspondence)','project (optional playable practice course)','contribution (optional project guidance)','resolve_contribution (optional owner decision)','intentions (up to three retained tasks)','fulfill (one prior task ID)'],
                 intentions=dict(fields=['id','kind (letter, project, study, construction, contribution or practice)','target','reason'],completion='set fulfill to a prior retained ID, remove it from agenda, execute the matching new action; authority requires a real action receipt',practice='target is an already host-registered fictional companion ID; isolated dispatcher only, no live fulfillment or story-party changes',initiative='followed actors may attempt retained work without a new player event; eight attempts per actor/world, once per task ID, no automatic retry or hidden model startup'),
                 collaboration=dict(contribution=['course','digest','text (200 literal characters)'],resolve_contribution=['seq (proposal evidence)','decision (accept or decline)'],effect='another existing actor contributes to exact published project; owner decides; accepted text becomes actual activity briefing',limits='one contribution per actor/project; only public evidence, no inferred participation or private results'),
+                cooperation=dict(fields=['owner','intention','signature','decision: join or decline'],invitation='worksite optional partners names up to two existing other actors; authority publishes exact signature',effect='each invited actor decides independently from its invitation; construction waits for all exact joins',limits='changed owner version/plan requires fresh agreement; no agreement inferred from silence or relationship; actual result lists participants and may inform their directional relationships'),
                 construction=dict(fields=['worksite: revision, label, plan {x,y,width,height,gate,reservations}'],intention='kind construction; target exact source revision; normal authority loop executes once when map empty, not author fulfill',effect='existing compiler adds bounded courtyard and access trail while preserving prior walkable terrain, map continuity and scoped NPCs',limits='plain XL only, eight per actor, no animated labor, travel, resources or player work; no story/save edits',access='/guild cast ACTOR construction'),
                 study=dict(fields=['revision (exact archived plain XL digest)','title (55 literal characters)','sites (2..8 unique id/x/y walkable sites)'],effect='installs an immutable optional private survey on existing map geometry; no terrain edits or character travel',initiative='study intention target is the exact revision; fulfill only after actual survey installation',feedback='only explicit anonymous player shares become public evidence for the owning actor; unshared visits never enter author context',access='/guild cast ACTOR studies then /explore start inside the exact active map',limits='eight per actor; existing surveys cannot be overwritten; no activation, warp, reward or autojoin'),
                 project=dict(kind='petalburg_relay',fields=['title (55 characters)','limit (30..900 seconds)','mounted (boolean)'],effect='installs an immutable playable two-runner relay on existing Petalburg layout; no player autojoin, terrain or save change',limits='eight per actor; actual publication evidence, no inferred participation or results'),
@@ -262,6 +269,8 @@ def guild_command(server, conn, args):
 
 
 def reaction_activity(event, identity, row):
+    from .canonical_cooperation import relevant as cooperation_relevant
+    if cooperation_relevant(event,identity):return True
     from .canonical_construction import relevant as construction_relevant
     if construction_relevant(event,identity):return True
     from .canonical_studies import relevant as study_relevant
@@ -278,10 +287,12 @@ def reaction_activity(event, identity, row):
             and event.get('character_offer_revision')==row['version'])
 
 
-def validate_relationship_evidence(row, lookup):
+def validate_relationship_evidence(row, lookup, identity):
     for target,relation in row.get('relationships',{}).items():
         for seq in relation['evidence']:
             event=lookup(seq)
+            from .canonical_cooperation import shared_result
+            if shared_result(event,identity,target):continue
             if (not public_activity(event,row['places']) or event.get('character_id')!=target
                     or event.get('character_offer_id')!='field_plan'
                     or type(event.get('character_offer_revision')) is not int):
@@ -324,6 +335,8 @@ def decision_evidence(event, identity, row):
     from .canonical_projects import public_project
     from .canonical_collaboration import relevant
     from .canonical_intentions import fulfilled
+    from .canonical_cooperation import relevant as cooperation_relevant
+    if cooperation_relevant(event,identity):return True
     from .canonical_construction import relevant as construction_relevant
     if construction_relevant(event,identity):return True
     from .canonical_studies import relevant as study_relevant

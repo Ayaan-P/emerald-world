@@ -9,7 +9,7 @@ from .frontier_outposts import compile_outpost
 
 def validate(worksite):
     if worksite is None:return
-    if (type(worksite) is not dict or set(worksite)!={'revision','label','plan'}
+    if (type(worksite) is not dict or set(worksite)-{'partners'}!={'revision','label','plan'}
             or type(worksite['revision']) is not str or not re.fullmatch('[0-9a-f]{64}',worksite['revision'])
             or type(worksite['label']) is not str or not re.fullmatch("[A-Za-z0-9 .,!?'-]{1,55}",worksite['label'])
             or type(worksite['plan']) is not dict or set(worksite['plan'])!={'x','y','width','height','gate','reservations'}):
@@ -40,8 +40,10 @@ def persist(server,receipt,previous,revision,place):
             or receipt['report']['revision']!=revision):
         raise ValueError('construction intention changed before commit')
     actor=receipt['actor']
+    from .canonical_cooperation import participants
+    agreed=participants(records(server.module_state),actor,row,task)
     seq=server.memory.append('canonical_construction_completed',dict(
-        character_id=actor,intention=task['id'],character_version=row['version'],
+        character_id=actor,intention=task['id'],character_version=row['version'],participants=agreed,
         previous_revision=previous,revision=revision,place_id=place,places=[place],
         label=row['worksite']['label'],report=receipt['report'],based_on=row['evidence'],
         publication='public_cast_construction',outcome='connected_courtyard_committed',
@@ -68,6 +70,8 @@ def step(server,*,now=None):
             if server.db.execute('SELECT 1 FROM canonical_construction_receipts WHERE actor=? AND intention=?',(actor,task['id'])).fetchone():continue
             try:
                 validate(worksite)
+                from .canonical_cooperation import participants
+                participants(records(server.module_state),actor,row,task)
                 cave=server.shared_cave
                 if not server.archive_generated_areas or not cave or cave.identity!=worksite['revision'] or task['target']!=cave.identity:
                     raise ValueError('waiting for the exact authored source map')
@@ -91,7 +95,7 @@ def step(server,*,now=None):
 
 
 def relevant(event,identity):
-    return (event.get('event')=='canonical_construction_completed' and event.get('character_id')==identity
+    return (event.get('event')=='canonical_construction_completed' and (event.get('character_id')==identity or identity in event.get('participants',[]))
             and event.get('publication')=='public_cast_construction'
             and event.get('outcome')=='connected_courtyard_committed')
 
@@ -104,6 +108,10 @@ def lines(server,identity):
         if task['kind']!='construction':continue
         receipt=server.db.execute('SELECT revision FROM canonical_construction_receipts WHERE actor=? AND intention=?',(identity,task['id'])).fetchone()
         result.append(task['id']+': '+('Committed map '+receipt[0][:12] if receipt else 'Pending exact empty map and valid geometry.'))
+        for partner in (row.get('worksite') or {}).get('partners',[]):
+            decision=records(server.module_state).get(partner,{}).get('cooperate') or {}
+            current=decision.get('signature')==signature(identity,row,task) and decision.get('owner')==identity and decision.get('intention')==task['id']
+            result.append(partner+': '+(decision.get('decision','pending') if current else 'awaiting current project decision'))
     for revision,seq in server.db.execute('SELECT revision,seq FROM canonical_construction_receipts WHERE actor=? ORDER BY seq DESC LIMIT 3',(identity,)):
         result.append('Completed map '+revision[:12]+'; world record '+str(seq)+'.')
     return result

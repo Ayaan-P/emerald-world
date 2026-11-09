@@ -2016,6 +2016,8 @@ class WorldServer:
                             self.revision=self.memory.append('canonical_actor_changed',change)
                             from .canonical_cast import deliver_letter
                             deliver_letter(self,change)
+                            from .canonical_cooperation import publish as publish_cooperation
+                            publish_cooperation(self,change)
                             from .canonical_projects import publish as publish_cast_project
                             publish_cast_project(self,change)
                             from .canonical_studies import publish as publish_cast_study

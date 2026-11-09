@@ -47,6 +47,10 @@ def describe(event, place=None):
         title=BINDINGS[event['character_id']]['name']+' '+('offered project guidance' if kind.endswith('proposed') else 'decided on a contribution')
         details=[event.get('text',event.get('decision','')), 'Project: '+event['course'],
                  'Public author collaboration. No physical attendance or player participation is implied.']
+    elif kind in ('canonical_project_invited','canonical_project_decided'):
+        from .canonical_cast import BINDINGS
+        title=BINDINGS[event['character_id']]['name']+' '+('invited '+BINDINGS[event['recipient']]['name'] if kind.endswith('invited') else 'chose to '+event['decision']+' a project')
+        details=['Project: '+event['intention'],'Independent project decision. No physical meeting or mutual affection is implied.']
     elif kind == 'canonical_construction_completed':
         from .canonical_cast import BINDINGS
         title=BINDINGS[event['character_id']]['name']+' completed '+event['label']
