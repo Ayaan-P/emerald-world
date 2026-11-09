@@ -83,6 +83,8 @@ class NavigationTests(unittest.TestCase):
   actor=self.s.module_state['world_characters']['harbor_guide'];obj=next(o for o in self.s.objects if o['id']=='harbor_guide')
   action=dict(id='harbor_guide',expected_version=actor['version'],evidence=actor['evidence'],reason='Stop this actor navigation.',changes=dict(plan=None),object=obj)
   context=self.s.inspect();context['runtime']=dict(previous_source=self.f.candidate.source)
+  import json
+  context['recalled_history']=dict(events=[dict(json.loads(self.s.db.execute("SELECT data FROM events WHERE seq=? AND kind='world_memory'",(seq,)).fetchone()[0]),seq=seq) for seq in actor['evidence']])
   source=compile_actions([action],context);self.f.candidate=Candidate(source,hashlib.sha256(source.encode()).hexdigest());self.advance(2)
   self.assertNotIn('journey',self.s.module_state['world_character_controls']['harbor_guide'])
   self.assertEqual(runtime.tick(self.s,now=20)['status'],'blocked')

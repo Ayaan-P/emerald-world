@@ -1,3 +1,28 @@
+## Sustainable character executor
+This continuation of #320 removes the new-action lifetime ceiling without
+raising it. compile_actions now emits one verified reusable dispatcher. Each
+subsequent command replaces only its literal request and bootstrap checkpoint;
+the current receipt rotates rather than accumulating source wrappers.
+Existing append-only wrappers and their receipt lists remain untouched, including
+a full 32-item legacy list, so previous commands cannot replay.
+
+Every newly admitted command is verified against the actual before/after actor
+version, character record, object/control and command hash, then archived in
+SQLite and public causal history in the same transaction as mechanic admission.
+Rejected staging cannot archive success. Pending cave traversal can find its
+committed receipt after rotation/restart. Navigation, actor actions and traversal
+share this mechanism. Authored source with a modified reserved dispatcher is
+refused rather than silently rewritten. Existing per-request/state/source size
+limits remain; durable history grows on disk, not as an ever-growing wrapper.
+
+The cave source/arrival occupancy guards are now declarative action preconditions
+inside the reusable executor instead of appended special-case wrappers.
+Tests perform 40 admitted actions with bounded source and one current receipt,
+restart halfway, verify all 40 archive records, and verify no replay. Full legacy
+receipt preservation and modified-dispatcher refusal are also tested.
+Native stays #35; no game rendering or live-provider QA is implied.
+
+---
 ## Independent actor cave traversal
 This branch continues #319 with no native changes: paired native #35 remains
 1f7a2e52212d9f6ba69acda70ef3f96e044285e5.

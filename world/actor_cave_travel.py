@@ -45,27 +45,11 @@ def traverse(server,actor,row,args):
  if not candidates:raise ValueError('Destination entrance neighborhood is occupied or unsafe; inspect and replan')
  after=min(candidates,key=lambda o:(o['x']+o['y'],o['y'],o['x']))
  action=dict(id=actor,expected_version=current['version'],evidence=current['evidence'],
-     reason='Traverse an existing physical cave link under authority ownership.',changes={},object=after)
+     reason='Traverse an existing physical cave link under authority ownership.',changes={},object=after,preconditions=dict(source=source,prop=prop,arrival=after))
  context=server.inspect();context['runtime']=dict(previous_source=server.candidate.source)
  context['recalled_history']=dict(events=[dict(json.loads(server.db.execute("SELECT data FROM events WHERE seq=? AND kind='world_memory'",(seq,)).fetchone()[0]),seq=seq) for seq in current['evidence']])
  compiled=compile_actions([action],context)
- # Guard the source against concurrent object changes before normal admission.
- # No direct SQLite mutation of the live character or fabricated movement event.
  definition=hashlib.sha256(json.dumps([action],sort_keys=True).encode()).hexdigest()
- suffix=definition[:16]
- guard=f"""
-_traverse_source_{suffix}=_action_previous_{suffix}
-def _action_previous_{suffix}(context,state):
-    result=_traverse_source_{suffix}(context,state)
-    if {definition!r} not in result['state'].get('world_character_action_receipts',[]):
-        if any(p.get('ready') and p.get('generated_place',{{}}).get('revision')=={after['region_revision']!r} and [p.get('x'),p.get('y')]=={[after['x'],after['y']]!r} for p in context.get('players',[])):
-            raise ValueError('Cave arrival tile became occupied')
-        objects={{o['id']:o for o in result.get('objects',[])}}
-        if objects.get({actor!r})!={source!r} or objects.get({prop['id']!r})!={prop!r}:
-            raise ValueError('Cave link source changed before admission')
-    return result
-"""
- compiled+=guard
  sha=hashlib.sha256(compiled.encode()).hexdigest();path=server.runtime.candidates/('cave_travel_'+sha+'.py')
  try:
   with path.open('x') as f:f.write(compiled)
@@ -75,7 +59,8 @@ def _action_previous_{suffix}(context,state):
      lambda:setattr(server,'deployment',(None,path,None)))
 
 def poll(server,actor,row,pending):
- if pending['definition'] not in server.module_state.get('world_character_action_receipts',[]):raise ValueError('Cave traversal was not admitted; no arrival occurred')
+ from .character_dispatch import admitted
+ if not admitted(server,pending['definition']):raise ValueError('Cave traversal was not admitted; no arrival occurred')
  obj=next((o for o in server.objects if o['id']==actor),None)
  current=records(server.module_state).get(actor,{})
  if obj!=pending['object'] or current.get('version')!=pending['version']:raise ValueError('Actor changed after traversal; inspect current location')

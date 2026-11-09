@@ -14,12 +14,10 @@ def validate_actions(actions, context):
     cast=copy.deepcopy(records(state))
     if type(actions) is not list or not 1<=len(actions)<=8 or len(json.dumps(actions).encode())>16384:
         raise ValueError('one to eight character actions within 16 KiB required')
-    if len(state.get('world_character_action_receipts',[]))>=32:
-        raise ValueError('consolidate existing source before adding more character actions')
     known={e['seq'] for e in context.get('recalled_history',{}).get('events',[])+data.get('world_memory',{}).get('recent',[]) if type(e.get('seq')) is int}
     seen=set()
     for action in actions:
-        if type(action) is not dict or set(action)-{'walk','journey','meet','survey'}!={'id','expected_version','evidence','reason','changes','object'}:
+        if type(action) is not dict or set(action)-{'walk','journey','meet','survey','preconditions'}!={'id','expected_version','evidence','reason','changes','object'}:
             raise ValueError('invalid character action fields')
         identity=action['id']
         if type(identity) is not str or identity not in cast or identity in seen:
@@ -32,6 +30,13 @@ def validate_actions(actions, context):
         evidence=action['evidence']
         if type(evidence) is not list or not evidence or any(type(seq) is not int or seq not in known for seq in evidence):
             raise ValueError('actions require inspected public history evidence')
+        if 'preconditions' in action:
+            condition=action['preconditions']
+            if type(condition) is not dict or set(condition)!={'source','prop','arrival'}:
+                raise ValueError('Invalid action preconditions')
+            validate_objects([condition['source'],condition['prop']])
+            if condition['source']['id']!=identity or condition['arrival']!=action['object']:
+                raise ValueError('Preconditions must bind this actor and exact destination')
         changes=action['changes']
         if type(changes) is not dict or set(changes)-{'goals','relationships','team','status','offer','intentions','plan'}:
             raise ValueError('unsupported character action changes')
@@ -81,6 +86,14 @@ def action_step(actions, definition, result, context=None):
             identity=action['id'];character=cast[identity]
             if character['version']!=action['expected_version']:
                 raise ValueError('character changed before action admission')
+            if 'preconditions' in action:
+                condition=action['preconditions'];visible={o['id']:o for o in result.get('objects',[])}
+                if visible.get(identity)!=condition['source'] or visible.get(condition['prop']['id'])!=condition['prop']:
+                    raise ValueError('Cave link source changed before admission')
+                arrival=condition['arrival']
+                if any(p.get('ready') and p.get('generated_place',{}).get('revision')==arrival.get('region_revision')
+                    and [p.get('x'),p.get('y')]==[arrival['x'],arrival['y']] for p in (context or {}).get('players',[])):
+                    raise ValueError('Cave arrival tile became occupied')
             character=copy.deepcopy(character)
             character.update(copy.deepcopy(action['changes']),version=character['version']+1,
                              evidence=action['evidence'],reason=action['reason'])
@@ -125,14 +138,8 @@ def compile_actions(actions, context):
     if type(previous) is not str or hashlib.sha256(previous.encode()).hexdigest()!=data.get('module_hash'):
         raise ValueError('verified active source required for character actions')
     definition=hashlib.sha256(json.dumps(actions,sort_keys=True).encode()).hexdigest()
-    suffix=definition[:16]
-    helper=inspect.getsource(action_step).replace('def action_step(',f'def _action_step_{suffix}(',1)
-    # Fresh sandbox staging must continue the inspected durable world, not
-    # recreate the previous source's first chapter. Nonempty runtime state
-    # remains authoritative, including admission/version checks below.
-    checkpoint=copy.deepcopy(data.get('state',{}))
-    return (previous+'\n'+f'_action_previous_{suffix}=update\n'+helper+'\n'+
-            f'def update(context,state):\n    if not state:\n        import copy\n        state=copy.deepcopy({checkpoint!r})\n    return _action_step_{suffix}({actions!r}, {definition!r}, _action_previous_{suffix}(context,state), context)\n')
+    from .character_dispatch import source
+    return source(previous,actions,definition,copy.deepcopy(data.get('state',{})))
 
 
 def contract():
@@ -146,5 +153,5 @@ def contract():
             'changes':'plan, goals, relationships to existing public NPCs, team, status, retained practice intentions for own identified companions, optional offer (null removes)',
             'effect':'explicitly take over selected existing NPCs from older scripts; native map object controls actual relocation/dialogue and team controls battle; all unrelated source effects preserved',
             'evidence':'nonempty inspected/recalled public history references; authored intent, never proof of battle or catch',
-            'limits':'eight actions per request, 32 action publications before source consolidation; expected version rechecked on admission; native maps or region_revision-bound opened immutable generated regions or archived shared XL revisions',
+            'limits':'eight actions per request, reusable verified dispatcher for new publications, durable authority history; expected version rechecked on admission; native maps or region_revision-bound opened immutable generated regions or archived shared XL revisions',
             'execution':'source compiler only; normal tests, sandbox and atomic authority validation remain mandatory; no autonomous LLM call or live publication'}
