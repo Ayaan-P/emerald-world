@@ -80,3 +80,11 @@ not ordinary gameplay. Check phone/script/scene interactions and actual chat inp
 closure. Do not infer those outcomes from the component harness.
 
 No merge, deployment or release was performed by this work.
+
+## Optional continuing personal responses
+
+The companion document [Ongoing private cast responses](CAST_ONGOING_PRIVATE_RESPONSES.md)
+adds an optional per-save standing grant and explicitly bounded host worker.
+After a shared choice, Alice's advice and Bob's speaker decision can lead to
+different next original-NPC replies without another confirmation for each turn.
+This is private interpretation of actual choices, not autonomous physical action.

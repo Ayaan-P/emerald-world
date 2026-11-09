@@ -7,7 +7,7 @@ import time
 from .guilds import GuildError
 
 
-def snapshot(server, trainer, actor, run=None):
+def snapshot(server, trainer, actor, run=None, *, decision_only=False):
     from .canonical_cast import BINDINGS,records
     from .canonical_memory import enabled
     if not enabled(server,trainer,actor):raise ValueError('Enable encounter memory and have a conversation first.')
@@ -18,6 +18,7 @@ def snapshot(server, trainer, actor, run=None):
     row=records(server.module_state).get(actor)
     if entry is None or row is None:raise ValueError('No remembered native conversation is available.')
     selected=server.db.execute('SELECT version,choice FROM canonical_conversations WHERE trainer=? AND actor=?',(trainer,actor)).fetchone()
+    if decision_only:selected=None # Legacy trainer-wide choices are outside this save-specific grant.
     choice=row.get('conversation',{}).get(selected[1]) if selected and selected[0]==row['version'] else None
     context=dict(actor=BINDINGS[actor]['name'],current_goal=row['goal'],current_version=row['version'],
                  acknowledged_talks=entry[1],last_actor_goal=entry[4],last_shown_reply=entry[5],
@@ -36,22 +37,37 @@ def command(server, conn, actor, args):
     trainer=conn['id']
     active_run=conn.get('core_active_run')
     if active_run is None:raise GuildError('Talk to the character in this save before requesting a reflection.')
+    from .canonical_rapport import grant,stop,enable
+    if args==['reflect','stop']:
+        with server.db:stop(server,trainer,actor,active_run)
+        return ['Automatic private responses stopped for this actor and save. Existing memories remain until forget.']
     if args==['reflection']:
         row=server.db.execute('SELECT status,interpretation FROM canonical_reflections WHERE trainer=? AND actor=? AND run=? ORDER BY created DESC LIMIT 1',(trainer,actor,active_run)).fetchone()
-        if not row:return ['No private reflection requested. Use reflect to preview one.']
-        return ['Private reflection: '+('claimed; completion not confirmed' if row[0]=='running' else row[0])]+([row[1][i:i+110] for i in range(0,len(row[1]),110)] if row[1] else [])
-    if args==['reflect']:
-        try:run,fingerprint,context=snapshot(server,trainer,actor,active_run)
+        if not row:return [('Automatic private responses are on for this save. Waiting for a new explicit shared decision.' if grant(server,trainer,actor,active_run) else 'No private reflection requested. Use reflect to preview one.')]
+        return (['Automatic mode is on for this actor/save. Use reflect stop to revoke.'] if grant(server,trainer,actor,active_run) else [])+['Private reflection: '+('claimed; completion not confirmed' if row[0]=='running' else row[0])]+([row[1][i:i+110] for i in range(0,len(row[1]),110)] if row[1] else [])
+    if args in (['reflect'],['reflect','follow']):
+        follow=args==['reflect','follow']
+        try:run,fingerprint,context=snapshot(server,trainer,actor,active_run,decision_only=follow)
         except ValueError as exc:raise GuildError(str(exc)) from None
         nonce=secrets.token_hex(4)
-        conn['cast_reflection_preview']=dict(actor=actor,run=run,fingerprint=fingerprint,nonce=nonce,expires=time.monotonic()+180)
-        lines=['Send this summary once to the host-configured OpenAI character model? Host can access local storage.']
+        conn['cast_reflection_preview']=dict(actor=actor,run=run,fingerprint=fingerprint,nonce=nonce,follow=follow,expires=time.monotonic()+180)
+        lines=([
+            'Allow future private responses from the host-configured OpenAI character model for this actor and save?',
+            'One response now, then new explicit shared conversation decisions. At most four requests per UTC day.',
+            'Future summaries include this save actor replies, goals, your own choices/advice and prior tentative perspective.',
+            'No other save, private chat, party or public author access. Host can access local storage.',
+            'Grant lasts until reflect stop, remember off or forget. No model is started unless the host enables its worker.'
+        ] if follow else ['Send this summary once to the host-configured OpenAI character model? Host can access local storage.'])
         for key,value in context.items():
             if value is None:continue
             text=key.replace('_',' ')+': '+str(value)
             lines.extend(text[i:i+110] for i in range(0,len(text),110))
         from .canonical_cast import BINDINGS
-        return lines+['Only this summary is sent. No party, save ID or other chat. Reply stays private; no world edits.',
+        return lines+([
+            'Allow the host OpenAI model future private summaries for this actor/save? No other save, party or chat.',
+            'Data: shown actor replies/goals, your own shared choices/advice and prior tentative character perspective.',
+            'Four requests per UTC day, until reflect stop, remember off or forget. Host must enable the worker.'
+        ] if follow else ['Only this summary is sent. No party, save ID or other chat. Reply stays private; no world edits.'])+[
                       'If its reply is shown, the actor perspective is retained for this save. Forget erases it.',
                       '/guild cast '+BINDINGS[actor]['wire']+' reflect confirm '+nonce]
     if len(args)==3 and args[:2]==['reflect','confirm']:
@@ -59,28 +75,40 @@ def command(server, conn, actor, args):
         if not preview or preview['actor']!=actor or preview['nonce']!=args[2] or time.monotonic()>preview['expires']:
             raise GuildError('Preview expired or unavailable. Use reflect again.')
         if active_run!=preview['run']:raise GuildError('Active save changed. Preview again before sharing.')
-        try:run,fingerprint,context=snapshot(server,trainer,actor,preview['run'])
+        try:run,fingerprint,context=snapshot(server,trainer,actor,preview['run'],decision_only=preview.get('follow',False))
         except ValueError as exc:raise GuildError(str(exc)) from None
         if fingerprint!=preview['fingerprint']:raise GuildError('Conversation changed. Preview again before sharing.')
+        if preview.get('follow'):
+            try:
+                with server.db:queued=enable(server,trainer,actor,run)
+            except ValueError as exc:raise GuildError(str(exc)) from None
+            conn.pop('cast_reflection_preview',None)
+            return ['Automatic private responses enabled for this actor and save, up to four requests per UTC day.',
+                    'Initial response queued.' if queued else 'No new job queued; existing work or daily limit applies.',
+                    'New explicit decisions can lead to a private reply in your next original NPC conversation.',
+                    'Use reflect stop to revoke. No public state or passive-greeting loop.']
         identifier=secrets.token_hex(16)
         with server.db:
-            server.db.execute('DELETE FROM canonical_reflections WHERE trainer=? AND actor=?',(trainer,actor))
+            server.db.execute('DELETE FROM canonical_rapport_jobs WHERE id IN (SELECT id FROM canonical_reflections WHERE trainer=? AND actor=? AND run=?)',(trainer,actor,run))
+            server.db.execute('DELETE FROM canonical_reflections WHERE trainer=? AND actor=? AND run=?',(trainer,actor,run))
             server.db.execute('INSERT INTO canonical_reflections VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
                 (identifier,trainer,actor,run,fingerprint,json.dumps(context,sort_keys=True),'pending',time.time(),None,None,None,None))
         conn.pop('cast_reflection_preview',None)
         return ['One private reflection requested. It runs only if the host enables the private worker.',
                 'Use reflection for status. Remember off or forget cancels pending work.']
-    raise GuildError('Use reflect, reflect confirm CODE, or reflection.')
+    raise GuildError('Use reflect for one reply, reflect follow for ongoing replies, reflect stop, or reflection.')
 
 
 def claim(server):
     with server.db:
         row=server.db.execute("SELECT id,trainer,actor,run,fingerprint,context FROM canonical_reflections WHERE status='pending' ORDER BY created LIMIT 1").fetchone()
         if not row:return dict(ok=True,request=None)
-        try:_,fingerprint,_=snapshot(server,row[1],row[2],row[3])
+        from .canonical_rapport import snapshot as request_snapshot,reconsider
+        try:_,fingerprint,_=request_snapshot(server,row[1],row[2],row[3],row[0])
         except ValueError:fingerprint=None
         if fingerprint!=row[4]:
             server.db.execute("UPDATE canonical_reflections SET status='stale',context='{}' WHERE id=?",(row[0],))
+            reconsider(server,row[1],row[2],row[3],row[0])
             return dict(ok=True,request=None)
         lease=secrets.token_hex(16)
         server.db.execute("UPDATE canonical_reflections SET status='running',lease=? WHERE id=?",(lease,row[0]))
@@ -94,10 +122,12 @@ def finish(server, identifier, lease, result):
     with server.db:
         row=server.db.execute("SELECT trainer,actor,run,fingerprint FROM canonical_reflections WHERE id=? AND lease=? AND status='running'",(identifier,lease)).fetchone()
         if not row:raise ValueError('Private request is no longer authorized.')
-        try:_,fingerprint,context=snapshot(server,*row[:3])
+        from .canonical_rapport import snapshot as request_snapshot,reconsider
+        try:_,fingerprint,context=request_snapshot(server,*row[:3],identifier)
         except ValueError:fingerprint=None
         if fingerprint!=row[3]:
             server.db.execute("UPDATE canonical_reflections SET status='stale',context='{}',lease=NULL WHERE id=?",(identifier,))
+            reconsider(server,*row[:3],identifier)
             return dict(ok=False,error='Private conversation changed; result was not applied.')
         server.db.execute("UPDATE canonical_reflections SET status='ready',reply=?,interpretation=?,version=?,lease=NULL,context='{}' WHERE id=?",
                           (result['reply'],result['interpretation'],context['current_version'],identifier))
@@ -107,7 +137,8 @@ def finish(server, identifier, lease, result):
 def ready_record(server, trainer, actor, run, version):
     row=server.db.execute("SELECT reply,fingerprint,id,interpretation FROM canonical_reflections WHERE trainer=? AND actor=? AND run=? AND version=? AND status='ready'",(trainer,actor,run,version)).fetchone()
     if not row:return None
-    try:_,fingerprint,_=snapshot(server,trainer,actor,run)
+    from .canonical_rapport import snapshot as request_snapshot
+    try:_,fingerprint,_=request_snapshot(server,trainer,actor,run,row[2])
     except ValueError:return None
     # A reply is one conversation, not an indefinitely replayed interpretation.
     return dict(reply=row[0],fingerprint=row[1],id=row[2],interpretation=row[3]) if fingerprint==row[1] else None
@@ -136,6 +167,7 @@ this ineligible; it never turns an unseen generated response into a relationship
 
 
 def cancel(server, trainer, actor):
+    server.db.execute('DELETE FROM canonical_rapport_jobs WHERE id IN (SELECT id FROM canonical_reflections WHERE trainer=? AND actor=?)',(trainer,actor))
     server.db.execute('DELETE FROM canonical_reflections WHERE trainer=? AND actor=?',(trainer,actor))
 
 

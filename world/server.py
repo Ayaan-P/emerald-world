@@ -153,6 +153,8 @@ class WorldServer:
         install_calls(self.db)
         from .canonical_initiatives import install as install_initiatives
         install_initiatives(self.db)
+        from .canonical_rapport import install as install_rapport
+        install_rapport(self.db)
         from .canonical_scenes import CanonicalScenes
         self.cast_scenes=CanonicalScenes(self)
         self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)

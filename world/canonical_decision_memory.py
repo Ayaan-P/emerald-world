@@ -37,6 +37,8 @@ def commit(server,session,proposal,choice,advice,seq):
                           (identifier,trainer,actor,run,seq,json.dumps(fact,sort_keys=True)))
         server.db.execute('''DELETE FROM canonical_decision_memory WHERE trainer=? AND actor=? AND rowid NOT IN
           (SELECT rowid FROM canonical_decision_memory WHERE trainer=? AND actor=? ORDER BY seq DESC LIMIT 16)''',(trainer,actor,trainer,actor))
+    from .canonical_rapport import enqueue
+    for trainer,run in rows:enqueue(server,trainer,actor,run)
     server.db.execute('DELETE FROM canonical_decision_pending WHERE session=?',(identifier,))
 
 

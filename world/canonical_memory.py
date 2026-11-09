@@ -63,6 +63,8 @@ def command(server, conn, actor, args):
         with server.db:
             server.db.execute('DELETE FROM canonical_memory_optin WHERE trainer=? AND actor=?',(conn['id'],actor))
             server.db.execute('DELETE FROM canonical_decision_pending WHERE trainer=? AND actor=?',(conn['id'],actor))
+            from .canonical_rapport import stop
+            stop(server,conn['id'],actor)
             from .canonical_reflection import cancel
             cancel(server,conn['id'],actor)
         conn.pop('cast_seen_pending',None)
@@ -89,6 +91,8 @@ def command(server, conn, actor, args):
 
 
 def forget(server, conn, actor):
+    from .canonical_rapport import stop
+    stop(server,conn['id'],actor)
     from .canonical_reflection import cancel
     cancel(server,conn['id'],actor)
     for table in ('canonical_memory_optin','canonical_encounters','canonical_perspectives','canonical_decision_pending','canonical_decision_memory'):
