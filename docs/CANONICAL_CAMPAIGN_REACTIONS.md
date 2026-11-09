@@ -1,7 +1,7 @@
 # Canonical agents can respond to the normal Hoenn campaign
 
-The existing native CORE1 bridge already records the Petalburg Woods ambush and
-Rusturf Tunnel goods recovery/Peeko rescue at their safe script points. Those
+The existing native CORE1 bridge already records the Petalburg Woods ambush,
+Rusturf Tunnel goods recovery/Peeko rescue, and Devon briefing completion. Those
 reports were previously usable by the pinned core-story adapter but not accepted
 as evidence by living-cast authoring. This closes that integration gap.
 
@@ -25,8 +25,21 @@ credit. Native reports remain authenticated client attestations, not server-run
 battle simulation. No normal story flags, player rewards, parties, services,
 travel, or original scripts are changed. No new NPC is spawned.
 
-Only the two already hooked beats are supported. More Hoenn campaign milestones
+The existing Woods rescue, goods recovery, and completed Devon briefing are supported. More Hoenn campaign milestones
 need reviewed native safe-point hooks and matching authority beat contracts;
 this code does not silently infer them from location or time. Public news changes
 the shared supplemental cast, not another trainer's personal progression. The
 native pin is unchanged; integration/rendered verification remain Maya's gate.
+
+## Devon delivery request
+
+The paired native candidate adds `/history share devon` to the existing local
+preview/confirm commands. It uses the already synchronized third progress bit,
+`VAR_DEVON_CORP_3F_STATE >= 1`, without changing scripts or the wire format. The
+reviewed original scene sets that state after the Letter/PokeNav and Briney
+availability updates. The public claim is only that Devon requested delivery to
+Steven, never that Steven received the letter or that another trainer progressed.
+Older clients continue unchanged. Older authorities safely refuse the new SHARE
+key; the adapter does not retry it or modify the player's story. A save rewind
+between preview and confirmation prevents sharing. Native pin remains unchanged
+until Maya pairs and verifies the candidate.

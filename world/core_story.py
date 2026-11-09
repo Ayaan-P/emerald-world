@@ -26,6 +26,11 @@ BEATS = {
         'proof': 'FLAG_RECOVERED_DEVON_GOODS after reward and rescue completion',
         'outcome': 'devon_goods_secured',
         'public': 'Explorers recovered Devon goods and rescued Peeko in Rusturf Tunnel.'},
+    'devon_met': {'map': 'RustboroCity_DevonCorp_3F', 'requires': 'goods_recovered',
+        'hook': 'RustboroCity_DevonCorp_3F_EventScript_MeetPresident after original scene completion',
+        'proof': 'VAR_DEVON_CORP_3F_STATE >= 1',
+        'outcome': 'devon_delivery_requested',
+        'public': 'Explorers received Devons request to deliver a letter to Steven in Dewford.'},
 }
 
 def shared_outcome(event, places):

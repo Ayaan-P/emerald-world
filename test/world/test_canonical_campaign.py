@@ -71,3 +71,35 @@ class CampaignCastTests(unittest.TestCase):
   row=deepcopy(cast.records(self.s.module_state)['canon_briney'])
   row['relationships']={'canon_rydel':dict(assessment='Rydel rescued Peeko',evidence=[event['seq']])}
   with self.assertRaises(ValueError):cast.validate_relationship_evidence(row,lambda seq:event,'canon_briney')
+ def test_existing_native_devon_sync_can_seed_cast_without_expedition_evidence(self):
+  self.place('RustboroCity_DevonCorp_3F')
+  before=deepcopy(self.s.memory.history())
+  self.command('SYNC','7','private')
+  self.assertEqual(self.s.memory.history(),before)
+  receipt=self.command('SHARE','devon_met','confirm')
+  event=next(e for e in self.s.memory.history()['events'] if e['seq']==receipt['evidence'])
+  self.assertEqual(event['outcome'],'devon_delivery_requested')
+  self.assertTrue(shared_outcome(event,['native:RustboroCity_DevonCorp_3F']))
+  self.assertNotIn('trainer',event);self.assertNotIn('run',event)
+  # An ordinary GM can establish Steven's supplemental intentions directly
+  # from actual campaign history, without inventing another expedition.
+  action=self.f.action();action['id']='canon_steven'
+  action['changes'].update(goal='Consider how to help couriers without assuming the letter has arrived',
+    dialogue='Devon has asked for a delivery. I wonder how the journey will unfold.',
+    places=['native:RustboroCity_DevonCorp_3F'],evidence=[receipt['evidence']],
+    reason='The public record is a request, not proof of completed delivery')
+  self.f.apply(action)
+  self.assertEqual(cast.records(self.s.module_state)['canon_steven']['goal'],action['changes']['goal'])
+  self.assertEqual(self.command('SHARE','devon_met','confirm'),receipt)
+  self.command('SYNC','3','private')
+  with self.assertRaises(ValueError):self.command('SHARE','devon_met','confirm')
+ def test_devon_preview_matches_exact_native_literal(self):
+  import os,re
+  from pathlib import Path
+  from world.core_story import BEATS
+  source=Path(os.environ.get('EW_NATIVE_SOURCE','engines/expansion-native'))/'src/world/world_core_story.c'
+  if not source.exists():self.skipTest('native component source not available')
+  text=source.read_text();previews=re.search(r'sPreviews\[\]=\{(.*?)\};',text,re.S).group(1)
+  strings=re.findall(r'"([^"\n]+)"',previews)
+  self.assertEqual(strings[2],BEATS['devon_met']['public'])
+  self.assertIn('if (VarGet(VAR_DEVON_CORP_3F_STATE)>=1) bits|=7;',text)
