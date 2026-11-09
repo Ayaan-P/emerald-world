@@ -107,6 +107,8 @@ def install(db):
     weather_setup(db)
     from .shared_outbreaks import setup as outbreak_setup
     outbreak_setup(db)
+    from .rental_pools import setup as rental_setup
+    rental_setup(db)
     from .contest_guests import setup as contest_setup
     contest_setup(db)
     from .actor_shops import setup as shop_setup
@@ -338,3 +340,6 @@ CAPABILITIES['world.configure_outbreak']=Capability('Author or end a temporary p
 
 from .contest_guests import configure as configure_contest
 CAPABILITIES['world.enter_contest']=Capability('Offer an owned on-team companion as an optional normal-rank Lilycove contest guest.',dict(category='cool, beauty, cute, smart or tough',individual='owned on-team individual, or empty to withdraw own category entry'),'Actual guest entry, not completed contest or travel. Actor must already occupy the real lobby. Player can invite guest through ordinary receptionist; native appeal mechanics, personal eligibility and rewards remain normal. No ribbons/condition/training invented.',configure_contest,None,('world',))
+
+from .rental_pools import tool as rental_tool
+CAPABILITIES['world.rentals']=Capability('Inspect or curate optional Slateport rentals.',dict(operation='inspect or configure',value='inspect: page 0..6; configure: JSON six set IDs or []'),'Native rental pool only, not recruitment or earned growth.',rental_tool,None,('canonical','world'))
