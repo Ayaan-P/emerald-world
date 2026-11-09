@@ -45,6 +45,7 @@ class Mysteries:
         CREATE TABLE IF NOT EXISTS mystery_packs(id TEXT PRIMARY KEY,document TEXT);
         CREATE TABLE IF NOT EXISTS mystery_runs(id TEXT PRIMARY KEY,pack TEXT,stage INTEGER,status TEXT);
         CREATE TABLE IF NOT EXISTS mystery_members(run TEXT,role INTEGER,trainer TEXT,PRIMARY KEY(run,role),UNIQUE(run,trainer));
+        CREATE TABLE IF NOT EXISTS mystery_lineages(run TEXT,trainer TEXT,lineage TEXT,PRIMARY KEY(run,trainer));
         CREATE TABLE IF NOT EXISTS mystery_clues(run TEXT,stage INTEGER,role INTEGER,PRIMARY KEY(run,stage,role));
         CREATE TABLE IF NOT EXISTS mystery_solved(run TEXT,stage INTEGER,PRIMARY KEY(run,stage));
         ''');self.db.commit()
@@ -62,10 +63,30 @@ class Mysteries:
                 self.db.execute('INSERT INTO mystery_packs VALUES(?,?)',(pack['id'],document))
         return dict(ok=True,id=pack['id'])
 
+    def _canonical(self,pack):
+        table=self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='canonical_investigations'").fetchone()
+        return bool(table and self.db.execute('SELECT 1 FROM canonical_investigations WHERE id=?',(pack,)).fetchone())
+
+    def _lineage(self,trainer):
+        value=(self.s.peers.get(trainer) or {}).get('core_active_run')
+        return value if type(value) is str and re.fullmatch('[0-9a-f]{32}',value) else None
+
+    def _bound(self,run,trainer,pack):
+        if not self._canonical(pack):return True
+        lineage=self._lineage(trainer)
+        return bool(lineage and self.db.execute('SELECT 1 FROM mystery_lineages WHERE run=? AND trainer=? AND lineage=?',(run,trainer,lineage)).fetchone())
+
+    def _bind(self,run,trainer,pack):
+        if not self._canonical(pack):return
+        lineage=self._lineage(trainer)
+        if not lineage:raise ValueError('Connect this save to canonical history before joining this cast investigation.')
+        self.db.execute('INSERT INTO mystery_lineages VALUES(?,?,?)',(run,trainer,lineage))
+
     def _current(self,trainer,active=True):
-        return self.db.execute('''SELECT r.id,r.pack,r.stage,r.status,m.role FROM mystery_runs r
+        rows=self.db.execute('''SELECT r.id,r.pack,r.stage,r.status,m.role FROM mystery_runs r
           JOIN mystery_members m ON m.run=r.id WHERE m.trainer=? '''+
-          ("AND r.status IN ('waiting','active') " if active else '')+'ORDER BY r.rowid DESC LIMIT 1',(trainer,)).fetchone()
+          ("AND r.status IN ('waiting','active') " if active else '')+'ORDER BY r.rowid DESC',(trainer,)).fetchall()
+        return next((row for row in rows if self._bound(row[0],trainer,row[1])),None)
 
     @staticmethod
     def _role(value,pack):
@@ -77,14 +98,15 @@ class Mysteries:
         if not row:raise ValueError('Unknown mystery.')
         return json.loads(row[0])
 
-    def _at(self,trainer,position):
+    def _at(self,trainer,position,run=None,pack=None):
+        if run and not self._bound(run,trainer,pack):return False
         peer=self.s.peers.get(trainer)
         if not peer or peer.get('closing'):return False
         state=peer.get('state');updated=peer.get('state_time')
         return bool(state and state[6] and state[:4]==position and updated is not None and 0<=time.monotonic()-updated<=self.freshness)
 
     def completed(self,trainer,pack):
-        return self.db.execute("SELECT 1 FROM mystery_runs r JOIN mystery_members m ON m.run=r.id WHERE r.pack=? AND m.trainer=? AND r.status='completed' LIMIT 1",(pack,trainer)).fetchone() is not None
+        return any(self._bound(run,trainer,pack) for (run,) in self.db.execute("SELECT r.id FROM mystery_runs r JOIN mystery_members m ON m.run=r.id WHERE r.pack=? AND m.trainer=? AND r.status='completed'",(pack,trainer)))
 
     def status(self,trainer):
         run=self._current(trainer) or self._current(trainer,False)
@@ -115,6 +137,7 @@ class Mysteries:
                     rid=secrets.token_hex(8)
                     self.db.execute('INSERT INTO mystery_runs VALUES(?,?,0,?)',(rid,words[1],'waiting'))
                     self.db.execute('INSERT INTO mystery_members VALUES(?,?,?)',(rid,chosen,trainer))
+                    self._bind(rid,trainer,words[1])
                 return self.status(trainer)
             if len(words) in (2,3) and words[0]=='join':
                 old=self._current(trainer)
@@ -127,6 +150,7 @@ class Mysteries:
                 chosen=self._role(words[2],pack) if len(words)==3 else next(r for r in range(len(pack['roles'])) if r not in occupied)
                 if chosen in occupied:raise ValueError('That role is already occupied.')
                 self.db.execute('INSERT INTO mystery_members VALUES(?,?,?)',(words[1],chosen,trainer))
+                self._bind(words[1],trainer,row[1])
                 if len(occupied)+1==len(pack['roles']):self.db.execute("UPDATE mystery_runs SET status='active' WHERE id=?",(words[1],))
                 return self.status(trainer)
             run=self._current(trainer)
@@ -137,14 +161,14 @@ class Mysteries:
                 return ['Mystery ended for all participants. No saves or inventory changed.']
             if words==['clue']:
                 if state!='active':raise ValueError('Wait for all roles to join before reading clues.')
-                if not self._at(trainer,stage['stations'][role]['at']):raise ValueError('Stand ready at your current station to read its clue.')
+                if not self._at(trainer,stage['stations'][role]['at'],rid,key):raise ValueError('Stand ready at your current station to read its clue.')
                 self.db.execute('INSERT OR IGNORE INTO mystery_clues VALUES(?,?,?)',(rid,index,role))
                 return [stage['stations'][role]['clue'],'Share what you discovered with your partners.']
             if len(words)==3 and words[0]=='solve':
                 if role!=len(pack['roles'])-1:raise ValueError('The final role is the solver. Share your clue with them.')
                 if not words[1].isascii() or not words[1].isdecimal() or int(words[1])!=index+1:raise ValueError('That is not the current stage. Use /mystery status.')
                 members=self.db.execute('SELECT role,trainer FROM mystery_members WHERE run=? ORDER BY role',(rid,)).fetchall()
-                if state!='active' or len(members)!=len(pack['roles']) or not all(self._at(t,stage['stations'][r]['at']) for r,t in members):raise ValueError(('Both partners' if len(pack['roles'])==2 else 'All partners')+' must stand ready at their current stations.')
+                if state!='active' or len(members)!=len(pack['roles']) or not all(self._at(t,stage['stations'][r]['at'],rid,key) for r,t in members):raise ValueError(('Both partners' if len(pack['roles'])==2 else 'All partners')+' must stand ready at their current stations.')
                 if self.db.execute('SELECT count(*) FROM mystery_clues WHERE run=? AND stage=?',(rid,index)).fetchone()[0]!=len(pack['roles']):raise ValueError('All partners must read their current clue first.')
                 if words[2]!=stage['answer']:return ['That answer does not fit. Compare all your clues again.']
                 self.db.execute('INSERT INTO mystery_solved VALUES(?,?)',(rid,index))

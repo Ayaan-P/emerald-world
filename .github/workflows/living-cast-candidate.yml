@@ -1,7 +1,7 @@
 name: Living cast candidate components
 on:
   pull_request:
-    branches: [main, dot/rc12-core-story, dot/rc12-living-cast]
+    branches: [main, dot/rc12-core-story, dot/rc12-living-cast, dot/coop-field-mysteries]
     paths:
       - 'world/**'
       - 'test/world/**'
