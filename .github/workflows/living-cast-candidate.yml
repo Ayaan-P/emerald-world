@@ -20,6 +20,10 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - name: Install real mechanic sandbox prerequisite
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
       - name: Generate map constants for production C fixtures
         run: |
           make -C tools/mapjson
