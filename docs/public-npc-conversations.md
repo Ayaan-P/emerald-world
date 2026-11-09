@@ -21,3 +21,17 @@ Paired native draft #37 at b9c54b6851965f11a0b785503234b8ff3efa9aa0 adds START *
 The composer uses the same reserved command gate and the app's proximity checks. Unsupported servers can refuse the command; it is never sent as ordinary room chat. Slash-like text inside the composer is literal NPC speech, not a second command. A delayed agent response is still subject to the session/location rules above.
 
 The paired test compiles actual native menu/editor functions with platform fixtures and sends their emitted command through the authenticated app CHAT handler, then checks the reply snapshot. This is not a linked or rendered game playtest. Maya should verify actual key bindings, field-to-editor focus, cancellation, typing readiness, coexistence with battle/expedition, and two-client interaction before release.
+
+## Nearby shared conversation
+Public Talk now has a local audience. Authenticated, ready players beside the same
+NPC on the exact map/revision when speech is committed hear the visitor's words
+and the NPC's eventual reply through existing native chat. Each participant may
+speak independently; there is no host or majority lock. Visitor names and save
+data are not added to public history or displayed as part of these messages.
+
+Audience membership freezes at speech time. Delivery checks the same connection
+session and current proximity again. Late arrivals, reconnects and distant players
+do not receive replay; leaving does not prevent the original NPC action from
+committing. Delivery is at most once, not guaranteed across a network failure.
+Legacy pending replies without audience rows retain original speaker-only behavior.
+This is shared public speech, not synchronized vanilla dialogue or a rendered scene.
