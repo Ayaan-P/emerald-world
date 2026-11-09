@@ -12,7 +12,7 @@ class ObservationTests(unittest.TestCase):
   a=observe(self.s,'harbor_guide',{},dict(radius=4))
   b=observe(self.s,'second',{},dict(radius=1))
   self.assertEqual((a['x'],a['y']),(71,70));self.assertEqual((b['x'],b['y']),(74,70))
-  self.assertEqual(a['entities'],[dict(id='second',x=74,y=70)]);self.assertEqual(b['entities'],[])
+  self.assertEqual(a['entities'],[dict(id='second',x=74,y=70,version=1)]);self.assertEqual(b['entities'],[])
   self.assertLessEqual(len(a['cells']),41)
   self.assertNotIn('Alice',json.dumps(a));self.assertNotIn('players',a)
   other=dict(self.s.objects[1],id='elsewhere',region_revision='f'*64)

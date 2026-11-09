@@ -78,3 +78,13 @@ Supported scope is deliberately the existing plain 127x127 shared XL format. Onl
 Geometry, stable place continuation, persistent character bindings and the successful tool receipt commit in the same database transaction. A receipt failure rolls back the edit. Positions stay unchanged; only exact revision bindings advance. A restart cannot replay the action. A stale or occupied map produces a blocked result and requires an explicit new plan, not an automatic retry. The resulting revision can feed another observation or navigation step, enabling open-ended composition rather than a predefined courtyard or character scene.
 
 Regression coverage includes observation-to-edit on two actors, a changed map requiring a fresh observation, occupied-map refusal, unobserved terrain refusal, rollback on receipt failure and restart. Native presentation and live author behavior remain integration QA.
+
+## Local character approach and independent address
+
+`world.approach(target, expected_version)` computes a route to an available cardinal neighbor of another active world-owned character on the same exact generated revision. It reuses the destination router and existing staged movement. Already-adjacent is a factual result; otherwise only the actual journey receipt completes it. Arrival does not promise the other actor stayed there.
+
+`world.address(target, expected_version, text)` separately rechecks both actors' actual positions, scope, active state, movement and pending player-battle state. It delivers a bounded public fictional utterance only when they remain adjacent. It reuses the existing encounter event and recipient reaction subscription, without inventing a journey, reply, agreement or relationship. Observation now supplies public character versions alongside their local coordinates. Plain world objects without a character record are not recipients.
+
+An enrolled recipient independently receives the actual encounter as evidence and may choose its own plan: reply, move, modify supported ground or do nothing. A sender cannot author the recipient's plan through these tools. Test authors demonstrate a recipient choosing a different reply through the actual reaction queue, typed action compiler and authority admission; no live model performance is implied. Existing author and source limits still apply.
+
+These primitives do not move canonical Hoenn actors, remotely deliver a physical meeting, or add a synchronized speech animation. Local utterances are durable public encounter history for agents; changing an NPC's visible dialogue remains a separate supported character action. Tests exercise actual approach, unavailable/changed recipients, unseen obstacle geometry, independent recipient action and restart without duplicate delivery.

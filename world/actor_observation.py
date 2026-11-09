@@ -30,7 +30,8 @@ def observe(server, actor, row, args):
             walkable = cave.walkable(*point); cells[point] = walkable
             if walkable and point not in distance:
                 distance[point] = distance[(x,y)] + 1; queue.append(point)
-    entities = [dict(id=o['id'], x=o['x'], y=o['y']) for o in server.objects
+    characters=records(server.module_state)
+    entities = [dict(id=o['id'], x=o['x'], y=o['y'], **({'version':characters[o['id']]['version']} if o['id'] in characters else {})) for o in server.objects
                 if o['id'] != actor and o.get('region_revision') == revision
                 and (o['group'], o['num']) == (obj['group'], obj['num'])
                 and (o['x'], o['y']) in distance]

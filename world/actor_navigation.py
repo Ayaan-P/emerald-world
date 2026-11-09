@@ -42,7 +42,13 @@ def start(server,actor,row,args):
     from .character_actions import compile_actions
     if set(args)!={'revision','x','y'}:raise ValueError('Navigation requires exact revision and destination x/y')
     current,obj,path=route(server,actor,[args['x'],args['y']],args['revision'])
-    action=dict(id=actor,expected_version=current['version'],evidence=current['evidence'],reason='Execute this actor own destination-based navigation plan.',changes={},object=dict(obj,x=args['x'],y=args['y']),journey=path)
+    return stage(server,actor,current,obj,path,args['revision'])
+
+
+def stage(server,actor,current,obj,path,revision):
+    from .actor_runtime import Pending
+    from .character_actions import compile_actions
+    action=dict(id=actor,expected_version=current['version'],evidence=current['evidence'],reason='Execute this actor own destination-based navigation plan.',changes={},object=dict(obj,x=path[-1][0],y=path[-1][1]),journey=path)
     context=server.inspect();context['runtime']=dict(previous_source=server.candidate.source if server.candidate else '')
     # Recalled exact references were already admitted for the actor's plan.
     context['recalled_history']=dict(events=[json.loads(server.db.execute("SELECT data FROM events WHERE seq=? AND kind='world_memory'",(seq,)).fetchone()[0]) for seq in current['evidence']])
@@ -54,7 +60,7 @@ def start(server,actor,row,args):
     except FileExistsError:
         if pathfile.is_symlink() or pathfile.read_text()!=source:raise ValueError('Navigation candidate path conflict')
     def dispatch():server.deployment=(None,pathfile,None)
-    return Pending(dict(journey=journey,revision=args['revision'],destination=[args['x'],args['y']],candidate=digest,version=current['version']),dispatch)
+    return Pending(dict(journey=journey,revision=revision,destination=path[-1],candidate=digest,version=current['version']),dispatch)
 
 
 def poll(server,actor,row,pending):

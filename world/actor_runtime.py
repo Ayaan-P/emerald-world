@@ -63,6 +63,10 @@ CAPABILITIES['world.observe']=Capability('Inspect connected local geometry and p
 from .actor_geometry import open_ground
 CAPABILITIES['world.open_ground']=Capability('Open a bounded patch of observed local ground on an empty active plain shared XL map.',dict(observation='own successful observation receipt sequence',x='patch origin integer',y='patch origin integer',width='integer 1..5',height='integer 1..5'),'Actual immutable geometry revision and preserved character positions; abstract terrain change, not simulated labor or resources.',open_ground,None,('world',))
 
+from .actor_social import approach,address,poll_approach
+CAPABILITIES['world.approach']=Capability('Compute and execute a route beside another inspected world character.',dict(target='existing world actor id',expected_version='inspected recipient version'),'Actual authority arrival or already-adjacent state, not speech or a guarantee recipient remains.',approach,poll_approach,('world',))
+CAPABILITIES['world.address']=Capability('Speak publicly to an adjacent world character; recipient decides independently what to do.',dict(target='existing world actor id',expected_version='inspected recipient version',text='1..28 literal public characters'),'Actual adjacency-validated encounter receipt; no automatic reply, relationship or rendered speech.',address,None,('world',))
+
 def actor_records(server):
     from .character_reactions import actors
     rows=actors(server.module_state)
