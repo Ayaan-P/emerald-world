@@ -127,7 +127,8 @@ def inspect_runtime(server):
     install(server.db)
     from .prop_custody import inventory
     from .actor_navigation import discover as discover_navigation
-    return dict(capabilities={key:dict(description=c.description,arguments=c.arguments,outcome=c.outcome,actor_kinds=c.kinds) for key,c in CAPABILITIES.items()},
+    from .character_companions import roster
+    return dict(companion_rosters={actor:roster(server,actor) for actor,r in actor_records(server).items() if not r.get('canonical')},capabilities={key:dict(description=c.description,arguments=c.arguments,outcome=c.outcome,actor_kinds=c.kinds) for key,c in CAPABILITIES.items()},
         available_actions=server.opportunities.actor_actions()[:32],actors={a:('canonical' if r.get('canonical') else 'world') for a,r in actor_records(server).items()},
         navigation=discover_navigation(server),carried_props=inventory(server),
         object_player_use='Optional state.world_object_player_use maps prop ID to one advertised world_object_actions action ID. Native A dispatches the same actor_interact(object_id,action,own_state) handler through normal staging. No map: text only. Effects are bounded own-state/text/graphics/one-cell movement, not bags/items.',
@@ -227,3 +228,6 @@ CAPABILITIES['world.create_landscape']=Capability('Compile and activate a new ou
 
 from .actor_watch import start as watch, poll as watch_poll
 CAPABILITIES['world.await_entity']=Capability('Wait for a real nearby entity to appear or visibly change, without repeated model calls.',dict(observation='own successful world.observe receipt sequence',target='existing world object identity',condition='present or changed'),'Durable pending watch; completes only on actual local observation. Observer relocation or geometry revision blocks; unseen targets reveal nothing.',watch,watch_poll,('world',))
+
+from .actor_challenges import prepare as prepare_challenge, poll as challenge_poll
+CAPABILITIES['world.prepare_challenge']=Capability('Prepare this trainer optional native challenge with an ordered lineup of owned individual Pokemon.',dict(lineup='JSON list of 1..6 distinct individual IDs from companion_rosters for this actor',text='literal invitation up to 28 ASCII characters'),'Actual admitted lineup and invitation; no forced battle, catch, growth or win. Existing native player consent and CHARPK1/CHARPK2 compatibility remain required.',prepare_challenge,challenge_poll,('world',))
