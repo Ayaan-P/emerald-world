@@ -107,11 +107,11 @@ class CoreStory:
         _, run, action, key, confirmation = fields
         trainer = conn['id']
         if action=='SEEN' and re.fullmatch('[0-9a-f]{64}',confirmation):
-            from .canonical_cast import BINDINGS
+            from .canonical_cast import location
             from .canonical_memory import acknowledge
-            actor=next((i for i,b in BINDINGS.items() if b['wire']==key),None)
+            actor,map_name=location(key)
             if actor is None:raise ValueError('Unknown actor.')
-            return acknowledge(self.s,conn,run,actor,confirmation)
+            return acknowledge(self.s,conn,run,actor,confirmation,map_name=map_name)
         if action == 'CAST' and confirmation == 'safe':
             from .canonical_cast import response
             return response(self.s,conn,run,key)

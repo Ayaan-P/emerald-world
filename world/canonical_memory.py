@@ -12,7 +12,7 @@ def enabled(server, trainer, actor):
     return server.db.execute('SELECT 1 FROM canonical_memory_optin WHERE trainer=? AND actor=?',(trainer,actor)).fetchone() is not None
 
 
-def prepare(server, conn, run, actor, row, response):
+def prepare(server, conn, run, actor, row, response, map_name=None):
     if not enabled(server,conn['id'],actor):return response
     previous=server.db.execute('SELECT talks FROM canonical_encounters WHERE trainer=? AND run=? AND actor=?',(conn['id'],run,actor)).fetchone()
     if previous:
@@ -21,17 +21,19 @@ def prepare(server, conn, run, actor, row, response):
     response['receipt']=secrets.token_hex(16)
     response['digest']=hashlib.sha256(json.dumps(response,sort_keys=True,separators=(',',':')).encode()).hexdigest()
     conn['cast_seen_pending']=dict(run=run,actor=actor,digest=response['digest'],expires=time.monotonic()+15,
-                                   version=row['version'],goal=row['goal'],text=response['briefing'])
+                                   version=row['version'],goal=row['goal'],text=response['briefing'],map=map_name)
     return response
 
 
-def acknowledge(server, conn, run, actor, digest):
+def acknowledge(server, conn, run, actor, digest, map_name=None):
     if not enabled(server,conn['id'],actor):return dict(ok=True)
     pending=conn.get('cast_seen_pending')
     if (not pending or pending['run']!=run or pending['actor']!=actor or pending['digest']!=digest
             or time.monotonic()>pending['expires']):raise ValueError('No matching displayed conversation receipt.')
     from .canonical_cast import BINDINGS
-    server.core_story._place(conn,BINDINGS[actor]['map'])
+    expected=pending.get('map') or BINDINGS[actor]['map']
+    if map_name is not None and map_name!=expected:raise ValueError('Display receipt location changed')
+    server.core_story._place(conn,expected)
     now=time.time()
     with server.db:
         server.db.execute('''INSERT INTO canonical_encounters VALUES(?,?,?,?,?,?,?,?)

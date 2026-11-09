@@ -15,6 +15,21 @@ BINDINGS={'canon_rydel':dict(name='Rydel',map='MauvilleCity_BikeShop',
     'canon_wally':dict(name='Wally',map='VerdanturfTown_WandasHouse',hook='VerdanturfTown_WandasHouse_EventScript_Wally',offset=2,wire='wally',effect='supplemental_dialogue_before_original_speech'),
     'canon_briney':dict(name='Mr. Briney',map='Route104_MrBrineysHouse',hook='Route104_MrBrineysHouse_EventScript_Briney',offset=2,wire='briney',effect='supplemental_dialogue_before_original_sailing')}
 
+# Same canonical actor at reviewed later-story conversation continuations.
+LOCATION_ALIASES={'wally_vr':('canon_wally','VictoryRoad_1F')}
+
+def location(key):
+    if key in LOCATION_ALIASES:return LOCATION_ALIASES[key]
+    return next(((identity,row['map']) for identity,row in BINDINGS.items() if row['wire']==key),(None,None))
+
+def check_actor_location(server,conn,identity):
+    try:server.core_story._place(conn,BINDINGS[identity]['map']);return
+    except ValueError:pass
+    reached=conn.get('canonical_location')
+    if reached and reached['actor']==identity and reached['run']==conn.get('core_active_run'):
+        server.core_story._place(conn,reached['map']);return
+    raise ValueError('Talk to this original actor at the current location first.')
+
 
 def records(state):
     value=state.get(KEY,{})
@@ -139,9 +154,9 @@ def compile_actions(actions, context):
 
 
 def response(server, conn, run, key):
-    identity=next((i for i,b in BINDINGS.items() if b['wire']==key),None)
+    identity,map_name=location(key)
     if identity is None:raise ValueError('unknown canonical actor')
-    server.core_story._place(conn,BINDINGS[identity]['map'])
+    server.core_story._place(conn,map_name)
     row=records(server.module_state).get(identity)
     if row is None:raise ValueError('no authored canonical response')
     private=server.db.execute('SELECT version,choice FROM canonical_conversations WHERE trainer=? AND actor=?',(conn['id'],identity)).fetchone()
@@ -152,12 +167,13 @@ def response(server, conn, run, key):
                 version=row['version'],briefing=personal or (option['reply'] if option else row['dialogue']),objective=('Guild chat has conversation choices.' if row.get('conversation') and not option else 'Ask guild chat about my plan.' if row.get('offer') else 'Guild chat has my practice courses.' if row.get('project') else ''),evidence=row['evidence'])
     result['digest']=hashlib.sha256(json.dumps(result,sort_keys=True,separators=(',',':')).encode()).hexdigest()
     conn['core_active_run']=run
+    conn['canonical_location']=dict(actor=identity,map=map_name,run=run)
     from .canonical_memory import prepare
-    return prepare(server,conn,run,identity,row,result)
+    return prepare(server,conn,run,identity,row,result,map_name=map_name)
 
 
 def contract():
-    return dict(response='canonical_actions/tests',bindings=BINDINGS,
+    return dict(response='canonical_actions/tests',bindings=BINDINGS,location_aliases=LOCATION_ALIASES,
                 action_fields=['id','expected_version','changes'],
                 change_fields=['goal','dialogue','places','evidence','reason','offer (optional native map/count)','relationships (optional directional assessments)','conversation (optional private player choices)','letter (optional public cast correspondence)','project (optional playable practice course)','contribution (optional project guidance)','resolve_contribution (optional owner decision)','intentions (up to three retained tasks)','fulfill (one prior task ID)'],
                 intentions=dict(fields=['id','kind (letter, project, contribution or practice)','target','reason'],completion='set fulfill to a prior retained ID, remove it from agenda, execute the matching new action; authority requires a real action receipt',practice='target is an already host-registered fictional companion ID; isolated dispatcher only, no live fulfillment or story-party changes',initiative='followed actors may attempt retained work without a new player event; eight attempts per actor/world, once per task ID, no automatic retry or hidden model startup'),
@@ -194,7 +210,7 @@ def guild_command(server, conn, args):
     if args[1:]==['forget']:return conversation_command(server,conn,identity,None,['forget'])
     if not (conn.get('state') or [0]*7)[6]:
         raise GuildError('Stand ready near the original actor before accepting a proposal.')
-    try:server.core_story._place(conn,BINDINGS[identity]['map'])
+    try:check_actor_location(server,conn,identity)
     except ValueError:raise GuildError('Visit the original actor before reviewing or accepting a proposal.')
     row=records(server.module_state).get(identity);offer=(row or {}).get('offer')
     if len(args)>=2 and args[1] in ('talk','forget'):
