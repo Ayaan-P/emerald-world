@@ -13,6 +13,7 @@ BINDINGS={'canon_rydel':dict(name='Rydel',map='MauvilleCity_BikeShop',
     hook='MauvilleCity_BikeShop_EventScript_Rydel',offset=2,
     wire='rydel',effect='supplemental_dialogue_before_original_bike_service'),
     'canon_wally':dict(name='Wally',map='VerdanturfTown_WandasHouse',hook='VerdanturfTown_WandasHouse_EventScript_Wally',offset=2,wire='wally',effect='supplemental_dialogue_before_original_speech'),
+    'canon_steven':dict(name='Steven',map='MossdeepCity_StevensHouse',hook='MossdeepCity_StevensHouse_EventScript_Steven',offset=2,wire='steven',effect='supplemental_dialogue_after_original_dive_scene'),
     'canon_briney':dict(name='Mr. Briney',map='Route104_MrBrineysHouse',hook='Route104_MrBrineysHouse_EventScript_Briney',offset=2,wire='briney',effect='supplemental_dialogue_before_original_sailing')}
 
 # Same canonical actor at reviewed later-story conversation continuations.
@@ -23,8 +24,9 @@ def location(key):
     return next(((identity,row['map']) for identity,row in BINDINGS.items() if row['wire']==key),(None,None))
 
 def check_actor_location(server,conn,identity):
-    try:server.core_story._place(conn,BINDINGS[identity]['map']);return
-    except ValueError:pass
+    if identity!='canon_steven':
+        try:server.core_story._place(conn,BINDINGS[identity]['map']);return
+        except ValueError:pass
     reached=conn.get('canonical_location')
     if reached and reached['actor']==identity and reached['run']==conn.get('core_active_run'):
         server.core_story._place(conn,reached['map']);return
@@ -196,7 +198,7 @@ def guild_command(server, conn, args):
     """
     from .guilds import GuildError
     if len(args) not in (1,2,3,4):
-        return ['Use /guild cast ACTOR to preview a public field proposal. Actors: rydel, wally, briney.']
+        return ['Use /guild cast ACTOR to preview a public field proposal. Actors: rydel, wally, briney, steven.']
     identity=next((i for i,b in BINDINGS.items() if b['wire']==args[0]),None)
     if identity is None:raise GuildError('Unknown canonical actor.')
     if server.peers.get(conn.get('id')) is not conn:raise GuildError('Authenticated trainer connection required.')
