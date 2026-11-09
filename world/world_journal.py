@@ -38,6 +38,12 @@ def describe(event, place=None):
         details.append('Team plan: ' + ', '.join('species ' + str(mon['species']) +
                        ' at level ' + str(mon['level']) for mon in character['team']))
         details.append('This is an authored character change, not proof of a battle or catch.')
+    elif kind == 'canonical_actor_changed':
+        title=event['character_name']+' reconsidered a goal'
+        details=['Authored goal: '+event['after']['goal'],
+                 'Supplemental dialogue: '+event['after']['dialogue'],
+                 'Based on public activity records: '+', '.join(map(str,event['after']['evidence'])),
+                 'An authored interpretation, not proof that this character performed an activity. Original gameplay is unchanged.']
     elif kind == 'guild_goal_completed':
         title = 'Guild '+event['goal_kind']+' completed'
         details = [event['guild_name']+' completed its '+event['goal_kind']+' goal.',

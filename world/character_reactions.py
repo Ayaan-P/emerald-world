@@ -10,6 +10,15 @@ import time
 import uuid
 
 
+def actors(state):
+    from .characters import records
+    from .canonical_cast import records as canonical_records
+    result=dict(records(state))
+    result.update({identity:dict(row,status='active',canonical=True)
+                   for identity,row in canonical_records(state).items()})
+    return result
+
+
 def setup(queue):
     queue.db.execute('''CREATE TABLE IF NOT EXISTS character_reactions(
         id TEXT PRIMARY KEY, purpose TEXT NOT NULL, world TEXT NOT NULL,
@@ -20,7 +29,7 @@ def setup(queue):
 def configure(queue, inspection, identity, purpose):
     from .characters import records
     data = inspection.get('data', inspection)
-    if inspection.get('ok') is not True or identity not in records(data.get('state', {})):
+    if inspection.get('ok') is not True or identity not in actors(data.get('state', {})):
         raise ValueError('follow requires an inspected existing world character')
     memory = data.get('world_memory', {})
     if (not re.fullmatch('[A-Za-z0-9_-]{1,24}', identity)
@@ -58,7 +67,7 @@ def observe(queue, inspection, fetch, *, enqueue=True):
         return []
     from .characters import records
     data = inspection.get('data', inspection)
-    cast = records(data.get('state', {}))
+    cast = actors(data.get('state', {}))
     memory = data.get('world_memory', {})
     queued = []
     for sub in selected:
@@ -90,17 +99,19 @@ def observe(queue, inspection, fetch, *, enqueue=True):
                 continue
             through = page['cursor']
             for event in page['events']:
+                from .canonical_cast import public_activity
+                matched = (public_activity(event, character.get('places',[]))
+                           if character.get('canonical') else
+                           event.get('character_id') == sub['id']
+                           and event.get('character_offer_id') == offer.get('id')
+                           and event.get('character_offer_revision') == offer.get('revision') and bool(offer))
                 if (not enqueue or character.get('status') != 'active'
                         or event.get('event') != 'guild_goal_completed'
-                        or event.get('publication') != 'guild_leader_opt_in'
-                        or event.get('character_id') != sub['id']
-                        or event.get('character_offer_id') != offer.get('id')
-                        or event.get('character_offer_revision') != offer.get('revision')
-                        or not offer):
+                        or event.get('publication') != 'guild_leader_opt_in' or not matched):
                     continue
                 identifier = uuid.uuid4().hex
                 reaction = dict(world_id=sub['world'], id=sub['id'], expected_version=character['version'],
-                                evidence=event['seq'], purpose=sub['purpose'])
+                                evidence=event['seq'], purpose=sub['purpose'], canonical=bool(character.get('canonical')))
                 queue.db.execute('INSERT INTO requests(id,player,text,kind,status,created,result) VALUES(?,?,?,?,?,?,?)',
                                  (identifier, sub['id'], 'Choose one next action for this existing character after its publicly completed expedition. Do not invent a predetermined arc, duplicate a canonical NPC, or claim unobserved achievements.',
                                   'character', 'queued', time.time(), json.dumps(reaction)))
@@ -119,38 +130,47 @@ def prepare(context, fetch):
         return None
     reaction = runtime.get('observed_event', {})
     data = context.get('data', context)
-    character = data.get('state', {}).get('world_characters', {}).get(reaction.get('id'))
+    character = actors(data.get('state', {})).get(reaction.get('id'))
     memory = data.get('world_memory', {})
     if (not character or character['version'] != reaction.get('expected_version')
             or memory.get('world_id') != reaction.get('world_id')
+            or bool(character.get('canonical')) != reaction.get('canonical',False)
             or type(reaction.get('evidence')) is not int or reaction['evidence'] > memory['through']):
         raise ValueError('character changed before its reaction turn')
     seq = reaction['evidence']
     page = fetch(dict(command='world_history', after=seq-1, through=seq, limit=1))
     events = page.get('events', [])
     offer = character.get('offer') or {}
+    from .canonical_cast import public_activity
+    matched = (len(events)==1 and (public_activity(events[0],character.get('places',[]))
+               if character.get('canonical') else events[0].get('character_id') == reaction['id']
+               and events[0].get('character_offer_id') == offer.get('id')
+               and events[0].get('character_offer_revision') == offer.get('revision')))
     if (page.get('ok') is not True or page.get('world_id') != reaction['world_id']
             or len(events) != 1 or events[0].get('seq') != seq
             or events[0].get('event') != 'guild_goal_completed'
             or events[0].get('publication') != 'guild_leader_opt_in'
-            or events[0].get('character_id') != reaction['id']
-            or events[0].get('character_offer_id') != offer.get('id')
-            or events[0].get('character_offer_revision') != offer.get('revision')):
+            or not matched):
         raise ValueError('character reaction lacks exact public offer completion')
+    # Public fictional actors need committed public results, not player purposes
+    # or current private party/save observations from the general GM inspection.
+    data['players']=[]
+    runtime['selected_purposes']={}
     context.setdefault('recalled_history', {}).setdefault('events', []).extend(events)
-    context['character_reaction'] = dict(reaction, instruction='Return character_actions/tests with exactly this actor, or an empty action list to wait. Use the exact evidence. Only supported current map/dialogue/team/offer changes; no canonical script or save flag replacement.')
+    context['character_reaction'] = dict(reaction, instruction='Return canonical_actions/tests for a canonical actor, otherwise character_actions/tests with exactly this actor, or an empty action list to wait. Use the exact evidence. Only supported current map/dialogue/team/offer changes; no canonical script or save flag replacement.')
     return reaction
 
 
 def check_response(response, reaction):
     if not reaction:
         return
-    if type(response) is not dict or set(response) != {'character_actions', 'tests'}:
+    key='canonical_actions' if reaction.get('canonical') else 'character_actions'
+    if type(response) is not dict or set(response) != {key, 'tests'}:
         raise ValueError('character reactions require bounded typed actions, not arbitrary source')
-    actions = response['character_actions']
+    actions = response[key]
     if type(actions) is not list or len(actions) > 1:
         raise ValueError('one character reaction action or an explicit wait required')
     if actions and (actions[0].get('id') != reaction['id']
                     or actions[0].get('expected_version') != reaction['expected_version']
-                    or reaction['evidence'] not in actions[0].get('evidence', [])):
+                    or reaction['evidence'] not in (actions[0].get('changes',{}).get('evidence',[]) if reaction.get('canonical') else actions[0].get('evidence', []))):
         raise ValueError('character action does not match selected actor, version and evidence')

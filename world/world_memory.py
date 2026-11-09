@@ -69,6 +69,8 @@ def evidence_index(event, *, current_catalog=False):
     elif event.get('event') == 'character_changed':
         words.extend((event['character_id'], event['after']['name'], event['after']['role'],
                       event['after']['reason'], *event['after']['goals']))
+    elif event.get('event') == 'canonical_actor_changed':
+        words.extend((event['character_id'],event['character_name'],event['after']['goal'],event['after']['dialogue'],event['after']['reason']))
     elif event.get('event') == 'canonical_story_outcome':
         words.extend((event['arc'], event['outcome'], event['summary']))
     elif event.get('event') == 'guild_goal_completed':

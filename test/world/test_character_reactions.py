@@ -139,7 +139,7 @@ class ReactionTests(unittest.TestCase):
         def author(prompt):
             prompts.append(prompt)
             return dict(character_actions=[],tests='assert True')
-        runtime=dict(kind='character',observed_event=packet,previous_source=self.f.candidate.source)
+        runtime=dict(kind='character',observed_event=packet,previous_source=self.f.candidate.source,selected_purposes={'Alice':'PRIVATE_PURPOSE_SENTINEL'})
         with patch('world.gm.admin_request',side_effect=admin), patch('world.world_memory.recall_request',return_value=None):
             report=gm.author_and_deploy(self.tmp.name,'unused','Decide next research action',author,120,runtime_context=runtime)
             self.assertTrue(report['ok'],report)
@@ -147,6 +147,8 @@ class ReactionTests(unittest.TestCase):
             self.assertNotIn('deploy',calls)
             self.assertTrue(Path(report['report_path']).is_file())
             self.assertIn('character_reaction',prompts[0])
+            self.assertNotIn('PRIVATE_PURPOSE_SENTINEL',prompts[0])
+            self.assertNotIn('party_hash',prompts[0])
             self.assertIn(str(packet['evidence']),prompts[0])
             report=gm.author_and_deploy(self.tmp.name,'unused','Decide next research action',
                 lambda _:dict(source='def update(c,s): return s',tests='assert True'),120,runtime_context=runtime)

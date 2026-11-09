@@ -51,11 +51,14 @@ is still required after 32 action publications.
 
 Wally, Briney, Steven and Rydel are not automatically enrolled, copied or spawned.
 An original cartridge NPC is not the same thing as an authored world actor with
-its name. RC12's existing CORE1 work exposes only its reviewed Devon checkpoints;
-this change does not supply new canonical native hooks or claim to move those
-original actors. Enrollment requires an existing supported registry identity.
-A future canonical binding must preserve original object/script identity and
-private story progression before this loop can drive that cast directly.
+its name. The paired canonical-cast candidate now binds original Rydel supplemental
+dialogue through a separate `canonical_cast` record, without an overlay object.
+See CANONICAL_CAST.md for the required native pairing and narrower effects.
+The current app native pin does not yet include that hook. Wally, Briney and
+Steven still require reviewed original-script bindings; they are not replaced
+by namesakes. A registered overlay actor continues to use its existing explicit
+offer-completion path; a canonical actor observes opted-in public activities
+in its declared native places of interest.
 
 ## Validation
 

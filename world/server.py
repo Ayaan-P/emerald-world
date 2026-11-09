@@ -818,7 +818,7 @@ class WorldServer:
                     result = self.core_story.handle(conn, fields[:5] if nonce else fields)
                     if nonce:
                         prefix='CORE REPLY '+nonce+' '+fields[1]+' '+fields[2]+' '+fields[3]+' '
-                        if fields[2]=='OFFER':
+                        if fields[2] in ('OFFER','CAST'):
                             reply=result['world_id']+' '+result['digest']+' '+(result['briefing']+' '+result['objective']).encode().hex()
                         else:
                             reply='OK'
@@ -1957,6 +1957,8 @@ class WorldServer:
                 validate_walks(self,self.module_state,result['state'],objects)
                 from .characters import validate_transition
                 character_changes = validate_transition(self.module_state, result['state'], objects, self.db)
+                from .canonical_cast import validate_transition as validate_canonical
+                canonical_changes=validate_canonical(self.module_state,result['state'],objects,self.db)
                 changed = (kind == 'deploy' or result['state'] != self.module_state or tiles != self.tiles
                            or objects != self.objects or cursor != self.interaction_cursor)
                 if changed:
@@ -1975,6 +1977,8 @@ class WorldServer:
                             change['places'] = overlay_places([], [obj for obj in self.objects + objects
                                 if obj['id'] == change['character_id']],self.db)
                             self.revision = self.memory.append('character_changed', change)
+                        for change in canonical_changes:
+                            self.revision=self.memory.append('canonical_actor_changed',change)
                         if kind == 'deploy':
                             self.db.execute('INSERT OR REPLACE INTO status VALUES(1,NULL)')
                     self.candidate, self.module_state, self.tiles = candidate, json.loads(state_json), tiles

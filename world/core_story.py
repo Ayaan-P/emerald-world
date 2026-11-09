@@ -88,6 +88,9 @@ class CoreStory:
             raise ValueError('Invalid canonical story request.')
         _, run, action, key, confirmation = fields
         trainer = conn['id']
+        if action == 'CAST' and confirmation == 'safe':
+            from .canonical_cast import response
+            return response(self.s,conn,run,key)
         with self.db:
             if action == 'SYNC' and confirmation == 'private':
                 if key not in ('0','1','3','7'):

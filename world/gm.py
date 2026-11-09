@@ -126,6 +126,10 @@ Choose one supported next action from the actual result, or return an empty char
 list to wait. No predetermined future arc, duplicated canonical actor, invented victory,
 private progress inference, original-script replacement or native save changes.
 
+canonical_actions can update a reviewed original-script binding without spawning a duplicate.
+Use canonical_cast contract, literal bounded supplemental dialogue, a current goal and
+exact public activity evidence. Never claim that the player performed a shared deed.
+
 For established characters, character_actions accepts history-grounded actions to
 relocate, speak, revise teams/goals/relationships or offer expeditions. This explicitly
 supersedes old behavior for those actors while preserving unrelated world effects.
@@ -386,6 +390,8 @@ def _author_and_deploy(state_dir, socket_path, request, author_argv, timeout, *,
         context['character_chapters'] = chapter_contract()
         from .character_actions import contract as action_contract
         context['character_actions'] = action_contract()
+        from .canonical_cast import contract as canonical_contract
+        context['canonical_cast'] = canonical_contract()
         candidates = root / 'candidates'
         if candidates.is_symlink():
             raise ValueError('candidates directory must not be a symlink')
@@ -419,13 +425,23 @@ def _author_and_deploy(state_dir, socket_path, request, author_argv, timeout, *,
                 return report
             response = dict(source=compile_actions(actions, context), tests=response['tests'])
             report['character_actions'] = actions
+        if type(response) is dict and set(response) == {'canonical_actions', 'tests'}:
+            from .canonical_cast import compile_actions as compile_canonical
+            actions=response['canonical_actions']
+            if reaction and not actions:
+                report.update(ok=True,stage='character_wait',canonical_actions=[])
+                report['tests']['status']='not_run_no_candidate'
+                _write(report_path,json.dumps(report,indent=2,sort_keys=True)+'\n')
+                return report
+            response=dict(source=compile_canonical(actions,context),tests=response['tests'])
+            report['canonical_actions']=actions
         if type(response) is dict and set(response) == {'character_plan', 'tests'}:
             from .character_chapters import compile_plan
             plan = response['character_plan']
             response = dict(source=compile_plan(plan, context), tests=response['tests'])
             report['character_plan'] = plan
         if type(response) is not dict or set(response) != {'source', 'tests'}:
-            raise ValueError('author must return source/tests, character_plan/tests or character_actions/tests')
+            raise ValueError('author must return source/tests, character_plan/tests, character_actions/tests or canonical_actions/tests')
         for key in ('source', 'tests'):
             if type(response[key]) is not str or not response[key].strip() or len(response[key].encode()) > MAX_SOURCE:
                 raise ValueError(key + ' must be nonempty text <=256 KiB')
