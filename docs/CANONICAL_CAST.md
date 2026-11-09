@@ -392,3 +392,5 @@ engine fixtures, exercises all six opponents, reorder/level changes, preset OT,
 legacy random behavior and malformed/overflow refusal. It is not a full native
 Pokémon arithmetic/build/rendered playtest. Authority tests verify frozen pending
 teams, restart, older-client refusal, archive reuse and identity isolation.
+
+Reflection preview/status now uses the current connection's native CAST or validated SYNC save lineage, never the most recently updated stored profile. Reconnect requires native lineage attestation; changing save between preview and confirmation refuses the stale grant. Explicit conversation choices remain trainer-wide by design and are included in the exact preview.

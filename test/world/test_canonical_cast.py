@@ -631,6 +631,8 @@ class CanonicalCastTests(unittest.TestCase):
         self.assertNotIn('without choosing',cast.response(self.s,peer,'c'*32,'rydel')['briefing'])
         self.assertEqual(self.s.inspect(),inspection);self.assertEqual(self.s.memory.history(),history)
         self.assertEqual(step('unused','gpt-6-luna',request=admin,author=author)['status'],'idle')
+        self.assertIn('No private reflection',cast.guild_command(self.s,peer,['rydel','reflection'])[0])
+        cast.response(self.s,peer,'a'*32,'rydel')
         self.assertTrue(any('leaving the pace' in line for line in cast.guild_command(self.s,peer,['rydel','reflection'])))
         self.s.close();self.f.case.server=self.f.case.open();self.s=self.f.case.server;self.f.server=self.s
         peer=self.peer()
@@ -660,6 +662,28 @@ class CanonicalCastTests(unittest.TestCase):
         self.assertFalse(finish(self.s,work['id'],work['lease'],dict(reply='Stale reply.',interpretation='Stale interpretation.'))['ok'])
         self.assertNotIn('Stale reply',cast.response(self.s,peer,'a'*32,'rydel')['briefing'])
         self.assertIsNone(claim(self.s)['request'])
+
+    def test_reflection_selects_current_connection_save_not_latest_profile(self):
+        from world.canonical_memory import acknowledge
+        from world.guilds import GuildError
+        peer=self.prepare_private_reflection()
+        reply=cast.response(self.s,peer,'b'*32,'rydel')
+        acknowledge(self.s,peer,'b'*32,'canon_rydel',reply['digest'])
+        # Return to A without acknowledging it: B remains newest in storage.
+        cast.response(self.s,peer,'a'*32,'rydel')
+        cast.guild_command(self.s,peer,['rydel','reflect'])
+        self.assertEqual(peer['cast_reflection_preview']['run'],'a'*32)
+        nonce=peer['cast_reflection_preview']['nonce']
+        cast.response(self.s,peer,'b'*32,'rydel')
+        with self.assertRaises(GuildError):cast.guild_command(self.s,peer,['rydel','reflect','confirm',nonce])
+        # Fresh connections/restarts do not silently choose any retained profile.
+        fresh=self.peer()
+        with self.assertRaises(GuildError):cast.guild_command(self.s,fresh,['rydel','reflect'])
+        cast.response(self.s,fresh,'a'*32,'rydel')
+        cast.guild_command(self.s,fresh,['rydel','reflect'])
+        self.assertEqual(fresh['cast_reflection_preview']['run'],'a'*32)
+        cast.guild_command(self.s,fresh,['rydel','forget'])
+        with self.assertRaises(GuildError):cast.guild_command(self.s,fresh,['rydel','reflect'])
 
     def test_private_adapter_schema_cannot_return_world_code_or_tool_activity(self):
         from world.runtime_gm import decode_codex

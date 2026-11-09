@@ -130,6 +130,7 @@ class CoreStory:
                 self.db.execute('DELETE FROM core_story_progress WHERE trainer=? AND run=?',(trainer,run))
                 self.db.executemany('INSERT INTO core_story_progress VALUES(?,?,?)',
                                     ((trainer,run,name) for name in current))
+                conn['core_active_run']=run
                 return dict(schema=1,run=run,progress=int(key),source='native_client_attestation')
             if action == 'REPORT' and confirmation == 'complete':
                 beat = BEATS.get(key)

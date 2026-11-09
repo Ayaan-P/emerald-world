@@ -29,12 +29,14 @@ def snapshot(server, trainer, actor, run=None):
 
 def command(server, conn, actor, args):
     trainer=conn['id']
+    active_run=conn.get('core_active_run')
+    if active_run is None:raise GuildError('Talk to the character in this save before requesting a reflection.')
     if args==['reflection']:
-        row=server.db.execute('SELECT status,interpretation FROM canonical_reflections WHERE trainer=? AND actor=? ORDER BY created DESC LIMIT 1',(trainer,actor)).fetchone()
+        row=server.db.execute('SELECT status,interpretation FROM canonical_reflections WHERE trainer=? AND actor=? AND run=? ORDER BY created DESC LIMIT 1',(trainer,actor,active_run)).fetchone()
         if not row:return ['No private reflection requested. Use reflect to preview one.']
         return ['Private reflection: '+('claimed; completion not confirmed' if row[0]=='running' else row[0])]+([row[1][i:i+110] for i in range(0,len(row[1]),110)] if row[1] else [])
     if args==['reflect']:
-        try:run,fingerprint,context=snapshot(server,trainer,actor)
+        try:run,fingerprint,context=snapshot(server,trainer,actor,active_run)
         except ValueError as exc:raise GuildError(str(exc)) from None
         nonce=secrets.token_hex(4)
         conn['cast_reflection_preview']=dict(actor=actor,run=run,fingerprint=fingerprint,nonce=nonce,expires=time.monotonic()+180)
@@ -50,6 +52,7 @@ def command(server, conn, actor, args):
         preview=conn.get('cast_reflection_preview')
         if not preview or preview['actor']!=actor or preview['nonce']!=args[2] or time.monotonic()>preview['expires']:
             raise GuildError('Preview expired or unavailable. Use reflect again.')
+        if active_run!=preview['run']:raise GuildError('Active save changed. Preview again before sharing.')
         try:run,fingerprint,context=snapshot(server,trainer,actor,preview['run'])
         except ValueError as exc:raise GuildError(str(exc)) from None
         if fingerprint!=preview['fingerprint']:raise GuildError('Conversation changed. Preview again before sharing.')
