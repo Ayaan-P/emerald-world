@@ -2072,6 +2072,8 @@ class WorldServer:
                                 places=overlay_places(self.tiles + tiles, self.objects + objects,self.db),
                                 before=dict(tiles=self.tiles, objects=self.objects),
                                 after=dict(tiles=tiles, objects=objects)))
+                        from .actor_objects import archive_transition
+                        archive_transition(self,self.module_state,result['state'],objects)
                         from .character_companions import commit as commit_companions
                         commit_companions(self.db,self.memory.world_id,character_changes)
                         for change in character_changes:

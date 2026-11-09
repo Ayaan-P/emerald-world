@@ -80,10 +80,7 @@ def stage(server,request):
     from .actor_runtime import Pending
     obj=request['target']
     identity=digest(request);request['id']=identity;suffix=identity[:16]
-    old=server.candidate.source
-    helper=inspect.getsource(object_step).replace('def object_step(',f'def _object_step_{suffix}(',1)
-    source_code=(old+'\n'+f'_object_previous_{suffix}=update\n_object_handler_{suffix}=actor_interact\n'+helper+'\n'+
-        f'def update(context,state):\n    if not state:\n        import copy\n        state=copy.deepcopy({server.module_state!r})\n    return _object_step_{suffix}(_object_previous_{suffix}(context,state), {request!r}, _object_handler_{suffix})\n')
+    source_code=dispatch_source(server.candidate.source,request,server.module_state)
     if len(source_code.encode())>256*1024:raise ValueError('Consolidate source before another interaction')
     sha=hashlib.sha256(source_code.encode()).hexdigest();path=server.runtime.candidates/('object_'+sha+'.py')
     try:
@@ -95,7 +92,7 @@ def stage(server,request):
 
 
 def poll(server,actor,row,pending):
-    result=server.module_state.get('world_object_action_receipts',{}).get(pending['request'])
+    result=receipt(server.module_state,pending['request'])
     obj=next((o for o in server.objects if o['id']==pending['object']),None)
     control=server.module_state.get('world_object_controls',{}).get(pending['object'],{})
     if result and obj and result.get('before')==pending['before'] and result.get('after')==obj and obj.get('region_revision')==pending['revision']:
@@ -130,8 +127,8 @@ def player_use(server,conn,obj):
 def poll_player(server):
     pending=getattr(server,'object_use_pending',None)
     if not pending:return
-    receipt=server.module_state.get('world_object_action_receipts',{}).get(pending['pending']['request'])
-    if not receipt and (server.job is not None or server.deployment is not None):return
+    saved_receipt=receipt(server.module_state,pending['pending']['request'])
+    if not saved_receipt and (server.job is not None or server.deployment is not None):return
     server.object_use_pending=None
     try:
         result=poll(server,'',{},pending['pending'])
@@ -145,3 +142,57 @@ def poll_player(server):
     if server.peers.get(conn.get('id')) is conn and not conn.get('closing'):
         server.guild_chat.message(conn,conn['id'],message)
         server._queue(conn,server._snapshot(conn))
+
+
+def receipt(state,identity):
+    return state.get('world_object_current_receipt',{}).get(identity) or state.get('world_object_action_receipts',{}).get(identity)
+
+
+def dispatch_source(old,request,state):
+    """Replace only our verified request literal; never rewrite arbitrary source.
+
+    Old append-only handlers keep their receipts and never replay. New requests
+    use one reusable function and one current receipt. Authority history remains.
+    """
+    helper=inspect.getsource(object_step).replace('def object_step(', 'def _ew_object_dispatch_v1(',1)
+    helper=helper.replace("receipts=state.setdefault('world_object_action_receipts',{})", "receipts=state.setdefault('world_object_current_receipt',{})")
+    helper=helper.replace("    if len(receipts)>=32:raise ValueError('Consolidate object interaction source before adding more requests')", "    receipts.clear()")
+    wrapper="def update(context,state):\n    if not state:\n        import copy\n        state=copy.deepcopy(_ew_object_seed_v1)\n    return _ew_object_dispatch_v1(_ew_object_previous_v1(context,state),_ew_object_request_v1,actor_interact)\n"
+    tree=ast.parse(old)
+    assignments=[n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='_ew_object_request_v1' for t in n.targets)]
+    if assignments:
+        functions=[n for n in tree.body if isinstance(n,ast.FunctionDef)]
+        expected=ast.dump(ast.parse(helper).body[0],include_attributes=False)
+        if len(assignments)!=1 or len(assignments[0].targets)!=1 or not any(ast.dump(n,include_attributes=False)==expected for n in functions) or not any(ast.dump(n,include_attributes=False)==ast.dump(ast.parse(wrapper).body[0],include_attributes=False) for n in functions):
+            raise ValueError('Reusable object dispatcher changed; explicit mechanic consolidation required')
+        seeds=[n for n in tree.body if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id=='_ew_object_seed_v1']
+        if len(seeds)!=1:raise ValueError('Object dispatcher seed changed')
+        lines=old.splitlines(keepends=True)
+        for node,value in sorted([(assignments[0],request),(seeds[0],state)],key=lambda pair:pair[0].lineno,reverse=True):
+            ast.literal_eval(node.value) # Never replace an executable expression.
+            lines[node.lineno-1:node.end_lineno]=[f'{node.targets[0].id}={value!r}\n']
+        return ''.join(lines)
+    if any(isinstance(n,ast.Name) and n.id.startswith('_ew_object_') for n in ast.walk(tree)):
+        raise ValueError('Reserved object dispatcher names are already in use')
+    return old+f'\n_ew_object_previous_v1=update\n_ew_object_seed_v1={state!r}\n_ew_object_request_v1={request!r}\n'+helper+'\n'+wrapper
+
+
+def archive_transition(server,before,state,objects):
+    """Same transaction as admission; retain causal data before receipt rotation."""
+    current=state.get('world_object_current_receipt',{})
+    if current==before.get('world_object_current_receipt',{}):return
+    if type(current) is not dict or len(current)!=1:raise ValueError('One current object receipt required')
+    server.db.execute('CREATE TABLE IF NOT EXISTS object_transition_archive(id TEXT PRIMARY KEY,data TEXT,seq INTEGER)')
+    identity,value=next(iter(current.items()))
+    if type(value) is not dict:raise ValueError('Invalid object transition receipt')
+    obj=next((o for o in objects if o['id']==value.get('object')),None)
+    previous=next((o for o in server.objects if o['id']==value.get('object')),None)
+    control=state.get('world_object_controls',{}).get(value.get('object'),{}).get('state',{})
+    if not obj or obj.get('kind')!='prop' or value.get('before')!=previous or value.get('after')!=obj or value.get('state_digest')!=digest(control):raise ValueError('Object receipt does not match admitted state')
+    encoded=json.dumps(value,sort_keys=True)
+    prior=server.db.execute('SELECT data FROM object_transition_archive WHERE id=?',(identity,)).fetchone()
+    if prior:
+        if prior[0]!=encoded:raise ValueError('Object transition identity reused')
+        return
+    seq=server.memory.append('object_transition_committed',dict(object=obj['id'],request=identity,revision=obj.get('region_revision'),before=previous,after=obj,state_digest=value['state_digest'],source='validated_mechanic_admission'))
+    server.db.execute('INSERT INTO object_transition_archive VALUES(?,?,?)',(identity,encoded,seq));server.revision=seq
