@@ -2224,6 +2224,7 @@ class WorldServer:
                 step_cast_world_action(self)
                 from .actor_runtime import tick as tick_actor_runtime
                 tick_actor_runtime(self)
+                if getattr(self,'capture_service',None):self.capture_service.tick(self)
                 from .npc_conversations import flush as flush_npc_replies
                 flush_npc_replies(self)
                 self.cast_scenes.tick()
@@ -2242,6 +2243,7 @@ class WorldServer:
             self.selector = None
             Path(self.socket_path).unlink(missing_ok=True)
             Path(self.admin_path).unlink(missing_ok=True)
+        if getattr(self,'capture_service',None):self.capture_service.close()
         self.executor.shutdown(wait=True, cancel_futures=True)
         self.control_executor.shutdown(wait=True, cancel_futures=True)
         with self.lock:
@@ -2310,6 +2312,10 @@ def main(argv=None):
     parser.add_argument('--connection-headroom', type=int, default=8, help='includes two private admin slots')
     parser.add_argument('--generated-cave-template', type=Path, help='experimental startup shared cave template')
     parser.add_argument('--persist-generated-cave', action='store_true', help='opt in to retain published cave geometry in the world database')
+    parser.add_argument('--capture-engine', type=Path)
+    parser.add_argument('--capture-sha256')
+    parser.add_argument('--capture-ledger', type=Path)
+    parser.add_argument('--capture-native-qa-validated', action='store_true', help='host attests exact experimental binary passed linked capture QA; disabled otherwise')
     parser.add_argument('--timeout', type=float, default=120)
     args = parser.parse_args(argv)
     state = Path(args.state_dir).absolute()
@@ -2354,6 +2360,11 @@ def main(argv=None):
                              max_players=args.max_players, max_controls=args.max_controls,
                              connection_headroom=args.connection_headroom, cave_template=cave_template,
                              persist_generated_cave=args.persist_generated_cave)
+        capture_options=(args.capture_engine,args.capture_sha256,args.capture_ledger,args.capture_native_qa_validated)
+        if any(capture_options):
+            if not all(capture_options):raise ValueError('Complete validated capture configuration required')
+            from .actor_capture import Service,Engine
+            server.capture_service=Service(args.capture_ledger,Engine(args.capture_engine,args.capture_sha256),validated_native=True)
         server.start()
         if args.listen is not None:
             import ssl
