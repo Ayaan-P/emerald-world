@@ -130,6 +130,7 @@ def inspect_runtime(server):
     return dict(capabilities={key:dict(description=c.description,arguments=c.arguments,outcome=c.outcome,actor_kinds=c.kinds) for key,c in CAPABILITIES.items()},
         available_actions=server.opportunities.actor_actions()[:32],actors={a:('canonical' if r.get('canonical') else 'world') for a,r in actor_records(server).items()},
         navigation=discover_navigation(server),carried_props=inventory(server),
+        object_player_use='Optional state.world_object_player_use maps prop ID to one advertised world_object_actions action ID. Native A dispatches the same actor_interact(object_id,action,own_state) handler through normal staging. No map: text only. Effects are bounded own-state/text/graphics/one-cell movement, not bags/items.',
         result_references='Use {result: earlier_step_id, key: scalar_result_key}. Reserved key tool_receipt yields that successful step durable receipt sequence.',
         plans=[dict(actor=actor,plan=row['plan'],receipts=[dict(step=s,status=status,result=json.loads(result),seq=seq)
             for s,status,result,seq in server.db.execute('SELECT step,status,result,seq FROM actor_tool_receipts WHERE actor=? AND plan=? ORDER BY seq',(actor,row['plan']['id']))])
