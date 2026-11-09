@@ -618,6 +618,9 @@ class WorldServer:
         from .shared_outbreaks import line as outbreak_line
         outbreak=outbreak_line(self,conn)
         if outbreak:lines.append(outbreak)
+        from .actor_bulletins import line as bulletin_line
+        bulletin=bulletin_line(self,conn)
+        if bulletin:lines.append(bulletin)
         from .actor_weather import line as weather_line
         weather=weather_line(self,conn)
         if weather:lines.append(weather)
@@ -676,6 +679,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                world_bulletin_capable=role.endswith('WORLDTV1')
+                if world_bulletin_capable:role=role[:-8]
                 rental_capable=role.endswith('RENTALS1')
                 if rental_capable:role=role[:-8]
                 contest_guest_capable=role.endswith('CONTEST1')
@@ -842,6 +847,7 @@ class WorldServer:
                 conn['rental_capable']=rental_capable
                 conn['contest_guest_capable']=contest_guest_capable
                 conn['outbreak_capable']=outbreak_capable
+                conn['world_bulletin_capable']=world_bulletin_capable
                 conn['outdoor_weather_capable']=outdoor_weather_capable and cave_xl
                 conn['character_tutor_capable']=character_tutor_capable and character_capable
                 conn['character_shop_capable']=character_shop_capable and character_capable
