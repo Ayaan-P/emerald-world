@@ -22,8 +22,9 @@ import re
 
 def validate_objects(objects):
     """Small static NPC catalog and literal text, never engine scripts or pointers."""
-    if type(objects) is not list or len(objects) > 8:
-        raise ValueError('objects must be a list of at most 8 entries')
+    if type(objects) is not list or len(objects) > 64:
+        raise ValueError('world catalog must contain at most 64 objects')
+    scope_counts = {}
     seen, locations = set(), set()
     for obj in objects:
         if type(obj) is not dict or set(obj) - {'region_revision','kind','portable'} != {'id', 'group', 'num', 'x', 'y', 'gfx', 'text'}:
@@ -48,6 +49,9 @@ def validate_objects(objects):
         if (type(text) is not str or not re.fullmatch(r"[A-Za-z0-9 .,!?'-]+(?:\n[A-Za-z0-9 .,!?'-]+)?", text)
                 or any(len(line) > 28 for line in text.split('\n'))):
             raise ValueError('object text needs one or two literal lines of at most 28 characters')
+        scope=(obj['group'],obj['num'],obj.get('region_revision'))
+        scope_counts[scope]=scope_counts.get(scope,0)+1
+        if scope_counts[scope]>8:raise ValueError('at most eight objects per map and revision')
         location = tuple(obj[k] for k in ('group', 'num', 'x', 'y')) + (obj.get('region_revision'),)
         if location in locations:
             raise ValueError('duplicate object position')

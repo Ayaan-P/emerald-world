@@ -578,7 +578,11 @@ class WorldServer:
             lines += friends
         lines += ['TILE ' + ' '.join(map(str, tile)) for tile in self.tiles
                   if tuple(tile[:2]) not in (self.cave_map, self.wilds_map)]
+        from .characters import records as character_records
+        scoped_characters=character_records(self.module_state) if conn.get('character_capable') else {}
         for obj in self.objects:
+            state=conn.get('state')
+            if not state or state[:2]!=[obj['group'],obj['num']]:continue
             from .character_walks import walk_for,walking
             walk=walk_for(self.module_state,obj['id'])
             if walking(self.module_state,obj['id']) and not conn.get('character_walk_capable'):continue
@@ -592,7 +596,7 @@ class WorldServer:
                          + ' ' + obj['text'].encode('ascii').hex())
             if conn.get('character_capable'):
                 from .characters import records
-                character = records(self.module_state).get(obj['id'])
+                character = scoped_characters.get(obj['id'])
                 if character and character['status'] == 'active':
                     lines.append('CHARACTER ' + obj['id'] + ' ' + str(character['version']))
                     from .actor_shops import line as shop_line
@@ -1910,6 +1914,16 @@ class WorldServer:
                     result=dict(ok=True,source=stored[0],sha256=expected)
             elif request.get('command') == 'inspect':
                 result = self.inspect()
+                if request.get('chunked') is True:
+                    from .inspection_transfer import begin
+                    try:result=begin(conn,result)
+                    except ValueError as exc:result=dict(ok=False,error=str(exc))
+                elif len(json.dumps(result,ensure_ascii=True).encode())+1>MAX_QUEUE:
+                    result=dict(ok=False,error='Inspection needs chunked transfer; use the updated host client')
+            elif request.get('command') == 'inspect_chunk':
+                from .inspection_transfer import next_chunk
+                try:result=next_chunk(conn,request)
+                except ValueError as exc:result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'world_rules':
                 try:
                     action = request.get('action')

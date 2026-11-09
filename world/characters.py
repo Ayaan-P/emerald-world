@@ -19,8 +19,8 @@ def _text(value, maximum):
 
 def records(state):
     value = state.get(KEY, {}) if type(state) is dict else {}
-    if type(value) is not dict or len(value) > 8:
-        raise ValueError('at most eight persistent characters')
+    if type(value) is not dict or len(value) > 32:
+        raise ValueError('at most 32 persistent world characters')
     species = set(json.loads(Path(__file__).with_name('expansion_species.json').read_text())['species'].values())
     for identity, character in value.items():
         if type(identity) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}', identity):
@@ -135,7 +135,7 @@ def author_contract():
         'evidence': 'up to eight exact public world_memory sequence IDs; creation may have none; rationale is authored interpretation, never proof of battles or catches',
         'runtime': 'character_history is an ordered bounded batch after state.character_history_cursor. Process every event once, then acknowledge through in that state key. Empty or has_more does not mean history is absent. Preserve the cursor across script replacements. world_history is only the recent tail.',
         'interaction_order': 'Native dialogue emits INTERACT before battle consent. Keep meet-memory outside the versioned character record if a battle is offered; moving or revising the character during that prompt intentionally invalidates the challenge.',
-        'limits': 'eight public fictional characters, four goals, relationships only to other registered NPC identities; never store private player teams or save fields',
+        'limits': '32 public fictional characters within the unchanged state budget, four goals, relationships only to other registered NPC identities; never store private player teams or save fields',
         'native_battles': 'not available through this character registry alone; do not claim a battle occurred or a team is native until the battle adapter confirms it',
     }
 
