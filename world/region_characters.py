@@ -28,7 +28,7 @@ def validate_region_objects(server, objects, state):
         if row[1] is None and (cave.version!=16 or not server.archive_generated_areas):
             raise ValueError('only archived XL maps may host shared-slot characters')
         placements.setdefault(revision,(cave,set()))[1].add((obj['x'],obj['y']))
-        expected=server.cave_map if cave.version==1 else server.wilds_map if cave.version==16 else None
+        expected=server.cave_map if cave.version in (1,10) else server.wilds_map if cave.version==16 else None
         if expected is None or (obj['group'],obj['num'])!=expected:
             raise ValueError('unsupported character region geometry')
         x,y=obj['x'],obj['y']

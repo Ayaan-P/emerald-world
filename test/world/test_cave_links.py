@@ -57,3 +57,49 @@ class CaveLinkTests(unittest.TestCase):
   self.s.close();self.f.f.server=self.f.f.open();self.s=self.f.f.server;self.f.server=self.s
   self.assertEqual(self.s.db.execute('SELECT source,destination FROM cave_links WHERE object=?',('door',)).fetchone(),(source,target))
   self.assertEqual(self.s.db.execute("SELECT count(*) FROM events WHERE kind='cave_link_arrival'").fetchone()[0],0)
+
+class HabitatLinkTests(CaveLinkTests):
+ def setUp(self):
+  super().setUp()
+  import hashlib,time
+  from world.shared_cave import SharedCave
+  raw=self.s.db.execute('SELECT template FROM generated_area_archive WHERE identity=?',(self.f.f.b,)).fetchone()[0]
+  population=bytes([25])+bytes([22,1,18])*12
+  blob=b'EWGMAP10'+bytes([2])+population+raw[8:]
+  cave=SharedCave(blob);self.habitat=cave.identity;self.population=population
+  with self.s.db:
+   self.s.db.execute('INSERT INTO generated_area_archive VALUES(?,?,?,?,?)',(cave.identity,'Habitat','cave',blob,int(time.time())))
+   self.habitat_place=self.s._pin_region(cave.identity)['place_id']
+   self.s.db.execute('DELETE FROM cave_links WHERE object=?',('door',))
+  from world.actor_observation import observe
+  entry=next(e for e in observe(self.s,'harbor_guide',{},dict(radius=4))['entities'] if e['id']=='door')
+  with self.s.db:cave_links.install(self.s,'harbor_guide',{},dict(object='door',revision=entry['program_revision'],place=self.habitat_place,destination=self.habitat))
+  self.f.f.b=self.habitat
+ def connect(self,name):
+  token=self.s.create_identity(name)['token'];conn=dict(id=None,out=bytearray(),closing=False,state=None,seq=0,sock=object())
+  self.assertIn('WELCOME',self.f.send(conn,f'HELLO 1 {name} {token} SOCIALCAVE10REGION1CHAR1CHARQUEST1CHARREG1WORLDOBJ1CAVELINK1CAVELINKW1'))
+  self.f.state(conn,0,9,8,8);self.f.send(conn,'REGION SELECT '+self.f.f.ra['place_id']);self.f.send(conn,'CAVE GET');self.f.send(conn,'CAVE ACK '+self.f.f.a)
+  self.f.state(conn,*self.s.cave_map,3,3);return conn
+ def test_old_link_client_cannot_commit_wildlife_destination(self):
+  a=self.connect('Legacy');a['cave_link_wildlife']=False
+  wire=self.f.send(a,f'INTERACT_REGION {a["seq"]+1} door {self.f.f.a}')
+  self.assertNotIn('LINK OFFER',wire);self.assertEqual(a['cave_ack'],self.f.f.a)
+ def test_habitat_population_prop_scope_and_reconnect(self):
+  a=self.connect('Explorer');seq=a['seq']+1
+  self.f.send(a,f'INTERACT_REGION {seq} door {self.f.f.a}');frames=self.f.send(a,f'LINK ACCEPT {seq}')
+  self.assertIn(self.population.hex(),frames)
+  self.f.send(a,f'LINK ACK {seq} {self.habitat}');self.f.state(a,*self.s.cave_map,1,1);self.f.send(a,f'LINK ARRIVED {seq} {self.habitat}')
+  self.assertEqual(self.s._connection_cave(a).wildlife,self.population)
+  # Real validated placement of a persistent return object on this cave geometry.
+  back=dict(self.obj,id='return_door',region_revision=self.habitat,x=4,y=3)
+  self.f.commit(dict(state=self.s.module_state,tiles=[],objects=self.s.objects+[back]))
+  self.assertIsNone(self.s.module_error)
+  self.f.state(a,*self.s.cave_map,3,3)
+  self.assertIn('return_door',self.s._snapshot(a))
+  # Reconnect never asserts arrival or restores guessed readiness; reselecting
+  # the persisted exact region downloads the same wildlife.
+  self.s.close();self.f.f.server=self.f.f.open();self.s=self.f.f.server;self.f.server=self.s
+  b=self.connect('Reconnect')
+  self.f.state(b,0,9,8,8);self.f.send(b,'REGION SELECT '+self.habitat_place)
+  self.assertIn(self.population.hex(),self.f.send(b,'CAVE GET'))
+  self.assertNotEqual(b.get('cave_ack'),self.habitat)

@@ -653,6 +653,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                cave_link_wildlife=role.endswith('CAVELINKW1')
+                if cave_link_wildlife:role=role[:-10]
                 cave_link_capable=role.endswith('CAVELINK1')
                 if cave_link_capable:role=role[:-9]
                 world_props_capable=role.endswith('WORLDOBJ1')
@@ -799,6 +801,7 @@ class WorldServer:
                 conn['character_region_capable'] = character_region_capable
                 conn['character_pokemon_capable']=character_pokemon_capable and character_capable
                 conn['cave_link_capable']=cave_link_capable and region_capable and world_props_capable
+                conn['cave_link_wildlife']=cave_link_wildlife and conn['cave_link_capable'] and cave_expansion
                 conn['world_props_capable']=world_props_capable and character_region_capable
                 conn['character_state_capable']=character_state_capable and conn['character_pokemon_capable']
                 conn['character_capable'] = character_capable
