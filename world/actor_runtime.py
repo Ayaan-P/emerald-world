@@ -52,6 +52,9 @@ CAPABILITIES={
 from .actor_navigation import start as navigate, poll as navigation_poll
 CAPABILITIES['world.navigate']=Capability('Navigate this world-owned actor to a destination using actual immutable geometry.',dict(revision='exact generated-map revision',x='destination integer',y='destination integer'),'Actual authority arrival receipt; never client rendering or canonical/cross-map travel.',navigate,navigation_poll,('world',))
 
+from .actor_observation import observe
+CAPABILITIES['world.observe']=Capability('Inspect connected local geometry and public world objects at this actor current authoritative position.',dict(radius='integer 1..4 cardinal steps'),'Dated local snapshot only; no player/private data, inferred encounters or rendered eyesight.',observe,None,('world',))
+
 def actor_records(server):
     from .character_reactions import actors
     rows=actors(server.module_state)

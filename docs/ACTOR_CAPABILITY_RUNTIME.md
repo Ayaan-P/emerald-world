@@ -60,3 +60,11 @@ One pending capability owns an actor's execution at a time; dependent steps wait
 Current limits are existing 31/127 immutable supported generated maps and at most 64 cardinal steps, never original Hoenn geometry, original cast relocation, cross-map travel or client-rendered proof. Other actors choose their own plans. No canonical actor can invoke navigation on an unrelated world actor through a target parameter.
 
 Additional authority tests choose destinations without path input, route around another NPC, run a second actor to a different destination, pause for a newly occupied next tile, restart mid-journey, and check unreachable/interrupted staging produces no arrival. They execute the compiled existing reducer through real authority commit validation; sandbox subprocess execution and rendered motion remain integration QA, not claimed by these fixtures.
+
+## Local observation after actions
+
+`world.observe(radius)` is a world-owned actor capability with radius 1..4. It reads the actor's actual committed position and exact archived geometry at execution, rather than accepting a caller-supplied location or revision. It reports connected nearby floor, boundary obstacles and public objects on that same map/revision. Walls stop expansion. The result includes its authority revision, actor version and coordinates; it is a historical snapshot, not a guarantee that the scene remains unchanged.
+
+Compose navigation followed by observation using `after`, then let the existing outcome reaction author choose a new plan from the returned facts. No handcrafted route or canned observation is needed. Results persist across restart and can supply scalar references (such as revision/x/y) to later steps. This primitive does not report player identities, occupancy, private relationships, object dialogue, encounters or Pokémon sightings. It does not infer physical eyesight, canonical actor locations or cross-map presence. Other existing author context remains available; this adapter is local sensing, not a global fog-of-war rewrite.
+
+Tests cover two actors' different neighborhoods, an unseen wall hiding the area behind it, exact revision separation, actual navigation-to-observation composition and durable snapshots after restart. No live provider or rendered game validation is implied.
