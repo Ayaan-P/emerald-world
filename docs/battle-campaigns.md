@@ -44,3 +44,34 @@ app f484577b / native f7a81331. Maya must reconcile release fixes and perform li
 native, UI, two-client and save/reconnect QA before integrating. No merge/release.
 Fixtures drive actual authenticated challenge/result dispatch and private guild
 commands, but do not run rendered battles or a live provider.
+
+## Player-chosen preparation (follow-up)
+
+Each node may additionally contain `preparation`, a dictionary of up to four
+choice IDs. Each choice supplies `{actor,items,move}`: an existing world NPC ID,
+up to eight distinct item IDs from the discovered retail catalog, and a move ID
+from the tutor catalog (0 means no tutoring). At least one service is required.
+The author can provide different preparation at different branches using the same
+ordinary game services. There are no prescribed builds, named campaigns or teams.
+
+After choosing a route, `/guild campaign status` lists preparation and
+`/guild campaign prepare OPTION` selects it. The player visits the named NPC;
+the ordinary native R Shop / L Tutor prompts show that save's selected offering.
+Shop purchases use actual native money, prices, bag capacity and items. Tutoring
+opens the native party selection/eligibility/replacement flow. No server chooses
+a party member, edits a save, delivers a Pokemon or claims a move was learned.
+
+Selections survive restart and remain private to the authenticated trainer and
+save lineage. Other players see the ordinary NPC catalog. A new route, leaving,
+or completion removes the campaign override, not any items/moves legitimately
+acquired through native gameplay. Players may switch preparation while between
+battles; this is not a scarce currency, exclusive permanent class, single-use
+reward or enforced roguelike attrition system. Shops have normal unlimited retail;
+tutoring retains the existing free repeatable service. The original shop/tutor
+catalog is never overwritten. In-flight native menus keep their existing owned
+scratch buffers and normal exit/restore behavior.
+
+This follow-up is stacked on #345, still pinned to native #40, not RC12. Fixtures
+feed actual personalized authority rows into the pinned native C parser/menu
+components, then test save isolation, restart and normal battle-to-next-route
+transition. Rendered party/shop gameplay and integration with RC12 remain Maya's QA.

@@ -15,6 +15,10 @@ def configure(server,actor,row,args):
  return dict(outcome='tutoring_offered' if args['move'] else 'tutoring_closed',revision=seq,move=args['move'])
 def line(server,conn,actor,version):
  if not conn.get('character_tutor_capable'):return None
+ from .campaign_preparation import offer
+ personal=offer(server,conn,actor)
+ if personal and personal['move']:
+  return 'CHARACTER_TUTOR '+' '.join(map(str,[actor,version,personal['revision'],personal['move']]))
  saved=server.db.execute('SELECT revision,move FROM actor_tutors WHERE actor=?',(actor,)).fetchone()
  if not saved or not saved[1]:return None
  return 'CHARACTER_TUTOR '+' '.join(map(str,[actor,version,*saved]))
