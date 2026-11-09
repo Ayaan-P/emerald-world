@@ -31,6 +31,8 @@ class TravelRosterTests(unittest.TestCase):
         self.server.db.execute('CREATE TABLE identities (id TEXT, token TEXT)')
         self.server.world_rules = WorldRules(self.server.db)
         self.server.host_controls = HostControls(self.server.db)
+        from world.canonical_scenes import CanonicalScenes
+        self.server.cast_scenes = CanonicalScenes(self.server)
         self.server.max_players = 64
 
     def connect(self, name, role='SOCIALTRAVELCHAT', token=None):

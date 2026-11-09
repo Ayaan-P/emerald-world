@@ -10,6 +10,7 @@ import re
 KEY = 'world_characters'
 FIELDS = {'version', 'name', 'role', 'goals', 'relationships', 'team', 'status',
           'object_id', 'evidence', 'reason'}
+BATTLE_PORTRAITS = ('scientist', 'ruin_maniac', 'ranger_m', 'ranger_f', 'brendan', 'may')
 
 
 def _text(value, maximum):
@@ -25,8 +26,11 @@ def records(state):
     for identity, character in value.items():
         if type(identity) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}', identity):
             raise ValueError('invalid character identity')
-        if type(character) is not dict or not FIELDS <= set(character) or set(character)-FIELDS-{'offer'}:
+        if type(character) is not dict or not FIELDS <= set(character) or set(character)-FIELDS-{'offer','services','battle_portrait','intentions'}:
             raise ValueError('invalid character fields')
+        if ('battle_portrait' in character and
+                (type(character['battle_portrait']) is not str or character['battle_portrait'] not in BATTLE_PORTRAITS)):
+            raise ValueError('unsupported character battle portrait')
         if type(character['version']) is not int or not 1 <= character['version'] <= 2**31-1:
             raise ValueError('invalid character version')
         _text(character['name'], 32)
@@ -38,6 +42,9 @@ def records(state):
             validate_offer(character['offer'])
             if character['status'] != 'active':
                 raise ValueError('only active characters may offer an expedition')
+        services=character.get('services',[])
+        if type(services) is not list or len(services)>1 or any(service!='guide' for service in services):
+            raise ValueError('unsupported character service')
         goals = character['goals']
         if type(goals) is not list or len(goals) > 4:
             raise ValueError('invalid character goals')
@@ -53,13 +60,25 @@ def records(state):
         team = character['team']
         if type(team) is not list or not 1 <= len(team) <= 6:
             raise ValueError('character team must contain one to six Pokemon')
+        identified=any(type(m) is dict and 'individual' in m for m in team)
+        individuals=set()
         for mon in team:
-            if type(mon) is not dict or set(mon) != {'species', 'level'}:
+            if type(mon) is not dict or set(mon) != ({'species','level','individual'} if identified else {'species','level'}):
                 raise ValueError('invalid character team member')
+            if identified:
+                key=mon['individual']
+                if type(key) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}',key) or key in individuals:raise ValueError('distinct stable companion identities required')
+                individuals.add(key)
             if type(mon['species']) is not int or mon['species'] not in species:
                 raise ValueError('unknown character species')
             if type(mon['level']) is not int or not 1 <= mon['level'] <= 100:
                 raise ValueError('invalid character level')
+        tasks=character.get('intentions',[])
+        if type(tasks) is not list or len(tasks)>3:raise ValueError('At most three practice intentions')
+        seen=set()
+        for task in tasks:
+            if type(task) is not dict or set(task)!={'id','kind','target','reason'} or task['kind']!='practice' or type(task['id']) is not str or not re.fullmatch('[a-z][a-z0-9_]{0,23}',task['id']) or task['id'] in seen or task['target'] not in individuals:raise ValueError('Practice intention must name an owned identified companion')
+            _text(task['reason'],160);seen.add(task['id'])
         evidence = character['evidence']
         if (type(evidence) is not list or len(evidence) > 8 or
                 any(type(seq) is not int or seq < 1 for seq in evidence) or
@@ -78,6 +97,8 @@ def validate_transition(before, after, objects, db):
     for identity, character in new.items():
         if (character['status'] == 'active') != (identity in visible):
             raise ValueError('active characters must have a rendered object; away/retired must not')
+        from .character_companions import validate as validate_companions
+        validate_companions(db,identity,character)
         previous = old.get(identity)
         if previous == character:
             continue
@@ -102,8 +123,11 @@ def validate_transition(before, after, objects, db):
 def author_contract():
     return {
         'state_key': KEY,
+        'companions': 'optional individual ID on every team slot; stable native personality/fictional owner/15 IVs across level changes and reordering; species immutable until supported evolution adapter; trusted isolated practice receipts may preserve full EXP/moves through CHARPK2, never infer victories/catches from client reports',
         'record_fields': sorted(FIELDS),
-        'optional_offer': {'id':'stable offer ID','revision':'positive revision, increase when destination/count changes','kind':'expedition','place_id':'native:canonical map','target':'1..50 guild members'},
+        'optional_offer': {'id':'stable offer ID','revision':'positive revision, increase when destination/count changes','kind':'expedition','place_id':'native:canonical map or area:UUID with required region_revision64hex','target':'1..50 guild members','region_revision':'required64hex only for area:UUID destinations'},
+        'optional_services':['guide: opts this NPC into adjacent private survey guidance through /explore guide NPC_ID'],
+        'optional_battle_portrait': {'choices': list(BATTLE_PORTRAITS), 'default': 'scientist', 'scope': 'public authored NPC presentation, never inferred from human identity or field sprite'},
         'offer_consent':'CHARQUEST1 native explicit acceptance; guild leader only, existing chronicle ON required, never toggle publication; completion uses existing guild authority',
         'team_member': {'species': 'enabled numeric species ID', 'level': 'integer 1..100'},
         'presence': 'active requires a matching top-level objects entry; away/retired must not render',
@@ -148,10 +172,44 @@ def challenge(server, conn, fields):
     delta = {1:(0,1), 2:(0,-1), 3:(-1,0), 4:(1,0)}.get(state[4])
     if delta is None or (state[2]+delta[0], state[3]+delta[1]) != (obj['x'], obj['y']):
         raise ValueError('character challenge requires adjacent facing player')
+    persistent=all('individual' in mon for mon in character['team'])
+    if persistent and not conn.get('character_pokemon_capable'):raise ValueError('persistent companion battle needs matched CHARPK1 client')
     frozen = json.loads(json.dumps({'seq': seq, 'id': fields[2], 'version': version, 'team': character['team']}))
+    identity_fields = []
+    if conn.get('character_identity_capable') or conn.get('character_identity2_capable'):
+        # Freeze public authored identity at the same admission boundary as the
+        # team. These bytes are a bounded glyph projection, never native text
+        # controls, inferred gender, or a human trainer/save identity.
+        import string
+        glyphs = string.ascii_letters + string.digits + " .,!?'-"
+        name = ''.join(c if c in glyphs else ' ' for c in character['name']).strip()
+        portrait = character.get('battle_portrait', 'scientist')
+        if not name or type(portrait) is not str or portrait not in BATTLE_PORTRAITS:
+            raise ValueError('character battle identity unavailable')
+        frozen.update(name=name, portrait=portrait)
+        identity_fields = [name.encode('ascii').hex(), portrait]
+    if persistent:
+        from .character_companions import descriptor
+        frozen['individual_values']=descriptor(server,fields[2],frozen['team'])
+        from .character_training import battle_values
+        full=battle_values(server,fields[2],frozen['team'])
+        if full:
+            if not conn.get('character_state_capable'):raise ValueError('Trained companion requires matched CHARPK2 client')
+            frozen['full_values']=full
     conn['character_pending'] = frozen
     conn['seq'] = seq
-    return 'CHARACTER_BATTLE_V1 ' + ' '.join(map(str, [seq, fields[2], version, len(frozen['team']),
+    if conn.get('character_identity2_capable'):
+        # Identity and companion state share an explicitly negotiated schema.
+        # V2 historically names two independent payloads and cannot encode both.
+        mode = 3 if frozen.get('full_values') else 2 if persistent else 1
+        payload = frozen.get('full_values') or frozen.get('individual_values') or [value for mon in frozen['team'] for value in (mon['species'],mon['level'])]
+        return 'CHARACTER_BATTLE_V4 '+' '.join(map(str,[seq,fields[2],version,len(frozen['team']),*identity_fields,mode,*payload]))+'\n'
+    if frozen.get('full_values'):
+        return 'CHARACTER_BATTLE_V3 '+' '.join(map(str,[seq,fields[2],version,len(frozen['team']),*frozen['full_values']]))+'\n'
+    if persistent:
+        return 'CHARACTER_BATTLE_V2 '+' '.join(map(str,[seq,fields[2],version,len(frozen['team']),*frozen['individual_values']]))+'\n'
+    prefix = 'CHARACTER_BATTLE_V2 ' if identity_fields else 'CHARACTER_BATTLE_V1 '
+    return prefix + ' '.join(map(str, [seq, fields[2], version, len(frozen['team']), *identity_fields,
         *[value for mon in frozen['team'] for value in (mon['species'], mon['level'])]])) + '\n'
 
 
@@ -207,6 +265,9 @@ def history_feed(db, state):
         elif original['event'] == 'character_changed':
             character = original['after']
             event.update(character_version=character['version'], character_status=character['status'])
+            before=(original.get('before') or {}).get('relationships',{})
+            after=character.get('relationships',{})
+            event['relationship_changes']={target:after.get(target) for target in sorted(before.keys()|after.keys()) if before.get(target)!=after.get(target)}
         elif original['event'] == 'terrain_changed':
             event['changed_cell_count'] = len(original['tiles'])
         elif original['event'] == 'guild_goal_completed':
@@ -229,7 +290,7 @@ def validate_history_cursor(before, after, db):
 
 def validate_offer(offer):
     from .build_catalog import catalog_maps
-    if type(offer) is not dict or set(offer) != {'id','revision','kind','place_id','target'}:
+    if type(offer) is not dict or set(offer)-{'region_revision'} != {'id','revision','kind','place_id','target'}:
         raise ValueError('invalid character expedition offer')
     if type(offer['id']) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}',offer['id']):
         raise ValueError('invalid offer identity')
@@ -238,6 +299,11 @@ def validate_offer(offer):
     if offer['kind'] != 'expedition' or type(offer['target']) is not int or not 1 <= offer['target'] <= 50:
         raise ValueError('invalid offer objective')
     place=offer['place_id']
+    if type(place) is str and place.startswith('area:'):
+        if not re.fullmatch(r'area:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}',place) or type(offer.get('region_revision')) is not str or not re.fullmatch('[0-9a-f]{64}',offer['region_revision']):
+            raise ValueError('generated offer requires exact place and region revision')
+        return offer
+    if 'region_revision' in offer:raise ValueError('native offers must omit region_revision')
     if type(place) is not str or not place.startswith('native:'):
         raise ValueError('offer destination must be a native map')
     name=place[7:]
@@ -296,9 +362,16 @@ def accept_offer(server, conn, fields):
         if current and not current[0]:raise CharacterOfferError('ACTIVE')
         count=server.db.execute('SELECT COUNT(*) FROM guild_members WHERE guild_id=?',(guild[0],)).fetchone()[0]
         if offer['target']>count:raise CharacterOfferError('MEMBERS')
+    place=None
+    if offer['place_id'].startswith('area:'):
+        from .generated_goals import resolve_place,destination_available
+        if not conn.get('place_quest_capable') or not destination_available(server,conn,offer['place_id'],offer['region_revision']):
+            raise CharacterOfferError('UNAVAILABLE')
+        try:place=resolve_place(server,offer['place_id'],offer['region_revision'])
+        except GuildError:raise CharacterOfferError('UNAVAILABLE') from None
     try:
-        server.guilds.expedition(conn['id'],['start',offer['place_id'][7:],str(offer['target'])],
-                                character_offer=(fields[2],offer['id'],revision))
+        server.guilds.expedition(conn['id'],['start','here' if place else offer['place_id'][7:],str(offer['target'])],
+                                character_offer=(fields[2],offer['id'],revision),place=place)
     except GuildError as exc:
         raise CharacterOfferError('REFUSED') from exc
     conn['seq']=seq

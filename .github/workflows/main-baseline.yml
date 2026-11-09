@@ -16,21 +16,59 @@ concurrency:
 
 jobs:
   focused-regressions:
-    runs-on: ubuntu-24.04
+    # Match the supported glibc 2.35 host without changing namespace policy.
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
       - name: Checkout source without stored credentials
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # official v4
         with:
           persist-credentials: false
-          submodules: true
+          submodules: false
+      - name: Require explicitly scoped private engine access
+        env:
+          EW_ENGINE_READ_KEY: ${{ secrets.EW_ENGINE_READ_KEY }}
+        run: |
+          if [ -z "$EW_ENGINE_READ_KEY" ]; then
+            printf '%s\n' '::error::Configure EW_ENGINE_READ_KEY with the approved read-only deploy key for Ayaan-P/pokeemerald-expansion-native. Fork pull requests do not receive this secret and require a separately reviewed trusted run. See docs/RC12_BUILD_RELEASE.md.'
+            exit 1
+          fi
+      - name: Read the committed engine pin
+        id: engine-pin
+        shell: bash
+        run: |
+          entry=$(git ls-tree HEAD -- engines/expansion-native)
+          read -r mode type sha path <<< "$entry"
+          if [[ "$mode" != 160000 || "$type" != commit || ! "$sha" =~ ^[0-9a-f]{40}$ || "$path" != engines/expansion-native ]]; then
+            printf '%s\n' '::error::Expected a committed 40-hex engine gitlink at engines/expansion-native.'
+            exit 1
+          fi
+          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+      - name: Checkout the exact private engine without stored credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # official v4
+        with:
+          repository: Ayaan-P/pokeemerald-expansion-native
+          ref: ${{ steps.engine-pin.outputs.sha }}
+          path: engines/expansion-native
+          ssh-key: ${{ secrets.EW_ENGINE_READ_KEY }}
+          ssh-strict: true
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Select the supported Python runtime (22.04 defaults to 3.10)
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # official v5
+        with:
+          python-version: '3.11'
+      - name: Install real mechanic sandbox prerequisite
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
       - name: Generate map constants for production C fixtures
         run: |
           make -C tools/mapjson
           tools/mapjson/mapjson groups emerald data/maps/map_groups.json data/maps include/constants
           tools/mapjson/mapjson layouts emerald data/layouts/layouts.json data/layouts include/constants
       - name: Protocol and actual-source C regressions (no native game sessions)
-        run: PYTHONPATH=.:test/world python3 -m unittest test_coop_catching test_tag_coop test_link_protocol test_link_sessions test_trainer_abort_wire_regression test_link_battle_payloads test_coop_controller_repro test_native_save_commit test_native_save_component test_native_save_io test_trade_save_commit test_coop_faint_friendship test_coop_completion_echo test_coop_completion_peers test_link_trade_payloads test_trade_storage_access test_coop_engine test_dedicated test_shared_world_client test_hosting test_hosting_session test_coop_private_return test_crossed_tag_activity test_crossed_tag_transport test_launcher_instance test_hosting_backup test_linux_package test_native_generated_map test_generated_map_import test_generated_map_save_guard test_shared_generated_cave test_world_cave_wire test_native_cave_flow test_cave_hello test_cave_activity_guard test_cave_presence_guard test_cave_exit_warp test_cave_collision test_generated_cave_encounters test_generated_cave_persistence test_cave_blueprint test_author_cave test_shared_cave_socket test_publish_shared_cave test_story_rally test_world_sprite_capacity test_extended_peer_window test_world_entity_capacity test_save_isolation test_presence_batching test_world_memory test_characters test_character_history_flow test_character_chapters test_character_actions test_region_characters test_route_landscape test_author_routes test_route_character_lifecycle test_character_offers test_trainer_context test_continue_area test_history_area_author test_region_admission test_native_regions test_world_journal test_guild_world_memory test.test_guilds test_generated_expeditions test_character_walks test_frontier_outposts test_character_rebinding test_settlement_plans test_landmark_survey test_landmark_characters test_chat test_setup_react_launcher test.test_build_expansion_setup test_expansion_save_copy test.test_rc11_kanto_trainers -v
+        run: PYTHONPATH=.:test/world python3 -m unittest test_coop_catching test_tag_coop test_link_protocol test_link_sessions test_trainer_abort_wire_regression test_link_battle_payloads test_coop_controller_repro test_native_save_commit test_native_save_component test_native_save_io test_trade_save_commit test_coop_faint_friendship test_coop_completion_echo test_coop_completion_peers test_link_trade_payloads test_trade_storage_access test_coop_engine test_dedicated test_shared_world_client test_hosting test_hosting_session test_coop_private_return test_crossed_tag_activity test_crossed_tag_transport test_launcher_instance test_hosting_backup test_linux_package test_native_generated_map test_generated_map_import test_generated_map_save_guard test_shared_generated_cave test_world_cave_wire test_native_cave_flow test_cave_hello test_cave_activity_guard test_cave_presence_guard test_cave_exit_warp test_cave_collision test_generated_cave_encounters test_generated_cave_persistence test_cave_blueprint test_author_cave test_shared_cave_socket test_publish_shared_cave test_story_rally test_world_sprite_capacity test_extended_peer_window test_world_entity_capacity test_save_isolation test_presence_batching test_world_memory test_characters test_character_history_flow test_character_chapters test_character_actions test_region_characters test_route_landscape test_author_routes test_route_character_lifecycle test_character_offers test_trainer_context test_continue_area test_history_area_author test_region_admission test_native_regions test_world_journal test_guild_world_memory test.test_guilds test_generated_expeditions test_character_walks test_frontier_outposts test_character_rebinding test_settlement_plans test_landmark_survey test_landmark_characters test_chat test_setup_react_launcher test.test_build_expansion_setup test.test_ci_engine_checkout test_expansion_save_copy test.test_rc11_kanto_trainers test_private_commands test_opportunities test_cooperative_mysteries test_field_relays test_field_flags test_activity_board test_mounted_races test_core_story test_content_ui.ContentUI -v
 
   linux-build:
     runs-on: ubuntu-24.04

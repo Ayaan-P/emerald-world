@@ -81,6 +81,24 @@ class CharacterActionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'character changed before action admission'):
             scope['update'](staging_context, stale)
 
+    def test_real_sandbox_services_action_keeps_checkpoint_bootstrap(self):
+        from world.mechanics import MechanicRuntime
+        actions=deepcopy(self.actions)
+        actions[0]['changes']['services']=['guide']
+        source=compile_actions(actions,self.context)
+        runtime=MechanicRuntime(self.server.root)
+        candidate=runtime.from_source(source)
+        context={'tick':0,'players':[],'interactions':[],'revision':0}
+        staged=runtime.run(candidate,context,{})
+        character=staged['state']['world_characters']['field_researcher']
+        self.assertEqual(character['version'],3)
+        self.assertEqual(character['services'],['guide'])
+        self.assertEqual(staged['objects'][0]['num'],16)
+        live=runtime.run(candidate,self.server._context(),self.server.module_state)
+        self.assertEqual(live['state']['world_characters']['field_researcher'],character)
+        self.commit(live,candidate)
+        self.assertIsNone(self.server.module_error)
+
     def test_stale_and_private_evidence_reject_before_compile_or_commit(self):
         for key,value in [('expected_version',1),('evidence',[]),('evidence',[999999])]:
             actions=deepcopy(self.actions);actions[0][key]=value

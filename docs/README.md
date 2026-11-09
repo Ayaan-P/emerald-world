@@ -3,7 +3,8 @@
 ## Current source and player guidance
 
 - [Project README](../README.md): current mainline, published-download distinction, quick start and implemented features versus acceptance.
-- [RC9 scope](RELEASE_RC9.md): current Expansion multiplayer and generated-world package.
+- [RC12 candidate and private source handoff](RC12_BUILD_RELEASE.md): delivered RC11 baseline, frozen build cohort, private-engine access and remaining release gates.
+- [RC9 scope](RELEASE_RC9.md): the older publicly downloadable Expansion package.
 - [React launcher](../launcher-web/README.md): Local/Hosted sessions, generated caves, private saves and lifecycle controls.
 - [RC6 scope](RELEASE_RC6.md): earlier inhabited-area and interactive-adventure boundaries.
 - [RC5 release notes](RELEASE_RC5.md): scope of the published `v0.2.0-rc.5` player package.
@@ -15,8 +16,8 @@
 
 ## Runtime and repository map
 
-- `src/`, `include/`, `data/`: native game logic, structures, scripts and map data.
-- `src/platform/`: native PC runtime, world bridge, generated map support, co-op controllers, chat and field interaction.
+- `engines/expansion-native/`: pinned private Expansion engine source, game data and platform runtime. The app feature cohort is selected by `engines/expansion.mk`.
+- Root `src/`, `include/`, `data/` and `src/platform/`: historical vanilla engine and its native world implementation, not the current Expansion release build.
 - `world/`: Python authority, session lifecycle, profiles, generated-content formats, owner controls and launcher HTTP bridge.
 - `launcher-web/src/`: primary React launcher. The source Tk launcher remains a fallback/operator interface.
 - `scripts/`: asset restoration, clients, packaging and installation.

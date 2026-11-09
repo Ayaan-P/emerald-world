@@ -1,18 +1,45 @@
 #!/usr/bin/env python3
-"""Build RC10's pinned full native Expansion engine with its presence adapter.
+"""Build the pinned combined Hoenn/Kanto Expansion release cohort.
 
 Only existing development/sysroot inputs are used. No installs or downloads.
 The engine is a separate checkout and no vanilla Pokemon/save ABI is imported.
 """
 import argparse
+from dataclasses import dataclass
 from pathlib import Path
 import shlex
 import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '5cb76554ca986a95230a49d9d34c9cc3ef24388d'
+PIN = 'f7a813317d1b9fec803b48b682f5d74245c79037'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
+
+
+@dataclass(frozen=True)
+class ReleaseConfig:
+    map_version: str = 'combined'
+    regional_state: int = 1
+    kanto_content: int = 1
+    generated_world_regions: int = 0
+    version_suffix: str = 'rc12'
+
+
+# Frozen RC12/13 integration cohort. Candidate only: not an installed release.
+# The paired engine pin is explicit, never inferred from a moving branch.
+RELEASE_CONFIG = ReleaseConfig()
+
+
+def prepare_build_cohort(source, inputs):
+    """Do not reuse native objects from an unknown or different feature cohort."""
+    target = source / 'build/native64'
+    stamp = target / 'ew-release-cohort.txt'
+    value = '\n'.join(inputs) + '\n'
+    if not stamp.is_file() or stamp.read_text() != value:
+        if target.exists():
+            shutil.rmtree(target)
+        target.mkdir(parents=True, exist_ok=True)
+        stamp.write_text(value)
 
 
 def main():
@@ -23,18 +50,16 @@ def main():
     parser.add_argument('--multilib-sysroot', '--multilib-root', type=Path,
                         help='existing extracted libc/GCC multilib root for mandatory ABI probes')
     parser.add_argument('--development', action='store_true',
-                        help='build explicit local RC10 integration changes on top of the verified engine pin')
+                        help='build explicit local integration changes on top of the verified engine pin')
     parser.add_argument('--regional-state', action='store_true',
-                        help='enable experimental regional saves (requires --development)')
+                        help='enable regional saves for a development build (already enabled for release)')
     parser.add_argument('--kanto-content', action='store_true',
-                        help='enable combined Hoenn/Kanto content (requires --regional-state)')
+                        help='enable Kanto in development (requires --regional-state; already enabled for release)')
     parser.add_argument('--jobs', type=int, default=4)
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error('--jobs must be positive')
-    if args.regional_state and not args.development:
-        parser.error('--regional-state requires --development and is not a release cohort')
-    if args.kanto_content and not args.regional_state:
+    if args.development and args.kanto_content and not args.regional_state:
         parser.error('--kanto-content requires --regional-state')
     for flag, path in (('--sysroot', args.sysroot), ('--multilib-sysroot', args.multilib_sysroot)):
         if path is not None and not path.is_dir():
@@ -50,6 +75,12 @@ def main():
                      'Preserve any local engine changes, then run: '
                      'git submodule sync --recursive && git submodule update --init --recursive. '
                      'Use --development only for deliberate local engine integration work.')
+    if not args.development:
+        gitlink = subprocess.check_output(
+            ['git', '-C', str(ROOT), 'rev-parse', 'HEAD:engines/expansion-native'], text=True).strip()
+        if gitlink != PIN:
+            parser.error('release pin mismatch: scripts/build_expansion.py:PIN must equal '
+                         'the committed engines/expansion-native gitlink')
     subprocess.run(['git', '-C', str(source), 'merge-base', '--is-ancestor', PIN, head], check=True)
     if dirty:
         print('Building explicitly requested uncommitted integration sources; not a release artifact.', flush=True)
@@ -126,14 +157,18 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                      'If Bubblewrap failed, check that unprivileged user namespaces are permitted.')
     if args.check:
         return 0
+    regional_state = int(args.regional_state) if args.development else RELEASE_CONFIG.regional_state
+    kanto_content = int(args.kanto_content) if args.development else RELEASE_CONFIG.kanto_content
+    map_version = 'combined' if kanto_content else 'emerald'
     command += ['--', 'make', '-f', str(ROOT / 'engines/expansion.mk'), f'-j{args.jobs}',
-                f'EW_REGION_STATE={int(args.regional_state)}',
-                f'EW_KANTO_CONTENT={int(args.kanto_content)}',
-                *(['MAP_VERSION=combined'] if args.kanto_content else []),
-                'native', 'BITS=64', f'TARGET_CC={compiler}', f'NATIVE_VERSION={PIN[:12]}-rc11.3',
+                f'EW_REGION_STATE={regional_state}', f'EW_KANTO_CONTENT={kanto_content}',
+                f'MAP_VERSION={RELEASE_CONFIG.map_version if not args.development else map_version}',
+                f'GENERATED_WORLD_REGIONS={RELEASE_CONFIG.generated_world_regions}',
+                'native', 'BITS=64', f'TARGET_CC={compiler}', f'NATIVE_VERSION={head[:12]}-{RELEASE_CONFIG.version_suffix}',
                 'build/native64/data_relocations.checked', 'build/native64/data_layout.checked',
                 'build/native64/battle_script_operands.checked']
     print(shlex.join(command), flush=True)
+    prepare_build_cohort(source, [*command, (ROOT / 'engines/expansion.mk').read_text()])
     # Makefile.native marks intermediates secondary. A formerly linked binary
     # must not hide newly added world objects just because those objects are absent.
     (source / 'build/native64/pokeemerald-native').unlink(missing_ok=True)

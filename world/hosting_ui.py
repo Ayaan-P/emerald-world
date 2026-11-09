@@ -101,6 +101,36 @@ class HostedLauncher:
         self._area_cache = None
         return result
 
+    def adventure_action(self, action, payload):
+        """Owner-only review/apply for one fixed built-in adventure recipe.
+
+        Only exact lowercase-hex hosted world IDs enter this adapter; the
+        installed launcher presents world names but never its UI key prefix.
+        """
+        from .hosting_client import HostingClient
+        self._ready()
+        if type(action) is not str or type(payload) is not dict:
+            raise SessionError('Choose an adventure action.')
+        world = payload.get('world')
+        if type(world) is not str or not re.fullmatch('[0-9a-f]{16}', world):
+            raise SessionError('Choose one of your hosted worlds.')
+        client = HostingClient.from_file(self.profile)
+        if action == 'adventure_read':
+            if set(payload) != {'world'}:
+                raise SessionError('Choose an adventure to read.')
+            return client.read_adventures(world)
+        if action == 'adventure_preview':
+            if set(payload) != {'world', 'adventure'} or payload['adventure'] != 'lantern-trail':
+                raise SessionError('Only the fixed Lantern Trail adventure is available here.')
+            return client.preview_adventure(world, payload['adventure'])
+        if action == 'adventure_apply':
+            if set(payload) != {'world', 'token', 'confirmed'} or payload['confirmed'] is not True:
+                raise SessionError('Review the adventure and confirm installation first.')
+            result = client.apply_adventure(world, payload['token'], confirmed=True)
+            self.session.status = 'Lantern Trail installed. Follow its entry guide in the WORLD menu.'
+            return result
+        raise SessionError('Choose an adventure action.')
+
     def _private(self, path):
         from .hosting_client import read_private
         info = path.lstat()
