@@ -23,7 +23,7 @@ def snapshot(server, trainer, actor, run=None):
                  acknowledged_talks=entry[1],last_actor_goal=entry[4],last_shown_reply=entry[5],
                  explicit_choice=choice['label'] if choice else None)
     # Time and run bind the grant but are never sent to the model.
-    fingerprint=hashlib.sha256(json.dumps([entry,context],sort_keys=True).encode()).hexdigest()
+    fingerprint=hashlib.sha256(json.dumps([entry,context,selected],sort_keys=True).encode()).hexdigest()
     return entry[0],fingerprint,context
 
 
