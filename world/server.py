@@ -653,6 +653,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                cave_link_capable=role.endswith('CAVELINK1')
+                if cave_link_capable:role=role[:-9]
                 world_props_capable=role.endswith('WORLDOBJ1')
                 if world_props_capable:role=role[:-9]
                 character_state_capable=role.endswith('CHARPK2')
@@ -796,6 +798,7 @@ class WorldServer:
                 conn['character_walk_capable'] = character_walk_capable
                 conn['character_region_capable'] = character_region_capable
                 conn['character_pokemon_capable']=character_pokemon_capable and character_capable
+                conn['cave_link_capable']=cave_link_capable and region_capable and world_props_capable
                 conn['world_props_capable']=world_props_capable and character_region_capable
                 conn['character_state_capable']=character_state_capable and conn['character_pokemon_capable']
                 conn['character_capable'] = character_capable
@@ -1006,6 +1009,9 @@ class WorldServer:
                     rejected = fields[1] if len(fields) > 1 and fields[1].isdigit() and len(fields[1]) <= 10 else '0'
                     self._queue(conn, 'CHARACTER_REJECT ' + rejected + '\n')
                 return
+            if fields and fields[0]=='LINK':
+                from .cave_links import line
+                line(self,conn,fields);return
             if fields and fields[0] in ('INTERACT','INTERACT_REGION'):
                 self._interact(conn, fields)
                 return
@@ -1059,6 +1065,8 @@ class WorldServer:
                     raise ValueError('noncanonical unready state')
                 if not all(HASH.fullmatch(h) for h in fields[9:]):
                     raise ValueError('hash')
+                from .cave_links import state_guard
+                state_guard(conn,state)
                 if mount[0] and (not state[6] or tuple(state[:2]) in (self.cave_map,self.wilds_map)):raise ValueError('inactive mount')
                 from .mount_motion import decode as decode_mount_motion
                 trail,lost=decode_mount_motion(mount_trail,conn.get('state'),state,conn.get('mount',(0,0)),mount,0<=time.monotonic()-conn.get('state_time',0)<=3)
@@ -1244,8 +1252,10 @@ class WorldServer:
                 group=obj['group'], num=obj['num'], x=obj['x'], y=obj['y'],**scope))
         conn['seq'], conn['last_interaction'] = seq, now
         if region and conn.get('world_props_capable'):
-            from .actor_objects import player_use
-            player_use(self,conn,obj)
+            from .cave_links import interact as use_link
+            if not use_link(self,conn,obj,seq):
+                from .actor_objects import player_use
+                player_use(self,conn,obj)
         self._broadcast()
 
     def _control_line(self, conn, raw):

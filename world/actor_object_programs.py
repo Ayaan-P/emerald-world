@@ -42,6 +42,7 @@ def install(server,actor,row,args):
  obj=next((o for o in server.objects if o['id']==args['object']),None)
  if not obj or obj.get('kind')!='prop' or entry.get('program_revision')!=args['revision']:raise ValueError('Observed unprogrammed prop required')
  if server.module_state.get('world_object_actions',{}).get(obj['id']) or obj['id'] in server.module_state.get('world_object_controls',{}) or obj['id'] in server.module_state.get('world_object_programs',{}):raise ValueError('Existing object behavior is preserved; choose an unprogrammed prop')
+ if server.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='cave_links'").fetchone() and server.db.execute('SELECT 1 FROM cave_links WHERE object=?',(obj['id'],)).fetchone():raise ValueError('Existing cave link behavior is preserved')
  if obj.get('portable'):raise ValueError('Program supports anchored props, not portable custody')
  if server.job is not None or server.deployment is not None or not server.candidate:raise ValueError('Idle current mechanic required')
  request=dict(object=copy.deepcopy(obj),program=program,digest=digest(program));suffix=digest(request)[:16]
