@@ -59,6 +59,8 @@ class GuildChat:
                         self.epoch+=1
                     elif words and words[0].lower()=='play' and getattr(s, 'activities', None):
                         lines=[line[:113] for line in s.activities.command(conn,words[1:])]
+                    elif words and words[0].lower()=='race' and getattr(s, 'races', None):
+                        lines=s.races.command(conn,words[1:])
                     elif words and words[0].lower()=='flag' and getattr(s, 'flags', None):
                         lines=s.flags.command(conn,words[1:])
                     elif words and words[0].lower()=='relay' and getattr(s, 'relays', None):
