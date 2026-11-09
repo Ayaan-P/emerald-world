@@ -3,6 +3,8 @@ import copy,json
 
 
 def install(db):
+    from .actor_cargo import setup
+    setup(db)
     db.execute('CREATE TABLE IF NOT EXISTS world_prop_custody(id TEXT PRIMARY KEY,owner TEXT,object TEXT NOT NULL,version INTEGER NOT NULL)')
 
 
@@ -28,13 +30,17 @@ def project(server,result):
         if owner is not None:
             if owner not in actors or actors[owner].get('status')=='retired':raise ValueError('Place carried props before retiring or removing their carrier')
             carrier=objects.get(owner)
-            if carrier and carrier.get('region_revision')!=json.loads(raw)['region_revision']:raise ValueError('Place carried props before changing immutable map scope')
+            if carrier and carrier.get('region_revision')!=json.loads(raw)['region_revision']:
+                from .actor_cargo import matching
+                if not matching(server,result['state'],result.get('objects',[]),owner):raise ValueError('Place carried props before changing immutable map scope')
             objects.pop(identity,None)
         else:
             if identity not in objects:raise ValueError('A placed custodied prop cannot silently disappear')
             obj=objects[identity]
             if obj.get('kind')!='prop':raise ValueError('A custodied prop must retain its kind')
             obj=dict(obj)
+            # Custody, not stale author source, owns the relocated map binding.
+            for key in ('group','num','region_revision'):obj[key]=json.loads(raw)[key]
             override=controls.get(identity,{}).get('object',{})
             if set(override)-{'x','y','gfx','text'}:raise ValueError('Invalid prop position override')
             obj.update(override);objects[identity]=obj

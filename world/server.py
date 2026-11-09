@@ -2087,6 +2087,8 @@ class WorldServer:
                                 after=dict(tiles=tiles, objects=objects)))
                         from .character_dispatch import archive as archive_character_action
                         archive_character_action(self,self.module_state,result['state'],objects)
+                        from .actor_cargo import commit as commit_cargo
+                        commit_cargo(self,result['state'],objects)
                         from .actor_objects import archive_transition
                         archive_transition(self,self.module_state,result['state'],objects)
                         from .character_companions import commit as commit_companions
