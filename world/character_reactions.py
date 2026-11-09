@@ -20,6 +20,8 @@ def actors(state):
 
 
 def dynamic_result(event, identity, character):
+    from .npc_accompaniment import relevant as accompaniment_relevant
+    if accompaniment_relevant(event,identity):return True
     from .actor_cooperation import relevant as cooperation_relevant
     if cooperation_relevant(event,identity):return True
     from .companion_barter import relevant as barter_relevant
@@ -37,7 +39,9 @@ def dynamic_result(event, identity, character):
     if event.get('character_id')!=identity:return False
     from .character_reconnaissance import observed as survey_observed
     if survey_observed(event,[event.get('revision')]):return True
-    if event.get('event')=='character_journey_arrived' and event.get('publication')=='public_world_character_movement' and event.get('basis')=='committed_authority_cardinal_steps':return True
+    if event.get('event')=='character_journey_arrived' and event.get('publication')=='public_world_character_movement' and event.get('basis')=='committed_authority_cardinal_steps':
+        # An ongoing walking invitation executes locally, not a model call per tile.
+        return not any(step.get('tool')=='world.accompany_player' for step in (character.get('plan') or {}).get('steps',[]))
     if (event.get('event')=='character_practice_completed' and event.get('publication')=='public_fictional_character_practice'
         and event.get('basis')=='trusted_local_host_native_receipt' and event.get('character_version')==character['version']):return True
     offer=character.get('offer') or {}
