@@ -593,6 +593,9 @@ class WorldServer:
                 character = records(self.module_state).get(obj['id'])
                 if character and character['status'] == 'active':
                     lines.append('CHARACTER ' + obj['id'] + ' ' + str(character['version']))
+                    from .actor_shops import line as shop_line
+                    retail=shop_line(self,conn,obj['id'],character['version'])
+                    if retail:lines.append(retail)
                     if walk and conn.get('character_walk_capable'):
                         lines.append('CHARACTER_WALK '+' '.join(map(str,[obj['id'],character['version'],walk['id'],walk['index'],len(walk['path']),*[v for p in walk['path'] for v in p]])))
                     if conn.get('character_quest_capable') and character.get('offer'):
@@ -653,6 +656,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                character_shop_capable=role.endswith('CHARSHOP1')
+                if character_shop_capable:role=role[:-9]
                 cave_link_wildlife=role.endswith('CAVELINKW1')
                 if cave_link_wildlife:role=role[:-10]
                 cave_link_capable=role.endswith('CAVELINK1')
@@ -804,6 +809,7 @@ class WorldServer:
                 conn['cave_link_wildlife']=cave_link_wildlife and conn['cave_link_capable'] and cave_expansion
                 conn['world_props_capable']=world_props_capable and character_region_capable
                 conn['character_state_capable']=character_state_capable and conn['character_pokemon_capable']
+                conn['character_shop_capable']=character_shop_capable and character_capable
                 conn['character_capable'] = character_capable
                 conn['character_quest_capable'] = character_quest_capable
                 conn['rules_capable'] = rules_capable
