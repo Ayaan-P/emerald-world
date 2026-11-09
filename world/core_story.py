@@ -139,6 +139,17 @@ class CoreStory:
             raise ValueError('Invalid canonical story request.')
         _, run, action, key, confirmation = fields
         trainer = conn['id']
+        if action=='ALLY':
+            from .canonical_cast import records,check_actor_location
+            row=records(self.s.module_state).get('canon_steven')
+            reached=conn.get('canonical_location') or {}
+            if (key!='steven' or confirmation!='confirm' or not row or row.get('companion')!='steven_wild_once'
+                    or reached.get('actor')!='canon_steven' or reached.get('run')!=run
+                    or conn.get('core_active_run')!=run or reached.get('version')!=row['version']
+                    or reached.get('expires',0)<time.monotonic() or not (conn.get('state') or [0]*7)[6]):
+                raise ValueError('No current Steven companion invitation at this conversation.')
+            check_actor_location(self.s,conn,'canon_steven')
+            return dict(ok=True) # Frozen one-shot permission, not battle completion or a shared reward.
         if action=='DIALOG':
             from .canonical_dialogues import native_panel
             return native_panel(self.s,conn,run,key,confirmation)
