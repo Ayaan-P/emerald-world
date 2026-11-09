@@ -149,3 +149,34 @@ stop the author. Failed initialization stays failed for that request; distinct
 future relevant evidence can still prompt a fresh initial decision. Profiles
 are background, never outcome evidence. The deterministic fixtures exercise
 real authority admission; live model and rendered native QA remain separate.
+
+### From a first goal to independent work
+
+An actor enrolled through Initialize and follow original cast has each genuinely
+committed new goal prompt its own planning
+turn. This uses the already running selected author, with no additional worker
+or host command. Legacy event-only subscriptions keep their existing behavior;
+initialize/follow-cast preserves their records and enables planning. The prompt contains its original identity, exact current goal
+revision and supported action contract. It can publish an executable shared
+initiative, retain an intention, execute an assigned actor turn through the
+existing authority dispatcher, reconsider after the real receipt, or wait.
+A goal is evidence of intention only: it cannot prove a victory, meeting,
+reciprocal relationship, training or physical work. Only the immediate next
+revision can cite that goal for planning; other action-specific validators and
+native safeguards remain in force.
+
+Goal-driven turns share the existing eight-attempt actor/world/day budget with
+quiet-time deliberation. Unchanged goals and ordinary version bumps do not
+trigger planning. Stale goal turns fail closed, failed turns are not retried,
+and restart preserves cursor/budget. A model that keeps changing its goal cannot
+create an unlimited self-triggering loop. Reaching the budget does not create a
+catch-up backlog; actual external events still use normal event reactions.
+
+The deterministic end-to-end fixture covers a commissioned Rydel first goal,
+an independently authored cycling discussion, a real actor-only shared-state
+commit opening that discussion, and the existing original-NPC PROJECT panel
+showing the newly available choice. No player has to complete an errand first.
+This is an abstract shared project, not animated labor or travel. The fixture
+then revises the goal from the actual action receipt and verifies retained state
+after restart. It is not a shipped fixed storyline, a live model transcript or
+a rendered playtest; Maya still owns linked/native/gameplay QA.

@@ -64,7 +64,9 @@ class SeedTests(unittest.TestCase):
   with self.assertRaises(ValueError):cast.compile_actions([action],self.f.context())
   seeds.initialize(self.q,self.f.s)
   self.assertEqual(len([e for e in self.f.s.memory.history()['events'] if e['event']=='canonical_actor_commissioned']),4)
-  self.assertEqual(self.observe(),[])
+  self.assertEqual(len(self.observe()),1) # New committed goal, not replayed commissioning.
+  planning=self.q.db.execute("SELECT result FROM requests WHERE player=? AND status='queued'",(actor,)).fetchone()
+  self.assertTrue(json.loads(planning[0])['self_direction'])
   other=next(a for a in seeds.PROFILES if a!=actor)
   e=next(e for e in events if e['character_id']==other)
   row=dict(version=1,goal='Initial goal',dialogue='Hello.',places=['native:'+cast.BINDINGS[other]['map']],evidence=[e['seq']],reason='Initial request',offer=dict(map='LittlerootTown',count=1))

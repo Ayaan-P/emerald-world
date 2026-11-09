@@ -218,6 +218,7 @@ def contract():
     from .canonical_seeds import profile
     return dict(response='canonical_actions/tests',identity_profiles={k:profile(k) for k in BINDINGS},bindings=BINDINGS,location_aliases=LOCATION_ALIASES,
                 action_fields=['id','expected_version','changes'],
+                self_direction='A committed new goal schedules a bounded planning turn for the same followed actor. Use it to choose supported next work or wait, not to claim achievements, reciprocal relationships or unseen events. Goal-driven and quiet turns share eight attempts per actor/world/day; only actual authority action receipts prove execution.',
                 change_fields=['activity_projects (optional owned-project outcome binding for existing companion/scene activities)', 'scene (optional Rydel only: rydel_step)', 'initiative (optional immutable public story pack with owner/actor turns and player-facing scenes)', 'call (optional Wally/Steven incoming request: stable id, literal text)', 'companion (Steven only: steven_wild_once)', 'world_action (exact available actor-owned shared story action)', 'council (optional question/options, mode unanimous or speaker; speaker-led conversation has up to four opted-in participants and advisory listeners)','goal','dialogue','places','evidence','reason','journey_interests (optional up to four exact archived revision digests)','routine (optional quiet-world decision interval)','cooperate (optional independent exact project join/decline)','worksite (optional authority construction plan)','study (optional archived-map exploration project)','offer (optional native map/count)','relationships (optional directional assessments)','conversation (optional private player choices)','letter (optional public cast correspondence)','project (optional playable practice course)','contribution (optional project guidance)','resolve_contribution (optional owner decision)','intentions (up to three retained tasks)','fulfill (one prior task ID)'],
                 intentions=dict(fields=['id','kind (letter, project, study, construction, world_action, contribution or practice)','target','reason'],completion='set fulfill to a prior retained ID, remove it from agenda, execute the matching new action; authority requires a real action receipt',practice='target is an already host-registered fictional companion ID; isolated dispatcher only, no live fulfillment or story-party changes',initiative='followed actors may attempt retained work without a new player event; eight attempts per actor/world, once per task ID, no automatic retry or hidden model startup'),
                 collaboration=dict(contribution=['course','digest','text (200 literal characters)'],resolve_contribution=['seq (proposal evidence)','decision (accept or decline)'],effect='another existing actor contributes to exact published project; owner decides; accepted text becomes actual activity briefing',limits='one contribution per actor/project; only public evidence, no inferred participation or private results'),
@@ -324,6 +325,8 @@ def guild_command(server, conn, args):
 
 
 def reaction_activity(event, identity, row):
+    from .canonical_self_direction import relevant as self_directed
+    if self_directed(event,identity,row):return True
     from .canonical_seeds import commissioning
     if row.get('bootstrap') and commissioning(event,identity):return True
     from .canonical_initiatives import relevant as initiative_relevant
@@ -409,6 +412,8 @@ def received_letter(event, identity):
 
 
 def decision_evidence(event, identity, row):
+    from .canonical_self_direction import evidence as self_directed
+    if self_directed(event,identity,row):return True
     from .canonical_seeds import commissioning
     if commissioning(event,identity):
         return row.get('version')==1 and set(row)=={'version','goal','dialogue','places','evidence','reason'}

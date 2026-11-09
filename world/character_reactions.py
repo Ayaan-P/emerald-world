@@ -131,12 +131,19 @@ def observe(queue, inspection, fetch, *, enqueue=True):
                 if (not enqueue or character.get('status') != 'active'
                         or not matched):
                     continue
+                from .canonical_self_direction import relevant as self_directed,reserve
+                planning=bool(character.get('canonical') and self_directed(event,sub['id'],character))
+                # The initialize/follow-cast workflow authorizes independent planning.
+                # Preserve legacy event-only subscriptions and their queued ordering.
+                if planning and not queue.db.execute('SELECT 1 FROM canonical_seed_enrollments WHERE id=?',(sub['id'],)).fetchone():continue
+                if planning and not reserve(queue,sub['world'],sub['id']):continue
                 identifier = uuid.uuid4().hex
                 reaction = dict(world_id=sub['world'], id=sub['id'], expected_version=character['version'],
                                 evidence=event['seq'], purpose=sub['purpose'], canonical=bool(character.get('canonical')))
                 if bootstrap:reaction['bootstrap']=True
+                if planning:reaction['self_direction']=True
                 queue.db.execute('INSERT INTO requests(id,player,text,kind,status,created,result) VALUES(?,?,?,?,?,?,?)',
-                                 (identifier, sub['id'], 'Choose one next action for this existing character after the exact public result or delivered cast letter. Do not invent a predetermined arc, duplicate a canonical NPC, or claim unobserved achievements.',
+                                 (identifier, sub['id'], ('Choose how to pursue your own newly committed goal through a supported action, or wait. The goal is intention evidence, not an achievement or a player errand.' if planning else 'Choose one next action for this existing character after the exact public result or delivered cast letter. Do not invent a predetermined arc, duplicate a canonical NPC, or claim unobserved achievements.'),
                                   'character', 'queued', time.time(), json.dumps(reaction)))
                 queued.append(identifier)
                 through = event['seq']
@@ -183,6 +190,10 @@ def prepare(context, fetch):
     from .canonical_cast import reaction_activity
     matched = (len(events)==1 and (reaction_activity(events[0], reaction['id'], character)
                if character.get('canonical') else dynamic_result(events[0],reaction['id'],character)))
+    if reaction.get('self_direction'):
+        from .canonical_self_direction import relevant as self_directed
+        if len(events)!=1 or not self_directed(events[0],reaction['id'],character):raise ValueError('Self-directed turn needs this exact current committed goal')
+        context['character_planning']='Your goal was actually committed. Choose a supported next action/project or wait. This is intention evidence only, not travel, training, an achievement, another actor agreement or a player request. Keep your source-grounded identity and ordinary game services intact. Use independent actor turns, not player errands, when the supported project permits it.'
     from .canonical_routines import check as check_routine
     scheduled=check_routine(reaction,character)
     if scheduled:
