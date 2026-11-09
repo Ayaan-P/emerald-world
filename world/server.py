@@ -1752,6 +1752,13 @@ class WorldServer:
                     return
                 identity = self.create_identity(request['trainer'])
                 result = dict(ok=True, invitation=dict(self.sharing, trainer=identity['id'], token=identity['token']))
+            elif request.get('command') in ('private_cast_claim','private_cast_finish'):
+                from .canonical_reflection import claim,finish
+                try:
+                    if request['command']=='private_cast_claim' and set(request)=={'command'}:result=claim(self)
+                    elif request['command']=='private_cast_finish' and set(request)=={'command','id','lease','result'}:result=finish(self,request['id'],request['lease'],request['result'])
+                    else:raise ValueError('Invalid private reflection command.')
+                except ValueError as exc:result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'inspect':
                 result = self.inspect()
             elif request.get('command') == 'world_rules':

@@ -313,3 +313,47 @@ next private greeting. It also covers replay, expiry, save/connection isolation,
 restart, pausing and forgetting. Full linked/rendered RC12 and live-model behavior
 remain unverified. This does not add autonomous travel, Pokémon ownership or a
 Steven hook.
+
+## Explicit private character interpretation
+
+`/guild cast rydel reflect` previews a single summary: character/current goal,
+acknowledged talk count, last shown reply and actor goal, and any currently valid
+explicit conversation-choice label. It identifies the host-configured OpenAI
+character model and local host access. Nothing is queued or sent merely by
+previewing. `/guild cast rydel reflect confirm CODE` authorizes that exact snapshot
+once; changes or expiration require a new preview. Party, save identifiers, trainer
+identity fields, other chat and other players are excluded from the model input.
+Displayed text itself is included exactly as previewed, not silently redacted.
+
+A separate operator-invoked worker processes one authorized request:
+
+    python3 -m world.private_cast_worker --socket ADMIN_SOCKET --model gpt-6-luna
+
+It uses the existing pinned, ephemeral, tool-disabled Codex adapter in an empty
+temporary directory, with a separate reply/interpretation schema. It never fetches
+world inspection, history, previous source or player records and cannot deploy
+world code. Prompts and replies are not written to shared author artifacts or
+printed to logs. No model starts automatically. Pending requests are atomically
+claimed once; a failed/interrupted worker does not replay them. A new explicit
+request replaces the prior request for that trainer/actor.
+
+The model may produce only bounded literal `reply` and `interpretation` strings.
+Instructions distinguish explicit player choice from mere display acknowledgment
+and prohibit invented feelings, traits, achievements or private events. This is
+an authored tentative character interpretation, not an objective psychological
+judgment. Validation prevents tool/source output and any gameplay/state effects.
+The current actor version, remembered interaction and choice must still match
+before application. The resulting reply is shown only to that trainer/save through
+the existing original NPC hook; after another acknowledged conversation it is no
+longer reused. Its private interpretation/status is available via `reflection`.
+
+`remember off` or `forget` cancels pending work and removes private interpretations.
+A late worker result is rejected. Data already handed to the worker/model cannot
+be recalled; cancellation prevents further application, not past transmission.
+World state, public journal/history and other trainers remain unchanged.
+
+119 focused tests pass, including explicit preview/confirmation, actual admin
+claim/finish dispatch, deterministic isolated worker response, next native reply,
+restart, withdrawal, stale snapshots, cross-player/save isolation and refusal of
+world-code/tool outputs. No live model call was made for these tests. The existing
+paired native adapter is unchanged; full rendered/live-model QA remains separate.

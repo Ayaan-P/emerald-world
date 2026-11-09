@@ -407,7 +407,7 @@ def codex_argv(model, catalog_path):
     return argv + ['-']
 
 
-def decode_codex(wire):
+def decode_codex(wire, *, private_cast=False):
     """Decode the supported Codex exec JSONL agent_message event contract."""
     messages = []
     completed = False
@@ -428,6 +428,9 @@ def decode_codex(wire):
     if not completed or not messages or not isinstance(messages[-1], str):
         raise ValueError('Codex did not complete an author response')
     response = json.loads(messages[-1])
+    if private_cast:
+        if type(response) is not dict or set(response)!={'reply','interpretation'}:raise ValueError('private character reply cannot change shared world state')
+        return response
     if type(response) is not dict or set(response) not in ({'source', 'tests'}, {'character_plan', 'tests'}, {'character_actions', 'tests'}, {'canonical_actions', 'tests'}):
         raise ValueError('Codex author must return source/tests, character_plan/tests, character_actions/tests or canonical_actions/tests')
     return response
@@ -468,6 +471,7 @@ def main(argv=None):
     author = sub.add_parser('author', help='trusted Codex CLI adapter; prompt on stdin')
     author.add_argument('--model', required=True, choices=[MODEL])
     author.add_argument('--timeout', type=float, default=120)
+    author.add_argument('--private-cast', action='store_true',help='bounded private response schema, no shared-world source')
     args = parser.parse_args(argv)
     try:
         if args.command == 'author':
@@ -492,7 +496,7 @@ def main(argv=None):
                 catalog_path = Path(tmp) / 'catalog.json'
                 gm._write(catalog_path, json.dumps(catalog))
                 wire = invoke(codex_argv(args.model, catalog_path), prompt.decode())
-            print(json.dumps(decode_codex(wire)))
+            print(json.dumps(decode_codex(wire,private_cast=args.private_cast)))
         elif args.command in ('submit', 'status', 'follow-character', 'unfollow-character'):
             queue = IntentQueue(args.state_dir)
             try:

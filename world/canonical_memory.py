@@ -51,7 +51,10 @@ def command(server, conn, actor, args):
                 'Latest 16 save profiles only. No public history or shared author access.',
                 'Use remember off to stop remembering, or forget to erase your choices and encounter summaries.']
     if args==['remember','off']:
-        with server.db:server.db.execute('DELETE FROM canonical_memory_optin WHERE trainer=? AND actor=?',(conn['id'],actor))
+        with server.db:
+            server.db.execute('DELETE FROM canonical_memory_optin WHERE trainer=? AND actor=?',(conn['id'],actor))
+            from .canonical_reflection import cancel
+            cancel(server,conn['id'],actor)
         conn.pop('cast_seen_pending',None)
         return ['Encounter memory paused. Existing private summaries remain until you use forget.']
     if args==['memory']:
@@ -66,6 +69,8 @@ def command(server, conn, actor, args):
 
 
 def forget(server, conn, actor):
+    from .canonical_reflection import cancel
+    cancel(server,conn['id'],actor)
     for table in ('canonical_memory_optin','canonical_encounters'):
         server.db.execute(f'DELETE FROM {table} WHERE trainer=? AND actor=?',(conn['id'],actor))
     conn.pop('cast_seen_pending',None)

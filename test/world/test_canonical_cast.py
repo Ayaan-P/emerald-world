@@ -593,6 +593,83 @@ class CanonicalCastTests(unittest.TestCase):
         self.assertIn(b'REFUSED',fresh['out'])
         self.assertEqual(self.s.db.execute('SELECT count(*) FROM canonical_encounters').fetchone()[0],0)
 
+    def prepare_private_reflection(self):
+        from world.canonical_memory import acknowledge
+        self.apply(self.action());peer=self.peer();self.f.connections['Alice']=peer
+        cast.guild_command(self.s,peer,['rydel','remember','on'])
+        reply=cast.response(self.s,peer,'a'*32,'rydel')
+        acknowledge(self.s,peer,'a'*32,'canon_rydel',reply['digest'])
+        return peer
+
+    def test_consented_private_agent_reflection_uses_only_selected_summary_and_native_reply(self):
+        from world.private_cast_worker import step
+        peer=self.prepare_private_reflection();bob=self.peer('Bob')
+        history=deepcopy(self.s.memory.history());inspection=deepcopy(self.s.inspect())
+        def admin(body):
+            conn=dict(sock=object(),out=bytearray(),closing=False)
+            self.s._admin_line(conn,json.dumps(body).encode())
+            return json.loads(conn['out'])
+        self.assertIsNone(admin(dict(command='private_cast_claim'))['request'])
+        preview=cast.guild_command(self.s,peer,['rydel','reflect'])
+        self.assertTrue(any('OpenAI' in line for line in preview))
+        self.assertTrue(any('last shown reply' in line for line in preview))
+        self.assertTrue(all(len(line)<=113 for line in preview))
+        self.assertIsNone(admin(dict(command='private_cast_claim'))['request'])
+        nonce=peer['cast_reflection_preview']['nonce']
+        cast.guild_command(self.s,peer,['rydel','reflect','confirm',nonce])
+        prompts=[]
+        def author(text):
+            prompts.append(text)
+            return dict(reply='I can offer ideas without choosing your pace for you.',interpretation='Rydel considers leaving the pace open rather than assuming agreement.')
+        result=step('unused','gpt-6-luna',request=admin,author=author)
+        self.assertEqual(result,dict(ok=True,status='ready'))
+        self.assertEqual(len(prompts),1)
+        self.assertNotIn('Alice',prompts[0]);self.assertNotIn('Bob',prompts[0]);self.assertNotIn('a'*32,prompts[0])
+        self.assertIn('last_shown_reply',prompts[0])
+        self.assertIn('without choosing your pace',cast.response(self.s,peer,'a'*32,'rydel')['briefing'])
+        self.assertNotIn('without choosing',cast.response(self.s,bob,'b'*32,'rydel')['briefing'])
+        self.assertNotIn('without choosing',cast.response(self.s,peer,'c'*32,'rydel')['briefing'])
+        self.assertEqual(self.s.inspect(),inspection);self.assertEqual(self.s.memory.history(),history)
+        self.assertEqual(step('unused','gpt-6-luna',request=admin,author=author)['status'],'idle')
+        self.assertTrue(any('leaving the pace' in line for line in cast.guild_command(self.s,peer,['rydel','reflection'])))
+        self.s.close();self.f.case.server=self.f.case.open();self.s=self.f.case.server;self.f.server=self.s
+        peer=self.peer()
+        self.assertIn('without choosing your pace',cast.response(self.s,peer,'a'*32,'rydel')['briefing'])
+
+    def test_private_reflection_withdrawal_staleness_and_world_edit_outputs_fail_closed(self):
+        from world.canonical_reflection import claim,finish
+        from world.guilds import GuildError
+        peer=self.prepare_private_reflection()
+        def consent():
+            cast.guild_command(self.s,peer,['rydel','reflect'])
+            nonce=peer['cast_reflection_preview']['nonce']
+            cast.guild_command(self.s,peer,['rydel','reflect','confirm',nonce])
+        cast.guild_command(self.s,peer,['rydel','reflect'])
+        with self.assertRaises(GuildError):cast.guild_command(self.s,peer,['rydel','reflect','confirm','bad'])
+        consent();work=claim(self.s)['request']
+        with self.assertRaises(ValueError):finish(self.s,work['id'],work['lease'],dict(source='change world',tests='assert True'))
+        cast.guild_command(self.s,peer,['rydel','forget'])
+        with self.assertRaises(ValueError):finish(self.s,work['id'],work['lease'],dict(reply='Late answer.',interpretation='Too late.'))
+        self.assertEqual(self.s.db.execute('SELECT count(*) FROM canonical_reflections').fetchone()[0],0)
+        from world.canonical_memory import acknowledge
+        cast.guild_command(self.s,peer,['rydel','remember','on'])
+        reply=cast.response(self.s,peer,'a'*32,'rydel');acknowledge(self.s,peer,'a'*32,'canon_rydel',reply['digest'])
+        consent();work=claim(self.s)['request']
+        # A new displayed conversation invalidates the exact consented snapshot.
+        reply=cast.response(self.s,peer,'a'*32,'rydel');acknowledge(self.s,peer,'a'*32,'canon_rydel',reply['digest'])
+        self.assertFalse(finish(self.s,work['id'],work['lease'],dict(reply='Stale reply.',interpretation='Stale interpretation.'))['ok'])
+        self.assertNotIn('Stale reply',cast.response(self.s,peer,'a'*32,'rydel')['briefing'])
+        self.assertIsNone(claim(self.s)['request'])
+
+    def test_private_adapter_schema_cannot_return_world_code_or_tool_activity(self):
+        from world.runtime_gm import decode_codex
+        def wire(value):return json.dumps(dict(type='item.completed',item=dict(type='agent_message',text=json.dumps(value))))+'\n'+json.dumps(dict(type='turn.completed'))
+        result=dict(reply='We can consider that together.',interpretation='Rydel leaves the choice open.')
+        self.assertEqual(decode_codex(wire(result),private_cast=True),result)
+        with self.assertRaises(ValueError):decode_codex(wire(result))
+        with self.assertRaises(ValueError):decode_codex(wire(dict(source='anything',tests='assert True')),private_cast=True)
+        with self.assertRaises(ValueError):decode_codex(json.dumps(dict(type='item.completed',item=dict(type='command_execution')))+'\n'+wire(result),private_cast=True)
+
     @unittest.skipUnless(__import__('os').environ.get('EW_NATIVE_SOURCE'),'set EW_NATIVE_SOURCE for actual native adapter pairing')
     def test_actual_authority_reply_enters_original_script_adapter(self):
         from pathlib import Path

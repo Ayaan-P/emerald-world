@@ -146,8 +146,10 @@ def response(server, conn, run, key):
     if row is None:raise ValueError('no authored canonical response')
     private=server.db.execute('SELECT version,choice FROM canonical_conversations WHERE trainer=? AND actor=?',(conn['id'],identity)).fetchone()
     option=row.get('conversation',{}).get(private[1]) if private and private[0]==row['version'] else None
+    from .canonical_reflection import private_reply
+    personal=private_reply(server,conn['id'],identity,run,row['version'])
     result=dict(schema=1,world_id=server.memory.world_id,run=run,actor=identity,
-                version=row['version'],briefing=option['reply'] if option else row['dialogue'],objective=('Guild chat has conversation choices.' if row.get('conversation') and not option else 'Ask guild chat about my plan.' if row.get('offer') else 'Guild chat has my practice courses.' if row.get('project') else ''),evidence=row['evidence'])
+                version=row['version'],briefing=personal or (option['reply'] if option else row['dialogue']),objective=('Guild chat has conversation choices.' if row.get('conversation') and not option else 'Ask guild chat about my plan.' if row.get('offer') else 'Guild chat has my practice courses.' if row.get('project') else ''),evidence=row['evidence'])
     result['digest']=hashlib.sha256(json.dumps(result,sort_keys=True,separators=(',',':')).encode()).hexdigest()
     from .canonical_memory import prepare
     return prepare(server,conn,run,identity,row,result)
@@ -181,6 +183,9 @@ def guild_command(server, conn, args):
     identity=next((i for i,b in BINDINGS.items() if b['wire']==args[0]),None)
     if identity is None:raise GuildError('Unknown canonical actor.')
     if server.peers.get(conn.get('id')) is not conn:raise GuildError('Authenticated trainer connection required.')
+    if len(args)>1 and args[1] in ('reflect','reflection'):
+        from .canonical_reflection import command
+        return command(server,conn,identity,args[1:])
     if len(args)>1 and args[1] in ('remember','memory'):
         from .canonical_memory import command
         return command(server,conn,identity,args[1:])

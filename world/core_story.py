@@ -48,6 +48,10 @@ class CoreStory:
         self.s = server
         self.db = server.db
         self.db.executescript('''
+        CREATE TABLE IF NOT EXISTS canonical_reflections(
+            id TEXT PRIMARY KEY, trainer TEXT, actor TEXT, run TEXT, fingerprint TEXT, context TEXT,
+            status TEXT, created REAL, lease TEXT, reply TEXT, interpretation TEXT, version INTEGER,
+            UNIQUE(trainer,actor));
         CREATE TABLE IF NOT EXISTS canonical_memory_optin(trainer TEXT,actor TEXT,PRIMARY KEY(trainer,actor));
         CREATE TABLE IF NOT EXISTS canonical_encounters(
             trainer TEXT, run TEXT, actor TEXT, talks INTEGER, updated REAL, version INTEGER, goal TEXT, text TEXT,
