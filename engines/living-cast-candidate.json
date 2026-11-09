@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "native_repository": "Ayaan-P/pokeemerald-expansion-native",
-  "native_revision": "1f7a2e52212d9f6ba69acda70ef3f96e044285e5",
+  "native_revision": "570a0c3547de7eeb64b8d5373e959370fb486984",
   "native_pull_request": 35,
   "app_pull_request": null,
   "reviewed_author_cli": "codex-cli 0.156.1",
