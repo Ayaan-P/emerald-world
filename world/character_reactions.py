@@ -219,6 +219,9 @@ def prepare(context, fetch):
         # Explicit allowlist: no private survey sessions/visits or trainer data.
         context['character_study_map']={key:saved[key] for key in ('revision','place_id','template_version','side','rows')}
         context['character_study_map']['limits']='Existing archived geometry only. Do not claim the actor traveled or found anything.'
+    if character.get('canonical'):
+        from .canonical_experiences import recall
+        recall(context,character,fetch)
     # Public fictional actors need committed public results, not player purposes
     # or current private party/save observations from the general GM inspection.
     data['players']=[]
