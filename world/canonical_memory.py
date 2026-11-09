@@ -57,9 +57,10 @@ def command(server, conn, actor, args):
     if args==['remember','on']:
         with server.db:server.db.execute('INSERT OR IGNORE INTO canonical_memory_optin VALUES(?,?)',(conn['id'],actor))
         return ['Private encounter memory enabled for this trainer and actor, separated by save lineage.',
-                'Latest 16 save profiles and 16 shared decision facts per actor. No public history or shared author access.',
+                'Private conversation and partner encounter summaries only. No public history or shared author access.',
                 'Use remember off to stop remembering, or forget to erase your choices and encounter summaries.']
     if args==['remember','off']:
+        conn.pop('cast_partner_pending',None)
         with server.db:
             server.db.execute('DELETE FROM canonical_memory_optin WHERE trainer=? AND actor=?',(conn['id'],actor))
             server.db.execute('DELETE FROM canonical_decision_pending WHERE trainer=? AND actor=?',(conn['id'],actor))
@@ -82,6 +83,9 @@ def command(server, conn, actor, args):
             lines.append('Shared conversation: you were '+fact['role']+'.')
             text='Your answer: '+fact['own_answer']+'; speaker chose: '+fact['speaker_answer']
             lines.extend(text[i:i+110] for i in range(0,len(text),110))
+        from .canonical_partner_memory import context as partner_context
+        for fact in partner_context(server,conn['id'],actor,run):
+            lines.append('This save partner encounter: '+fact['outcome']+' (client report).')
         perspective=server.db.execute('SELECT interpretation FROM canonical_perspectives WHERE trainer=? AND actor=? AND run=?',(conn['id'],actor,run)).fetchone()
         if perspective:
             lines.append('Current save: the character\'s tentative perspective, not a fact about you.')
@@ -95,6 +99,7 @@ def forget(server, conn, actor):
     stop(server,conn['id'],actor)
     from .canonical_reflection import cancel
     cancel(server,conn['id'],actor)
-    for table in ('canonical_memory_optin','canonical_encounters','canonical_perspectives','canonical_decision_pending','canonical_decision_memory'):
+    conn.pop('cast_partner_pending',None)
+    for table in ('canonical_partner_memory','canonical_memory_optin','canonical_encounters','canonical_perspectives','canonical_decision_pending','canonical_decision_memory'):
         server.db.execute(f'DELETE FROM {table} WHERE trainer=? AND actor=?',(conn['id'],actor))
     conn.pop('cast_seen_pending',None)

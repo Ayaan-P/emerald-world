@@ -68,6 +68,8 @@ class CoreStory:
     def __init__(self, server):
         self.s = server
         self.db = server.db
+        from .canonical_partner_memory import install
+        install(self.db)
         self.db.executescript('''
         CREATE TABLE IF NOT EXISTS canonical_reflections(
             id TEXT PRIMARY KEY, trainer TEXT, actor TEXT, run TEXT, fingerprint TEXT, context TEXT,
@@ -145,6 +147,9 @@ class CoreStory:
         if action=='CALL' and confirmation=='registered':
             from .canonical_cast import remote_response
             return remote_response(self.s,conn,run,key)
+        if action=='ALLYEND':
+            from .canonical_partner_memory import finish
+            return finish(self.s,conn,run,key,confirmation)
         if action=='ALLY':
             from .canonical_cast import records,check_actor_location
             row=records(self.s.module_state).get('canon_steven')
@@ -157,6 +162,8 @@ class CoreStory:
                     or reached.get('expires',0)<time.monotonic() or not (conn.get('state') or [0]*7)[6]):
                 raise ValueError('No current Steven companion invitation at this conversation.')
             check_actor_location(self.s,conn,'canon_steven')
+            from .canonical_partner_memory import admit
+            admit(self.s,conn,run)
             return dict(ok=True) # Frozen one-shot permission, not battle completion or a shared reward.
         if action=='PROJECT':
             from .canonical_project_panel import panel
