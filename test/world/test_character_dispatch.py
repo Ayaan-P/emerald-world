@@ -45,3 +45,13 @@ class DispatcherTests(unittest.TestCase):
   corrupted=source.replace('receipts.clear()','receipts.clear(); print("changed")')
   self.fx.candidate=Candidate(corrupted,hashlib.sha256(corrupted.encode()).hexdigest());self.s.candidate=self.fx.candidate
   with self.assertRaisesRegex(ValueError,'dispatcher changed'):self.apply(2)
+
+ def test_exact_previous_dispatcher_upgrades_without_replaying_command(self):
+  source,_=self.apply(1)
+  old=source.replace("controls.get(identity,{}).get('object',visible.get(identity))!=condition['source']", "visible.get(identity)!=condition['source']")
+  self.fx.candidate=Candidate(old,hashlib.sha256(old.encode()).hexdigest());self.s.candidate=self.fx.candidate
+  version=self.s.module_state['world_characters']['harbor_guide']['version']
+  source,_=self.apply(2)
+  self.assertIn("controls.get(identity,{}).get('object',visible.get(identity))",source)
+  self.assertEqual(self.s.module_state['world_characters']['harbor_guide']['version'],version+1)
+  self.assertEqual(self.s.db.execute('SELECT count(*) FROM character_action_archive').fetchone()[0],2)

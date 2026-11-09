@@ -88,7 +88,7 @@ def action_step(actions, definition, result, context=None):
                 raise ValueError('character changed before action admission')
             if 'preconditions' in action:
                 condition=action['preconditions'];visible={o['id']:o for o in result.get('objects',[])}
-                if visible.get(identity)!=condition['source'] or visible.get(condition['prop']['id'])!=condition['prop']:
+                if controls.get(identity,{}).get('object',visible.get(identity))!=condition['source'] or visible.get(condition['prop']['id'])!=condition['prop']:
                     raise ValueError('Cave link source changed before admission')
                 arrival=condition['arrival']
                 if any(p.get('ready') and p.get('generated_place',{}).get('revision')==arrival.get('region_revision')

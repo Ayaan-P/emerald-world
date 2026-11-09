@@ -127,10 +127,11 @@ def inspect_runtime(server):
     install(server.db)
     from .prop_custody import inventory
     from .actor_navigation import discover as discover_navigation
+    from .actor_linked_navigation import graph as linked_graph
     from .character_companions import roster
     return dict(companion_rosters={actor:roster(server,actor) for actor,r in actor_records(server).items() if not r.get('canonical')},capabilities={key:dict(description=c.description,arguments=c.arguments,outcome=c.outcome,actor_kinds=c.kinds) for key,c in CAPABILITIES.items()},
         available_actions=server.opportunities.actor_actions()[:32],actors={a:('canonical' if r.get('canonical') else 'world') for a,r in actor_records(server).items()},
-        navigation=discover_navigation(server),carried_props=inventory(server),
+        navigation=discover_navigation(server),cave_links=linked_graph(server),carried_props=inventory(server),
         object_player_use='Optional state.world_object_player_use maps prop ID to one advertised world_object_actions action ID. Native A dispatches the same actor_interact(object_id,action,own_state) handler through normal staging. No map: text only. Effects are bounded own-state/text/graphics/one-cell movement, not bags/items.',
         result_references='Use {result: earlier_step_id, key: scalar_result_key}. Reserved key tool_receipt yields that successful step durable receipt sequence.',
         plans=[dict(actor=actor,plan=row['plan'],receipts=[dict(step=s,status=status,result=json.loads(result),seq=seq)
@@ -246,3 +247,6 @@ CAPABILITIES['world.link_caves']=Capability('Bind an observed unused anchored pr
 
 from .actor_cave_travel import traverse, poll as cave_travel_poll
 CAPABILITIES['world.traverse_link']=Capability('Traverse an adjacent observed physical cave link as this world-owned actor.',dict(object='observed anchored link prop ID',revision='observed program_revision'),'Committed authority departure/arrival under one identity; no canonical relocation, player warp or animated portal claim.',traverse,cave_travel_poll,('world',))
+
+from .actor_linked_navigation import start as navigate_places, poll as linked_navigation_poll
+CAPABILITIES['world.navigate_places']=Capability('Route this actor to a tile across actual installed cave links.',dict(place='opened destination place ID',revision='exact destination cave revision',x='destination integer',y='destination integer'),'Durable per-leg authority movement/traversal receipts and final arrival; changed or blocked routes require replan, no canonical/outdoor travel.',navigate_places,linked_navigation_poll,('world',))

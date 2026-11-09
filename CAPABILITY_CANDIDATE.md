@@ -1,3 +1,32 @@
+## Destination-based linked navigation
+This continuation of #321 keeps paired native #35 unchanged.
+world.navigate_places takes destination place ID, exact cave revision and x/y.
+The runtime exposes the real installed directed cave-link graph, finds a route,
+then persists a coordinator that invokes existing world navigation and traversal
+executors one leg at a time. Agents do not supply paths or named scenarios.
+Actual leg outcomes are retained and final completion requires the actor at the
+requested tile under the requested revision. No player save or warp is changed.
+
+The coordinator survives restart, revalidates links/geometry, and refuses an actor
+that moved or changed outside its journey. Occupancy can pause native-supported
+walks; an unavailable path or changed link blocks with a replan result, rather
+than automatically retrying forever. A withdrawn plan stops dispatching new legs;
+already-admitted walking uses existing interruption rules, not a forced rollback.
+Routing is limited to opened plain/Expansion wildlife caves and existing directed
+links, with the existing 64-step per-map path bound. It is not Hoenn/canonical
+travel, outdoor REGION1, seamless streaming or a rendered-animation claim.
+
+Composition uncovered a source-control precondition defect after prior walking:
+traversal now compares the authoritative controlled actor object, not the base
+script's stale initial object. Only the exact previous verified dispatcher is
+migrated; arbitrary changed source is still refused.
+
+Tests execute a three-cave journey with two real traversals and local walking,
+restart midway, another actor/destination, removed link and withdrawn plan.
+Native scoped observer behavior is inherited from #320's paired tests.
+Maya remains responsible for integrated rendering/multiplayer/provider QA.
+
+---
 ## Sustainable character executor
 This continuation of #320 removes the new-action lifetime ceiling without
 raising it. compile_actions now emits one verified reusable dispatcher. Each
