@@ -95,6 +95,8 @@ def actor_records(server):
     return rows
 
 def install(db):
+    from .actor_weather import setup as weather_setup
+    weather_setup(db)
     from .actor_shops import setup as shop_setup
     shop_setup(db)
     from .actor_capture import setup as capture_setup
@@ -283,3 +285,6 @@ CAPABILITIES['world.attempt_capture']=Capability('Request a real isolated first 
 
 from .actor_shops import configure as configure_shop
 CAPABILITIES['world.configure_shop']=Capability('Open, revise or close this recurring NPC ordinary native retail service.',dict(items='JSON list of up to 8 distinct reviewed item IDs from retail.items; [] closes'),'Real catalog offered in native Shop menu at engine prices, with native purchase/bag checks. Unlimited retail, no finite inventory, profit or sale inferred. Existing canonical shops unchanged.',configure_shop,None,('world',))
+
+from .actor_weather import configure as configure_weather
+CAPABILITIES['world.set_weather']=Capability('Author persistent native weather on the exact generated outdoor destination this actor occupies.',dict(revision='exact current active archived outdoor revision',mode='clear, clouds, rain, snow, fog, overcast or default'),'Actual authority environmental setting; compatible clients apply only at safe field boundaries. Native weather/battle/form effects remain native; not a character power, forecast or proven client application. Original Hoenn unchanged.',configure_weather,None,('world',))
