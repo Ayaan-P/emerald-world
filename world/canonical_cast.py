@@ -277,6 +277,8 @@ def guild_command(server, conn, args):
 
 
 def reaction_activity(event, identity, row):
+    from .character_reconnaissance import observed as survey_observed
+    if survey_observed(event,row.get('journey_interests',[])):return True
     from .character_encounters import observed as encounter_observed
     if encounter_observed(event,row.get('journey_interests',[])):return True
     from .character_journeys import relevant as journey_relevant
@@ -347,6 +349,8 @@ def decision_evidence(event, identity, row):
     from .canonical_projects import public_project
     from .canonical_collaboration import relevant
     from .canonical_intentions import fulfilled
+    from .character_reconnaissance import observed as survey_observed
+    if survey_observed(event,row.get('journey_interests',[])):return True
     from .character_encounters import observed as encounter_observed
     if encounter_observed(event,row.get('journey_interests',[])):return True
     from .character_journeys import relevant as journey_relevant

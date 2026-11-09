@@ -38,6 +38,11 @@ def describe(event, place=None):
         details.append('Team plan: ' + ', '.join('species ' + str(mon['species']) +
                        ' at level ' + str(mon['level']) for mon in character['team']))
         details.append('This is an authored character change, not proof of a battle or catch.')
+    elif kind == 'character_field_report':
+        title=event['character_name']+': '+event['title']
+        details=[str(len(event['samples']))+' visited route points measured on exact map '+event['revision'][:12],
+                 str(len(event['junctions']))+' junctions; '+str(len(event['dead_ends']))+' dead ends.',
+                 'Static access geometry, not wildlife sightings or player activity.']
     elif kind == 'character_encounter':
         title=event['character_id']+' '+('reached '+event['recipient'] if event['outcome']=='public_message_delivered' else 'missed an encounter')
         details=[event.get('text',event.get('reason','')), 'Actual authority positions. No reply, friendship or player participation is inferred.']
