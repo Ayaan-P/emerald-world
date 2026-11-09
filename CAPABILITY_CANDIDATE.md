@@ -1,3 +1,31 @@
+## Voluntary companion exchange
+This continuation of #322 uses the unchanged native #35 battle descriptor path.
+No autonomous capture capability is advertised: the inspected native worker
+supports INIT1/STEP1 and daycare-like bounded practice, not a wild-battle/capture
+resolver with AI, balls and durable catch outcomes.
+
+Instead world.offer_companion and world.respond_companion let two adjacent idle
+world-owned characters independently agree to transfer an existing benched
+individual. The configured author sees pending offers and actual owned rosters.
+Acceptance rechecks ownership, exact offered state, co-location, active battles,
+recipient capacity and identity conflicts. Decline/withdraw makes no transfer.
+No canonical actors or player Pokemon are eligible; active teams are untouched.
+
+Atomic custody moves preserve species, personality, original trainer and any
+engine-bound full practice state. Historical donor rows remain provenance, not
+usable inventory. Ownership guards prevent donor challenge/practice resurrection.
+The recipient can later choose the received individual with the existing generic
+prepare_challenge capability, which feeds the normal authenticated native party
+descriptor. This is a handover, not native trade animation or trade evolution.
+
+Tests use supplied plans and fixtures: independent offer/accept, restart,
+decline, unavailable recipient, invented individual refusal, unchanged native
+identity in actual challenge wire and exact opaque full-state preservation.
+They do not prove a native-generated catch, rendered battle or live model choice.
+Native capture/simulation and rendered integration remain unimplemented/QA scope,
+not silently substituted with invented successful catches.
+
+---
 ## Destination-based linked navigation
 This continuation of #321 keeps paired native #35 unchanged.
 world.navigate_places takes destination place ID, exact cave revision and x/y.
