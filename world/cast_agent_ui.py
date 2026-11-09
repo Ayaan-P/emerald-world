@@ -1,5 +1,5 @@
 """Explicit local-host controls over the existing session author lifecycle."""
-import os,hashlib
+import os
 from .session import SessionError
 from .canonical_cast import BINDINGS,records
 from .author_backends import API_BACKENDS,validate
@@ -42,8 +42,8 @@ def action(session,worlds,command,payload):
                 elif command=='cast_agent_unfollow':unfollow(queue,actor)
                 else:
                     if actor in existing:raise ValueError('Actor already authored; follow it instead')
-                    # A request, not a shipped actor/arc or fabricated evidence. Model may refuse.
-                    queue.submit('Local host','Initialize only '+actor+' using canonical_actions and real inspected public evidence. Preserve all original story scripts and services. If evidence is insufficient, wait; invent no history. Host purpose: '+payload['purpose'],request_id='cast-init-'+actor+'-'+hashlib.sha256(payload['purpose'].encode()).hexdigest()[:20])
+                    from .canonical_seeds import initialize
+                    initialize(queue,server,actor=actor,purpose=payload['purpose'])
             finally:queue.close()
     except (ValueError,OSError):
         raise SessionError('Living-cast operation was not confirmed. Check selected model, host credential availability, actor history and runtime status. No automatic retry.') from None
