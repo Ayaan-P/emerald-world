@@ -35,6 +35,9 @@ def observe(server, actor, row, args):
                 if o['id'] != actor and o.get('region_revision') == revision
                 and (o['group'], o['num']) == (obj['group'], obj['num'])
                 and (o['x'], o['y']) in distance]
+    from .actor_objects import offers
+    for entity in entities:
+        entity.update(offers(server,next(o for o in server.objects if o['id']==entity['id'])))
     return dict(revision=revision, x=origin[0], y=origin[1], actor_version=current['version'],
                 observed_revision=server.revision, radius=args['radius'],
                 cells=[dict(x=x,y=y,walkable=cells[(x,y)]) for x,y in sorted(cells)],

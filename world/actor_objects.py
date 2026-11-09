@@ -1,0 +1,92 @@
+"""Explicit opt-in object handlers, executed by normal mechanic staging."""
+import ast,copy,hashlib,inspect,json,re
+
+
+def digest(value):return hashlib.sha256(json.dumps(value,sort_keys=True).encode()).hexdigest()
+
+
+def offers(server,obj):
+    from .characters import records
+    if obj['id'] in records(server.module_state) or obj.get('kind')!='prop' or not obj.get('region_revision'):return {}
+    manifest=server.module_state.get('world_object_actions',{})
+    if type(manifest) is not dict:return {}
+    actions=manifest.get(obj['id'],{})
+    if type(actions) is not dict or len(actions)>8:return {}
+    valid={k:v for k,v in actions.items() if type(k) is str and re.fullmatch('[a-z][a-z0-9_]{0,23}',k) and type(v) is str and 1<=len(v)<=80 and all(32<=ord(c)<127 for c in v)}
+    if len(valid)!=len(actions) or not server.candidate:return {}
+    try:
+        if not any(isinstance(n,ast.FunctionDef) and n.name=='actor_interact' for n in ast.parse(server.candidate.source).body):return {}
+    except SyntaxError:return {}
+    return dict(actions=valid,object_revision=digest([obj,actions,server.candidate.sha256])) if valid else {}
+
+
+def object_step(result,request,handler):
+    # Copied into the sandboxed source; no server or native save access.
+    import copy,hashlib,json
+    result=copy.deepcopy(result);state=result['state']
+    controls=state.setdefault('world_object_controls',{})
+    for obj in result.get('objects',[]):
+        if obj['id'] in controls:obj.update(copy.deepcopy(controls[obj['id']]['object']))
+    receipts=state.setdefault('world_object_action_receipts',{})
+    if request['id'] in receipts:return result
+    if len(receipts)>=32:raise ValueError('Consolidate object interaction source before adding more requests')
+    actors=state.get('world_characters',{});actor=actors.get(request['actor'],{})
+    objects={o['id']:o for o in result.get('objects',[])}
+    source=objects.get(request['actor']);target=objects.get(request['object'])
+    actions=state.get('world_object_actions',{}).get(request['object'],{})
+    if (actor.get('status')!='active' or actor.get('version')!=request['version'] or not source or not target
+        or target!=request['target'] or actions!=request['actions'] or request['object'] in actors
+        or any(source.get(k)!=target.get(k) for k in ('group','num','region_revision'))
+        or abs(source['x']-target['x'])+abs(source['y']-target['y'])!=1):raise ValueError('Object interaction preconditions changed')
+    previous=controls.get(request['object'],{}).get('state',{})
+    value=handler(request['object'],request['action'],copy.deepcopy(previous))
+    if type(value) is not dict or set(value)!={'state','x','y','gfx','text'} or type(value['state']) is not dict or len(json.dumps(value['state'],allow_nan=False))>2048:
+        raise ValueError('Object handler requires bounded own state and x/y/gfx/text')
+    if (any(type(value[k]) is not int for k in ('x','y','gfx')) or abs(value['x']-target['x'])+abs(value['y']-target['y'])>1
+        or value['gfx'] not in (0,1) or type(value['text']) is not str or not 1<=len(value['text'])<=28
+        or any(not 32<=ord(c)<127 for c in value['text'])):raise ValueError('Object handler exceeds supported local object changes')
+    after=dict(target,**{k:value[k] for k in ('x','y','gfx','text')})
+    controls[request['object']]=dict(state=value['state'],object={k:after[k] for k in ('x','y','gfx','text')})
+    result['objects']=[after if o['id']==request['object'] else o for o in result['objects']]
+    receipts[request['id']]=dict(object=request['object'],action=request['action'],before=target,after=after,
+        state_changed=previous!=value['state'],state_digest=hashlib.sha256(json.dumps(value['state'],sort_keys=True).encode()).hexdigest())
+    return result
+
+
+def use(server,actor,row,args):
+    from .actor_runtime import Pending
+    from .characters import records
+    from .character_walks import walking
+    if set(args)!={'object','action','object_revision'}:raise ValueError('Use an observed object action and revision')
+    obj=next((o for o in server.objects if o['id']==args['object']),None)
+    source=next((o for o in server.objects if o['id']==actor),None)
+    current=records(server.module_state).get(actor,{})
+    offer=offers(server,obj) if obj else {}
+    if (not obj or not source or current.get('status')!='active' or walking(server.module_state,actor)
+        or offer.get('object_revision')!=args['object_revision'] or args['action'] not in offer.get('actions',{})
+        or any(source.get(k)!=obj.get(k) for k in ('group','num','region_revision'))
+        or abs(source['x']-obj['x'])+abs(source['y']-obj['y'])!=1):raise ValueError('Object action unavailable, stale or not adjacent')
+    execution=server.actor_tool_execution
+    request=dict(actor=actor,version=current['version'],object=obj['id'],action=args['action'],target=copy.deepcopy(obj),actions=offer['actions'],plan=execution[2]['id'],step=execution[3]['id'])
+    identity=digest(request);request['id']=identity;suffix=identity[:16]
+    old=server.candidate.source
+    helper=inspect.getsource(object_step).replace('def object_step(',f'def _object_step_{suffix}(',1)
+    source_code=(old+'\n'+f'_object_previous_{suffix}=update\n_object_handler_{suffix}=actor_interact\n'+helper+'\n'+
+        f'def update(context,state):\n    if not state:\n        import copy\n        state=copy.deepcopy({server.module_state!r})\n    return _object_step_{suffix}(_object_previous_{suffix}(context,state), {request!r}, _object_handler_{suffix})\n')
+    if len(source_code.encode())>256*1024:raise ValueError('Consolidate source before another interaction')
+    sha=hashlib.sha256(source_code.encode()).hexdigest();path=server.runtime.candidates/('object_'+sha+'.py')
+    try:
+        with path.open('x') as f:f.write(source_code)
+    except FileExistsError:
+        if path.is_symlink() or path.read_text()!=source_code:raise ValueError('Object candidate conflict')
+    def dispatch():server.deployment=(None,path,None)
+    return Pending(dict(request=identity,object=obj['id'],revision=obj['region_revision'],before=copy.deepcopy(obj),state_digest=digest(server.module_state.get('world_object_controls',{}).get(obj['id'],{}).get('state',{}))),dispatch)
+
+
+def poll(server,actor,row,pending):
+    result=server.module_state.get('world_object_action_receipts',{}).get(pending['request'])
+    obj=next((o for o in server.objects if o['id']==pending['object']),None)
+    control=server.module_state.get('world_object_controls',{}).get(pending['object'],{})
+    if result and obj and result.get('before')==pending['before'] and result.get('after')==obj and obj.get('region_revision')==pending['revision']:
+        return dict(object=pending['object'],before=pending['before'],after=copy.deepcopy(obj),revision=pending['revision'],state_changed=digest(control.get('state',{}))!=pending['state_digest'],state_digest=digest(control.get('state',{})),outcome='validated_object_state_committed')
+    raise ValueError('Object handler was not admitted; no effect claimed')
