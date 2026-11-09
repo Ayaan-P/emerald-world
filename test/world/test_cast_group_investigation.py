@@ -15,6 +15,7 @@ class GroupInvestigationTests(unittest.TestCase):
    publish=dict(place='MauvilleCity_BikeShop',text='Public project choice: share your group interpretation?',mystery=self.pack['id'],requires=dict(published=[0,0]),once='world',choices=dict(share=dict(text='Publish interpretation',requires={},effects=dict(published=1),result='The shared interpretation is available for discussion.'))))))
   self.f.apply(a)
   self.peers=[self.f.peer(n) for n in ('Alice','Bob','Cara','Dan')]
+  for p in self.peers:p['core_active_run']='a'*32
  def at(self,p,role):
   p['state'][:4]=list(investigations.STATIONS[role]);p['state_time']=time.monotonic()
  def test_four_trainers_choose_roles_complete_privately_then_return_to_original_actor(self):
@@ -45,7 +46,8 @@ class GroupInvestigationTests(unittest.TestCase):
     self.assertEqual(len(reactions.observe(q,self.s.inspect(),self.f.fetch)),1)
     next_action=self.f.action(1);next_action['changes'].update(goal='Reconsider my research from the published interpretation',evidence=[event['seq']]);self.f.apply(next_action)
    finally:q.close()
-  self.s.close();self.f.f.case.server=self.f.f.case.open();self.s=self.f.f.case.server
+  self.s.close();self.f.f.case.server=self.f.f.case.open();self.s=self.f.f.case.server;self.f.s=self.s
+  dan=self.f.peer('Dan');dan['core_active_run']='a'*32
   self.assertTrue(self.s.mysteries.completed('Dan','route_notes'))
   self.assertEqual(cast.records(self.s.module_state)['canon_rydel']['version'],2)
  def test_role_collision_cancel_and_replay_no_partial_completion(self):
@@ -69,3 +71,44 @@ class GroupInvestigationTests(unittest.TestCase):
   self.s.mysteries.command('Cara',['solve','1','DAWN'])
   self.assertTrue(self.s.mysteries.completed('Bob','three_cards'))
   self.assertFalse(self.s.mysteries.completed('Dan','three_cards'))
+
+ def finish_current_group(self):
+  self.s.mysteries.command('Alice',['start','route_notes']);run=self.s.mysteries._current('Alice')[0]
+  for role,p in enumerate(self.peers[1:],1):self.s.mysteries.command(p['id'],['join',run,str(role+1)])
+  for role,p in enumerate(self.peers):self.at(p,role);self.s.mysteries.command(p['id'],['clue'])
+  return run
+
+ def test_save_a_completion_does_not_unlock_save_b_before_or_after_restart(self):
+  run=self.finish_current_group();self.s.mysteries.command('Dan',['solve','1','DAWN'])
+  alice=self.peers[0]
+  from world.build_catalog import catalog_maps
+  alice['state'][:2]=next(k for k,v in catalog_maps().items() if v['name']=='MauvilleCity_BikeShop')
+  cast.response(self.s,alice,'b'*32,'rydel')
+  self.assertFalse(self.s.mysteries.completed('Alice','route_notes'))
+  self.assertEqual(panel(self.s,alice,'b'*32,'rydel','view')['role'],5)
+  cast.response(self.s,alice,'a'*32,'rydel')
+  self.assertTrue(self.s.mysteries.completed('Alice','route_notes'))
+  self.assertEqual(panel(self.s,alice,'a'*32,'rydel','view')['role'],4)
+  self.s.close();self.f.f.case.server=self.f.f.case.open();self.s=self.f.s=self.f.f.case.server
+  alice=self.f.peer('Alice');cast.response(self.s,alice,'b'*32,'rydel')
+  self.assertFalse(self.s.mysteries.completed('Alice','route_notes'))
+  cast.response(self.s,alice,'a'*32,'rydel');self.assertTrue(self.s.mysteries.completed('Alice','route_notes'))
+  # An older completion with no reliable save identity cannot be guessed into A.
+  with self.s.db:self.s.db.execute('DELETE FROM mystery_lineages WHERE run=?',(run,))
+  self.assertFalse(self.s.mysteries.completed('Alice','route_notes'))
+  self.assertEqual(self.s.db.execute('SELECT status FROM mystery_runs WHERE id=?',(run,)).fetchone(),('completed',))
+
+ def test_switching_save_cannot_supply_another_saves_station_or_cancel_its_run(self):
+  run=self.finish_current_group();self.peers[0]['core_active_run']='b'*32
+  with self.assertRaises(ValueError):self.s.mysteries.command('Dan',['solve','1','DAWN'])
+  with self.assertRaises(ValueError):self.s.mysteries.command('Alice',['clue'])
+  with self.assertRaises(ValueError):self.s.mysteries.command('Alice',['leave'])
+  self.assertEqual(self.s.db.execute('SELECT status FROM mystery_runs WHERE id=?',(run,)).fetchone(),('active',))
+  self.peers[0]['core_active_run']='a'*32
+  self.s.mysteries.command('Dan',['solve','1','DAWN'])
+  self.assertTrue(self.s.mysteries.completed('Alice','route_notes'))
+
+ def test_unbound_start_rolls_back_without_assigning_a_role(self):
+  self.peers[0].pop('core_active_run')
+  with self.assertRaisesRegex(ValueError,'Connect this save'):self.s.mysteries.command('Alice',['start','route_notes'])
+  self.assertEqual(self.s.db.execute('SELECT count(*) FROM mystery_runs').fetchone()[0],0)

@@ -65,3 +65,10 @@ agent output. No new native payload is published. Full rendered four-client UI,
 model content quality, live author flow and ordinary-story acceptance remain
 Maya's QA. Optional puzzle commands use existing native/server support, not a
 claim of new synchronized cutscenes or arbitrary multi-region content.
+
+
+## Follow-on save isolation
+
+Canonical cast investigations now bind each participant to their active native save lineage when joining. Switching saves cannot provide station occupancy, read that save's clues, cancel its active run or reuse its completion in the original actor panel. Returning to the enrolled save restores access, including after authority restart. Trainers may have separate investigations in separate saves.
+
+Existing unbound canonical runs/completions are preserved but cannot be assigned a reliable lineage retroactively. They do not unlock canonical project choices; replay from the intended save is necessary. Ordinary non-cast legacy mystery packs keep their existing trainer-wide scope. No canonical flags, player saves or prior shared-world consequences are changed or revoked. Shared project effects already committed remain shared world state, distinct from the save-specific eligibility that permitted them.
