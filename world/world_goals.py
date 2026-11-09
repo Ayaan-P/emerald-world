@@ -28,6 +28,7 @@ def submit(queue, inspection, actor, goal, request_id):
             raise ValueError('Actor already has a pending author turn')
         if queue.db.execute('SELECT count(*) FROM character_reactions').fetchone()[0]>=8 and not queue.db.execute('SELECT 1 FROM character_reactions WHERE id=?',(actor,)).fetchone():
             raise ValueError('Followed actor capacity reached')
+        queue.db.execute('DELETE FROM population_agents WHERE id=?',(actor,)) # Explicit host goal takes over the bounded lifecycle.
         queue.db.execute('INSERT OR REPLACE INTO character_reactions VALUES(?,?,?,?)',
                          (actor,goal,memory['world_id'],memory['through']))
         queue.db.execute('INSERT INTO requests(id,player,text,kind,status,created,result) VALUES(?,?,?,?,?,?,?)',

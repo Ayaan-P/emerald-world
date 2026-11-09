@@ -20,6 +20,8 @@ def actors(state):
 
 
 def dynamic_result(event, identity, character):
+    from .population_agents import creation
+    if creation(event,identity):return True
     from .actor_runtime import relevant as tool_relevant
     if tool_relevant(event,identity):return True
     from .character_encounters import relevant as encounter_relevant
@@ -45,6 +47,8 @@ def setup(queue):
         cursor INTEGER NOT NULL)''')
     queue.db.execute('CREATE TABLE IF NOT EXISTS canonical_seed_enrollments(id TEXT PRIMARY KEY)')
     queue.db.execute('CREATE TABLE IF NOT EXISTS canonical_seed_starts(id TEXT PRIMARY KEY,seq INTEGER NOT NULL)')
+    from .population_agents import setup as population_setup
+    population_setup(queue)
     queue.db.commit()
 
 
@@ -61,6 +65,7 @@ def configure(queue, inspection, identity, purpose):
     with queue.db:
         if queue.db.execute('SELECT count(*) FROM character_reactions').fetchone()[0] >= 8 and not queue.db.execute('SELECT 1 FROM character_reactions WHERE id=?', (identity,)).fetchone():
             raise ValueError('at most eight followed characters')
+        queue.db.execute('DELETE FROM population_agents WHERE id=?',(identity,)) # Explicit host enrollment takes over lifecycle ownership.
         # Reconfiguration starts at the inspected boundary, never replays old wins.
         queue.db.execute('INSERT OR REPLACE INTO character_reactions VALUES(?,?,?,?)',
                          (identity, purpose, memory['world_id'], memory['through']))
@@ -85,6 +90,8 @@ def subscriptions(queue):
 
 def observe(queue, inspection, fetch, *, enqueue=True):
     """Consume bounded authoritative pages without losing events in a busy world."""
+    from .population_agents import observe as observe_population
+    population_queued=observe_population(queue,inspection,fetch) if enqueue else []
     selected = subscriptions(queue)
     if not selected:
         return []
@@ -92,7 +99,7 @@ def observe(queue, inspection, fetch, *, enqueue=True):
     data = inspection.get('data', inspection)
     cast = actors(data.get('state', {}))
     memory = data.get('world_memory', {})
-    queued = []
+    queued = list(population_queued)
     for sub in selected:
         if sub['world'] != memory.get('world_id'):
             raise ValueError('followed character belongs to another world')

@@ -41,3 +41,10 @@ it('queues natural-language goals without starting provider and prevents duplica
  expect(request.mock.calls.find(([a])=>a==='cast_agent_goal')[1]).toMatchObject({world:'local',actor:'canon_rydel',goal:'Make a connected outdoor place and populate it.',confirmed:true});
  expect(request.mock.calls.some(([a])=>a==='cast_agent_start')).toBe(false);
 });
+it('requires explicit enrollment for future NPC agents without starting a provider',async()=>{
+ const request=vi.fn(async()=>({...info,population_agents:{enabled:false,characters:[]}}));render(<LivingCast {...props} onRequest={request}/>);
+ await screen.findByText('Current goal: Consider actual events');const button=screen.getByRole('button',{name:'Enable automatic new-character agents'});
+ expect(button.disabled).toBe(true);fireEvent.click(screen.getByRole('checkbox'));fireEvent.click(button);
+ expect(request).toHaveBeenLastCalledWith('cast_agent_population',{world:'local',enabled:true,confirmed:true});
+ expect(request.mock.calls.some(([a])=>a==='cast_agent_start')).toBe(false);
+});
