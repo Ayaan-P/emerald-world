@@ -126,12 +126,13 @@ def inspect_runtime(server):
     from .canonical_cast import records
     install(server.db)
     from .prop_custody import inventory
+    from .companion_exchange import offers as companion_offers
     from .actor_navigation import discover as discover_navigation
     from .actor_linked_navigation import graph as linked_graph
     from .character_companions import roster
     return dict(companion_rosters={actor:roster(server,actor) for actor,r in actor_records(server).items() if not r.get('canonical')},capabilities={key:dict(description=c.description,arguments=c.arguments,outcome=c.outcome,actor_kinds=c.kinds) for key,c in CAPABILITIES.items()},
         available_actions=server.opportunities.actor_actions()[:32],actors={a:('canonical' if r.get('canonical') else 'world') for a,r in actor_records(server).items()},
-        navigation=discover_navigation(server),cave_links=linked_graph(server),carried_props=inventory(server),
+        companion_offers=companion_offers(server),navigation=discover_navigation(server),cave_links=linked_graph(server),carried_props=inventory(server),
         object_player_use='Optional state.world_object_player_use maps prop ID to one advertised world_object_actions action ID. Native A dispatches the same actor_interact(object_id,action,own_state) handler through normal staging. No map: text only. Effects are bounded own-state/text/graphics/one-cell movement, not bags/items.',
         result_references='Use {result: earlier_step_id, key: scalar_result_key}. Reserved key tool_receipt yields that successful step durable receipt sequence.',
         plans=[dict(actor=actor,plan=row['plan'],receipts=[dict(step=s,status=status,result=json.loads(result),seq=seq)
@@ -250,3 +251,7 @@ CAPABILITIES['world.traverse_link']=Capability('Traverse an adjacent observed ph
 
 from .actor_linked_navigation import start as navigate_places, poll as linked_navigation_poll
 CAPABILITIES['world.navigate_places']=Capability('Route this actor to a tile across actual installed cave links.',dict(place='opened destination place ID',revision='exact destination cave revision',x='destination integer',y='destination integer'),'Durable per-leg authority movement/traversal receipts and final arrival; changed or blocked routes require replan, no canonical/outdoor travel.',navigate_places,linked_navigation_poll,('world',))
+
+from .companion_exchange import offer as offer_companion, respond as respond_companion
+CAPABILITIES['world.offer_companion']=Capability('Offer an actually owned benched companion to an adjacent world character.',dict(target='recipient actor ID',individual='owned benched individual ID',recipient_individual='unused recipient-local identity'),'Pending independent recipient choice; no capture or immediate transfer.',offer_companion,None,('world',))
+CAPABILITIES['world.respond_companion']=Capability('Accept/decline a companion offered to this actor, or withdraw own offer.',dict(offer='actual offer ID',decision='accept, decline or withdraw'),'Atomic real companion custody transfer preserving native identity/state. Teams and player saves unchanged; recipient can later prepare its own lineup.',respond_companion,None,('world',))

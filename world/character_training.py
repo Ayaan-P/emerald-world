@@ -21,7 +21,8 @@ def source(server,actor,individual):
  mon=next((m for m in c['team'] if m.get('individual')==individual),None)
  if not mon:raise ValueError('Companion is not on this character team')
  identity=server.db.execute('SELECT species,personality,owner FROM character_companions WHERE actor=? AND individual=?',(actor,individual)).fetchone()
- if identity is None:raise ValueError('Companion has no durable identity')
+ from .companion_exchange import owned
+ if identity is None or not owned(server.db,actor,individual):raise ValueError('Companion has no owned durable identity')
  result=dict(world_id=server.memory.world_id,actor=actor,individual=individual,version=c['version'],
              species=identity[0],personality=identity[1],owner=identity[2],authored_level=mon['level'],trained=saved(server.db,actor,individual))
  result['token']=hashlib.sha256(json.dumps(result,sort_keys=True).encode()).hexdigest()
