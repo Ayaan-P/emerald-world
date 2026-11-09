@@ -105,6 +105,11 @@ class IntentQueue:
             last = self.db.execute("SELECT value FROM metadata WHERE key='last_author'").fetchone()
             if last and now - float(last[0]) < min_interval:
                 return None
+            if row['kind']=='character':
+                from world.population_agents import reserve
+                if not reserve(self,row['player']):
+                    self.db.execute("UPDATE requests SET status='interrupted',finished=?,result=? WHERE id=?",(now,json.dumps({'ok':False,'reason':'automatic character turn limit or stopped lifecycle'}),row['id']))
+                    return None
             self.db.execute("INSERT OR REPLACE INTO metadata VALUES('last_author',?)", (str(now),))
             self.db.execute("UPDATE requests SET status='running',started=? WHERE id=?", (now, row['id']))
             return dict(row)
