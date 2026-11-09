@@ -1827,6 +1827,18 @@ class WorldServer:
                 else:
                     from .character_training import intentions
                     with self.lock:result=intentions(self)
+            elif request.get('command') == 'mechanic_source':
+                # Host-admin only. Never expose source through the player wire or
+                # accept a host filesystem path supplied by an author.
+                with self.lock:
+                    expected=request.get('expected_hash')
+                    if set(request)!={'command','expected_hash'} or not self.candidate or expected!=self.candidate.sha256:
+                        raise ValueError('active mechanic changed or unavailable')
+                    stored=self.db.execute('SELECT source,sha256 FROM module WHERE singleton=1').fetchone()
+                    if (not stored or stored[1]!=expected or stored[0]!=self.candidate.source
+                        or hashlib.sha256(stored[0].encode()).hexdigest()!=expected):
+                        raise ValueError('admitted mechanic source integrity mismatch')
+                    result=dict(ok=True,source=stored[0],sha256=expected)
             elif request.get('command') == 'inspect':
                 result = self.inspect()
             elif request.get('command') == 'world_rules':
