@@ -4,7 +4,8 @@ export default function LivingCast({world, available, ready, busy, onRequest}) {
   const [info,setInfo]=useState(null),[provider,setProvider]=useState('anthropic-messages'),[model,setModel]=useState('');
   const [actor,setActor]=useState('canon_rydel'),[purpose,setPurpose]=useState(''),[confirmed,setConfirmed]=useState(false);
   const [working,setWorking]=useState(false),[error,setError]=useState(''),[uncertain,setUncertain]=useState(false);
-  const pending=useRef(false);
+  const pending=useRef(false), goalRequest=useRef(null);
+  const [goal,setGoal]=useState(''),[goalActor,setGoalActor]=useState('canon_rydel');
   const disabled=!available || !ready || busy || working;
   async function call(action,fields={}) {
     if(pending.current)return;
@@ -21,6 +22,11 @@ export default function LivingCast({world, available, ready, busy, onRequest}) {
   const selected=info?.actors.find(a=>a.id===actor);
   const credentials=info?.providers.find(p=>p.id===provider)?.credential_ready;
   const mayChange=!disabled && !uncertain;
+  async function submitGoal(){
+    if(!goalRequest.current || goalRequest.current.goal!==goal || goalRequest.current.actor!==goalActor)goalRequest.current={goal,actor:goalActor,request_id:crypto.randomUUID()};
+    const result=await call('cast_agent_goal',{...goalRequest.current,confirmed:true});
+    if(result){setGoal('');goalRequest.current=null;}
+  }
   function edit(set,value){set(value);setConfirmed(false);}
   return <section aria-labelledby="living-cast-heading" className="worlds-section">
     <h2 id="living-cast-heading">Living cast agents</h2>
@@ -43,6 +49,14 @@ export default function LivingCast({world, available, ready, busy, onRequest}) {
       <label>Character purpose<textarea value={purpose} maxLength={1024} disabled={disabled} onChange={e=>edit(setPurpose,e.target.value)} /></label>
       <button type="button" disabled={!mayChange || !confirmed || !purpose.trim() || selected?.followed} onClick={()=>call(selected?.authored?'cast_agent_follow':'cast_agent_initialize',{actor,purpose:purpose.trim(),confirmed:true})}>{selected?.authored ? 'Follow public events for this character' : 'Queue first character request'}</button>
       {selected?.followed && <button type="button" disabled={!mayChange} onClick={()=>call('cast_agent_unfollow',{actor})}>Stop following this character</button>}
+      <h3>Build the world with an agent</h3>
+      <p>Describe an outcome in your own words. The selected existing actor can compose supported world capabilities and reconsider actual results. This queues a request and follows that actor's results; it does not start the provider or promise completion. Goals go to your configured provider and resulting world changes can be public.</p>
+      <label>World goal actor<select value={goalActor} disabled={disabled} onChange={e=>setGoalActor(e.target.value)}>{(info?.goal_actors || []).map(a=><option value={a.id} key={a.id}>{a.name}</option>)}</select></label>
+      <label>World-building goal<textarea value={goal} maxLength={1024} disabled={disabled} onChange={e=>setGoal(e.target.value)} placeholder="Describe the place, inhabitants or changes you want" /></label>
+      <button type="button" disabled={!mayChange || !confirmed || !goal.trim() || !info?.goal_actors?.some(a=>a.id===goalActor)} onClick={submitGoal}>Queue world-building goal</button>
+      {info?.goal_actors?.find(a=>a.id===goalActor)?.followed && <button type="button" disabled={!mayChange} onClick={()=>call('cast_agent_unfollow',{actor:goalActor})}>Stop world goal follow-up</button>}
+      <ul aria-label="World goal requests">{(info?.goals || []).map(g=><li key={g.id}>{g.actor}: {g.status} author request. World actions have separate receipts.</li>)}</ul>
+      <p>Stop following the selected character to stop future reaction turns. Already committed plans/actions remain world state; stopping the provider does not undo them.</p>
       <p>After the first record is authored, refresh and follow it for future events. Stopping preserves queued work. Closing or disconnecting this host stops its worker. No private reflection worker is enabled.</p>
       {error && <p role="alert">{error}</p>}
     </>}

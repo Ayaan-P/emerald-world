@@ -7,7 +7,8 @@ from .author_backends import API_BACKENDS,validate
 
 def action(session,worlds,command,payload):
     fields={'world'}
-    if command=='cast_agent_enroll_cast':fields|={'confirmed'}
+    if command=='cast_agent_goal':fields|={'actor','goal','request_id','confirmed'}
+    elif command=='cast_agent_enroll_cast':fields|={'confirmed'}
     elif command=='cast_agent_start':fields|={'provider','model','confirmed'}
     elif command in ('cast_agent_follow','cast_agent_initialize'):fields|={'actor','purpose','confirmed'}
     elif command=='cast_agent_unfollow':fields|={'actor'}
@@ -18,7 +19,14 @@ def action(session,worlds,command,payload):
             or payload['world'] not in {w['key'] for w in worlds} or server is None or server._closed):
         raise SessionError('Open this local Expansion host before using living-cast controls.')
     try:
-        if command=='cast_agent_enroll_cast':
+        if command=='cast_agent_goal':
+            if payload['confirmed'] is not True:raise ValueError('Confirm host goal processing')
+            from .world_goals import submit
+            with server.lock:inspection=server.inspect()
+            queue=session._gm_queue()
+            try:submit(queue,inspection,payload['actor'],payload['goal'],payload['request_id'])
+            finally:queue.close()
+        elif command=='cast_agent_enroll_cast':
             if payload['confirmed'] is not True:raise ValueError('Confirm public cast enrollment')
             from .canonical_seeds import initialize
             queue=session._gm_queue()
@@ -31,7 +39,8 @@ def action(session,worlds,command,payload):
         elif command=='cast_agent_stop':session.stop_gm()
         elif command in ('cast_agent_follow','cast_agent_initialize','cast_agent_unfollow'):
             actor=payload['actor']
-            if actor not in BINDINGS:raise ValueError('Unknown original actor')
+            if actor not in BINDINGS and command!='cast_agent_unfollow':raise ValueError('Unknown original actor')
+            if type(actor) is not str or not 1<=len(actor)<=24:raise ValueError('Invalid actor')
             if command!='cast_agent_unfollow':
                 if payload['confirmed'] is not True or type(payload['purpose']) is not str or not 1<=len(payload['purpose'].strip())<=1024:raise ValueError('Confirm a bounded character purpose')
             with server.lock:inspection=server.inspect();existing=records(server.module_state)
@@ -47,7 +56,8 @@ def action(session,worlds,command,payload):
             finally:queue.close()
     except (ValueError,OSError):
         raise SessionError('Living-cast operation was not confirmed. Check selected model, host credential availability, actor history and runtime status. No automatic retry.') from None
-    with server.lock:actors=records(server.module_state)
+    from .character_reactions import actors as all_actors
+    with server.lock:actors=records(server.module_state);goal_actors=all_actors(server.module_state)
     status=session.gm_status()
     followed={r['id'] for r in status.get('characters',[])}
     thread=session.gm_thread
@@ -55,5 +65,7 @@ def action(session,worlds,command,payload):
         provider=getattr(session,'gm_provider',None),model=getattr(session,'gm_model',None),
         failed=bool(session.gm_error),providers=[dict(id=k,credential_ready=bool(os.environ.get(v[1]))) for k,v in API_BACKENDS.items()],
         actors=[dict(id=k,name=v['name'],authored=k in actors,followed=k in followed,goal=actors.get(k,{}).get('goal')) for k,v in BINDINGS.items()],
+        goal_actors=[dict(id=k,name=v.get('name',BINDINGS.get(k,{}).get('name',k)),followed=k in followed) for k,v in goal_actors.items() if v.get('status')=='active'],
+        goals=[dict(id=r['id'],actor=r['player'],status=r['status']) for r in status.get('requests',[]) if r['id'].startswith('world-goal-')][-8:],
         queued=sum(r['status']=='queued' for r in status.get('requests',[])),
         failed_requests=sum(r['status'] in ('failed','interrupted') for r in status.get('requests',[])))

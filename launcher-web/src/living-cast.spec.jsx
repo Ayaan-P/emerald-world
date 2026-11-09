@@ -30,3 +30,14 @@ it('enrolls the original cast together without starting a provider implicitly',a
  expect(request).toHaveBeenLastCalledWith('cast_agent_enroll_cast',{world:'local',confirmed:true});
  expect(request.mock.calls.some(([a])=>a==='cast_agent_start')).toBe(false);
 });
+it('queues natural-language goals without starting provider and prevents duplicate clicks',async()=>{
+ const goalInfo={...info,goal_actors:[{id:'canon_rydel',name:'Rydel',followed:false}],goals:[]};
+ const request=vi.fn(async()=>goalInfo);render(<LivingCast {...props} onRequest={request}/>);
+ await screen.findByText('Current goal: Consider actual events');
+ fireEvent.change(screen.getByLabelText('World-building goal'),{target:{value:'Make a connected outdoor place and populate it.'}});
+ const button=screen.getByRole('button',{name:'Queue world-building goal'});expect(button.disabled).toBe(true);
+ fireEvent.click(screen.getByRole('checkbox'));fireEvent.click(button);fireEvent.click(button);
+ expect(request.mock.calls.filter(([a])=>a==='cast_agent_goal')).toHaveLength(1);
+ expect(request.mock.calls.find(([a])=>a==='cast_agent_goal')[1]).toMatchObject({world:'local',actor:'canon_rydel',goal:'Make a connected outdoor place and populate it.',confirmed:true});
+ expect(request.mock.calls.some(([a])=>a==='cast_agent_start')).toBe(false);
+});
