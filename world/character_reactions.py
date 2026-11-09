@@ -192,6 +192,9 @@ def prepare(context, fetch):
     from .canonical_cast import reaction_activity
     matched = (len(events)==1 and (reaction_activity(events[0], reaction['id'], character)
                if character.get('canonical') else dynamic_result(events[0],reaction['id'],character)))
+    if reaction.get('host_goal'):
+        matched=(len(events)==1 and seq in character.get('evidence',[]))
+        context['host_world_goal']=dict(purpose=reaction.get('purpose'),limits='This is an explicit host request, not an event, achievement or permission to fabricate outcomes. Compose discovered capabilities with real preconditions and result receipts. Preserve unrelated actors and normal campaign. A pending plan is not completed; do not silently interrupt it.')
     if reaction.get('self_direction'):
         from .canonical_self_direction import relevant as self_directed
         if len(events)!=1 or not self_directed(events[0],reaction['id'],character):raise ValueError('Self-directed turn needs this exact current committed goal')
