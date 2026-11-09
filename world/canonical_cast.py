@@ -421,3 +421,17 @@ def deliver_letter(server, change):
         sender_version=row['version'],based_on=row['evidence'],depth=depth,
         publication='public_cast_correspondence',
         places=['native:'+BINDINGS[i]['map'] for i in (change['character_id'],letter['to'])]))
+
+
+def remote_response(server,conn,run,key):
+    """Supplement an existing registered native Match Call, never impersonate a visit."""
+    if key not in ('wally','steven') or conn.get('core_active_run')!=run:
+        raise ValueError('Match Call requires a supported original contact and current save context')
+    identity='canon_'+key;row=records(server.module_state).get(identity)
+    if row is None:raise ValueError('No authored response for this contact')
+    selected=server.db.execute('SELECT version,choice FROM canonical_conversations WHERE trainer=? AND actor=?',(conn['id'],identity)).fetchone()
+    option=row.get('conversation',{}).get(selected[1]) if selected and selected[0]==row['version'] else None
+    result=dict(world_id=server.memory.world_id,run=run,actor=identity,version=row['version'],
+                briefing=option['reply'] if option else row['dialogue'],objective='')
+    result['digest']=hashlib.sha256(json.dumps(result,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    return result
