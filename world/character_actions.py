@@ -33,7 +33,7 @@ def validate_actions(actions, context):
         if type(evidence) is not list or not evidence or any(type(seq) is not int or seq not in known for seq in evidence):
             raise ValueError('actions require inspected public history evidence')
         changes=action['changes']
-        if type(changes) is not dict or set(changes)-{'goals','relationships','team','status','offer'}:
+        if type(changes) is not dict or set(changes)-{'goals','relationships','team','status','offer','intentions'}:
             raise ValueError('unsupported character action changes')
         if 'walk' in action:
             path=action['walk'];obj=action['object']
@@ -118,7 +118,7 @@ def contract():
     return {'response':'{"character_actions": actions, "tests": "Python tests"}',
             'action_fields':['id','expected_version','evidence','reason','changes','object'],
             'optional_walk':'2..6 unique cardinal [x,y] points including current start and replacement object endpoint, same generated revision only; progresses one point per authority tick, yields to reported ready player occupancy, blocks interactions until complete',
-            'changes':'goals, relationships to existing public NPCs, team, status, optional offer (null removes)',
+            'changes':'goals, relationships to existing public NPCs, team, status, retained practice intentions for own identified companions, optional offer (null removes)',
             'effect':'explicitly take over selected existing NPCs from older scripts; native map object controls actual relocation/dialogue and team controls battle; all unrelated source effects preserved',
             'evidence':'nonempty inspected/recalled public history references; authored intent, never proof of battle or catch',
             'limits':'eight actions per request, 32 action publications before source consolidation; expected version rechecked on admission; native maps or region_revision-bound opened immutable generated regions or archived shared XL revisions',

@@ -1,8 +1,8 @@
 """Opt-in, result-driven author turns for already registered world characters.
 
 No arc, timer, fabricated outcome, native script replacement or automatic model
-startup. Only public completion of this character's exact offered expedition
-can schedule another bounded action through the configured developer GM.
+startup. Exact public expedition completion or a trusted isolated practice
+receipt can schedule another bounded action through the configured developer GM.
 """
 import json
 import re
@@ -17,6 +17,15 @@ def actors(state):
     result.update({identity:dict(row,status='active',canonical=True)
                    for identity,row in canonical_records(state).items()})
     return result
+
+
+def dynamic_result(event, identity, character):
+    if event.get('character_id')!=identity:return False
+    if (event.get('event')=='character_practice_completed' and event.get('publication')=='public_fictional_character_practice'
+        and event.get('basis')=='trusted_local_host_native_receipt' and event.get('character_version')==character['version']):return True
+    offer=character.get('offer') or {}
+    return (bool(offer) and event.get('event')=='guild_goal_completed' and event.get('publication')=='guild_leader_opt_in'
+            and event.get('character_offer_id')==offer.get('id') and event.get('character_offer_revision')==offer.get('revision'))
 
 
 def setup(queue):
@@ -104,12 +113,9 @@ def observe(queue, inspection, fetch, *, enqueue=True):
                 from .canonical_cast import reaction_activity
                 matched = (reaction_activity(event, sub['id'], character)
                            if character.get('canonical') else
-                           event.get('character_id') == sub['id']
-                           and event.get('character_offer_id') == offer.get('id')
-                           and event.get('character_offer_revision') == offer.get('revision') and bool(offer))
+                           dynamic_result(event,sub['id'],character))
                 if (not enqueue or character.get('status') != 'active'
-                        or (not character.get('canonical') and (event.get('event') != 'guild_goal_completed'
-                        or event.get('publication') != 'guild_leader_opt_in')) or not matched):
+                        or not matched):
                     continue
                 identifier = uuid.uuid4().hex
                 reaction = dict(world_id=sub['world'], id=sub['id'], expected_version=character['version'],
@@ -149,17 +155,13 @@ def prepare(context, fetch):
     offer = character.get('offer') or {}
     from .canonical_cast import reaction_activity
     matched = (len(events)==1 and (reaction_activity(events[0], reaction['id'], character)
-               if character.get('canonical') else events[0].get('character_id') == reaction['id']
-               and events[0].get('character_offer_id') == offer.get('id')
-               and events[0].get('character_offer_revision') == offer.get('revision')))
+               if character.get('canonical') else dynamic_result(events[0],reaction['id'],character)))
     if reaction.get('intention'):
         from .canonical_cast import decision_evidence
         if reaction['intention'] not in character.get('intentions',[]):raise ValueError('retained intention changed')
         matched=len(events)==1 and decision_evidence(events[0],reaction['id'],character)
     if (page.get('ok') is not True or page.get('world_id') != reaction['world_id']
             or len(events) != 1 or events[0].get('seq') != seq
-            or (not character.get('canonical') and (events[0].get('event') != 'guild_goal_completed'
-            or events[0].get('publication') != 'guild_leader_opt_in'))
             or not matched):
         raise ValueError('character reaction lacks exact public offer completion')
     # Public fictional actors need committed public results, not player purposes

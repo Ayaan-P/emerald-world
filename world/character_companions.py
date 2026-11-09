@@ -3,6 +3,8 @@ import hashlib
 
 
 def setup(db):
+    from .character_training import setup as setup_training
+    setup_training(db)
     db.execute('''CREATE TABLE IF NOT EXISTS character_companions(
         actor TEXT, individual TEXT, species INTEGER, personality INTEGER, owner INTEGER,
         PRIMARY KEY(actor,individual))''');db.commit()
@@ -11,6 +13,9 @@ def setup(db):
 def validate(db, identity, character):
     known=dict(db.execute('SELECT individual,species FROM character_companions WHERE actor=?',(identity,)))
     for mon in character['team']:
+        from .character_training import saved
+        prior=saved(db,identity,mon.get('individual'))
+        if prior and mon['level'] not in (prior['authored_level'],prior['state']['level']):raise ValueError('Authored edits cannot reset trained companion level')
         key=mon.get('individual')
         if key and key in known and known[key]!=mon['species']:
             raise ValueError('companion species cannot change without a supported evolution adapter')

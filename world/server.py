@@ -629,6 +629,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                character_state_capable=role.endswith('CHARPK2')
+                if character_state_capable:role=role[:-7]
                 character_pokemon_capable=role.endswith('CHARPK1')
                 if character_pokemon_capable:role=role[:-7]
                 core_story_capable = role.endswith('CORE1')
@@ -765,6 +767,7 @@ class WorldServer:
                 conn['character_walk_capable'] = character_walk_capable
                 conn['character_region_capable'] = character_region_capable
                 conn['character_pokemon_capable']=character_pokemon_capable and character_capable
+                conn['character_state_capable']=character_state_capable and conn['character_pokemon_capable']
                 conn['character_capable'] = character_capable
                 conn['character_quest_capable'] = character_quest_capable
                 conn['rules_capable'] = rules_capable
@@ -1764,10 +1767,20 @@ class WorldServer:
                     elif request['command']=='private_cast_finish' and set(request)=={'command','id','lease','result'}:result=finish(self,request['id'],request['lease'],request['result'])
                     else:raise ValueError('Invalid private reflection command.')
                 except ValueError as exc:result=dict(ok=False,error=str(exc))
+            elif request.get('command') in ('character_practice_source','character_practice_apply'):
+                from .character_training import source,reconcile
+                try:
+                    with self.lock:
+                        if request['command']=='character_practice_source' and set(request)=={'command','actor','individual'}:result=dict(ok=True,source=source(self,request['actor'],request['individual']))
+                        elif request['command']=='character_practice_apply':result=reconcile(self,request)
+                        else:raise ValueError('Invalid practice command')
+                except (ValueError,TypeError,KeyError) as exc:result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'cast_practice_intentions':
                 from .canonical_cast import records
                 if set(request)!={'command'}:result=dict(ok=False,error='Invalid cast practice inspection')
-                else:result=dict(ok=True,world_id=self.memory.world_id,actors={key:dict(version=row['version'],intentions=[t for t in row.get('intentions',[]) if t['kind']=='practice']) for key,row in records(self.module_state).items()})
+                else:
+                    from .character_training import intentions
+                    with self.lock:result=intentions(self)
             elif request.get('command') == 'inspect':
                 result = self.inspect()
             elif request.get('command') == 'world_rules':

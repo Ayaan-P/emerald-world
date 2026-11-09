@@ -1,7 +1,8 @@
 """One-shot host dispatcher for retained fictional cast practice intentions.
 
 Deployment gate: use only after the exact native binary's isolated entry has
-been validated. No live world receipt publication or story-party replacement.
+been validated. World-owned dynamic companions reconcile through local authority;
+canonical story parties are never replaced.
 """
 import argparse
 import hashlib
@@ -32,7 +33,18 @@ def step(ledger,engine,request,*,validated_native=False,steps=256,cap=20):
             if ledger.db.execute('SELECT 1 FROM cast_practice_dispatch WHERE world=? AND actor=? AND intention=?',key).fetchone():continue
             individual=task['target'];sig=signature(world,actor,row,task)
             try:
+                training_source=None
+                if row.get('binding')=='world_character':
+                    response=request(dict(command='character_practice_source',actor=actor,individual=individual))
+                    if response.get('ok') is not True:raise ValueError('World companion source unavailable')
+                    training_source=response['source']
+                    if training_source['world_id']!=world or training_source['version']!=row['version']:raise ValueError('World companion changed')
+                    try:ledger.get(actor,individual)
+                    except ValueError:
+                        if training_source['trained']:raise ValueError('Existing full world state requires explicit host recovery; do not recreate by level')
+                        ledger.initialize(actor,individual,training_source['species'],training_source['authored_level'],training_source['personality'],training_source['owner'],engine)
                 companion=ledger.get(actor,individual)
+                if training_source and training_source['trained'] and (companion['engine']!=training_source['trained']['engine'] or companion['state']!=training_source['trained']['state']):raise ValueError('Local/world full companion state diverged')
                 if companion['engine']!=engine.digest:raise ValueError('Registered companion belongs to another native build')
                 # Claim intention and queue its frozen companion atomically.
                 with ledger.db:
@@ -63,8 +75,17 @@ def step(ledger,engine,request,*,validated_native=False,steps=256,cap=20):
                     simulated_steps=steps,exp_added=after['state']['exp']-companion['state']['exp'],
                     before_level=companion['state']['level'],after_level=after['state']['level'],
                     basis='isolated_host_practice_result',publication='local_host_ledger_only')
+                status='completed_in_host_ledger'
+                if training_source is not None:
+                    payload=dict(command='character_practice_apply',actor=actor,individual=individual,token=training_source['token'],job=job,engine=engine.digest,before=companion['state'],after=after['state'],steps=steps,cap=cap)
+                    receipt['authority_payload']=payload
+                    with ledger.db:ledger.db.execute('UPDATE cast_practice_dispatch SET status=?,receipt=? WHERE world=? AND actor=? AND intention=?',('awaiting_reconciliation',json.dumps(receipt,sort_keys=True),*key))
+                    applied=request(payload)
+                    if applied.get('ok') is not True:raise ValueError('Practice completed locally but world reconciliation refused: '+str(applied.get('error')))
+                    receipt.update(publication='public_fictional_character_practice',world_receipt=applied['seq'])
+                    status='reconciled_to_world_companion'
                 with ledger.db:ledger.db.execute('UPDATE cast_practice_dispatch SET status=?,receipt=? WHERE world=? AND actor=? AND intention=?',('completed',json.dumps(receipt,sort_keys=True),*key))
-                return dict(status='completed_in_host_ledger',receipt=receipt)
+                return dict(status=status,receipt=receipt)
             except Exception as exc:
                 with ledger.db:ledger.db.execute('UPDATE cast_practice_dispatch SET status=? WHERE world=? AND actor=? AND intention=?',('failed',*key))
                 return dict(status='failed',actor=actor,intention=task['id'],reason=str(exc))
