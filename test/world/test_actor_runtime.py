@@ -18,7 +18,7 @@ class ActorRuntimeTests(unittest.TestCase):
   self.f.f.apply(a)
  def test_real_composition_result_reference_restart_and_independent_recipient(self):
   self.apply(self.plan());catalog=self.s.inspect()['actor_runtime']
-  self.assertEqual(set(catalog['capabilities']),{'world.act','actor.message','world.navigate','world.observe','world.open_ground','world.approach','world.address','world.use_object','world.take_prop','world.place_prop','world.extend_space','world.create_place','world.create_habitat','world.populate','world.create_landscape','world.await_entity','world.await_event','world.practice','world.prepare_challenge'})
+  self.assertEqual(set(catalog['capabilities']),{'world.act','actor.message','world.navigate','world.observe','world.open_ground','world.approach','world.address','world.use_object','world.take_prop','world.place_prop','world.extend_space','world.create_place','world.create_habitat','world.populate','world.create_landscape','world.await_entity','world.program_object','world.await_event','world.practice','world.prepare_challenge'})
   first=runtime.tick(self.s,now=10);self.assertEqual(first['status'],'succeeded')
   self.assertEqual(self.s.opportunities.offers('Alice','LittlerootTown')[0]['scenes'][0]['id'],'solo')
   # Restart before dependent tool; committed state is not replayed.

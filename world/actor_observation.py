@@ -39,6 +39,9 @@ def observe(server, actor, row, args):
     for entity in entities:
         obj=next(o for o in server.objects if o['id']==entity['id'])
         entity.update(offers(server,obj))
+        if obj.get('kind')=='prop':
+            from .actor_objects import digest
+            entity['program_revision']=digest([obj,server.candidate.sha256 if server.candidate else None])
         if obj.get('kind')=='prop' and obj.get('portable') is True:
             from .actor_objects import digest
             entity['portable_revision']=digest(obj)
