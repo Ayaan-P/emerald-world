@@ -357,3 +357,38 @@ claim/finish dispatch, deterministic isolated worker response, next native reply
 restart, withdrawal, stale snapshots, cross-player/save isolation and refusal of
 world-code/tool outputs. No live model call was made for these tests. The existing
 paired native adapter is unchanged; full rendered/live-model QA remains separate.
+
+## Persistent individual Pokémon in the existing dynamic battle adapter
+
+The dynamic-trainer factory previously regenerated every opponent with a random
+personality each battle. Teams in the existing `world_characters` registry may
+now identify every member with a stable `individual` ID alongside species/level.
+An immutable authority archive derives and retains each individual's personality
+and fictional trainer ID independently of slot, team version or level. Removing,
+reordering and later restoring the same companion preserves those identities.
+The archive is scoped to the world and character, with 32 individuals per actor.
+
+The matched native client negotiates `CHARPK1` and receives a frozen
+`CHARACTER_BATTLE_V2` descriptor. Its production factory uses the actual RC12
+`CreateMonWithIVs` API with preset owner/personality and the existing 15-IV balance,
+then initializes the native level-appropriate moves. OT name/gender are explicitly
+set to the fictional trainer rather than inherited from the player's save.
+Only `gEnemyParty` is constructed; normal trainer scripts and player party/storage
+are unchanged. Old un-identified teams still use V1. Old clients refuse identified
+teams rather than silently turn persistent companions into random replacements.
+Capability fallback drops CHARPK1 before earlier optional roles.
+
+This is individual continuity in actual dynamic opponent construction, not earned
+XP, simulated catches, persistent injuries or autonomous training. Levels remain
+author decisions grounded by the existing history contract. Species cannot change
+for an archived ID until an actual supported evolution adapter is added, including
+after removal/reintroduction. Unsupported cross-species reassignment fails closed.
+
+This slice applies to already-supported agent-authored recurring NPCs. It does
+NOT attach a new team to canonical Wally/Steven or replace their story battles.
+Those actors still need a safe optional sparring interface; metadata is not that
+interface. The native component test compiles the production factory/parser with
+engine fixtures, exercises all six opponents, reorder/level changes, preset OT,
+legacy random behavior and malformed/overflow refusal. It is not a full native
+Pokémon arithmetic/build/rendered playtest. Authority tests verify frozen pending
+teams, restart, older-client refusal, archive reuse and identity isolation.

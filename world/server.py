@@ -142,6 +142,8 @@ class WorldServer:
         self.memory = WorldMemory(self.db)
         from .core_story import CoreStory
         self.core_story = CoreStory(self)
+        from .character_companions import setup as setup_companions
+        setup_companions(self.db)
         self.guilds = Guilds(self.db, catalog_maps(), record_outcome=self.memory.append)
         self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
         from .cooperative_mysteries import Mysteries
@@ -627,6 +629,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                character_pokemon_capable=role.endswith('CHARPK1')
+                if character_pokemon_capable:role=role[:-7]
                 core_story_capable = role.endswith('CORE1')
                 if core_story_capable:role=role[:-5]
                 mount_capable = role.endswith('MOUNTS1')
@@ -760,6 +764,7 @@ class WorldServer:
                 conn['private_commands'] = private_commands
                 conn['character_walk_capable'] = character_walk_capable
                 conn['character_region_capable'] = character_region_capable
+                conn['character_pokemon_capable']=character_pokemon_capable and character_capable
                 conn['character_capable'] = character_capable
                 conn['character_quest_capable'] = character_quest_capable
                 conn['rules_capable'] = rules_capable
@@ -1980,6 +1985,8 @@ class WorldServer:
                                 places=overlay_places(self.tiles + tiles, self.objects + objects,self.db),
                                 before=dict(tiles=self.tiles, objects=self.objects),
                                 after=dict(tiles=tiles, objects=objects)))
+                        from .character_companions import commit as commit_companions
+                        commit_companions(self.db,self.memory.world_id,character_changes)
                         for change in character_changes:
                             change['places'] = overlay_places([], [obj for obj in self.objects + objects
                                 if obj['id'] == change['character_id']],self.db)
