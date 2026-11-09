@@ -76,6 +76,10 @@ def describe(event, place=None):
         from .canonical_cast import BINDINGS
         title=BINDINGS[event['character_id']]['name']+' opened a shared project'
         details=[event['title'],'Executable public choices installed; no physical participation or completed work implied.']
+    elif kind == 'canonical_shared_project_decided':
+        from .canonical_cast import BINDINGS
+        title=BINDINGS[event['character_id']]['name']+' received a shared project decision'
+        details=[event['pack']+': '+event['scene']+' / '+event['choice'],'Anonymous shared consequence; private clues and solver identities are not recorded.']
     elif kind == 'canonical_world_action_committed':
         from .canonical_cast import BINDINGS
         title=BINDINGS[event['character_id']]['name']+' changed a shared opportunity'

@@ -63,8 +63,8 @@ def validate(pack,places):
 
 
 class Opportunities:
-    def __init__(self,db,places,mysteries=None):
-        self.db=db;self.places=set(places);self.mysteries=mysteries
+    def __init__(self,db,places,mysteries=None,record_outcome=None):
+        self.db=db;self.places=set(places);self.mysteries=mysteries;self.record_outcome=record_outcome
         db.executescript('''
         CREATE TABLE IF NOT EXISTS story_packs(id TEXT PRIMARY KEY,document TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS story_places(pack TEXT,place TEXT,revision INTEGER,state TEXT,played TEXT,PRIMARY KEY(pack,place));
@@ -149,6 +149,7 @@ class Opportunities:
             self.db.execute('INSERT OR REPLACE INTO story_places VALUES(?,?,?,?,?)',(pack_id,place,current+1,encoded(shared),encoded(wp)))
             self.db.execute('INSERT OR REPLACE INTO story_players VALUES(?,?,?,?)',(pack_id,trainer,encoded(private),encoded(pp)))
             self.db.execute('INSERT INTO story_consequences VALUES(?,?,?,?,?,?)',(pack_id,place,current+1,scene_id,choice_id,encoded(public)))
+            if self.record_outcome:self.record_outcome(pack_id,place,scene_id,choice_id,current+1,public)
             result=dict(ok=True,revision=current+1,text=action['result'])
             self.db.execute('INSERT INTO story_receipts VALUES(?,?,?,?,?)',(pack_id,trainer,request,payload,encoded(result)))
             return result

@@ -18,8 +18,8 @@ def validate(project, identity, row, actors):
     validate_pack(project,places)
     if any(q['scope']!='place' for q in project['qualities'].values()):
         raise ValueError('Cast initiatives use public shared qualities only')
-    if any('mystery' in s for s in project['scenes'].values()):
-        raise ValueError('Cast initiatives cannot inspect private mystery progress')
+    if any('mystery' in s and ('actors' in s or s['mystery']!=(row.get('investigation') or {}).get('id')) for s in project['scenes'].values()):
+        raise ValueError('Only player scenes may use this actor investigation completion')
     assigned={a for s in project['scenes'].values() for a in s.get('actors',[])}
     if identity not in assigned or assigned-set(actors):
         raise ValueError('Initiative requires its owner and only existing actors')
