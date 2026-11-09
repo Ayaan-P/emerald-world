@@ -85,6 +85,64 @@ class CanonicalCastTests(unittest.TestCase):
         self.apply(self.action());self.assertEqual(self.query(self.peer('Bob',False)),'CORE REFUSED 15')
         c=self.peer();c['state_time']-=10;self.assertEqual(self.query(c),'CORE REFUSED 15')
         c['state_time']=time.monotonic();c['state'][:2]=[0,9];self.assertEqual(self.query(c),'CORE REFUSED 15')
+    def test_smart_apostrophes_preserve_authored_state_and_restart(self):
+        text='Let\u2019s consider \u2018patient\u2019 rides.'
+        action=self.action(text=text);original=deepcopy(action)
+        self.apply(action)
+        self.assertEqual(action,original)
+        self.assertEqual(cast.records(self.s.module_state)['canon_rydel']['dialogue'],text)
+        self.assertEqual(cast.response(self.s,self.peer(),'a'*32,'rydel')['briefing'],text)
+        self.s.close();self.f.case.server=self.f.case.open();self.s=self.f.case.server;self.f.server=self.s
+        self.assertEqual(cast.records(self.s.module_state)['canon_rydel']['dialogue'],text)
+
+    def test_native_text_still_rejects_controls_unknown_unicode_and_wrong_guards(self):
+        for text in ('bad$','bad{PLAYER}','bad\\\\','bad\n','bad\r','bad\t','bad\x00','bad\x1b','bad\x7f',
+                     'bad\u200b','bad\u202e','bad\u00a0','caf\u00e9','bad\u201c','bad\U0001f6b2','a'*201,''):
+            with self.subTest(text=repr(text)):
+                action=self.action(text='It\u2019s '+text)
+                if not text:action['changes']['dialogue']=''
+                with self.assertRaises(ValueError):cast.compile_actions([action],self.context())
+        for changes in (dict(expected_version=1),dict(id='canon_unknown')):
+            action=self.action(text='It\u2019s a ride.');action.update(changes)
+            with self.assertRaises(ValueError):cast.compile_actions([action],self.context())
+        action=self.action(text='It\u2019s a ride.');action['changes']['evidence']=[999999]
+        with self.assertRaises(ValueError):cast.compile_actions([action],self.context())
+        self.assertNotIn(cast.KEY,self.s.module_state)
+
+    def test_canonical_dialogue_wire_is_ascii_without_changing_semantics(self):
+        text='Let\u2019s consider \u2018patient\u2019 rides.'
+        expected="Let's consider 'patient' rides."
+        action=self.action(text=text);self.apply(action)
+        peer=self.peer()
+        self.assertEqual(bytes.fromhex(self.query(peer).split()[-1]).decode('ascii'),expected+' ')
+        peer['out'].clear()
+        self.s._line(peer,('CORE '+'a'*32+' CAST rydel safe').encode())
+        legacy=json.loads(bytes.fromhex(peer['out'].decode().split()[-1]).decode('ascii'))
+        self.assertEqual(legacy['briefing'],expected)
+        self.assertEqual(cast.response(self.s,peer,'a'*32,'rydel')['briefing'],text)
+        action=self.action(text=text);action['id']='canon_wally';self.apply(action)
+        peer['out'].clear()
+        self.s._line(peer,('CORE '+'a'*32+' CALL wally registered 16').encode())
+        self.assertEqual(bytes.fromhex(peer['out'].decode().split()[-1]).decode('ascii'),expected)
+        self.assertEqual(cast.records(self.s.module_state)['canon_wally']['dialogue'],text)
+        # Existing actor/version/evidence gates still run before native encoding.
+        selected=dict(id='canon_wally',expected_version=0,evidence=self.evidence,canonical=True)
+        answer=dict(canonical_actions=[action],tests='assert True')
+        reactions.check_response(answer,selected)
+        for guard,value in [('id','canon_rydel'),('expected_version',1),('evidence',999999)]:
+            with self.subTest(guard=guard), self.assertRaisesRegex(ValueError,'selected actor, version and evidence'):
+                reactions.check_response(answer,dict(selected,**{guard:value}))
+
+    def test_cast_guild_wire_folds_apostrophes_only_at_rendering(self):
+        action=self.action(text='Let\u2019s ride.')
+        action['changes']['goal']='Consider Rydel\u2019s \u2018patient\u2019 rides.'
+        self.apply(action)
+        peer=self.peer();self.f.connections['Alice']=peer
+        self.f.command('cast rydel thoughts')
+        messages=[bytes.fromhex(m[3]).decode('ascii') for m in peer['chat_history']]
+        self.assertIn("Guild: Consider Rydel's 'patient' rides.",messages)
+        self.assertEqual(cast.records(self.s.module_state)['canon_rydel']['goal'],action['changes']['goal'])
+
     def test_rejects_fake_private_evidence_controls_and_duplicate_objects(self):
         for changes in [dict(dialogue='Unsafe {PLAYER} control'),dict(team=[{'species':1,'level':100}]),dict(evidence=[999999])]:
             action=self.action();action['changes'].update(changes)

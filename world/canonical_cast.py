@@ -34,6 +34,11 @@ def check_actor_location(server,conn,identity):
     raise ValueError('Talk to this original actor at the current location first.')
 
 
+def native_text(text):
+    """Fold only reviewed smart apostrophes for native display, never stored state."""
+    return text.replace('\u2018', "'").replace('\u2019', "'")
+
+
 def records(state):
     value=state.get(KEY,{})
     if type(value) is not dict or set(value)-set(BINDINGS):raise ValueError('unknown canonical actor binding')
@@ -45,7 +50,7 @@ def records(state):
         if type(row['version']) is not int or not 1<=row['version']<=2**31-1:raise ValueError('invalid canonical actor version')
         for field,limit in [('goal',160),('reason',240)]:
             if type(row[field]) is not str or not 1<=len(row[field])<=limit or any(ord(c)<32 for c in row[field]):raise ValueError('invalid canonical actor text')
-        if type(row['dialogue']) is not str or not re.fullmatch("[A-Za-z0-9 .,!?'-]{1,200}",row['dialogue']):raise ValueError('canonical dialogue requires bounded literal native text')
+        if type(row['dialogue']) is not str or not re.fullmatch("[A-Za-z0-9 .,!?'-]{1,200}",native_text(row['dialogue'])):raise ValueError('canonical dialogue requires bounded literal native text')
         if type(row['places']) is not list or not 1<=len(row['places'])<=4 or len(set(row['places']))!=len(row['places']) or any(p not in places for p in row['places']):raise ValueError('canonical interests require known native places')
         if type(row['evidence']) is not list or not 1<=len(row['evidence'])<=8 or any(type(n) is not int or n<1 for n in row['evidence']) or len(set(row['evidence']))!=len(row['evidence']):raise ValueError('canonical actor needs public evidence')
         if row.get('rematch') is not None and (identity!='canon_wally' or row['rematch']!='wally_native'):raise ValueError('Only Wally has a reviewed original rematch invitation')

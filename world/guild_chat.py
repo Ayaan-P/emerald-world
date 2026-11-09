@@ -51,8 +51,8 @@ class GuildChat:
                 try:
                     command=text[6:].strip();words=command.split()
                     if words and words[0].lower()=='cast':
-                        from .canonical_cast import guild_command
-                        lines=guild_command(s,conn,words[1:])
+                        from .canonical_cast import guild_command,native_text
+                        lines=[native_text(line) for line in guild_command(s,conn,words[1:])]
                         self.epoch+=1
                     elif words and words[0].lower()=='play' and getattr(s, 'activities', None):
                         lines=[line[:113] for line in s.activities.command(conn,words[1:])]

@@ -876,20 +876,21 @@ class WorldServer:
                         if not fields[5].isascii() or not fields[5].isdigit() or not 1<=int(fields[5])<=4294967295:
                             raise ValueError('Invalid canonical request nonce.')
                         nonce=fields[5]
+                    from .canonical_cast import native_text
                     result = self.core_story.handle(conn, fields[:5] if nonce else fields)
                     if nonce:
                         prefix='CORE REPLY '+nonce+' '+fields[1]+' '+fields[2]+' '+fields[3]+' '
                         if fields[2]=='RING':
-                            reply=self.memory.world_id+' '+result['caller']+' '+result['token']+' '+(result['text'].encode().hex() if result['text'] else '-')
+                            reply=self.memory.world_id+' '+result['caller']+' '+result['token']+' '+(native_text(result['text']).encode('ascii').hex() if result['text'] else '-')
                         elif fields[2] in ('DIALOG','PROJECT'):
-                            reply=' '.join([result['world_id'],str(result['version']),result['session'],str(result['role']),str(len(result['options'])),result['question'].encode().hex()]+[value for option in result['options'] for value in (option['label'].encode().hex(),str(option['advice']))])
+                            reply=' '.join([result['world_id'],str(result['version']),result['session'],str(result['role']),str(len(result['options'])),native_text(result['question']).encode('ascii').hex()]+[value for option in result['options'] for value in (native_text(option['label']).encode('ascii').hex(),str(option['advice']))])
                         elif fields[2] in ('OFFER','CAST','CALL'):
-                            reply=result['world_id']+' '+result['digest']+' '+(result['briefing'] if fields[2]=='CALL' else result['briefing']+' '+result['objective']).encode().hex()
+                            reply=result['world_id']+' '+result['digest']+' '+native_text(result['briefing'] if fields[2]=='CALL' else result['briefing']+' '+result['objective']).encode('ascii').hex()
                         else:
                             reply='OK'
                         self._queue(conn,prefix+reply+'\n')
                     else:
-                        self._queue(conn, 'CORE RESULT ' + json.dumps(result,sort_keys=True,separators=(',', ':')).encode().hex() + '\n')
+                        self._queue(conn, 'CORE RESULT ' + native_text(json.dumps(result,sort_keys=True,separators=(',', ':'),ensure_ascii=False)).encode('ascii').hex() + '\n')
                 except ValueError:
                     self._queue(conn, 'CORE REFUSED'+(' '+nonce if nonce else '')+'\n')
                 return
