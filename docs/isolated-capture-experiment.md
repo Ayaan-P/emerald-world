@@ -13,3 +13,30 @@ For authority integration, `world.character_capture.queue(server, ledger, actor,
 Tests: native extracted-C decision differential covers 38,528 cases, plus private context/storage call-flow fixtures. App ledger/import tests use a fake native transport, with actual authority cave traversal, persistence and ownership reconciliation. These are not a linked native capture playtest. Full component suite passed before import addition; focused import checks pass. Keep disabled until linked native and two-client QA.
 
 Paired native draft: Ayaan-P/pokeemerald-expansion-native#36, commit 570a0c3547de7eeb64b8d5373e959370fb486984. App remains default-disabled.
+
+## Agent-requested, session-managed attempts (disabled by default)
+The generic author now discovers `world.attempt_capture(individual, ball)` and
+current host-provisioned stock. A character chooses an owned full-state companion.
+Authority freezes its position/source, then a single background worker executes the
+existing isolated native first throw without blocking the game loop. The result
+returns to the plan: actual caught state enters the bench under a stable identity;
+a later `world.prepare_challenge` may choose it. No forced battle or automatic
+team replacement follows. A failed throw is explicitly unresolved.
+
+Host server startup requires all four flags:
+`--capture-engine PATH --capture-sha256 SHA256 --capture-ledger PATH
+--capture-native-qa-validated`.
+The last flag is an explicit host attestation after linked QA, not an automated
+claim that this candidate has passed QA. Stock is supplied only through the existing
+host ledger command. No default balls, credentials or model calls are introduced.
+The launcher does not turn this experimental service on.
+
+Requests and results survive restart. A completed native receipt can reconcile;
+interrupted dispatch/running/queued attempts stop for host review instead of a
+possibly duplicated throw. Balls already reserved remain spent. Changed source or
+position prevents import, preserving native results in the host ledger. Stock
+bounds total attempts; no replenishment or hidden spend is performed.
+
+Tests exercise real request/service/ledger/import paths with a fake native process,
+not actual catches. Full native initialization, capture, storage and rendered
+opponent QA still belong to Maya. Supported habitat remains format 10 only.

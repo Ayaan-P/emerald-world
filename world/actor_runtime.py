@@ -95,6 +95,8 @@ def actor_records(server):
     return rows
 
 def install(db):
+    from .actor_capture import setup as capture_setup
+    capture_setup(db)
     from .npc_conversations import install as install_speech
     install_speech(db)
     from .actor_knowledge import setup as knowledge_setup
@@ -136,7 +138,8 @@ def inspect_runtime(server):
     from .character_companions import roster
     from .actor_knowledge import inbox as knowledge_inbox
     from .npc_conversations import inbox as speech_inbox
-    return dict(public_player_speech=speech_inbox(server),received_observations=knowledge_inbox(server),companion_rosters={actor:roster(server,actor) for actor,r in actor_records(server).items() if not r.get('canonical')},capabilities={key:dict(description=c.description,arguments=c.arguments,outcome=c.outcome,actor_kinds=c.kinds) for key,c in CAPABILITIES.items()},
+    from .actor_capture import available as capture_available
+    return dict(capture=capture_available(server),public_player_speech=speech_inbox(server),received_observations=knowledge_inbox(server),companion_rosters={actor:roster(server,actor) for actor,r in actor_records(server).items() if not r.get('canonical')},capabilities={key:dict(description=c.description,arguments=c.arguments,outcome=c.outcome,actor_kinds=c.kinds) for key,c in CAPABILITIES.items()},
         available_actions=server.opportunities.actor_actions()[:32],actors={a:('canonical' if r.get('canonical') else 'world') for a,r in actor_records(server).items()},
         companion_offers=companion_offers(server),navigation=discover_navigation(server),cave_links=linked_graph(server),carried_props=inventory(server),
         object_player_use='Optional state.world_object_player_use maps prop ID to one advertised world_object_actions action ID. Native A dispatches the same actor_interact(object_id,action,own_state) handler through normal staging. No map: text only. Effects are bounded own-state/text/graphics/one-cell movement, not bags/items.',
@@ -271,3 +274,6 @@ CAPABILITIES['world.program_network']=Capability('Link observed unused props int
 
 from .npc_conversations import reply as reply_player
 CAPABILITIES['world.reply_player']=Capability('Reply publicly to an actual nearby player speech addressed to this recurring NPC.',dict(speech='own public_player_speech receipt integer',text='1..80 printable characters of public fictional reply'),'Durable public reply; native chat if original speaker remains nearby. No obedience, action completion or private relationship invented.',reply_player,None,('world',))
+
+from .actor_capture import request as capture_request,poll as capture_poll
+CAPABILITIES['world.attempt_capture']=Capability('Request a real isolated first throw with an owned companion and finite host-provisioned ball.',dict(individual='owned on-team full-state individual',ball='basic ball integer 1..3 from host stock'),'Disabled without an exact QA-validated host runner. Actual caught individual imported to bench or unresolved failure receipt; no battle victory, player save or automatic team rewrite.',capture_request,capture_poll,('world',))
