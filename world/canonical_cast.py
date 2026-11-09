@@ -22,7 +22,7 @@ def records(state):
     from .build_catalog import catalog_maps
     places={'native:'+m['name'] for m in catalog_maps().values()}
     for identity,row in value.items():
-        if type(row) is not dict or set(row)-{'offer','relationships'}!={'version','goal','dialogue','places','evidence','reason'}:
+        if type(row) is not dict or set(row)-{'offer','relationships','conversation'}!={'version','goal','dialogue','places','evidence','reason'}:
             raise ValueError('invalid canonical actor fields')
         if type(row['version']) is not int or not 1<=row['version']<=2**31-1:raise ValueError('invalid canonical actor version')
         for field,limit in [('goal',160),('reason',240)]:
@@ -30,6 +30,13 @@ def records(state):
         if type(row['dialogue']) is not str or not re.fullmatch("[A-Za-z0-9 .,!?'-]{1,200}",row['dialogue']):raise ValueError('canonical dialogue requires bounded literal native text')
         if type(row['places']) is not list or not 1<=len(row['places'])<=4 or len(set(row['places']))!=len(row['places']) or any(p not in places for p in row['places']):raise ValueError('canonical interests require known native places')
         if type(row['evidence']) is not list or not 1<=len(row['evidence'])<=8 or any(type(n) is not int or n<1 for n in row['evidence']) or len(set(row['evidence']))!=len(row['evidence']):raise ValueError('canonical actor needs public evidence')
+        conversation=row.get('conversation',{})
+        if type(conversation) is not dict or len(conversation)>3:raise ValueError('at most three conversational choices')
+        for choice,option in conversation.items():
+            if type(choice) is not str or not re.fullmatch('[a-z][a-z0-9_]{0,15}',choice):raise ValueError('invalid conversational choice')
+            if type(option) is not dict or set(option)!={'label','reply'}:raise ValueError('conversation choices require label and reply')
+            for field,limit in [('label',48),('reply',200)]:
+                if type(option[field]) is not str or not re.fullmatch("[A-Za-z0-9 .,!?'-]{1,"+str(limit)+"}",option[field]):raise ValueError('bounded literal conversation text required')
         relationships=row.get('relationships',{})
         if type(relationships) is not dict or len(relationships)>2:raise ValueError('at most two directional cast relationships')
         for target,relation in relationships.items():
@@ -92,7 +99,7 @@ def compile_actions(actions, context):
     if type(actions) is not list or len(actions)!=1:raise ValueError('one bounded canonical action required')
     action=actions[0]
     if type(action) is not dict or set(action)!={'id','expected_version','changes'} or action['id'] not in BINDINGS:raise ValueError('invalid canonical action')
-    if type(action['changes']) is not dict or set(action['changes'])-{'offer','relationships'}!={'goal','dialogue','places','evidence','reason'}:raise ValueError('invalid canonical changes')
+    if type(action['changes']) is not dict or set(action['changes'])-{'offer','relationships','conversation'}!={'goal','dialogue','places','evidence','reason'}:raise ValueError('invalid canonical changes')
     old=cast.get(action['id']);version=old['version'] if old else 0
     if type(action['expected_version']) is not int or action['expected_version']!=version:raise ValueError('stale canonical action')
     row=copy.deepcopy(action['changes']);row['version']=version+1
@@ -113,8 +120,10 @@ def response(server, conn, run, key):
     server.core_story._place(conn,BINDINGS[identity]['map'])
     row=records(server.module_state).get(identity)
     if row is None:raise ValueError('no authored canonical response')
+    private=server.db.execute('SELECT version,choice FROM canonical_conversations WHERE trainer=? AND actor=?',(conn['id'],identity)).fetchone()
+    option=row.get('conversation',{}).get(private[1]) if private and private[0]==row['version'] else None
     result=dict(schema=1,world_id=server.memory.world_id,run=run,actor=identity,
-                version=row['version'],briefing=row['dialogue'],objective=('Ask guild chat about my plan.' if row.get('offer') else ''),evidence=row['evidence'])
+                version=row['version'],briefing=option['reply'] if option else row['dialogue'],objective=('Guild chat has conversation choices.' if row.get('conversation') and not option else 'Ask guild chat about my plan.' if row.get('offer') else ''),evidence=row['evidence'])
     result['digest']=hashlib.sha256(json.dumps(result,sort_keys=True,separators=(',',':')).encode()).hexdigest()
     return result
 
@@ -122,7 +131,8 @@ def response(server, conn, run, key):
 def contract():
     return dict(response='canonical_actions/tests',bindings=BINDINGS,
                 action_fields=['id','expected_version','changes'],
-                change_fields=['goal','dialogue','places','evidence','reason','offer (optional native map/count)','relationships (optional directional assessments)'],
+                change_fields=['goal','dialogue','places','evidence','reason','offer (optional native map/count)','relationships (optional directional assessments)','conversation (optional private player choices)'],
+                conversation=dict(choice='1..3 lowercase IDs',fields=['label (48 literal characters)','reply (200 literal characters)'],privacy='only player explicitly selects their own option; selection never enters world history or author context',scope='per authenticated trainer and actor; actor version changes require choosing again; no auto affinity, gifts or story changes'),
                 relationships=dict(target='another existing bound canonical actor, not a player',fields=['stance','motivation','evidence'],stances=['curious','encouraged','concerned','respectful','competitive'],basis='actual public completion attributed to target actor; directional interpretation, not mutual relationship or invented meeting',reaction='new public target-offer results in actor interests trigger reconsideration; never authored decisions alone'),
                 optional_offer=dict(map='canonical native map in places',count='1..50 distinct guild trainers',acceptance='/guild cast ACTOR previews; leader accepts exact version; chronicle must already be on',outcome='actual authenticated guild presence, not actor personal achievements'),
                 effects='supplement original bound actor dialogue only; no spawned duplicate, save flag, team, reward, bike exchange or main script change',
@@ -137,15 +147,20 @@ def guild_command(server, conn, args):
     Actor version binds ALL displayed terms; accepting never publishes old history.
     """
     from .guilds import GuildError
-    if len(args) not in (1,2):
+    if len(args) not in (1,2,4):
         return ['Use /guild cast ACTOR to preview a public field proposal. Actors: rydel, wally, briney.']
     identity=next((i for i,b in BINDINGS.items() if b['wire']==args[0]),None)
     if identity is None:raise GuildError('Unknown canonical actor.')
-    if server.peers.get(conn.get('id')) is not conn or not (conn.get('state') or [0]*7)[6]:
+    if server.peers.get(conn.get('id')) is not conn:raise GuildError('Authenticated trainer connection required.')
+    if args[1:]==['forget']:return conversation_command(server,conn,identity,None,['forget'])
+    if not (conn.get('state') or [0]*7)[6]:
         raise GuildError('Stand ready near the original actor before accepting a proposal.')
     try:server.core_story._place(conn,BINDINGS[identity]['map'])
     except ValueError:raise GuildError('Visit the original actor before reviewing or accepting a proposal.')
     row=records(server.module_state).get(identity);offer=(row or {}).get('offer')
+    if len(args)>=2 and args[1] in ('talk','forget'):
+        return conversation_command(server,conn,identity,row,args[1:])
+    if len(args)==4:raise GuildError('Use /guild cast ACTOR talk VERSION CHOICE.')
     if len(args)==2 and args[1]=='thoughts':
         if row is None:raise GuildError('This actor has no authored intent yet.')
         lines=[f"{BINDINGS[identity]['name']}'s current goal:"]
@@ -181,3 +196,27 @@ def validate_relationship_evidence(row, lookup):
                     or event.get('character_offer_id')!='field_plan'
                     or type(event.get('character_offer_revision')) is not int):
                 raise ValueError('relationship needs real public completion of the target actor proposal')
+
+
+def conversation_command(server, conn, identity, row, args):
+    """Own authenticated conversation only. No broadcast, history or GM input."""
+    from .guilds import GuildError
+    if args==['forget']:
+        with server.db:
+            server.db.execute('DELETE FROM canonical_conversations WHERE trainer=? AND actor=?',(conn['id'],identity))
+        return ['Your conversation choice was forgotten. Other trainers are unchanged.']
+    if not row or not row.get('conversation'):raise GuildError('No authored conversation choices are available.')
+    options=row['conversation'];wire=BINDINGS[identity]['wire']
+    if args==['talk']:
+        return ['Private conversation. This choice affects only your response, not the shared story.',
+                'A new actor version requires a new choice. Use forget to clear yours.']+[
+                f"{key}: {option['label']}" for key,option in options.items()]+[
+                f"Choose: /guild cast {wire} talk {row['version']} CHOICE"]
+    if len(args)!=3 or args[0]!='talk' or args[1]!=str(row['version']) or args[2] not in options:
+        raise GuildError('Conversation changed or choice unavailable. Preview with /guild cast ACTOR talk.')
+    with server.db:
+        server.db.execute('INSERT OR REPLACE INTO canonical_conversations VALUES(?,?,?,?)',
+                          (conn['id'],identity,row['version'],args[2]))
+    text=options[args[2]]['reply']
+    return [f"{BINDINGS[identity]['name']} answers you privately:"]+[text[i:i+110] for i in range(0,len(text),110)]+[
+            'Your next original NPC conversation uses this reply. Other trainers are unchanged.']

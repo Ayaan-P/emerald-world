@@ -48,6 +48,9 @@ class CoreStory:
         self.s = server
         self.db = server.db
         self.db.executescript('''
+        CREATE TABLE IF NOT EXISTS canonical_conversations(
+            trainer TEXT, actor TEXT, version INTEGER NOT NULL, choice TEXT NOT NULL,
+            PRIMARY KEY(trainer,actor));
         CREATE TABLE IF NOT EXISTS core_story_progress(
             trainer TEXT, run TEXT, beat TEXT, PRIMARY KEY(trainer,run,beat));
         CREATE TABLE IF NOT EXISTS core_story_shared(

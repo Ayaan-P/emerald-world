@@ -218,6 +218,62 @@ class CanonicalCastTests(unittest.TestCase):
         row['relationships']={'canon_rydel':dict(stance='competitive',motivation='This has no target attribution.',evidence=[self.evidence])}
         with self.assertRaises(ValueError):cast.validate_transition(before,after,[],self.s.db)
 
+    def test_private_conversation_is_independent_persistent_and_not_public_author_input(self):
+        action=self.action();action['changes']['conversation']={
+            'patient':dict(label='I want to learn at my own pace.',reply='We can take this slowly. You choose the pace.'),
+            'challenge':dict(label='I want a new challenge.',reply='You sound eager. Think about which route suits you.')}
+        self.apply(action)
+        alice=self.peer();bob=self.peer('Bob');self.f.connections.update(Alice=alice,Bob=bob)
+        history=deepcopy(self.s.memory.history());inspection=deepcopy(self.s.inspect())
+        bob_history=deepcopy(bob['chat_history'])
+        self.f.command('cast rydel talk')
+        self.assertEqual(self.s.db.execute('SELECT count(*) FROM canonical_conversations').fetchone()[0],0)
+        self.f.command('cast rydel talk 1 patient')
+        self.assertEqual(bob['chat_history'],bob_history)
+        self.assertIn('take this slowly',cast.response(self.s,alice,'a'*32,'rydel')['briefing'])
+        self.assertEqual(cast.response(self.s,bob,'b'*32,'rydel')['briefing'],action['changes']['dialogue'])
+        self.f.command('cast rydel talk 1 challenge',trainer='Bob')
+        self.assertIn('sound eager',cast.response(self.s,bob,'b'*32,'rydel')['briefing'])
+        self.assertIn('take this slowly',cast.response(self.s,alice,'a'*32,'rydel')['briefing'])
+        self.assertEqual(self.s.memory.history(),history)
+        self.assertEqual(self.s.inspect(),inspection)
+        # Private selections never become recalled public evidence or a public
+        # character author turn. No party, reward or progress is changed.
+        with tempfile.TemporaryDirectory() as tmp:
+            q=IntentQueue(tmp)
+            try:
+                reactions.configure(q,self.s.inspect(),'canon_rydel','Consider public results only.')
+                self.assertEqual(reactions.observe(q,self.s.inspect(),self.fetch),[])
+            finally:q.close()
+        self.assertEqual(self.f.stats()[0],10)
+        self.s.close();self.f.case.server=self.f.case.open();self.s=self.f.case.server;self.f.server=self.s
+        alice=self.peer();bob=self.peer('Bob');self.f.connections.update(Alice=alice,Bob=bob)
+        self.assertIn('take this slowly',cast.response(self.s,alice,'a'*32,'rydel')['briefing'])
+        self.assertIn('sound eager',cast.response(self.s,bob,'b'*32,'rydel')['briefing'])
+        # Withdrawal remains available away from the NPC, even when busy.
+        saved=deepcopy(alice['state']);alice['state'][6]=0
+        self.f.command('cast rydel forget');alice['state']=saved
+        self.assertEqual(cast.response(self.s,alice,'a'*32,'rydel')['briefing'],action['changes']['dialogue'])
+        self.assertIn('sound eager',cast.response(self.s,bob,'b'*32,'rydel')['briefing'])
+
+    def test_private_choice_stale_version_or_wrong_identity_never_changes_another_trainer(self):
+        from world.guilds import GuildError
+        a=self.action();a['changes']['conversation']={'patient':dict(label='Let us take our time.',reply='There is no need to rush.')};self.apply(a)
+        c=self.peer();cast.guild_command(self.s,c,['rydel','talk','1','patient'])
+        a['expected_version']=1;a['changes']['conversation']['patient']['reply']='The new field result gives us something else to consider.';self.apply(a)
+        # Public actor revision does not silently reinterpret a private choice.
+        self.assertEqual(cast.response(self.s,c,'a'*32,'rydel')['briefing'],a['changes']['dialogue'])
+        with self.assertRaises(GuildError):cast.guild_command(self.s,c,['rydel','talk','1','patient'])
+        with self.assertRaises(GuildError):cast.guild_command(self.s,c,['rydel','talk','2','Bob'])
+        impostor=dict(c)
+        with self.assertRaises(GuildError):cast.guild_command(self.s,impostor,['rydel','talk','2','patient'])
+        c['state_time']=0
+        with self.assertRaises(GuildError):cast.guild_command(self.s,c,['rydel','talk','2','patient'])
+        self.assertEqual(self.s.db.execute('SELECT trainer,version,choice FROM canonical_conversations').fetchall(),[('Alice',1,'patient')])
+        for conversation in [{'patient':dict(label='Hi',reply='{PLAYER}')},{'Alice':dict(label='Hi',reply='Hello')}]:
+            a['expected_version']=2;a['changes']['conversation']=conversation
+            with self.assertRaises(ValueError):cast.compile_actions([a],self.context())
+
     @unittest.skipUnless(__import__('os').environ.get('EW_NATIVE_SOURCE'),'set EW_NATIVE_SOURCE for actual native adapter pairing')
     def test_actual_authority_reply_enters_original_script_adapter(self):
         from pathlib import Path
@@ -226,8 +282,10 @@ class CanonicalCastTests(unittest.TestCase):
         tests=(native/'tests/test_world_core_story.py').read_text()
         fixture=re.search(r"fixture=r'''(.*?)'''",tests,re.S).group(1)
         source=re.sub(r'^#include .*\n','',(native/'src/world/world_core_story.c').read_text(),flags=re.M)
-        self.apply(self.action())
-        packet=self.query(self.peer())
+        action=self.action();action['changes']['conversation']={'patient':dict(label='Take our time.',reply='The field teams can wait. We will take our time.')}
+        self.apply(action);peer=self.peer()
+        cast.guild_command(self.s,peer,['rydel','talk','1','patient'])
+        packet=self.query(peer)
         world=self.s.memory.world_id
         checks='''
 int main(void){

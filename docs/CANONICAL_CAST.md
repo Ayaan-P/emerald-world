@@ -106,3 +106,35 @@ curiosity, a second real result, Wally choosing encouraged shorter practice and
 withdrawing his proposal, then persistence across authority restart. No extra
 XP or reciprocal Rydel relationship is manufactured. Deterministic test authors
 exercise the production pipeline; autonomous live-model behavior remains QA work.
+
+## Independent private conversations
+
+An authored actor may expose `conversation`, a dictionary of up to three choice
+IDs. Each entry has a literal `label` (48 characters) and `reply` (200 characters).
+The labels and replies are public authored content, grounded in the same public
+activity evidence as the actor's decision. Actual player selections are private.
+No free-form player text or personal attributes enter this authoring contract.
+
+At the original actor's map, `/guild cast rydel talk` previews the options and
+privacy scope. `/guild cast rydel talk VERSION CHOICE` explicitly selects one
+for the authenticated trainer only, without requiring guild leadership or guild
+membership. The authority privately returns the answer and the same original
+NPC's next native CAST response uses that trainer's selected reply. Another
+trainer can have a different conversation at the same time. Neither pauses,
+alters or claims the other's canonical progress. No host narrative ownership.
+
+Selections live in a dedicated private authority table keyed by trainer and
+actor, not world state, world history, journals, public reaction context or other
+players' snapshots. They survive reconnect and authority restart. They are per
+trainer identity, not per save lineage. `/guild cast rydel forget` deletes only
+your selection, anywhere, including when busy. An actor revision invalidates
+old selections until you explicitly choose again, so updated authored content
+cannot silently reinterpret your earlier choice.
+
+This is bounded conversational agency, not a simulated hidden affection score
+or an LLM reading private play history. Responses are authored alternatives;
+there is no player-specific model generation. Shared decisions can revise these
+alternatives, but private choices never trigger a public author turn or reward.
+Tests cover concurrent independent choices, private native reply, no inspection
+or history leakage, persistence, stale revisions, impersonation, invalid input,
+forgetting, and production C consuming the exact selected authority packet.
