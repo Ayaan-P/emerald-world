@@ -463,7 +463,7 @@ class LauncherBridge:
                     raise SessionError('Area generation could not complete. Check model login and local host setup before retrying.') from None
             elif action.startswith('cast_agent_'):
                 from .cast_agent_ui import action as cast_agent_action
-                return cast_agent_action(self.session,self.local_expeditions(),action,payload)
+                return cast_agent_action(self.session,self.local_expeditions(),action,payload,binary=self.binary)
             elif action in ('content_read', 'content_preview', 'content_apply'):
                 if self.engine != 'expansion-native':
                     raise SessionError('Content workshop requires the Expansion launcher.')
@@ -893,7 +893,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     from scripts.linux_client import discover_binary, prerequisites
     binary = args.binary or discover_binary(args.engine)
-    build_hint = ('python3 scripts/build_expansion.py' if args.engine == 'expansion-native'
+    build_hint = ('python3 scripts/build_expansion.py --generated-regions' if args.engine == 'expansion-native'
                   else 'make linux CFLAGS=-g WERROR=1')
     checks = [(name, ready, detail if name != 'binary' else f'{binary}. Build with: {build_hint}')
               for name, ready, detail in prerequisites(binary) if name != 'tkinter']

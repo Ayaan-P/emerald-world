@@ -27,10 +27,15 @@ def validate_request(action,actors,objects):
 
 
 def commit(server,identity,control,state,objects,arrival_seq):
+    return deliver(server,identity,control['object'],control['journey']['meeting'],state,objects,
+                   dict(journey=control['journey']['id'],arrival_receipt=arrival_seq))
+
+
+def deliver(server,identity,visitor,meeting,state,objects,context):
     from .characters import records
     from .character_walks import walking
-    meeting=control['journey']['meeting'];target=records(state).get(meeting['target'])
-    obj=next((o for o in objects if o['id']==meeting['target']),None);visitor=control['object']
+    target=records(state).get(meeting['target'])
+    obj=next((o for o in objects if o['id']==meeting['target']),None)
     reason=None
     if not target or target['status']!='active' or not obj:reason='target_unavailable'
     elif target['version']!=meeting['expected_version']:reason='target_changed'
@@ -38,15 +43,16 @@ def commit(server,identity,control,state,objects,arrival_seq):
     elif abs(obj['x']-visitor['x'])+abs(obj['y']-visitor['y'])!=1:reason='target_moved'
     elif walking(state,meeting['target']):reason='target_travelling'
     elif any(p.get('character_pending',{}).get('id')==meeting['target'] for p in server.peers.values() if type(p.get('character_pending')) is dict):reason='target_in_battle'
-    data=dict(character_id=identity,recipient=meeting['target'],journey=control['journey']['id'],
+    data=dict(character_id=identity,recipient=meeting['target'],**context,
         revision=visitor['region_revision'],place_id=server.memory.place(visitor['region_revision']),
-        arrival_receipt=arrival_seq,publication='public_world_character_encounter',
+        publication='public_world_character_encounter',
         basis='validated_authority_adjacency_and_versions',
         outcome='missed' if reason else 'public_message_delivered',
         limits='Authority positions, not proof of rendered meeting or player participation. No reply or relationship is inferred.')
     if reason:data['reason']=reason
     else:data.update(text=meeting['text'],recipient_version=target['version'],position=[visitor['x'],visitor['y']],recipient_position=[obj['x'],obj['y']])
     server.revision=server.memory.append('character_encounter',data)
+    return dict(receipt=server.revision,**data)
 
 
 def relevant(event,identity):

@@ -1,20 +1,20 @@
 {
   "schema": 1,
   "native_repository": "Ayaan-P/pokeemerald-expansion-native",
-  "native_revision": "f7a813317d1b9fec803b48b682f5d74245c79037",
-  "native_pull_request": 33,
-  "donor_native_pull_request": 26,
-  "app_pull_request": 302,
-  "donor_app_pull_request": 286,
+  "native_revision": "993de6ae2d06fb13485c49e40f7f0a8c05f0a9c1",
+  "native_pull_request": null,
+  "app_pull_request": null,
+  "donor_native_pull_request": 40,
+  "donor_app_pull_request": 334,
   "reviewed_author_cli": "codex-cli 0.156.1",
   "author_model": "explicit per backend; legacy Codex uses openai-codex/gpt-6-luna",
-  "linked_native_verified": true,
-  "live_author_verified": true,
-  "release_status": "verified_for_delivery",
-  "verification_file": "docs/RC12_ACCEPTANCE.json",
-  "author_backends": [
-    "codex",
-    "openai-responses",
-    "anthropic-messages"
-  ]
+  "linked_native_verified": false,
+  "live_author_verified": false,
+  "release_status": "daily_integration_pending_pair_build_acceptance",
+  "author_backends": ["codex", "openai-responses", "anthropic-messages"],
+  "app_branch": "integrate/daily-20261109-app",
+  "capability_stack_base": "f81be46b6d9296e2710563af5878b3d4500b0b4e",
+  "build_arguments": ["--generated-regions"],
+  "selectable_regions_require_build_flag": true,
+  "released_rc12_acceptance_is_historical": "docs/RC12_ACCEPTANCE.json"
 }

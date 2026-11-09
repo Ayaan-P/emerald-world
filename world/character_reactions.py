@@ -20,6 +20,14 @@ def actors(state):
 
 
 def dynamic_result(event, identity, character):
+    from .npc_conversations import relevant as speech_relevant
+    if speech_relevant(event,identity):return True
+    from .actor_knowledge import relevant as knowledge_relevant
+    if knowledge_relevant(event,identity):return True
+    from .population_agents import creation
+    if creation(event,identity):return True
+    from .actor_runtime import relevant as tool_relevant
+    if tool_relevant(event,identity):return True
     from .character_encounters import relevant as encounter_relevant
     if encounter_relevant(event,identity):return True
     if event.get('character_id')!=identity:return False
@@ -43,6 +51,8 @@ def setup(queue):
         cursor INTEGER NOT NULL)''')
     queue.db.execute('CREATE TABLE IF NOT EXISTS canonical_seed_enrollments(id TEXT PRIMARY KEY)')
     queue.db.execute('CREATE TABLE IF NOT EXISTS canonical_seed_starts(id TEXT PRIMARY KEY,seq INTEGER NOT NULL)')
+    from .population_agents import setup as population_setup
+    population_setup(queue)
     queue.db.commit()
 
 
@@ -59,6 +69,7 @@ def configure(queue, inspection, identity, purpose):
     with queue.db:
         if queue.db.execute('SELECT count(*) FROM character_reactions').fetchone()[0] >= 8 and not queue.db.execute('SELECT 1 FROM character_reactions WHERE id=?', (identity,)).fetchone():
             raise ValueError('at most eight followed characters')
+        queue.db.execute('DELETE FROM population_agents WHERE id=?',(identity,)) # Explicit host enrollment takes over lifecycle ownership.
         # Reconfiguration starts at the inspected boundary, never replays old wins.
         queue.db.execute('INSERT OR REPLACE INTO character_reactions VALUES(?,?,?,?)',
                          (identity, purpose, memory['world_id'], memory['through']))
@@ -83,6 +94,8 @@ def subscriptions(queue):
 
 def observe(queue, inspection, fetch, *, enqueue=True):
     """Consume bounded authoritative pages without losing events in a busy world."""
+    from .population_agents import observe as observe_population
+    population_queued=observe_population(queue,inspection,fetch) if enqueue else []
     selected = subscriptions(queue)
     if not selected:
         return []
@@ -90,7 +103,7 @@ def observe(queue, inspection, fetch, *, enqueue=True):
     data = inspection.get('data', inspection)
     cast = actors(data.get('state', {}))
     memory = data.get('world_memory', {})
-    queued = []
+    queued = list(population_queued)
     for sub in selected:
         if sub['world'] != memory.get('world_id'):
             raise ValueError('followed character belongs to another world')
@@ -190,6 +203,9 @@ def prepare(context, fetch):
     from .canonical_cast import reaction_activity
     matched = (len(events)==1 and (reaction_activity(events[0], reaction['id'], character)
                if character.get('canonical') else dynamic_result(events[0],reaction['id'],character)))
+    if reaction.get('host_goal'):
+        matched=(len(events)==1 and seq in character.get('evidence',[]))
+        context['host_world_goal']=dict(purpose=reaction.get('purpose'),limits='This is an explicit host request, not an event, achievement or permission to fabricate outcomes. Compose discovered capabilities with real preconditions and result receipts. Preserve unrelated actors and normal campaign. A pending plan is not completed; do not silently interrupt it.')
     if reaction.get('self_direction'):
         from .canonical_self_direction import relevant as self_directed
         if len(events)!=1 or not self_directed(events[0],reaction['id'],character):raise ValueError('Self-directed turn needs this exact current committed goal')

@@ -1,3 +1,4 @@
+WORLD_CHARACTER_CAPTURE_EXPERIMENT ?= 0
 # Run in the pinned donor directory; this integration may live elsewhere.
 EW_INTEGRATION_DIR := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
 EW_ROOT := $(abspath $(EW_INTEGRATION_DIR)/..)
@@ -15,3 +16,6 @@ include Makefile.native
 # A relocated multilib sysroot does not contain the host's SDL dependencies.
 # Resolve those at link time only; do not bake a private runtime search path.
 NATIVE_LDFLAGS += -Wl,--defsym=gba_native_vram_size=0x20000 -Wl,-rpath-link,/usr/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu/pulseaudio
+
+# Offline first-throw experiment only. Requires separate exact-binary linked QA.
+export NATIVE_EXTRA_CPPFLAGS += -DWORLD_CHARACTER_CAPTURE_EXPERIMENT=$(WORLD_CHARACTER_CAPTURE_EXPERIMENT)

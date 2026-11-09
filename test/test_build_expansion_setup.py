@@ -135,6 +135,32 @@ class BuildSetup(unittest.TestCase):
                     self.assertIn(expected, command)
                 self.assertIn('build/native64/data_layout.checked', command)
 
+    def test_generated_region_flag_reaches_make_without_regional_saves(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);source=root/'engines/expansion-native';source.mkdir(parents=True)
+            (source/'Makefile.native').touch();(source/'.git').touch()
+            from subprocess import CompletedProcess
+            (root/'engines/expansion.mk').write_text('# fixture wrapper\n')
+            with patch.object(build_expansion,'ROOT',root), patch('sys.argv',['build_expansion.py','--development','--generated-regions']), patch.object(build_expansion.subprocess,'check_output',side_effect=[build_expansion.PIN,'']), patch.object(build_expansion.subprocess,'run',side_effect=[CompletedProcess([],0),CompletedProcess([],0),CompletedProcess([],0),CompletedProcess([],1)]) as run, patch.object(build_expansion.shutil,'which',return_value='/usr/bin/bwrap'):
+                self.assertEqual(build_expansion.main(),1)
+                command=run.call_args.args[0]
+                self.assertIn('GENERATED_WORLD_REGIONS=1',command)
+                self.assertIn('EW_REGION_STATE=0',command)
+                self.assertIn('EW_KANTO_CONTENT=0',command)
+
+    def test_selectable_regions_preserve_combined_release_cohort(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);source=root/'engines/expansion-native';source.mkdir(parents=True)
+            (source/'Makefile.native').touch();(source/'.git').touch()
+            (root/'engines/expansion.mk').write_text('# fixture wrapper\n')
+            from subprocess import CompletedProcess
+            with patch.object(build_expansion,'ROOT',root), patch('sys.argv',['build_expansion.py','--generated-regions']), patch.object(build_expansion.subprocess,'check_output',side_effect=[build_expansion.PIN,'',build_expansion.PIN]), patch.object(build_expansion.subprocess,'run',side_effect=[CompletedProcess([],0),CompletedProcess([],0),CompletedProcess([],0),CompletedProcess([],1)]) as run, patch.object(build_expansion.shutil,'which',return_value='/usr/bin/bwrap'):
+                self.assertEqual(build_expansion.main(),1)
+                command=run.call_args.args[0]
+                for expected in ('GENERATED_WORLD_REGIONS=1','EW_REGION_STATE=1',
+                                 'EW_KANTO_CONTENT=1','MAP_VERSION=combined'):
+                    self.assertIn(expected,command)
+
     def test_check_mode_never_exports_or_builds(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

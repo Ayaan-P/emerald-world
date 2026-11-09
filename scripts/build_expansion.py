@@ -12,7 +12,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = 'f7a813317d1b9fec803b48b682f5d74245c79037'
+PIN = '993de6ae2d06fb13485c49e40f7f0a8c05f0a9c1'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -22,7 +22,7 @@ class ReleaseConfig:
     regional_state: int = 1
     kanto_content: int = 1
     generated_world_regions: int = 0
-    version_suffix: str = 'rc12'
+    version_suffix: str = 'daily-20261109'
 
 
 # Frozen RC12/13 integration cohort. Candidate only: not an installed release.
@@ -51,6 +51,8 @@ def main():
                         help='existing extracted libc/GCC multilib root for mandatory ABI probes')
     parser.add_argument('--development', action='store_true',
                         help='build explicit local integration changes on top of the verified engine pin')
+    parser.add_argument('--generated-regions', action='store_true',
+                        help='enable selectable generated places without changing the regional save/content cohort')
     parser.add_argument('--regional-state', action='store_true',
                         help='enable regional saves for a development build (already enabled for release)')
     parser.add_argument('--kanto-content', action='store_true',
@@ -163,7 +165,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
     command += ['--', 'make', '-f', str(ROOT / 'engines/expansion.mk'), f'-j{args.jobs}',
                 f'EW_REGION_STATE={regional_state}', f'EW_KANTO_CONTENT={kanto_content}',
                 f'MAP_VERSION={RELEASE_CONFIG.map_version if not args.development else map_version}',
-                f'GENERATED_WORLD_REGIONS={RELEASE_CONFIG.generated_world_regions}',
+                f'GENERATED_WORLD_REGIONS={int(args.generated_regions) or RELEASE_CONFIG.generated_world_regions}',
                 'native', 'BITS=64', f'TARGET_CC={compiler}', f'NATIVE_VERSION={head[:12]}-{RELEASE_CONFIG.version_suffix}',
                 'build/native64/data_relocations.checked', 'build/native64/data_layout.checked',
                 'build/native64/battle_script_operands.checked']

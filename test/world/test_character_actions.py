@@ -75,7 +75,7 @@ class CharacterActionTests(unittest.TestCase):
         self.assertEqual(scope['update'](staging_context, {}), result)
         later = scope['update'](dict(staging_context, tick=1), result['state'])
         self.assertEqual(later['state']['world_characters']['field_researcher'], character)
-        self.assertEqual(len(later['state']['world_character_action_receipts']), 1)
+        self.assertEqual(len(later['state']['world_character_current_receipt']), 1)
         stale = deepcopy(before['state'])
         stale['world_characters']['field_researcher']['version'] = 4
         with self.assertRaisesRegex(ValueError, 'character changed before action admission'):

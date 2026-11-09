@@ -26,7 +26,7 @@ def records(state):
     for identity, character in value.items():
         if type(identity) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}', identity):
             raise ValueError('invalid character identity')
-        if type(character) is not dict or not FIELDS <= set(character) or set(character)-FIELDS-{'offer','services','battle_portrait','intentions'}:
+        if type(character) is not dict or not FIELDS <= set(character) or set(character)-FIELDS-{'plan','offer','services','battle_portrait','intentions'}:
             raise ValueError('invalid character fields')
         if ('battle_portrait' in character and
                 (type(character['battle_portrait']) is not str or character['battle_portrait'] not in BATTLE_PORTRAITS)):
@@ -45,6 +45,8 @@ def records(state):
         services=character.get('services',[])
         if type(services) is not list or len(services)>1 or any(service!='guide' for service in services):
             raise ValueError('unsupported character service')
+        from .actor_runtime import validate as validate_plan
+        validate_plan(character.get('plan'))
         goals = character['goals']
         if type(goals) is not list or len(goals) > 4:
             raise ValueError('invalid character goals')
@@ -100,6 +102,12 @@ def validate_transition(before, after, objects, db):
         from .character_companions import validate as validate_companions
         validate_companions(db,identity,character)
         previous = old.get(identity)
+        plan=character.get('plan');prior=(previous or {}).get('plan')
+        if plan and prior and plan['id']==prior['id'] and plan!=prior:raise ValueError('Replanning requires a new plan id')
+        from .actor_runtime import install as install_plans,definition as plan_definition
+        install_plans(db)
+        saved=db.execute('SELECT definition FROM actor_plans WHERE actor=? AND plan=?',(identity,plan['id'])).fetchone() if plan else None
+        if saved and saved[0]!=plan_definition(plan):raise ValueError('Executed plan identity is immutable')
         if previous == character:
             continue
         old_offer = previous.get('offer') if previous else None
@@ -125,6 +133,7 @@ def author_contract():
         'state_key': KEY,
         'companions': 'optional individual ID on every team slot; stable native personality/fictional owner/15 IVs across level changes and reordering; species immutable until supported evolution adapter; trusted isolated practice receipts may preserve full EXP/moves through CHARPK2, never infer victories/catches from client reports',
         'record_fields': sorted(FIELDS),
+        'optional_plan': 'Generic actor_runtime capability plan; navigation applies only to this world-owned actor on its exact supported generated revision.',
         'optional_offer': {'id':'stable offer ID','revision':'positive revision, increase when destination/count changes','kind':'expedition','place_id':'native:canonical map or area:UUID with required region_revision64hex','target':'1..50 guild members','region_revision':'required64hex only for area:UUID destinations'},
         'optional_services':['guide: opts this NPC into adjacent private survey guidance through /explore guide NPC_ID'],
         'optional_battle_portrait': {'choices': list(BATTLE_PORTRAITS), 'default': 'scientist', 'scope': 'public authored NPC presentation, never inferred from human identity or field sprite'},

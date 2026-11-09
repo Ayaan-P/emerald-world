@@ -152,9 +152,12 @@ class CoreStory:
         if action=='CALL' and confirmation=='registered':
             from .canonical_cast import remote_response
             return remote_response(self.s,conn,run,key)
-        if action=='BATTLE':
+        if action=='BMODE':
+            from .trainer_experiences import participation
+            return participation(self.s,conn,run,key,confirmation)
+        if action in ('BATTLE','BAUTO'):
             from .trainer_experiences import handle
-            return handle(self.s,conn,run,key,confirmation)
+            return handle(self.s,conn,run,key,confirmation,automatic=action=='BAUTO')
         if action=='ALLYEND':
             from .canonical_partner_memory import finish
             return finish(self.s,conn,run,key,confirmation)

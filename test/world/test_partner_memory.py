@@ -51,6 +51,9 @@ int main(void){
 char *ready[]={"CORE","READY","1","12345678-1234-1234-1234-123456789abc"};
 assert(WorldCoreStory_Line(4,ready));assert(Lineage());script=false;diveReceived=true;stevenState=2;
 sCore.synced=0;sCore.mileSynced=0;sCore.incomingOff=TRUE;sCore.stevenUntil=100;
+/* Quiesce the independent standing-battle mode read; this fixture isolates
+ * duplicate private partner-result cleanup, not ordinary background sync. */
+sCore.battleModeAsked=TRUE;
 assert(WorldCoreStory_TakeStevenInvitation());gMain.inBattle=true;
 WorldCoreStory_StevenFinished(1);sent[0]=0;WorldCoreStory_Update();assert(!sent[0]);
 gMain.inBattle=false;WorldCoreStory_Update();assert(strstr(sent," ALLYEND steven 1 "));printf("%s",sent);

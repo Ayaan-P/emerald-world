@@ -80,3 +80,10 @@ class AgentUITests(unittest.TestCase):
     session.start_gm(provider='anthropic-messages',model='selected-model');self.assertTrue(session.gm_thread.is_alive());session.stop_gm()
    self.assertFalse(session.gm_thread.is_alive());self.assertEqual(seen[0][1]['provider'],'anthropic-messages')
    self.assertEqual(seen[0][1]['model'],'selected-model');preflight.assert_called_once()
+
+ def test_new_population_lifecycle_requires_explicit_host_setting(self):
+  self.assertFalse(self.call('read')['population_agents']['enabled'])
+  with self.assertRaises(SessionError):self.call('population',enabled=True,confirmed=False)
+  self.assertTrue(self.call('population',enabled=True,confirmed=True)['population_agents']['enabled'])
+  self.session.start_gm.assert_not_called()
+  self.assertFalse(self.call('population',enabled=False,confirmed=True)['population_agents']['enabled'])

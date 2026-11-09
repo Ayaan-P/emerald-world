@@ -98,13 +98,16 @@ class IntentQueue:
             raise ValueError('min_interval must be finite in [0,3600] seconds')
         with self.db:
             self.db.execute('BEGIN IMMEDIATE')
-            row = self.db.execute("SELECT * FROM requests WHERE status='queued' ORDER BY seq LIMIT 1").fetchone()
-            if row is None:
-                return None
             now = time.time()
             last = self.db.execute("SELECT value FROM metadata WHERE key='last_author'").fetchone()
             if last and now - float(last[0]) < min_interval:
                 return None
+            row=None
+            from world.population_agents import reserve
+            for candidate in self.db.execute("SELECT * FROM requests WHERE status='queued' ORDER BY seq").fetchall():
+                if candidate['kind']=='character' and not reserve(self,candidate['player']):continue
+                row=candidate;break
+            if row is None:return None
             self.db.execute("INSERT OR REPLACE INTO metadata VALUES('last_author',?)", (str(now),))
             self.db.execute("UPDATE requests SET status='running',started=? WHERE id=?", (now, row['id']))
             return dict(row)
@@ -312,7 +315,15 @@ class RuntimeGM:
                     return source
             except (OSError, ValueError, KeyError):
                 pass
-        return None
+        # Capabilities may commit a new source outside this worker's local cache.
+        # Retrieve only the exact admitted hash via the existing host-admin API.
+        from world import gm
+        result=gm.admin_request(self.socket_path,dict(command='mechanic_source',expected_hash=active),self.timeout)
+        source=result.get('source') if type(result) is dict else None
+        if (type(result) is not dict or result.get('ok') is not True or result.get('sha256')!=active or type(source) is not str
+            or len(source.encode())>256*1024 or hashlib.sha256(source.encode()).hexdigest()!=active):
+            raise ValueError('Active mechanic source unavailable or changed')
+        return source
 
     def step(self):
         from world import gm
