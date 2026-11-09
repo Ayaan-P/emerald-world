@@ -15,7 +15,7 @@ No framework was installed, no live model was called, and no third-party service
 
 ## The actual loop
 
-1. Existing author inspection includes `actor_runtime`: registered capability descriptions, argument schemas, actual currently available actor actions, existing actors, current plans and committed receipts.
+1. Existing author inspection includes `actor_runtime`: registered capability descriptions, argument schemas, actual currently available actor actions, scoped generated-map geometry lookup requests, actor kinds, current plans and committed receipts.
 2. An agent chooses its goal and writes an optional `plan` through the existing typed canonical action admission. No default plan or future arc is installed.
 3. A plan has an identity, purpose and up to six steps. Each step selects a registered tool, arguments and earlier-step dependencies. Scalar arguments can reference actual committed results using `{result: step_id, key: result_field}`.
 4. The existing authority idle loop executes one ready step at a time. Preconditions and ownership are checked by the actual tool adapter at execution, not inferred from plan prose. Effects and success receipts commit together.
@@ -37,7 +37,7 @@ Legacy fields remain compatible, but an actor cannot simultaneously assign the o
 
 The initial actor source is the existing canonical actor registry. Existing generated-character movement has different geometry/occupancy and completion machinery; it is not silently exposed as canonical travel. A future route capability should discover real reachable destinations, invoke that runtime only for supported actor/map types, and deliver arrival/interruption receipts. Original actors still only have their reviewed safe bindings.
 
-Only local transactional adapters are registered here. An asynchronous native action needs an explicit pending/completion adapter and actual acknowledgement before it can be reported successful. Calling a native request API is not enough. NPC Pokémon training/evolution still requires verified engine semantics and full native validation; no planner can manufacture those results.
+Local actions remain transactional. The registered generated-map navigation adapter now supports pending execution and resolves only from the existing authority journey receipt. Other asynchronous native actions still need their own real completion adapters. Calling a native request API is not enough. NPC Pokémon training/evolution still requires verified engine semantics and full native validation; no planner can manufacture those results.
 
 Private player memories, questions, party data and per-save progression are not new planner inputs. This public actor runtime consumes existing public evidence. Players are never assigned a task or forced to participate by a plan.
 
@@ -48,3 +48,15 @@ The source-author admission still retains its existing consolidation and model b
 Production authority tests cover composing real state action -> addressed communication via result reference, restart between steps, no duplicate execution, an independent second actor using the same capability, failed preconditions, transactional rollback on receipt failure, explicit stopping, immutable plan identity, and actual tool-result -> reaction queue -> deterministic new authored plan. No scenario is enabled by default; named actors in tests are fixtures for the existing registry.
 
 Run `PYTHONPATH=.:test/world python3 -m unittest test_actor_runtime -v` and `python3 scripts/check_living_cast.py`. Full native rendering and live-provider quality remain Maya's integration/QA work. No merge or release is included.
+
+## Destination navigation through the same runtime
+
+`world.navigate` is registered for active **world-owned generated characters**, not canonical original NPCs. An agent selects that actor by authoring its own plan and supplies only exact revision plus destination x/y. Discovery advertises actor kinds and an `inspect_saved_place` request for actual immutable geometry; the existing inspection endpoint can provide the map before the agent picks a destination. The adapter independently recomputes a bounded cardinal route using archived geometry, other NPCs and current reported ready-player occupancy. It rejects walls, unreachable destinations, entry/exit blockers and paths that violate existing joint route connectivity. It does not accept an authored route or cross-map coordinate.
+
+The route goes through the existing trusted character-action compiler and ordinary sandbox staging/admission. Pending tool state is committed before staging is queued. Issuing a route is not success. The existing movement reducer advances actual authority coordinates, yields for occupancy, segments the route for native playback, persists movement and publishes its normal arrival receipt. Only that exact actor/journey receipt resolves the pending capability as succeeded. Restart resumes the already admitted source/state; an unadmitted or replaced journey resolves blocked/interrupted, not arrived. No unsafe automatic resubmission of uncertain work occurs.
+
+One pending capability owns an actor's execution at a time; dependent steps wait for real results. Removing/replacing a plan stops tracking future work and records that completion was not asserted. It does not magically undo committed motion: cancellation still uses a normal versioned character action, whose control replacement is validated by the existing movement authority.
+
+Current limits are existing 31/127 immutable supported generated maps and at most 64 cardinal steps, never original Hoenn geometry, original cast relocation, cross-map travel or client-rendered proof. Other actors choose their own plans. No canonical actor can invoke navigation on an unrelated world actor through a target parameter.
+
+Additional authority tests choose destinations without path input, route around another NPC, run a second actor to a different destination, pause for a newly occupied next tile, restart mid-journey, and check unreachable/interrupted staging produces no arrival. They execute the compiled existing reducer through real authority commit validation; sandbox subprocess execution and rendered motion remain integration QA, not claimed by these fixtures.

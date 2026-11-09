@@ -1,7 +1,7 @@
 """Model-authored plans over registered authority capabilities, not character arcs.
 
-Only local transactional tools belong here. Native/asynchronous tools must supply
-an explicit completion adapter; issuing a request is never completion.
+Local effects use transactions. Staged asynchronous tools supply an explicit
+completion adapter; issuing a request is never completion.
 """
 from dataclasses import dataclass
 import copy,json,re,time
@@ -12,6 +12,13 @@ class Capability:
     arguments: dict
     outcome: str
     execute: object
+    poll: object = None
+    kinds: tuple = ('canonical',)
+
+@dataclass
+class Pending:
+    data: dict
+    dispatch: object
 
 
 def _project(server,actor,row,args):
@@ -42,6 +49,18 @@ CAPABILITIES={
         'Delivered correspondence receipt, never agreement or physical meeting.',_message),
 }
 
+from .actor_navigation import start as navigate, poll as navigation_poll
+CAPABILITIES['world.navigate']=Capability('Navigate this world-owned actor to a destination using actual immutable geometry.',dict(revision='exact generated-map revision',x='destination integer',y='destination integer'),'Actual authority arrival receipt; never client rendering or canonical/cross-map travel.',navigate,navigation_poll,('world',))
+
+def actor_records(server):
+    from .character_reactions import actors
+    rows=actors(server.module_state)
+    from .world_memory import native_place
+    for actor,row in rows.items():
+        if row.get('canonical'):continue
+        obj=next((o for o in server.objects if o['id']==actor),None)
+        row=dict(row,places=([native_place(obj['group'],obj['num'])] if obj else []));rows[actor]=row
+    return rows
 
 def install(db):
     db.execute('CREATE TABLE IF NOT EXISTS actor_plans(actor TEXT,plan TEXT,definition TEXT NOT NULL,PRIMARY KEY(actor,plan))')
@@ -74,12 +93,14 @@ def definition(plan):return json.dumps(plan,sort_keys=True,separators=(',',':'))
 def inspect_runtime(server):
     from .canonical_cast import records
     install(server.db)
-    return dict(capabilities={key:dict(description=c.description,arguments=c.arguments,outcome=c.outcome) for key,c in CAPABILITIES.items()},
-        available_actions=server.opportunities.actor_actions()[:32],actors=list(records(server.module_state)),
+    from .actor_navigation import discover as discover_navigation
+    return dict(capabilities={key:dict(description=c.description,arguments=c.arguments,outcome=c.outcome,actor_kinds=c.kinds) for key,c in CAPABILITIES.items()},
+        available_actions=server.opportunities.actor_actions()[:32],actors={a:('canonical' if r.get('canonical') else 'world') for a,r in actor_records(server).items()},
+        navigation=discover_navigation(server),
         plans=[dict(actor=actor,plan=row['plan'],receipts=[dict(step=s,status=status,result=json.loads(result),seq=seq)
             for s,status,result,seq in server.db.execute('SELECT step,status,result,seq FROM actor_tool_receipts WHERE actor=? AND plan=? ORDER BY seq',(actor,row['plan']['id']))])
-            for actor,row in records(server.module_state).items() if row.get('plan')],
-        limits='Registered local transactional capabilities only. Plans are intentions, receipts are observations. No arbitrary native scripts, private data, forced player actions, simulated training or inferred completion.')
+            for actor,row in actor_records(server).items() if row.get('plan')],
+        limits='Registered scoped capabilities only. Pending requests are not completion. Plans are intentions, receipts are observations. No arbitrary native scripts, private data, forced player actions, simulated training or inferred completion.')
 
 
 def relevant(event,actor):
@@ -94,7 +115,17 @@ def tick(server,*,now=None):
     server.actor_runtime_next=now+5
     from .canonical_cast import records
     install(server.db)
-    for actor,row in sorted(records(server.module_state).items()):
+    current=actor_records(server)
+    for actor,plan_id,step_id in server.db.execute("SELECT actor,plan,step FROM actor_tool_receipts WHERE status='pending'").fetchall():
+        row=current.get(actor)
+        if row and (row.get('plan') or {}).get('id')==plan_id:continue
+        saved=server.db.execute('SELECT definition FROM actor_plans WHERE actor=? AND plan=?',(actor,plan_id)).fetchone()
+        if saved:
+            plan=json.loads(saved[0]);step=next(s for s in plan['steps'] if s['id']==step_id)
+            record=row or dict(version=0,evidence=[],places=[])
+            with server.db:seq=_receipt(server,actor,record,plan,step,'blocked',dict(reason='Plan withdrawn or actor unavailable; completion not asserted.'))
+            return dict(actor=actor,plan=plan_id,step=step_id,status='blocked',seq=seq)
+    for actor,row in sorted(current.items()):
         plan=row.get('plan')
         if not plan:continue
         validate(plan)
@@ -105,11 +136,21 @@ def tick(server,*,now=None):
             server.db.execute('INSERT OR IGNORE INTO actor_plans VALUES(?,?,?)',(actor,plan['id'],encoded))
         receipts={s:(status,json.loads(result)) for s,status,result in server.db.execute('SELECT step,status,result FROM actor_tool_receipts WHERE actor=? AND plan=?',(actor,plan['id']))}
         if any(status=='blocked' for status,_ in receipts.values()):continue # Replan explicitly, never blind retry.
+        pending_steps={s for s,(status,_) in receipts.items() if status=='pending'}
         for step in plan['steps']:
-            if step['id'] in receipts or not all(s in receipts and receipts[s][0]=='succeeded' for s in step['after']):continue
+            if pending_steps and step['id'] not in pending_steps:continue
+            if step['id'] in receipts and receipts[step['id']][0]!='pending':continue
+            if not all(s in receipts and receipts[s][0]=='succeeded' for s in step['after']):continue
             old_revision=server.revision
             try:
                 with server.db:
+                    capability=CAPABILITIES[step['tool']]
+                    if ('canonical' if row.get('canonical') else 'world') not in capability.kinds:raise ValueError('Capability is unavailable for this actor kind')
+                    if step['id'] in receipts:
+                        result=capability.poll(server,actor,row,receipts[step['id']][1])
+                        if result is None:continue
+                        seq=_receipt(server,actor,row,plan,step,'succeeded',result)
+                        return dict(actor=actor,plan=plan['id'],step=step['id'],status='succeeded',seq=seq)
                     args=copy.deepcopy(step['args'])
                     for key,value in args.items():
                         if type(value) is dict:
@@ -117,7 +158,12 @@ def tick(server,*,now=None):
                             if value['key'] not in result or type(result[value['key']]) not in (str,int):raise ValueError('Unavailable scalar result reference')
                             args[key]=result[value['key']]
                     result=CAPABILITIES[step['tool']].execute(server,actor,row,args)
-                    seq=_receipt(server,actor,row,plan,step,'succeeded',result)
+                    if isinstance(result,Pending):
+                        server.db.execute('INSERT INTO actor_tool_receipts VALUES(?,?,?,?,?,NULL)',(actor,plan['id'],step['id'],'pending',json.dumps(result.data,sort_keys=True)))
+                    else:seq=_receipt(server,actor,row,plan,step,'succeeded',result)
+                if isinstance(result,Pending):
+                    result.dispatch()
+                    return dict(actor=actor,plan=plan['id'],step=step['id'],status='pending')
                 return dict(actor=actor,plan=plan['id'],step=step['id'],status='succeeded',seq=seq)
             except ValueError as exc:
                 server.revision=old_revision
@@ -130,6 +176,6 @@ def _receipt(server,actor,row,plan,step,status,result):
     seq=server.memory.append('actor_tool_result',dict(character_id=actor,plan=plan['id'],step=step['id'],tool=step['tool'],status=status,result=result,
         character_version=row['version'],based_on=row['evidence'],places=row['places'],source='authority_capability_runtime',
         limits=CAPABILITIES[step['tool']].outcome))
-    server.db.execute('INSERT INTO actor_tool_receipts VALUES(?,?,?,?,?,?)',(actor,plan['id'],step['id'],status,json.dumps(result,sort_keys=True),seq))
+    server.db.execute('INSERT OR REPLACE INTO actor_tool_receipts VALUES(?,?,?,?,?,?)',(actor,plan['id'],step['id'],status,json.dumps(result,sort_keys=True),seq))
     server.revision=seq
     return seq

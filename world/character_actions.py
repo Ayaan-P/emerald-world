@@ -33,7 +33,7 @@ def validate_actions(actions, context):
         if type(evidence) is not list or not evidence or any(type(seq) is not int or seq not in known for seq in evidence):
             raise ValueError('actions require inspected public history evidence')
         changes=action['changes']
-        if type(changes) is not dict or set(changes)-{'goals','relationships','team','status','offer','intentions'}:
+        if type(changes) is not dict or set(changes)-{'goals','relationships','team','status','offer','intentions','plan'}:
             raise ValueError('unsupported character action changes')
         if 'walk' in action and 'journey' in action:raise ValueError('choose walk or journey, not both')
         if 'walk' in action or 'journey' in action:
@@ -142,7 +142,8 @@ def contract():
             'optional_meet':'with journey only: {target, expected_version, text}; existing active world character on same exact revision, destination adjacent to inspected target. Arrival rechecks position/version/readiness and delivers a public fictional message or records actual missed encounter; never forces reply or friendship',
             'optional_journey':'2..65 unique cardinal points on the same exact generated map; authority chains existing six-point native walks autonomously, pauses for occupancy, and publishes only actual final authority arrival; no canonical relocation or cross-map teleport',
             'optional_walk':'2..6 unique cardinal [x,y] points including current start and replacement object endpoint, same generated revision only; progresses one point per authority tick, yields to reported ready player occupancy, blocks interactions until complete',
-            'changes':'goals, relationships to existing public NPCs, team, status, retained practice intentions for own identified companions, optional offer (null removes)',
+            'plan':'Optional generic capability plan for this world-owned actor; inspect actor_runtime for tools, geometry request and actual pending/completed receipts. world.navigate takes revision and destination x/y, not an authored path. Canonical-only capabilities are unavailable.',
+            'changes':'plan, goals, relationships to existing public NPCs, team, status, retained practice intentions for own identified companions, optional offer (null removes)',
             'effect':'explicitly take over selected existing NPCs from older scripts; native map object controls actual relocation/dialogue and team controls battle; all unrelated source effects preserved',
             'evidence':'nonempty inspected/recalled public history references; authored intent, never proof of battle or catch',
             'limits':'eight actions per request, 32 action publications before source consolidation; expected version rechecked on admission; native maps or region_revision-bound opened immutable generated regions or archived shared XL revisions',

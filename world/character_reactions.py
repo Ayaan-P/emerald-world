@@ -20,6 +20,8 @@ def actors(state):
 
 
 def dynamic_result(event, identity, character):
+    from .actor_runtime import relevant as tool_relevant
+    if tool_relevant(event,identity):return True
     from .character_encounters import relevant as encounter_relevant
     if encounter_relevant(event,identity):return True
     if event.get('character_id')!=identity:return False
