@@ -27,7 +27,28 @@ class AgentUITests(unittest.TestCase):
   info=self.call('unfollow',actor='canon_rydel');self.assertFalse(next(a for a in info['actors'] if a['id']=='canon_rydel')['followed'])
   self.call('initialize',actor='canon_steven',purpose='Consider actual public history.',confirmed=True)
   info=self.call('initialize',actor='canon_steven',purpose='Consider actual public history.',confirmed=True)
-  self.assertEqual(info['queued'],1) # Idempotent review submission, no duplicate startup request.
+  self.assertEqual(info['queued'],0) # Durable enrollment; only runtime observation queues typed work.
+  q=self.session._gm_queue()
+  try:
+   from world.character_reactions import observe,subscriptions,prepare
+   self.assertEqual([s['id'] for s in subscriptions(q)],['canon_steven'])
+   self.assertEqual(subscriptions(q)[0]['purpose'],'Consider actual public history.')
+   self.assertEqual(len(observe(q,self.s.inspect(),self.f.fetch)),1)
+   item=q.claim();self.assertEqual(item['kind'],'character');self.assertEqual(item['player'],'canon_steven')
+   packet=json.loads(item['result']);self.assertTrue(packet['bootstrap']);self.assertEqual(packet['expected_version'],0)
+   context=self.f.context();context['runtime'].update(kind='character',observed_event=packet)
+   prepare(context,self.f.fetch);self.assertEqual(context.get('data',context)['players'],[])
+   q.finish(item['id'],'failed',dict(ok=False))
+  finally:q.close()
+  self.call('initialize',actor='canon_steven',purpose='Changed purpose must not replay.',confirmed=True)
+  q=self.session._gm_queue()
+  try:
+   self.assertEqual(observe(q,self.s.inspect(),self.f.fetch),[])
+   self.assertEqual(len(q.status()['requests']),1)
+  finally:q.close()
+  events=[e for e in self.s.memory.history()['events'] if e['event']=='canonical_actor_commissioned']
+  self.assertEqual([e['character_id'] for e in events],['canon_steven'])
+  self.session.start_gm.assert_not_called()
   self.assertNotIn('canon_steven',self.s.module_state['canonical_cast'])
  def test_no_secret_fields_remote_control_or_automatic_start(self):
   with patch.dict('os.environ',{'ANTHROPIC_API_KEY':'synthetic-secret'},clear=True):info=self.call('read')
