@@ -168,6 +168,9 @@ class CoreStory:
             actor,map_name=location(key)
             if actor is None:raise ValueError('Unknown actor.')
             return acknowledge(self.s,conn,run,actor,confirmation,map_name=map_name)
+        if action=='SCENES' and key=='native' and confirmation=='private':
+            conn['cast_scene_supported']=True
+            return dict(schema=1,supported=True)
         if action == 'CAST' and confirmation == 'safe':
             from .canonical_cast import response
             return response(self.s,conn,run,key)

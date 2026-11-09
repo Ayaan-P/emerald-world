@@ -1,76 +1,90 @@
-# Shared original-actor scene ownership: staged, not live
+# Shared original-actor scenes
 
-Status: the authority reservation state machine is implemented and tested. It is
-**not registered as a server endpoint or author action**. No existing actor moves
-as a result of this patch. Native execution and recovery must be integrated before
-activation. This is a safety-critical prerequisite, not a completed gameplay claim.
+## Paired implementation
 
-## Why a local walk hook is insufficient
+The canonical author may offer `scene: "rydel_step"` on the existing Rydel record.
+After talking to original Rydel, a trainer uses `/history scene ask`. Every connected
+trainer must be ready in the Bike Shop with scene support. Each must explicitly
+`/history scene join`; `/history scene cancel` declines. Private in-game notices
+announce invitations. Explorers elsewhere are not pulled into a cutscene.
 
-Reviewed engine PR26 `b5504fd4e433f0cd3ea04c8c99487b5ec9754b7a`:
+The deliberately small first scene moves **the original Rydel object** one tile
+east and then home using normal native held movement. Every observer acknowledges
+each completed step before the next starts. Joined trainers' field controls pause;
+B cancels and initiates a real walking return. Bike-service bytecode, items, flags,
+NPC templates and save layout are unchanged. This is physical synchronization,
+not a bike lesson, follower, autonomous journey, training or predefined story arc.
 
-- `ObjectEventSetHeldMovement` unfreezes the original object, sets its held action,
-  and invokes normal movement/follower machinery.
-- `ScrCmd_release` clears finished held movement and unfreezes objects. It does
-  not restore the actor's original coordinates or sprite state.
-- Object collision checks current and previous coordinates. Human peers are
-  exempted only for **player** movement in generated maps, not canonical NPCs
-  walking in their normal rooms. A peer can obstruct a return path.
-- `MoveObjectEventToMapCoords` would teleport an actor and reset field effects;
-  it is not an acceptable silent substitute for a completed walking return.
-- The existing CAST hooks run after original lock/faceplayer. Their continuation
-  belongs to the real service/story script. Briney's transport, Rydel's bike
-  service and Wally/Steven's progress-specific scenes cannot be resumed from an
-  unverified arbitrary location.
+The ownership primitive supports the broader cast, but the live runner permits
+only this reviewed fixed actor/room/path. It does not move Wally, Briney or Steven
+through potentially conflicting story scenes or spawn duplicate original actors.
 
-## Implemented authority primitive
+## Real protocol and collision path
 
-`SceneLeases` reserves a verified bounded closed cardinal path for one original
-actor and one exact cohort of connection objects. The path includes the home tile
-throughout. The integration must supply a geometry validator, not model claims.
+A nonce-bound CORE `SCENES native private` probe precedes scene messages. Older
+servers refuse it safely; no new protocol is sent before positive negotiation.
 
-All participants install the reservation and attest to an idle original actor at
-home and clear occupancy before the owner can start. Only the exact initiating
-connection can start/finish. A timeout, failed preparation or disconnect enters
-`restoring`; it never releases tiles or records success. Every original participant
-must certify home and idle before release. A new connection cannot impersonate an
-old participant by reusing its trainer name. New admissions must be explicitly
-deferred while the reservation exists. Tokens fence stale acknowledgements.
+The authority checks the current authored invitation/version, recent original
+Rydel conversation, fresh room presence and the exact cohort of connected clients
+(up to four). Native PREPARE verifies the real map/local ID/graphics/home position,
+absence of scripts/battle/field locks, and actual collision/elevation behavior.
+Native reservations cover both home and adjacent tile before ACK. Both ordinary
+and flag-based engine collision queries respect this reservation; only the managed
+original actor is exempt.
 
-The state machine does not freeze players, mutate saves, grant a movement lease to
-a model, or interpret a generic STATE report as an actor-restoration receipt.
+All clients ACK before STEP 1. Each uses actual held movement and sends AT only when
+it finishes at the expected tile. The authority waits for every observer before
+STEP 2 returns home. An early RELEASE cannot unlock a moving actor. No teleport is
+used. Every HOME receipt is required to finish the transaction. Returned clients
+can resume controls while their path reservation remains until release.
 
-## Required native and live-server integration
+New game connections are temporarily refused while a live scene owns the room;
+they can retry after restoration. Control/admin connections are unaffected.
+A connected legacy client or trainer outside the room prevents scene admission.
+No public scene completion, relationship or training credit is invented from these
+native attestations, and private player history is not shared with authors.
 
-1. Negotiate a separate capability. Do not advertise it on current clients. A
-   scene cannot start with legacy, unready or unsynchronized participants.
-2. Use reviewed original-object local IDs and script-safe points; verify each
-   local actor's current map, graphics, object identity, original position and
-   absence of a conflicting script/follower/battle. Different personal story
-   states may make an actor unavailable; refusal is valid, not a reason to spawn
-   a replacement. Start with one reviewed fixed service actor, not global cast.
-3. Validate native geometry including warps, stairs and elevation. Install path
-   reservations in ordinary player collision **before** ACK. Bound canonical
-   actor movement is the only exemption. Apply complete reservations at map
-   entry, not only to clients currently seeing the actor.
-4. Synchronize step indices to observers; use real held movement and recheck
-   collisions for each step. Keep the ordinary script suspended until every
-   controlled actor is home. Never write a movement type/hide flag/save template.
-5. On cancellation, return through the reserved path using real animation.
-   On disconnect, complete the local return while retaining local reservations.
-   Object replacement/map transition must not move or clear a reused object slot.
-6. Persist or reconstruct outstanding leases across authority restart, and add
-   a bounded authenticated native restoration/recovery handshake. The current
-   in-memory primitive deliberately has **no** forced-release escape hatch.
-   Do not expose it live before recovery exists: otherwise a disconnected cohort
-   could hold admission indefinitely. Replay, crash and save/reload QA are required.
-7. Only after those pieces are tested may canonical author actions request a
-   scene and actual completion receipts inform later character decisions.
-   An authored path is not proof of execution, attendance or shared progress.
+## Cancellation and durable recovery
 
-## Current tests
+Preparation has a three-second deadline; active execution has ten seconds.
+Deadline, B cancellation, failure or disconnect requests restoration, not presumed
+success. Native disconnect handling continues the real return, retains reservation
+until home, and unlocks. Failed HOME sends can retry; the scene itself is not replayed.
 
-`test_canonical_scene_leases` exercises all-participant barrier ordering, exclusive
-ownership, return-home acknowledgement, connection fencing, disconnects, deadline
-handling, stale leases, path validation and geometry refusal. It moves no sprites
-and is not a substitute for paired native/authority or rendered multi-client QA.
+Before PREPARE, the server persists token, map, exact trainers and save lineages with
+unresolved restoration. Restart reloads this debt and refuses a new scene until
+matching saves certify the actual original actor idle at home. Native recovery
+waits for the Bike Shop and checks its original object. Another save for the same
+trainer cannot clear the debt. Normal play remains available while recovery is
+pending. Missing participants can defer future scenes until they return; there is
+no unsafe forced release or fabricated restoration.
+
+Unexpected original scripts or battles keep their own controls and movement; the
+scene relinquishes ownership rather than overwriting them. An interrupted actor
+away from home may require leaving and returning to the room for recovery.
+Unexpected map/object replacement never writes to a reused object slot or reports
+HOME. Returning to the reviewed map/save permits recovery. Resets, loads, process
+crashes and unusual field-task interruptions remain important integration QA.
+
+## Source verification and remaining QA
+
+Reviewed baseline: engine PR26 `b5504fd4e433f0cd3ea04c8c99487b5ec9754b7a`.
+`ObjectEventSetHeldMovement` unfreezes the original object; `ScrCmd_release` does
+not restore coordinates. This necessitates coordinated restoration, not a local
+uncontrolled walk hook.
+
+Exact Bike Shop map blob: `9891b9fd56e30d829c5d09cdbacd663e50deca03`. Rydel's home
+is (2,5), local ID 1, MAN_2 graphics. The next tile (3,5) has the same raw floor
+entry `0x323f`, collision 0, elevation 3; neither is a warp. Runtime checks still
+win if an occupant or another condition makes it unsafe.
+
+`test_canonical_scenes` pairs two compiled production native controllers with the
+actual authority dispatcher. It checks barriers, step acknowledgements, return,
+restart, lineage fencing, occupied paths and legacy refusal. Engine globals,
+collision responses and sprite motion are explicitly doubled. Native tests cover
+disconnect, reused objects and actual CORE capability reply/refusal routing.
+
+This is **not** a full linked build or rendered multi-client playtest. Maya must
+verify actual drawing/held-animation timing, controls, chat interruption, network
+loss and save/reload before integration and release. The app engine pin remains
+unchanged in this draft batch.

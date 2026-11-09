@@ -153,6 +153,8 @@ class WorldServer:
         install_calls(self.db)
         from .canonical_initiatives import install as install_initiatives
         install_initiatives(self.db)
+        from .canonical_scenes import CanonicalScenes
+        self.cast_scenes=CanonicalScenes(self)
         self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
         from .cooperative_mysteries import Mysteries
         from .opportunities import Opportunities
@@ -421,6 +423,7 @@ class WorldServer:
             del self.link_channels[conn['id']]
             self._deliver_links(self.link_protocol.disconnect(conn['id']))
         if conn['id'] and self.peers.get(conn['id']) is conn:
+            self.cast_scenes.disconnected(conn)
             self.rally.disconnect(conn)
             self._flush_states()
             del self.peers[conn['id']]
@@ -766,6 +769,9 @@ class WorldServer:
                 if len(self.peers) >= self.max_players:
                     self._error(conn, 'FULL')
                     return
+                if self.cast_scenes.live is not None:
+                    self._error(conn, 'SCENE_BUSY')
+                    return
                 conn['id'] = name
                 conn['social'] = social
                 conn['core_story_capable'] = core_story_capable
@@ -823,6 +829,13 @@ class WorldServer:
                 return
             if conn.get('control'):
                 self._control_line(conn, raw)
+                return
+            if fields[:2]==['CORE','SCENE']:
+                try:self.cast_scenes.handle(conn,fields[2:])
+                except (ValueError,KeyError,TypeError):
+                    self._queue(conn,'CORE SCENE REFUSED\n')
+                    self.guild_chat.message(conn,'World','Scene unavailable or restoration pending. Check /history scene; everyone must be ready in the Bike Shop.')
+                self._broadcast()
                 return
             if fields and fields[0] == 'CORE':
                 nonce=None
@@ -2145,6 +2158,7 @@ class WorldServer:
                 step_cast_construction(self)
                 from .canonical_world_actions import step as step_cast_world_action
                 step_cast_world_action(self)
+                self.cast_scenes.tick()
 
     def close(self):
         if self._closed:
