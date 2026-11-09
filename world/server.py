@@ -172,6 +172,8 @@ class WorldServer:
         self.relays = FieldRelays(self, validate_coords)
         from .field_flags import FieldFlags
         self.flags = FieldFlags(self)
+        from .shared_races import SharedRaces
+        self.races = SharedRaces(self, validate_coords)
         from .activity_board import ActivityBoard
         self.activities = ActivityBoard(self)
         from .landmark_survey import LandmarkSurvey
@@ -1161,6 +1163,7 @@ class WorldServer:
                 self.landmark_survey.observe(conn)
                 if getattr(self, 'relays', None):self.relays.tick()
                 if getattr(self, 'flags', None):self.flags.tick()
+                if getattr(self, 'races', None):self.races.tick()
         except (UnicodeError, ValueError):
             self._error(conn, 'MALFORMED')
 
@@ -2294,6 +2297,7 @@ class WorldServer:
                 self.rally.tick()
                 self.relays.tick()
                 self.flags.tick()
+                self.races.tick()
                 self._poll_controls()
                 self._poll_mechanics()
                 from .actor_objects import poll_player
