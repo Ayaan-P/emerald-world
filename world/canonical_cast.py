@@ -277,6 +277,8 @@ def guild_command(server, conn, args):
 
 
 def reaction_activity(event, identity, row):
+    from .campaign_milestones import relevant as milestone_relevant
+    if milestone_relevant(event,row.get('places',[])):return True
     from .core_story import shared_outcome
     if shared_outcome(event,row.get('places',[])):return True
     from .character_reconnaissance import observed as survey_observed
@@ -348,6 +350,8 @@ def received_letter(event, identity):
 
 
 def decision_evidence(event, identity, row):
+    from .campaign_milestones import relevant as milestone_relevant
+    if milestone_relevant(event,row.get('places',[])):return True
     from .core_story import shared_outcome
     if shared_outcome(event,row.get('places',[])):return True
     from .canonical_projects import public_project

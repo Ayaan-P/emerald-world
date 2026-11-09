@@ -66,6 +66,8 @@ def evidence_index(event, *, current_catalog=False):
                 place = native_place(*key[:2])
                 if place and preserved is None:
                     places.add(place)
+    elif event.get('event') == 'canonical_campaign_milestone':
+        words.extend((event['milestone'],event['summary'],'shared Hoenn campaign milestone'))
     elif event.get('event') == 'character_field_report':
         words.extend((event['character_id'],event['character_name'],event['title'],'field reconnaissance access geometry'))
     elif event.get('event') == 'character_encounter':

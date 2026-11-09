@@ -38,6 +38,9 @@ def describe(event, place=None):
         details.append('Team plan: ' + ', '.join('species ' + str(mon['species']) +
                        ' at level ' + str(mon['level']) for mon in character['team']))
         details.append('This is an authored character change, not proof of a battle or catch.')
+    elif kind == 'canonical_campaign_milestone':
+        title=event['summary']
+        details=['Shared by future campaign opt-in. Native client attestation, not another trainer progression or actor achievement.']
     elif kind == 'character_field_report':
         title=event['character_name']+': '+event['title']
         details=[str(len(event['samples']))+' visited route points measured on exact map '+event['revision'][:12],

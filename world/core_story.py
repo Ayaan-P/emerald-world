@@ -105,6 +105,8 @@ class CoreStory:
             trainer TEXT, run TEXT, checkpoint TEXT, document TEXT,
             PRIMARY KEY(trainer,run,checkpoint));
         ''')
+        from .campaign_milestones import install
+        install(self.db)
         self.db.commit()
 
     def contract(self):
@@ -137,6 +139,9 @@ class CoreStory:
             raise ValueError('Invalid canonical story request.')
         _, run, action, key, confirmation = fields
         trainer = conn['id']
+        if action=='MILE':
+            from .campaign_milestones import handle
+            return handle(self.s,conn,run,key,confirmation)
         if action=='SEEN' and re.fullmatch('[0-9a-f]{64}',confirmation):
             from .canonical_cast import location
             from .canonical_memory import acknowledge
