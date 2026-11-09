@@ -7,6 +7,7 @@ requirements and commits a choice and its resulting opportunities together.
 import hashlib
 import json
 import re
+import time
 
 
 def encoded(value):return json.dumps(value,sort_keys=True,separators=(',',':'),allow_nan=False)
@@ -35,13 +36,14 @@ def validate(pack,places):
     for key,scene in scenes.items():
         identity(key)
         if type(scene) is not dict or not {'place','text','requires','once','choices'} <= set(scene) or not set(scene) <= {'place','text','requires','once','choices','mystery','actors'}:raise ValueError('Invalid scene.')
-        if scene['place'] not in places or scene['once'] not in ('player','world'):raise ValueError('Invalid scene place or repetition rule.')
+        if scene['place'] not in places or scene['once'] not in ('player','world','actor'):raise ValueError('Invalid scene place or repetition rule.')
+        if scene['once']=='actor' and 'actors' not in scene:raise ValueError('Repeatable actor scenes must be explicitly assigned.')
         if 'mystery' in scene:identity(scene['mystery'])
         if 'actors' in scene:
             actors=scene['actors']
             if (type(actors) is not list or not 1<=len(actors)<=4 or any(type(a) is not str for a in actors) or len(set(actors))!=len(actors)
                     or any(a not in ('canon_wally','canon_briney','canon_steven','canon_rydel') for a in actors)
-                    or scene['once']!='world' or 'mystery' in scene):raise ValueError('Actor scenes require explicit canonical actors and world-only execution.')
+                    or scene['once'] not in ('world','actor') or 'mystery' in scene):raise ValueError('Actor scenes require explicit canonical actors and world-only execution.')
             used=set(scene['requires'])
             if type(scene['choices']) is not dict:raise ValueError('Invalid actor choices.')
             for action in scene['choices'].values():
@@ -66,6 +68,7 @@ class Opportunities:
     def __init__(self,db,places,mysteries=None):
         self.db=db;self.places=set(places);self.mysteries=mysteries
         db.executescript('''
+        CREATE TABLE IF NOT EXISTS story_actor_budget(actor TEXT PRIMARY KEY,day INTEGER,attempts INTEGER);
         CREATE TABLE IF NOT EXISTS story_projects(pack TEXT PRIMARY KEY,revision INTEGER,state TEXT);
         CREATE TABLE IF NOT EXISTS story_packs(id TEXT PRIMARY KEY,document TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS story_places(pack TEXT,place TEXT,revision INTEGER,state TEXT,played TEXT,PRIMARY KEY(pack,place));
@@ -180,7 +183,7 @@ class Opportunities:
             for sid,scene in pack['scenes'].items():
                 if not scene.get('actors') or actor is not None and actor not in scene['actors']:continue
                 revision,values,played=self.public_state(pack,scene['place'])
-                if sid in played or not self._matches(scene['requires'],values):continue
+                if (sid in played and scene['once']!='actor') or not self._matches(scene['requires'],values):continue
                 choices={cid:action for cid,action in scene['choices'].items() if self._matches(action['requires'],values)
                          and all(0<=values[k]+d<=pack['qualities'][k]['max'] for k,d in action['effects'].items())}
                 if choices:result.append(dict(pack=key,scene=sid,place=scene['place'],revision=revision,actors=scene['actors'],text=scene['text'],choices=choices))
@@ -188,6 +191,11 @@ class Opportunities:
 
     def actor_choose(self,actor,request):
         """Caller owns transaction and receipt. No player table, grant or location claim."""
+        day=int(time.time()//86400)
+        budget=self.db.execute('SELECT day,attempts FROM story_actor_budget WHERE actor=?',(actor,)).fetchone()
+        attempts=budget[1] if budget and budget[0]>=day else 0
+        day=max(day,budget[0]) if budget else day
+        if attempts>=8:raise ValueError('Actor daily action budget reached.')
         options=self.actor_actions(actor)
         selected=next((o for o in options if all(o[k]==request[k] for k in ('pack','scene','place','revision'))),None)
         if not selected or request['choice'] not in selected['choices']:raise ValueError('Actor action is stale, unavailable or not assigned to this actor.')
@@ -196,7 +204,9 @@ class Opportunities:
         pack=json.loads(raw)
         _,state,played=self.public_state(pack,request['place'])
         for key,delta in action['effects'].items():state[key]+=delta
-        played.append(request['scene']);revision=request['revision']+1
+        if request['scene'] not in played:played.append(request['scene'])
+        revision=request['revision']+1
+        self.db.execute('INSERT OR REPLACE INTO story_actor_budget VALUES(?,?,?)',(actor,day,attempts+1))
         self._write_public(pack,request['place'],revision,state,played)
         self.db.execute('INSERT INTO story_consequences VALUES(?,?,?,?,?,?)',(request['pack'],request['place'],revision,request['scene'],request['choice'],encoded(action['effects'])))
         return dict(revision=revision,text=action['result'],changes=action['effects'])
