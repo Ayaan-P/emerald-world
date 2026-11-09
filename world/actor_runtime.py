@@ -343,3 +343,6 @@ CAPABILITIES['world.enter_contest']=Capability('Offer an owned on-team companion
 
 from .rental_pools import tool as rental_tool
 CAPABILITIES['world.rentals']=Capability('Inspect or curate optional Slateport rentals.',dict(operation='inspect or configure',value='inspect: page 0..6; configure: JSON six set IDs or []'),'Native rental pool only, not recruitment or earned growth.',rental_tool,None,('canonical','world'))
+
+from .place_connections import connect as connect_places, poll as poll_connection
+CAPABILITIES['world.connect_places']=Capability('Connect two existing opened caves with paired safe native passage props, without manually placing objects or moving an author.',dict(source='opened source place ID',source_revision='exact source revision',target='opened target place ID',target_revision='exact target revision'),'Two admitted anchored props and durable directed cave links. Existing CAVELINK1/CAVELINKW1 confirmation, transfer and return warp; plain/wildlife caves only. No travel, labor or seamless transition inferred.',connect_places,poll_connection,('canonical','world'))
