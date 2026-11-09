@@ -1,3 +1,33 @@
+## Cave-link continuation
+The current dot/cave-link-transfer candidate includes #315–317 after the consolidated
+#314 baseline described below. Its paired native is draft #34,
+97ea17b0fb3fa221327950bd1da820e1dbed4d0d, based on #32. The gitlink,
+builder PIN and manifest agree. This overrides the historical pin below.
+
+Agents discover world.link_caves: observe an anchored prop in an immutable plain
+cave, bind its observed program revision to another already-opened plain cave's
+exact place ID and digest. Existing actions/programs cannot be overwritten.
+Players approach that actual prop and press A; native asks whether to travel.
+Accepting downloads into a separate decoder, verifies the hash, acknowledges,
+then reloads the destination at its entrance. The original Hoenn return warp
+is retained. Other players remain in their own admitted caves. A reverse link
+must be authored separately. This is an object-triggered transition, not seamless
+terrain, and uses existing prop graphics rather than new portal artwork.
+
+Requires --generated-regions and a CAVELINK1 client. Only format-1 caves are
+supported. No outdoor selectable-region admission changes are included.
+Rejected/stale transfers cannot fabricate arrival. Abort before reload restores
+source admission with fresh readiness required; uncertain post-commit timeout
+disconnects rather than guessing completion. Recovery/reconnect and return-warp
+behavior still require rendered integration QA.
+
+419 component tests passed (2 sandbox-dependent skips), including authenticated
+server interaction, independent peers, restart, abort and real native decoder
+fixtures. Native transfer function test verifies source preservation and return
+warp invariants with engine API fixtures. No full linked build, live provider
+execution or rendered multiplayer playtest is claimed. Maya owns integration/QA.
+
+---
 # One capability candidate for integration
 
 Use the head of app draft #314 (`dot/practice-session`), not a selection of its
