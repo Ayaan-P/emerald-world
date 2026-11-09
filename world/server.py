@@ -601,6 +601,9 @@ class WorldServer:
                 character = scoped_characters.get(obj['id'])
                 if character and character['status'] == 'active':
                     lines.append('CHARACTER ' + obj['id'] + ' ' + str(character['version']))
+                    from .actor_battle_formats import line as format_line
+                    battle_format=format_line(self,conn,obj['id'],character['version'])
+                    if battle_format:lines.append(battle_format)
                     from .actor_shops import line as shop_line
                     retail=shop_line(self,conn,obj['id'],character['version'])
                     if retail:lines.append(retail)
@@ -681,6 +684,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                character_format_capable=role.endswith('CHARFORM1')
+                if character_format_capable:role=role[:-9]
                 world_bulletin_capable=role.endswith('WORLDTV1')
                 if world_bulletin_capable:role=role[:-8]
                 rental_capable=role.endswith('RENTALS1')
@@ -851,6 +856,7 @@ class WorldServer:
                 conn['outbreak_capable']=outbreak_capable
                 conn['world_bulletin_capable']=world_bulletin_capable
                 conn['outdoor_weather_capable']=outdoor_weather_capable and cave_xl
+                conn['character_format_capable']=character_format_capable and character_capable
                 conn['character_tutor_capable']=character_tutor_capable and character_capable
                 conn['character_shop_capable']=character_shop_capable and character_capable
                 conn['character_capable'] = character_capable
