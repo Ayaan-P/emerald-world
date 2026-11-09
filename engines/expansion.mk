@@ -18,3 +18,7 @@ NATIVE_LDFLAGS += -Wl,--defsym=gba_native_vram_size=0x20000 -Wl,-rpath-link,/usr
 
 # Offline first-throw experiment only. Requires separate exact-binary linked QA.
 export NATIVE_EXTRA_CPPFLAGS += -DWORLD_CHARACTER_CAPTURE_EXPERIMENT=$(WORLD_CHARACTER_CAPTURE_EXPERIMENT)
+
+# Versioned two-player dynamic NPC experiment; matched clients and linked QA required.
+WORLD_CHARACTER_COOP_EXPERIMENT ?= 0
+export NATIVE_EXTRA_CPPFLAGS += -DWORLD_CHARACTER_COOP_EXPERIMENT=$(WORLD_CHARACTER_COOP_EXPERIMENT)
