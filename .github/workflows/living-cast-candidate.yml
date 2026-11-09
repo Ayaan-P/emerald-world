@@ -1,7 +1,7 @@
 name: Living cast candidate components
 on:
   pull_request:
-    branches: [main, dot/rc12-core-story, dot/rc12-living-cast, dot/actor-capability-runtime, dot/actor-object-runtime, dot/actor-space-authoring, dot/actor-place-authoring, dot/actor-habitat-authoring, dot/actor-population, dot/actor-author-loop, dot/player-object-use, dot/actor-landscapes, dot/world-goal-author, dot/population-agents]
+    branches: [main, dot/rc12-core-story, dot/rc12-living-cast, dot/actor-capability-runtime, dot/actor-object-runtime, dot/actor-space-authoring, dot/actor-place-authoring, dot/actor-habitat-authoring, dot/actor-population, dot/actor-author-loop, dot/player-object-use, dot/actor-landscapes, dot/world-goal-author, dot/population-agents, dot/persistent-agent-cadence]
     paths:
       - 'world/**'
       - 'test/world/**'

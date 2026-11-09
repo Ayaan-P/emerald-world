@@ -50,6 +50,8 @@ def spawn(server,actor,row,args):
     obj=dict(id=identity,group=group,num=num,region_revision=revision,**{k:definition[k] for k in ('x','y','gfx','text')})
     record=None
     if character:
+        if type(definition['team']) is list and all(type(m) is dict and 'individual' not in m for m in definition['team']):
+            definition['team']=[dict(m,individual='partner_'+str(i+1)) for i,m in enumerate(definition['team'])]
         record=dict(version=1,name=definition['name'],role=definition['role'],goals=definition['goals'],team=definition['team'],
             relationships={},status='active',object_id=identity,evidence=list(row['evidence']),reason='Created by an admitted population plan; no prior experiences asserted.')
     else:obj.update(kind='prop',portable=definition['portable'])
