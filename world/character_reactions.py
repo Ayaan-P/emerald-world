@@ -20,6 +20,8 @@ def actors(state):
 
 
 def dynamic_result(event, identity, character):
+    from .actor_knowledge import relevant as knowledge_relevant
+    if knowledge_relevant(event,identity):return True
     from .population_agents import creation
     if creation(event,identity):return True
     from .actor_runtime import relevant as tool_relevant
