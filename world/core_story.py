@@ -27,6 +27,22 @@ BEATS = {
         'outcome': 'devon_goods_secured',
         'public': 'Explorers recovered Devon goods and rescued Peeko in Rusturf Tunnel.'},
 }
+
+def shared_outcome(event, places):
+    """Allow only existing explicitly shared native story receipts as cast evidence.
+
+Native attestation remains attestation, not server-simulated battle proof. Private
+REPORT/SYNC progress and arbitrary client prose never qualify.
+"""
+    beat=BEATS.get(event.get('beat'))
+    return bool(beat and event.get('event')=='canonical_story_outcome'
+                and event.get('arc')=='devon_aqua_v1'
+                and event.get('source')=='explicitly_shared_native_attestation'
+                and event.get('outcome')==beat['outcome']
+                and event.get('summary')==beat['public']
+                and event.get('places')==['native:'+beat['map']]
+                and 'native:'+beat['map'] in places)
+
 CHECKPOINTS = {
     'rusturf_grunt': {'map': 'RusturfTunnel', 'requires': 'woods_rescued',
         'completed': 'goods_recovered', 'outcome': 'devon_warned',

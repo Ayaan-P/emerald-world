@@ -206,7 +206,7 @@ def contract():
                 relationships=dict(target='another existing bound canonical actor, not a player',fields=['stance','motivation','evidence'],stances=['curious','encouraged','concerned','respectful','competitive'],basis='actual public completion attributed to target actor; directional interpretation, not mutual relationship or invented meeting',reaction='new public target-offer results in actor interests trigger reconsideration; never authored decisions alone'),
                 optional_offer=dict(map='canonical native map in places',count='1..50 distinct guild trainers',acceptance='/guild cast ACTOR previews; leader accepts exact version; chronicle must already be on',outcome='actual authenticated guild presence, not actor personal achievements'),
                 effects='supplement original bound actor dialogue only; no spawned duplicate, save flag, team, reward, bike exchange or main script change',
-                evidence='actual inspected opted-in public guild_goal_completed in selected places or authority-delivered letter addressed to this actor; no invented personal achievement',
+                evidence='actual explicitly shared canonical_story_outcome for existing Woods ambush/Peeko rescue beats in selected native places, opted-in public guild_goal_completed, or other supported public actor activity; private REPORT/SYNC never qualifies; native story is client attestation, not simulated proof or this actor personal achievement',
                 native='requires paired CAST safe-point adapter; original story continues offline or on refusal')
 
 
@@ -277,6 +277,8 @@ def guild_command(server, conn, args):
 
 
 def reaction_activity(event, identity, row):
+    from .core_story import shared_outcome
+    if shared_outcome(event,row.get('places',[])):return True
     from .character_reconnaissance import observed as survey_observed
     if survey_observed(event,row.get('journey_interests',[])):return True
     from .character_encounters import observed as encounter_observed
@@ -346,6 +348,8 @@ def received_letter(event, identity):
 
 
 def decision_evidence(event, identity, row):
+    from .core_story import shared_outcome
+    if shared_outcome(event,row.get('places',[])):return True
     from .canonical_projects import public_project
     from .canonical_collaboration import relevant
     from .canonical_intentions import fulfilled
