@@ -5,9 +5,11 @@ from .canonical_cast import BINDINGS,records
 from .author_backends import API_BACKENDS,validate
 
 
-def action(session,worlds,command,payload):
+def action(session,worlds,command,payload,*,binary=None):
     fields={'world'}
-    if command=='cast_agent_population':
+    if command=='cast_agent_practice_start':fields|={'digest','validated_native','turn_limit','period_hours'}
+    elif command=='cast_agent_practice_stop':pass
+    elif command=='cast_agent_population':
         fields|={'enabled','confirmed'}
         if type(payload) is dict and ('turn_limit' in payload or 'period_hours' in payload):fields|={'turn_limit','period_hours'}
     elif command=='cast_agent_goal':fields|={'actor','goal','request_id','confirmed'}
@@ -22,7 +24,11 @@ def action(session,worlds,command,payload):
             or payload['world'] not in {w['key'] for w in worlds} or server is None or server._closed):
         raise SessionError('Open this local Expansion host before using living-cast controls.')
     try:
-        if command=='cast_agent_population':
+        if command=='cast_agent_practice_start':
+            if binary is None:raise ValueError('Configured native binary required')
+            session.start_practice(binary,payload['digest'],validated_native=payload['validated_native'] is True,turn_limit=payload['turn_limit'],period_hours=payload['period_hours'])
+        elif command=='cast_agent_practice_stop':session.stop_practice()
+        elif command=='cast_agent_population':
             if payload['confirmed'] is not True:raise ValueError('Confirm automatic NPC authors and bounded provider usage')
             from .population_agents import configure
             with server.lock:inspection=server.inspect()
@@ -78,6 +84,7 @@ def action(session,worlds,command,payload):
     followed={r['id'] for r in status.get('characters',[])}
     thread=session.gm_thread
     return dict(world=payload['world'],running=bool(thread and thread.is_alive()),
+        practice=dict(running=bool(getattr(session,'practice_thread',None) and session.practice_thread.is_alive()),failed=bool(getattr(session,'practice_error',None))),
         provider=getattr(session,'gm_provider',None),model=getattr(session,'gm_model',None),
         failed=bool(session.gm_error),providers=[dict(id=k,credential_ready=bool(os.environ.get(v[1]))) for k,v in API_BACKENDS.items()],
         actors=[dict(id=k,name=v['name'],authored=k in actors,followed=k in followed,goal=actors.get(k,{}).get('goal')) for k,v in BINDINGS.items()],

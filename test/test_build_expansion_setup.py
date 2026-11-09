@@ -69,6 +69,19 @@ class BuildSetup(unittest.TestCase):
                 self.assertEqual(build_expansion.main(), 1)
                 export.assert_not_called()
 
+    def test_generated_region_flag_reaches_make_without_regional_saves(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);source=root/'engines/expansion-native';source.mkdir(parents=True)
+            (source/'Makefile.native').touch();(source/'.git').touch()
+            from subprocess import CompletedProcess
+            with patch.object(build_expansion,'ROOT',root), patch('sys.argv',['build_expansion.py','--generated-regions']), patch.object(build_expansion.subprocess,'check_output',side_effect=[build_expansion.PIN,'']), patch.object(build_expansion.subprocess,'run',side_effect=[CompletedProcess([],0),CompletedProcess([],0),CompletedProcess([],0),CompletedProcess([],1)]) as run, patch.object(build_expansion.shutil,'which',return_value='/usr/bin/bwrap'):
+                self.assertEqual(build_expansion.main(),1)
+                command=run.call_args.args[0]
+                self.assertIn('GENERATED_WORLD_REGIONS=1',command)
+                self.assertIn('-B',command)
+                self.assertIn('EW_REGION_STATE=0',command)
+                self.assertIn('EW_KANTO_CONTENT=0',command)
+
     def test_check_mode_never_exports_or_builds(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

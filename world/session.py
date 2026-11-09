@@ -43,6 +43,9 @@ class DesktopSession:
         self.agent_games = set()
         self.managed_display = None
         self.intents = {}
+        self.practice_thread = None
+        self.practice_stop = None
+        self.practice_error = None
         self.gm_thread = None
         self.gm_stop = None
         self.gm_error = None
@@ -564,6 +567,47 @@ class DesktopSession:
             raise ValueError('GM state cannot be a symlink')
         return IntentQueue(self.state)
 
+    def start_practice(self, binary, digest, *, validated_native=False, turn_limit=8, period_hours=24, steps=256, cap=20):
+        import threading
+        from .companion_practice import Engine, Ledger
+        from .cast_practice_worker import step
+        from . import gm
+        from .launcher import engine_state
+        if not validated_native or self.engine!='expansion-native' or self.server is None or self.state is None or self.server._closed:
+            raise SessionError('Host Expansion and validate the exact isolated native binary first.')
+        if self.practice_thread is not None and self.practice_thread.is_alive():raise SessionError('Practice worker already running.')
+        if any(type(v) is not int for v in (turn_limit,period_hours,steps,cap)) or not (1<=turn_limit<=64 and 1<=period_hours<=168 and 1<=steps<=1024 and 1<=cap<=100):raise SessionError('Invalid practice limits.')
+        engine=Engine(binary,digest)
+        import hashlib
+        if hashlib.sha256(engine.path.read_bytes()).hexdigest()!=digest:raise SessionError('Validated binary digest does not match.')
+        state=self.state;server=self.server
+        directory=engine_state(state,self.engine)/'practice'
+        directory.mkdir(mode=0o700,parents=True,exist_ok=True)
+        if directory.resolve()!=directory:raise SessionError('Practice directory cannot be a symlink.')
+        if (directory/'companions.db').is_symlink():raise SessionError('Practice ledger cannot be a symlink.')
+        stop=threading.Event();self.practice_stop=stop;self.practice_error=None
+        def work():
+            ledger=None
+            try:
+                ledger=Ledger(directory/'companions.db')
+                def request(body):
+                    if stop.is_set() or self.server is not server or self.state!=state:raise ValueError('Practice host stopped or changed')
+                    return gm.admin_request(str(engine_state(state,self.engine)/'transport/world.sock'),body,30)
+                while not stop.is_set():
+                    result=step(ledger,engine,request,validated_native=True,turn_limit=turn_limit,period_hours=period_hours,steps=steps,cap=cap)
+                    if result['status'] in ('failed','blocked'):
+                        self.practice_error=result['status'];break
+                    if stop.wait(5):break
+            except Exception as exc:self.practice_error=type(exc).__name__
+            finally:
+                if ledger is not None:ledger.close()
+        self.practice_thread=threading.Thread(target=work,name='world-companion-practice',daemon=True)
+        self.practice_thread.start()
+
+    def stop_practice(self):
+        if self.practice_stop is not None:self.practice_stop.set()
+        if self.practice_thread is not None:self.practice_thread.join()
+
     def start_gm(self, *, provider="codex", model=None):
         import threading
         from .runtime_gm import MODEL, RuntimeGM
@@ -870,6 +914,7 @@ class DesktopSession:
         if self.server is not None and self.state is not None:
             self._hosts[self.state.name] = (self.server, self.broker, self.sharing_pin)
             self.server = self.broker = None
+        self.stop_practice()
         self.stop_gm()
         for process, _ in self.games.values():
             if process.poll() is None:
@@ -898,6 +943,7 @@ class DesktopSession:
                        if self._hosts else 'Disconnected. Saves kept. Dedicated remote world unchanged.')
 
     def close(self):
+        self.stop_practice()
         """Final owner teardown after explicit launcher-exit confirmation."""
         self.disconnect()
         for name in list(self._hosts):

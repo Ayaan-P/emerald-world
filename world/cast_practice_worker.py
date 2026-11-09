@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import json
 import sqlite3
+import time
 from .companion_practice import Ledger,Engine
 from . import gm
 
@@ -16,17 +17,21 @@ def signature(world,actor,row,task):
     return hashlib.sha256(json.dumps([world,actor,row['version'],task],sort_keys=True).encode()).hexdigest()
 
 
-def step(ledger,engine,request,*,validated_native=False,steps=256,cap=20):
+def step(ledger,engine,request,*,validated_native=False,steps=256,cap=20,turn_limit=8,period_hours=24,now=None):
     if not validated_native:raise ValueError('Isolated native entry must be validated before enabling dispatcher')
     if type(steps) is not int or not 1<=steps<=1024 or type(cap) is not int or not 1<=cap<=100:raise ValueError('Invalid host exercise budget')
     ledger.db.execute('''CREATE TABLE IF NOT EXISTS cast_practice_dispatch(
       world TEXT,actor TEXT,intention TEXT,signature TEXT,job TEXT,status TEXT,receipt TEXT,
       PRIMARY KEY(world,actor,intention))''')
+    if type(turn_limit) is not int or not 1<=turn_limit<=64 or type(period_hours) is not int or not 1<=period_hours<=168:raise ValueError('Invalid recurring host practice budget')
+    now=time.time() if now is None else now
+    ledger.db.execute('CREATE TABLE IF NOT EXISTS practice_budget(world TEXT,actor TEXT,started REAL,used INTEGER,PRIMARY KEY(world,actor))')
     snapshot=request({'command':'cast_practice_intentions'})
     if snapshot.get('ok') is not True:raise ValueError('Cast intention source unavailable')
     world=snapshot['world_id']
     for actor,row in sorted(snapshot['actors'].items()):
-        if ledger.db.execute('SELECT count(*) FROM cast_practice_dispatch WHERE world=? AND actor=?',(world,actor)).fetchone()[0]>=8:continue
+        budget=ledger.db.execute('SELECT started,used FROM practice_budget WHERE world=? AND actor=?',(world,actor)).fetchone()
+        if budget and now<budget[0]+period_hours*3600 and budget[1]>=turn_limit:continue
         for task in row['intentions']:
             if task['kind']!='practice':continue
             key=(world,actor,task['id'])
@@ -49,6 +54,10 @@ def step(ledger,engine,request,*,validated_native=False,steps=256,cap=20):
                 # Claim intention and queue its frozen companion atomically.
                 with ledger.db:
                     ledger.db.execute('BEGIN IMMEDIATE')
+                    budget=ledger.db.execute('SELECT started,used FROM practice_budget WHERE world=? AND actor=?',(world,actor)).fetchone()
+                    if budget and now<budget[0]+period_hours*3600 and budget[1]>=turn_limit:raise ValueError('Practice period budget exhausted')
+                    started,used=(now,0) if not budget or now>=budget[0]+period_hours*3600 else budget
+                    ledger.db.execute('INSERT INTO practice_budget VALUES(?,?,?,?) ON CONFLICT(world,actor) DO UPDATE SET started=excluded.started,used=excluded.used',(world,actor,started,used+1))
                     job=ledger.queue(actor,individual,steps,cap)
                     ledger.db.execute('INSERT INTO cast_practice_dispatch VALUES(?,?,?,?,?,?,NULL)',(*key,sig,job,'running'))
             except (ValueError,sqlite3.IntegrityError) as exc:
@@ -98,7 +107,9 @@ def main():
     for name in ('db','engine','sha256','socket'):parser.add_argument('--'+name,required=True)
     parser.add_argument('--validated-native',action='store_true',help='Operator attests exact binary passed isolated-entry QA; not a gameplay preference')
     parser.add_argument('--steps',type=int,default=256);parser.add_argument('--cap',type=int,default=20)
+    parser.add_argument('--turn-limit',type=int,default=8)
+    parser.add_argument('--period-hours',type=int,default=24)
     args=parser.parse_args();ledger=Ledger(args.db)
-    try:print(json.dumps(step(ledger,Engine(args.engine,args.sha256),lambda body:gm.admin_request(args.socket,body,30),validated_native=args.validated_native,steps=args.steps,cap=args.cap),sort_keys=True))
+    try:print(json.dumps(step(ledger,Engine(args.engine,args.sha256),lambda body:gm.admin_request(args.socket,body,30),validated_native=args.validated_native,steps=args.steps,cap=args.cap,turn_limit=args.turn_limit,period_hours=args.period_hours),sort_keys=True))
     finally:ledger.close()
 if __name__=='__main__':main()
