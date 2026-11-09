@@ -6,7 +6,8 @@ from .guilds import GuildError
 
 def validate(proposal):
     if proposal is None:return
-    if (type(proposal) is not dict or set(proposal)!={'question','options'}
+    if (type(proposal) is not dict or set(proposal)-{'mode'}!={'question','options'}
+            or proposal.get('mode','unanimous') not in ('unanimous','speaker')
             or type(proposal['question']) is not str or not re.fullmatch("[A-Za-z0-9 .,!?'-]{1,160}",proposal['question'])
             or type(proposal['options']) is not dict or not 2<=len(proposal['options'])<=3):
         raise ValueError('shared conversation needs a bounded question and two or three options')
@@ -36,6 +37,7 @@ def command(server,conn,actor,row,args):
     from .canonical_cast import BINDINGS
     proposal=(row or {}).get('council')
     if not proposal:raise GuildError('No shared conversation question is currently offered.')
+    if proposal.get('mode','unanimous')!='unanimous':raise GuildError('This is a speaker-led question. Use converse; listeners advise and the speaker chooses.')
     guild=server.guilds._require(conn['id'])
     members=server.guilds.members(conn['id'])[1]
     if not 2<=len(members)<=4:raise GuildError('Shared cast decisions support guilds of two to four trainers.')

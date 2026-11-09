@@ -195,7 +195,7 @@ def response(server, conn, run, key):
 def contract():
     return dict(response='canonical_actions/tests',bindings=BINDINGS,location_aliases=LOCATION_ALIASES,
                 action_fields=['id','expected_version','changes'],
-                change_fields=['council (optional question/options for unanimous two-to-four-trainer public preference)','goal','dialogue','places','evidence','reason','journey_interests (optional up to four exact archived revision digests)','routine (optional quiet-world decision interval)','cooperate (optional independent exact project join/decline)','worksite (optional authority construction plan)','study (optional archived-map exploration project)','offer (optional native map/count)','relationships (optional directional assessments)','conversation (optional private player choices)','letter (optional public cast correspondence)','project (optional playable practice course)','contribution (optional project guidance)','resolve_contribution (optional owner decision)','intentions (up to three retained tasks)','fulfill (one prior task ID)'],
+                change_fields=['council (optional question/options, mode unanimous or speaker; speaker-led conversation has up to four opted-in participants and advisory listeners)','goal','dialogue','places','evidence','reason','journey_interests (optional up to four exact archived revision digests)','routine (optional quiet-world decision interval)','cooperate (optional independent exact project join/decline)','worksite (optional authority construction plan)','study (optional archived-map exploration project)','offer (optional native map/count)','relationships (optional directional assessments)','conversation (optional private player choices)','letter (optional public cast correspondence)','project (optional playable practice course)','contribution (optional project guidance)','resolve_contribution (optional owner decision)','intentions (up to three retained tasks)','fulfill (one prior task ID)'],
                 intentions=dict(fields=['id','kind (letter, project, study, construction, contribution or practice)','target','reason'],completion='set fulfill to a prior retained ID, remove it from agenda, execute the matching new action; authority requires a real action receipt',practice='target is an already host-registered fictional companion ID; isolated dispatcher only, no live fulfillment or story-party changes',initiative='followed actors may attempt retained work without a new player event; eight attempts per actor/world, once per task ID, no automatic retry or hidden model startup'),
                 collaboration=dict(contribution=['course','digest','text (200 literal characters)'],resolve_contribution=['seq (proposal evidence)','decision (accept or decline)'],effect='another existing actor contributes to exact published project; owner decides; accepted text becomes actual activity briefing',limits='one contribution per actor/project; only public evidence, no inferred participation or private results'),
                 routine=dict(fields=['interval_seconds (60..86400)'],effect='already followed actors may reconsider their own goals during quiet-world periods through the configured author runtime',limits='eight scheduled attempts per actor/world/UTC day; durable no-catch-up scheduling; no hidden worker startup, fake outcome or automatic XP',evidence='scheduled turns still cite inspected prior public evidence; clock passage is never outcome evidence'),
@@ -224,6 +224,9 @@ def guild_command(server, conn, args):
     identity=next((i for i,b in BINDINGS.items() if b['wire']==args[0]),None)
     if identity is None:raise GuildError('Unknown canonical actor.')
     if server.peers.get(conn.get('id')) is not conn:raise GuildError('Authenticated trainer connection required.')
+    if len(args)>1 and args[1] in ('converse','listen','conversation','advise','choose','leave'):
+        from .canonical_dialogues import command
+        return command(server,conn,identity,records(server.module_state).get(identity),args[1:])
     if len(args)>1 and args[1] in ('reflect','reflection'):
         from .canonical_reflection import command
         return command(server,conn,identity,args[1:])
@@ -237,6 +240,9 @@ def guild_command(server, conn, args):
     try:check_actor_location(server,conn,identity)
     except ValueError:raise GuildError('Visit the original actor before reviewing or accepting a proposal.')
     row=records(server.module_state).get(identity);offer=(row or {}).get('offer')
+    if len(args)==1 and (row or {}).get('council'):
+        shared=row['council'];mode='converse' if shared.get('mode','unanimous')=='speaker' else 'council'
+        return [shared['question'],'Use /guild cast '+BINDINGS[identity]['wire']+' '+mode+' to review the shared conversation.']
     if len(args)>=2 and args[1] in ('council','decide'):
         from .canonical_councils import command
         return command(server,conn,identity,row,args[1:])
@@ -282,6 +288,8 @@ def guild_command(server, conn, args):
 
 
 def reaction_activity(event, identity, row):
+    from .canonical_dialogues import relevant as dialogue_relevant
+    if dialogue_relevant(event,identity):return True
     from .canonical_councils import relevant as council_relevant
     if council_relevant(event,identity):return True
     from .campaign_milestones import relevant as milestone_relevant
@@ -357,6 +365,8 @@ def received_letter(event, identity):
 
 
 def decision_evidence(event, identity, row):
+    from .canonical_dialogues import relevant as dialogue_relevant
+    if dialogue_relevant(event,identity):return True
     from .canonical_councils import relevant as council_relevant
     if council_relevant(event,identity):return True
     from .campaign_milestones import relevant as milestone_relevant

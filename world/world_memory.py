@@ -66,6 +66,8 @@ def evidence_index(event, *, current_catalog=False):
                 place = native_place(*key[:2])
                 if place and preserved is None:
                     places.add(place)
+    elif event.get('event') == 'canonical_speaker_decided':
+        words.extend((event['character_id'],event['question'],event['label'],'speaker decision with optional advice not consensus'))
     elif event.get('event') == 'canonical_council_agreed':
         words.extend((event['character_id'],event['question'],event['label'],'unanimous shared cast preference'))
     elif event.get('event') == 'canonical_campaign_milestone':

@@ -147,6 +147,8 @@ class WorldServer:
         self.guilds = Guilds(self.db, catalog_maps(), record_outcome=self.memory.append)
         from .canonical_councils import install as install_councils
         install_councils(self.db)
+        from .canonical_dialogues import install as install_dialogues
+        install_dialogues(self.db)
         self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
         from .cooperative_mysteries import Mysteries
         from .opportunities import Opportunities
