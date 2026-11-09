@@ -1916,8 +1916,10 @@ class WorldServer:
                     player['generated_place']=dict(place_id=place[0] if place else None,revision=revision)
                 player['meeting'] = conn.get('meeting')
                 players.append(player)
+            from .actor_runtime import inspect_runtime as inspect_actor_runtime
             return dict(ok=True, revision=self.revision, players=players,
                         world_memory=self.memory.context(self),
+                        actor_runtime=inspect_actor_runtime(self),
                         cast_world_actions=self.opportunities.actor_actions()[:32],
                         cast_initiatives=initiative_view(self),
                         cast_project_requests=project_request_view(self),
@@ -2166,6 +2168,8 @@ class WorldServer:
                 step_cast_construction(self)
                 from .canonical_world_actions import step as step_cast_world_action
                 step_cast_world_action(self)
+                from .actor_runtime import tick as tick_actor_runtime
+                tick_actor_runtime(self)
                 self.cast_scenes.tick()
 
     def close(self):

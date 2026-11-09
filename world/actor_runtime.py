@@ -1,0 +1,135 @@
+"""Model-authored plans over registered authority capabilities, not character arcs.
+
+Only local transactional tools belong here. Native/asynchronous tools must supply
+an explicit completion adapter; issuing a request is never completion.
+"""
+from dataclasses import dataclass
+import copy,json,re,time
+
+@dataclass(frozen=True)
+class Capability:
+    description: str
+    arguments: dict
+    outcome: str
+    execute: object
+
+
+def _project(server,actor,row,args):
+    from .canonical_world_actions import validate
+    validate(args)
+    if 'native:'+args['place'] not in row['places']:raise ValueError('Action is outside current actor interests')
+    result=server.opportunities.actor_choose(actor,args)
+    return dict(revision=result['revision'],changes=result['changes'],text=result['text'])
+
+
+def _message(server,actor,row,args):
+    from .canonical_cast import records,validate_letter,deliver_letter
+    if set(args)!={'to','text'} or args['to']==actor or args['to'] not in records(server.module_state):raise ValueError('Message needs another existing actor')
+    if type(args['text']) is not str or not re.fullmatch("[A-Za-z0-9 .,!?'-]{1,200}",args['text']):raise ValueError('Message needs bounded public literal text')
+    after=dict(row,letter=args)
+    lookup=lambda n:json.loads(server.db.execute("SELECT data FROM events WHERE seq=? AND kind='world_memory'",(n,)).fetchone()[0])
+    validate_letter(after,lookup)
+    deliver_letter(server,dict(character_id=actor,before={},after=after))
+    return dict(receipt=server.revision,recipient=args['to'],delivery='public_correspondence_delivered')
+
+# Registration is host code, not arbitrary code or a tool supplied by a model.
+CAPABILITIES={
+    'world.act':Capability('Execute an available shared-state action assigned to this actor.',
+        dict(pack='id',scene='id',choice='id',place='native map name',revision='integer or prior result reference'),
+        'Actual shared state revision/changes; no native travel, inventory or XP.',_project),
+    'actor.message':Capability('Deliver public speech to another existing actor without commanding its response.',
+        dict(to='existing actor id',text='1..200 literal public characters'),
+        'Delivered correspondence receipt, never agreement or physical meeting.',_message),
+}
+
+
+def install(db):
+    db.execute('CREATE TABLE IF NOT EXISTS actor_plans(actor TEXT,plan TEXT,definition TEXT NOT NULL,PRIMARY KEY(actor,plan))')
+    db.execute('CREATE TABLE IF NOT EXISTS actor_tool_receipts(actor TEXT,plan TEXT,step TEXT,status TEXT,result TEXT,seq INTEGER,PRIMARY KEY(actor,plan,step))')
+
+
+def validate(plan):
+    if plan is None:return
+    if type(plan) is not dict or set(plan)!={'id','purpose','steps'}:raise ValueError('Plan requires id, purpose and steps')
+    def identifier(v):return type(v) is str and bool(re.fullmatch('[a-z][a-z0-9_]{0,23}',v))
+    if not identifier(plan['id']) or type(plan['purpose']) is not str or not 1<=len(plan['purpose'])<=240 or any(not 32<=ord(c)<=126 for c in plan['purpose']):raise ValueError('Invalid plan identity or purpose')
+    if type(plan['steps']) is not list or not 1<=len(plan['steps'])<=6:raise ValueError('Plan requires 1..6 bounded tool steps')
+    seen=set()
+    for step in plan['steps']:
+        if type(step) is not dict or set(step)!={'id','tool','args','after'}:raise ValueError('Step needs id, tool, args and after')
+        if not identifier(step['id']) or step['id'] in seen or type(step['tool']) is not str or step['tool'] not in CAPABILITIES:raise ValueError('Unknown tool or repeated step')
+        if type(step['after']) is not list or any(type(s) is not str for s in step['after']) or len(set(step['after']))!=len(step['after']) or not set(step['after'])<=seen:raise ValueError('Dependencies must be earlier step IDs')
+        if type(step['args']) is not dict or set(step['args'])!=set(CAPABILITIES[step['tool']].arguments):raise ValueError('Tool arguments do not match advertised capability')
+        for value in step['args'].values():
+            if type(value) is dict:
+                if set(value)!={'result','key'} or value['result'] not in step['after'] or not identifier(value['key']):raise ValueError('Result reference needs a declared prior dependency and scalar key')
+            elif type(value) not in (str,int) or isinstance(value,bool):raise ValueError('Tool arguments must be scalar or result references')
+        if len(json.dumps(step))>1024:raise ValueError('Tool step exceeds bounded size')
+        seen.add(step['id'])
+
+
+def definition(plan):return json.dumps(plan,sort_keys=True,separators=(',',':'))
+
+
+def inspect_runtime(server):
+    from .canonical_cast import records
+    install(server.db)
+    return dict(capabilities={key:dict(description=c.description,arguments=c.arguments,outcome=c.outcome) for key,c in CAPABILITIES.items()},
+        available_actions=server.opportunities.actor_actions()[:32],actors=list(records(server.module_state)),
+        plans=[dict(actor=actor,plan=row['plan'],receipts=[dict(step=s,status=status,result=json.loads(result),seq=seq)
+            for s,status,result,seq in server.db.execute('SELECT step,status,result,seq FROM actor_tool_receipts WHERE actor=? AND plan=? ORDER BY seq',(actor,row['plan']['id']))])
+            for actor,row in records(server.module_state).items() if row.get('plan')],
+        limits='Registered local transactional capabilities only. Plans are intentions, receipts are observations. No arbitrary native scripts, private data, forced player actions, simulated training or inferred completion.')
+
+
+def relevant(event,actor):
+    return (event.get('event')=='actor_tool_result' and event.get('character_id')==actor
+        and event.get('source')=='authority_capability_runtime' and event.get('tool') in CAPABILITIES
+        and event.get('status') in ('succeeded','blocked'))
+
+
+def tick(server,*,now=None):
+    now=time.monotonic() if now is None else now
+    if server.job is not None or server.deployment is not None or now<getattr(server,'actor_runtime_next',0):return None
+    server.actor_runtime_next=now+5
+    from .canonical_cast import records
+    install(server.db)
+    for actor,row in sorted(records(server.module_state).items()):
+        plan=row.get('plan')
+        if not plan:continue
+        validate(plan)
+        encoded=definition(plan)
+        with server.db:
+            prior=server.db.execute('SELECT definition FROM actor_plans WHERE actor=? AND plan=?',(actor,plan['id'])).fetchone()
+            if prior and prior[0]!=encoded:continue # Admission normally rejects this; never execute a changed identity.
+            server.db.execute('INSERT OR IGNORE INTO actor_plans VALUES(?,?,?)',(actor,plan['id'],encoded))
+        receipts={s:(status,json.loads(result)) for s,status,result in server.db.execute('SELECT step,status,result FROM actor_tool_receipts WHERE actor=? AND plan=?',(actor,plan['id']))}
+        if any(status=='blocked' for status,_ in receipts.values()):continue # Replan explicitly, never blind retry.
+        for step in plan['steps']:
+            if step['id'] in receipts or not all(s in receipts and receipts[s][0]=='succeeded' for s in step['after']):continue
+            old_revision=server.revision
+            try:
+                with server.db:
+                    args=copy.deepcopy(step['args'])
+                    for key,value in args.items():
+                        if type(value) is dict:
+                            result=receipts[value['result']][1]
+                            if value['key'] not in result or type(result[value['key']]) not in (str,int):raise ValueError('Unavailable scalar result reference')
+                            args[key]=result[value['key']]
+                    result=CAPABILITIES[step['tool']].execute(server,actor,row,args)
+                    seq=_receipt(server,actor,row,plan,step,'succeeded',result)
+                return dict(actor=actor,plan=plan['id'],step=step['id'],status='succeeded',seq=seq)
+            except ValueError as exc:
+                server.revision=old_revision
+                with server.db:seq=_receipt(server,actor,row,plan,step,'blocked',dict(reason=str(exc)[:240]))
+                return dict(actor=actor,plan=plan['id'],step=step['id'],status='blocked',seq=seq)
+    return None
+
+
+def _receipt(server,actor,row,plan,step,status,result):
+    seq=server.memory.append('actor_tool_result',dict(character_id=actor,plan=plan['id'],step=step['id'],tool=step['tool'],status=status,result=result,
+        character_version=row['version'],based_on=row['evidence'],places=row['places'],source='authority_capability_runtime',
+        limits=CAPABILITIES[step['tool']].outcome))
+    server.db.execute('INSERT INTO actor_tool_receipts VALUES(?,?,?,?,?,?)',(actor,plan['id'],step['id'],status,json.dumps(result,sort_keys=True),seq))
+    server.revision=seq
+    return seq
