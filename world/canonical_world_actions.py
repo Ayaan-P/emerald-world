@@ -22,7 +22,6 @@ def step(server,*,now=None):
         for task in row.get('intentions',[]):
             if task['kind']!='world_action' or task['target']!=action['pack']:continue
             if server.db.execute('SELECT 1 FROM canonical_intent_receipts WHERE actor=? AND intention=?',(actor,task['id'])).fetchone():continue
-            if server.db.execute('SELECT count(*) FROM canonical_intent_receipts WHERE actor=?',(actor,)).fetchone()[0]>=8:continue
             try:
                 with server.db:
                     outcome=server.opportunities.actor_choose(actor,action)
