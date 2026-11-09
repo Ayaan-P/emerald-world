@@ -25,7 +25,7 @@ def validate(pack,places):
     if type(qualities) is not dict or not 1<=len(qualities)<=32:raise ValueError('A story needs 1..32 qualities.')
     for key,q in qualities.items():
         identity(key)
-        if (type(q) is not dict or set(q)!={'scope','initial','max'} or q['scope'] not in ('place','player')
+        if (type(q) is not dict or set(q)!={'scope','initial','max'} or q['scope'] not in ('place','project','player')
                 or type(q['max']) is not int or not 1<=q['max']<=1000 or type(q['initial']) is not int or not 0<=q['initial']<=q['max']):raise ValueError('Invalid quality bounds.')
     if type(scenes) is not dict or not 1<=len(scenes)<=32:raise ValueError('A story needs 1..32 scenes.')
     def requirements(req):
@@ -47,7 +47,7 @@ def validate(pack,places):
             for action in scene['choices'].values():
                 if type(action) is not dict:raise ValueError('Invalid actor choice.')
                 used.update(action.get('requires',{}));used.update(action.get('effects',{}))
-            if any(k not in qualities or qualities[k]['scope']!='place' for k in used):raise ValueError('Actor scenes cannot access player qualities.')
+            if any(k not in qualities or qualities[k]['scope'] not in ('place','project') for k in used):raise ValueError('Actor scenes cannot access player qualities.')
         text(scene['text']);requirements(scene['requires'])
         choices=scene['choices']
         if type(choices) is not dict or not 1<=len(choices)<=3:raise ValueError('Scenes need 1..3 choices.')
@@ -66,6 +66,7 @@ class Opportunities:
     def __init__(self,db,places,mysteries=None):
         self.db=db;self.places=set(places);self.mysteries=mysteries
         db.executescript('''
+        CREATE TABLE IF NOT EXISTS story_projects(pack TEXT PRIMARY KEY,revision INTEGER,state TEXT);
         CREATE TABLE IF NOT EXISTS story_packs(id TEXT PRIMARY KEY,document TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS story_places(pack TEXT,place TEXT,revision INTEGER,state TEXT,played TEXT,PRIMARY KEY(pack,place));
         CREATE TABLE IF NOT EXISTS story_players(pack TEXT,trainer TEXT,state TEXT,played TEXT,PRIMARY KEY(pack,trainer));
@@ -92,14 +93,32 @@ class Opportunities:
         row=self.db.execute('SELECT document FROM story_packs WHERE id=?',(pack_id,)).fetchone()
         if not row:raise ValueError('Unknown story.')
         pack=json.loads(row[0]);q=pack['qualities']
-        shared={k:v['initial'] for k,v in q.items() if v['scope']=='place'}
+        revision,shared,world_played=self.public_state(pack,place)
         private={k:v['initial'] for k,v in q.items() if v['scope']=='player'}
-        row=self.db.execute('SELECT revision,state,played FROM story_places WHERE pack=? AND place=?',(pack_id,place)).fetchone()
-        revision=0;world_played=[];player_played=[]
-        if row:revision,raw,played=row;shared=json.loads(raw);world_played=json.loads(played)
+        player_played=[]
         row=self.db.execute('SELECT state,played FROM story_players WHERE pack=? AND trainer=?',(pack_id,trainer)).fetchone()
         if row:private=json.loads(row[0]);player_played=json.loads(row[1])
         return pack,revision,shared,private,world_played,player_played
+
+    def public_state(self,pack,place):
+        """Read only public state, merging project-wide facts with local facts."""
+        q=pack['qualities'];values={k:v['initial'] for k,v in q.items() if v['scope']!='player'}
+        row=self.db.execute('SELECT revision,state,played FROM story_places WHERE pack=? AND place=?',(pack['id'],place)).fetchone()
+        revision=0;played=[]
+        if row:
+            revision=row[0];values.update(json.loads(row[1]));played=json.loads(row[2])
+        if any(v['scope']=='project' for v in q.values()):
+            global_row=self.db.execute('SELECT revision,state FROM story_projects WHERE pack=?',(pack['id'],)).fetchone()
+            revision=global_row[0] if global_row else 0
+            if global_row:values.update(json.loads(global_row[1]))
+        return revision,values,played
+
+    def _write_public(self,pack,place,revision,values,played):
+        # Called inside the same transaction as the action and its receipt.
+        q=pack['qualities'];local={k:v for k,v in values.items() if q[k]['scope']=='place'}
+        self.db.execute('INSERT OR REPLACE INTO story_places VALUES(?,?,?,?,?)',(pack['id'],place,revision,encoded(local),encoded(played)))
+        project={k:v for k,v in values.items() if q[k]['scope']=='project'}
+        if project:self.db.execute('INSERT OR REPLACE INTO story_projects VALUES(?,?,?)',(pack['id'],revision,encoded(project)))
 
     @staticmethod
     def _matches(requirements,values):return all(low<=values[key]<=high for key,(low,high) in requirements.items())
@@ -142,11 +161,11 @@ class Opportunities:
             if not any(s['id']==scene_id and any(c['id']==choice_id for c in s['choices']) for s in offers):raise ValueError('That choice is no longer available here.')
             scene=pack['scenes'][scene_id];action=scene['choices'][choice_id];public={}
             for key,delta in action['effects'].items():
-                target=shared if pack['qualities'][key]['scope']=='place' else private
+                target=private if pack['qualities'][key]['scope']=='player' else shared
                 target[key]+=delta
                 if target is shared:public[key]=delta
             (wp if scene['once']=='world' else pp).append(scene_id)
-            self.db.execute('INSERT OR REPLACE INTO story_places VALUES(?,?,?,?,?)',(pack_id,place,current+1,encoded(shared),encoded(wp)))
+            self._write_public(pack,place,current+1,shared,wp)
             self.db.execute('INSERT OR REPLACE INTO story_players VALUES(?,?,?,?)',(pack_id,trainer,encoded(private),encoded(pp)))
             self.db.execute('INSERT INTO story_consequences VALUES(?,?,?,?,?,?)',(pack_id,place,current+1,scene_id,choice_id,encoded(public)))
             result=dict(ok=True,revision=current+1,text=action['result'])
@@ -160,8 +179,7 @@ class Opportunities:
             pack=json.loads(raw)
             for sid,scene in pack['scenes'].items():
                 if not scene.get('actors') or actor is not None and actor not in scene['actors']:continue
-                row=self.db.execute('SELECT revision,state,played FROM story_places WHERE pack=? AND place=?',(key,scene['place'])).fetchone()
-                revision,values,played=(row[0],json.loads(row[1]),json.loads(row[2])) if row else (0,{k:q['initial'] for k,q in pack['qualities'].items() if q['scope']=='place'},[])
+                revision,values,played=self.public_state(pack,scene['place'])
                 if sid in played or not self._matches(scene['requires'],values):continue
                 choices={cid:action for cid,action in scene['choices'].items() if self._matches(action['requires'],values)
                          and all(0<=values[k]+d<=pack['qualities'][k]['max'] for k,d in action['effects'].items())}
@@ -176,10 +194,9 @@ class Opportunities:
         action=selected['choices'][request['choice']]
         raw=self.db.execute('SELECT document FROM story_packs WHERE id=?',(request['pack'],)).fetchone()[0]
         pack=json.loads(raw)
-        row=self.db.execute('SELECT state,played FROM story_places WHERE pack=? AND place=?',(request['pack'],request['place'])).fetchone()
-        state,played=(json.loads(row[0]),json.loads(row[1])) if row else ({k:q['initial'] for k,q in pack['qualities'].items() if q['scope']=='place'},[])
+        _,state,played=self.public_state(pack,request['place'])
         for key,delta in action['effects'].items():state[key]+=delta
         played.append(request['scene']);revision=request['revision']+1
-        self.db.execute('INSERT OR REPLACE INTO story_places VALUES(?,?,?,?,?)',(request['pack'],request['place'],revision,encoded(state),encoded(played)))
+        self._write_public(pack,request['place'],revision,state,played)
         self.db.execute('INSERT INTO story_consequences VALUES(?,?,?,?,?,?)',(request['pack'],request['place'],revision,request['scene'],request['choice'],encoded(action['effects'])))
         return dict(revision=revision,text=action['result'],changes=action['effects'])

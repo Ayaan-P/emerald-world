@@ -21,7 +21,7 @@ def validate(rules, row):
         if type(req) is not dict or not 1<=len(req)<=8:raise ValueError('Activity project needs bounded shared requirements')
         for key,bounds in req.items():
             q=project['qualities'].get(key)
-            if (not q or q['scope']!='place' or type(bounds) is not list or len(bounds)!=2
+            if (not q or q['scope'] not in ('place','project') or type(bounds) is not list or len(bounds)!=2
                     or any(type(n) is not int for n in bounds) or not 0<=bounds[0]<=bounds[1]<=q['max']):
                 raise ValueError('Activity project requires public bounded qualities')
 
@@ -33,9 +33,7 @@ def available(server,identity,row,activity):
     project=row['initiative'];scene=project['scenes'][rule['scene']]
     owner=server.db.execute('SELECT actor FROM canonical_initiatives WHERE pack=?',(project['id'],)).fetchone()
     if owner!=(identity,):return False
-    record=server.db.execute('SELECT state,played FROM story_places WHERE pack=? AND place=?',(project['id'],scene['place'])).fetchone()
-    if not record:return False
-    state,played=map(json.loads,record)
+    _,state,played=server.opportunities.public_state(project,scene['place'])
     return rule['scene'] in played and all(low<=state.get(key,-1)<=high for key,(low,high) in rule['requires'].items())
 
 
