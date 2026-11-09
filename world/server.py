@@ -606,6 +606,9 @@ class WorldServer:
                     if conn.get('character_quest_capable') and character.get('offer'):
                         offer=character['offer']
                         lines.append('CHARACTER_OFFER '+ ' '.join(map(str,[obj['id'],character['version'],offer['id'],offer['revision'],offer['target'],offer['place_id'][7:]])))
+        from .shared_outbreaks import line as outbreak_line
+        outbreak=outbreak_line(self,conn)
+        if outbreak:lines.append(outbreak)
         from .actor_weather import line as weather_line
         weather=weather_line(self,conn)
         if weather:lines.append(weather)
@@ -664,6 +667,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                outbreak_capable=role.endswith('OUTBREAK1')
+                if outbreak_capable:role=role[:-9]
                 character_tutor_capable=role.endswith('CHARTUTOR1')
                 if character_tutor_capable:role=role[:-10]
                 outdoor_weather_capable=role.endswith('WEATHER1')
@@ -821,6 +826,7 @@ class WorldServer:
                 conn['cave_link_wildlife']=cave_link_wildlife and conn['cave_link_capable'] and cave_expansion
                 conn['world_props_capable']=world_props_capable and character_region_capable
                 conn['character_state_capable']=character_state_capable and conn['character_pokemon_capable']
+                conn['outbreak_capable']=outbreak_capable
                 conn['outdoor_weather_capable']=outdoor_weather_capable and cave_xl
                 conn['character_tutor_capable']=character_tutor_capable and character_capable
                 conn['character_shop_capable']=character_shop_capable and character_capable
