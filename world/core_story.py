@@ -145,6 +145,9 @@ class CoreStory:
         if action=='CALL' and confirmation=='registered':
             from .canonical_cast import remote_response
             return remote_response(self.s,conn,run,key)
+        if action=='BATTLE':
+            from .trainer_experiences import handle
+            return handle(self.s,conn,run,key,confirmation)
         if action=='ALLY':
             from .canonical_cast import records,check_actor_location
             row=records(self.s.module_state).get('canon_steven')
