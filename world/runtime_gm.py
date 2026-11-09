@@ -59,6 +59,8 @@ class IntentQueue:
                 CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             ''')
             (self.root / 'runtime.sqlite3').chmod(0o600)
+            from world.character_reactions import setup
+            setup(self)
         except BaseException:
             if hasattr(self, 'db'):
                 self.db.close()
@@ -232,7 +234,8 @@ class IntentQueue:
         for row in rows:
             row['result'] = json.loads(row['result']) if row['result'] else None
         runtime = self.db.execute("SELECT value FROM metadata WHERE key='runtime'").fetchone()
-        return {'requests': rows, 'purposes': dict(self.db.execute('SELECT player,text FROM purposes')),
+        from world.character_reactions import subscriptions
+        return {'characters': subscriptions(self), 'requests': rows, 'purposes': dict(self.db.execute('SELECT player,text FROM purposes')),
                 'runtime': json.loads(runtime[0]) if runtime else None}
 
 
@@ -319,6 +322,8 @@ class RuntimeGM:
                                           self.timeout)
             self.queue.observe_events(event_page, enqueue=self.observe_events)
             self.queue.observe(inspection, enqueue=self.observe_events)
+            from world.character_reactions import observe
+            observe(self.queue, inspection, lambda request: gm.admin_request(self.socket_path, request, self.timeout), enqueue=self.observe_events)
         except (OSError, ValueError, TimeoutError) as exc:
             self.queue.set_runtime({'state': 'inspection_failed', 'model': self.model,
                                     'error': type(exc).__name__, 'at': time.time()})
@@ -440,6 +445,14 @@ def main(argv=None):
     submit.add_argument('--player', required=True)
     submit.add_argument('--intent', required=True)
     submit.add_argument('--request-id', help='stable client idempotency key')
+    follow = sub.add_parser('follow-character', help='opt in an existing actor to public offered-expedition results; starts no model')
+    follow.add_argument('--state-dir', required=True)
+    follow.add_argument('--socket', required=True)
+    follow.add_argument('--id', required=True)
+    follow.add_argument('--purpose', required=True)
+    unfollow = sub.add_parser('unfollow-character')
+    unfollow.add_argument('--state-dir', required=True)
+    unfollow.add_argument('--id', required=True)
     status = sub.add_parser('status')
     status.add_argument('--state-dir', required=True)
     run = sub.add_parser('run', help='explicitly enable the public Luna author')
@@ -480,10 +493,17 @@ def main(argv=None):
                 gm._write(catalog_path, json.dumps(catalog))
                 wire = invoke(codex_argv(args.model, catalog_path), prompt.decode())
             print(json.dumps(decode_codex(wire)))
-        elif args.command in ('submit', 'status'):
+        elif args.command in ('submit', 'status', 'follow-character', 'unfollow-character'):
             queue = IntentQueue(args.state_dir)
             try:
-                if args.command == 'submit':
+                if args.command in ('follow-character', 'unfollow-character'):
+                    from world.character_reactions import configure, unfollow
+                    if args.command == 'follow-character':
+                        configure(queue, gm.admin_request(args.socket, {'command':'inspect'}), args.id, args.purpose)
+                    else:
+                        unfollow(queue, args.id)
+                    print(json.dumps({'ok':True, 'character':args.id}))
+                elif args.command == 'submit':
                     identifier = queue.submit(args.player, args.intent, args.request_id)
                     print(json.dumps({'id': identifier}))
                 else:
