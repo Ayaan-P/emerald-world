@@ -445,6 +445,9 @@ class WorldServer:
     def _connection_cave(self, conn):
         return conn.get('region_cave') or self.shared_cave
 
+    def _props_compatible(self,conn,cave):
+        return bool(cave and (conn.get('world_props_capable') or not any(o.get('kind')=='prop' and o.get('region_revision')==cave.identity for o in self.objects)))
+
     def _region_scope(self, conn):
         cave = self._connection_cave(conn)
         return cave.identity if cave and conn.get('cave_ack') == cave.identity else None
@@ -572,11 +575,12 @@ class WorldServer:
             from .character_walks import walk_for,walking
             walk=walk_for(self.module_state,obj['id'])
             if walking(self.module_state,obj['id']) and not conn.get('character_walk_capable'):continue
+            if obj.get('kind')=='prop' and not conn.get('world_props_capable'):continue
             prefix='OBJECT '
             if (obj['group'], obj['num']) in (self.cave_map, self.wilds_map):
                 from .region_characters import scoped
                 if not scoped(self,conn,obj,obj.get('region_revision')):continue
-                prefix='REGION_OBJECT '+obj['region_revision']+' '
+                prefix=('REGION_PROP ' if obj.get('kind')=='prop' else 'REGION_OBJECT ')+obj['region_revision']+' '
             lines.append(prefix + obj['id'] + ' ' + ' '.join(str(obj[k]) for k in ('group','num','x','y','gfx'))
                          + ' ' + obj['text'].encode('ascii').hex())
             if conn.get('character_capable'):
@@ -644,6 +648,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                world_props_capable=role.endswith('WORLDOBJ1')
+                if world_props_capable:role=role[:-9]
                 character_state_capable=role.endswith('CHARPK2')
                 if character_state_capable:role=role[:-7]
                 character_pokemon_capable=role.endswith('CHARPK1')
@@ -785,6 +791,7 @@ class WorldServer:
                 conn['character_walk_capable'] = character_walk_capable
                 conn['character_region_capable'] = character_region_capable
                 conn['character_pokemon_capable']=character_pokemon_capable and character_capable
+                conn['world_props_capable']=world_props_capable and character_region_capable
                 conn['character_state_capable']=character_state_capable and conn['character_pokemon_capable']
                 conn['character_capable'] = character_capable
                 conn['character_quest_capable'] = character_quest_capable
@@ -904,7 +911,7 @@ class WorldServer:
                 if fields == ['CAVE', 'GET']:
                     with self.lock:
                         cave=self._connection_cave(conn)
-                        if (cave is None
+                        if (cave is None or not self._props_compatible(conn,cave)
                                 or (cave.version == 16 and not conn.get('cave_xl'))
                                 or (cave.version == 9 and not conn.get('cave_events'))
                                 or (cave.version == 9 and self._active_terrain()[1]!=b'\0' and not conn.get('cave_terrain'))
@@ -944,7 +951,7 @@ class WorldServer:
                                 and secrets.compare_digest(fields[2], cave.identity)
                                 and cave.version==9 and conn.get('cave_offer_terrain_rev')!=self._active_terrain()[0]):
                             conn['cave_offer']=None;conn['cave_transfer_pending']=False;self._queue(conn,'CAVE RESET '+cave.identity+'\n');return
-                        if (cave and conn.get('cave_offer') == cave.identity
+                        if (cave and self._props_compatible(conn,cave) and conn.get('cave_offer') == cave.identity
                                 and secrets.compare_digest(fields[2], cave.identity)):
                             conn['cave_ack'] = cave.identity
                             conn['terrain_report'] = None
@@ -1035,7 +1042,7 @@ class WorldServer:
                             and conn.get('cave_ack') != cave.identity):
                         self._queue(conn, 'CAVE RESET ' + cave.identity + '\n')
                         return
-                    if (cave is None or conn.get('cave_ack') != cave.identity
+                    if (cave is None or not self._props_compatible(conn,cave) or conn.get('cave_ack') != cave.identity
                             or self.rally.current(conn) is not None
                             or not (cave.walkable(state[2],state[3]) if conn.get('region_cave') else self._active_walkable(state[2], state[3]))):
                         raise ValueError('unadmitted cave state')
@@ -2019,6 +2026,8 @@ class WorldServer:
                 return
             try:
                 candidate, result = future.result()
+                from .prop_custody import project as project_custody
+                result=project_custody(self,result)
                 state_json, tiles = self._validated(result)
                 objects = result.get('objects', [])
                 from .region_characters import validate_region_objects
