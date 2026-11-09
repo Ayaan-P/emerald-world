@@ -52,6 +52,7 @@ class FieldFlags:
                 '/guild flag ready at home; /guild flag leave cancels.' if run['phase']=='lobby' else 'Tag an enemy carrier by moving within one tile.']
 
     def command(self,c,words):
+        if len(words)==2 and words[0] in ('start','join') and getattr(self.s,'races',None) and self.s.races.current(c['id']):raise GuildError('Leave your current race first.')
         self.tick();name=c['id'];guild=self.s.guilds._require(name);now=self.p.clock()
         if not c.get('private_commands'):raise GuildError('Flag play needs the matched RC12 private-command client.')
         if words==['list']:return ['Flag arenas:']+[k+': '+json.loads(v)['title'] for k,v in self.db.execute('SELECT id,document FROM flag_arenas ORDER BY id LIMIT 8')]

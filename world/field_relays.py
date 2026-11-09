@@ -113,6 +113,7 @@ class FieldRelays:
         return lines
 
     def command(self,conn,words):
+        if len(words)==2 and words[0] in ('start','join') and getattr(self.s,'races',None) and self.s.races.current(conn['id']):raise GuildError('Leave your current race first.')
         self.tick()
         if not conn.get('private_commands'):raise GuildError('Relay play needs the matched RC12 private-command client.')
         trainer=conn['id'];guild=self.s.guilds._require(trainer);now=self.clock()
