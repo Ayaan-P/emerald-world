@@ -34,10 +34,15 @@ def object_step(result,request,handler):
     objects={o['id']:o for o in result.get('objects',[])}
     source=objects.get(request['actor']);target=objects.get(request['object'])
     actions=state.get('world_object_actions',{}).get(request['object'],{})
-    if (actor.get('status')!='active' or actor.get('version')!=request['version'] or not source or not target
-        or target!=request['target'] or actions!=request['actions'] or request['object'] in actors
+    if not target or target!=request['target'] or actions!=request['actions'] or request['object'] in actors:
+        raise ValueError('Object interaction preconditions changed')
+    if request.get('player_use'):
+        if state.get('world_object_player_use',{}).get(request['object'])!=request['action']:
+            raise ValueError('Default player-use action changed')
+    elif (actor.get('status')!='active' or actor.get('version')!=request['version'] or not source
         or any(source.get(k)!=target.get(k) for k in ('group','num','region_revision'))
-        or abs(source['x']-target['x'])+abs(source['y']-target['y'])!=1):raise ValueError('Object interaction preconditions changed')
+        or abs(source['x']-target['x'])+abs(source['y']-target['y'])!=1):
+        raise ValueError('Object interaction preconditions changed')
     previous=controls.get(request['object'],{}).get('state',{})
     value=handler(request['object'],request['action'],copy.deepcopy(previous))
     if type(value) is not dict or set(value)!={'state','x','y','gfx','text'} or type(value['state']) is not dict or len(json.dumps(value['state'],allow_nan=False))>2048:
@@ -68,6 +73,12 @@ def use(server,actor,row,args):
         or abs(source['x']-obj['x'])+abs(source['y']-obj['y'])!=1):raise ValueError('Object action unavailable, stale or not adjacent')
     execution=server.actor_tool_execution
     request=dict(actor=actor,version=current['version'],object=obj['id'],action=args['action'],target=copy.deepcopy(obj),actions=offer['actions'],plan=execution[2]['id'],step=execution[3]['id'])
+    return stage(server,request)
+
+
+def stage(server,request):
+    from .actor_runtime import Pending
+    obj=request['target']
     identity=digest(request);request['id']=identity;suffix=identity[:16]
     old=server.candidate.source
     helper=inspect.getsource(object_step).replace('def object_step(',f'def _object_step_{suffix}(',1)
@@ -90,3 +101,47 @@ def poll(server,actor,row,pending):
     if result and obj and result.get('before')==pending['before'] and result.get('after')==obj and obj.get('region_revision')==pending['revision']:
         return dict(object=pending['object'],before=pending['before'],after=copy.deepcopy(obj),revision=pending['revision'],state_changed=digest(control.get('state',{}))!=pending['state_digest'],state_digest=digest(control.get('state',{})),outcome='validated_object_state_committed')
     raise ValueError('Object handler was not admitted; no effect claimed')
+
+
+def player_use(server,conn,obj):
+    """Only called after production INTERACT_REGION admission; A is the use intent."""
+    if obj.get('kind')!='prop':return
+    defaults=server.module_state.get('world_object_player_use',{})
+    if type(defaults) is not dict:return
+    action=defaults.get(obj['id'])
+    offer=offers(server,obj)
+    if action is None:return  # Ordinary text-only props retain their old behavior.
+    def notice(text):server.guild_chat.message(conn,conn['id'],text)
+    if type(action) is not str or action not in offer.get('actions',{}):
+        notice('This object action is unavailable.');return
+    if server.job is not None or server.deployment is not None or getattr(server,'object_use_pending',None):
+        notice('Object busy. Try again shortly.');return
+    request=dict(actor='',version=0,object=obj['id'],action=action,target=copy.deepcopy(obj),actions=offer['actions'],
+        player_use=True,nonce=digest([conn['id'],conn['seq'],server.candidate.sha256]))
+    try:
+        pending=stage(server,request)
+        server.object_use_pending=dict(conn=conn,pending=pending.data,action=action)
+        pending.dispatch()
+        notice('Using object...')
+    except ValueError:
+        notice('Object action unavailable; nothing applied.')
+
+
+def poll_player(server):
+    pending=getattr(server,'object_use_pending',None)
+    if not pending:return
+    receipt=server.module_state.get('world_object_action_receipts',{}).get(pending['pending']['request'])
+    if not receipt and (server.job is not None or server.deployment is not None):return
+    server.object_use_pending=None
+    try:
+        result=poll(server,'',{},pending['pending'])
+        with server.db:
+            server.memory.append('object_action_applied',dict(object=result['object'],action=pending['action'],revision=result['revision'],
+                source='validated_player_object_use',state_digest=result['state_digest']))
+        server.revision=server.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
+        message='Object action applied.'
+    except ValueError:message='Object action was not applied.'
+    conn=pending['conn']
+    if server.peers.get(conn.get('id')) is conn and not conn.get('closing'):
+        server.guild_chat.message(conn,conn['id'],message)
+        server._queue(conn,server._snapshot(conn))

@@ -1243,6 +1243,9 @@ class WorldServer:
             self._event('interaction', dict(player=conn['id'], object=obj['id'],
                 group=obj['group'], num=obj['num'], x=obj['x'], y=obj['y'],**scope))
         conn['seq'], conn['last_interaction'] = seq, now
+        if region and conn.get('world_props_capable'):
+            from .actor_objects import player_use
+            player_use(self,conn,obj)
         self._broadcast()
 
     def _control_line(self, conn, raw):
@@ -2192,6 +2195,8 @@ class WorldServer:
                 self.flags.tick()
                 self._poll_controls()
                 self._poll_mechanics()
+                from .actor_objects import poll_player
+                poll_player(self)
                 from .canonical_construction import step as step_cast_construction
                 step_cast_construction(self)
                 from .canonical_world_actions import step as step_cast_world_action
