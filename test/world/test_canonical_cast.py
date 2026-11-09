@@ -94,6 +94,70 @@ class CanonicalCastTests(unittest.TestCase):
         state['canonical_cast']['canon_rydel']['version']=5
         with self.assertRaises(ValueError):cast.validate_transition(self.s.module_state,state,[],self.s.db)
 
+    def test_two_original_actors_offer_real_activities_without_duplicate_objects(self):
+        from world.guilds import GuildError
+        for identity in ('canon_wally','canon_briney'):
+            action=self.action();action['id']=identity
+            action['changes']['offer']=dict(map='LittlerootTown',count=2)
+            self.apply(action)
+        self.assertEqual(self.s.objects,[])
+        c=self.peer();self.f.connections['Alice']=c
+        def locate(identity):
+            pair=next(p for p,m in catalog_maps().items() if m['name']==cast.BINDINGS[identity]['map'])
+            c['state']=[*pair,1,1,1,7,1];c['state_time']=time.monotonic()
+        with tempfile.TemporaryDirectory() as tmp:
+            q=IntentQueue(tmp)
+            try:
+                for identity in ('canon_wally','canon_briney'):
+                    reactions.configure(q,self.s.inspect(),identity,'Choose a next field proposal from its actual result.')
+                locate('canon_wally')
+                preview=cast.guild_command(self.s,c,['wally'])
+                self.assertIn('2 trainers visit LittlerootTown',preview[0])
+                self.assertIn('Public guild expedition',preview[1])
+                self.assertEqual(self.f.stats()[0],10)
+                with self.assertRaises(GuildError):cast.guild_command(self.s,c,['wally','0'])
+                self.f.command('chronicle off')
+                with self.assertRaises(GuildError):cast.guild_command(self.s,c,['wally','1'])
+                self.f.command('chronicle on')
+                # Actual chat dispatcher, not a side-channel start.
+                self.f.command('cast wally 1')
+                self.f.state('Alice');self.f.state('Bob')
+                event=self.f.events()[-1]
+                self.assertEqual((event['character_id'],event['character_offer_id'],event['character_offer_revision']),('canon_wally','field_plan',1))
+                self.assertEqual(self.f.stats()[0],20)
+                self.assertEqual(len(reactions.observe(q,self.s.inspect(),self.fetch)),1)
+                turn=q.claim();self.assertEqual(turn['player'],'canon_wally')
+                # Briney does not claim Wally's proposal outcome.
+                action=self.action(1,'That field visit helped. I would like to study the route again.')
+                action['id']='canon_wally';action['changes']['evidence']=[event['seq']]
+                action['changes']['offer']=dict(map='LittlerootTown',count=1)
+                ctx=self.context();ctx['runtime'].update(kind='character',observed_event=json.loads(turn['result']))
+                reaction=reactions.prepare(ctx,self.fetch)
+                reactions.check_response(dict(canonical_actions=[action],tests='assert True'),reaction)
+                self.apply(action);q.finish(turn['id'],'succeeded',dict(ok=True))
+                locate('canon_wally')
+                with self.assertRaises(GuildError):cast.guild_command(self.s,c,['wally','1'])
+                self.assertIn('1 trainers',cast.guild_command(self.s,c,['wally'])[0])
+                locate('canon_briney');self.f.command('cast briney 1')
+                self.f.state('Alice');self.f.state('Bob')
+                self.assertEqual(self.f.stats()[0],30)
+                self.assertEqual(len(reactions.observe(q,self.s.inspect(),self.fetch)),1)
+                self.assertEqual(q.claim()['player'],'canon_briney')
+                locate('canon_briney')
+                self.assertEqual(cast.guild_command(self.s,c,['briney','1']),['Character offer already accepted.'])
+                self.assertEqual(self.f.stats()[0],30)
+            finally:q.close()
+
+    def test_proposals_fail_closed_on_location_readiness_and_forged_destinations(self):
+        from world.guilds import GuildError
+        action=self.action();action['changes']['offer']=dict(map='LittlerootTown',count=2);self.apply(action)
+        c=self.peer();c['state'][6]=0
+        with self.assertRaises(GuildError):cast.guild_command(self.s,c,['rydel','1'])
+        c['state'][6]=1;c['state_time']=0
+        with self.assertRaises(GuildError):cast.guild_command(self.s,c,['rydel','1'])
+        action=self.action(1);action['changes']['offer']=dict(map='GeneratedWorld_Wilds',count=1)
+        with self.assertRaises(ValueError):cast.compile_actions([action],self.context())
+
     @unittest.skipUnless(__import__('os').environ.get('EW_NATIVE_SOURCE'),'set EW_NATIVE_SOURCE for actual native adapter pairing')
     def test_actual_authority_reply_enters_original_script_adapter(self):
         from pathlib import Path

@@ -37,8 +37,9 @@ what the player may receive. No private progress is inferred from public results
 Requires the paired native canonical-cast patch atop native PR25 at 9d4635b0.
 Current app gitlink 488796 does not contain that hook. This app branch intentionally
 does not change the pin or claim deployed/rendered behavior. Maya owns pairing,
-full build, gameplay QA and release. Wally, Briney and Steven are not bound yet:
-each needs its own reviewed original-script safe points and progression guards.
+full build, gameplay QA and release. Wally in Wanda's house and Briney in his Route104 house now share the reviewed
+lock/faceplayer adapter. Their ordinary speech and sailing scripts are unchanged.
+Automatic cutscenes, Wally battles/rematches and Steven are not intercepted.
 No namesake actors are spawned as a substitute.
 
 Tests use real guild authority, two actual public completions, persisted actor
@@ -49,3 +50,32 @@ and untouched bike script bytes. A full linked/rendered RC12 build has not been
 performed in this environment. Reaction author outputs in tests are deterministic
 fixtures, not evidence of a live model run. The existing 32-action consolidation
 limit applies. No merge or deployment is included.
+
+## Optional field proposals and multiple original actors
+
+`canon_rydel`, `canon_wally` and `canon_briney` use the same bounded action
+contract. An action may include `offer: {map: "LittlerootTown", count: 2}`
+(or null to stop offering). The destination must be a native place in that
+actor's interests. This is a proposal to players, not proof of an NPC journey.
+
+The original actor's supplemental response points to guild chat. At the actor's
+native location, `/guild cast wally` privately previews the exact destination,
+trainer count and public nature. `/guild cast wally VERSION` explicitly accepts
+the previewed version. Existing guild rules enforce leader permission, existing
+chronicle consent, membership count and no conflicting expedition. No automatic
+warp, publication opt-in or new NPC is created. The native guild-command guard
+keeps this command out of public fallback chat on older servers.
+
+Authenticated ready visits complete the existing expedition. Its frozen receipt
+records the original actor and proposal version; repeated acceptance cannot
+award another reward. While an actor has an offer, only that exact offer's public
+completion queues its next author turn. Wally cannot claim Briney's result.
+The author then chooses new terms, withdraws the proposal, or waits, based on
+the inspected outcome. An older accepted expedition keeps its original terms
+even if the actor changes; a stale accept is refused. This does not infer that
+Wally fought, Briney sailed, or anyone trained off-screen.
+
+Current checks: 91 app/author tests plus three compiled native component tests.
+The new test uses two original actors, explicit private preview/public consent,
+real authority visits/rewards, typed next action, actor isolation and replay
+protection. No live model, full linked native build or rendered QA claim.

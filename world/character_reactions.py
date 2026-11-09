@@ -99,8 +99,8 @@ def observe(queue, inspection, fetch, *, enqueue=True):
                 continue
             through = page['cursor']
             for event in page['events']:
-                from .canonical_cast import public_activity
-                matched = (public_activity(event, character.get('places',[]))
+                from .canonical_cast import reaction_activity
+                matched = (reaction_activity(event, sub['id'], character)
                            if character.get('canonical') else
                            event.get('character_id') == sub['id']
                            and event.get('character_offer_id') == offer.get('id')
@@ -141,8 +141,8 @@ def prepare(context, fetch):
     page = fetch(dict(command='world_history', after=seq-1, through=seq, limit=1))
     events = page.get('events', [])
     offer = character.get('offer') or {}
-    from .canonical_cast import public_activity
-    matched = (len(events)==1 and (public_activity(events[0],character.get('places',[]))
+    from .canonical_cast import reaction_activity
+    matched = (len(events)==1 and (reaction_activity(events[0], reaction['id'], character)
                if character.get('canonical') else events[0].get('character_id') == reaction['id']
                and events[0].get('character_offer_id') == offer.get('id')
                and events[0].get('character_offer_revision') == offer.get('revision')))
