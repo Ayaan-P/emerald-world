@@ -4,18 +4,19 @@ This is a proposed authored QA scenario, **not a fixed shipped storyline or proo
 of live model output**. The candidate provides reusable affordances; an enrolled
 host author chooses whether to use them from real allowed history.
 
-## Pair to review
+## Exact draft pairing and setup
 
-- App draft: Ayaan-P/emerald-world PR286, `dot/rc12-living-cast`.
-- Engine draft: Ayaan-P/pokeemerald-expansion-native PR26,
-  `dot/rc12-canonical-cast`, commit
-  `4f9e1a83a029b31486419e3f36bd4d63492080ba`.
-- The app's engine gitlink remains
-  `488796e4959eb7f9d658abc7e8313e138acb3c87`. A build from that unchanged pin does
-  **not** contain the current scene/call/partner candidate. Maya owns deliberate
-  integration, pinning, full native build, rendered QA and release.
-- Main was inspected at `80b14ebfbfd4dd4da2dc16d886a37f0db1f45516`; neither draft
-  had been merged when this batch was prepared. Reconcile any newer work first.
+- App PR286: `dot/rc12-living-cast`; engine PR26:
+  `dot/rc12-canonical-cast` at `f5b45730ef96debf512f501109b3388ab2342cc6`.
+- This draft now pins that exact engine in both its gitlink and builder. Standard
+  submodule initialization/build no longer silently uses the older 488796 engine.
+  Main and Maya's integration/release branches are not changed.
+- Main was rechecked at `80b14ebfbfd4dd4da2dc16d886a37f0db1f45516`. Both drafts
+  remain unmerged. The paired engine is 19 commits ahead of the old pin with no
+  divergence. Check for newer integration work before applying this candidate.
+- See [RC setup](LIVING_CAST_RC_SETUP.md) for explicit host author enrollment,
+  prerequisites, player entry points and the real live-author/native-build gaps.
+  `engines/living-cast-candidate.json` is the machine-readable pairing manifest.
 
 ## Player journey
 
@@ -55,8 +56,8 @@ closed path; it does not yet provide arbitrary canonical travel or schedules.
 
 ## What has been exercised
 
-- 264 focused app/component tests cover the cumulative candidate; final focused
-  scene/lease/initiative/cast rerun: 42 tests passed.
+- 275 focused app/component tests covered the paired field-project candidate;
+  setup/pin checks are additionally reported with the latest commit.
 - 20 native component/source tests pass, including the production scene controller,
   actual CORE negotiation and existing character adapter tests.
 - Two compiled production native scene controllers exchange their emitted packets

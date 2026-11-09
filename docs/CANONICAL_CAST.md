@@ -1,5 +1,10 @@
 # Original cast, public activity, evolving intent
 
+Current integration entry point: [living-cast RC setup](LIVING_CAST_RC_SETUP.md).
+The historical batches below describe their original validation boundaries; the
+current draft now pins its paired engine. They are not a claim of released or
+rendered QA.
+
 The first reviewed canonical binding is Rydel's original BikeShop script.
 Unlike world overlay characters, `canonical_cast.canon_rydel` creates no object
 and has no team, item, flag, travel or battle effect. Its bounded supplemental

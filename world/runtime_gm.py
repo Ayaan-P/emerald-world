@@ -367,6 +367,24 @@ class RuntimeGM:
 CODEX_VERSION = 'codex-cli 0.156.1'
 
 
+class AuthorPrerequisitesError(ValueError):
+    """Sanitized local setup error, safe to display without provider output."""
+
+
+def preflight_author():
+    """Read only local bundled metadata; no login, model request or queue claim."""
+    import subprocess
+    try:
+        version=subprocess.check_output(['codex','--version'],text=True,timeout=10,stderr=subprocess.DEVNULL).strip()
+        if version!=CODEX_VERSION:
+            raise AuthorPrerequisitesError('Author CLI version is not reviewed; requires '+CODEX_VERSION+'. Queued work was not claimed.')
+        wire=subprocess.check_output(['codex','debug','models','--bundled'],text=True,timeout=10,stderr=subprocess.DEVNULL)
+        tool_disabled_catalog(wire)
+    except (OSError,subprocess.SubprocessError,KeyError,TypeError,json.JSONDecodeError) as exc:
+        raise AuthorPrerequisitesError('Author prerequisites unavailable; no queued work claimed. Check reviewed Codex CLI and bundled Luna catalogue.') from None
+    return dict(ok=True,cli=CODEX_VERSION,model=MODEL,scope='local_prerequisites_only',live_model_verified=False)
+
+
 def tool_disabled_catalog(wire):
     """Use installed, bundled public metadata. Never read auth/config ourselves."""
     catalog = json.loads(wire)
@@ -456,6 +474,7 @@ def main(argv=None):
     unfollow = sub.add_parser('unfollow-character')
     unfollow.add_argument('--state-dir', required=True)
     unfollow.add_argument('--id', required=True)
+    sub.add_parser('check-author', help='check reviewed local CLI and bundled model without a model call or queue write')
     status = sub.add_parser('status')
     status.add_argument('--state-dir', required=True)
     run = sub.add_parser('run', help='explicitly enable the public Luna author')
@@ -474,7 +493,9 @@ def main(argv=None):
     author.add_argument('--private-cast', action='store_true',help='bounded private response schema, no shared-world source')
     args = parser.parse_args(argv)
     try:
-        if args.command == 'author':
+        if args.command == 'check-author':
+            print(json.dumps(preflight_author()))
+        elif args.command == 'author':
             validate_config(args.model, args.timeout, 2)
             prompt = sys.stdin.buffer.read(gm.MAX_RESPONSE + 1)
             if len(prompt) > gm.MAX_RESPONSE:
@@ -515,6 +536,7 @@ def main(argv=None):
             finally:
                 queue.close()
         else:
+            preflight_author() # Fail before opening/recovering/claiming any durable queue.
             stop = threading.Event()
             previous = {}
             for sig in (signal.SIGTERM, signal.SIGINT):
@@ -537,7 +559,7 @@ def main(argv=None):
     except (OSError, ValueError, TimeoutError) as exc:
         # Do not persist provider stderr, environment values, or credential errors.
         print(json.dumps({'ok': False, 'error': type(exc).__name__,
-                          'detail': 'author/provider/configuration operation failed; no automatic replay'}))
+                          'detail': str(exc) if isinstance(exc,AuthorPrerequisitesError) else 'author/provider/configuration operation failed; no automatic replay'}))
         return 1
 
 

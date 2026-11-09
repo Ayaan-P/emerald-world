@@ -49,8 +49,9 @@ def main(argv=None):
     parser.add_argument('--idle-seconds',type=float,default=300)
     args=parser.parse_args(argv)
     try:
-        from .runtime_gm import validate_config
+        from .runtime_gm import validate_config,preflight_author
         validate_config(args.model,args.timeout,2)
+        preflight_author() # Do not consume private grants when the CLI cannot run.
         result=(watch(args.socket,args.model,args.timeout,max_jobs=args.max_jobs,idle_seconds=args.idle_seconds)
                 if args.watch else step(args.socket,args.model,args.timeout))
         print(json.dumps(result));return 0
