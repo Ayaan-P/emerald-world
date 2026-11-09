@@ -39,6 +39,13 @@ class AgentUITests(unittest.TestCase):
   self.call('stop');self.session.stop_gm.assert_called_once()
   self.session.server=None
   with self.assertRaises(SessionError):self.call('read')
+ def test_single_cast_enrollment_preserves_original_records(self):
+  info=self.call('enroll_cast',confirmed=True)
+  self.assertEqual(sum(a['followed'] for a in info['actors']),4)
+  self.assertEqual(info['queued'],0)
+  self.assertEqual(set(self.s.module_state['canonical_cast']),{'canon_rydel'})
+  self.call('enroll_cast',confirmed=True)
+  self.session.start_gm.assert_not_called()
  def test_existing_session_lifecycle_passes_selected_backend_and_stops(self):
   seen=[]
   class FakeRuntime:

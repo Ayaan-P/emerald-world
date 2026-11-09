@@ -36,6 +36,8 @@ export default function LivingCast({world, available, ready, busy, onRequest}) {
       <label><input type="checkbox" checked={confirmed} disabled={disabled} onChange={e=>setConfirmed(e.target.checked)} />I authorize this local world author to send the described context and process the requests I queue or follow.</label>
       <button type="button" disabled={!mayChange || !confirmed || !credentials || !model.trim() || info?.running} onClick={()=>call('cast_agent_start',{provider,model:model.trim(),confirmed:true})}>Start world author</button>
       <button type="button" disabled={disabled || !info?.running} onClick={()=>call('cast_agent_stop')}>Stop world author</button>
+      <button type="button" disabled={!mayChange || !confirmed} onClick={()=>call('cast_agent_enroll_cast',{confirmed:true})}>Enable original cast from future public events</button>
+      <p>Enrolls Rydel, Wally, Mr. Briney and Steven together. Missing records wait for relevant public history, then the selected agent chooses their first goals. Existing records and original scripts are preserved. No fixed arc or invented opening event.</p>
       <label>Original character<select value={actor} disabled={disabled} onChange={e=>edit(setActor,e.target.value)}>{(info?.actors || []).map(a=><option value={a.id} key={a.id}>{a.name}</option>)}</select></label>
       <p>{selected?.authored ? `Current goal: ${selected.goal}` : 'Not authored yet. A first request needs real allowed public history; it may wait or fail rather than invent it.'}</p>
       <label>Character purpose<textarea value={purpose} maxLength={1024} disabled={disabled} onChange={e=>edit(setPurpose,e.target.value)} /></label>

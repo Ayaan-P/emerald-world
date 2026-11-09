@@ -7,7 +7,8 @@ from .author_backends import API_BACKENDS,validate
 
 def action(session,worlds,command,payload):
     fields={'world'}
-    if command=='cast_agent_start':fields|={'provider','model','confirmed'}
+    if command=='cast_agent_enroll_cast':fields|={'confirmed'}
+    elif command=='cast_agent_start':fields|={'provider','model','confirmed'}
     elif command in ('cast_agent_follow','cast_agent_initialize'):fields|={'actor','purpose','confirmed'}
     elif command=='cast_agent_unfollow':fields|={'actor'}
     elif command not in ('cast_agent_read','cast_agent_stop'):raise SessionError('Unknown living-cast control')
@@ -17,7 +18,14 @@ def action(session,worlds,command,payload):
             or payload['world'] not in {w['key'] for w in worlds} or server is None or server._closed):
         raise SessionError('Open this local Expansion host before using living-cast controls.')
     try:
-        if command=='cast_agent_start':
+        if command=='cast_agent_enroll_cast':
+            if payload['confirmed'] is not True:raise ValueError('Confirm public cast enrollment')
+            from .canonical_seeds import enroll
+            with server.lock:inspection=server.inspect()
+            queue=session._gm_queue()
+            try:enroll(queue,inspection)
+            finally:queue.close()
+        elif command=='cast_agent_start':
             if payload['confirmed'] is not True or payload['provider'] not in API_BACKENDS:raise ValueError('Explicit API provider confirmation required')
             validate(payload['provider'],payload['model'],30)
             session.start_gm(provider=payload['provider'],model=payload['model'])

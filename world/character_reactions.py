@@ -41,6 +41,7 @@ def setup(queue):
     queue.db.execute('''CREATE TABLE IF NOT EXISTS character_reactions(
         id TEXT PRIMARY KEY, purpose TEXT NOT NULL, world TEXT NOT NULL,
         cursor INTEGER NOT NULL)''')
+    queue.db.execute('CREATE TABLE IF NOT EXISTS canonical_seed_enrollments(id TEXT PRIMARY KEY)')
     queue.db.commit()
 
 
@@ -71,6 +72,7 @@ def cancel_queued(queue, identity):
 def unfollow(queue, identity):
     with queue.db:
         queue.db.execute('DELETE FROM character_reactions WHERE id=?', (identity,))
+        queue.db.execute('DELETE FROM canonical_seed_enrollments WHERE id=?',(identity,))
         cancel_queued(queue, identity)
 
 
@@ -100,6 +102,10 @@ def observe(queue, inspection, fetch, *, enqueue=True):
                 or type(page.get('events')) is not list):
             raise ValueError('character history page does not match inspection')
         character = cast.get(sub['id'], {})
+        bootstrap=not character and queue.db.execute('SELECT 1 FROM canonical_seed_enrollments WHERE id=?',(sub['id'],)).fetchone() is not None
+        if bootstrap:
+            from .canonical_seeds import pending
+            character=pending(sub['id'])
         offer = character.get('offer') or {}
         previous = sub['cursor']
         for event in page['events']:
@@ -127,6 +133,7 @@ def observe(queue, inspection, fetch, *, enqueue=True):
                 identifier = uuid.uuid4().hex
                 reaction = dict(world_id=sub['world'], id=sub['id'], expected_version=character['version'],
                                 evidence=event['seq'], purpose=sub['purpose'], canonical=bool(character.get('canonical')))
+                if bootstrap:reaction['bootstrap']=True
                 queue.db.execute('INSERT INTO requests(id,player,text,kind,status,created,result) VALUES(?,?,?,?,?,?,?)',
                                  (identifier, sub['id'], 'Choose one next action for this existing character after the exact public result or delivered cast letter. Do not invent a predetermined arc, duplicate a canonical NPC, or claim unobserved achievements.',
                                   'character', 'queued', time.time(), json.dumps(reaction)))
@@ -155,6 +162,13 @@ def prepare(context, fetch):
     reaction = runtime.get('observed_event', {})
     data = context.get('data', context)
     character = actors(data.get('state', {})).get(reaction.get('id'))
+    if reaction.get('bootstrap'):
+        from .canonical_seeds import pending,PROFILES
+        if character or reaction.get('id') not in PROFILES or reaction.get('expected_version')!=0:raise ValueError('Canonical initialization changed')
+        character=pending(reaction['id'])
+    if character and character.get('canonical'):
+        from .canonical_seeds import profile
+        context['canonical_identity']=profile(reaction['id'])
     memory = data.get('world_memory', {})
     if (not character or character['version'] != reaction.get('expected_version')
             or memory.get('world_id') != reaction.get('world_id')

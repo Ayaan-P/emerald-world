@@ -118,3 +118,31 @@ production native handlers with explicit engine/UI doubles. Maya still needs
 full engine build, two-to-four-client rendering/input, original story/services,
 party/save/reload, disconnect/recovery, live author quality/cost and privacy QA.
 The manifest explicitly marks linked-native and live-author validation false.
+
+### Start the original cast together
+
+After choosing a provider/model and authorizing public authoring, choose **Enable
+original cast from future public events**, then start the world author. This
+subscribes Rydel, Wally, Mr. Briney and Steven in one operation. No individual
+host-written purpose or starter script is required. Existing character records,
+subscriptions and event cursors are retained.
+
+An uninitialized actor waits for a relevant new, genuinely published event in
+its source-grounded initial interests. For example, an opted-in public Mauville
+Gym expedition result can prompt Rydel and Wally independently; it is evidence
+of the group arrival, not a Gym victory or the actors' participation. The author
+receives each actor's original script binding and fictional identity background,
+chooses a bounded first goal/dialogue or waits, and passes the normal compiler
+and authority validation. A committed record is automatically followed for
+subsequent events through the same subscription. Original native interaction
+hooks show the resulting supplemental content only at their existing safe story
+points. No duplicate NPC, team change, story flag or predetermined arc is seeded.
+
+A fresh world with no shared relevant history stays vanilla until such history
+exists. Enrollment does not enable player campaign sharing or guild chronicle,
+backfill private progress, start a model, or replay old events. Existing controls
+can stop following individual actors. Failed author attempts are not retried for
+the same event; future distinct evidence can prompt a new decision. Profiles are
+background, never admissible outcome evidence. See `world/canonical_seeds.py` for
+source locations and bounded starting interests; model/live native QA remains
+separate from deterministic component fixtures.
