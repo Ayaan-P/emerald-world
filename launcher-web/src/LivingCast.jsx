@@ -5,6 +5,7 @@ export default function LivingCast({world, available, ready, busy, onRequest}) {
   const [actor,setActor]=useState('canon_rydel'),[purpose,setPurpose]=useState(''),[confirmed,setConfirmed]=useState(false);
   const [working,setWorking]=useState(false),[error,setError]=useState(''),[uncertain,setUncertain]=useState(false);
   const pending=useRef(false), goalRequest=useRef(null);
+  const [turnLimit,setTurnLimit]=useState(8),[periodHours,setPeriodHours]=useState(24);
   const [goal,setGoal]=useState(''),[goalActor,setGoalActor]=useState('canon_rydel');
   const disabled=!available || !ready || busy || working;
   async function call(action,fields={}) {
@@ -14,6 +15,7 @@ export default function LivingCast({world, available, ready, busy, onRequest}) {
       const result=await onRequest(action,{world:world.key,...fields});
       if(!result || !Array.isArray(result.actors) || !Array.isArray(result.providers) || typeof result.running!=='boolean')throw new Error('No confirmed response. Refresh status before another action.');
       if(result.running){if(result.provider!==provider || result.model!==model)setConfirmed(false);setProvider(result.provider);setModel(result.model);}
+      if(result.population_agents){setTurnLimit(result.population_agents.turn_limit || 8);setPeriodHours(result.population_agents.period_hours || 24);}
       setInfo(result);setUncertain(false);return result;
     } catch(e){setError(e.message);setUncertain(true);}
     finally{pending.current=false;setWorking(false);}
@@ -50,8 +52,11 @@ export default function LivingCast({world, available, ready, busy, onRequest}) {
       <button type="button" disabled={!mayChange || !confirmed || !purpose.trim() || selected?.followed} onClick={()=>call(selected?.authored?'cast_agent_follow':'cast_agent_initialize',{actor,purpose:purpose.trim(),confirmed:true})}>{selected?.authored ? 'Follow public events for this character' : 'Queue first character request'}</button>
       {selected?.followed && <button type="button" disabled={!mayChange} onClick={()=>call('cast_agent_unfollow',{actor})}>Stop following this character</button>}
       <h3>Independent new characters</h3>
-      <p>Optionally let newly admitted NPCs created by followed actors receive their own model turns. They choose plans from their actual goals and surroundings, then respond to real results. This can incur additional provider charges: at most eight author turns per new NPC and eight followed actors at once. No provider starts automatically.</p>
-      <button type="button" disabled={!mayChange || (!info?.population_agents?.enabled && !confirmed)} onClick={()=>call('cast_agent_population',{enabled:!info?.population_agents?.enabled,confirmed:true})}>{info?.population_agents?.enabled ? 'Stop automatic new-character agents' : 'Enable automatic new-character agents'}</button>
+      <p>Optionally let newly admitted NPCs created by followed actors receive their own model turns. They choose plans from their actual goals and surroundings, then respond to real results. This can incur additional provider charges: a recurring per-NPC limit and eight followed actors at once. Exhausted characters wait for the next window instead of ending their lives. No provider starts automatically.</p>
+      <button type="button" disabled={!mayChange || (!info?.population_agents?.enabled && !confirmed)} onClick={()=>call('cast_agent_population',{enabled:!info?.population_agents?.enabled,turn_limit:turnLimit,period_hours:periodHours,confirmed:true})}>{info?.population_agents?.enabled ? 'Stop automatic new-character agents' : 'Enable automatic new-character agents'}</button>
+      <label>Author turns per character per window<input type="number" min="1" max="64" value={turnLimit} disabled={disabled} onChange={e=>setTurnLimit(Number(e.target.value))} /></label>
+      <label>Budget window hours<input type="number" min="1" max="168" value={periodHours} disabled={disabled} onChange={e=>setPeriodHours(Number(e.target.value))} /></label>
+      <button type="button" disabled={!mayChange || !confirmed || !info?.population_agents?.enabled} onClick={()=>call('cast_agent_population',{enabled:true,turn_limit:turnLimit,period_hours:periodHours,confirmed:true})}>Apply recurring agent limits</button>
       <ul aria-label="Automatic character agents">{(info?.population_agents?.characters || []).map(a=><li key={a.id}>{a.id}: {a.status}</li>)}</ul>
       <p>Only future admitted creations qualify. Stopping cancels queued managed turns and following, but cannot undo committed actions or a running provider request. A later explicit world goal takes over that character under the normal goal controls.</p>
       <h3>Build the world with an agent</h3>

@@ -98,18 +98,16 @@ class IntentQueue:
             raise ValueError('min_interval must be finite in [0,3600] seconds')
         with self.db:
             self.db.execute('BEGIN IMMEDIATE')
-            row = self.db.execute("SELECT * FROM requests WHERE status='queued' ORDER BY seq LIMIT 1").fetchone()
-            if row is None:
-                return None
             now = time.time()
             last = self.db.execute("SELECT value FROM metadata WHERE key='last_author'").fetchone()
             if last and now - float(last[0]) < min_interval:
                 return None
-            if row['kind']=='character':
-                from world.population_agents import reserve
-                if not reserve(self,row['player']):
-                    self.db.execute("UPDATE requests SET status='interrupted',finished=?,result=? WHERE id=?",(now,json.dumps({'ok':False,'reason':'automatic character turn limit or stopped lifecycle'}),row['id']))
-                    return None
+            row=None
+            from world.population_agents import reserve
+            for candidate in self.db.execute("SELECT * FROM requests WHERE status='queued' ORDER BY seq").fetchall():
+                if candidate['kind']=='character' and not reserve(self,candidate['player']):continue
+                row=candidate;break
+            if row is None:return None
             self.db.execute("INSERT OR REPLACE INTO metadata VALUES('last_author',?)", (str(now),))
             self.db.execute("UPDATE requests SET status='running',started=? WHERE id=?", (now, row['id']))
             return dict(row)

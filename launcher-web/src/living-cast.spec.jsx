@@ -45,6 +45,6 @@ it('requires explicit enrollment for future NPC agents without starting a provid
  const request=vi.fn(async()=>({...info,population_agents:{enabled:false,characters:[]}}));render(<LivingCast {...props} onRequest={request}/>);
  await screen.findByText('Current goal: Consider actual events');const button=screen.getByRole('button',{name:'Enable automatic new-character agents'});
  expect(button.disabled).toBe(true);fireEvent.click(screen.getByRole('checkbox'));fireEvent.click(button);
- expect(request).toHaveBeenLastCalledWith('cast_agent_population',{world:'local',enabled:true,confirmed:true});
+ expect(request).toHaveBeenLastCalledWith('cast_agent_population',{world:'local',enabled:true,turn_limit:8,period_hours:24,confirmed:true});
  expect(request.mock.calls.some(([a])=>a==='cast_agent_start')).toBe(false);
 });

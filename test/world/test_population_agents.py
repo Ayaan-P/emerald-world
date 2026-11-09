@@ -57,14 +57,37 @@ class PopulationAgentTests(unittest.TestCase):
   lifecycle.configure(self.q,self.s.inspect(),False)
   self.assertIsNone(self.q.db.execute("SELECT 1 FROM character_reactions WHERE id='researcher'").fetchone())
   self.assertEqual(self.q.db.execute("SELECT status FROM requests WHERE player='researcher'").fetchone()[0],'interrupted')
- def test_turn_budget_stops_even_a_self_observation_loop(self):
-  self.birth();item=self.claim_child();self.q.finish(item['id'],'failed',dict(error='No fabricated success'))
-  with self.q.db:self.q.db.execute("DELETE FROM requests WHERE player='researcher'") # History pruning must not replenish the budget.
+ def test_recurring_budget_waits_survives_restart_and_does_not_starve_others(self):
   from unittest.mock import patch
-  with patch.object(lifecycle,'MAX_TURNS',1):reactions.observe(self.q,self.s.inspect(),self.fetch)
-  self.assertEqual(self.q.db.execute("SELECT status FROM population_agents WHERE id='researcher'").fetchone()[0],'budget_reached')
-  self.assertIsNone(self.q.db.execute("SELECT 1 FROM character_reactions WHERE id='researcher'").fetchone())
+  self.birth();item=self.claim_child();self.q.finish(item['id'],'failed',dict(error='No success'))
+  lifecycle.configure(self.q,self.s.inspect(),True,turn_limit=1,period_hours=1)
+  start=self.q.db.execute("SELECT started FROM population_agents WHERE id='researcher'").fetchone()[0]
+  with self.q.db:
+   self.q.db.execute("DELETE FROM requests WHERE player!='researcher'")
+   self.q.db.execute("UPDATE requests SET status='queued' WHERE id=?",(item['id'],))
+  with patch('world.population_agents.time.time',return_value=start+3599):self.assertIsNone(self.q.claim())
+  self.q.submit('Host','Another request','other-host-request')
+  with patch('world.population_agents.time.time',return_value=start+3599):
+   other=self.q.claim();self.assertEqual(other['player'],'Host');self.q.finish(other['id'],'succeeded',{})
+  self.q.close();self.q=IntentQueue(self.s.root)
+  with patch('world.population_agents.time.time',return_value=start+3600):
+   resumed=self.q.claim();self.assertEqual(resumed['id'],item['id'])
+  self.assertEqual(self.q.db.execute("SELECT attempts FROM population_agents WHERE id='researcher'").fetchone()[0],1)
+  with patch('world.population_agents.time.time',return_value=start-10):self.assertIsNone(self.q.claim())
 
  def test_props_are_not_model_actors(self):
   self.birth(kind='prop')
   self.assertEqual(self.q.db.execute('SELECT count(*) FROM population_agents').fetchone()[0],0)
+ def test_old_lifetime_pause_migrates_but_explicit_stop_does_not(self):
+  from unittest.mock import patch
+  self.birth();lifecycle.configure(self.q,self.s.inspect(),True,turn_limit=2,period_hours=1)
+  start=self.q.db.execute("SELECT started FROM population_agents WHERE id='researcher'").fetchone()[0]
+  with self.q.db:
+   self.q.db.execute("UPDATE population_agents SET status='budget_reached' WHERE id='researcher'")
+   self.q.db.execute("DELETE FROM character_reactions WHERE id='researcher'")
+   self.q.db.execute("UPDATE requests SET status='interrupted' WHERE player='researcher'")
+  with patch('world.population_agents.time.time',return_value=start+3600):reactions.observe(self.q,self.s.inspect(),self.fetch)
+  self.assertEqual(self.q.db.execute("SELECT status FROM population_agents WHERE id='researcher'").fetchone()[0],'active')
+  lifecycle.configure(self.q,self.s.inspect(),False)
+  with patch('world.population_agents.time.time',return_value=start+7200):reactions.observe(self.q,self.s.inspect(),self.fetch)
+  self.assertEqual(self.q.db.execute("SELECT status FROM population_agents WHERE id='researcher'").fetchone()[0],'stopped')
