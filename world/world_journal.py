@@ -38,6 +38,9 @@ def describe(event, place=None):
         details.append('Team plan: ' + ', '.join('species ' + str(mon['species']) +
                        ' at level ' + str(mon['level']) for mon in character['team']))
         details.append('This is an authored character change, not proof of a battle or catch.')
+    elif kind == 'character_encounter':
+        title=event['character_id']+' '+('reached '+event['recipient'] if event['outcome']=='public_message_delivered' else 'missed an encounter')
+        details=[event.get('text',event.get('reason','')), 'Actual authority positions. No reply, friendship or player participation is inferred.']
     elif kind == 'character_journey_arrived':
         title=event['character_name']+' reached a destination'
         details=[str(event['steps'])+' authority walking steps on exact map '+event['revision'][:12],

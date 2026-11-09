@@ -10,7 +10,7 @@ def validate(server,before,after,objects,*,restoring=False):
         route=control.get('journey')
         if route is None:continue
         walk=control.get('walk');obj=control.get('object')
-        if (type(route) is not dict or set(route)!={'id','path','segment'}
+        if (type(route) is not dict or set(route)-{'meeting'}!={'id','path','segment'}
                 or type(route['id']) is not str or not re.fullmatch('[0-9a-f]{24}',route['id'])
                 or type(route['path']) is not list or not 2<=len(route['path'])<=65
                 or type(route['segment']) is not int or route['segment']<0 or route['segment']%5
@@ -22,12 +22,15 @@ def validate(server,before,after,objects,*,restoring=False):
                 or any(abs(a[0]-b[0])+abs(a[1]-b[1])!=1 for a,b in zip(path,path[1:]))
                 or walk['path']!=path[segment:segment+6] or walk['id']!=route['id'][:20]+('%04x'%segment)):
             raise ValueError('journey path or current native segment differs')
+        from .character_encounters import validate_control
+        validate_control(route,identity)
+        if route.get('meeting') and obj.get('text')!=route['meeting']['text']:raise ValueError('journey visitor dialogue changed before delivery')
         old=old_controls.get(identity,{})
         previous=old.get('journey')
         same=previous and previous['id']==route['id']
         if not restoring:
             if same:
-                if previous['path']!=path or segment not in (previous['segment'],previous['segment']+5):
+                if previous['path']!=path or previous.get('meeting')!=route.get('meeting') or segment not in (previous['segment'],previous['segment']+5):
                     raise ValueError('journey cannot skip or rewrite segments')
                 if segment!=previous['segment'] and (old['walk']['index']!=len(old['walk']['path'])-1 or walk['index']!=0 or walk['last_tick']==old['walk']['last_tick'] or walk['last_tick']!=server.tick):
                     raise ValueError('journey must finish each native segment')
@@ -51,7 +54,7 @@ def completed(control):
     return bool(j and w and j['segment']+len(w['path'])==len(j['path']) and w['index']==len(w['path'])-1)
 
 
-def commit(server,before,after):
+def commit(server,before,after,objects):
     for identity,control in after.get('world_character_controls',{}).items():
         if not completed(control):continue
         old=before.get('world_character_controls',{}).get(identity,{})
@@ -67,6 +70,9 @@ def commit(server,before,after):
             publication='public_world_character_movement',basis='committed_authority_cardinal_steps',
             limits='Authority arrival, not proof every client rendered the journey. No player travel or canonical NPC relocation.'))
         server.db.execute('INSERT INTO character_journey_receipts VALUES(?,?,?)',(identity,j['id'],seq));server.revision=seq
+        if j.get('meeting'):
+            from .character_encounters import commit as commit_encounter
+            commit_encounter(server,identity,control,after,objects,seq)
 
 
 def relevant(event,revisions):

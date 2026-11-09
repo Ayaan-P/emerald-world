@@ -19,7 +19,7 @@ def validate_actions(actions, context):
     known={e['seq'] for e in context.get('recalled_history',{}).get('events',[])+data.get('world_memory',{}).get('recent',[]) if type(e.get('seq')) is int}
     seen=set()
     for action in actions:
-        if type(action) is not dict or set(action)-{'walk','journey'}!={'id','expected_version','evidence','reason','changes','object'}:
+        if type(action) is not dict or set(action)-{'walk','journey','meet'}!={'id','expected_version','evidence','reason','changes','object'}:
             raise ValueError('invalid character action fields')
         identity=action['id']
         if type(identity) is not str or identity not in cast or identity in seen:
@@ -48,6 +48,9 @@ def validate_actions(actions, context):
                     path[0]!=[original['x'],original['y']] or path[-1]!=[obj['x'],obj['y']] or
                     any(original.get(k)!=obj.get(k) for k in ('group','num','region_revision'))):
                 raise ValueError('walk/journey requires bounded unique cardinal points in the current generated place')
+        if 'meet' in action:
+            from .character_encounters import validate_request
+            validate_request(action,cast,data.get('objects',[]))
         character.update(copy.deepcopy(changes),version=character['version']+1,evidence=evidence,reason=action['reason'])
         if character.get('offer') is None:character.pop('offer',None)
         obj=action['object']
@@ -81,7 +84,9 @@ def action_step(actions, definition, result, context=None):
             controls[identity]={'character':character,'object':copy.deepcopy(action['object'])}
             if 'walk' in action or 'journey' in action:
                 path=action.get('journey',action.get('walk'))
-                if 'journey' in action:controls[identity]['journey']={'id':definition[:24],'path':copy.deepcopy(path),'segment':0}
+                if 'journey' in action:
+                    controls[identity]['journey']={'id':definition[:24],'path':copy.deepcopy(path),'segment':0}
+                    if 'meet' in action:controls[identity]['journey']['meeting']=copy.deepcopy(action['meet'])
                 controls[identity]['walk']={'id':definition[:20]+'0000' if 'journey' in action else definition[:24],'path':copy.deepcopy(path[:6]),'index':0,'last_tick':tick}
                 controls[identity]['object']['x'],controls[identity]['object']['y']=path[0]
         receipts.append(definition)
@@ -128,6 +133,7 @@ def compile_actions(actions, context):
 def contract():
     return {'response':'{"character_actions": actions, "tests": "Python tests"}',
             'action_fields':['id','expected_version','evidence','reason','changes','object'],
+            'optional_meet':'with journey only: {target, expected_version, text}; existing active world character on same exact revision, destination adjacent to inspected target. Arrival rechecks position/version/readiness and delivers a public fictional message or records actual missed encounter; never forces reply or friendship',
             'optional_journey':'2..65 unique cardinal points on the same exact generated map; authority chains existing six-point native walks autonomously, pauses for occupancy, and publishes only actual final authority arrival; no canonical relocation or cross-map teleport',
             'optional_walk':'2..6 unique cardinal [x,y] points including current start and replacement object endpoint, same generated revision only; progresses one point per authority tick, yields to reported ready player occupancy, blocks interactions until complete',
             'changes':'goals, relationships to existing public NPCs, team, status, retained practice intentions for own identified companions, optional offer (null removes)',
