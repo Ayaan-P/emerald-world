@@ -47,3 +47,32 @@ class SeedTests(unittest.TestCase):
    self.assertTrue(set(seeds.PROFILES[actor]['places'])<=maps)
    self.assertEqual(seeds.profile(actor)['binding'],cast.BINDINGS[actor])
    self.assertFalse(cast.decision_evidence(seeds.profile(actor),actor,seeds.pending(actor)))
+
+ def test_commission_starts_four_without_campaign_sharing_or_fake_outcomes(self):
+  seeds.initialize(self.q,self.f.s)
+  events=[e for e in self.f.s.memory.history()['events'] if e['event']=='canonical_actor_commissioned']
+  self.assertEqual(len(events),4);self.assertEqual(len(self.observe()),4)
+  item=self.q.claim();packet=json.loads(item['result']);actor=packet['id']
+  context=self.f.context();context['runtime'].update(kind='character',observed_event=packet)
+  reactions.prepare(context,self.f.fetch)
+  action=dict(id=actor,expected_version=0,changes=dict(goal='Consider what I can offer local trainers',dialogue='Hello! It is good to see trainers here.',places=['native:'+cast.BINDINGS[actor]['map']],evidence=[packet['evidence']],reason='Initial identity-based outlook requested by the host, not an earned outcome'))
+  # Fixture author, normal compiler and real atomic world admission.
+  self.f.apply(action);self.q.finish(item['id'],'succeeded',dict(ok=True))
+  self.assertEqual(self.f.s.objects,[])
+  # Commission cannot enable a service/project or justify later growth.
+  action['expected_version']=1
+  with self.assertRaises(ValueError):cast.compile_actions([action],self.f.context())
+  seeds.initialize(self.q,self.f.s)
+  self.assertEqual(len([e for e in self.f.s.memory.history()['events'] if e['event']=='canonical_actor_commissioned']),4)
+  self.assertEqual(self.observe(),[])
+  other=next(a for a in seeds.PROFILES if a!=actor)
+  e=next(e for e in events if e['character_id']==other)
+  row=dict(version=1,goal='Initial goal',dialogue='Hello.',places=['native:'+cast.BINDINGS[other]['map']],evidence=[e['seq']],reason='Initial request',offer=dict(map='LittlerootTown',count=1))
+  self.assertFalse(cast.decision_evidence(e,other,row))
+
+ def test_unfollow_reenroll_does_not_replay_commission(self):
+  seeds.initialize(self.q,self.f.s);self.observe()
+  for actor in seeds.PROFILES:reactions.unfollow(self.q,actor)
+  self.q.close();self.q=IntentQueue(self.tmp.name)
+  seeds.initialize(self.q,self.f.s)
+  self.assertEqual(self.observe(),[])

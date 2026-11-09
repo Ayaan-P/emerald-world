@@ -324,6 +324,8 @@ def guild_command(server, conn, args):
 
 
 def reaction_activity(event, identity, row):
+    from .canonical_seeds import commissioning
+    if row.get('bootstrap') and commissioning(event,identity):return True
     from .canonical_initiatives import relevant as initiative_relevant
     if initiative_relevant(event,identity,row):return True
     from .canonical_dialogues import relevant as dialogue_relevant
@@ -407,6 +409,9 @@ def received_letter(event, identity):
 
 
 def decision_evidence(event, identity, row):
+    from .canonical_seeds import commissioning
+    if commissioning(event,identity):
+        return row.get('version')==1 and set(row)=={'version','goal','dialogue','places','evidence','reason'}
     from .canonical_initiatives import relevant as initiative_relevant
     if initiative_relevant(event,identity,row):return True
     from .canonical_dialogues import relevant as dialogue_relevant

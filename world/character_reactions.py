@@ -42,6 +42,7 @@ def setup(queue):
         id TEXT PRIMARY KEY, purpose TEXT NOT NULL, world TEXT NOT NULL,
         cursor INTEGER NOT NULL)''')
     queue.db.execute('CREATE TABLE IF NOT EXISTS canonical_seed_enrollments(id TEXT PRIMARY KEY)')
+    queue.db.execute('CREATE TABLE IF NOT EXISTS canonical_seed_starts(id TEXT PRIMARY KEY,seq INTEGER NOT NULL)')
     queue.db.commit()
 
 
@@ -105,7 +106,7 @@ def observe(queue, inspection, fetch, *, enqueue=True):
         bootstrap=not character and queue.db.execute('SELECT 1 FROM canonical_seed_enrollments WHERE id=?',(sub['id'],)).fetchone() is not None
         if bootstrap:
             from .canonical_seeds import pending
-            character=pending(sub['id'])
+            character=dict(pending(sub['id']),bootstrap=True)
         offer = character.get('offer') or {}
         previous = sub['cursor']
         for event in page['events']:
@@ -165,7 +166,7 @@ def prepare(context, fetch):
     if reaction.get('bootstrap'):
         from .canonical_seeds import pending,PROFILES
         if character or reaction.get('id') not in PROFILES or reaction.get('expected_version')!=0:raise ValueError('Canonical initialization changed')
-        character=pending(reaction['id'])
+        character=dict(pending(reaction['id']),bootstrap=True)
     if character and character.get('canonical'):
         from .canonical_seeds import profile
         context['canonical_identity']=profile(reaction['id'])

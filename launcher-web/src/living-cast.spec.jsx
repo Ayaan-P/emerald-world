@@ -25,7 +25,7 @@ it('shows no owner controls for unopened worlds',()=>{
 it('enrolls the original cast together without starting a provider implicitly',async()=>{
  const request=vi.fn(async()=>info);render(<LivingCast {...props} onRequest={request}/>);
  await screen.findByText('Current goal: Consider actual events');
- const enroll=screen.getByRole('button',{name:'Enable original cast from future public events'});
+ const enroll=screen.getByRole('button',{name:'Initialize and follow original cast'});
  expect(enroll.disabled).toBe(true);fireEvent.click(screen.getByRole('checkbox'));fireEvent.click(enroll);
  expect(request).toHaveBeenLastCalledWith('cast_agent_enroll_cast',{world:'local',confirmed:true});
  expect(request.mock.calls.some(([a])=>a==='cast_agent_start')).toBe(false);

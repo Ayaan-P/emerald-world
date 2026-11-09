@@ -20,10 +20,9 @@ def action(session,worlds,command,payload):
     try:
         if command=='cast_agent_enroll_cast':
             if payload['confirmed'] is not True:raise ValueError('Confirm public cast enrollment')
-            from .canonical_seeds import enroll
-            with server.lock:inspection=server.inspect()
+            from .canonical_seeds import initialize
             queue=session._gm_queue()
-            try:enroll(queue,inspection)
+            try:initialize(queue,server)
             finally:queue.close()
         elif command=='cast_agent_start':
             if payload['confirmed'] is not True or payload['provider'] not in API_BACKENDS:raise ValueError('Explicit API provider confirmation required')

@@ -20,15 +20,15 @@ source is a clean descendant of the previous pin, not a partial-tree replacement
 
 In the Expansion React launcher, open Local worlds → Living cast for the desired
 world. Open that local host, select Anthropic or OpenAI and an explicit API model,
-review the data/cost notice, then start the world author. The page can queue a
-first character request, follow an existing original actor, stop following and
+review the data/cost notice, then start the world author. Use Initialize and follow original cast for the one-step first-cast setup below.
+The page can also queue a custom character request, follow an existing actor, stop following and
 stop the worker. It never accepts keys in browser fields or starts private
 reflection processing. Credentials must already be supplied to the launcher
 process by the host. No command-line author/enrollment steps are required once
 that environment is configured.
 
 Read-only page entry never starts a worker or model. Follow is for existing
-records; refresh after initial authoring, then follow for future public events.
+records; the initialize-all path enrolls future turns automatically.
 Initial requests are idempotent for the same actor/purpose. If no allowed public
 evidence exists, authoring cannot invent it. Other worlds and remote/friend
 servers cannot be controlled from this local-owner page. Closing/disconnecting
@@ -38,10 +38,10 @@ the hosting session stops its existing worker and preserves queues.
 
 A server starts no model by itself. Original actors have no extra behavior until
 an approved authored record exists. There is no default fake arc or bootstrap
-victory. Initial canonical actions need real allowed public history. Private
-campaign observations alone do not qualify; use normal explicit sharing controls
-only when the players choose to share. The first record can be authored through
-the existing host GM submit/author/deploy path using `canonical_actions`.
+victory. The explicit initialize-all request supports first identity-based goals
+and greetings only. Other canonical actions need real allowed public history.
+Private campaign observations alone do not qualify; sharing remains the players'
+choice. Advanced hosts can also use the existing typed `canonical_actions` path.
 
 Check the host author installation without a model call or queue write:
 
@@ -121,28 +121,31 @@ The manifest explicitly marks linked-native and live-author validation false.
 
 ### Start the original cast together
 
-After choosing a provider/model and authorizing public authoring, choose **Enable
-original cast from future public events**, then start the world author. This
-subscribes Rydel, Wally, Mr. Briney and Steven in one operation. No individual
-host-written purpose or starter script is required. Existing character records,
-subscriptions and event cursors are retained.
+After choosing a provider/model and authorizing public authoring, choose
+**Initialize and follow original cast**, then start the world author. This
+subscribes Rydel, Wally, Mr. Briney and Steven together, retaining existing
+records and event cursors. No hand-written starter scripts or purposes needed.
 
-An uninitialized actor waits for a relevant new, genuinely published event in
-its source-grounded initial interests. For example, an opted-in public Mauville
-Gym expedition result can prompt Rydel and Wally independently; it is evidence
-of the group arrival, not a Gym victory or the actors' participation. The author
-receives each actor's original script binding and fictional identity background,
-chooses a bounded first goal/dialogue or waits, and passes the normal compiler
-and authority validation. A committed record is automatically followed for
-subsequent events through the same subscription. Original native interaction
-hooks show the resulting supplemental content only at their existing safe story
-points. No duplicate NPC, team change, story flag or predetermined arc is seeded.
+For each missing actor the authority records the actual host commissioning
+request once. This is explicitly setup evidence, not an in-world experience.
+It can justify only that actor's first identity-based goal and supplemental
+greeting: no relationship, service, offer, project, team, achievement or later
+growth may cite commissioning. The configured agent chooses the content from
+source-grounded identities through normal typed compilation and authority
+admission; there is no fixed arc or fake opening adventure. Until it succeeds,
+ordinary Emerald dialogue continues. Talk again to the original actor at its
+existing safe story point after authoring completes to see the new greeting.
 
-A fresh world with no shared relevant history stays vanilla until such history
-exists. Enrollment does not enable player campaign sharing or guild chronicle,
-backfill private progress, start a model, or replay old events. Existing controls
-can stop following individual actors. Failed author attempts are not retried for
-the same event; future distinct evidence can prompt a new decision. Profiles are
-background, never admissible outcome evidence. See `world/canonical_seeds.py` for
-source locations and bounded starting interests; model/live native QA remains
-separate from deterministic component fixtures.
+Subsequent real public events trigger ordinary bounded character decisions.
+For example an opted-in public Mauville Gym expedition result may inform Rydel
+and Wally independently, without implying a victory or their participation.
+No campaign sharing, guild chronicle or private-memory option is enabled by
+cast setup. Private conversations and per-save progress are not published.
+
+Enrollment does not start the model automatically or retry failed attempts.
+The durable commissioning receipt and queue cursor survive restart, and
+repeated clicks do not duplicate work. Stop following actors individually or
+stop the author. Failed initialization stays failed for that request; distinct
+future relevant evidence can still prompt a fresh initial decision. Profiles
+are background, never outcome evidence. The deterministic fixtures exercise
+real authority admission; live model and rendered native QA remain separate.
