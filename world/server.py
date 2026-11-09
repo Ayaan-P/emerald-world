@@ -2115,7 +2115,7 @@ class WorldServer:
                 from .prop_custody import project as project_custody
                 result=project_custody(self,result)
                 from .object_networks import project as project_networks
-                result=project_networks(result)
+                result=project_networks(result,self)
                 state_json, tiles = self._validated(result)
                 objects = result.get('objects', [])
                 from .region_characters import validate_region_objects
