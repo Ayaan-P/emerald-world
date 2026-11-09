@@ -1979,6 +1979,8 @@ class WorldServer:
                             self.revision = self.memory.append('character_changed', change)
                         for change in canonical_changes:
                             self.revision=self.memory.append('canonical_actor_changed',change)
+                            from .canonical_cast import deliver_letter
+                            deliver_letter(self,change)
                         if kind == 'deploy':
                             self.db.execute('INSERT OR REPLACE INTO status VALUES(1,NULL)')
                     self.candidate, self.module_state, self.tiles = candidate, json.loads(state_json), tiles

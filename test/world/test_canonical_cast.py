@@ -274,6 +274,73 @@ class CanonicalCastTests(unittest.TestCase):
             a['expected_version']=2;a['changes']['conversation']=conversation
             with self.assertRaises(ValueError):cast.compile_actions([a],self.context())
 
+    def test_real_cast_letter_delivery_recipient_reply_and_growth_without_player_chores(self):
+        self.apply(self.action())
+        w=self.action();w['id']='canon_wally';self.apply(w)
+        def letters():return [e for e in self.s.memory.history()['events'] if e['event']=='canonical_letter_delivered']
+        def react(q,identity,action):
+            self.assertEqual(len(reactions.observe(q,self.s.inspect(),self.fetch)),1)
+            turn=q.claim();self.assertEqual(turn['player'],identity)
+            context=self.context();context['runtime'].update(kind='character',observed_event=json.loads(turn['result']))
+            selected=reactions.prepare(context,self.fetch)
+            reactions.check_response(dict(canonical_actions=[action],tests='assert True'),selected)
+            self.apply(action);q.finish(turn['id'],'succeeded',dict(ok=True))
+        with tempfile.TemporaryDirectory() as tmp:
+            q=IntentQueue(tmp)
+            try:
+                for identity in ('canon_rydel','canon_wally'):
+                    reactions.configure(q,self.s.inspect(),identity,'Consider delivered public correspondence without inventing meetings.')
+                a=self.action(1);a['changes']['letter']=dict(to='canon_wally',text='Wally, would patient practice interest you? The field notes made me reconsider speed.')
+                self.apply(a)
+                first=letters()[0];self.assertEqual((first['sender'],first['recipient'],first['depth']),('canon_rydel','canon_wally',1))
+                # No player visit, quest or synthetic achievement is needed for
+                # the character to perform this supported communication.
+                self.assertEqual(self.f.stats()[0],10)
+                reply=deepcopy(w);reply['expected_version']=1
+                reply['changes'].update(evidence=[first['seq']],goal='Consider patient practice after reading Rydel',dialogue='Rydel wrote to me. I want to think about patient practice.',letter=dict(to='canon_rydel',text='Thank you, Rydel. I would rather find my own pace than promise a race.'))
+                react(q,'canon_wally',reply)
+                second=letters()[-1];self.assertEqual(second['depth'],2)
+                final=self.action(2,'Wally wants his own pace. I am rethinking how I encourage new riders.')
+                final['changes'].update(evidence=[second['seq']],goal='Offer encouragement without assuming everyone wants speed',letter=None)
+                # A third automatic letter cannot perpetuate the loop.
+                loop=deepcopy(final);loop['changes']['letter']=dict(to='canon_wally',text='Another automatic reply.')
+                with self.assertRaises(ValueError):cast.compile_actions([loop],self.context())
+                react(q,'canon_rydel',final)
+                self.assertEqual(reactions.observe(q,self.s.inspect(),self.fetch),[])
+                self.assertEqual(len(letters()),2)
+                # Unchanged source ticks cannot send again.
+                ns={};exec(self.source,ns)
+                self.commit(self.source,ns['update'](self.s._context(),deepcopy(self.s.module_state)))
+                self.assertEqual(len(letters()),2)
+                c=self.peer();view=cast.guild_command(self.s,c,['rydel','letters'])
+                self.assertTrue(any('own pace' in line for line in view))
+                self.assertIn('Wally wants his own pace',cast.response(self.s,c,'a'*32,'rydel')['briefing'])
+                from world.world_journal import describe
+                self.assertEqual(describe(second)['title'],'Wally wrote to Rydel')
+                self.assertEqual(self.s.objects,[]);self.assertEqual(self.f.stats()[0],10)
+                self.s.close();self.f.case.server=self.f.case.open();self.s=self.f.case.server;self.f.server=self.s
+                self.assertEqual(len(letters()),2)
+                self.assertIn('assuming',self.s.module_state[cast.KEY]['canon_rydel']['goal'])
+            finally:q.close()
+
+    def test_cast_letter_rejects_fake_recipient_or_evidence_and_rolls_back(self):
+        self.apply(self.action())
+        for target in ('Alice','canon_rydel','canon_wally'):
+            a=self.action(1);a['changes']['letter']=dict(to=target,text='A letter without a valid existing recipient.')
+            with self.assertRaises(ValueError):cast.compile_actions([a],self.context())
+        w=self.action();w['id']='canon_wally';self.apply(w)
+        a=self.action(1);a['changes']['letter']=dict(to='canon_wally',text='An actual public letter.');self.apply(a)
+        event=next(e for e in self.s.memory.history()['events'] if e['event']=='canonical_letter_delivered')
+        # Sender cannot treat its own outgoing letter as received evidence.
+        bad=self.action(2);bad['changes']['evidence']=[event['seq']]
+        with self.assertRaises(ValueError):cast.compile_actions([bad],self.context())
+        bad=deepcopy(w);bad['expected_version']=1;bad['changes']['evidence']=[999999]
+        with self.assertRaises(ValueError):cast.compile_actions([bad],self.context())
+        before=deepcopy(self.s.module_state);after=deepcopy(before)
+        after[cast.KEY]['canon_wally'].update(version=2,evidence=[event['seq']],letter=dict(to='Alice',text='Do not transmit.'))
+        with self.assertRaises(ValueError):cast.validate_transition(before,after,[],self.s.db)
+        self.assertEqual(self.s.module_state,before)
+
     @unittest.skipUnless(__import__('os').environ.get('EW_NATIVE_SOURCE'),'set EW_NATIVE_SOURCE for actual native adapter pairing')
     def test_actual_authority_reply_enters_original_script_adapter(self):
         from pathlib import Path

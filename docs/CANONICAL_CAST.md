@@ -138,3 +138,33 @@ alternatives, but private choices never trigger a public author turn or reward.
 Tests cover concurrent independent choices, private native reply, no inspection
 or history leakage, persistence, stale revisions, impersonation, invalid input,
 forgetting, and production C consuming the exact selected authority packet.
+
+## Character-initiated public correspondence
+
+A canonical action can include `letter: {to: "canon_wally", text: "..."}`.
+The recipient must already exist in authored canonical state, must be a different
+bound actor, and text is limited to 200 literal characters. At atomic admission,
+the authority records `canonical_letter_delivered`, its sender/version,
+recipient, text, source evidence and reply depth. This is a real persisted
+in-world message, not a simulated physical meeting or external communication.
+It appears in public history/journal and `/guild cast ACTOR letters` (latest
+three exchanges), and can be recalled by the recipient's configured author.
+
+The sender chooses to write based on its existing public evidence and intention.
+A followed recipient receives a bounded author turn for that exact delivery,
+not for an arbitrary actor edit. It may adjust its goals/dialogue, reply, or wait.
+The reply can in turn inform the original sender. At most two deliveries are
+allowed in a reply chain: the next turn must clear the letter field and reconsider
+its goal or wait. Exact evidence/version checks prevent a reaction from ignoring
+its trigger to reset the chain. No scheduler is started automatically. Old source
+ticks and unchanged letter payloads do not redeliver. Authority restart preserves
+both correspondence and interpreted growth.
+
+Letters are public fiction, never free-form player messages or private choices.
+They grant no tool permissions and cannot establish a fabricated battle, trip,
+meeting or mutual relationship. A new unrelated public activity can independently
+motivate another exchange. No inventory, reward, travel or personal save mutation
+occurs. The end-to-end regression sends Rydel's actual letter, schedules Wally's
+agent turn and reply, then Rydel changes his encouragement goal with no intervening
+player chore or reward. These test authors are deterministic; full native rendered
+QA and live-model behavior remain separate checks.

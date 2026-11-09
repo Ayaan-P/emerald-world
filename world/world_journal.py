@@ -38,11 +38,15 @@ def describe(event, place=None):
         details.append('Team plan: ' + ', '.join('species ' + str(mon['species']) +
                        ' at level ' + str(mon['level']) for mon in character['team']))
         details.append('This is an authored character change, not proof of a battle or catch.')
+    elif kind == 'canonical_letter_delivered':
+        from .canonical_cast import BINDINGS
+        title=BINDINGS[event['sender']]['name']+' wrote to '+BINDINGS[event['recipient']]['name']
+        details=[event['text'],'Delivered public in-world correspondence. No physical meeting, travel or battle is implied.']
     elif kind == 'canonical_actor_changed':
         title=event['character_name']+' reconsidered a goal'
         details=['Authored goal: '+event['after']['goal'],
                  'Supplemental dialogue: '+event['after']['dialogue'],
-                 'Based on public activity records: '+', '.join(map(str,event['after']['evidence'])),
+                 'Based on public evidence records: '+', '.join(map(str,event['after']['evidence'])),
                  'An authored interpretation, not proof that this character performed an activity. Original gameplay is unchanged.']
     elif kind == 'guild_goal_completed':
         title = 'Guild '+event['goal_kind']+' completed'
