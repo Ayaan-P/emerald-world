@@ -95,6 +95,8 @@ def actor_records(server):
     return rows
 
 def install(db):
+    from .actor_knowledge import setup as knowledge_setup
+    knowledge_setup(db)
     db.execute('CREATE TABLE IF NOT EXISTS actor_plans(actor TEXT,plan TEXT,definition TEXT NOT NULL,PRIMARY KEY(actor,plan))')
     db.execute('CREATE TABLE IF NOT EXISTS actor_tool_receipts(actor TEXT,plan TEXT,step TEXT,status TEXT,result TEXT,seq INTEGER,PRIMARY KEY(actor,plan,step))')
 
@@ -130,7 +132,8 @@ def inspect_runtime(server):
     from .actor_navigation import discover as discover_navigation
     from .actor_linked_navigation import graph as linked_graph
     from .character_companions import roster
-    return dict(companion_rosters={actor:roster(server,actor) for actor,r in actor_records(server).items() if not r.get('canonical')},capabilities={key:dict(description=c.description,arguments=c.arguments,outcome=c.outcome,actor_kinds=c.kinds) for key,c in CAPABILITIES.items()},
+    from .actor_knowledge import inbox as knowledge_inbox
+    return dict(received_observations=knowledge_inbox(server),companion_rosters={actor:roster(server,actor) for actor,r in actor_records(server).items() if not r.get('canonical')},capabilities={key:dict(description=c.description,arguments=c.arguments,outcome=c.outcome,actor_kinds=c.kinds) for key,c in CAPABILITIES.items()},
         available_actions=server.opportunities.actor_actions()[:32],actors={a:('canonical' if r.get('canonical') else 'world') for a,r in actor_records(server).items()},
         companion_offers=companion_offers(server),navigation=discover_navigation(server),cave_links=linked_graph(server),carried_props=inventory(server),
         object_player_use='Optional state.world_object_player_use maps prop ID to one advertised world_object_actions action ID. Native A dispatches the same actor_interact(object_id,action,own_state) handler through normal staging. No map: text only. Effects are bounded own-state/text/graphics/one-cell movement, not bags/items.',
@@ -255,3 +258,7 @@ CAPABILITIES['world.navigate_places']=Capability('Route this actor to a tile acr
 from .companion_exchange import offer as offer_companion, respond as respond_companion
 CAPABILITIES['world.offer_companion']=Capability('Offer an actually owned benched companion to an adjacent world character.',dict(target='recipient actor ID',individual='owned benched individual ID',recipient_individual='unused recipient-local identity'),'Pending independent recipient choice; no capture or immediate transfer.',offer_companion,None,('world',))
 CAPABILITIES['world.respond_companion']=Capability('Accept/decline a companion offered to this actor, or withdraw own offer.',dict(offer='actual offer ID',decision='accept, decline or withdraw'),'Atomic real companion custody transfer preserving native identity/state. Teams and player saves unchanged; recipient can later prepare its own lineup.',respond_companion,None,('world',))
+
+from .actor_knowledge import share as share_observation,recall as recall_observation
+CAPABILITIES['world.share_observation']=Capability('Pass a real own observation to an adjacent independent world character.',dict(target='existing recipient',expected_version='current recipient version',observation='own successful world.observe receipt sequence'),'Durable dated facts and provenance delivered; not current sight or agreement. Recipient can react independently.',share_observation,None,('world',))
+CAPABILITIES['world.recall_report']=Capability('Read a factual report actually received from another character.',dict(delivery='received_observations delivery sequence'),'Dated snapshot and report_revision/report_x/report_y for planning; inspect again after travel, not current first-hand knowledge.',recall_observation,None,('world',))
