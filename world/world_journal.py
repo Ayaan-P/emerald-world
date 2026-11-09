@@ -76,6 +76,10 @@ def describe(event, place=None):
         from .canonical_cast import BINDINGS
         title=BINDINGS[event['character_id']]['name']+' opened a shared project'
         details=[event['title'],'Executable public choices installed; no physical participation or completed work implied.']
+    elif kind == 'canonical_scene_observed':
+        from .canonical_cast import BINDINGS
+        title = BINDINGS.get(event.get('character_id'),{}).get('name','An original actor') + ' completed an observed movement'
+        details = ['Native observers reported the reviewed path and home restoration.', 'This records movement, not research, training, rewards or player opinions.']
     elif kind == 'canonical_world_action_committed':
         from .canonical_cast import BINDINGS
         title=BINDINGS[event['character_id']]['name']+' changed a shared opportunity'

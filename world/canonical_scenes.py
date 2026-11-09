@@ -59,7 +59,7 @@ class CanonicalScenes:
             self.offer=dict(token=secrets.token_hex(16),owner=peer,cohort=cohort,map=map_id,actor=identity,path=row['scene'],joined=set(),expires=time.monotonic()+15,version=row['version'])
             for p in cohort:
                 self.send(p,'INVITE '+self.offer['token'])
-                self.s.guild_chat.message(p,BINDINGS[identity]['name'],'Group demonstration offered. /history scene join or cancel. Everyone must opt in; B cancels the scene.')
+                self.s.guild_chat.message(p,BINDINGS[identity]['name'],'Actor scene: /history scene join or cancel. All must join. Completion enters shared history without player names.')
             return
         if len(args)==2 and args[0] in ('JOIN','DECLINE'):
             o=self.offer
@@ -94,6 +94,9 @@ class CanonicalScenes:
             # Only dedicated native scene handling emits HOME after verifying
             # the original actor idle at its exact home. No STATE inference.
             if self.live and self.leases.current.phase!='restoring':raise ValueError('Restoration was not requested')
+            if len(self.debt['remaining'])==1:
+                from .canonical_scene_intentions import record
+                record(self)
             self.debt['remaining'].remove(peer['id'])
             if not self.live:self.send(peer,'RELEASE '+args[1])
             self.release_connected()
@@ -110,7 +113,7 @@ class CanonicalScenes:
                 self.live['at'].add(peer['id'])
                 if len(self.live['at'])==len(self.live['cohort']):
                     if self.live['step']+1<len(self.leases.current.path):self.step(self.live['step']+1)
-                    else:self.abort()
+                    else:self.abort(completed=True)
                 return
             if args[0]=='CANCEL' and len(args)==2:self.abort();return
         raise ValueError('Unknown or stale scene request')
@@ -133,8 +136,9 @@ class CanonicalScenes:
         if self.offer:
             for p in self.offer['cohort']:self.send(p,'RELEASE '+self.offer['token'])
         self.offer=None
-    def abort(self):
+    def abort(self,*,completed=False):
         if self.live:
+            self.live['completed']=completed
             self.leases.abort(self.live['token'],'Native restoration required')
             for p in self.live['cohort']:
                 if not p.get('closing'):self.send(p,'RETURN '+self.live['token'])
@@ -143,6 +147,8 @@ class CanonicalScenes:
         if self.live and any(p is peer for p in self.live['cohort']):
             self.abort();self.release_connected()
     def tick(self):
+        from .canonical_scene_intentions import invite
+        invite(self)
         if self.offer and time.monotonic()>self.offer['expires']:self.cancel_offer()
         if self.live:
             previous=self.leases.current.phase
