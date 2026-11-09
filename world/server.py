@@ -1981,6 +1981,8 @@ class WorldServer:
                             self.revision=self.memory.append('canonical_actor_changed',change)
                             from .canonical_cast import deliver_letter
                             deliver_letter(self,change)
+                            from .canonical_projects import publish as publish_cast_project
+                            publish_cast_project(self,change)
                         if kind == 'deploy':
                             self.db.execute('INSERT OR REPLACE INTO status VALUES(1,NULL)')
                     self.candidate, self.module_state, self.tiles = candidate, json.loads(state_json), tiles

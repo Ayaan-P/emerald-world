@@ -168,3 +168,43 @@ occurs. The end-to-end regression sends Rydel's actual letter, schedules Wally's
 agent turn and reply, then Rydel changes his encouragement goal with no intervening
 player chore or reward. These test authors are deterministic; full native rendered
 QA and live-model behavior remain separate checks.
+
+## Executable character projects
+
+An actor may publish a playable practice course with:
+
+    project: {kind: "petalburg_relay", title: "Patient Practice", limit: 240, mounted: false}
+
+The actor must include PetalburgCity among its interests and supply inspected
+public evidence as for other decisions. This first project adapter intentionally
+uses the existing Petalburg checkpoint/handoff layout; the character controls the
+name, time budget and mount requirement, not arbitrary unverified map geometry.
+It is a reusable activity design, not a claim that the NPC physically constructed
+a track or completed a race. Further project kinds need their own safe adapter.
+
+Admission validates through the production relay validator and atomically installs
+an immutable course plus an actor ownership/digest receipt. It appears in the
+existing activity board and `/guild cast ACTOR projects`, which shows direct
+`/guild relay start ID` commands. Native actor dialogue points to the practice
+courses. Players join and ready explicitly through the existing relay interface.
+The usual actual checkpoint order, adjacent baton handoff, authority timing and
+private record persistence apply. There are no item, save, terrain or reward edits.
+
+Successful installation creates `canonical_project_published` evidence with exact
+content digest. The character can cite that real achievement in correspondence,
+and other agents can reconsider their intentions after reading the delivered
+letter. Publication alone does not enqueue new automatic author turns, preventing
+self-generating project loops. Private race participants/times do not enter this
+public evidence. Existing runs keep their immutable course; a new design gets a
+new identity. Repeated content is not republished. Operator-owned course collisions
+fail closed and roll back the character revision, history and installation together.
+Eight projects per actor and the existing 64-course global cap bound growth.
+Removing a project from current intent does not delete the previously published
+course or invalidate player records.
+
+Validation includes a full in-memory production relay CHAT/STATE run of Rydel's
+new course, both runners' readiness, actual checkpoints and handoff, saved private
+time, followed by Rydel informing Wally of the actual publication and Wally
+reconsidering his goal. It also covers restart and atomic collision rollback.
+110 focused app/author/relay/activity-board tests pass. Rendered native gameplay
+and live-model initiative are still not claimed; Maya owns paired build and QA.

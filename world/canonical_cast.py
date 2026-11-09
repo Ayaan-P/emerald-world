@@ -22,7 +22,7 @@ def records(state):
     from .build_catalog import catalog_maps
     places={'native:'+m['name'] for m in catalog_maps().values()}
     for identity,row in value.items():
-        if type(row) is not dict or set(row)-{'offer','relationships','conversation','letter'}!={'version','goal','dialogue','places','evidence','reason'}:
+        if type(row) is not dict or set(row)-{'offer','relationships','conversation','letter','project'}!={'version','goal','dialogue','places','evidence','reason'}:
             raise ValueError('invalid canonical actor fields')
         if type(row['version']) is not int or not 1<=row['version']<=2**31-1:raise ValueError('invalid canonical actor version')
         for field,limit in [('goal',160),('reason',240)]:
@@ -30,6 +30,9 @@ def records(state):
         if type(row['dialogue']) is not str or not re.fullmatch("[A-Za-z0-9 .,!?'-]{1,200}",row['dialogue']):raise ValueError('canonical dialogue requires bounded literal native text')
         if type(row['places']) is not list or not 1<=len(row['places'])<=4 or len(set(row['places']))!=len(row['places']) or any(p not in places for p in row['places']):raise ValueError('canonical interests require known native places')
         if type(row['evidence']) is not list or not 1<=len(row['evidence'])<=8 or any(type(n) is not int or n<1 for n in row['evidence']) or len(set(row['evidence']))!=len(row['evidence']):raise ValueError('canonical actor needs public evidence')
+        from .canonical_projects import validate_project
+        validate_project(row.get('project'))
+        if row.get('project') and 'native:PetalburgCity' not in row['places']:raise ValueError('practice project needs PetalburgCity in actor interests')
         letter=row.get('letter')
         if letter is not None:
             if type(letter) is not dict or set(letter)!={'to','text'}:raise ValueError('letter requires recipient and text')
@@ -105,7 +108,7 @@ def compile_actions(actions, context):
     if type(actions) is not list or len(actions)!=1:raise ValueError('one bounded canonical action required')
     action=actions[0]
     if type(action) is not dict or set(action)!={'id','expected_version','changes'} or action['id'] not in BINDINGS:raise ValueError('invalid canonical action')
-    if type(action['changes']) is not dict or set(action['changes'])-{'offer','relationships','conversation','letter'}!={'goal','dialogue','places','evidence','reason'}:raise ValueError('invalid canonical changes')
+    if type(action['changes']) is not dict or set(action['changes'])-{'offer','relationships','conversation','letter','project'}!={'goal','dialogue','places','evidence','reason'}:raise ValueError('invalid canonical changes')
     old=cast.get(action['id']);version=old['version'] if old else 0
     if type(action['expected_version']) is not int or action['expected_version']!=version:raise ValueError('stale canonical action')
     row=copy.deepcopy(action['changes']);row['version']=version+1
@@ -130,7 +133,7 @@ def response(server, conn, run, key):
     private=server.db.execute('SELECT version,choice FROM canonical_conversations WHERE trainer=? AND actor=?',(conn['id'],identity)).fetchone()
     option=row.get('conversation',{}).get(private[1]) if private and private[0]==row['version'] else None
     result=dict(schema=1,world_id=server.memory.world_id,run=run,actor=identity,
-                version=row['version'],briefing=option['reply'] if option else row['dialogue'],objective=('Guild chat has conversation choices.' if row.get('conversation') and not option else 'Ask guild chat about my plan.' if row.get('offer') else ''),evidence=row['evidence'])
+                version=row['version'],briefing=option['reply'] if option else row['dialogue'],objective=('Guild chat has conversation choices.' if row.get('conversation') and not option else 'Ask guild chat about my plan.' if row.get('offer') else 'Guild chat has my practice courses.' if row.get('project') else ''),evidence=row['evidence'])
     result['digest']=hashlib.sha256(json.dumps(result,sort_keys=True,separators=(',',':')).encode()).hexdigest()
     return result
 
@@ -138,7 +141,8 @@ def response(server, conn, run, key):
 def contract():
     return dict(response='canonical_actions/tests',bindings=BINDINGS,
                 action_fields=['id','expected_version','changes'],
-                change_fields=['goal','dialogue','places','evidence','reason','offer (optional native map/count)','relationships (optional directional assessments)','conversation (optional private player choices)','letter (optional public cast correspondence)'],
+                change_fields=['goal','dialogue','places','evidence','reason','offer (optional native map/count)','relationships (optional directional assessments)','conversation (optional private player choices)','letter (optional public cast correspondence)','project (optional playable practice course)'],
+                project=dict(kind='petalburg_relay',fields=['title (55 characters)','limit (30..900 seconds)','mounted (boolean)'],effect='installs an immutable playable two-runner relay on existing Petalburg layout; no player autojoin, terrain or save change',limits='eight per actor; actual publication evidence, no inferred participation or results'),
                 letter=dict(fields=['to (existing canonical identity)','text (200 literal characters)'],effect='authority delivers a public in-world letter and records exact evidence; no physical meeting',basis='public activity or received letter; at most two deliveries per reply chain; recipient may reconsider goals or respond'),
                 conversation=dict(choice='1..3 lowercase IDs',fields=['label (48 literal characters)','reply (200 literal characters)'],privacy='only player explicitly selects their own option; selection never enters world history or author context',scope='per authenticated trainer and actor; actor version changes require choosing again; no auto affinity, gifts or story changes'),
                 relationships=dict(target='another existing bound canonical actor, not a player',fields=['stance','motivation','evidence'],stances=['curious','encouraged','concerned','respectful','competitive'],basis='actual public completion attributed to target actor; directional interpretation, not mutual relationship or invented meeting',reaction='new public target-offer results in actor interests trigger reconsideration; never authored decisions alone'),
@@ -169,6 +173,9 @@ def guild_command(server, conn, args):
     if len(args)>=2 and args[1] in ('talk','forget'):
         return conversation_command(server,conn,identity,row,args[1:])
     if len(args)==4:raise GuildError('Use /guild cast ACTOR talk VERSION CHOICE.')
+    if len(args)==2 and args[1]=='projects':
+        from .canonical_projects import lines
+        return lines(server,identity)
     if len(args)==2 and args[1]=='letters':
         entries=[]
         for (data,) in server.db.execute("SELECT data FROM events WHERE kind='world_memory' AND json_extract(data,'$.event')='canonical_letter_delivered' AND (json_extract(data,'$.sender')=? OR json_extract(data,'$.recipient')=?) ORDER BY seq DESC LIMIT 3",(identity,identity)):
@@ -245,7 +252,8 @@ def received_letter(event, identity):
 
 
 def decision_evidence(event, identity, row):
-    return public_activity(event,row['places']) or received_letter(event,identity)
+    from .canonical_projects import public_project
+    return public_activity(event,row['places']) or received_letter(event,identity) or public_project(event,row['places'])
 
 
 def validate_letter(row, lookup):

@@ -341,6 +341,73 @@ class CanonicalCastTests(unittest.TestCase):
         with self.assertRaises(ValueError):cast.validate_transition(before,after,[],self.s.db)
         self.assertEqual(self.s.module_state,before)
 
+    def test_character_project_installs_actual_playable_relay_and_informs_another_actor(self):
+        from world.canonical_projects import course_for
+        from test_field_relays import FieldRelayTests
+        from unittest.mock import patch
+        w=self.action();w['id']='canon_wally';w['changes']['places'].append('native:PetalburgCity');self.apply(w)
+        a=self.action();a['changes']['places'].append('native:PetalburgCity')
+        a['changes']['project']=dict(kind='petalburg_relay',title='Rydel Patient Practice',limit=240,mounted=False)
+        self.apply(a)
+        course=course_for('canon_rydel',a['changes']['project'])
+        self.assertEqual(self.s.relays._course(course['id']),course)
+        self.assertTrue(any(x['id']==course['id'] for x in self.s.activities.catalog()))
+        self.assertEqual(self.s.relays.runs,{})
+        event=next(e for e in self.s.memory.history()['events'] if e['event']=='canonical_project_published')
+        self.assertEqual(event['outcome'],'immutable_relay_course_installed')
+        c=self.peer();b=self.peer('Bob');self.f.connections.update(Alice=c,Bob=b)
+        self.assertTrue(any(course['id'] in line for line in cast.guild_command(self.s,c,['rydel','projects'])))
+        # Execute actual relay CHAT/STATE authority, including readiness,
+        # checkpoints, baton handoff and persistent private finish record.
+        runner=FieldRelayTests();runner.s=self.s;runner.a=c;runner.b=b;runner.now=time.monotonic()
+        self.s.relays.clock=lambda:runner.now
+        with patch('world.server.time.monotonic',side_effect=lambda:runner.now),patch('test_field_relays.COURSE',course):
+            run=runner.finish()
+        record=self.s.db.execute('SELECT course,team,milliseconds FROM relay_records WHERE run=?',(run['id'],)).fetchone()
+        self.assertEqual(record[0],course['id']);self.assertEqual(json.loads(record[1]),['Alice','Bob']);self.assertGreater(record[2],0)
+        self.assertEqual(self.f.stats()[0],10)
+        self.assertFalse(any(e['event'].startswith('relay_') for e in self.s.memory.history()['events']))
+        with tempfile.TemporaryDirectory() as tmp:
+            q=IntentQueue(tmp)
+            try:
+                reactions.configure(q,self.s.inspect(),'canon_wally','Consider real published projects without inferring private race participation.')
+                letter=deepcopy(a);letter['expected_version']=1
+                letter['changes'].update(evidence=[event['seq']],letter=dict(to='canon_wally',text='I published a patient practice course. You may look at the plan without promising to race.'))
+                self.apply(letter)
+                self.assertEqual(self.s.db.execute('SELECT count(*) FROM canonical_projects').fetchone()[0],1)
+                self.assertEqual(len(reactions.observe(q,self.s.inspect(),self.fetch)),1)
+                turn=q.claim();ctx=self.context();ctx['runtime'].update(kind='character',observed_event=json.loads(turn['result']))
+                reaction=reactions.prepare(ctx,self.fetch)
+                decision=deepcopy(w);decision['expected_version']=1
+                decision['changes'].update(evidence=[reaction['evidence']],goal='Consider the published patient practice plan without committing to a race',dialogue='Rydel published a practice plan. I want to think about it first.')
+                reactions.check_response(dict(canonical_actions=[decision],tests='assert True'),reaction)
+                self.apply(decision);q.finish(turn['id'],'succeeded',dict(ok=True))
+                self.assertEqual(reactions.observe(q,self.s.inspect(),self.fetch),[])
+                self.assertEqual(len([e for e in self.s.memory.history()['events'] if e['event']=='canonical_project_published']),1)
+            finally:q.close()
+        self.s.close();self.f.case.server=self.f.case.open();self.s=self.f.case.server;self.f.server=self.s
+        self.assertEqual(self.s.relays._course(course['id']),course)
+        self.assertEqual(self.s.db.execute('SELECT count(*) FROM canonical_projects').fetchone()[0],1)
+
+    def test_project_collision_rolls_back_character_history_and_course_atomically(self):
+        from world.canonical_projects import course_for
+        a=self.action();a['changes']['places'].append('native:PetalburgCity')
+        a['changes']['project']=dict(kind='petalburg_relay',title='Conflicting Practice',limit=240,mounted=False)
+        course=course_for('canon_rydel',a['changes']['project'])
+        # Existing operator-owned course cannot be silently adopted/overwritten.
+        self.s.relays.publish(course)
+        history=deepcopy(self.s.memory.history());before=deepcopy(self.s.module_state)
+        source=cast.compile_actions([a],self.context());ns={};exec(source,ns)
+        candidate=Candidate(source,hashlib.sha256(source.encode()).hexdigest())
+        future=Future();future.set_result((candidate,ns['update'](self.s._context(),deepcopy(before))))
+        self.s.job=(future,'deploy',None,self.s.interaction_cursor);self.s._poll_mechanics()
+        self.assertIn('conflicts',self.s.module_error)
+        self.assertEqual(self.s.module_state,before);self.assertEqual(self.s.memory.history(),history)
+        self.assertEqual(self.s.db.execute('SELECT count(*) FROM canonical_projects').fetchone()[0],0)
+        self.assertEqual(self.s.relays._course(course['id']),course)
+        a['changes']['project']['legs']=[]
+        with self.assertRaises(ValueError):cast.compile_actions([a],self.context())
+
     @unittest.skipUnless(__import__('os').environ.get('EW_NATIVE_SOURCE'),'set EW_NATIVE_SOURCE for actual native adapter pairing')
     def test_actual_authority_reply_enters_original_script_adapter(self):
         from pathlib import Path

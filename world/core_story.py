@@ -48,6 +48,8 @@ class CoreStory:
         self.s = server
         self.db = server.db
         self.db.executescript('''
+        CREATE TABLE IF NOT EXISTS canonical_projects(
+            course TEXT PRIMARY KEY, actor TEXT NOT NULL, digest TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS canonical_conversations(
             trainer TEXT, actor TEXT, version INTEGER NOT NULL, choice TEXT NOT NULL,
             PRIMARY KEY(trainer,actor));
