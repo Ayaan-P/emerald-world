@@ -80,6 +80,10 @@ def observe(queue, inspection, fetch, *, enqueue=True):
                 raise ValueError('invalid character history ordering')
             previous = event['seq']
         with queue.db:
+            queue.db.execute('BEGIN IMMEDIATE')
+            current = queue.db.execute('SELECT * FROM character_reactions WHERE id=?', (sub['id'],)).fetchone()
+            if current is None or dict(current) != sub:
+                continue  # host changed/cancelled enrollment during history fetch
             # Never coalesce by dropping earlier results. Leave the page pending
             # until an existing actor turn is terminal; other actors still run.
             if queue.db.execute("SELECT 1 FROM requests WHERE kind='character' AND player=? AND status IN ('queued','running')", (sub['id'],)).fetchone():

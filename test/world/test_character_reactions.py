@@ -152,3 +152,13 @@ class ReactionTests(unittest.TestCase):
                 lambda _:dict(source='def update(c,s): return s',tests='assert True'),120,runtime_context=runtime)
             self.assertFalse(report['ok'])
             self.assertIn('bounded typed actions',report['error'])
+
+    def test_unfollow_during_history_fetch_cannot_queue_stale_work(self):
+        self.finish_trip()
+        def fetch_then_cancel(query):
+            page=self.fetch(query)
+            reactions.unfollow(self.q,'field_researcher')
+            return page
+        self.assertEqual(reactions.observe(self.q,self.server.inspect(),fetch_then_cancel),[])
+        self.assertIsNone(self.q.claim())
+        self.assertEqual(reactions.subscriptions(self.q),[])
