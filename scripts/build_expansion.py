@@ -24,6 +24,8 @@ def main():
                         help='existing extracted libc/GCC multilib root for mandatory ABI probes')
     parser.add_argument('--development', action='store_true',
                         help='build explicit local candidate integration changes on top of the verified engine pin')
+    parser.add_argument('--generated-regions', action='store_true',
+                        help='enable selectable generated places (independent of regional saves/Kanto)')
     parser.add_argument('--regional-state', action='store_true',
                         help='enable experimental regional saves (requires --development)')
     parser.add_argument('--kanto-content', action='store_true',
@@ -126,7 +128,10 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                      'If Bubblewrap failed, check that unprivileged user namespaces are permitted.')
     if args.check:
         return 0
-    command += ['--', 'make', '-f', str(ROOT / 'engines/expansion.mk'), f'-j{args.jobs}',
+    # Feature CPPFLAGS are not represented in native object prerequisites. Rebuild
+    # intermediates so toggling selectable regions cannot reuse a stale cohort.
+    command += ['--', 'make', '-B', '-f', str(ROOT / 'engines/expansion.mk'), f'-j{args.jobs}',
+                f'GENERATED_WORLD_REGIONS={int(args.generated_regions)}',
                 f'EW_REGION_STATE={int(args.regional_state)}',
                 f'EW_KANTO_CONTENT={int(args.kanto_content)}',
                 *(['MAP_VERSION=combined'] if args.kanto_content else []),

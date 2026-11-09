@@ -869,7 +869,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     from scripts.linux_client import discover_binary, prerequisites
     binary = args.binary or discover_binary(args.engine)
-    build_hint = ('python3 scripts/build_expansion.py' if args.engine == 'expansion-native'
+    build_hint = ('python3 scripts/build_expansion.py --generated-regions' if args.engine == 'expansion-native'
                   else 'make linux CFLAGS=-g WERROR=1')
     checks = [(name, ready, detail if name != 'binary' else f'{binary}. Build with: {build_hint}')
               for name, ready, detail in prerequisites(binary) if name != 'tkinter']
