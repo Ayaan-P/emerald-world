@@ -20,6 +20,8 @@ def actors(state):
 
 
 def dynamic_result(event, identity, character):
+    from .companion_barter import relevant as barter_relevant
+    if barter_relevant(event,identity):return True
     from .npc_conversations import relevant as speech_relevant
     if speech_relevant(event,identity):return True
     from .actor_knowledge import relevant as knowledge_relevant

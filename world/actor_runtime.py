@@ -95,6 +95,8 @@ def actor_records(server):
     return rows
 
 def install(db):
+    from .companion_barter import setup as barter_setup
+    barter_setup(db)
     from .actor_tutors import setup as tutor_setup
     tutor_setup(db)
     from .actor_weather import setup as weather_setup
@@ -138,6 +140,7 @@ def inspect_runtime(server):
     from .canonical_cast import records
     install(server.db)
     from .prop_custody import inventory
+    from .companion_barter import offers as barter_offers
     from .companion_exchange import offers as companion_offers
     from .actor_navigation import discover as discover_navigation
     from .actor_linked_navigation import graph as linked_graph
@@ -149,7 +152,7 @@ def inspect_runtime(server):
     from .actor_tutors import catalog as tutor_catalog
     return dict(tutoring=tutor_catalog(server),retail=shop_catalog(server),capture=capture_available(server),public_player_speech=speech_inbox(server),received_observations=knowledge_inbox(server),companion_rosters={actor:roster(server,actor) for actor,r in actor_records(server).items() if not r.get('canonical')},capabilities={key:dict(description=c.description,arguments=c.arguments,outcome=c.outcome,actor_kinds=c.kinds) for key,c in CAPABILITIES.items()},
         available_actions=server.opportunities.actor_actions()[:32],actors={a:('canonical' if r.get('canonical') else 'world') for a,r in actor_records(server).items()},
-        companion_offers=companion_offers(server),navigation=discover_navigation(server),cave_links=linked_graph(server),carried_props=inventory(server),
+        reciprocal_exchanges=barter_offers(server),companion_offers=companion_offers(server),navigation=discover_navigation(server),cave_links=linked_graph(server),carried_props=inventory(server),
         object_player_use='Optional state.world_object_player_use maps prop ID to one advertised world_object_actions action ID. Native A dispatches the same actor_interact(object_id,action,own_state) handler through normal staging. No map: text only. Effects are bounded own-state/text/graphics/one-cell movement, not bags/items.',
         result_references='Use {result: earlier_step_id, key: scalar_result_key}. Reserved key tool_receipt yields that successful step durable receipt sequence.',
         plans=[dict(actor=actor,plan=row['plan'],receipts=[dict(step=s,status=status,result=json.loads(result),seq=seq)
@@ -298,3 +301,7 @@ CAPABILITIES['world.offer_tutoring']=Capability('Offer or close optional move tu
 from .actor_environment import inspect_patch, reshape
 CAPABILITIES['world.inspect_environment']=Capability('Inspect a bounded patch of the active shared event-outdoor terrain from public authority data.',dict(x='patch origin',y='patch origin',width='1..8',height='1..8'),'Dated authority map data, not actor eyesight or a player observation. Only archived 63x63 CAVE9 event outdoors; no private player data.',inspect_patch,None,('canonical','world'))
 CAPABILITIES['world.reshape_environment']=Capability('Change inspected outdoor surfaces through the existing native grass, tall-grass and water mechanics.',dict(observation='own successful world.inspect_environment receipt',tiles='JSON <=700 chars list of {x,y,terrain:grass/tall_grass/water/original}'),'Durable connected terrain patch with atomic receipt. All trainers must leave first. Native surface/encounter/Surf semantics, not simulated labor, migration, catches or proof of client rendering. Original Hoenn unchanged.',reshape,None,('canonical','world'))
+
+from .companion_barter import propose as barter_propose, respond as barter_respond
+CAPABILITIES['world.propose_exchange']=Capability('Propose a reciprocal trade of two actually owned benched Pokemon with an adjacent world character.',dict(target='recipient actor ID',give='own benched individual ID',receive='recipient benched individual ID',sender_alias='unused or matching prior own local ID for received Pokemon',recipient_alias='unused or matching prior recipient local ID for offered Pokemon'),'Durable frozen proposal only. Recipient receives a real event and independently accepts/declines. No forced transfer, player trade or evolution.',barter_propose,None,('world',))
+CAPABILITIES['world.resolve_exchange']=Capability('Independently accept/decline a reciprocal companion exchange, or withdraw your own proposal.',dict(offer='actual reciprocal exchange ID',decision='accept, decline or withdraw'),'Both existing native identities and full training state transfer atomically, or neither does. Actual adjacency and unchanged bench required; teams and player saves untouched. Prepare a challenge separately to use received companions.',barter_respond,None,('world',))
