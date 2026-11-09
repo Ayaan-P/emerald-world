@@ -20,6 +20,8 @@ def actors(state):
 
 
 def dynamic_result(event, identity, character):
+    from .trainer_experiences import relevant as campaign_relevant
+    if campaign_relevant(event,character.get('campaign_interests',[])):return True
     from .npc_accompaniment import relevant as accompaniment_relevant
     if accompaniment_relevant(event,identity):return True
     from .actor_cooperation import relevant as cooperation_relevant
@@ -245,6 +247,8 @@ def prepare(context, fetch):
         context['character_study_map']['limits']='Existing archived geometry only. Do not claim the actor traveled or found anything.'
     # Public fictional actors need committed public results, not player purposes
     # or current private party/save observations from the general GM inspection.
+    if events[0].get('event')=='canonical_trainer_result':
+        context['campaign_report_limits']='This is an anonymous voluntarily shared client report, not server-verified victory, earned NPC experience, the actor witnessing a battle, or any known player identity. Choose a supported action or wait; do not invent personal history or award growth.'
     data['players']=[]
     runtime['selected_purposes']={}
     context.setdefault('recalled_history', {}).setdefault('events', []).extend(events)

@@ -25,7 +25,7 @@ def records(state):
     for identity, character in value.items():
         if type(identity) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}', identity):
             raise ValueError('invalid character identity')
-        if type(character) is not dict or not FIELDS <= set(character) or set(character)-FIELDS-{'offer','intentions','plan'}:
+        if type(character) is not dict or not FIELDS <= set(character) or set(character)-FIELDS-{'offer','intentions','plan','campaign_interests'}:
             raise ValueError('invalid character fields')
         if type(character['version']) is not int or not 1 <= character['version'] <= 2**31-1:
             raise ValueError('invalid character version')
@@ -40,6 +40,11 @@ def records(state):
                 raise ValueError('only active characters may offer an expedition')
         from .actor_runtime import validate as validate_plan
         validate_plan(character.get('plan'))
+        interests=character.get('campaign_interests',[])
+        from .build_catalog import catalog_maps
+        allowed={'native:'+m['name'] for m in catalog_maps().values() if not m['name'].startswith('GeneratedWorld')}
+        if type(interests) is not list or len(interests)>4 or any(type(v) is not str or v not in allowed for v in interests) or len(set(interests))!=len(interests):
+            raise ValueError('Campaign interests must be up to four existing original places')
         goals = character['goals']
         if type(goals) is not list or len(goals) > 4:
             raise ValueError('invalid character goals')
