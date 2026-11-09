@@ -1,0 +1,32 @@
+name: Windows Expansion source gates (no artifacts)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'scripts/windows_expansion_*.py'
+      - 'test/test_windows_expansion_delivery.py'
+      - '.github/workflows/windows-expansion-source-gates.yml'
+      - 'docs/WINDOWS_EXPANSION_PRIVATE_HANDOFF.md'
+
+permissions:
+  contents: read
+
+jobs:
+  source-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: false
+      - name: Test source and synthetic PE packaging contracts only
+        run: python3 -m unittest test.test_windows_expansion_delivery -v
+      - name: State evidence boundary
+        run: |
+          printf '%s\n' 'Source contracts passed. Synthetic PE fixtures are not playable builds.'
+          printf '%s\n' 'No game binaries, art, saves, packages or source archives are uploaded.'
+          printf '%s\n' 'No actions/upload-artifact step is permitted in this lane.'
+          printf '%s\n' 'Actual cross-build and private archive happen only on the authorized local machine.'
+          printf '%s\n' 'Windows friend-device acceptance is a separate required manual gate.'
