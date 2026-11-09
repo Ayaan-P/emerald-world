@@ -7,6 +7,7 @@ import hashlib
 import inspect
 import json
 import re
+import time
 
 KEY='canonical_cast'
 BINDINGS={'canon_rydel':dict(name='Rydel',map='MauvilleCity_BikeShop',
@@ -187,7 +188,7 @@ def response(server, conn, run, key):
                 version=row['version'],briefing=personal or (option['reply'] if option else row['dialogue']),objective=('Guild chat has a shared question.' if row.get('council') else 'Guild chat has conversation choices.' if row.get('conversation') and not option else 'Ask guild chat about my plan.' if row.get('offer') else 'Guild chat has my field studies.' if row.get('study') else 'Guild chat has my practice courses.' if row.get('project') else ''),evidence=row['evidence'])
     result['digest']=hashlib.sha256(json.dumps(result,sort_keys=True,separators=(',',':')).encode()).hexdigest()
     conn['core_active_run']=run
-    conn['canonical_location']=dict(actor=identity,map=map_name,run=run)
+    conn['canonical_location']=dict(actor=identity,map=map_name,run=run,version=row['version'],expires=time.monotonic()+120)
     from .canonical_memory import prepare
     return prepare(server,conn,run,identity,row,result,map_name=map_name)
 

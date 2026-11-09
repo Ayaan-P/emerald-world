@@ -76,3 +76,20 @@ class SharedDialogueTests(unittest.TestCase):
   with self.s.db:self.s.db.execute("DELETE FROM guild_members WHERE trainer='Alice'")
   with self.assertRaises(GuildError):self.command(self.b,'choose',identifier,'independent')
   self.assertEqual(self.events(),[])
+ def test_native_panel_uses_bound_cast_context_without_weakening_chat_ready(self):
+  # Original native conversation scripts hold controls, so FIELD ready is zero.
+  for peer in (self.a,self.b):peer['state'][6]=0
+  with self.assertRaises(GuildError):self.command(self.b,'converse')
+  def panel(peer,guard):return self.s.core_story.handle(peer,['CORE','a'*32 if peer is self.a else 'b'*32,'DIALOG','rydel',guard])
+  view=panel(self.b,'view');self.assertEqual((view['role'],view['session'],len(view['options'])),(0,'-',2))
+  opened=panel(self.b,'open:1');self.assertEqual(opened['role'],1);identifier=opened['session']
+  joined=panel(self.a,'join:'+identifier+':1');self.assertEqual(joined['role'],2)
+  panel(self.a,'pick:'+identifier+':1:2')
+  chosen=panel(self.b,'pick:'+identifier+':1:1');self.assertEqual(chosen['role'],3)
+  self.assertIn('Speaker chose Independent journeys',chosen['question'])
+  self.assertEqual(self.events()[0]['choice'],'independent');self.assertEqual(self.events()[0]['advice']['together'],1)
+  self.assertEqual(self.a['state'][6],0);self.assertEqual(self.b['state'][6],0)
+  # A native operation cannot reuse another save, expired CAST or moved location.
+  with self.assertRaises(ValueError):self.s.core_story.handle(self.a,['CORE','f'*32,'DIALOG','rydel','view'])
+  self.a['canonical_location']['expires']=0
+  with self.assertRaises(ValueError):panel(self.a,'view')

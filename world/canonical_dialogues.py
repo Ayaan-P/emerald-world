@@ -43,13 +43,13 @@ def lines(session,trainer,current):
     return result
 
 
-def command(server,conn,actor,current,args):
+def command(server,conn,actor,current,args,*,native=False):
     from .canonical_cast import BINDINGS,check_actor_location
     guild=server.guilds._require(conn['id'])[0];trainer=conn['id'];op=args[0]
     if op=='converse' and len(args)==1:
         proposal=(current or {}).get('council')
         if not proposal or proposal.get('mode','unanimous')!='speaker':raise GuildError('This actor has no speaker-led shared question.')
-        if not (conn.get('state') or [0]*7)[6]:raise GuildError('Stand ready at the original actor to speak.')
+        if not native and not (conn.get('state') or [0]*7)[6]:raise GuildError('Stand ready at the original actor to speak.')
         try:check_actor_location(server,conn,actor)
         except ValueError:raise GuildError('Visit the original actor before starting a conversation.') from None
         old=server.db.execute('SELECT id,status,expires FROM canonical_dialogues WHERE guild_id=? AND actor=? AND version=?',(guild,actor,current['version'])).fetchone()
@@ -79,7 +79,7 @@ def command(server,conn,actor,current,args):
         with server.db:server.db.execute('UPDATE canonical_dialogues SET members=?,advice=?,status=? WHERE id=?',(json.dumps(members),json.dumps(advice),status,session['id']))
         return ['You left the conversation. Existing public decisions remain unchanged.']
     if session['status']!='open':raise GuildError('This conversation is no longer open.')
-    if not (conn.get('state') or [0]*7)[6]:raise GuildError('Stand ready at the original actor to participate.')
+    if not native and not (conn.get('state') or [0]*7)[6]:raise GuildError('Stand ready at the original actor to participate.')
     try:check_actor_location(server,conn,actor)
     except ValueError:raise GuildError('Visit the original actor before joining or answering.') from None
     if op=='listen' and len(args)==2:
@@ -112,3 +112,54 @@ def command(server,conn,actor,current,args):
 def relevant(event,actor):
     return (event.get('event')=='canonical_speaker_decided' and event.get('character_id')==actor
             and event.get('publication')=='explicit_speaker_choice_with_optional_advice')
+
+
+def native_panel(server,conn,run,key,guard):
+    """Script-locked field UI, bound to a fresh actual CAST context.
+
+This exception never weakens normal chat admission or writes client readiness.
+"""
+    from .canonical_cast import location,records,check_actor_location
+    actor,map_name=location(key);current=records(server.module_state).get(actor)
+    reached=conn.get('canonical_location') or {}
+    if (not current or reached.get('actor')!=actor or reached.get('run')!=run
+            or conn.get('core_active_run')!=run or reached.get('version')!=current['version']
+            or reached.get('expires',0)<time.monotonic() or reached.get('map')!=map_name):
+        raise ValueError('Shared native panel requires current original CAST context')
+    check_actor_location(server,conn,actor)
+    proposal=current.get('council')
+    if not proposal or proposal.get('mode','unanimous')!='speaker':raise ValueError('No speaker-led panel')
+    guild=server.guilds._require(conn['id'])[0]
+    parts=guard.split(':');op=parts[0]
+    existing=server.db.execute('SELECT id FROM canonical_dialogues WHERE guild_id=? AND actor=? AND version=?',(guild,actor,current['version'])).fetchone()
+    session=read(server,existing[0],guild,actor) if existing else None
+    if session and (session['status']=='cancelled' or session['status']=='expired' or session['status']=='open' and session['expires']<time.time()):session=None
+    if op=='view' and len(parts)==1:pass
+    elif op=='open' and parts==['open',str(current['version'])]:
+        if session is not None:raise ValueError('Conversation changed; inspect again')
+        command(server,conn,actor,current,['converse'],native=True)
+        identifier=server.db.execute('SELECT id FROM canonical_dialogues WHERE guild_id=? AND actor=? AND version=?',(guild,actor,current['version'])).fetchone()[0]
+        session=read(server,identifier,guild,actor)
+    elif len(parts) in (3,4) and session and parts[1]==session['id'] and parts[2]==str(current['version']):
+        if op=='join' and len(parts)==3:
+            command(server,conn,actor,current,['listen',session['id']],native=True)
+        elif op=='pick' and len(parts)==4 and parts[3] in ('1','2','3'):
+            options=sorted(proposal['options']);index=int(parts[3])-1
+            if index>=len(options):raise ValueError('Unknown option')
+            role='choose' if session['speaker']==conn['id'] else 'advise'
+            command(server,conn,actor,current,[role,session['id'],options[index]],native=True)
+        else:raise ValueError('Invalid native conversation action')
+        session=read(server,session['id'],guild,actor)
+    else:raise ValueError('Stale native conversation action')
+    role=0;advice={};identifier='-'
+    if session:
+        identifier=session['id']
+        members=json.loads(session['members'])
+        if conn['id'] in members:
+            role=3 if session['status']=='chosen' else 1 if session['speaker']==conn['id'] else 2
+            advice=json.loads(session['advice'])
+    options=[dict(label=proposal['options'][key],advice=list(advice.values()).count(key)) for key in sorted(proposal['options'])]
+    question=proposal['question']
+    if role==3 and session.get('choice'):
+        question='Speaker chose '+proposal['options'][session['choice']]+'. Not group consensus.'
+    return dict(world_id=server.memory.world_id,version=current['version'],session=identifier,role=role,question=question,options=options)

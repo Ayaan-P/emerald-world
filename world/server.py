@@ -830,7 +830,9 @@ class WorldServer:
                     result = self.core_story.handle(conn, fields[:5] if nonce else fields)
                     if nonce:
                         prefix='CORE REPLY '+nonce+' '+fields[1]+' '+fields[2]+' '+fields[3]+' '
-                        if fields[2] in ('OFFER','CAST'):
+                        if fields[2]=='DIALOG':
+                            reply=' '.join([result['world_id'],str(result['version']),result['session'],str(result['role']),str(len(result['options'])),result['question'].encode().hex()]+[value for option in result['options'] for value in (option['label'].encode().hex(),str(option['advice']))])
+                        elif fields[2] in ('OFFER','CAST'):
                             reply=result['world_id']+' '+result['digest']+' '+(result['briefing']+' '+result['objective']).encode().hex()
                         else:
                             reply='OK'

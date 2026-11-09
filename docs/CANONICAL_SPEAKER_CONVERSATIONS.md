@@ -41,3 +41,31 @@ listener opt-in, personal-choice isolation, actual author reaction and later sha
 public response, restart, withdrawal, expiration, version change and capacity.
 These use deterministic author fixtures and actual authority dispatch. No native
 patch/pin change is needed; Maya still owns rendered/live-model integration QA.
+
+## Paired native field overlay
+
+The paired native candidate adds SELECT at the existing reviewed original-NPC
+supplemental conversation point. It renders the public question using the actual
+field message box, then explicit start/join disclosure, optional advice counts
+and paged choices. SELECT changes pages, A starts/joins/advises/chooses, and B
+returns to the original script. No new NPC, script pointer, flag write or field
+unlock is introduced. B returns from the overlay, not withdrawal of previously
+shared advice; the existing leave command remains available.
+
+The new optional DIALOG request is bound to the actual preceding CAST actor,
+map alias, save lineage, actor version and two-minute context lifetime. A fresh
+field position is still required. This is a narrow native-script context exception
+to chat's ready=1 rule, because original NPC scripts hold controls. Chat cannot
+use that exception, and the implementation never sets the player's readiness.
+Native preview is read-only; joining and choosing require explicit separate A
+input. Late/stale/refused/expired responses cannot switch actor or retry a choice.
+Older authorities refuse the optional request and the original script resumes.
+
+The field overlay shows each participant's own role and public option/advice
+counts. It is not a synchronized camera/cutscene, automatic listening to someone
+else's private text, or real-time polling of every suggestion. Reopening the
+panel refreshes the state. An asynchronous later author response appears through
+the normal next original-NPC conversation; the guild-chat transcript also remains
+available. Actual rendered timing, input feel and complete linked native build
+still require Maya's QA. Tests compile the real adapter with deterministic field
+message/input stubs and exercise authority admission at script-locked readiness.

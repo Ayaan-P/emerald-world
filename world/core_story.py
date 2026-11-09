@@ -139,6 +139,9 @@ class CoreStory:
             raise ValueError('Invalid canonical story request.')
         _, run, action, key, confirmation = fields
         trainer = conn['id']
+        if action=='DIALOG':
+            from .canonical_dialogues import native_panel
+            return native_panel(self.s,conn,run,key,confirmation)
         if action=='MILE':
             from .campaign_milestones import handle
             return handle(self.s,conn,run,key,confirmation)
