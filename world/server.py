@@ -1561,7 +1561,7 @@ class WorldServer:
                     except Exception:peer['closing']=True
             return {'ok':True,'identity':identity,'revision':revision,'tiles':len(merged),'changed':True,'queued':queued,'delivery_failed':delivery_failed}
 
-    def set_shared_geometry(self, identity, tiles, replace=False, *, expected_world_id=None, expected_revision=None, history_evidence=None):
+    def set_shared_geometry(self, identity, tiles, replace=False, *, expected_world_id=None, expected_revision=None, history_evidence=None, actor_tool_commit=None):
         """Commit connected terrain geometry only while the generated area is empty."""
         from .shared_terrain import validate,encode,project
         if type(identity) is not str or not re.fullmatch(r'[0-9a-f]{64}',identity) or type(tiles) is not list or type(replace) is not bool or len(tiles)>512 or (not tiles and not replace):raise ValueError('invalid shared geometry request')
@@ -1596,7 +1596,11 @@ class WorldServer:
                 if kind is None:merged.pop((x,y),None)
                 else:merged[(x,y)]=kind
             payload=encode(cave,merged)
-            if payload==old:return {'ok':True,'identity':identity,'revision':revision,'tiles':len(merged),'changed':False}
+            if payload==old:
+                result={'ok':True,'identity':identity,'revision':revision,'tiles':len(merged),'changed':False}
+                if actor_tool_commit is not None:
+                    with self.db:actor_tool_commit(result)
+                return result
             if revision>=2147483647:raise ValueError('terrain revision exhausted')
             reset=f'CAVE RESET {identity}\n';recipients=[p for p in peers if p.get('cave_ack')==identity or p.get('cave_offer')==identity]
             if any(len(p['out'])+len(reset)>MAX_QUEUE for p in recipients):raise ValueError('trainer connection is busy')
@@ -1608,6 +1612,8 @@ class WorldServer:
                                        revision=identity, terrain_revision=revision,
                                        tiles=terrain_delta(cave, old, payload),
                                        **({'history_evidence':history_evidence} if history_evidence is not None else {})))
+                    if actor_tool_commit is not None:
+                        actor_tool_commit(dict(ok=True,identity=identity,revision=revision,tiles=len(merged),changed=True))
                 self.revision = self.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
             except sqlite3.Error:raise ValueError('shared geometry could not be persisted') from None
             self._terrain_walk_cache=(identity,revision,project(cave,payload));queued=0;delivery_failed=0
