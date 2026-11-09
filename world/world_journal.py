@@ -76,6 +76,10 @@ def describe(event, place=None):
         from .canonical_cast import BINDINGS
         title=BINDINGS[event['character_id']]['name']+' opened a shared project'
         details=[event['title'],'Executable public choices installed; no physical participation or completed work implied.']
+    elif kind == 'canonical_action_obstructed':
+        from .canonical_cast import BINDINGS
+        title=BINDINGS[event['character_id']]['name']+' encountered a changed project'
+        details=['A retained project choice was unavailable. The actor can reconsider their plan.', 'No action completed and no cause or blame is inferred.']
     elif kind == 'canonical_world_action_committed':
         from .canonical_cast import BINDINGS
         title=BINDINGS[event['character_id']]['name']+' changed a shared opportunity'

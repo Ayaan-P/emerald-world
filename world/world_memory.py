@@ -83,6 +83,8 @@ def evidence_index(event, *, current_catalog=False):
     elif event.get('event') == 'character_changed':
         words.extend((event['character_id'], event['after']['name'], event['after']['role'],
                       event['after']['reason'], *event['after']['goals']))
+    elif event.get('event') == 'canonical_action_obstructed':
+        words.extend((event['character_id'],event['intention'],event['action']['pack'],'unavailable retained action not completed'))
     elif event.get('event') == 'canonical_intention_fulfilled':
         words.extend((event['character_id'],event['intention'],event['kind'],event['target'],'fulfilled retained intention'))
     elif event.get('event') in ('canonical_contribution_proposed','canonical_contribution_resolved'):
