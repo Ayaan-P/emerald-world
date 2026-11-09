@@ -16,6 +16,40 @@ def apply_connection(result, request):
     return result
 
 
+def prepare_connection(server, caves, args, identity, occupied):
+    from .region_characters import validate_region_objects
+    objects = []
+    for i, cave in enumerate(caves):
+        label = server.db.execute('SELECT label FROM generated_area_archive WHERE identity=?',
+                                  (caves[1-i].identity,)).fetchone()[0] or 'Cave'
+        text = ('To ' + ''.join(c if c.isascii() and (c.isalnum() or c in ' .-') else ' ' for c in label))[:28]
+        obj = dict(id='passage_' + identity[:14] + str(i), kind='prop', portable=False,
+                   group=server.cave_map[0], num=server.cave_map[1], region_revision=cave.identity,
+                   gfx=0, text=text)
+        if any(o['id'] == obj['id'] for o in occupied):
+            raise ValueError('Connection identity collision')
+        # Choose a reachable, non-sealing tile near the entrance, not a warp.
+        candidates = sorted(((x,y) for y in range(1,30) for x in range(1,30)
+                             if cave.walkable(x,y)), key=lambda p:(p[0]+p[1],p[1],p[0]))
+        for x,y in candidates:
+            obj.update(x=x,y=y)
+            proposed = dict(state=server.module_state, objects=occupied+objects+[obj], tiles=[])
+            try:
+                server._validated(proposed)
+                validate_region_objects(server, proposed['objects'], proposed['state'])
+            except ValueError:
+                continue
+            objects.append(copy.deepcopy(obj))
+            break
+        else:
+            raise ValueError('No safe connection placement; preserve population, players and routes')
+    request = dict(id=identity, objects=objects, links=[
+        dict(object=objects[i]['id'], source=caves[i].identity,
+             place=args['target' if i==0 else 'source'], destination=caves[1-i].identity)
+        for i in range(2)])
+    return request
+
+
 def connect(server, actor, row, args):
     from .actor_runtime import Pending
     from .cave_links import destination
@@ -37,35 +71,7 @@ def connect(server, actor, row, args):
             raise ValueError('This pair already has an authored connection')
         # Resume admitted objects after a failed installation/receipt, never respawn.
         return Pending(copy.deepcopy(saved), lambda: None)
-    objects = []
-    for i, cave in enumerate(caves):
-        label = server.db.execute('SELECT label FROM generated_area_archive WHERE identity=?',
-                                  (caves[1-i].identity,)).fetchone()[0] or 'Cave'
-        text = ('To ' + ''.join(c if c.isascii() and (c.isalnum() or c in ' .-') else ' ' for c in label))[:28]
-        obj = dict(id='passage_' + identity[:14] + str(i), kind='prop', portable=False,
-                   group=server.cave_map[0], num=server.cave_map[1], region_revision=cave.identity,
-                   gfx=0, text=text)
-        if any(o['id'] == obj['id'] for o in server.objects):
-            raise ValueError('Connection identity collision')
-        # Choose a reachable, non-sealing tile near the entrance, not a warp.
-        candidates = sorted(((x,y) for y in range(1,30) for x in range(1,30)
-                             if cave.walkable(x,y)), key=lambda p:(p[0]+p[1],p[1],p[0]))
-        for x,y in candidates:
-            obj.update(x=x,y=y)
-            proposed = dict(state=server.module_state, objects=server.objects+objects+[obj], tiles=[])
-            try:
-                server._validated(proposed)
-                validate_region_objects(server, proposed['objects'], proposed['state'])
-            except ValueError:
-                continue
-            objects.append(copy.deepcopy(obj))
-            break
-        else:
-            raise ValueError('No safe connection placement; preserve population, players and routes')
-    request = dict(id=identity, objects=objects, links=[
-        dict(object=objects[i]['id'], source=caves[i].identity,
-             place=args['target' if i==0 else 'source'], destination=caves[1-i].identity)
-        for i in range(2)])
+    request = prepare_connection(server, caves, args, identity, server.objects)
     helper = inspect.getsource(apply_connection).replace('def apply_connection(', 'def _connection_'+identity[:16]+'(', 1)
     suffix=identity[:16]
     source = (server.candidate.source+'\n'+f'_connection_previous_{suffix}=update\n'+helper+'\n'+
