@@ -50,6 +50,8 @@ def traverse(server,actor,row,args):
  context['recalled_history']=dict(events=[dict(json.loads(server.db.execute("SELECT data FROM events WHERE seq=? AND kind='world_memory'",(seq,)).fetchone()[0]),seq=seq) for seq in current['evidence']])
  compiled=compile_actions([action],context)
  definition=hashlib.sha256(json.dumps([action],sort_keys=True).encode()).hexdigest()
+ from .actor_cargo import freeze
+ freeze(server,definition,actor,source,after)
  sha=hashlib.sha256(compiled.encode()).hexdigest();path=server.runtime.candidates/('cave_travel_'+sha+'.py')
  try:
   with path.open('x') as f:f.write(compiled)
