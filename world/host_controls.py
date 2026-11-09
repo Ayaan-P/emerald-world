@@ -26,6 +26,10 @@ class HostControls:
     def request(self, request, server):
         from .server import ID
         action = request.get('action')
+        if action=='practice':
+            if set(request)!={'command','action'}:raise ValueError('Invalid example request')
+            from .practice_circuit import install
+            return dict(self.status(),practice=install(server))
         targeted = action in ('remove', 'allow')
         expected = {'command', 'action', 'trainer'} if targeted else {'command', 'action'}
         if (set(request) != expected or type(action) is not str
@@ -57,7 +61,10 @@ class HostControls:
                 for conn in list(server.connections.values()):
                     if conn['id'] is not None and not conn['closing']:
                         server._error(conn, 'HOST_SPLIT')
-        return self.status()
+        from .practice_circuit import status as practice_status
+        result=self.status();practice=practice_status(server)
+        if practice:result['practice']=practice
+        return result
 
 
 class HostControlsPanel:
@@ -98,6 +105,7 @@ class HostControlsPanel:
         bar = ttk.Frame(self.page)
         bar.grid(row=6, sticky='w', pady=8)
         self._button(bar, 'split', 'Stop playing together')
+        self._button(bar, 'practice', 'Install practice circuit')
         ttk.Label(self.page, textvariable=self.message, wraplength=700, justify='left').grid(row=7, sticky='w', pady=8)
         self.page.bind('<Destroy>', self._destroyed, add='+')
 
@@ -135,6 +143,9 @@ class HostControlsPanel:
                  'Disconnect everyone so each game continues alone? Save from each game menu as usual.'),
                 parent=self.app.window):
             return
+        if action=='practice' and not messagebox.askyesno('Optional practice example',
+                'Add a separate Hoenn Practice venue and four new practice coaches? Existing worlds and story stay unchanged. Requires a native build with --generated-regions. No starter, money, healing or recruitment is granted.',parent=self.app.window):
+            return
         # A Tk modal pumps the normal event loop. Recheck authority/lifecycle
         # ownership after confirmation, before queuing any persistent mutation.
         if (self.app.closing or self.app.pending is not None
@@ -142,6 +153,7 @@ class HostControlsPanel:
             self.message.set('The hosted world changed. Wait for its operation to finish, then refresh host controls.')
             return
         self.server = server
+        self.action = action
         self.future = self.app.executor.submit(self._request, server, action, trainer)
         for button in self.buttons.values():
             button.state(['disabled'])
@@ -174,7 +186,7 @@ class HostControlsPanel:
                 self.message.set('The hosted world changed. Refresh its host controls.')
             elif not result.get('ok'):
                 # Only fixed host-policy errors are returned, not diagnostics.
-                self.message.set('Could not apply host control. Finish or cancel native activities, then refresh and retry.')
+                self.message.set('Practice installation needs persistent area archival, four free object slots and an idle mechanic. Existing data was not replaced.' if getattr(self,'action',None)=='practice' else 'Could not apply host control. Finish or cancel native activities, then refresh and retry.')
             else:
                 if self.roster_server is not self.server:
                     self.trainer.set('')
@@ -184,7 +196,8 @@ class HostControlsPanel:
                     self.trainer.set('')
                 self.message.set('World admission is ' + result['admission'] + '.\nConnected trainers: '
                     + (', '.join(players) or 'none') + '.\nRemoved trainers: '
-                    + (', '.join(result['removed']) or 'none') + '.')
+                    + (', '.join(result['removed']) or 'none') + '.'
+                    + ('\nPractice circuit '+result['practice']['status']+'. '+result['practice']['instruction'] if result.get('practice') else ''))
         except Exception:
             self.message.set('Host controls unavailable. Check that this world is still hosted, then refresh.')
         self.future = None
