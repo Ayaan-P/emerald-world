@@ -73,14 +73,19 @@ def use(server,actor,row,args):
         or abs(source['x']-obj['x'])+abs(source['y']-obj['y'])!=1):raise ValueError('Object action unavailable, stale or not adjacent')
     execution=server.actor_tool_execution
     request=dict(actor=actor,version=current['version'],object=obj['id'],action=args['action'],target=copy.deepcopy(obj),actions=offer['actions'],plan=execution[2]['id'],step=execution[3]['id'])
-    return stage(server,request)
+    return stage(server,request,position=(source['x'],source['y']))
 
 
-def stage(server,request):
+def stage(server,request,position=None):
     from .actor_runtime import Pending
     obj=request['target']
+    old=server.candidate.source
+    if obj['id'] in server.module_state.get('world_pushables',{}):
+        from .shared_pushing import prepare
+        if position is None:raise ValueError('Authority position required')
+        old=prepare(server,request,position)
     identity=digest(request);request['id']=identity;suffix=identity[:16]
-    source_code=dispatch_source(server.candidate.source,request,server.module_state)
+    source_code=dispatch_source(old,request,server.module_state)
     if len(source_code.encode())>256*1024:raise ValueError('Consolidate source before another interaction')
     sha=hashlib.sha256(source_code.encode()).hexdigest();path=server.runtime.candidates/('object_'+sha+'.py')
     try:
@@ -116,7 +121,7 @@ def player_use(server,conn,obj):
     request=dict(actor='',version=0,object=obj['id'],action=action,target=copy.deepcopy(obj),actions=offer['actions'],
         player_use=True,nonce=digest([conn['id'],conn['seq'],server.candidate.sha256]))
     try:
-        pending=stage(server,request)
+        pending=stage(server,request,position=tuple(conn['state'][2:4]))
         server.object_use_pending=dict(conn=conn,pending=pending.data,action=action)
         pending.dispatch()
         notice('Using object...')
