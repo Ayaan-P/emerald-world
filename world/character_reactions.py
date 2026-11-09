@@ -20,6 +20,8 @@ def actors(state):
 
 
 def dynamic_result(event, identity, character):
+    from .npc_conversations import relevant as speech_relevant
+    if speech_relevant(event,identity):return True
     from .actor_knowledge import relevant as knowledge_relevant
     if knowledge_relevant(event,identity):return True
     from .population_agents import creation
