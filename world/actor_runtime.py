@@ -70,6 +70,10 @@ CAPABILITIES['world.address']=Capability('Speak publicly to an adjacent world ch
 from .actor_objects import use as use_object,poll as poll_object
 CAPABILITIES['world.use_object']=Capability('Invoke an explicitly advertised local object handler through normal mechanic validation.',dict(object='observed non-character object id',action='advertised action id',object_revision='exact observed object/source revision'),'Committed own object state, text/appearance or one-cell position change. No native items, inventory or implied rewards.',use_object,poll_object,('world',))
 
+from .prop_custody import take as take_prop,place as place_prop
+CAPABILITIES['world.take_prop']=Capability('Take an existing explicitly portable adjacent world prop into authority custody.',dict(object='observed portable prop id',object_revision='observed portable_revision'),'Exclusive durable custody; prop disappears from map. No native inventory or resource minting.',take_prop,None,('world',))
+CAPABILITIES['world.place_prop']=Capability('Place an owned prop beside this actor on the same exact generated map.',dict(object='owned prop id',version='current custody version',x='adjacent integer',y='adjacent integer'),'Same prop identity restored to actual map with collision validation; no carrying animation.',place_prop,None,('world',))
+
 def actor_records(server):
     from .character_reactions import actors
     rows=actors(server.module_state)
@@ -111,10 +115,11 @@ def definition(plan):return json.dumps(plan,sort_keys=True,separators=(',',':'))
 def inspect_runtime(server):
     from .canonical_cast import records
     install(server.db)
+    from .prop_custody import inventory
     from .actor_navigation import discover as discover_navigation
     return dict(capabilities={key:dict(description=c.description,arguments=c.arguments,outcome=c.outcome,actor_kinds=c.kinds) for key,c in CAPABILITIES.items()},
         available_actions=server.opportunities.actor_actions()[:32],actors={a:('canonical' if r.get('canonical') else 'world') for a,r in actor_records(server).items()},
-        navigation=discover_navigation(server),
+        navigation=discover_navigation(server),carried_props=inventory(server),
         result_references='Use {result: earlier_step_id, key: scalar_result_key}. Reserved key tool_receipt yields that successful step durable receipt sequence.',
         plans=[dict(actor=actor,plan=row['plan'],receipts=[dict(step=s,status=status,result=json.loads(result),seq=seq)
             for s,status,result,seq in server.db.execute('SELECT step,status,result,seq FROM actor_tool_receipts WHERE actor=? AND plan=? ORDER BY seq',(actor,row['plan']['id']))])

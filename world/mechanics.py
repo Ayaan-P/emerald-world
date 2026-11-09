@@ -26,7 +26,7 @@ def validate_objects(objects):
         raise ValueError('objects must be a list of at most 8 entries')
     seen, locations = set(), set()
     for obj in objects:
-        if type(obj) is not dict or set(obj) - {'region_revision','kind'} != {'id', 'group', 'num', 'x', 'y', 'gfx', 'text'}:
+        if type(obj) is not dict or set(obj) - {'region_revision','kind','portable'} != {'id', 'group', 'num', 'x', 'y', 'gfx', 'text'}:
             raise ValueError('invalid object fields')
         name, text = obj['id'], obj['text']
         if type(name) is not str or not re.fullmatch(r'[A-Za-z0-9_-]{1,24}', name) or name in seen:
@@ -41,6 +41,7 @@ def validate_objects(objects):
         if generated:
             if not 0<=obj['x']<127 or not 0<=obj['y']<127:raise ValueError('invalid generated object coordinates')
         else:validate_coords(obj['group'],obj['num'],obj['x'],obj['y'])
+        if 'portable' in obj and (obj.get('kind')!='prop' or type(obj['portable']) is not bool):raise ValueError('Only props may declare explicit portable status')
         if obj.get('kind') is not None and (obj['kind']!='prop' or not generated):raise ValueError('Props require exact generated scope')
         if obj['gfx'] not in ((0,1) if obj.get('kind')=='prop' else (7,8)):
             raise ValueError('object graphics must be boy 1 (7) or girl 1 (8)')

@@ -27,3 +27,13 @@ The 32-request source-consolidation bound is inherited by this adapter. No arbit
 ## Verification and limits
 
 Authority tests cover real observed handlers, multiple actors, unsupported/stale/nonadjacent requests, pending versus committed effects, restart, player overlap and legacy entry refusal. A cross-language fixture feeds actual authority REGION_PROP snapshot rows through the production native parser and graphics selector using explicit engine doubles. Full linked-native rendering, interaction animation, live provider behavior and release QA remain unverified. This adds no harvesting, bags, material accounting or fabricated item transfers.
+
+## Custody of existing portable props
+
+A prop may explicitly declare `portable: true`. This is an authored world rule, not an inference from its rock/boulder art. `world.observe` exposes a `portable_revision` fingerprint. `world.take_prop` requires that exact current object and an adjacent stationary actor; the authority atomically records exclusive custody, removes the prop from rendered objects and commits the tool receipt. Nothing is minted. Four props per actor and 32 custody identities per world bound this initial implementation.
+
+`world.place_prop` requires the same owner and custody version, and a free adjacent tile on the same exact generated revision. It restores the same identity, appearance and existing object state. Collision, ready-player and legacy-client checks remain mandatory. A failed placement or receipt leaves custody intact. The ordinary snapshot protocol removes/restores the prop; no carrying sprite or native bag UI is implied.
+
+The authoritative custody table survives restart and takes precedence over a mechanic returning its old object list. An old source cannot recreate a carried duplicate, silently delete a tracked placed prop or reinterpret it as a character. Rebinding the immutable map is blocked while it has carried props, and carriers cannot change generated-map scope until placing them. This is deliberately same-map prop transport, not cross-region inventories, harvesting, resource quantities or Pokémon-item transfer. Native player bags and save structures are untouched.
+
+Capability discovery lists custody owner, version and revision. Place, then another actor may take the same existing prop under the normal adjacency rules. Ownership is not transferred by dialogue or a model assertion. Tests cover actual take -> authority navigation -> place, source refreshes, restart, stale/non-owner actions, rollback and occupied placement. An aged-evidence issue exposed by this longer composition was fixed: recalled navigation evidence now retains its real database sequence.

@@ -51,7 +51,7 @@ def stage(server,actor,current,obj,path,revision):
     action=dict(id=actor,expected_version=current['version'],evidence=current['evidence'],reason='Execute this actor own destination-based navigation plan.',changes={},object=dict(obj,x=path[-1][0],y=path[-1][1]),journey=path)
     context=server.inspect();context['runtime']=dict(previous_source=server.candidate.source if server.candidate else '')
     # Recalled exact references were already admitted for the actor's plan.
-    context['recalled_history']=dict(events=[json.loads(server.db.execute("SELECT data FROM events WHERE seq=? AND kind='world_memory'",(seq,)).fetchone()[0]) for seq in current['evidence']])
+    context['recalled_history']=dict(events=[dict(json.loads(server.db.execute("SELECT data FROM events WHERE seq=? AND kind='world_memory'",(seq,)).fetchone()[0]),seq=seq) for seq in current['evidence']])
     source=compile_actions([action],context);digest=hashlib.sha256(source.encode()).hexdigest()
     journey=hashlib.sha256(json.dumps([action],sort_keys=True).encode()).hexdigest()[:24]
     pathfile=server.runtime.candidates/('navigation_'+digest+'.py')

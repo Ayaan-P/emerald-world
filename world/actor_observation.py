@@ -37,7 +37,11 @@ def observe(server, actor, row, args):
                 and (o['x'], o['y']) in distance]
     from .actor_objects import offers
     for entity in entities:
-        entity.update(offers(server,next(o for o in server.objects if o['id']==entity['id'])))
+        obj=next(o for o in server.objects if o['id']==entity['id'])
+        entity.update(offers(server,obj))
+        if obj.get('kind')=='prop' and obj.get('portable') is True:
+            from .actor_objects import digest
+            entity['portable_revision']=digest(obj)
     return dict(revision=revision, x=origin[0], y=origin[1], actor_version=current['version'],
                 observed_revision=server.revision, radius=args['radius'],
                 cells=[dict(x=x,y=y,walkable=cells[(x,y)]) for x,y in sorted(cells)],
