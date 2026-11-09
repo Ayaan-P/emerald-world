@@ -851,7 +851,9 @@ class WorldServer:
                     result = self.core_story.handle(conn, fields[:5] if nonce else fields)
                     if nonce:
                         prefix='CORE REPLY '+nonce+' '+fields[1]+' '+fields[2]+' '+fields[3]+' '
-                        if fields[2]=='RING':
+                        if fields[2]=='BMODE':
+                            reply=result['battle_mode']
+                        elif fields[2]=='RING':
                             reply=self.memory.world_id+' '+result['caller']+' '+result['token']+' '+(result['text'].encode().hex() if result['text'] else '-')
                         elif fields[2] in ('DIALOG','PROJECT'):
                             reply=' '.join([result['world_id'],str(result['version']),result['session'],str(result['role']),str(len(result['options'])),result['question'].encode().hex()]+[value for option in result['options'] for value in (option['label'].encode().hex(),str(option['advice']))])
