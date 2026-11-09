@@ -7,6 +7,8 @@ def install(db):
     db.executescript('''CREATE TABLE IF NOT EXISTS battle_campaigns(id TEXT PRIMARY KEY, actor TEXT, document TEXT);
     CREATE TABLE IF NOT EXISTS battle_campaign_runs(trainer TEXT, lineage TEXT, campaign TEXT, data TEXT,
       PRIMARY KEY(trainer,lineage));''')
+    from .campaign_preparation import install as preparation_install
+    preparation_install(db)
 
 
 def publish(server, actor, row, args):
@@ -19,8 +21,10 @@ def publish(server, actor, row, args):
     nodes=d['nodes']
     if type(nodes) is not dict or not 1<=len(nodes)<=16 or type(d['entry']) is not str or d['entry'] not in nodes:raise ValueError('Use 1..16 nodes and an entry')
     for key,n in nodes.items():
-        if not re.fullmatch('[a-z][a-z0-9_]{0,15}',key) or type(n) is not dict or set(n)!={'opponent','win','loss'}:raise ValueError('Invalid battle node')
+        if not re.fullmatch('[a-z][a-z0-9_]{0,15}',key) or type(n) is not dict or not {'opponent','win','loss'}<=set(n) or set(n)-{'opponent','win','loss','preparation'}:raise ValueError('Invalid battle node')
         if type(n['opponent']) is not str or n['opponent'] not in cast or not cast[n['opponent']]['team']:raise ValueError('Opponent must be an existing world trainer with a team')
+        from .campaign_preparation import validate as validate_preparation
+        validate_preparation(n.get('preparation',{}),cast)
         for outcome in ('win','loss'):
             edges=n[outcome]
             if type(edges) is not list or len(edges)>4 or any(type(x) is not str or x not in nodes for x in edges) or len(set(edges))!=len(edges):raise ValueError('Invalid route choices')
@@ -74,9 +78,12 @@ def command(server,conn,words):
             return ['Battle campaign left. Pokemon and normal story unchanged.']
         elif len(words)==2 and words[0]=='choose':
             if not current or current[1]['status']!='choice' or words[1] not in current[1]['choices']:raise ValueError('Choose one of the offered routes')
-            key,data=current;data.update(node=words[1],status='ready',choices=[])
+            key,data=current;data.update(node=words[1],status='ready',choices=[]);data.pop('preparation',None)
             with server.db:save(server,conn,key,data)
-        elif words!=['status']:raise ValueError('Use /guild campaign list|start ID|status|choose NODE|leave')
+        elif len(words)==2 and words[0]=='prepare':
+            from .campaign_preparation import choose
+            choose(server,conn,current,words[1])
+        elif words!=['status']:raise ValueError('Use /guild campaign list|start ID|status|choose NODE|prepare OPTION|leave')
         current=active(server,conn)
         if not current:return ['No active battle campaign.']
         key,data=current;d=document(server,key)
@@ -84,7 +91,8 @@ def command(server,conn,words):
         if data['status']=='choice':return [d['title']+': choose your next opponent.', 'Routes: '+', '.join(data['choices']), 'Use /guild campaign choose NODE.']
         opponent=d['nodes'][data['node']]['opponent']
         obj=next((x for x in server.objects if x['id']==opponent),None)
-        return ([d['title']+': '+data['node'], 'Approach '+opponent+' and choose Battle.', ('Location: map %s/%s tile %s,%s'%(obj['group'],obj['num'],obj['x'],obj['y'])) if obj else 'Opponent currently away; progress is retained.'] + (['Region: '+obj['region_revision']] if obj and obj.get('region_revision') else []))
+        from .campaign_preparation import describe
+        return (describe(server,data,d['nodes'][data['node']])+[d['title']+': '+data['node'], 'Approach '+opponent+' and choose Battle.', ('Location: map %s/%s tile %s,%s'%(obj['group'],obj['num'],obj['x'],obj['y'])) if obj else 'Opponent currently away; progress is retained.'] + (['Region: '+obj['region_revision']] if obj and obj.get('region_revision') else []))
     except (ValueError,TypeError,KeyError) as exc:raise GuildError(str(exc)) from None
 
 
