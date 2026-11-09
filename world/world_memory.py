@@ -97,6 +97,8 @@ def evidence_index(event, *, current_catalog=False):
         words.extend((event['character_id'],event['character_name'],event['course'],event['title'],'playable relay project'))
     elif event.get('event') == 'canonical_letter_delivered':
         words.extend((event['sender'],event['recipient'],event['text'],'public cast correspondence'))
+    elif event.get('event') in ('canonical_project_requested','canonical_project_responded'):
+        words.extend((event['sender'],event['recipient'],event['request_id'],event['message'],'public cast project exchange'))
     elif event.get('event') == 'canonical_actor_changed':
         words.extend((event['character_id'],event['character_name'],event['after']['goal'],event['after']['dialogue'],event['after']['reason']))
     elif event.get('event') == 'canonical_story_outcome':

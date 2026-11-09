@@ -153,6 +153,8 @@ class WorldServer:
         install_calls(self.db)
         from .canonical_initiatives import install as install_initiatives
         install_initiatives(self.db)
+        from .canonical_project_requests import install as install_project_requests
+        install_project_requests(self.db)
         from .canonical_rapport import install as install_rapport
         install_rapport(self.db)
         from .canonical_scenes import CanonicalScenes
@@ -1900,6 +1902,7 @@ class WorldServer:
 
     def inspect(self):
         from .canonical_initiatives import view as initiative_view
+        from .canonical_project_requests import view as project_request_view
         with self.lock:
             players = []
             for name, conn in sorted(self.peers.items()):
@@ -1917,6 +1920,7 @@ class WorldServer:
                         world_memory=self.memory.context(self),
                         cast_world_actions=self.opportunities.actor_actions()[:32],
                         cast_initiatives=initiative_view(self),
+                        cast_project_requests=project_request_view(self),
                         sharing=(dict(endpoint=self.sharing['endpoint'], listen=getattr(self, 'sharing_listen', None))
                                  if self.sharing else None),
                         capacity=dict(players=self.max_players, controls=self.max_controls,
@@ -2054,6 +2058,8 @@ class WorldServer:
                             publish_cast_project(self,change)
                             from .canonical_initiatives import publish as publish_initiative
                             publish_initiative(self,change)
+                            from .canonical_project_requests import publish as publish_project_request
+                            publish_project_request(self,change)
                             from .canonical_studies import publish as publish_cast_study
                             publish_cast_study(self,change)
                             from .canonical_collaboration import apply as apply_cast_collaboration

@@ -180,3 +180,35 @@ This is an abstract shared project, not animated labor or travel. The fixture
 then revises the goal from the actual action receipt and verifies retained state
 after restart. It is not a shipped fixed storyline, a live model transcript or
 a rendered playtest; Maya still owns linked/native/gameplay QA.
+
+### Cast-to-cast project invitations with executable roles
+
+An agent may now author `project_request` on an existing original actor. The
+sender must own the actual installed initiative, and the request names an exact
+currently available shared action already assigned to a different existing
+actor. Publication records a request, not agreement or completion. The addressed
+actor's normal enrolled author turn independently chooses `project_reply`:
+accept or decline, with its own public explanation.
+
+Accepting executes precisely that recipient's assigned action through existing
+shared-story authority, in the same transaction as the response and action
+receipts. This can open a different real player-facing project scene through the
+existing story/NPC project interfaces. Declining changes no project state. The
+sender can reconsider its project or directional relationship based on the
+recipient's actual response. No trainer is required to do the actors' work;
+no physical meeting, reciprocal friendship, travel, reward or native story flag
+is inferred. Fictional speech remains data, not instructions to the host.
+
+`inspect.cast_project_requests` exposes the exact public request, availability
+and response receipts to the author. Changed shared revision, withdrawal or an
+already answered request prevents execution. There are eight immutable requests
+per sender; no hidden worker or automatic retries. A failed receipt rolls back
+the role's state change with the whole actor update. Existing actors' own
+unrelated intentions and normal Emerald services are untouched.
+
+The fixture has Rydel request Wally's distinct perspective in a real executable
+shared project; Wally's independent acceptance commits his assigned role and
+changes the available shared scene for both trainers. A refusal path keeps the
+original scene. This is reusable social collaboration, not a shipped fixed arc
+or claimed live model/rendered gameplay. All new code is app-side; the paired
+native interfaces and pin are unchanged.
