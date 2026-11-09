@@ -4,6 +4,7 @@ export default function LivingCast({world, available, ready, busy, onRequest}) {
   const [info,setInfo]=useState(null),[provider,setProvider]=useState('anthropic-messages'),[model,setModel]=useState('');
   const [actor,setActor]=useState('canon_rydel'),[purpose,setPurpose]=useState(''),[confirmed,setConfirmed]=useState(false);
   const [working,setWorking]=useState(false),[error,setError]=useState(''),[uncertain,setUncertain]=useState(false);
+  const [practiceDigest,setPracticeDigest]=useState(''),[practiceQA,setPracticeQA]=useState(false),[practiceLimit,setPracticeLimit]=useState(8),[practiceHours,setPracticeHours]=useState(24);
   const pending=useRef(false), goalRequest=useRef(null);
   const [turnLimit,setTurnLimit]=useState(8),[periodHours,setPeriodHours]=useState(24);
   const [goal,setGoal]=useState(''),[goalActor,setGoalActor]=useState('canon_rydel');
@@ -59,6 +60,16 @@ export default function LivingCast({world, available, ready, busy, onRequest}) {
       <button type="button" disabled={!mayChange || !confirmed || !info?.population_agents?.enabled} onClick={()=>call('cast_agent_population',{enabled:true,turn_limit:turnLimit,period_hours:periodHours,confirmed:true})}>Apply recurring agent limits</button>
       <ul aria-label="Automatic character agents">{(info?.population_agents?.characters || []).map(a=><li key={a.id}>{a.id}: {a.status}</li>)}</ul>
       <p>Only future admitted creations qualify. Stopping cancels queued managed turns and following, but cannot undo committed actions or a running provider request. A later explicit world goal takes over that character under the normal goal controls.</p>
+      <details><summary>Validated companion practice runner</summary>
+      <p>Only enable after QA verifies the configured native binary's isolated practice entry. Exercises use NPC-only storage, not player saves or battle victories. Stops with this host; errors halt for inspection.</p>
+      <label>Validated binary SHA256<input value={practiceDigest} maxLength={64} disabled={disabled} onChange={e=>{setPracticeDigest(e.target.value);setPracticeQA(false);}} /></label>
+      <label><input type="checkbox" checked={practiceQA} disabled={disabled} onChange={e=>setPracticeQA(e.target.checked)} />I have verified this exact binary's isolated practice entry.</label>
+      <label>Exercises per NPC per period<input type="number" min="1" max="64" value={practiceLimit} onChange={e=>setPracticeLimit(Number(e.target.value))} /></label>
+      <label>Practice period hours<input type="number" min="1" max="168" value={practiceHours} onChange={e=>setPracticeHours(Number(e.target.value))} /></label>
+      <button type="button" disabled={!mayChange || !practiceQA || !/^[a-f0-9]{64}$/.test(practiceDigest) || info?.practice?.running} onClick={()=>call('cast_agent_practice_start',{digest:practiceDigest,validated_native:true,turn_limit:practiceLimit,period_hours:practiceHours})}>Start bounded practice worker</button>
+      <button type="button" disabled={!mayChange || !info?.practice?.running} onClick={()=>call('cast_agent_practice_stop')}>Stop practice worker</button>
+      <p>{info?.practice?.running?'Practice worker running':info?.practice?.failed?'Practice worker halted; inspect the host ledger':'Practice worker stopped'}</p>
+      </details>
       <h3>Build the world with an agent</h3>
       <p>Describe an outcome in your own words. The selected existing actor can compose supported world capabilities and reconsider actual results. This queues a request and follows that actor's results; it does not start the provider or promise completion. Goals go to your configured provider and resulting world changes can be public.</p>
       <label>World goal actor<select value={goalActor} disabled={disabled} onChange={e=>setGoalActor(e.target.value)}>{(info?.goal_actors || []).map(a=><option value={a.id} key={a.id}>{a.name}</option>)}</select></label>

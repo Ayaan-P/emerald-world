@@ -18,14 +18,17 @@ challenge uses the existing CHARPK2 full-state transport. Identity stays fixed.
 
 ## Host and QA boundary
 
-The existing `python -m world.cast_practice_worker` one-shot host workflow remains
-necessary. This PR does not start it in the launcher or attest native QA. Without
-a validated runner the request stays pending, never successful. Existing dispatch
-limits (eight lifetime intentions per actor) remain; an exhausted or failed host
-job needs host inspection, not automatic replay. Failed/uncertain execution does
-not fabricate a tool completion. Withdraw/revise the plan to stop waiting; no
-already committed practice is undone. This limitation is explicit rather than a
-claim of unlimited autonomous training.
+The launcher Living Cast panel offers an advanced validated practice worker. Host
+must attest the exact configured binary SHA256 passed isolated-entry QA; authors
+cannot enable it. Defaults are eight exercises per actor per 24 hours, configurable
+1..64 per 1..168 hours. A durable budget resets on the next eligible claim after
+its period, with no catch-up credits or reset on restart/backward clock. Legacy
+dispatch history remains deduplicated; it does not permanently exhaust new windows.
+One session-owned worker polls every five seconds and stops on disconnect/close.
+It halts on blocked/failed execution for host inspection, never retries uncertain
+work. No persisted auto-start or QA attestation: reopening requires explicit enable.
+The existing CLI one-shot workflow also remains available. Neither workflow
+fabricates completion when absent or halted; withdraw a plan to stop waiting.
 
 Component tests use the actual C practice/battle adapters with fixture Pokemon
 storage/stat APIs. They cover request -> restart -> actual subprocess receipt ->

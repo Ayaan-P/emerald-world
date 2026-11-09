@@ -10,13 +10,13 @@ it('reads only, then starts the explicit provider/model after confirmation',asyn
  const request=vi.fn(async()=>info);render(<LivingCast {...props} onRequest={request}/>);
  await screen.findByText('Current goal: Consider actual events');expect(request).toHaveBeenCalledTimes(1);
  const start=screen.getByRole('button',{name:'Start world author'});expect(start.disabled).toBe(true);
- fireEvent.change(screen.getByLabelText('Exact API model ID'),{target:{value:'selected-claude'}});fireEvent.click(screen.getByRole('checkbox'));fireEvent.click(start);
+ fireEvent.change(screen.getByLabelText('Exact API model ID'),{target:{value:'selected-claude'}});fireEvent.click(screen.getByRole('checkbox',{name:/I authorize this local world author/}));fireEvent.click(start);
  expect(request).toHaveBeenLastCalledWith('cast_agent_start',{world:'local',provider:'anthropic-messages',model:'selected-claude',confirmed:true});
  expect(screen.queryByLabelText(/API key/i)).toBeNull();
 });
 it('does not retry uncertain start',async()=>{
  const request=vi.fn(async(a)=>a==='cast_agent_start'?undefined:info);render(<LivingCast {...props} onRequest={request}/>);
- await screen.findByText('Current goal: Consider actual events');fireEvent.change(screen.getByLabelText('Exact API model ID'),{target:{value:'selected-model'}});fireEvent.click(screen.getByRole('checkbox'));fireEvent.click(screen.getByRole('button',{name:'Start world author'}));
+ await screen.findByText('Current goal: Consider actual events');fireEvent.change(screen.getByLabelText('Exact API model ID'),{target:{value:'selected-model'}});fireEvent.click(screen.getByRole('checkbox',{name:/I authorize this local world author/}));fireEvent.click(screen.getByRole('button',{name:'Start world author'}));
  await screen.findByRole('alert');expect(screen.getByRole('button',{name:'Start world author'}).disabled).toBe(true);expect(request.mock.calls.filter(([a])=>a==='cast_agent_start')).toHaveLength(1);
 });
 it('shows no owner controls for unopened worlds',()=>{
@@ -26,7 +26,7 @@ it('enrolls the original cast together without starting a provider implicitly',a
  const request=vi.fn(async()=>info);render(<LivingCast {...props} onRequest={request}/>);
  await screen.findByText('Current goal: Consider actual events');
  const enroll=screen.getByRole('button',{name:'Initialize and follow original cast'});
- expect(enroll.disabled).toBe(true);fireEvent.click(screen.getByRole('checkbox'));fireEvent.click(enroll);
+ expect(enroll.disabled).toBe(true);fireEvent.click(screen.getByRole('checkbox',{name:/I authorize this local world author/}));fireEvent.click(enroll);
  expect(request).toHaveBeenLastCalledWith('cast_agent_enroll_cast',{world:'local',confirmed:true});
  expect(request.mock.calls.some(([a])=>a==='cast_agent_start')).toBe(false);
 });
@@ -36,7 +36,7 @@ it('queues natural-language goals without starting provider and prevents duplica
  await screen.findByText('Current goal: Consider actual events');
  fireEvent.change(screen.getByLabelText('World-building goal'),{target:{value:'Make a connected outdoor place and populate it.'}});
  const button=screen.getByRole('button',{name:'Queue world-building goal'});expect(button.disabled).toBe(true);
- fireEvent.click(screen.getByRole('checkbox'));fireEvent.click(button);fireEvent.click(button);
+ fireEvent.click(screen.getByRole('checkbox',{name:/I authorize this local world author/}));fireEvent.click(button);fireEvent.click(button);
  expect(request.mock.calls.filter(([a])=>a==='cast_agent_goal')).toHaveLength(1);
  expect(request.mock.calls.find(([a])=>a==='cast_agent_goal')[1]).toMatchObject({world:'local',actor:'canon_rydel',goal:'Make a connected outdoor place and populate it.',confirmed:true});
  expect(request.mock.calls.some(([a])=>a==='cast_agent_start')).toBe(false);
@@ -44,7 +44,15 @@ it('queues natural-language goals without starting provider and prevents duplica
 it('requires explicit enrollment for future NPC agents without starting a provider',async()=>{
  const request=vi.fn(async()=>({...info,population_agents:{enabled:false,characters:[]}}));render(<LivingCast {...props} onRequest={request}/>);
  await screen.findByText('Current goal: Consider actual events');const button=screen.getByRole('button',{name:'Enable automatic new-character agents'});
- expect(button.disabled).toBe(true);fireEvent.click(screen.getByRole('checkbox'));fireEvent.click(button);
+ expect(button.disabled).toBe(true);fireEvent.click(screen.getByRole('checkbox',{name:/I authorize this local world author/}));fireEvent.click(button);
  expect(request).toHaveBeenLastCalledWith('cast_agent_population',{world:'local',enabled:true,turn_limit:8,period_hours:24,confirmed:true});
  expect(request.mock.calls.some(([a])=>a==='cast_agent_start')).toBe(false);
+});
+it('requires independent exact-binary QA before managed practice, never provider confirmation',async()=>{
+ const request=vi.fn(async()=>info);render(<LivingCast {...props} onRequest={request}/>);
+ await screen.findByText('Current goal: Consider actual events');
+ const start=screen.getByRole('button',{name:'Start bounded practice worker'});expect(start.disabled).toBe(true);
+ fireEvent.change(screen.getByLabelText('Validated binary SHA256'),{target:{value:'a'.repeat(64)}});
+ fireEvent.click(screen.getByRole('checkbox',{name:/I have verified this exact binary/}));fireEvent.click(start);
+ expect(request).toHaveBeenLastCalledWith('cast_agent_practice_start',{world:'local',digest:'a'.repeat(64),validated_native:true,turn_limit:8,period_hours:24});
 });
