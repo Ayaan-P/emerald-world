@@ -1,4 +1,4 @@
-"""Durable, opt-in Luna developer GM. Intent text and world snapshots are data.
+"""Durable, opt-in provider-selected developer GM. Intent text and world snapshots are data.
 
 IntentQueue is safe for concurrent submitters. A runtime holds a separate flock
 for its entire life. Claimed requests are never automatically replayed, even if
@@ -246,8 +246,11 @@ class RuntimeGM:
     or run(stop_event) for polling. Do not call step concurrently on one object.
     """
     def __init__(self, state_dir, socket_path, *, model, timeout=120, poll_interval=2,
-                 observe_events=True, min_author_interval=15):
-        validate_config(model, timeout, poll_interval)
+                 observe_events=True, min_author_interval=15, provider="codex"):
+        from world.author_backends import validate
+        validate(provider,model,timeout)
+        if type(poll_interval) not in (int,float) or not math.isfinite(poll_interval) or not 0<poll_interval<=3600:raise ValueError("Invalid poll interval")
+        self.provider=provider
         if (type(min_author_interval) not in (int, float) or not math.isfinite(min_author_interval)
                 or not 0 <= min_author_interval <= 3600):
             raise ValueError('min_author_interval must be finite in [0,3600] seconds')
@@ -336,12 +339,13 @@ class RuntimeGM:
                                 'request_id': item['id'], 'at': time.time()})
         try:
             runtime_context = {'request_id': item['id'], 'kind': item['kind'], 'player': item['player'],
-                               'model': self.model, 'adapter': 'public_codex_exec',
+                               'model': self.model, 'adapter': self.provider,
                                'previous_source': self._previous_source(inspection),
                                'selected_purposes': self.queue.status()['purposes'],
                                'observed_event': json.loads(item['result']) if item['result'] else None}
+            from world.author_backends import argv as backend_argv
             report = gm.author_and_deploy(self.root, self.socket_path, item['text'],
-                                          luna_author_argv(self.model, self.timeout), self.timeout,
+                                          backend_argv(self.provider,self.model,self.timeout), self.timeout,
                                           runtime_context=runtime_context)
             report['runtime_model'] = self.model
             status = 'succeeded' if report['ok'] else 'failed'
@@ -474,13 +478,16 @@ def main(argv=None):
     unfollow = sub.add_parser('unfollow-character')
     unfollow.add_argument('--state-dir', required=True)
     unfollow.add_argument('--id', required=True)
-    sub.add_parser('check-author', help='check reviewed local CLI and bundled model without a model call or queue write')
+    check = sub.add_parser('check-author', help='check selected author prerequisites without a model call or queue write')
+    check.add_argument('--provider',choices=['codex','openai-responses','anthropic-messages'],default='codex')
+    check.add_argument('--model',default=MODEL)
     status = sub.add_parser('status')
     status.add_argument('--state-dir', required=True)
-    run = sub.add_parser('run', help='explicitly enable the public Luna author')
+    run = sub.add_parser('run', help='explicitly enable the selected public author backend')
     run.add_argument('--state-dir', required=True)
     run.add_argument('--socket', required=True)
-    run.add_argument('--model', required=True, choices=[MODEL])
+    run.add_argument('--model', required=True)
+    run.add_argument('--provider',choices=['codex','openai-responses','anthropic-messages'],default='codex')
     run.add_argument('--timeout', type=float, default=120)
     run.add_argument('--poll-interval', type=float, default=2)
     run.add_argument('--min-author-interval', type=float, default=15,
@@ -494,7 +501,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         if args.command == 'check-author':
-            print(json.dumps(preflight_author()))
+            from world.author_backends import preflight
+            print(json.dumps(preflight(args.provider,args.model)))
         elif args.command == 'author':
             validate_config(args.model, args.timeout, 2)
             prompt = sys.stdin.buffer.read(gm.MAX_RESPONSE + 1)
@@ -536,7 +544,8 @@ def main(argv=None):
             finally:
                 queue.close()
         else:
-            preflight_author() # Fail before opening/recovering/claiming any durable queue.
+            from world.author_backends import preflight
+            preflight(args.provider,args.model,args.timeout) # Before queue access; no fallback.
             stop = threading.Event()
             previous = {}
             for sig in (signal.SIGTERM, signal.SIGINT):
@@ -544,7 +553,7 @@ def main(argv=None):
             try:
                 with RuntimeGM(args.state_dir, args.socket, model=args.model, timeout=args.timeout,
                                poll_interval=args.poll_interval, observe_events=not args.no_events,
-                               min_author_interval=args.min_author_interval) as worker:
+                               min_author_interval=args.min_author_interval,provider=args.provider) as worker:
                     if args.once:
                         result = worker.step()
                         print(json.dumps(result, sort_keys=True))

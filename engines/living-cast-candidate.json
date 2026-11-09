@@ -5,8 +5,13 @@
   "native_pull_request": 26,
   "app_pull_request": 286,
   "reviewed_author_cli": "codex-cli 0.156.1",
-  "author_model": "openai-codex/gpt-6-luna",
+  "author_model": "explicit per backend; legacy Codex uses openai-codex/gpt-6-luna",
   "linked_native_verified": false,
   "live_author_verified": false,
-  "release_status": "draft_for_integration"
+  "release_status": "draft_for_integration",
+  "author_backends": [
+    "codex",
+    "openai-responses",
+    "anthropic-messages"
+  ]
 }

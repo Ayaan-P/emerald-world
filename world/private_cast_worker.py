@@ -9,7 +9,10 @@ from .canonical_reflection import prompt
 from .runtime_gm import MODEL, luna_author_argv
 
 
-def step(socket,model,timeout=120,*,request=None,author=None):
+def step(socket,model,timeout=120,*,request=None,author=None,provider="codex"):
+    if author is None:
+        from .author_backends import argv as backend_argv
+        command=backend_argv(provider,model,timeout,private=True)
     request=request or (lambda body:gm.admin_request(socket,body,timeout))
     claimed=request({'command':'private_cast_claim'})
     if claimed.get('ok') is not True:raise ValueError('Private request claim refused.')
@@ -19,7 +22,7 @@ def step(socket,model,timeout=120,*,request=None,author=None):
     text=prompt(item['context'])
     if author is None:
         with tempfile.TemporaryDirectory(prefix='private-cast-') as directory:
-            wire=gm._run_author(luna_author_argv(model,timeout)+['--private-cast'],text,timeout,{},Path(directory))
+            wire=gm._run_author(command,text,timeout,{},Path(directory))
             result=json.loads(wire)
     else:result=author(text)
     finished=request(dict(command='private_cast_finish',id=item['id'],lease=item['lease'],result=result))
@@ -27,13 +30,13 @@ def step(socket,model,timeout=120,*,request=None,author=None):
 
 
 
-def watch(socket,model,timeout=120,*,max_jobs=8,idle_seconds=300,poll=2,request=None,author=None,clock=time.monotonic,sleep=time.sleep):
+def watch(socket,model,timeout=120,*,max_jobs=8,idle_seconds=300,poll=2,request=None,author=None,clock=time.monotonic,sleep=time.sleep,provider="codex"):
     """Explicit host session, not an automatically installed background service."""
     if type(max_jobs) is not int or not 1<=max_jobs<=32:raise ValueError('max jobs must be 1..32')
     if not 1<=idle_seconds<=3600 or not 1<=poll<=30:raise ValueError('invalid watch timing')
     processed=0;last_work=clock()
     while processed<max_jobs and clock()-last_work<idle_seconds:
-        result=step(socket,model,timeout,request=request,author=author)
+        result=step(socket,model,timeout,request=request,author=author,provider=provider)
         if result['status']=='idle':sleep(poll);continue
         processed+=1;last_work=clock()
         # Stale results can follow a NEW decision; model/API exceptions escape
@@ -42,18 +45,18 @@ def watch(socket,model,timeout=120,*,max_jobs=8,idle_seconds=300,poll=2,request=
 
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--socket',required=True);parser.add_argument('--model',required=True,choices=[MODEL])
+    parser.add_argument('--socket',required=True);parser.add_argument('--model',required=True)
+    parser.add_argument('--provider',choices=['codex','openai-responses'],default='codex')
     parser.add_argument('--timeout',type=float,default=120)
     parser.add_argument('--watch',action='store_true',help='Explicit bounded host session for queued private requests')
     parser.add_argument('--max-jobs',type=int,default=8)
     parser.add_argument('--idle-seconds',type=float,default=300)
     args=parser.parse_args(argv)
     try:
-        from .runtime_gm import validate_config,preflight_author
-        validate_config(args.model,args.timeout,2)
-        preflight_author() # Do not consume private grants when the CLI cannot run.
-        result=(watch(args.socket,args.model,args.timeout,max_jobs=args.max_jobs,idle_seconds=args.idle_seconds)
-                if args.watch else step(args.socket,args.model,args.timeout))
+        from .author_backends import preflight
+        preflight(args.provider,args.model,args.timeout) # Do not consume private grants when the CLI cannot run.
+        result=(watch(args.socket,args.model,args.timeout,max_jobs=args.max_jobs,idle_seconds=args.idle_seconds,provider=args.provider)
+                if args.watch else step(args.socket,args.model,args.timeout,provider=args.provider))
         print(json.dumps(result));return 0
     except Exception:
         # Never log private prompts/replies/exception content, and never replay.

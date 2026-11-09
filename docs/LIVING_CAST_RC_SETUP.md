@@ -29,7 +29,9 @@ Check the host author installation without a model call or queue write:
 
     python3 -m world.runtime_gm check-author
 
-The reviewed adapter requires `codex-cli 0.156.1` and its bundled Luna catalogue.
+The legacy Codex adapter requires `codex-cli 0.156.1` and its bundled Luna catalogue.
+Direct OpenAI Responses and Anthropic Messages are now separate explicit backend
+choices and do not invoke Codex. See [author backends](AUTHOR_BACKENDS.md).
 It uses the CLI's existing ordinary login; this check does not inspect credentials
 or prove provider login/network access. Do not loosen the version/tool isolation
 gate merely to get a green check. A different CLI needs separate security review.
@@ -59,7 +61,7 @@ routines govern behavior. No physical travel, battle or training is inferred
 from elapsed time. `status` inspects the queue; `unfollow-character` withdraws an
 actor. Interrupt the run process normally to stop model operation.
 
-Both public run startup and private-worker CLI startup now check local reviewed
+Both public run startup and private-worker CLI startup check selected local
 prerequisites BEFORE opening/claiming work. A missing/incompatible CLI therefore
 cannot consume queued turns or private response grants merely because startup
 was attempted. The per-call adapter still rechecks its version and isolation.
@@ -88,7 +90,8 @@ These are reusable affordances, not a promise that every author will select them
 ## Verified versus outstanding
 
 Current environment: Codex reports `0.167.0-alpha.4`, not the reviewed version;
-SDL2 development metadata is missing. Consequently no live-model author run or
+SDL2 development metadata is missing. The direct API backends avoid that CLI dependency, but were not called live.
+Consequently no live-model author run or
 full linked native build is claimed here. Do not change the gate to hide this.
 
 Component suites exercise real authority/compiler/queue paths and compiled
