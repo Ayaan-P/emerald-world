@@ -153,6 +153,8 @@ class WorldServer:
         install_calls(self.db)
         from .canonical_initiatives import install as install_initiatives
         install_initiatives(self.db)
+        from .canonical_investigations import install as install_investigations
+        install_investigations(self.db)
         from .canonical_project_requests import install as install_project_requests
         install_project_requests(self.db)
         from .canonical_rapport import install as install_rapport
@@ -164,7 +166,8 @@ class WorldServer:
         from .opportunities import Opportunities
         from .opportunity_chat import OpportunityChat
         self.mysteries = Mysteries(self, validate_coords, TRAVEL_FRESH_SECONDS)
-        self.opportunities = Opportunities(self.db, [m['name'] for m in catalog_maps().values()], self.mysteries)
+        from .canonical_investigations import choice_receipt
+        self.opportunities = Opportunities(self.db, [m['name'] for m in catalog_maps().values()], self.mysteries,record_outcome=lambda *args:choice_receipt(self,*args))
         self.opportunity_chat = OpportunityChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
         from .field_relays import FieldRelays
         self.relays = FieldRelays(self, validate_coords)
@@ -2057,6 +2060,8 @@ class WorldServer:
                             from .canonical_projects import publish as publish_cast_project
                             publish_cast_project(self,change)
                             from .canonical_initiatives import publish as publish_initiative
+                            from .canonical_investigations import publish as publish_investigation
+                            publish_investigation(self,change)
                             publish_initiative(self,change)
                             from .canonical_project_requests import publish as publish_project_request
                             publish_project_request(self,change)
