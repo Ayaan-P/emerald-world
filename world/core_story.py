@@ -158,6 +158,9 @@ class CoreStory:
                 raise ValueError('No current Steven companion invitation at this conversation.')
             check_actor_location(self.s,conn,'canon_steven')
             return dict(ok=True) # Frozen one-shot permission, not battle completion or a shared reward.
+        if action=='CAMP':
+            from .campaign_board import handle
+            return handle(self.s,conn,run,key,confirmation)
         if action=='PROJECT':
             from .canonical_project_panel import panel
             return panel(self.s,conn,run,key,confirmation)

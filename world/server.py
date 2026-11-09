@@ -891,6 +891,8 @@ class WorldServer:
                         prefix='CORE REPLY '+nonce+' '+fields[1]+' '+fields[2]+' '+fields[3]+' '
                         if fields[2]=='RING':
                             reply=self.memory.world_id+' '+result['caller']+' '+result['token']+' '+(result['text'].encode().hex() if result['text'] else '-')
+                        elif fields[2]=='CAMP':
+                            reply=' '.join([result['world'],str(result['page']),str(result['total']),result['token'],result['text'].encode().hex(),result['label'].encode().hex()])
                         elif fields[2] in ('DIALOG','PROJECT'):
                             reply=' '.join([result['world_id'],str(result['version']),result['session'],str(result['role']),str(len(result['options'])),result['question'].encode().hex()]+[value for option in result['options'] for value in (option['label'].encode().hex(),str(option['advice']))])
                         elif fields[2] in ('OFFER','CAST','CALL'):
