@@ -16,14 +16,20 @@ def discover(server):
             for k,s,r,t,st,a,p in server.db.execute("SELECT * FROM actor_cooperation WHERE status IN ('offered','accepted') ORDER BY id")]
 
 
-def request(server,actor,row,args):
+def request(server,actor,row,args,*,correspondence=False):
     from .actor_runtime import CAPABILITIES
     if set(args)!={'target','purpose','tool','where'}:
         raise ValueError('Supply recipient, public purpose, existing tool and exact result predicate')
     purpose=args['purpose'];tool=args['tool']
     if type(purpose) is not str or not 1<=len(purpose)<=120 or any(not 32<=ord(c)<=126 for c in purpose):
         raise ValueError('Use up to 120 printable public fictional characters')
-    if type(tool) is not str or tool not in CAPABILITIES or 'world' not in CAPABILITIES[tool].kinds or tool in TOOLS:
+    from .actor_runtime import actor_records
+    actors=actor_records(server)
+    target=args['target']
+    if type(target) is not str or target==actor or target not in actors or actor not in actors:raise ValueError('Choose another existing active actor')
+    if any(actors[k].get('status','active')!='active' for k in (actor,target)):raise ValueError('Both actors must be active')
+    recipient_kind='canonical' if actors[target].get('canonical') else 'world'
+    if type(tool) is not str or tool not in CAPABILITIES or recipient_kind not in CAPABILITIES[tool].kinds or tool in TOOLS:
         raise ValueError('Choose an existing world-character capability, not another cooperation operation')
     if type(args['where']) is not str or len(args['where'])>350:raise ValueError('Use bounded result predicate JSON')
     try:where=json.loads(args['where'])
@@ -33,13 +39,14 @@ def request(server,actor,row,args):
         raise ValueError('Use outcome and up to three other exact scalar result fields')
     target=args['target']
     if type(target) is not str:raise ValueError('Use an existing recipient actor ID')
-    colocated(server,actor,target)
+    if not correspondence:colocated(server,actor,target)
     if server.db.execute("SELECT 1 FROM actor_cooperation WHERE status IN ('offered','accepted') AND ((sender=? AND recipient=?) OR (sender=? AND recipient=?))",(actor,target,target,actor)).fetchone():
         raise ValueError('Resolve the existing cooperation between these characters first')
     execution=getattr(server,'actor_tool_execution',None)
     if not execution or execution[0]!=actor:raise ValueError('Durable capability executor required')
     key=hashlib.sha256(json.dumps([actor,execution[2]['id'],execution[3]['id']]).encode()).hexdigest()
     terms=dict(purpose=purpose,tool=tool,where=where)
+    if correspondence:terms['channel']='public_correspondence_not_physical_meeting'
     server.db.execute('INSERT INTO actor_cooperation VALUES(?,?,?,?,?,NULL,NULL)',(key,actor,target,json.dumps(terms,sort_keys=True),'offered'))
     server.memory.append('character_cooperation_requested',dict(request=key,sender=actor,recipient=target,terms=terms,basis=BASIS))
     return dict(outcome='cooperation_requested',request=key,recipient=target)
@@ -84,6 +91,11 @@ def deliver(server,actor,row,args):
 
 
 BASIS='voluntary_authority_action_cooperation'
-TOOLS={'world.request_cooperation','world.respond_cooperation','world.deliver_cooperation'}
+TOOLS={'actor.request_work','world.request_cooperation','world.respond_cooperation','world.deliver_cooperation'}
 def relevant(event,actor):
     return event.get('event') in ('character_cooperation_requested','character_cooperation_decided','character_cooperation_delivered') and event.get('basis')==BASIS and actor in (event.get('sender'),event.get('recipient'))
+
+
+def request_work(server,actor,row,args):
+    """Explicit remote route; never relax the adjacent meeting capability."""
+    return request(server,actor,row,args,correspondence=True)
