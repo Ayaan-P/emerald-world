@@ -46,3 +46,27 @@ class ConversationTests(unittest.TestCase):
   with self.assertRaises(ValueError):speech.reply(self.s,'other',{},dict(speech=seq,text='No'))
   self.plan(seq);runtime.tick(self.s,now=10)
   self.assertEqual(speech.reply(self.s,'may',{},dict(speech=seq,text='I am considering where to train next.'))['outcome'],'already_replied')
+ def test_nearby_group_hears_actual_speech_and_reply_without_host_lock(self):
+  bob=self.f.peer('Bob',role='SOCIALCHATCHAR1');far=self.f.peer('Far',role='SOCIALCHATCHAR1')
+  far['state'][2]+=12
+  seq=self.say();speech.flush(self.s)
+  def messages(p):return [bytes.fromhex(v[3]).decode() for v in p.get('chat_history',[])]
+  self.assertTrue(any('Visitor to May' in x for x in messages(bob)))
+  self.assertFalse(any('Visitor to May' in x for x in messages(far)))
+  # A second participant may address the same actor; no host/speaker ownership.
+  speech.command(self.s,bob,['say-public','may','Can I join you?'])
+  self.assertEqual(self.s.db.execute('SELECT count(*) FROM npc_public_speech').fetchone()[0],2)
+  self.plan(seq);runtime.tick(self.s,now=10);speech.flush(self.s)
+  self.assertTrue(any('considering where' in x for x in messages(bob)))
+  self.assertFalse(any('considering where' in x for x in messages(far)))
+  n=len(messages(bob));speech.flush(self.s);self.assertEqual(len(messages(bob)),n)
+ def test_audience_is_session_scoped_and_late_arrivals_do_not_replay(self):
+  bob=self.f.peer('Bob',role='SOCIALCHATCHAR1');seq=self.say()
+  bob['npc_speech_session']='replacement'
+  late=self.f.peer('Late',role='SOCIALCHATCHAR1')
+  self.plan(seq);runtime.tick(self.s,now=10);speech.flush(self.s)
+  for p in (bob,late):
+   self.assertFalse(any('considering where' in bytes.fromhex(v[3]).decode() for v in p.get('chat_history',[])))
+  self.s.close();self.f.server=self.f.open();self.s=self.f.server
+  speech.flush(self.s)
+  self.assertEqual(self.s.db.execute('SELECT sum(answered) FROM npc_speech_audience').fetchone()[0],2)
