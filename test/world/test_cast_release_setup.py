@@ -26,4 +26,12 @@ class SetupTests(unittest.TestCase):
  def test_builder_pin_matches_candidate_manifest(self):
   manifest=json.loads((Path(__file__).resolve().parents[2]/'engines/living-cast-candidate.json').read_text())
   self.assertEqual(build_expansion.PIN,manifest['native_revision'])
-  self.assertFalse(manifest['linked_native_verified'])
+  self.assertTrue(manifest['linked_native_verified'])
+  self.assertTrue(manifest['live_author_verified'])
+  proof=json.loads((Path(__file__).resolve().parents[2]/manifest['verification_file']).read_text())
+  self.assertEqual(proof['native']['release_revision'],build_expansion.PIN)
+  self.assertTrue(proof['native']['linked_gameplay_passed'])
+  self.assertTrue(proof['native']['allocated_runtime_equivalent'])
+  self.assertTrue(proof['live_author']['passed'])
+  self.assertTrue(proof['live_author']['restart_verified'])
+  self.assertEqual(proof['live_author']['verified_backend'],'codex')
