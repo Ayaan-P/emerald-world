@@ -596,6 +596,9 @@ class WorldServer:
                     from .actor_shops import line as shop_line
                     retail=shop_line(self,conn,obj['id'],character['version'])
                     if retail:lines.append(retail)
+                    from .actor_tutors import line as tutor_line
+                    tutor=tutor_line(self,conn,obj['id'],character['version'])
+                    if tutor:lines.append(tutor)
                     if walk and conn.get('character_walk_capable'):
                         lines.append('CHARACTER_WALK '+' '.join(map(str,[obj['id'],character['version'],walk['id'],walk['index'],len(walk['path']),*[v for p in walk['path'] for v in p]])))
                     if conn.get('character_quest_capable') and character.get('offer'):
@@ -659,6 +662,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                character_tutor_capable=role.endswith('CHARTUTOR1')
+                if character_tutor_capable:role=role[:-10]
                 outdoor_weather_capable=role.endswith('WEATHER1')
                 if outdoor_weather_capable:role=role[:-8]
                 character_shop_capable=role.endswith('CHARSHOP1')
@@ -815,6 +820,7 @@ class WorldServer:
                 conn['world_props_capable']=world_props_capable and character_region_capable
                 conn['character_state_capable']=character_state_capable and conn['character_pokemon_capable']
                 conn['outdoor_weather_capable']=outdoor_weather_capable and cave_xl
+                conn['character_tutor_capable']=character_tutor_capable and character_capable
                 conn['character_shop_capable']=character_shop_capable and character_capable
                 conn['character_capable'] = character_capable
                 conn['character_quest_capable'] = character_quest_capable
