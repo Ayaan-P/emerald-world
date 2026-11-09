@@ -910,7 +910,9 @@ class WorldServer:
                     result = self.core_story.handle(conn, fields[:5] if nonce else fields)
                     if nonce:
                         prefix='CORE REPLY '+nonce+' '+fields[1]+' '+fields[2]+' '+fields[3]+' '
-                        if fields[2]=='RING':
+                        if fields[2]=='BMODE':
+                            reply=result['battle_mode']
+                        elif fields[2]=='RING':
                             reply=self.memory.world_id+' '+result['caller']+' '+result['token']+' '+(result['text'].encode().hex() if result['text'] else '-')
                         elif fields[2]=='CAMP':
                             reply=' '.join([result['world'],str(result['page']),str(result['total']),result['token'],result['text'].encode().hex(),result['label'].encode().hex()])

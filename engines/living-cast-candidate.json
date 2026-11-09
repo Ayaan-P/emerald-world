@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "native_repository": "Ayaan-P/pokeemerald-expansion-native",
-  "native_revision": "75719749b0009a585a5803255af3cdf597e0f058",
-  "native_pull_request": 50,
+  "native_revision": "5408512d66c2c6903f9d28316e88e6db3ed90447",
+  "native_pull_request": 51,
   "app_pull_request": null,
   "reviewed_author_cli": "codex-cli 0.156.1",
   "author_model": "explicit per backend; legacy Codex uses openai-codex/gpt-6-luna",
@@ -14,7 +14,7 @@
     "openai-responses",
     "anthropic-messages"
   ],
-  "app_branch": "dot/companion-move-learning",
+  "app_branch": "dot/campaign-npc-experiences",
   "capability_stack_base": "f81be46b6d9296e2710563af5878b3d4500b0b4e",
   "build_arguments": [
     "--generated-regions"
