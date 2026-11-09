@@ -68,6 +68,8 @@ class CoreStory:
     def __init__(self, server):
         self.s = server
         self.db = server.db
+        from .canonical_questions import install
+        install(self.db)
         self.db.executescript('''
         CREATE TABLE IF NOT EXISTS canonical_reflections(
             id TEXT PRIMARY KEY, trainer TEXT, actor TEXT, run TEXT, fingerprint TEXT, context TEXT,
@@ -145,6 +147,9 @@ class CoreStory:
         if action=='CALL' and confirmation=='registered':
             from .canonical_cast import remote_response
             return remote_response(self.s,conn,run,key)
+        if action=='ASK':
+            from .canonical_questions import ask
+            return ask(self.s,conn,run,key,confirmation)
         if action=='ALLY':
             from .canonical_cast import records,check_actor_location
             row=records(self.s.module_state).get('canon_steven')

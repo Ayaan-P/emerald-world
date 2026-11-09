@@ -33,6 +33,9 @@ def grant(server,trainer,actor,run):
 
 def snapshot(server,trainer,actor,run,request):
     from .canonical_reflection import snapshot as base_snapshot
+    if server.db.execute('SELECT 1 FROM canonical_questions WHERE id=?',(request,)).fetchone():
+        from .canonical_questions import snapshot as question_snapshot
+        return question_snapshot(server,trainer,actor,run,request)
     automatic=server.db.execute('SELECT grant_id FROM canonical_rapport_jobs WHERE id=?',(request,)).fetchone()
     if not automatic:return base_snapshot(server,trainer,actor,run)
     consent=grant(server,trainer,actor,run)
