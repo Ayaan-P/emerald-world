@@ -1,10 +1,11 @@
 """Optional synchronized original-actor scenes with durable restoration debt.
 
-The first reviewed scene is Rydel taking one normal step and returning. Native
+Reviewed bindings cover Rydel and post-Dive Steven. Native
 clients validate actual tiles/objects; these attestations are not anti-cheat.
 """
 import json,secrets,time
 from .canonical_scene_leases import SceneLeases
+from .canonical_scene_paths import binding
 
 
 class CanonicalScenes:
@@ -25,34 +26,40 @@ class CanonicalScenes:
     def recovery(self,peer):
         d=self.debt
         if d and peer['id'] in d['remaining'] and peer.get('core_active_run')==d['runs'].get(peer['id']):
-            self.send(peer,'RECOVER '+d['token']+' '+' '.join(map(str,d['map']+[1,2,5])))
-            self.s.guild_chat.message(peer,'World','Pending scene restoration. Return to the Bike Shop on this save; normal play is available.')
+            if d.get('path','rydel_step')!='rydel_step':
+                if not peer.get('cast_scene_paths'):return
+                self.send(peer,'RECOVER_PATH '+d['token']+' '+d['path'])
+            else:self.send(peer,'RECOVER '+d['token']+' '+' '.join(map(str,d['map']+[1,2,5])))
+            self.s.guild_chat.message(peer,'World','Pending scene restoration. Return to the original actor room on this save; normal play is available.')
 
     def handle(self,peer,args):
         if self.s.peers.get(peer.get('id')) is not peer or peer.get('closing') or not peer.get('core_story_capable') or not peer.get('cast_scene_supported'):raise ValueError('Canonical scene capability required')
-        if len(args)==2 and args[0]=='HELLO':
+        if len(args)==2 and args[0] in ('HELLO','HELLO2'):
             if args[1]!=peer.get('core_active_run'):raise ValueError('Current save synchronization required')
-            peer['cast_scene_run']=args[1];self.send(peer,'READY');self.recovery(peer);return
+            peer['cast_scene_paths']=args[0]=='HELLO2';peer['cast_scene_run']=args[1];self.send(peer,'READY');self.recovery(peer);return
         if peer.get('cast_scene_run')!=peer.get('core_active_run') or not peer.get('cast_scene_run'):raise ValueError('Scene session not negotiated')
         if len(args)==3 and args[0]=='ASK':
             from .canonical_cast import records,BINDINGS,check_actor_location
-            if args[1]!=peer['core_active_run'] or args[2]!='rydel':raise ValueError('Unsupported scene')
-            row=records(self.s.module_state).get('canon_rydel',{})
+            if args[1]!=peer['core_active_run'] or args[2] not in ('rydel','steven'):raise ValueError('Unsupported scene')
+            identity='canon_'+args[2]
+            row=records(self.s.module_state).get(identity,{})
             from .canonical_activity_projects import visible
-            row=visible(self.s,'canon_rydel',row)
+            row=visible(self.s,identity,row)
+            path=binding(identity,row.get('scene'))
             reached=peer.get('canonical_location') or {}
-            if (row.get('scene')!='rydel_step' or reached.get('actor')!='canon_rydel'
-                    or reached.get('version')!=row.get('version') or reached.get('expires',0)<time.monotonic()):raise ValueError('Talk to current Rydel invitation first')
-            check_actor_location(self.s,peer,'canon_rydel')
+            if (reached.get('actor')!=identity
+                    or reached.get('version')!=row.get('version') or reached.get('expires',0)<time.monotonic()):raise ValueError('Talk to current actor invitation first')
+            check_actor_location(self.s,peer,identity)
+            self.s.core_story._place(peer,path['map'])
             if self.debt or self.offer:raise ValueError('Another scene or restoration is pending')
             cohort=list(self.s.peers.values());map_id=list(peer['state'][:2])
-            if not 1<=len(cohort)<=4 or any(not self.fresh(p) or p['state'][:2]!=map_id or not p.get('cast_scene_run') for p in cohort):raise ValueError('Every connected trainer must be ready in the Bike Shop with scene support')
+            if not 1<=len(cohort)<=4 or any(not self.fresh(p) or p['state'][:2]!=map_id or not p.get('cast_scene_run') or (row['scene']!='rydel_step' and not p.get('cast_scene_paths')) for p in cohort):raise ValueError('Every connected trainer must be ready in this actor room with compatible scene support')
             if time.monotonic()<peer.get('cast_scene_next',0):raise ValueError('Scene request cooldown')
             peer['cast_scene_next']=time.monotonic()+60
-            self.offer=dict(token=secrets.token_hex(16),owner=peer,cohort=cohort,map=map_id,joined=set(),expires=time.monotonic()+15,version=row['version'])
+            self.offer=dict(token=secrets.token_hex(16),owner=peer,cohort=cohort,map=map_id,actor=identity,path=row['scene'],joined=set(),expires=time.monotonic()+15,version=row['version'])
             for p in cohort:
                 self.send(p,'INVITE '+self.offer['token'])
-                self.s.guild_chat.message(p,'Rydel','Group demonstration offered. /history scene join or cancel. Everyone must opt in; B cancels the scene.')
+                self.s.guild_chat.message(p,BINDINGS[identity]['name'],'Group demonstration offered. /history scene join or cancel. Everyone must opt in; B cancels the scene.')
             return
         if len(args)==2 and args[0] in ('JOIN','DECLINE'):
             o=self.offer
@@ -62,23 +69,25 @@ class CanonicalScenes:
             o['joined'].add(peer['id'])
             if len(o['joined'])!=len(o['cohort']):return
             from .canonical_cast import records
-            row=records(self.s.module_state).get('canon_rydel',{})
+            row=records(self.s.module_state).get(o['actor'],{})
             from .canonical_activity_projects import visible
-            row=visible(self.s,'canon_rydel',row)
-            if (row.get('scene')!='rydel_step' or row.get('version')!=o['version']
-                    or len(self.s.peers)!=len(o['cohort']) or any(not self.fresh(p) or p['state'][:2]!=o['map'] for p in o['cohort'])):
+            row=visible(self.s,o['actor'],row)
+            if (row.get('scene')!=o['path'] or row.get('version')!=o['version']
+                    or len(self.s.peers)!=len(o['cohort']) or any(not self.fresh(p) or p['state'][:2]!=o['map'] or p.get('cast_scene_run')!=p.get('core_active_run') or (o['path']!='rydel_step' and not p.get('cast_scene_paths')) for p in o['cohort'])):
                 self.cancel_offer();raise ValueError('Scene or participants changed')
             # A closed route, not an arbitrary model-selected location. Every
             # client must verify real native geometry before barrier ACK.
-            path=[(2,5),(3,5),(2,5)]
+            path=binding(o['actor'],o['path'])['points']
             if any(tuple(p['state'][2:4]) in path for p in o['cohort']):
                 self.cancel_offer();raise ValueError('Stand away from the demonstration tiles')
             self.leases.token=lambda:o['token']
-            lease=self.leases.prepare('canon_rydel',o['map'],path,o['owner'],o['cohort'],validate_tile=lambda m,p: self.bounds(m,p))
-            self.debt=dict(token=lease['token'],map=o['map'],remaining=[p['id'] for p in o['cohort']],runs={p['id']:p['core_active_run'] for p in o['cohort']},version=o['version'])
+            lease=self.leases.prepare(o['actor'],o['map'],path,o['owner'],o['cohort'],validate_tile=lambda m,p: self.bounds(m,p))
+            self.debt=dict(token=lease['token'],map=o['map'],path=o['path'],actor=o['actor'],remaining=[p['id'] for p in o['cohort']],runs={p['id']:p['core_active_run'] for p in o['cohort']},version=o['version'])
             self.save() # Durable BEFORE any client can install a movement lock.
             self.live=dict(o,step=0,at=set());self.offer=None
-            for p in self.live['cohort']:self.send(p,'PREPARE '+self.debt['token']+' '+' '.join(map(str,self.debt['map']+[1,2,5,3,5])))
+            for p in self.live['cohort']:
+                if o['path']=='rydel_step':self.send(p,'PREPARE '+self.debt['token']+' '+' '.join(map(str,self.debt['map']+[1,2,5,3,5])))
+                else:self.send(p,'PREPARE_PATH '+self.debt['token']+' '+o['path'])
             return
         if len(args)==2 and args[0]=='HOME':
             if not self.debt or self.debt['token']!=args[1] or peer['id'] not in self.debt['remaining'] or peer.get('core_active_run')!=self.debt['runs'].get(peer['id']):raise ValueError('Stale restoration receipt')
@@ -97,10 +106,10 @@ class CanonicalScenes:
                     self.leases.start(self.live['owner'],args[1]);self.step(1)
                 elif self.leases.current.phase=='restoring':self.abort()
                 return
-            if args[0]=='AT' and self.leases.current.phase=='active' and len(args)==3 and args[2] in ('1','2') and int(args[2])==self.live['step']:
+            if args[0]=='AT' and self.leases.current.phase=='active' and len(args)==3 and args[2] in tuple(str(i) for i in range(1,len(self.leases.current.path))) and int(args[2])==self.live['step']:
                 self.live['at'].add(peer['id'])
                 if len(self.live['at'])==len(self.live['cohort']):
-                    if self.live['step']==1:self.step(2)
+                    if self.live['step']+1<len(self.leases.current.path):self.step(self.live['step']+1)
                     else:self.abort()
                 return
             if args[0]=='CANCEL' and len(args)==2:self.abort();return
