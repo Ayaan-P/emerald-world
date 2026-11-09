@@ -148,6 +148,8 @@ class CoreStory:
         if action=='ALLY':
             from .canonical_cast import records,check_actor_location
             row=records(self.s.module_state).get('canon_steven')
+            from .canonical_activity_projects import visible
+            row=visible(self.s,'canon_steven',row)
             reached=conn.get('canonical_location') or {}
             if (key!='steven' or confirmation!='confirm' or not row or row.get('companion')!='steven_wild_once'
                     or reached.get('actor')!='canon_steven' or reached.get('run')!=run

@@ -88,3 +88,13 @@ adds an optional per-save standing grant and explicitly bounded host worker.
 After a shared choice, Alice's advice and Bob's speaker decision can lead to
 different next original-NPC replies without another confirmation for each turn.
 This is private interpretation of actual choices, not autonomous physical action.
+
+## From an autonomous project to an original-character activity
+
+[Project activity bindings](CAST_PROJECT_ACTIVITIES.md) let actual independent
+cast contributions make an existing native invitation available. The tested
+path is Steven opening a project, Wally independently contributing, then the
+player meeting original Steven and requesting his existing optional partner
+encounter. There is no intervening player errand or author turn required to
+expose that consequence. Project work is abstract social state, not claimed
+physical travel or training. Native battle QA remains outstanding.

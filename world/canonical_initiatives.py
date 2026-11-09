@@ -80,7 +80,11 @@ def view(server,identity=None):
             data=server.db.execute('SELECT revision,state,played FROM story_places WHERE pack=? AND place=?',(key,place)).fetchone()
             revision,state,played=(data[0],json.loads(data[1]),json.loads(data[2])) if data else (0,{k:q['initial'] for k,q in pack['qualities'].items()},[])
             places.append(dict(place=place,revision=revision,qualities=state,completed_scenes=played))
-        result.append(dict(pack=key,owner=owner,title=pack['title'],digest=digest,publication=seq,places=places))
+        from .canonical_cast import records
+        from .canonical_activity_projects import available
+        actor=records(server.module_state).get(owner,{})
+        activities={kind:available(server,owner,actor,kind) for kind in actor.get('activity_projects',{}) if actor.get('initiative',{}).get('id')==key}
+        result.append(dict(pack=key,owner=owner,title=pack['title'],digest=digest,publication=seq,places=places,activities=activities))
     return result
 
 
@@ -89,6 +93,8 @@ def lines(server,identity):
     result=['Public shared projects. Choices change shared story state, not native story flags.']
     for row in rows[:3]:
         result.extend([row['title'], '/story '+row['pack']+' at '+', '.join(p['place'] for p in row['places'])])
+        for activity,enabled in row.get('activities',{}).items():
+            result.append(activity+': '+('available at the original actor' if enabled else 'waiting on actual project outcome')+'.')
         for p in row['places']:
             result.append(str(len(p['completed_scenes']))+' committed choices; revision '+str(p['revision'])+'.')
     return result if rows else ['This actor has not published a shared project.']

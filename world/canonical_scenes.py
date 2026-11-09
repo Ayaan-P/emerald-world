@@ -38,6 +38,8 @@ class CanonicalScenes:
             from .canonical_cast import records,BINDINGS,check_actor_location
             if args[1]!=peer['core_active_run'] or args[2]!='rydel':raise ValueError('Unsupported scene')
             row=records(self.s.module_state).get('canon_rydel',{})
+            from .canonical_activity_projects import visible
+            row=visible(self.s,'canon_rydel',row)
             reached=peer.get('canonical_location') or {}
             if (row.get('scene')!='rydel_step' or reached.get('actor')!='canon_rydel'
                     or reached.get('version')!=row.get('version') or reached.get('expires',0)<time.monotonic()):raise ValueError('Talk to current Rydel invitation first')
@@ -61,6 +63,8 @@ class CanonicalScenes:
             if len(o['joined'])!=len(o['cohort']):return
             from .canonical_cast import records
             row=records(self.s.module_state).get('canon_rydel',{})
+            from .canonical_activity_projects import visible
+            row=visible(self.s,'canon_rydel',row)
             if (row.get('scene')!='rydel_step' or row.get('version')!=o['version']
                     or len(self.s.peers)!=len(o['cohort']) or any(not self.fresh(p) or p['state'][:2]!=o['map'] for p in o['cohort'])):
                 self.cancel_offer();raise ValueError('Scene or participants changed')
