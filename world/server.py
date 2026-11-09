@@ -606,6 +606,9 @@ class WorldServer:
                     if conn.get('character_quest_capable') and character.get('offer'):
                         offer=character['offer']
                         lines.append('CHARACTER_OFFER '+ ' '.join(map(str,[obj['id'],character['version'],offer['id'],offer['revision'],offer['target'],offer['place_id'][7:]])))
+        from .rental_pools import line as rental_line
+        rentals=rental_line(self,conn)
+        if rentals:lines.append(rentals)
         from .contest_guests import lines as contest_lines
         lines.extend(contest_lines(self,conn))
         from .shared_outbreaks import line as outbreak_line
@@ -669,6 +672,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                rental_capable=role.endswith('RENTALS1')
+                if rental_capable:role=role[:-8]
                 contest_guest_capable=role.endswith('CONTEST1')
                 if contest_guest_capable:role=role[:-8]
                 outbreak_capable=role.endswith('OUTBREAK1')
@@ -830,6 +835,7 @@ class WorldServer:
                 conn['cave_link_wildlife']=cave_link_wildlife and conn['cave_link_capable'] and cave_expansion
                 conn['world_props_capable']=world_props_capable and character_region_capable
                 conn['character_state_capable']=character_state_capable and conn['character_pokemon_capable']
+                conn['rental_capable']=rental_capable
                 conn['contest_guest_capable']=contest_guest_capable
                 conn['outbreak_capable']=outbreak_capable
                 conn['outdoor_weather_capable']=outdoor_weather_capable and cave_xl
