@@ -12,15 +12,21 @@ def source(old,actions,definition,state):
  assigns=[n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='_ew_character_request_v1' for t in n.targets)]
  if assigns:
   funcs=[n for n in tree.body if isinstance(n,ast.FunctionDef)]
+  old_helper=helper.replace("controls.get(identity,{}).get('object',visible.get(identity))!=condition['source']", "visible.get(identity)!=condition['source']")
+  migration=[n for n in funcs if ast.dump(n,include_attributes=False)==ast.dump(ast.parse(old_helper).body[0],include_attributes=False)]
   seeds=[n for n in tree.body if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id=='_ew_character_seed_v1']
   if (len(assigns)!=1 or len(assigns[0].targets)!=1 or len(seeds)!=1 or
-      not any(ast.dump(n,include_attributes=False)==ast.dump(ast.parse(helper).body[0],include_attributes=False) for n in funcs) or
+      not (migration or any(ast.dump(n,include_attributes=False)==ast.dump(ast.parse(helper).body[0],include_attributes=False) for n in funcs)) or
       not any(ast.dump(n,include_attributes=False)==ast.dump(ast.parse(wrapper).body[0],include_attributes=False) for n in funcs)):
    raise ValueError('Reusable character dispatcher changed; explicit source consolidation required')
   lines=old.splitlines(keepends=True)
-  for node,value in sorted([(assigns[0],request),(seeds[0],state)],key=lambda pair:pair[0].lineno,reverse=True):
-   ast.literal_eval(node.value)
-   lines[node.lineno-1:node.end_lineno]=[f'{node.targets[0].id}={value!r}\n']
+  edits=[(assigns[0],request),(seeds[0],state)]
+  if migration and old_helper!=helper:edits.append((migration[0],None))
+  for node,value in sorted(edits,key=lambda pair:pair[0].lineno,reverse=True):
+   if isinstance(node,ast.FunctionDef):lines[node.lineno-1:node.end_lineno]=[helper]
+   else:
+    ast.literal_eval(node.value)
+    lines[node.lineno-1:node.end_lineno]=[f'{node.targets[0].id}={value!r}\n']
   return ''.join(lines)
  if any(isinstance(n,ast.Name) and n.id.startswith('_ew_character_') for n in ast.walk(tree)):raise ValueError('Reserved character dispatcher names already used')
  return old+f'\n_ew_character_previous_v1=update\n_ew_character_seed_v1={state!r}\n_ew_character_request_v1={request!r}\n'+helper+'\n'+wrapper
