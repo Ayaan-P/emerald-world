@@ -231,3 +231,6 @@ CAPABILITIES['world.await_entity']=Capability('Wait for a real nearby entity to 
 
 from .actor_challenges import prepare as prepare_challenge, poll as challenge_poll
 CAPABILITIES['world.prepare_challenge']=Capability('Prepare this trainer optional native challenge with an ordered lineup of owned individual Pokemon.',dict(lineup='JSON list of 1..6 distinct individual IDs from companion_rosters for this actor',text='literal invitation up to 28 ASCII characters'),'Actual admitted lineup and invitation; no forced battle, catch, growth or win. Existing native player consent and CHARPK1/CHARPK2 compatibility remain required.',prepare_challenge,challenge_poll,('world',))
+
+from .actor_practice import request as practice_request,poll as practice_poll
+CAPABILITIES['world.practice']=Capability('Request isolated host practice for an actual on-team individual companion.',dict(individual='owned on-team individual ID from companion_rosters'),'Pending until separately enabled exact-binary QA-validated host runner reconciles full state. Host controls exercise limits; no battle, victory, evolution or player-save effect asserted.',practice_request,practice_poll,('world',))
