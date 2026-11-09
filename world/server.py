@@ -1894,6 +1894,11 @@ class WorldServer:
                         elif request['command']=='character_practice_apply':result=reconcile(self,request)
                         else:raise ValueError('Invalid practice command')
                 except (ValueError,TypeError,KeyError) as exc:result=dict(ok=False,error=str(exc))
+            elif request.get('command') in ('character_moves_finish','character_moves_fail'):
+                from .actor_moves import finish,fail
+                try:
+                    with self.lock:result=(finish if request['command']=='character_moves_finish' else fail)(self,request)
+                except (ValueError,TypeError,KeyError) as exc:result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'cast_practice_intentions':
                 from .canonical_cast import records
                 if set(request)!={'command'}:result=dict(ok=False,error='Invalid cast practice inspection')

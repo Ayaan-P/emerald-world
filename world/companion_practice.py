@@ -33,12 +33,14 @@ class Engine:
         if not re.fullmatch('[0-9a-f]{64}',digest):raise ValueError('Exact executable SHA256 required')
         self.digest=digest
     def run(self,line):
+        return state(self.exchange(line))
+    def exchange(self,line):
         if hashlib.sha256(self.path.read_bytes()).hexdigest()!=self.digest:raise ValueError('Native executable changed')
         with tempfile.TemporaryDirectory(prefix='npc-practice-') as directory:
             result=subprocess.run([str(self.path),'--character-practice'],input=line+'\n',text=True,
                 capture_output=True,timeout=30,cwd=directory,env={'LANG':'C','LC_ALL':'C'})
-        if result.returncode or len(result.stdout)>4096:raise ValueError('Native practice failed; no state committed')
-        return state(result.stdout)
+        if result.returncode or len(result.stdout)>16384:raise ValueError('Native practice failed; no state committed')
+        return result.stdout
 
 
 class Ledger:
@@ -70,6 +72,7 @@ class Ledger:
         return self.get(actor,individual)
     def queue(self,actor,individual,steps,cap):
         if type(steps) is not int or not 1<=steps<=1024 or type(cap) is not int or not 1<=cap<=100:raise ValueError('Bounded exercise required')
+        if self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='companion_move_jobs'").fetchone() and self.db.execute("SELECT 1 FROM companion_move_jobs WHERE actor=? AND individual=? AND status IN ('queued','running')",(actor,individual)).fetchone():raise ValueError('Move learning already pending')
         row=self.get(actor,individual)
         if row['state']['level']>=cap:raise ValueError('Companion is already at practice cap')
         job=uuid.uuid4().hex

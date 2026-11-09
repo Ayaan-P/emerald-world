@@ -353,3 +353,8 @@ CAPABILITIES['world.compose_habitat']=Capability('Create a persistent selectable
 
 from .shared_pushing import install as enable_pushing, poll_install as poll_pushing
 CAPABILITIES['world.enable_pushing']=Capability('Give an observed unused anchored prop directional one-tile pushing through existing player A and agent object use.',dict(object='observed prop id',revision='exact program_revision from observation'),'Admitted shared movable body; each real push preserves geometry, occupants and routes. Existing sign/pot visuals and snapshot movement, not native HM Strength, inventory or animation.',enable_pushing,poll_pushing,('world',))
+
+from .actor_moves import request as move_request,poll as move_poll
+CAPABILITIES['world.learn_move']=Capability('Teach one native-legal reminder move to an owned companion.',dict(individual='owned on-team individual with full native state',move='native move ID from inspection',slot='replacement slot 0..3'),'Requires QA-validated host worker; returns actual native choices or reconciled full individual state. No XP, evolution, TM items or player save changes.',move_request,move_poll,('world',))
+
+CAPABILITIES['world.inspect_moves']=Capability('Request native reminder choices for an owned companion.',dict(individual='owned on-team individual with full native state'),'Returns current move slots and legal level-up reminder IDs from exact engine. Requires QA-validated host worker; does not change the companion.',move_request,move_poll,('world',))

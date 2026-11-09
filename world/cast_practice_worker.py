@@ -29,6 +29,9 @@ def step(ledger,engine,request,*,validated_native=False,steps=256,cap=20,turn_li
     snapshot=request({'command':'cast_practice_intentions'})
     if snapshot.get('ok') is not True:raise ValueError('Cast intention source unavailable')
     world=snapshot['world_id']
+    from .cast_move_worker import step as move_step
+    move_result=move_step(ledger,engine,request,snapshot,turn_limit,period_hours,now)
+    if move_result is not None:return move_result
     for actor,row in sorted(snapshot['actors'].items()):
         budget=ledger.db.execute('SELECT started,used FROM practice_budget WHERE world=? AND actor=?',(world,actor)).fetchone()
         if budget and now<budget[0]+period_hours*3600 and budget[1]>=turn_limit:continue
