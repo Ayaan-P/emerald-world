@@ -45,9 +45,9 @@ This independent candidate is based on our #339 draft stack, not released RC12
 f7a813317d1b9fec803b48b682f5d74245c79037). Maya must reconcile release fixes. No merge,
 release or live save access is part of this work.
 
-## Current publication boundary
+## Paired draft
 
-The matching native source is preserved locally but its upload was denied. This
-app draft deliberately leaves the existing native pin unchanged. Ordinary builds
-do not implement EVOLVE1; the command fails closed. Do not enable the attestation
-flag with the published binary. No alternate upload or integration was attempted.
+Native #42 at 00985f9f56baf57b988943e3ff26ad2c0eef1a24 is now published after
+specific approval. The app builder, gitlink and candidate manifest match it.
+EVOLVE1 remains compile-time disabled by default; the published source is not a
+linked-QA attestation. No normal launcher option enables the experiment.
