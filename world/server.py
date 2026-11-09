@@ -1861,6 +1861,14 @@ class WorldServer:
                         elif request['command']=='character_practice_apply':result=reconcile(self,request)
                         else:raise ValueError('Invalid practice command')
                 except (ValueError,TypeError,KeyError) as exc:result=dict(ok=False,error=str(exc))
+            elif request.get('command') in ('character_evolution_source','character_evolution_apply'):
+                from .companion_evolution import source,apply
+                try:
+                    with self.lock:
+                        if request['command']=='character_evolution_source' and set(request)=={'command','actor','individual','practice'}:result=dict(ok=True,source=source(self,request['actor'],request['individual'],request['practice']))
+                        elif request['command']=='character_evolution_apply':result=apply(self,request)
+                        else:raise ValueError('Invalid evolution command')
+                except (ValueError,TypeError,KeyError) as exc:result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'cast_practice_intentions':
                 from .canonical_cast import records
                 if set(request)!={'command'}:result=dict(ok=False,error='Invalid cast practice inspection')
