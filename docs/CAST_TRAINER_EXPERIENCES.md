@@ -23,4 +23,14 @@ The app's catalogue must match the paired engine trainers.party checksum. Regene
 
 Tests compile the actual native collector and command code with explicit engine doubles; the authority test dispatches its emitted packet through the production server. These are component tests, not a linked build, rendered battle, real network session, or live-model quality check. Maya must verify ordinary victory and whiteout callbacks, save switching, chat-command display, original story continuity, and real provider behavior on the exact paired build. No merge or release is included.
 
-Paired native draft: #31 at fb23bcd7e9311f873e9048db3b3391f9e1647177. App builder, gitlink and candidate manifest are pinned together. No dependency on #287-297 or native #27-30.
+Paired native draft: #31 at 27672498fcec76574776299af8b9bfb27d0cc768. App builder, gitlink and candidate manifest are pinned together. No dependency on #287-297 or native #27-30.
+
+## Future-results participation
+
+`/history battle on` now previews one standing permission: anonymously share future ordinary trainer wins/losses, opponent preset and original map with world agents for **this trainer and save in this world**. `/history battle confirm` saves that setting. `/history battle status` shows the acknowledged mode; `/history battle off` stops new local automatic sends immediately and requests durable revocation. If saving OFF is blocked by an outstanding request, the UI explicitly asks to retry before reconnecting. A late ON acknowledgement cannot masquerade as saved OFF.
+
+Once acknowledged ON, subsequent eligible battle results flow automatically at safe field idle. No per-battle confirmation or player errand is needed. Original battles still run unchanged. Normal private saves, other trainers and the existing badge-sharing setting remain independent. The host cannot opt players in through this interface. New sessions read the persisted setting using a nonce-bound CORE response; older servers refuse it and no auto sharing starts. Enabling never backfills a pre-existing local result. OFF does not erase already published world history.
+
+This uses one volatile pending result, not a durable replay queue: a newer battle can replace an unsent result, disconnect discards it, and uncertain sends are not automatically retried. A capture made before the saved mode is acknowledged is never automatically backfilled. This favors honest current-session behavior over fabricated catch-up. The existing explicit one-result sharing path remains available when automatic participation is off.
+
+Tests cover mode acknowledgement, automatic send, immediate stop, reconnect, same trainer saves A/B, another trainer, restart and durable revocation. Public results retain their client-attestation boundary and can drive the existing real actor-action pipeline; no scripted reaction or live-model outcome is claimed.

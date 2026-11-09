@@ -70,3 +70,25 @@ class TrainerExperienceTests(unittest.TestCase):
   self.assertTrue(any(e['seq']==seq and e['event']=='canonical_trainer_result' for e in self.s.memory.history()['events']))
   self.assertEqual(self.s.db.execute('SELECT count(*) FROM core_story_progress').fetchone()[0],0)
   self.assertEqual(self.s.db.execute('SELECT count(*) FROM trainer_experience_receipts').fetchone()[0],1)
+
+ def test_standing_participation_is_per_save_persistent_and_future_only(self):
+  from world.trainer_experiences import participation
+  def mode(key,run='a'*32):return self.s.core_story.handle(self.peer,['CORE',run,'BMODE',key,'private' if key=='get' else 'confirm'])['battle_mode']
+  def auto(serial=1):return self.s.core_story.handle(self.peer,['CORE',self.peer['core_active_run'],'BAUTO',self.key,f'2:{self.place[0]}:{self.place[1]}:{serial}'])
+  before=self.s.memory.history()['through']
+  self.assertEqual(mode('get'),'OFF')
+  with self.assertRaises(ValueError):auto()
+  self.assertEqual(mode('on'),'ON');self.assertEqual(self.s.memory.history()['through'],before)
+  seq=auto()['evidence'];event=next(e for e in self.s.memory.history()['events'] if e['seq']==seq)
+  self.assertEqual(event['source'],'future_battle_participation_opt_in');self.assertTrue(experience.relevant(event,['native:LittlerootTown']))
+  self.peer['core_active_run']='b'*32;self.assertEqual(mode('get','b'*32),'OFF')
+  with self.assertRaises(ValueError):auto(2)
+  self.peer['core_active_run']='a'*32;self.assertEqual(mode('get'),'ON')
+  bob=self.f.f.peer('Bob');bob['core_active_run']='a'*32
+  self.assertEqual(participation(self.s,bob,'a'*32,'get','private')['battle_mode'],'OFF')
+  self.s.close();case=self.f.f.f.case;case.server=case.open();self.s=case.server
+  self.f.s=self.s;self.f.f.s=self.s;self.f.f.f.server=self.s
+  self.peer=self.f.f.peer();self.peer['core_active_run']='a'*32
+  self.assertEqual(mode('get'),'ON');self.assertEqual(mode('off'),'OFF')
+  with self.assertRaises(ValueError):auto(3)
+  self.assertEqual([e['seq'] for e in self.s.memory.history()['events'] if e['event']=='canonical_trainer_result'],[seq])

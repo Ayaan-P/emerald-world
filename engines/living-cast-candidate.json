@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "native_repository": "Ayaan-P/pokeemerald-expansion-native",
-  "native_revision": "fb23bcd7e9311f873e9048db3b3391f9e1647177",
+  "native_revision": "27672498fcec76574776299af8b9bfb27d0cc768",
   "native_pull_request": 31,
   "reviewed_author_cli": "codex-cli 0.156.1",
   "author_model": "explicit per backend; legacy Codex uses openai-codex/gpt-6-luna",
