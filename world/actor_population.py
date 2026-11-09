@@ -45,8 +45,8 @@ def spawn(server,actor,row,args):
     if not saved:raise ValueError('Exact archived geometry is unavailable')
     from .shared_cave import SharedCave
     cave=SharedCave(saved[0])
-    if cave.identity!=revision or cave.version not in (1,16):raise ValueError('Population supports plain immutable regions and shared XL only')
-    group,num=server.cave_map if cave.version==1 else server.wilds_map
+    if cave.identity!=revision or cave.version not in (1,10,16):raise ValueError('Population supports immutable plain/wildlife caves and shared XL only')
+    group,num=server.cave_map if cave.version in (1,10) else server.wilds_map
     obj=dict(id=identity,group=group,num=num,region_revision=revision,**{k:definition[k] for k in ('x','y','gfx','text')})
     record=None
     if character:

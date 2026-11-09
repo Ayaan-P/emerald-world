@@ -1,3 +1,26 @@
+## Habitat-link continuation
+This branch continues #318, pairing native draft #35 at
+1f7a2e52212d9f6ba69acda70ef3f96e044285e5. It overrides the prior pin below.
+The same world.link_caves primitive now accepts already-opened Expansion wildlife
+caves (format 10), with separately negotiated CAVELINKW1. Existing population
+authoring can place real revision-bound characters/props in these caves, enabling
+return links rather than a one-way habitat dead end. Plain-only clients cannot
+initiate a wildlife transfer. Wildlife-capable but old link clients also refuse.
+
+Native reload validates the complete species/level table before changing source
+state; installs destination encounter profile and shared wildlife, or clears
+them when returning to plain geometry. It preserves the original Hoenn return
+warp. Authority restart/reselection preserves the exact encounter bytes and
+requires a new ACK; it does not invent a completed trip or restore stale presence.
+No caught Pokemon, training result or player-bag mutation is generated here.
+
+Focused paired tests: 12 authority/decoder cases and the actual C transfer/
+wildlife validator fixture pass. Broader component suite is separate; native
+rendering, random encounter battles, capture/save/reload and reconnect gameplay
+remain Maya's integration QA. No live-provider call, merge or release.
+No large-cave or outdoor selectable-region admission changes are included.
+
+---
 ## Cave-link continuation
 The current dot/cave-link-transfer candidate includes #315–317 after the consolidated
 #314 baseline described below. Its paired native is draft #34,

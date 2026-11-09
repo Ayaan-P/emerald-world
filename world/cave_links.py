@@ -1,4 +1,4 @@
-"""Negotiated plain-cave link transactions paired with native CAVELINK1.
+"""Negotiated immutable cave links with CAVELINK1 and optional CAVELINKW1.
 
 This module intentionally does not relax REGION SELECT or shared-XL admission.
 """
@@ -9,17 +9,18 @@ def destination(server,place,revision):
  row=server.db.execute('SELECT a.template,r.revision FROM world_region_revisions r JOIN generated_area_archive a ON a.identity=r.revision WHERE r.place_id=?',(place,)).fetchone()
  if not row or row[1]!=revision or hashlib.sha256(row[0]).hexdigest()!=revision:raise ValueError('Exact opened cave unavailable')
  cave=SharedCave(row[0])
- if cave.version!=1:raise ValueError('Physical links initially support plain format-1 caves only')
+ if cave.version not in (1,10):raise ValueError('Physical links initially support format-1 or Expansion format-10 caves only')
  return cave
 
 def offer(server,conn,seq,source,target_place,target_revision):
  if not conn.get('cave_link_capable') or not conn.get('region_capable') or conn.get('cave_link_pending'):raise ValueError('Cave link transport unavailable')
  state=conn.get('state');cave=server._connection_cave(conn)
- if (not cave or cave.version!=1 or cave.identity!=source or conn.get('cave_ack')!=source
+ if (not cave or cave.version not in (1,10) or cave.identity!=source or conn.get('cave_ack')!=source
      or not state or not state[6] or tuple(state[:2])!=server.cave_map
      or time.monotonic()-conn.get('state_time',0)>5 or server.link_protocol.busy(conn['id'])
      or server.rally.current(conn) is not None):raise ValueError('Fresh source cave admission required')
  target=destination(server,target_place,target_revision)
+ if (cave.version==10 or target.version==10) and not conn.get('cave_link_wildlife'):raise ValueError('Wildlife cave transfer unavailable')
  if target.identity==source or not server._props_compatible(conn,target):raise ValueError('Destination unsupported')
  conn['cave_link_pending']=dict(seq=seq,source=source,target=target,place=target_place,
      source_place=conn.get('region_place'),source_cave=conn.get('region_cave'),state=list(state),
@@ -58,7 +59,7 @@ def install(server,actor,row,args):
  if not obj or obj.get('kind')!='prop' or obj.get('portable') or entry.get('program_revision')!=args['revision']:raise ValueError('Observed anchored prop required')
  if server.module_state.get('world_object_actions',{}).get(obj['id']) or obj['id'] in server.module_state.get('world_object_programs',{}):raise ValueError('Existing object behavior is preserved')
  source=SharedCave(server.db.execute('SELECT template FROM generated_area_archive WHERE identity=?',(obj['region_revision'],)).fetchone()[0])
- if source.version!=1:raise ValueError('Source must be a plain immutable cave')
+ if source.version not in (1,10):raise ValueError('Source must be an immutable supported cave')
  target=destination(server,args['place'],args['destination'])
  if target.identity==source.identity:raise ValueError('Choose a different cave')
  server.db.execute('CREATE TABLE IF NOT EXISTS cave_links(object TEXT PRIMARY KEY,source TEXT,place TEXT,destination TEXT)')
