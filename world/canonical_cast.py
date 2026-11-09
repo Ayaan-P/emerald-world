@@ -345,6 +345,8 @@ def guild_command(server, conn, args):
 
 
 def reaction_activity(event, identity, row):
+    from .actor_cooperation import relevant as work_relevant
+    if work_relevant(event,identity):return True
     from .actor_runtime import relevant as tool_relevant
     if tool_relevant(event,identity):return True
     from .canonical_project_requests import relevant as project_exchange
@@ -440,6 +442,8 @@ def received_letter(event, identity):
 
 
 def decision_evidence(event, identity, row):
+    from .actor_cooperation import relevant as work_relevant
+    if work_relevant(event,identity):return True
     from .actor_runtime import relevant as tool_relevant
     if tool_relevant(event,identity):return True
     from .canonical_project_requests import relevant as project_exchange
