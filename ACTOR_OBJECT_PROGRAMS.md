@@ -29,10 +29,12 @@ for larger programs. Installed programs are world state; withdrawing the author
 plan does not uninstall them. Reprogramming, portable programs and arbitrary
 terrain/native item effects are deliberately not advertised.
 
-The shared mechanic source and object-use executor still have existing source/
-receipt bounds (32 retained interaction receipts before consolidation). This
-change does not pretend to remove those limits. Source compaction remains an
-integration/author maintenance concern, not silently replaying or dropping uses.
+Object use now employs a verified reusable dispatcher with one replaceable request
+and bounded current receipt. Repeated uses do not add source wrappers or hit the
+old 32-use limit. Legacy wrappers and their receipts are preserved to prevent
+replay. Durable authority events and plan receipts retain causal history. The
+existing overall mechanic source size limit still applies to authoring new content,
+not cumulative uses of installed programs.
 
 Tests run the actual authority's authenticated generated-map interaction path,
 program staging, native-wire player use, agent use, changed available actions and
