@@ -38,6 +38,18 @@ class LinuxPackageTests(unittest.TestCase):
         self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
         return output / ('EmeraldWorld-' + version + '-linux-x86_64.tar.gz')
 
+    def test_trainer_runtime_catalogs_survive_packaging(self):
+        bundle = self.extract(self.package(engine='expansion-native'))
+        for name in ('trainer_experience_catalog.json', 'trainer_reference.json'):
+            asset = bundle / 'world' / name
+            self.assertTrue(asset.is_file(), 'Missing runtime asset: ' + name)
+            self.assertEqual(asset.read_bytes(), (REPO / 'world' / name).read_bytes())
+        code = ('import sys; sys.path.insert(0,sys.argv[1]); '
+                'from world.trainer_experiences import catalog; assert catalog(); '
+                'from world.trainer_context import author_context; '
+                'assert author_context("Roxanne")["story_progression"]')
+        subprocess.run([sys.executable, '-I', '-c', code, str(bundle)], check=True)
+
     def test_relative_vite_index_asset_paths_are_supported(self):
         (self.dist / 'index.html').write_text('<html><script src="./assets/main.js"></script></html>')
         archive = self.package()

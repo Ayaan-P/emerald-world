@@ -12,7 +12,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '8766b70d015b7eafd7984c2cb20ef9a2aa61beeb'
+PIN = '90fdff8988b078fd6d46cb6948306c8b28a7a30f'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -22,7 +22,7 @@ class ReleaseConfig:
     regional_state: int = 1
     kanto_content: int = 1
     generated_world_regions: int = 0
-    version_suffix: str = 'rc12-13-candidate'
+    version_suffix: str = 'rc12'
 
 
 # Frozen RC12/13 integration cohort. Candidate only: not an installed release.
