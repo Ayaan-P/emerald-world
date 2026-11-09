@@ -271,3 +271,45 @@ receipt, and then revises Rydel's goal to wait for Wally. Restart preserves the
 completion and does not replay it. Interrupted attempts remain pending without
 retry; unrelated changes and invented fulfillment are refused. 114 focused tests
 pass. No native travel, training, battle or save mutation is implied.
+
+## Real private encounter memory at the original NPC
+
+Reassessment: current main remains RC11 baseline 80b14ebf; this candidate is not
+merged and its default native pin still lacks the paired cast adapter. Existing
+features provide author/runtime capabilities, not fully simulated canonical
+travel or Pokémon lives. The new paired adapter closes a specific actual gap:
+remembering a trainer's encounters with an original character.
+
+`/guild cast rydel remember on` explicitly enables private encounter summaries
+for this trainer and actor, separated by the native save lineage. It does not
+publish history or give the shared-world author access to private interactions.
+After the production native field-message function successfully opens a CAST
+reply, the client sends a fire-and-forget `SEEN` receipt for its exact response
+challenge. Only a fresh, matching, unconsumed receipt from that authenticated
+connection/run/map records the encounter. Merely requesting dialogue, timing out,
+replaying an old digest, another connection or a different save does not count.
+The receipt never holds the native request slot or delays the original script.
+Old clients continue normally but cannot create verified display summaries.
+
+A repeat encounter in the same save receives a familiar greeting. The summary
+retains count, last actor version/goal and exact shown reply, not a psychological
+score or inferred affection. Counts reflect client-acknowledged message display,
+not proof that the player read it; this is not an anti-cheat primitive. Each
+trainer/actor keeps at most the latest sixteen save profiles, with one bounded
+summary per profile. Another trainer and a new save begin independently.
+
+`/guild cast rydel memory` shows only your private summaries. `remember off`
+pauses collection and familiar greetings while retaining prior summaries.
+`forget` erases your choices and encounter summaries and disables remembering,
+without affecting anyone else; forgetting is available away from the actor.
+The existing public world history, journal and author inspection remain identical
+before and after personal encounters. The authority operator still owns its local
+storage; this is application-level isolation, not encryption from the host.
+
+116 focused app tests and three compiled native tests pass. The paired regression
+feeds the actual authority reply into production C, executes its message hook,
+feeds the emitted SEEN line back through the actual authority, then verifies the
+next private greeting. It also covers replay, expiry, save/connection isolation,
+restart, pausing and forgetting. Full linked/rendered RC12 and live-model behavior
+remain unverified. This does not add autonomous travel, Pokémon ownership or a
+Steven hook.

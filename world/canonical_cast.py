@@ -149,7 +149,8 @@ def response(server, conn, run, key):
     result=dict(schema=1,world_id=server.memory.world_id,run=run,actor=identity,
                 version=row['version'],briefing=option['reply'] if option else row['dialogue'],objective=('Guild chat has conversation choices.' if row.get('conversation') and not option else 'Ask guild chat about my plan.' if row.get('offer') else 'Guild chat has my practice courses.' if row.get('project') else ''),evidence=row['evidence'])
     result['digest']=hashlib.sha256(json.dumps(result,sort_keys=True,separators=(',',':')).encode()).hexdigest()
-    return result
+    from .canonical_memory import prepare
+    return prepare(server,conn,run,identity,row,result)
 
 
 def contract():
@@ -175,11 +176,15 @@ def guild_command(server, conn, args):
     Actor version binds ALL displayed terms; accepting never publishes old history.
     """
     from .guilds import GuildError
-    if len(args) not in (1,2,4):
+    if len(args) not in (1,2,3,4):
         return ['Use /guild cast ACTOR to preview a public field proposal. Actors: rydel, wally, briney.']
     identity=next((i for i,b in BINDINGS.items() if b['wire']==args[0]),None)
     if identity is None:raise GuildError('Unknown canonical actor.')
     if server.peers.get(conn.get('id')) is not conn:raise GuildError('Authenticated trainer connection required.')
+    if len(args)>1 and args[1] in ('remember','memory'):
+        from .canonical_memory import command
+        return command(server,conn,identity,args[1:])
+    if len(args)==3:raise GuildError('Use /guild cast ACTOR remember on|off.')
     if args[1:]==['forget']:return conversation_command(server,conn,identity,None,['forget'])
     if not (conn.get('state') or [0]*7)[6]:
         raise GuildError('Stand ready near the original actor before accepting a proposal.')
@@ -248,8 +253,10 @@ def conversation_command(server, conn, identity, row, args):
     from .guilds import GuildError
     if args==['forget']:
         with server.db:
+            from .canonical_memory import forget
+            forget(server,conn,identity)
             server.db.execute('DELETE FROM canonical_conversations WHERE trainer=? AND actor=?',(conn['id'],identity))
-        return ['Your conversation choice was forgotten. Other trainers are unchanged.']
+        return ['Your choice and encounter memories were erased. Remembering is off; other trainers are unchanged.']
     if not row or not row.get('conversation'):raise GuildError('No authored conversation choices are available.')
     options=row['conversation'];wire=BINDINGS[identity]['wire']
     if args==['talk']:

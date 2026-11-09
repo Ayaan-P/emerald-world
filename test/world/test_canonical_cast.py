@@ -543,6 +543,56 @@ class CanonicalCastTests(unittest.TestCase):
                 self.assertEqual(q.db.execute('SELECT count(*) FROM canonical_intent_attempts').fetchone()[0],1)
             finally:q.close()
 
+    def test_private_encounter_memory_requires_display_receipt_and_is_save_specific(self):
+        self.apply(self.action());a=self.peer();b=self.peer('Bob');self.f.connections.update(Alice=a,Bob=b)
+        self.query(a)
+        self.assertEqual(self.s.db.execute('SELECT count(*) FROM canonical_encounters').fetchone()[0],0)
+        public=deepcopy(self.s.inspect());history=deepcopy(self.s.memory.history());bob_chat=deepcopy(b['chat_history'])
+        self.f.command('cast rydel remember on')
+        first=self.query(a);digest=first.split()[-2]
+        self.assertNotIn('Good to see you again',bytes.fromhex(first.split()[-1]).decode())
+        self.assertEqual(self.s.db.execute('SELECT count(*) FROM canonical_encounters').fetchone()[0],0)
+        def seen(peer,run,token):
+            peer['out'].clear();self.s._line(peer,f'CORE {run} SEEN rydel {token} 50'.encode());return peer['out'].decode()
+        self.assertIn('REFUSED',seen(a,'a'*32,'0'*64))
+        self.assertIn('OK',seen(a,'a'*32,digest))
+        self.assertIn('REFUSED',seen(a,'a'*32,digest))
+        self.assertEqual(self.s.db.execute('SELECT talks FROM canonical_encounters').fetchall(),[(1,)])
+        second=self.query(a)
+        self.assertIn('Good to see you again',bytes.fromhex(second.split()[-1]).decode())
+        self.assertNotEqual(second.split()[-2],digest)
+        self.assertNotIn('Good to see you again',bytes.fromhex(self.query(b).split()[-1]).decode())
+        other_run=cast.response(self.s,a,'b'*32,'rydel')
+        self.assertNotIn('Good to see you again',other_run['briefing'])
+        self.assertIn('REFUSED',seen(a,'a'*32,other_run['digest']))
+        self.assertIn('OK',seen(a,'b'*32,other_run['digest']))
+        self.assertEqual(self.s.db.execute('SELECT count(*) FROM canonical_encounters').fetchone()[0],2)
+        self.assertEqual(self.s.inspect(),public);self.assertEqual(self.s.memory.history(),history)
+        self.assertEqual(b['chat_history'],bob_chat)
+        self.s.close();self.f.case.server=self.f.case.open();self.s=self.f.case.server;self.f.server=self.s
+        a=self.peer();self.f.connections['Alice']=a
+        self.assertIn('Good to see you again',bytes.fromhex(self.query(a).split()[-1]).decode())
+        self.assertTrue(any('1 acknowledged' in line for line in cast.guild_command(self.s,a,['rydel','memory'])))
+        self.f.command('cast rydel remember off')
+        self.assertNotIn('Good to see you again',bytes.fromhex(self.query(a).split()[-1]).decode())
+        self.assertEqual(self.s.db.execute('SELECT count(*) FROM canonical_encounters').fetchone()[0],2)
+        a['state'][6]=0;self.f.command('cast rydel forget')
+        self.assertEqual(self.s.db.execute('SELECT count(*) FROM canonical_encounters').fetchone()[0],0)
+        self.assertEqual(self.s.db.execute('SELECT count(*) FROM canonical_memory_optin').fetchone()[0],0)
+
+    def test_encounter_receipt_expires_and_cannot_cross_connection_actor_or_location(self):
+        from world.canonical_memory import acknowledge
+        self.apply(self.action());a=self.peer();cast.guild_command(self.s,a,['rydel','remember','on'])
+        response=cast.response(self.s,a,'a'*32,'rydel')
+        a['cast_seen_pending']['expires']=0
+        with self.assertRaises(ValueError):acknowledge(self.s,a,'a'*32,'canon_rydel',response['digest'])
+        response=cast.response(self.s,a,'a'*32,'rydel');a['state'][:2]=[0,9]
+        with self.assertRaises(ValueError):acknowledge(self.s,a,'a'*32,'canon_rydel',response['digest'])
+        fresh=self.peer();cast.guild_command(self.s,fresh,['rydel','remember','on'])
+        fresh['out'].clear();self.s._line(fresh,('CORE '+'a'*32+' SEEN rydel '+response['digest']+' 60').encode())
+        self.assertIn(b'REFUSED',fresh['out'])
+        self.assertEqual(self.s.db.execute('SELECT count(*) FROM canonical_encounters').fetchone()[0],0)
+
     @unittest.skipUnless(__import__('os').environ.get('EW_NATIVE_SOURCE'),'set EW_NATIVE_SOURCE for actual native adapter pairing')
     def test_actual_authority_reply_enters_original_script_adapter(self):
         from pathlib import Path
@@ -554,6 +604,7 @@ class CanonicalCastTests(unittest.TestCase):
         action=self.action();action['changes']['conversation']={'patient':dict(label='Take our time.',reply='The field teams can wait. We will take our time.')}
         self.apply(action);peer=self.peer()
         cast.guild_command(self.s,peer,['rydel','talk','1','patient'])
+        cast.guild_command(self.s,peer,['rydel','remember','on'])
         packet=self.query(peer)
         world=self.s.memory.world_id
         checks='''
@@ -566,10 +617,14 @@ char line[]=PACKET;char *tokens[16];unsigned n=0;
 for(char *t=strtok(line," ");t;t=strtok(NULL," "))tokens[n++]=t;
 assert(WorldCoreStory_Line(n,tokens));assert(strstr(sCore.briefing,"field teams"));
 assert(WorldCoreStory_BeforeScript(hook));assert(shown==1);
+assert(strstr(sent,"SEEN rydel"));printf("%s",sent);
 hidden=true;assert(!WorldCoreStory_BeforeScript(hook));assert(progress==0);
 return 0;}
 '''.replace('WORLD',json.dumps(world)).replace('PACKET',json.dumps(packet))
         with tempfile.TemporaryDirectory() as tmp:
             c=Path(tmp)/'paired.c';c.write_text(fixture+source+checks);exe=Path(tmp)/'paired'
             subprocess.run(['cc','-std=c99','-Wall','-Wextra','-Werror',str(c),'-o',str(exe)],check=True)
-            subprocess.run([str(exe)],check=True)
+            emitted=subprocess.run([str(exe)],check=True,capture_output=True,text=True).stdout
+            self.s._line(peer,emitted.strip().encode())
+            self.assertEqual(self.s.db.execute('SELECT talks FROM canonical_encounters').fetchone()[0],1)
+            self.assertIn('Good to see you again',bytes.fromhex(self.query(peer).split()[-1]).decode())

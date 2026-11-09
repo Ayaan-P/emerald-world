@@ -48,6 +48,10 @@ class CoreStory:
         self.s = server
         self.db = server.db
         self.db.executescript('''
+        CREATE TABLE IF NOT EXISTS canonical_memory_optin(trainer TEXT,actor TEXT,PRIMARY KEY(trainer,actor));
+        CREATE TABLE IF NOT EXISTS canonical_encounters(
+            trainer TEXT, run TEXT, actor TEXT, talks INTEGER, updated REAL, version INTEGER, goal TEXT, text TEXT,
+            PRIMARY KEY(trainer,run,actor));
         CREATE TABLE IF NOT EXISTS canonical_intent_receipts(
             actor TEXT, intention TEXT, action_receipt INTEGER NOT NULL, PRIMARY KEY(actor,intention));
         CREATE TABLE IF NOT EXISTS canonical_contributions(
@@ -98,6 +102,12 @@ class CoreStory:
             raise ValueError('Invalid canonical story request.')
         _, run, action, key, confirmation = fields
         trainer = conn['id']
+        if action=='SEEN' and re.fullmatch('[0-9a-f]{64}',confirmation):
+            from .canonical_cast import BINDINGS
+            from .canonical_memory import acknowledge
+            actor=next((i for i,b in BINDINGS.items() if b['wire']==key),None)
+            if actor is None:raise ValueError('Unknown actor.')
+            return acknowledge(self.s,conn,run,actor,confirmation)
         if action == 'CAST' and confirmation == 'safe':
             from .canonical_cast import response
             return response(self.s,conn,run,key)
