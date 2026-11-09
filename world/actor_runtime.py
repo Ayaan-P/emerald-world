@@ -63,6 +63,9 @@ CAPABILITIES['world.observe']=Capability('Inspect connected local geometry and p
 from .actor_geometry import open_ground
 CAPABILITIES['world.open_ground']=Capability('Open a bounded patch of observed local ground on an empty active plain shared XL map.',dict(observation='own successful observation receipt sequence',x='patch origin integer',y='patch origin integer',width='integer 1..5',height='integer 1..5'),'Actual immutable geometry revision and preserved character positions; abstract terrain change, not simulated labor or resources.',open_ground,None,('world',))
 
+from .actor_places import create as create_place
+CAPABILITIES['world.create_place']=Capability('Compile and open a new persistent selectable plain cave without replacing existing maps.',dict(label='literal menu label 1..20 ASCII characters',blueprint='JSON string <=700 chars: rooms [[x,y,width,height]], links [[room_index,room_index]], entrance_room, exit_room; optional style rooms/rounded/organic/maze, seed uint32, corridor_width 1..3; interior 1..29'),'Actual archived immutable 31x31 region and place ID. REGION1 clients select it then use existing entrance; no seamless portals, player visits or actor travel asserted.',create_place,None,('canonical','world'))
+
 from .actor_space import extend as extend_space
 CAPABILITIES['world.extend_space']=Capability('Add connected clearings and routes to this actor active plain XL place, preserving all existing ground.',dict(revision='exact active generated revision',blueprint='JSON string <=800 chars: seed uint32, loops 0..4, landmarks 2..12 {id,x,y,radius 2..10}, reservations 0..32 [x,y,width,height]; interior 1..125; no overlapping clearings or reserved existing floor'),'Committed connected geometry, same logical place and rebound actors. Empty-map publication only; no portals, new artwork, simulated labor or resource claims.',extend_space,None,('world',))
 

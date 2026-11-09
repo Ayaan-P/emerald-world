@@ -452,28 +452,32 @@ class WorldServer:
         cave = self._connection_cave(conn)
         return cave.identity if cave and conn.get('cave_ack') == cave.identity else None
 
+    def _pin_region(self, revision):
+        """Validate and pin inside the caller's archive/receipt transaction."""
+        from .shared_cave import SharedCave
+        if not self.archive_generated_areas or type(revision) is not str or not re.fullmatch('[0-9a-f]{64}',revision):
+            raise ValueError('persistent archived revision required')
+        row=self.db.execute('SELECT template,label FROM generated_area_archive WHERE identity=?',(revision,)).fetchone()
+        if row is None or hashlib.sha256(row[0]).hexdigest()!=revision:
+            raise ValueError('archived region unavailable')
+        cave=SharedCave(row[0])
+        if cave.version!=1:
+            raise ValueError('REGION1 supports immutable plain caves only')
+        place=self.memory.place(revision)
+        existing=self.db.execute('SELECT revision FROM world_region_revisions WHERE place_id=?',(place,)).fetchone()
+        if existing and existing[0]!=revision:
+            raise ValueError('region already pins a different revision')
+        if not existing:
+            self.db.execute('INSERT INTO world_region_revisions VALUES (?,?)',(place,revision))
+            self.memory.append('region_opened',dict(place_id=place,revision=revision,label=row[1]))
+        return dict(ok=True,place_id=place,revision=revision,changed=existing is None)
+
     def open_region(self, revision):
         """Owner pins one immutable plain-cave revision per logical place."""
-        from .shared_cave import SharedCave
-        with self.lock:
-            if not self.archive_generated_areas or type(revision) is not str or not re.fullmatch('[0-9a-f]{64}',revision):
-                raise ValueError('persistent archived revision required')
-            row=self.db.execute('SELECT template,label FROM generated_area_archive WHERE identity=?',(revision,)).fetchone()
-            if row is None or hashlib.sha256(row[0]).hexdigest()!=revision:
-                raise ValueError('archived region unavailable')
-            cave=SharedCave(row[0])
-            if cave.version!=1:
-                raise ValueError('REGION1 supports immutable plain caves only')
-            place=self.memory.place(revision)
-            existing=self.db.execute('SELECT revision FROM world_region_revisions WHERE place_id=?',(place,)).fetchone()
-            if existing and existing[0]!=revision:
-                raise ValueError('region already pins a different revision')
-            if not existing:
-                with self.db:
-                    self.db.execute('INSERT INTO world_region_revisions VALUES (?,?)',(place,revision))
-                    self.memory.append('region_opened',dict(place_id=place,revision=revision,label=row[1]))
-                self.revision=self.db.execute('SELECT max(seq) FROM events').fetchone()[0]
-            return dict(ok=True,place_id=place,revision=revision,changed=existing is None)
+        with self.lock, self.db:
+            result = self._pin_region(revision)
+        self.revision=self.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
+        return result
 
     def _list_regions(self, conn, offset):
         """Public, bounded menu of owner-opened immutable destinations."""
