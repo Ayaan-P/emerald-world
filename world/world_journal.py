@@ -47,6 +47,11 @@ def describe(event, place=None):
         title=BINDINGS[event['character_id']]['name']+' '+('offered project guidance' if kind.endswith('proposed') else 'decided on a contribution')
         details=[event.get('text',event.get('decision','')), 'Project: '+event['course'],
                  'Public author collaboration. No physical attendance or player participation is implied.']
+    elif kind == 'canonical_construction_completed':
+        from .canonical_cast import BINDINGS
+        title=BINDINGS[event['character_id']]['name']+' completed '+event['label']
+        details=[str(event['report']['added_walkable_tiles'])+' connected walkable tiles added.',
+                 'Abstract authority project execution, not animated labor, NPC travel or player resource gathering.']
     elif kind == 'canonical_study_published':
         title=event['character_name']+' installed '+event['title']
         details=[str(len(event['sites']))+' optional survey sites on map revision '+event['revision'][:12],
