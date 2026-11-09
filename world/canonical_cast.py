@@ -40,7 +40,7 @@ def records(state):
     from .build_catalog import catalog_maps
     places={'native:'+m['name'] for m in catalog_maps().values()}
     for identity,row in value.items():
-        if type(row) is not dict or set(row)-{'project_request','project_reply','activity_projects','scene','initiative','call','companion','world_action','council','journey_interests','routine','cooperate','worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'version','goal','dialogue','places','evidence','reason'}:
+        if type(row) is not dict or set(row)-{'memories','project_request','project_reply','activity_projects','scene','initiative','call','companion','world_action','council','journey_interests','routine','cooperate','worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'version','goal','dialogue','places','evidence','reason'}:
             raise ValueError('invalid canonical actor fields')
         if type(row['version']) is not int or not 1<=row['version']<=2**31-1:raise ValueError('invalid canonical actor version')
         for field,limit in [('goal',160),('reason',240)]:
@@ -92,6 +92,8 @@ def records(state):
             if type(option) is not dict or set(option)!={'label','reply'}:raise ValueError('conversation choices require label and reply')
             for field,limit in [('label',48),('reply',200)]:
                 if type(option[field]) is not str or not re.fullmatch("[A-Za-z0-9 .,!?'-]{1,"+str(limit)+"}",option[field]):raise ValueError('bounded literal conversation text required')
+        from .canonical_experiences import validate as validate_experiences
+        validate_experiences(row,identity)
         relationships=row.get('relationships',{})
         if type(relationships) is not dict or len(relationships)>2:raise ValueError('at most two directional cast relationships')
         for target,relation in relationships.items():
@@ -137,6 +139,8 @@ def validate_transition(before, after, objects, db):
         for seq in row['evidence']:
             event=db.execute("SELECT data FROM events WHERE seq=? AND kind='world_memory'",(seq,)).fetchone()
             if event is None or not decision_evidence(json.loads(event[0]),identity,row):raise ValueError('canonical actor evidence must be an actual opted-in public activity in its interests')
+        from .canonical_experiences import validate as validate_experiences
+        validate_experiences(row,identity,old.get(identity) or {},lambda n: json.loads(db.execute("SELECT data FROM events WHERE seq=? AND kind='world_memory'",(n,)).fetchone()[0]))
         from .canonical_project_requests import check_reply
         check_reply(row,identity,lambda n: json.loads(db.execute("SELECT data FROM events WHERE seq=? AND kind='world_memory'",(n,)).fetchone()[0]))
         from .canonical_collaboration import validate_evidence
@@ -170,7 +174,7 @@ def compile_actions(actions, context):
     if type(actions) is not list or len(actions)!=1:raise ValueError('one bounded canonical action required')
     action=actions[0]
     if type(action) is not dict or set(action)!={'id','expected_version','changes'} or action['id'] not in BINDINGS:raise ValueError('invalid canonical action')
-    if type(action['changes']) is not dict or set(action['changes'])-{'project_request','project_reply','activity_projects','scene','initiative','call','companion','world_action','council','journey_interests','routine','cooperate','worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'goal','dialogue','places','evidence','reason'}:raise ValueError('invalid canonical changes')
+    if type(action['changes']) is not dict or set(action['changes'])-{'memories','project_request','project_reply','activity_projects','scene','initiative','call','companion','world_action','council','journey_interests','routine','cooperate','worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'goal','dialogue','places','evidence','reason'}:raise ValueError('invalid canonical changes')
     old=cast.get(action['id']);version=old['version'] if old else 0
     call=action['changes'].get('call');previous_call=(old or {}).get('call')
     if type(call) is dict and previous_call and call.get('id')==previous_call['id'] and call!=previous_call:raise ValueError('New call content requires a new request id')
@@ -181,6 +185,8 @@ def compile_actions(actions, context):
     selected(old or {},row)
     known={e['seq']:e for e in context.get('recalled_history',{}).get('events',[])+data.get('world_memory',{}).get('recent',[])}
     if any(n not in known or not decision_evidence(known[n],action['id'],row) for n in row['evidence']):raise ValueError('canonical action requires inspected public activity evidence')
+    from .canonical_experiences import validate as validate_experiences
+    validate_experiences(row,action['id'],old or {},lambda n:known.get(n))
     from .canonical_project_requests import check_reply
     check_reply(row,action['id'],lambda n: known[n])
     from .canonical_collaboration import validate_evidence
@@ -224,9 +230,10 @@ def contract():
     from .canonical_seeds import profile
     return dict(response='canonical_actions/tests',identity_profiles={k:profile(k) for k in BINDINGS},bindings=BINDINGS,location_aliases=LOCATION_ALIASES,
                 action_fields=['id','expected_version','changes'],
+                experiences=dict(fields=['id','events (one or two exact public source sequence IDs)','interpretation (literal max 240)'],effect='retained actor memories and directional relationship evidence are fetched automatically during real author turns, even after leaving recent history',limits='new or revised memories cite current eligible evidence; no private trainer records, invented events, automatic affinity or fixed growth arc'),
                 project_exchange=dict(request=dict(id='new bounded request identity',to='existing other canonical actor',action='exact pack, scene, choice, place, revision from cast_world_actions assigned to recipient; sender must own pack',message='literal public speech, 1..200 characters'),reply=dict(sender='request owner',id='exact request identity',decision='accept or decline',message='literal public response'),evidence='Reply must cite exact addressed canonical_project_requested event. Acceptance atomically executes the assigned shared-state action; decline executes nothing. Do not claim travel or reciprocal feelings. Clear project_reply on later unrelated turns.',limits='Eight immutable invitations per sender; changed state or withdrawn request rejects acceptance, no automatic retry. cast_project_requests contains actual request and response receipts.'),
                 self_direction='A committed new goal schedules a bounded planning turn for the same followed actor. Use it to choose supported next work or wait, not to claim achievements, reciprocal relationships or unseen events. Goal-driven and quiet turns share eight attempts per actor/world/day; only actual authority action receipts prove execution.',
-                change_fields=['project_request (id, to, exact available owned-project action, public message)', 'project_reply (sender, id, accept or decline, public message; acceptance atomically executes the exact assigned actor action)', 'activity_projects (optional owned-project outcome binding for existing companion/scene activities)', 'scene (optional Rydel only: rydel_step)', 'initiative (optional immutable public story pack with owner/actor turns and player-facing scenes)', 'call (optional Wally/Steven incoming request: stable id, literal text)', 'companion (Steven only: steven_wild_once)', 'world_action (exact available actor-owned shared story action)', 'council (optional question/options, mode unanimous or speaker; speaker-led conversation has up to four opted-in participants and advisory listeners)','goal','dialogue','places','evidence','reason','journey_interests (optional up to four exact archived revision digests)','routine (optional quiet-world decision interval)','cooperate (optional independent exact project join/decline)','worksite (optional authority construction plan)','study (optional archived-map exploration project)','offer (optional native map/count)','relationships (optional directional assessments)','conversation (optional private player choices)','letter (optional public cast correspondence)','project (optional playable practice course)','contribution (optional project guidance)','resolve_contribution (optional owner decision)','intentions (up to three retained tasks)','fulfill (one prior task ID)'],
+                change_fields=['memories (up to six retained public experiences: id, one or two event IDs, revisable interpretation)', 'project_request (id, to, exact available owned-project action, public message)', 'project_reply (sender, id, accept or decline, public message; acceptance atomically executes the exact assigned actor action)', 'activity_projects (optional owned-project outcome binding for existing companion/scene activities)', 'scene (optional Rydel only: rydel_step)', 'initiative (optional immutable public story pack with owner/actor turns and player-facing scenes)', 'call (optional Wally/Steven incoming request: stable id, literal text)', 'companion (Steven only: steven_wild_once)', 'world_action (exact available actor-owned shared story action)', 'council (optional question/options, mode unanimous or speaker; speaker-led conversation has up to four opted-in participants and advisory listeners)','goal','dialogue','places','evidence','reason','journey_interests (optional up to four exact archived revision digests)','routine (optional quiet-world decision interval)','cooperate (optional independent exact project join/decline)','worksite (optional authority construction plan)','study (optional archived-map exploration project)','offer (optional native map/count)','relationships (optional directional assessments)','conversation (optional private player choices)','letter (optional public cast correspondence)','project (optional playable practice course)','contribution (optional project guidance)','resolve_contribution (optional owner decision)','intentions (up to three retained tasks)','fulfill (one prior task ID)'],
                 intentions=dict(fields=['id','kind (letter, project, study, construction, world_action, contribution or practice)','target','reason'],completion='set fulfill to a prior retained ID, remove it from agenda, execute the matching new action; authority requires a real action receipt',practice='target is an already host-registered fictional companion ID; isolated dispatcher only, no live fulfillment or story-party changes',initiative='followed actors may attempt retained work without a new player event; eight attempts per actor/world, once per task ID, no automatic retry or hidden model startup'),
                 collaboration=dict(contribution=['course','digest','text (200 literal characters)'],resolve_contribution=['seq (proposal evidence)','decision (accept or decline)'],effect='another existing actor contributes to exact published project; owner decides; accepted text becomes actual activity briefing',limits='one contribution per actor/project; only public evidence, no inferred participation or private results'),
                 routine=dict(fields=['interval_seconds (60..86400)'],effect='already followed actors may reconsider their own goals during quiet-world periods through the configured author runtime',limits='eight scheduled attempts per actor/world/UTC day; durable no-catch-up scheduling; no hidden worker startup, fake outcome or automatic XP',evidence='scheduled turns still cite inspected prior public evidence; clock passage is never outcome evidence'),
@@ -302,6 +309,12 @@ def guild_command(server, conn, args):
     if len(args)==2 and args[1]=='projects':
         from .canonical_projects import lines
         return lines(server,identity)
+    if args[1:]==['experiences']:
+        lines=[BINDINGS[identity]['name']+' retains these interpretations of public experiences:']
+        for item in (row or {}).get('memories',[]):
+            lines.append('Public source events: '+', '.join(map(str,item['events'])))
+            lines.extend(item['interpretation'][i:i+110] for i in range(0,len(item['interpretation']),110))
+        return lines if len(lines)>1 else ['No selected public experiences retained yet.']
     if len(args)==2 and args[1]=='letters':
         entries=[]
         for (data,) in server.db.execute("SELECT data FROM events WHERE kind='world_memory' AND json_extract(data,'$.event')='canonical_letter_delivered' AND (json_extract(data,'$.sender')=? OR json_extract(data,'$.recipient')=?) ORDER BY seq DESC LIMIT 3",(identity,identity)):
