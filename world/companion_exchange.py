@@ -56,6 +56,15 @@ def respond(server,actor,row,args):
  colocated(server,sender,recipient)
  current=snapshot(server,sender,individual)
  if json.dumps(current,sort_keys=True)!=encoded:raise ValueError('Offered companion changed; sender must make a new offer')
+ native=transfer(server,recipient,key,current)
+ server.db.execute("UPDATE companion_offers SET status='accepted' WHERE id=?",(args['offer'],))
+ seq=server.memory.append('companion_transferred',dict(sender=sender,recipient=recipient,individual=individual,recipient_individual=key,identity=identity(native),species=current['member']['species'],offer=args['offer'],basis='voluntary_adjacent_world_characters',limits='Existing companion transfer; no capture, evolution, victory or player save effect.'))
+ result=dict(outcome='companion_transferred',offer=args['offer'],individual=key,world_receipt=seq,identity=identity(native),on_team=False)
+ _,record,plan,step=server.actor_tool_execution
+ receipt=_receipt(server,actor,record,plan,step,'succeeded',result)
+ return Committed(receipt,result)
+
+def transfer(server,recipient,key,current):
  mon=current['member'];native=(mon['species'],mon['personality'],mon['owner'])
  aliases=server.db.execute('SELECT individual FROM character_companions WHERE actor=? AND species=? AND personality=? AND owner=?',(recipient,*native)).fetchall()
  if aliases and (key,) not in aliases:raise ValueError('Reuse the recipient existing local ID for this same companion')
@@ -72,9 +81,4 @@ def respond(server,actor,row,args):
  trained=current['trained']
  if trained:
   server.db.execute('INSERT INTO character_training VALUES(?,?,?,?,?) ON CONFLICT(actor,individual) DO UPDATE SET engine=excluded.engine,authored_level=excluded.authored_level,state=excluded.state',(recipient,key,trained['engine'],trained['authored_level'],json.dumps(trained['state'],sort_keys=True)))
- server.db.execute("UPDATE companion_offers SET status='accepted' WHERE id=?",(args['offer'],))
- seq=server.memory.append('companion_transferred',dict(sender=sender,recipient=recipient,individual=individual,recipient_individual=key,identity=identity(native),species=mon['species'],offer=args['offer'],basis='voluntary_adjacent_world_characters',limits='Existing companion transfer; no capture, evolution, victory or player save effect.'))
- result=dict(outcome='companion_transferred',offer=args['offer'],individual=key,world_receipt=seq,identity=identity(native),on_team=False)
- _,record,plan,step=server.actor_tool_execution
- receipt=_receipt(server,actor,record,plan,step,'succeeded',result)
- return Committed(receipt,result)
+ return native
