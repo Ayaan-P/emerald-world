@@ -24,8 +24,12 @@ def nearby(server,conn,actor):
 
 
 def command(server,conn,words):
+    if words and words[0] in ('walk-with','walk-stop'):
+        from .npc_accompaniment import command as walk_command
+        return walk_command(server,conn,words)
     if not words:return ['NPC speech is PUBLIC world history, visible to world agents and players. Do not enter personal information.',
-        'Use /guild npc nearby, or /guild npc say-public ID MESSAGE. Agent replies are not guaranteed.']
+        'Use /guild npc nearby, or /guild npc say-public ID MESSAGE. Agent replies are not guaranteed.',
+        'Invite a generated NPC to walk with you: /guild npc walk-with ID. Stop: /guild npc walk-stop.']
     if words==['nearby']:
         found=[]
         for actor,c in records(server.module_state).items():
