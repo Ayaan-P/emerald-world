@@ -53,6 +53,9 @@ class GuildChat:
                     if words and words[0].lower()=='npc':
                         from .npc_conversations import command as npc_command
                         lines=npc_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='campaign':
+                        from .battle_campaigns import command as campaign_command
+                        lines=campaign_command(s,conn,words[1:])
                     elif words and words[0].lower()=='cast':
                         from .canonical_cast import guild_command
                         lines=guild_command(s,conn,words[1:])

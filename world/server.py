@@ -160,6 +160,8 @@ class WorldServer:
         from .canonical_scenes import CanonicalScenes
         self.cast_scenes=CanonicalScenes(self)
         self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
+        from .battle_campaigns import install as install_battle_campaigns
+        install_battle_campaigns(self.db)
         from .cooperative_mysteries import Mysteries
         from .opportunities import Opportunities
         from .opportunity_chat import OpportunityChat

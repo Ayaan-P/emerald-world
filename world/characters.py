@@ -183,6 +183,8 @@ def challenge(server, conn, fields):
         if full:
             if not conn.get('character_state_capable'):raise ValueError('Trained companion requires matched CHARPK2 client')
             frozen['full_values']=full
+    from .battle_campaigns import bind
+    bind(server,conn,frozen)
     conn['character_pending'] = frozen
     conn['seq'] = seq
     if frozen.get('full_values'):
@@ -202,9 +204,13 @@ def report_result(server, conn, fields):
             not fields[4].isdigit() or not 0 <= int(fields[4]) <= 255):
         raise ValueError('unmatched character result')
     with server.db:
+        from .battle_campaigns import result
+        result(server,conn,pending,int(fields[4]))
         server._event('character_battle_report', dict(player=conn['id'], character=pending['id'],
             version=pending['version'], outcome=int(fields[4]), evidence='authenticated_client_report_not_verified_outcome'))
     conn.pop('character_pending')
+    if pending.get('campaign_binding'):
+        server.guild_chat.message(conn,'World','Campaign battle reported. Use /guild campaign status for your next route.')
     return 'CHARACTER_RESULT_ACK ' + ' '.join(fields[1:4]) + '\n'
 
 
