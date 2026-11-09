@@ -40,7 +40,7 @@ def records(state):
     from .build_catalog import catalog_maps
     places={'native:'+m['name'] for m in catalog_maps().values()}
     for identity,row in value.items():
-        if type(row) is not dict or set(row)-{'council','journey_interests','routine','cooperate','worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'version','goal','dialogue','places','evidence','reason'}:
+        if type(row) is not dict or set(row)-{'world_action','council','journey_interests','routine','cooperate','worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'version','goal','dialogue','places','evidence','reason'}:
             raise ValueError('invalid canonical actor fields')
         if type(row['version']) is not int or not 1<=row['version']<=2**31-1:raise ValueError('invalid canonical actor version')
         for field,limit in [('goal',160),('reason',240)]:
@@ -48,6 +48,9 @@ def records(state):
         if type(row['dialogue']) is not str or not re.fullmatch("[A-Za-z0-9 .,!?'-]{1,200}",row['dialogue']):raise ValueError('canonical dialogue requires bounded literal native text')
         if type(row['places']) is not list or not 1<=len(row['places'])<=4 or len(set(row['places']))!=len(row['places']) or any(p not in places for p in row['places']):raise ValueError('canonical interests require known native places')
         if type(row['evidence']) is not list or not 1<=len(row['evidence'])<=8 or any(type(n) is not int or n<1 for n in row['evidence']) or len(set(row['evidence']))!=len(row['evidence']):raise ValueError('canonical actor needs public evidence')
+        from .canonical_world_actions import validate as validate_world_action
+        validate_world_action(row.get('world_action'))
+        if row.get('world_action') and 'native:'+row['world_action']['place'] not in row['places']:raise ValueError('World action must belong to actor interests')
         from .canonical_councils import validate as validate_council
         validate_council(row.get('council'))
         from .canonical_intentions import validate as validate_intentions
@@ -152,7 +155,7 @@ def compile_actions(actions, context):
     if type(actions) is not list or len(actions)!=1:raise ValueError('one bounded canonical action required')
     action=actions[0]
     if type(action) is not dict or set(action)!={'id','expected_version','changes'} or action['id'] not in BINDINGS:raise ValueError('invalid canonical action')
-    if type(action['changes']) is not dict or set(action['changes'])-{'council','journey_interests','routine','cooperate','worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'goal','dialogue','places','evidence','reason'}:raise ValueError('invalid canonical changes')
+    if type(action['changes']) is not dict or set(action['changes'])-{'world_action','council','journey_interests','routine','cooperate','worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'goal','dialogue','places','evidence','reason'}:raise ValueError('invalid canonical changes')
     old=cast.get(action['id']);version=old['version'] if old else 0
     if type(action['expected_version']) is not int or action['expected_version']!=version:raise ValueError('stale canonical action')
     row=copy.deepcopy(action['changes']);row['version']=version+1
@@ -196,11 +199,12 @@ def response(server, conn, run, key):
 def contract():
     return dict(response='canonical_actions/tests',bindings=BINDINGS,location_aliases=LOCATION_ALIASES,
                 action_fields=['id','expected_version','changes'],
-                change_fields=['council (optional question/options, mode unanimous or speaker; speaker-led conversation has up to four opted-in participants and advisory listeners)','goal','dialogue','places','evidence','reason','journey_interests (optional up to four exact archived revision digests)','routine (optional quiet-world decision interval)','cooperate (optional independent exact project join/decline)','worksite (optional authority construction plan)','study (optional archived-map exploration project)','offer (optional native map/count)','relationships (optional directional assessments)','conversation (optional private player choices)','letter (optional public cast correspondence)','project (optional playable practice course)','contribution (optional project guidance)','resolve_contribution (optional owner decision)','intentions (up to three retained tasks)','fulfill (one prior task ID)'],
-                intentions=dict(fields=['id','kind (letter, project, study, construction, contribution or practice)','target','reason'],completion='set fulfill to a prior retained ID, remove it from agenda, execute the matching new action; authority requires a real action receipt',practice='target is an already host-registered fictional companion ID; isolated dispatcher only, no live fulfillment or story-party changes',initiative='followed actors may attempt retained work without a new player event; eight attempts per actor/world, once per task ID, no automatic retry or hidden model startup'),
+                change_fields=['world_action (exact available actor-owned shared story action)', 'council (optional question/options, mode unanimous or speaker; speaker-led conversation has up to four opted-in participants and advisory listeners)','goal','dialogue','places','evidence','reason','journey_interests (optional up to four exact archived revision digests)','routine (optional quiet-world decision interval)','cooperate (optional independent exact project join/decline)','worksite (optional authority construction plan)','study (optional archived-map exploration project)','offer (optional native map/count)','relationships (optional directional assessments)','conversation (optional private player choices)','letter (optional public cast correspondence)','project (optional playable practice course)','contribution (optional project guidance)','resolve_contribution (optional owner decision)','intentions (up to three retained tasks)','fulfill (one prior task ID)'],
+                intentions=dict(fields=['id','kind (letter, project, study, construction, world_action, contribution or practice)','target','reason'],completion='set fulfill to a prior retained ID, remove it from agenda, execute the matching new action; authority requires a real action receipt',practice='target is an already host-registered fictional companion ID; isolated dispatcher only, no live fulfillment or story-party changes',initiative='followed actors may attempt retained work without a new player event; eight attempts per actor/world, once per task ID, no automatic retry or hidden model startup'),
                 collaboration=dict(contribution=['course','digest','text (200 literal characters)'],resolve_contribution=['seq (proposal evidence)','decision (accept or decline)'],effect='another existing actor contributes to exact published project; owner decides; accepted text becomes actual activity briefing',limits='one contribution per actor/project; only public evidence, no inferred participation or private results'),
                 routine=dict(fields=['interval_seconds (60..86400)'],effect='already followed actors may reconsider their own goals during quiet-world periods through the configured author runtime',limits='eight scheduled attempts per actor/world/UTC day; durable no-catch-up scheduling; no hidden worker startup, fake outcome or automatic XP',evidence='scheduled turns still cite inspected prior public evidence; clock passage is never outcome evidence'),
                 cooperation=dict(fields=['owner','intention','signature','decision: join or decline'],invitation='worksite optional partners names up to two existing other actors; authority publishes exact signature',effect='each invited actor decides independently from its invitation; construction waits for all exact joins',limits='changed owner version/plan requires fresh agreement; no agreement inferred from silence or relationship; actual result lists participants and may inform their directional relationships'),
+                world_action=dict(fields=['pack','scene','choice','place','revision'],intention='kind world_action, target pack; authority executes once, never author fulfill',source='inspect.cast_world_actions lists existing explicitly actor-owned public choices',effect='changes shared story qualities and available player scenes; no physical travel, native progression or player turn'),
                 construction=dict(fields=['worksite: revision, label, plan {x,y,width,height,gate,reservations}'],intention='kind construction; target exact source revision; normal authority loop executes once when map empty, not author fulfill',effect='existing compiler adds bounded courtyard and access trail while preserving prior walkable terrain, map continuity and scoped NPCs',limits='plain XL only, eight per actor, no animated labor, travel, resources or player work; no story/save edits',access='/guild cast ACTOR construction'),
                 study=dict(fields=['revision (exact archived plain XL digest)','title (55 literal characters)','sites (2..8 unique id/x/y walkable sites)'],effect='installs an immutable optional private survey on existing map geometry; no terrain edits or character travel',initiative='study intention target is the exact revision; fulfill only after actual survey installation',feedback='only explicit anonymous player shares become public evidence for the owning actor; unshared visits never enter author context',access='/guild cast ACTOR studies then /explore start inside the exact active map',limits='eight per actor; existing surveys cannot be overwritten; no activation, warp, reward or autojoin'),
                 project=dict(kind='petalburg_relay',fields=['title (55 characters)','limit (30..900 seconds)','mounted (boolean)'],effect='installs an immutable playable two-runner relay on existing Petalburg layout; no player autojoin, terrain or save change',limits='eight per actor; actual publication evidence, no inferred participation or results'),
@@ -305,6 +309,8 @@ def reaction_activity(event, identity, row):
     if journey_relevant(event,row.get('journey_interests',[])):return True
     from .canonical_cooperation import relevant as cooperation_relevant
     if cooperation_relevant(event,identity):return True
+    from .canonical_world_actions import relevant as world_action_relevant
+    if world_action_relevant(event,identity,row):return True
     from .canonical_construction import relevant as construction_relevant
     if construction_relevant(event,identity):return True
     from .canonical_studies import relevant as study_relevant
@@ -385,6 +391,8 @@ def decision_evidence(event, identity, row):
     if journey_relevant(event,row.get('journey_interests',[])):return True
     from .canonical_cooperation import relevant as cooperation_relevant
     if cooperation_relevant(event,identity):return True
+    from .canonical_world_actions import relevant as world_action_relevant
+    if world_action_relevant(event,identity,row):return True
     from .canonical_construction import relevant as construction_relevant
     if construction_relevant(event,identity):return True
     from .canonical_studies import relevant as study_relevant

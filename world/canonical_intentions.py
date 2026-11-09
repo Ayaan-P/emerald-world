@@ -12,7 +12,7 @@ def validate(row, bindings, identity):
     for task in tasks:
         if (type(task) is not dict or set(task)!={'id','kind','target','reason'}
                 or type(task['id']) is not str or not re.fullmatch('[a-z][a-z0-9_]{0,23}',task['id'])
-                or task['id'] in seen or task['kind'] not in ('letter','project','study','construction','contribution','practice')
+                or task['id'] in seen or task['kind'] not in ('letter','project','study','construction','contribution','practice','world_action')
                 or type(task['reason']) is not str or not 1<=len(task['reason'])<=160
                 or any(not 32<=ord(c)<=126 for c in task['reason'])):raise ValueError('invalid retained intention')
         seen.add(task['id'])
@@ -34,6 +34,7 @@ def selected(before, after):
     task=next((t for t in before.get('intentions',[]) if t['id']==key),None)
     if not task:raise ValueError('fulfill only a previously retained intention')
     if any(t['id']==key for t in after.get('intentions',[])):raise ValueError('fulfilled intention must leave pending agenda')
+    if task['kind']=='world_action':raise ValueError('world action completion belongs to actual authority state commit')
     if task['kind']=='construction':raise ValueError('construction completion belongs to actual authority geometry commit')
     if task['kind']=='practice':raise ValueError('practice completion requires a verified host receipt; live fulfillment is not enabled')
     effect=after.get(task['kind'])
@@ -70,7 +71,7 @@ def enqueue(queue, sub, character):
     if not character.get('canonical'):return None
     if queue.db.execute('SELECT count(*) FROM canonical_intent_attempts WHERE world=? AND actor=?',(sub['world'],sub['id'])).fetchone()[0]>=8:return None
     for task in character.get('intentions',[]):
-        if task['kind'] in ('practice','construction'):continue # Host/authority dispatchers own these actions, not the public author queue.
+        if task['kind'] in ('practice','construction','world_action'):continue # Host/authority dispatchers own these actions, not the public author queue.
         if queue.db.execute('SELECT 1 FROM canonical_intent_attempts WHERE world=? AND actor=? AND intention=?',(sub['world'],sub['id'],task['id'])).fetchone():continue
         key=uuid.uuid4().hex
         packet=dict(world_id=sub['world'],id=sub['id'],expected_version=character['version'],

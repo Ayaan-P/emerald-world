@@ -1893,6 +1893,7 @@ class WorldServer:
                 players.append(player)
             return dict(ok=True, revision=self.revision, players=players,
                         world_memory=self.memory.context(self),
+                        cast_world_actions=self.opportunities.actor_actions()[:32],
                         sharing=(dict(endpoint=self.sharing['endpoint'], listen=getattr(self, 'sharing_listen', None))
                                  if self.sharing else None),
                         capacity=dict(players=self.max_players, controls=self.max_controls,
@@ -2132,6 +2133,8 @@ class WorldServer:
                 self._poll_mechanics()
                 from .canonical_construction import step as step_cast_construction
                 step_cast_construction(self)
+                from .canonical_world_actions import step as step_cast_world_action
+                step_cast_world_action(self)
 
     def close(self):
         if self._closed:
