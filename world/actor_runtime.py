@@ -95,6 +95,8 @@ def actor_records(server):
     return rows
 
 def install(db):
+    from .actor_tutors import setup as tutor_setup
+    tutor_setup(db)
     from .actor_weather import setup as weather_setup
     weather_setup(db)
     from .actor_shops import setup as shop_setup
@@ -144,7 +146,8 @@ def inspect_runtime(server):
     from .npc_conversations import inbox as speech_inbox
     from .actor_capture import available as capture_available
     from .actor_shops import catalog as shop_catalog
-    return dict(retail=shop_catalog(server),capture=capture_available(server),public_player_speech=speech_inbox(server),received_observations=knowledge_inbox(server),companion_rosters={actor:roster(server,actor) for actor,r in actor_records(server).items() if not r.get('canonical')},capabilities={key:dict(description=c.description,arguments=c.arguments,outcome=c.outcome,actor_kinds=c.kinds) for key,c in CAPABILITIES.items()},
+    from .actor_tutors import catalog as tutor_catalog
+    return dict(tutoring=tutor_catalog(server),retail=shop_catalog(server),capture=capture_available(server),public_player_speech=speech_inbox(server),received_observations=knowledge_inbox(server),companion_rosters={actor:roster(server,actor) for actor,r in actor_records(server).items() if not r.get('canonical')},capabilities={key:dict(description=c.description,arguments=c.arguments,outcome=c.outcome,actor_kinds=c.kinds) for key,c in CAPABILITIES.items()},
         available_actions=server.opportunities.actor_actions()[:32],actors={a:('canonical' if r.get('canonical') else 'world') for a,r in actor_records(server).items()},
         companion_offers=companion_offers(server),navigation=discover_navigation(server),cave_links=linked_graph(server),carried_props=inventory(server),
         object_player_use='Optional state.world_object_player_use maps prop ID to one advertised world_object_actions action ID. Native A dispatches the same actor_interact(object_id,action,own_state) handler through normal staging. No map: text only. Effects are bounded own-state/text/graphics/one-cell movement, not bags/items.',
@@ -288,3 +291,6 @@ CAPABILITIES['world.configure_shop']=Capability('Open, revise or close this recu
 
 from .actor_weather import configure as configure_weather
 CAPABILITIES['world.set_weather']=Capability('Author persistent native weather on the exact generated outdoor destination this actor occupies.',dict(revision='exact current active archived outdoor revision',mode='clear, clouds, rain, snow, fog, overcast or default'),'Actual authority environmental setting; compatible clients apply only at safe field boundaries. Native weather/battle/form effects remain native; not a character power, forecast or proven client application. Original Hoenn unchanged.',configure_weather,None,('world',))
+
+from .actor_tutors import configure as configure_tutor
+CAPABILITIES['world.offer_tutoring']=Capability('Offer or close optional move tutoring through the native party/learn-move menus.',dict(move='reviewed move ID from tutoring.moves, or 0 to close'),'Actual opportunity, not learned move. Player chooses Pokemon and replacement; native eligibility enforced. Repeatable free tutoring, no server party/save edits and no canonical tutor flags changed.',configure_tutor,None,('world',))
