@@ -79,3 +79,30 @@ Current checks: 91 app/author tests plus three compiled native component tests.
 The new test uses two original actors, explicit private preview/public consent,
 real authority visits/rewards, typed next action, actor isolation and replay
 protection. No live model, full linked native build or rendered QA claim.
+
+## Directional cast relationships
+
+Actions may additionally contain `relationships`, keyed by up to two other
+already-authored canonical identities. Each relation has a `stance` (curious,
+encouraged, concerned, respectful or competitive), bounded literal `motivation`,
+and 1..4 evidence sequence numbers also present in the decision's evidence.
+Each source must be a real opted-in public completion of that target actor's
+field proposal, in this actor's declared places of interest. A player name,
+self-reference, uncreated actor, generic unattributed activity or fabricated
+meeting cannot establish a relationship through this contract.
+
+These are explicitly one-way authored interpretations. They do not declare
+mutual friendship, private player affinity, NPC travel or a simulated meeting.
+A followed actor with a relationship can reconsider its own goal, dialogue or
+proposal after a new actual result from that target, even while it has its own
+proposal. Actor edits alone never trigger the loop. Existing queue cursors,
+version checks, exact history rereads and bounded author response rules apply.
+
+`/guild cast wally thoughts` privately shows the current authored goal, directional
+assessments and public evidence references at Wally's original map. The original
+native talk response reflects the newly authored dialogue. No new native payload
+is required. A regression follows Rydel's real completed proposal, Wally's
+curiosity, a second real result, Wally choosing encouraged shorter practice and
+withdrawing his proposal, then persistence across authority restart. No extra
+XP or reciprocal Rydel relationship is manufactured. Deterministic test authors
+exercise the production pipeline; autonomous live-model behavior remains QA work.

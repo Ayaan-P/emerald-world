@@ -158,6 +158,66 @@ class CanonicalCastTests(unittest.TestCase):
         action=self.action(1);action['changes']['offer']=dict(map='GeneratedWorld_Wilds',count=1)
         with self.assertRaises(ValueError):cast.compile_actions([action],self.context())
 
+    def test_directional_relationship_changes_motivation_from_other_actor_real_result(self):
+        # Rydel offers; real guild completion establishes evidence for Wally's interest.
+        a=self.action();a['changes']['offer']=dict(map='LittlerootTown',count=2);self.apply(a)
+        c=self.peer();self.f.connections['Alice']=c
+        self.f.command('cast rydel 1');self.f.state('Alice');self.f.state('Bob')
+        first=self.f.events()[-1]['seq']
+        w=self.action();w['id']='canon_wally';w['changes']['evidence']=[first]
+        w['changes']['relationships']={'canon_rydel':dict(stance='curious',motivation='I wonder if his field plans could help me practice patiently.',evidence=[first])}
+        w['changes']['offer']=dict(map='LittlerootTown',count=1)
+        self.apply(w)
+        # This relation is one-way; no Rydel reaction is invented.
+        self.assertNotIn('relationships',self.s.module_state[cast.KEY]['canon_rydel'])
+        with tempfile.TemporaryDirectory() as tmp:
+            q=IntentQueue(tmp)
+            try:
+                reactions.configure(q,self.s.inspect(),'canon_wally','Let actual public field results inform this directional interest.')
+                a=self.action(1);a['changes']['evidence']=[first]
+                a['changes']['offer']=dict(map='LittlerootTown',count=2);self.apply(a)
+                self.assertEqual(reactions.observe(q,self.s.inspect(),self.fetch),[]) # authored decision is not a result
+                pair=next(p for p,m in catalog_maps().items() if m['name']=='MauvilleCity_BikeShop')
+                c['state']=[*pair,1,1,1,7,1];c['state_time']=time.monotonic()
+                self.f.command('cast rydel 2');self.f.state('Alice');self.f.state('Bob')
+                second=self.f.events()[-1]['seq']
+                self.assertEqual(len(reactions.observe(q,self.s.inspect(),self.fetch)),1)
+                turn=q.claim();self.assertEqual(turn['player'],'canon_wally')
+                ctx=self.context();ctx['runtime'].update(kind='character',observed_event=json.loads(turn['result']))
+                reaction=reactions.prepare(ctx,self.fetch)
+                self.assertEqual(ctx['players'],[])
+                changed=deepcopy(w);changed['expected_version']=1
+                changed['changes'].update(goal='Try shorter field practice after considering the new cycling results',dialogue='Rydel has me thinking. I want to try shorter practice trips.',evidence=[second],offer=None)
+                changed['changes']['relationships']['canon_rydel']=dict(stance='encouraged',motivation='The new field result makes patient practice seem worth trying.',evidence=[second])
+                reactions.check_response(dict(canonical_actions=[changed],tests='assert True'),reaction)
+                self.apply(changed);q.finish(turn['id'],'succeeded',dict(ok=True))
+                self.assertEqual(reactions.observe(q,self.s.inspect(),self.fetch),[])
+                pair=next(p for p,m in catalog_maps().items() if m['name']=='VerdanturfTown_WandasHouse')
+                c['state']=[*pair,1,1,1,7,1];c['state_time']=time.monotonic()
+                reply=cast.response(self.s,c,'a'*32,'wally')
+                self.assertIn('shorter practice trips',reply['briefing'])
+                thoughts=cast.guild_command(self.s,c,['wally','thoughts'])
+                self.assertTrue(any('Encouraged about Rydel' in line for line in thoughts))
+                self.assertTrue(all(len(line)<=113 for line in thoughts))
+                self.assertEqual(self.s.objects,[]);self.assertEqual(self.f.stats()[0],30)
+                self.s.close();self.f.case.server=self.f.case.open();self.s=self.f.case.server;self.f.server=self.s
+                self.assertEqual(self.s.module_state[cast.KEY]['canon_wally']['relationships']['canon_rydel']['stance'],'encouraged')
+            finally:q.close()
+
+    def test_relationship_rejects_players_self_and_unattributed_evidence(self):
+        self.apply(self.action())
+        for target in ('Alice','canon_wally','canon_rydel'):
+            a=self.action();a['id']='canon_wally'
+            a['changes']['relationships']={target:dict(stance='respectful',motivation='An unsupported inference.',evidence=[self.evidence])}
+            with self.assertRaises(ValueError):cast.compile_actions([a],self.context())
+        # Even arbitrary source admission cannot attach relationship meaning to
+        # a real but unrelated public event.
+        a=self.action();a['id']='canon_wally';self.apply(a)
+        before=deepcopy(self.s.module_state);after=deepcopy(before)
+        row=after[cast.KEY]['canon_wally'];row['version']+=1
+        row['relationships']={'canon_rydel':dict(stance='competitive',motivation='This has no target attribution.',evidence=[self.evidence])}
+        with self.assertRaises(ValueError):cast.validate_transition(before,after,[],self.s.db)
+
     @unittest.skipUnless(__import__('os').environ.get('EW_NATIVE_SOURCE'),'set EW_NATIVE_SOURCE for actual native adapter pairing')
     def test_actual_authority_reply_enters_original_script_adapter(self):
         from pathlib import Path

@@ -22,7 +22,7 @@ def records(state):
     from .build_catalog import catalog_maps
     places={'native:'+m['name'] for m in catalog_maps().values()}
     for identity,row in value.items():
-        if type(row) is not dict or set(row)-{'offer'}!={'version','goal','dialogue','places','evidence','reason'}:
+        if type(row) is not dict or set(row)-{'offer','relationships'}!={'version','goal','dialogue','places','evidence','reason'}:
             raise ValueError('invalid canonical actor fields')
         if type(row['version']) is not int or not 1<=row['version']<=2**31-1:raise ValueError('invalid canonical actor version')
         for field,limit in [('goal',160),('reason',240)]:
@@ -30,6 +30,14 @@ def records(state):
         if type(row['dialogue']) is not str or not re.fullmatch("[A-Za-z0-9 .,!?'-]{1,200}",row['dialogue']):raise ValueError('canonical dialogue requires bounded literal native text')
         if type(row['places']) is not list or not 1<=len(row['places'])<=4 or len(set(row['places']))!=len(row['places']) or any(p not in places for p in row['places']):raise ValueError('canonical interests require known native places')
         if type(row['evidence']) is not list or not 1<=len(row['evidence'])<=8 or any(type(n) is not int or n<1 for n in row['evidence']) or len(set(row['evidence']))!=len(row['evidence']):raise ValueError('canonical actor needs public evidence')
+        relationships=row.get('relationships',{})
+        if type(relationships) is not dict or len(relationships)>2:raise ValueError('at most two directional cast relationships')
+        for target,relation in relationships.items():
+            if target not in BINDINGS or target==identity or target not in value:raise ValueError('relationship requires another existing original actor')
+            if type(relation) is not dict or set(relation)!={'stance','motivation','evidence'}:raise ValueError('invalid relationship fields')
+            if relation['stance'] not in ('curious','encouraged','concerned','respectful','competitive'):raise ValueError('invalid directional stance')
+            if type(relation['motivation']) is not str or not re.fullmatch("[A-Za-z0-9 .,!?'-]{1,160}",relation['motivation']):raise ValueError('bounded relationship motivation required')
+            if type(relation['evidence']) is not list or not 1<=len(relation['evidence'])<=4 or any(type(n) is not int or n not in row['evidence'] for n in relation['evidence']):raise ValueError('relationship must cite this decision evidence')
         offer=row.get('offer')
         if offer is not None:
             if (type(offer) is not dict or set(offer)!={'map','count'} or 'native:'+str(offer.get('map')) not in places
@@ -58,6 +66,7 @@ def validate_transition(before, after, objects, db):
         for seq in row['evidence']:
             event=db.execute("SELECT data FROM events WHERE seq=? AND kind='world_memory'",(seq,)).fetchone()
             if event is None or not public_activity(json.loads(event[0]),row['places']):raise ValueError('canonical actor evidence must be an actual opted-in public activity in its interests')
+        validate_relationship_evidence(row,lambda n: json.loads(db.execute("SELECT data FROM events WHERE seq=? AND kind='world_memory'",(n,)).fetchone()[0]))
         changes.append(dict(character_id=identity,character_name=BINDINGS[identity]['name'],before=old.get(identity),after=row,places=sorted(set(row['places']+['native:'+BINDINGS[identity]['map']])),source='authored_public_activity_interpretation'))
     return changes
 
@@ -83,13 +92,14 @@ def compile_actions(actions, context):
     if type(actions) is not list or len(actions)!=1:raise ValueError('one bounded canonical action required')
     action=actions[0]
     if type(action) is not dict or set(action)!={'id','expected_version','changes'} or action['id'] not in BINDINGS:raise ValueError('invalid canonical action')
-    if type(action['changes']) is not dict or set(action['changes'])-{'offer'}!={'goal','dialogue','places','evidence','reason'}:raise ValueError('invalid canonical changes')
+    if type(action['changes']) is not dict or set(action['changes'])-{'offer','relationships'}!={'goal','dialogue','places','evidence','reason'}:raise ValueError('invalid canonical changes')
     old=cast.get(action['id']);version=old['version'] if old else 0
     if type(action['expected_version']) is not int or action['expected_version']!=version:raise ValueError('stale canonical action')
     row=copy.deepcopy(action['changes']);row['version']=version+1
     state.setdefault(KEY,{})[action['id']]=row;records(state)
     known={e['seq']:e for e in context.get('recalled_history',{}).get('events',[])+data.get('world_memory',{}).get('recent',[])}
     if any(n not in known or not public_activity(known[n],row['places']) for n in row['evidence']):raise ValueError('canonical action requires inspected public activity evidence')
+    validate_relationship_evidence(row,lambda n: known[n])
     previous=context.get('runtime',{}).get('previous_source')
     if type(previous) is not str or hashlib.sha256(previous.encode()).hexdigest()!=data.get('module_hash'):raise ValueError('verified active source required')
     suffix=hashlib.sha256(json.dumps(actions,sort_keys=True).encode()).hexdigest()[:16]
@@ -112,7 +122,8 @@ def response(server, conn, run, key):
 def contract():
     return dict(response='canonical_actions/tests',bindings=BINDINGS,
                 action_fields=['id','expected_version','changes'],
-                change_fields=['goal','dialogue','places','evidence','reason','offer (optional native map/count)'],
+                change_fields=['goal','dialogue','places','evidence','reason','offer (optional native map/count)','relationships (optional directional assessments)'],
+                relationships=dict(target='another existing bound canonical actor, not a player',fields=['stance','motivation','evidence'],stances=['curious','encouraged','concerned','respectful','competitive'],basis='actual public completion attributed to target actor; directional interpretation, not mutual relationship or invented meeting',reaction='new public target-offer results in actor interests trigger reconsideration; never authored decisions alone'),
                 optional_offer=dict(map='canonical native map in places',count='1..50 distinct guild trainers',acceptance='/guild cast ACTOR previews; leader accepts exact version; chronicle must already be on',outcome='actual authenticated guild presence, not actor personal achievements'),
                 effects='supplement original bound actor dialogue only; no spawned duplicate, save flag, team, reward, bike exchange or main script change',
                 evidence='actual inspected opted-in public guild_goal_completed event in selected native places; no invented personal achievement',
@@ -135,7 +146,16 @@ def guild_command(server, conn, args):
     try:server.core_story._place(conn,BINDINGS[identity]['map'])
     except ValueError:raise GuildError('Visit the original actor before reviewing or accepting a proposal.')
     row=records(server.module_state).get(identity);offer=(row or {}).get('offer')
-    if not offer:raise GuildError('This actor has no current field proposal.')
+    if len(args)==2 and args[1]=='thoughts':
+        if row is None:raise GuildError('This actor has no authored intent yet.')
+        lines=[f"{BINDINGS[identity]['name']}'s current goal:"]
+        lines.extend(row['goal'][i:i+110] for i in range(0,len(row['goal']),110))
+        for target,relation in row.get('relationships',{}).items():
+            lines.append(f"{relation['stance'].capitalize()} about {BINDINGS[target]['name']} - authored interpretation.")
+            lines.extend(relation['motivation'][i:i+110] for i in range(0,len(relation['motivation']),110))
+            lines.append('Public evidence: '+', '.join(str(n) for n in relation['evidence']))
+        return lines
+    if not offer:raise GuildError('This actor has no current field proposal. Use /guild cast ACTOR thoughts for current intent.')
     if len(args)==1:
         return [f"{BINDINGS[identity]['name']}: {offer['count']} trainers visit {offer['map']}.",
                 'Public guild expedition. Chronicle must already be on. Completion can inform the actor.',
@@ -147,6 +167,17 @@ def guild_command(server, conn, args):
 
 def reaction_activity(event, identity, row):
     if not public_activity(event,row.get('places',[])):return False
+    if event.get('character_id') in row.get('relationships',{}) and event.get('character_offer_id')=='field_plan':return True
     if not row.get('offer'):return True
     return (event.get('character_id')==identity and event.get('character_offer_id')=='field_plan'
             and event.get('character_offer_revision')==row['version'])
+
+
+def validate_relationship_evidence(row, lookup):
+    for target,relation in row.get('relationships',{}).items():
+        for seq in relation['evidence']:
+            event=lookup(seq)
+            if (not public_activity(event,row['places']) or event.get('character_id')!=target
+                    or event.get('character_offer_id')!='field_plan'
+                    or type(event.get('character_offer_revision')) is not int):
+                raise ValueError('relationship needs real public completion of the target actor proposal')
