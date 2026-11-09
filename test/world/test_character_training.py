@@ -54,3 +54,14 @@ class TrainingIntegrationTests(unittest.TestCase):
   self.assertIsNotNone(self.f.commit({'may':bad},self.f.npc))
   payload=deepcopy(result['receipt']['authority_payload']);payload['job']='f'*32
   self.assertFalse(self.request(payload)['ok'])
+
+ def test_adopted_level_remains_valid_after_second_real_practice(self):
+  first=step(self.ledger,self.engine,self.request,validated_native=True,steps=1024,cap=20)
+  self.assertEqual(first['status'],'reconciled_to_world_companion')
+  adopted=deepcopy(self.c);adopted['version']=2;adopted['team'][0]['level']=self.ledger.get('may','partner')['state']['level']
+  adopted['intentions'][0]['id']='second_practice'
+  self.assertIsNone(self.f.commit({'may':adopted},self.f.npc))
+  second=step(self.ledger,self.engine,self.request,validated_native=True,steps=1024,cap=20)
+  self.assertEqual(second['status'],'reconciled_to_world_companion')
+  self.assertGreater(second['receipt']['after_level'],second['receipt']['before_level'])
+  self.assertIsNone(self.f.commit({'may':adopted},self.f.npc))

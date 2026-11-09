@@ -48,7 +48,7 @@ def reconcile(server,request):
      or not before['level']<=after['level']<=request['cap']<=100 or not before['exp']<after['exp']<=before['exp']+request['steps']):raise ValueError('Practice exceeds frozen exercise budget')
  with server.db:
   if server.db.execute('SELECT 1 FROM character_training_receipts WHERE job=?',(request['job'],)).fetchone():raise ValueError('Practice receipt already applied')
-  server.db.execute('INSERT INTO character_training VALUES(?,?,?,?,?) ON CONFLICT(actor,individual) DO UPDATE SET engine=excluded.engine,state=excluded.state',
+  server.db.execute('INSERT INTO character_training VALUES(?,?,?,?,?) ON CONFLICT(actor,individual) DO UPDATE SET engine=excluded.engine,authored_level=excluded.authored_level,state=excluded.state',
      (actor,individual,request['engine'],current['authored_level'],json.dumps(after,sort_keys=True)))
   seq=server.memory.append('character_practice_completed',dict(character_id=actor,individual=individual,character_version=current['version'],
        job=request['job'],before_level=before['level'],after_level=after['level'],exp_added=after['exp']-before['exp'],
