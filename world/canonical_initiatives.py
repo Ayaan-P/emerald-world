@@ -16,7 +16,7 @@ def validate(project, identity, row, actors):
     if project is None:return
     places={p[7:] for p in row['places'] if p.startswith('native:') and not p[7:].startswith('GeneratedWorld_')}
     validate_pack(project,places)
-    if any(q['scope']!='place' for q in project['qualities'].values()):
+    if any(q['scope'] not in ('place','project') for q in project['qualities'].values()):
         raise ValueError('Cast initiatives use public shared qualities only')
     if any('mystery' in s for s in project['scenes'].values()):
         raise ValueError('Cast initiatives cannot inspect private mystery progress')
@@ -77,8 +77,7 @@ def view(server,identity=None):
         if identity is not None and owner!=identity:continue
         pack=json.loads(raw);places=[]
         for place in sorted({s['place'] for s in pack['scenes'].values()}):
-            data=server.db.execute('SELECT revision,state,played FROM story_places WHERE pack=? AND place=?',(key,place)).fetchone()
-            revision,state,played=(data[0],json.loads(data[1]),json.loads(data[2])) if data else (0,{k:q['initial'] for k,q in pack['qualities'].items()},[])
+            revision,state,played=server.opportunities.public_state(pack,place)
             places.append(dict(place=place,revision=revision,qualities=state,completed_scenes=played))
         from .canonical_cast import records
         from .canonical_activity_projects import available
