@@ -151,6 +151,8 @@ class WorldServer:
         install_dialogues(self.db)
         from .canonical_calls import install as install_calls
         install_calls(self.db)
+        from .canonical_initiatives import install as install_initiatives
+        install_initiatives(self.db)
         self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
         from .cooperative_mysteries import Mysteries
         from .opportunities import Opportunities
@@ -1882,6 +1884,7 @@ class WorldServer:
         self._queue(conn, json.dumps(result, ensure_ascii=True) + '\n')
 
     def inspect(self):
+        from .canonical_initiatives import view as initiative_view
         with self.lock:
             players = []
             for name, conn in sorted(self.peers.items()):
@@ -1898,6 +1901,7 @@ class WorldServer:
             return dict(ok=True, revision=self.revision, players=players,
                         world_memory=self.memory.context(self),
                         cast_world_actions=self.opportunities.actor_actions()[:32],
+                        cast_initiatives=initiative_view(self),
                         sharing=(dict(endpoint=self.sharing['endpoint'], listen=getattr(self, 'sharing_listen', None))
                                  if self.sharing else None),
                         capacity=dict(players=self.max_players, controls=self.max_controls,
@@ -2033,6 +2037,8 @@ class WorldServer:
                             publish_cooperation(self,change)
                             from .canonical_projects import publish as publish_cast_project
                             publish_cast_project(self,change)
+                            from .canonical_initiatives import publish as publish_initiative
+                            publish_initiative(self,change)
                             from .canonical_studies import publish as publish_cast_study
                             publish_cast_study(self,change)
                             from .canonical_collaboration import apply as apply_cast_collaboration

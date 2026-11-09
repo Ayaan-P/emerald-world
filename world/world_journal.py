@@ -72,6 +72,10 @@ def describe(event, place=None):
         from .canonical_cast import BINDINGS
         title=BINDINGS[event['character_id']]['name']+' '+('invited '+BINDINGS[event['recipient']]['name'] if kind.endswith('invited') else 'chose to '+event['decision']+' a project')
         details=['Project: '+event['intention'],'Independent project decision. No physical meeting or mutual affection is implied.']
+    elif kind == 'canonical_initiative_published':
+        from .canonical_cast import BINDINGS
+        title=BINDINGS[event['character_id']]['name']+' opened a shared project'
+        details=[event['title'],'Executable public choices installed; no physical participation or completed work implied.']
     elif kind == 'canonical_world_action_committed':
         from .canonical_cast import BINDINGS
         title=BINDINGS[event['character_id']]['name']+' changed a shared opportunity'
