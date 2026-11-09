@@ -52,6 +52,9 @@ class CoreStory:
             id TEXT PRIMARY KEY, trainer TEXT, actor TEXT, run TEXT, fingerprint TEXT, context TEXT,
             status TEXT, created REAL, lease TEXT, reply TEXT, interpretation TEXT, version INTEGER,
             UNIQUE(trainer,actor));
+        CREATE TABLE IF NOT EXISTS canonical_perspectives(
+            trainer TEXT, run TEXT, actor TEXT, interpretation TEXT NOT NULL,
+            reflection TEXT NOT NULL, updated REAL NOT NULL, PRIMARY KEY(trainer,run,actor));
         CREATE TABLE IF NOT EXISTS canonical_memory_optin(trainer TEXT,actor TEXT,PRIMARY KEY(trainer,actor));
         CREATE TABLE IF NOT EXISTS canonical_encounters(
             trainer TEXT, run TEXT, actor TEXT, talks INTEGER, updated REAL, version INTEGER, goal TEXT, text TEXT,

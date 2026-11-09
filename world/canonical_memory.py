@@ -18,10 +18,13 @@ def prepare(server, conn, run, actor, row, response, map_name=None):
     if previous:
         response['briefing']='Good to see you again. '+response['briefing']
         response['objective']='' # Keep the complete literal response inside the native 240-byte limit.
+    from .canonical_reflection import ready_record
+    reflection=ready_record(server,conn['id'],actor,run,row['version'])
     response['receipt']=secrets.token_hex(16)
     response['digest']=hashlib.sha256(json.dumps(response,sort_keys=True,separators=(',',':')).encode()).hexdigest()
     conn['cast_seen_pending']=dict(run=run,actor=actor,digest=response['digest'],expires=time.monotonic()+15,
-                                   version=row['version'],goal=row['goal'],text=response['briefing'],map=map_name)
+                                   version=row['version'],goal=row['goal'],text=response['briefing'],map=map_name,
+                                   reflection=reflection['id'] if reflection else None)
     return response
 
 
@@ -36,11 +39,15 @@ def acknowledge(server, conn, run, actor, digest, map_name=None):
     server.core_story._place(conn,expected)
     now=time.time()
     with server.db:
+        from .canonical_reflection import acknowledge_perspective
+        acknowledge_perspective(server,conn,pending)
         server.db.execute('''INSERT INTO canonical_encounters VALUES(?,?,?,?,?,?,?,?)
           ON CONFLICT(trainer,run,actor) DO UPDATE SET talks=min(talks+1,65535),
           updated=excluded.updated,version=excluded.version,goal=excluded.goal,text=excluded.text''',
                           (conn['id'],run,actor,1,now,pending['version'],pending['goal'],pending['text']))
         server.db.execute('DELETE FROM canonical_encounters WHERE trainer=? AND actor=? AND rowid NOT IN (SELECT rowid FROM canonical_encounters WHERE trainer=? AND actor=? ORDER BY updated DESC LIMIT 16)',(conn['id'],actor,conn['id'],actor))
+        server.db.execute('''DELETE FROM canonical_perspectives WHERE trainer=? AND actor=? AND run NOT IN
+          (SELECT run FROM canonical_encounters WHERE trainer=? AND actor=?)''',(conn['id'],actor,conn['id'],actor))
     conn.pop('cast_seen_pending',None)
     return dict(ok=True)
 
@@ -66,6 +73,11 @@ def command(server, conn, actor, args):
             lines.append(f'Save profile {i}: {talks} acknowledged conversations.')
             for label,value in [('Last actor goal: ',goal),('Last shown reply: ',text)]:
                 value=label+value;lines.extend(value[j:j+110] for j in range(0,len(value),110))
+        run=conn.get('core_active_run')
+        perspective=server.db.execute('SELECT interpretation FROM canonical_perspectives WHERE trainer=? AND actor=? AND run=?',(conn['id'],actor,run)).fetchone()
+        if perspective:
+            lines.append('Current save: the character\'s tentative perspective, not a fact about you.')
+            lines.extend(perspective[0][i:i+110] for i in range(0,len(perspective[0]),110))
         return lines if rows else lines+['No acknowledged conversations retained.']
     raise GuildError('Use /guild cast ACTOR remember on|off, memory, or forget.')
 
@@ -73,6 +85,6 @@ def command(server, conn, actor, args):
 def forget(server, conn, actor):
     from .canonical_reflection import cancel
     cancel(server,conn['id'],actor)
-    for table in ('canonical_memory_optin','canonical_encounters'):
+    for table in ('canonical_memory_optin','canonical_encounters','canonical_perspectives'):
         server.db.execute(f'DELETE FROM {table} WHERE trainer=? AND actor=?',(conn['id'],actor))
     conn.pop('cast_seen_pending',None)
