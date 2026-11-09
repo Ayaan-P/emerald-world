@@ -144,7 +144,7 @@ def challenge(server, conn, fields):
     """Freeze one explicitly requested opponent for exactly this authenticated peer."""
     import time
     region=fields[0]=='CHARACTER_CHALLENGE_REGION'
-    if (len(fields) != (5 if region else 4) or not conn.get('character_capable') or
+    if (len(fields) not in ((5,6) if region else (4,5)) or not conn.get('character_capable') or
             server.peers.get(conn.get('id')) is not conn or conn.get('closing')):
         raise ValueError('character challenge unavailable')
     try:
@@ -153,6 +153,14 @@ def challenge(server, conn, fields):
         raise ValueError('invalid character challenge') from None
     if str(seq) != fields[1] or str(version) != fields[3] or not conn['seq'] < seq <= 2**31-1:
         raise ValueError('stale character challenge')
+    from .actor_battle_formats import current as battle_format
+    format_revision, mode = battle_format(server,fields[2])
+    extended=len(fields)==(6 if region else 5)
+    if extended:
+        if not conn.get('character_format_capable') or fields[-1]!=str(format_revision):
+            raise ValueError('Battle format changed; choose again')
+    elif mode or conn.get('character_format_capable'):
+        raise ValueError('Battle format requires current explicit native choice')
     pending = conn.get('character_pending')
     if pending:
         raise ValueError('character challenge already pending')
@@ -173,6 +181,7 @@ def challenge(server, conn, fields):
     if delta is None or (state[2]+delta[0], state[3]+delta[1]) != (obj['x'], obj['y']):
         raise ValueError('character challenge requires adjacent facing player')
     persistent=all('individual' in mon for mon in character['team'])
+    if mode and (len(character['team'])<2 or not persistent):raise ValueError('Doubles lineup needs two owned individuals')
     if persistent and not conn.get('character_pokemon_capable'):raise ValueError('persistent companion battle needs matched CHARPK1 client')
     frozen = json.loads(json.dumps({'seq': seq, 'id': fields[2], 'version': version, 'team': character['team']}))
     if persistent:
@@ -183,8 +192,13 @@ def challenge(server, conn, fields):
         if full:
             if not conn.get('character_state_capable'):raise ValueError('Trained companion requires matched CHARPK2 client')
             frozen['full_values']=full
+    frozen.update(format_revision=format_revision,battle_format=mode)
     conn['character_pending'] = frozen
     conn['seq'] = seq
+    if conn.get('character_format_capable'):
+        persistence=2 if frozen.get('full_values') else int(persistent)
+        values=frozen.get('full_values') or frozen.get('individual_values') or [v for mon in frozen['team'] for v in (mon['species'],mon['level'])]
+        return 'CHARACTER_BATTLE_V4 '+' '.join(map(str,[seq,fields[2],version,len(frozen['team']),format_revision,mode,persistence,*values]))+'\n'
     if frozen.get('full_values'):
         return 'CHARACTER_BATTLE_V3 '+' '.join(map(str,[seq,fields[2],version,len(frozen['team']),*frozen['full_values']]))+'\n'
     if persistent:
