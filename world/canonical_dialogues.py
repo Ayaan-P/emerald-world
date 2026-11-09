@@ -9,6 +9,8 @@ from .guilds import GuildError
 
 
 def install(db):
+    from .canonical_decision_memory import install as install_memory
+    install_memory(db)
     db.executescript('''
       CREATE TABLE IF NOT EXISTS canonical_dialogues(
         id TEXT PRIMARY KEY,guild_id INTEGER,actor TEXT,version INTEGER,speaker TEXT,
@@ -45,6 +47,7 @@ def lines(session,trainer,current):
 
 def command(server,conn,actor,current,args,*,native=False):
     from .canonical_cast import BINDINGS,check_actor_location
+    with server.db:server.db.execute("DELETE FROM canonical_decision_pending WHERE session NOT IN (SELECT id FROM canonical_dialogues WHERE status='open' AND expires>?)",(time.time(),))
     guild=server.guilds._require(conn['id'])[0];trainer=conn['id'];op=args[0]
     if op=='converse' and len(args)==1:
         proposal=(current or {}).get('council')
@@ -75,6 +78,7 @@ def command(server,conn,actor,current,args,*,native=False):
     if op=='leave' and len(args)==2:
         if trainer not in members:return ['You are not listening to this conversation.']
         members.remove(trainer);advice.pop(trainer,None)
+        with server.db:server.db.execute('DELETE FROM canonical_decision_pending WHERE session=? AND trainer=?',(session['id'],trainer))
         status='cancelled' if trainer==session['speaker'] and session['status']=='open' else session['status']
         with server.db:server.db.execute('UPDATE canonical_dialogues SET members=?,advice=?,status=? WHERE id=?',(json.dumps(members),json.dumps(advice),status,session['id']))
         return ['You left the conversation. Existing public decisions remain unchanged.']
@@ -95,7 +99,10 @@ def command(server,conn,actor,current,args,*,native=False):
     if op=='advise':
         if trainer==session['speaker']:raise GuildError('As speaker, use choose; others may offer advice.')
         advice[trainer]=choice
-        with server.db:server.db.execute('UPDATE canonical_dialogues SET advice=? WHERE id=?',(json.dumps(advice,sort_keys=True),session['id']))
+        with server.db:
+            from .canonical_decision_memory import bind
+            bind(server,conn,actor,session['id'])
+            server.db.execute('UPDATE canonical_dialogues SET advice=? WHERE id=?',(json.dumps(advice,sort_keys=True),session['id']))
         return ['Advice shared with the conversation. The speaker still decides; you can leave to remove pending advice.']
     if op!='choose' or trainer!=session['speaker']:raise GuildError('Only the conversation speaker can choose; listeners advise.')
     with server.db:
@@ -104,6 +111,9 @@ def command(server,conn,actor,current,args,*,native=False):
             participants=len(members),advice={key:list(advice.values()).count(key) for key in proposal['options']},
             publication='explicit_speaker_choice_with_optional_advice',based_on=current['evidence'],places=['native:'+BINDINGS[actor]['map']],
             limits='Speaker choice, not unanimity, participant agreement, personal relationship, completed activity or story progression.'))
+        from .canonical_decision_memory import bind,commit
+        bind(server,conn,actor,session['id'])
+        commit(server,dict(session,actor=actor),proposal,choice,advice,seq)
         server.db.execute("UPDATE canonical_dialogues SET status='chosen',choice=?,seq=? WHERE id=?",(choice,seq,session['id']))
     server.revision=seq
     return ['The speaker choice is public, with anonymous advice counts. It is not group consensus. The character can consider it.']
