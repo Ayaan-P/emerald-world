@@ -53,6 +53,9 @@ class GuildChat:
                     if words and words[0].lower()=='npc':
                         from .npc_conversations import command as npc_command
                         lines=npc_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='contests':
+                        from .contest_guests import command as contest_command
+                        lines=contest_command(s,conn,words[1:])
                     elif words and words[0].lower()=='outbreaks':
                         from .shared_outbreaks import command as outbreak_command
                         lines=outbreak_command(s,conn,words[1:])
