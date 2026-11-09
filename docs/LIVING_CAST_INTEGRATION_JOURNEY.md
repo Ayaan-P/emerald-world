@@ -98,3 +98,11 @@ player meeting original Steven and requesting his existing optional partner
 encounter. There is no intervening player errand or author turn required to
 expose that consequence. Project work is abstract social state, not claimed
 physical travel or training. Native battle QA remains outstanding.
+
+## Play the actor's changed project without leaving normal dialogue
+
+The [native project panel](CAST_NATIVE_PROJECT_PANEL.md) exposes actual local
+player choices from the original actor's owned initiative. START opens it,
+SELECT pages, A chooses and B returns to the normal script. An independent actor
+turn can change what appears on the next visit. Only the actor's current map is
+accessible; private character replies are not mirrored into the project.

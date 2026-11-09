@@ -206,7 +206,7 @@ def response(server, conn, run, key):
                 version=row['version'],briefing=personal or (option['reply'] if option else row['dialogue']),objective=('Guild chat has a shared question.' if row.get('council') else 'Guild chat has conversation choices.' if row.get('conversation') and not option else 'Ask guild chat about my plan.' if row.get('offer') else 'Guild chat has my field studies.' if row.get('study') else 'Guild chat has my practice courses.' if row.get('project') else ''),evidence=row['evidence'])
     if row.get('scene') and not result.get('objective'):result['objective']='Optional group demonstration. Use history scene.'
     if row.get('companion') and not result.get('objective'):result['objective']='Companion battle. Ask guild cast Steven.'
-    if row.get('initiative') and not result.get('objective'):result['objective']='Guild cast initiatives lists my shared projects.'
+    if row.get('initiative') and not result.get('objective'):result['objective']='START opens local project choices. Guild cast initiatives.'
     result['digest']=hashlib.sha256(json.dumps(result,sort_keys=True,separators=(',',':')).encode()).hexdigest()
     conn['core_active_run']=run
     conn['canonical_location']=dict(actor=identity,map=map_name,run=run,version=row['version'],expires=time.monotonic()+120)
