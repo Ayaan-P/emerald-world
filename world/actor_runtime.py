@@ -16,6 +16,11 @@ class Capability:
     kinds: tuple = ('canonical',)
 
 @dataclass
+class Committed:
+    seq: int
+    result: dict
+
+@dataclass
 class Pending:
     data: dict
     dispatch: object
@@ -54,6 +59,9 @@ CAPABILITIES['world.navigate']=Capability('Navigate this world-owned actor to a 
 
 from .actor_observation import observe
 CAPABILITIES['world.observe']=Capability('Inspect connected local geometry and public world objects at this actor current authoritative position.',dict(radius='integer 1..4 cardinal steps'),'Dated local snapshot only; no player/private data, inferred encounters or rendered eyesight.',observe,None,('world',))
+
+from .actor_geometry import open_ground
+CAPABILITIES['world.open_ground']=Capability('Open a bounded patch of observed local ground on an empty active plain shared XL map.',dict(observation='own successful observation receipt sequence',x='patch origin integer',y='patch origin integer',width='integer 1..5',height='integer 1..5'),'Actual immutable geometry revision and preserved character positions; abstract terrain change, not simulated labor or resources.',open_ground,None,('world',))
 
 def actor_records(server):
     from .character_reactions import actors
@@ -100,6 +108,7 @@ def inspect_runtime(server):
     return dict(capabilities={key:dict(description=c.description,arguments=c.arguments,outcome=c.outcome,actor_kinds=c.kinds) for key,c in CAPABILITIES.items()},
         available_actions=server.opportunities.actor_actions()[:32],actors={a:('canonical' if r.get('canonical') else 'world') for a,r in actor_records(server).items()},
         navigation=discover_navigation(server),
+        result_references='Use {result: earlier_step_id, key: scalar_result_key}. Reserved key tool_receipt yields that successful step durable receipt sequence.',
         plans=[dict(actor=actor,plan=row['plan'],receipts=[dict(step=s,status=status,result=json.loads(result),seq=seq)
             for s,status,result,seq in server.db.execute('SELECT step,status,result,seq FROM actor_tool_receipts WHERE actor=? AND plan=? ORDER BY seq',(actor,row['plan']['id']))])
             for actor,row in actor_records(server).items() if row.get('plan')],
@@ -158,9 +167,16 @@ def tick(server,*,now=None):
                     for key,value in args.items():
                         if type(value) is dict:
                             result=receipts[value['result']][1]
+                            if value['key']=='tool_receipt':
+                                args[key]=server.db.execute('SELECT seq FROM actor_tool_receipts WHERE actor=? AND plan=? AND step=?',(actor,plan['id'],value['result'])).fetchone()[0]
+                                continue
                             if value['key'] not in result or type(result[value['key']]) not in (str,int):raise ValueError('Unavailable scalar result reference')
                             args[key]=result[value['key']]
-                    result=CAPABILITIES[step['tool']].execute(server,actor,row,args)
+                    server.actor_tool_execution=(actor,row,plan,step)
+                    try:result=CAPABILITIES[step['tool']].execute(server,actor,row,args)
+                    finally:server.actor_tool_execution=None
+                    if isinstance(result,Committed):
+                        return dict(actor=actor,plan=plan['id'],step=step['id'],status='succeeded',seq=result.seq)
                     if isinstance(result,Pending):
                         server.db.execute('INSERT INTO actor_tool_receipts VALUES(?,?,?,?,?,NULL)',(actor,plan['id'],step['id'],'pending',json.dumps(result.data,sort_keys=True)))
                     else:seq=_receipt(server,actor,row,plan,step,'succeeded',result)
