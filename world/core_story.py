@@ -80,6 +80,9 @@ class CoreStory:
         CREATE TABLE IF NOT EXISTS canonical_encounters(
             trainer TEXT, run TEXT, actor TEXT, talks INTEGER, updated REAL, version INTEGER, goal TEXT, text TEXT,
             PRIMARY KEY(trainer,run,actor));
+        CREATE TABLE IF NOT EXISTS canonical_action_obstructions(
+          actor TEXT, intention TEXT, action TEXT, seq INTEGER,
+          PRIMARY KEY(actor,intention,action));
         CREATE TABLE IF NOT EXISTS canonical_intent_receipts(
             actor TEXT, intention TEXT, action_receipt INTEGER NOT NULL, PRIMARY KEY(actor,intention));
         CREATE TABLE IF NOT EXISTS canonical_contributions(

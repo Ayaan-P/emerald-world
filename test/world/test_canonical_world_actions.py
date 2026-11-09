@@ -55,7 +55,7 @@ class WorldActionTests(unittest.TestCase):
     self.assertEqual(self.s.db.execute('SELECT count(*) FROM story_receipts').fetchone()[0],0)
     self.assertEqual(self.s.objects,[]) # No duplicate or alleged physical cast travel.
    finally:q.close()
-  self.s.close();self.f.f.case.server=self.f.f.case.open();self.s=self.f.f.case.server
+  self.s.close();self.f.f.case.server=self.f.f.case.open();self.s=self.f.f.case.server;self.f.s=self.s
   self.assertIsNone(actions.step(self.s,now=30))
   self.assertEqual(self.s.opportunities.offers('Bob','LittlerootTown')[0]['scenes'][0]['id'],'shared')
  def test_player_turns_private_qualities_and_false_completion_are_not_available(self):
@@ -88,3 +88,61 @@ class WorldActionTests(unittest.TestCase):
   action=self.actor('canon_briney');self.f.apply(action)
   self.assertEqual(actions.step(self.s,now=10)['status'],'waiting')
   self.assertEqual(self.s.db.execute('SELECT count(*) FROM story_places').fetchone()[0],0)
+
+ def test_obstruction_drives_independent_replanning_and_real_shared_result(self):
+  # Wally commits a plan before Rydel changes the shared discussion. No player
+  # performs either actor's action or advances a save flag.
+  self.f.apply(self.actor('canon_wally',scene='contribute',choice='join'))
+  self.f.apply(self.actor())
+  self.assertEqual(actions.step(self.s,now=10)['actor'],'canon_rydel')
+  with tempfile.TemporaryDirectory() as tmp:
+   q=IntentQueue(tmp)
+   try:
+    reactions.configure(q,self.s.inspect(),'canon_wally','Reconsider your own plans when circumstances change.')
+    self.assertEqual(reactions.observe(q,self.s.inspect(),self.f.fetch),[])
+    blocked=actions.step(self.s,now=16)
+    self.assertEqual(blocked['status'],'waiting')
+    event=self.s.memory.history()['events'][-1]
+    self.assertEqual(event['event'],'canonical_action_obstructed')
+    self.assertEqual(event['character_id'],'canon_wally')
+    self.assertFalse(actions.obstruction_relevant(event,'canon_briney'))
+    self.assertEqual(self.s.opportunities.offers('Alice','LittlerootTown')[0]['scenes'][0]['id'],'solo')
+    self.assertIsNone(self.s.db.execute("SELECT 1 FROM canonical_intent_receipts WHERE actor='canon_wally'").fetchone())
+    before=self.s.memory.history()['through']
+    self.assertEqual(actions.step(self.s,now=22)['seq'],blocked['seq'])
+    self.assertEqual(self.s.memory.history()['through'],before)
+    self.assertEqual(len(reactions.observe(q,self.s.inspect(),self.f.fetch)),1)
+    item=q.claim();ctx=self.f.context();ctx['runtime'].update(kind='character',observed_event=json.loads(item['result']))
+    repair=self.actor('canon_wally',1,1,'contribute','join',blocked['seq'])
+    reactions.check_response(dict(canonical_actions=[repair],tests='assert True'),reactions.prepare(ctx,self.f.fetch))
+    self.f.apply(repair)
+    result=actions.step(self.s,now=28)
+    self.assertEqual(result['status'],'completed')
+    self.assertEqual(result['actor'],'canon_wally')
+    self.assertEqual(self.s.opportunities.offers('Bob','LittlerootTown')[0]['scenes'][0]['id'],'shared')
+    self.assertEqual(self.s.db.execute('SELECT count(*) FROM story_players').fetchone()[0],0)
+    self.assertEqual(self.s.db.execute('SELECT count(*) FROM story_receipts').fetchone()[0],0)
+   finally:q.close()
+  self.s.close();self.f.f.case.server=self.f.f.case.open();self.s=self.f.f.case.server;self.f.s=self.s
+  self.assertIsNone(actions.step(self.s,now=40))
+  self.assertEqual(self.s.db.execute('SELECT count(*) FROM canonical_action_obstructions').fetchone()[0],1)
+
+ def test_unavailable_request_deduplicates_across_restart_and_unrelated_revision(self):
+  self.f.apply(self.actor(revision=99))
+  first=actions.step(self.s,now=10)
+  self.s.close();self.f.f.case.server=self.f.f.case.open();self.s=self.f.f.case.server;self.f.s=self.s
+  self.assertEqual(actions.step(self.s,now=20)['seq'],first['seq'])
+  self.f.apply(self.actor(version=1,revision=99,evidence=first['seq']))
+  self.assertEqual(actions.step(self.s,now=30)['seq'],first['seq'])
+  self.assertEqual(self.s.db.execute('SELECT count(*) FROM canonical_action_obstructions').fetchone()[0],1)
+  self.assertEqual(self.s.db.execute('SELECT count(*) FROM story_places').fetchone()[0],0)
+
+ def test_failed_observation_persistence_does_not_invent_history(self):
+  self.f.apply(self.actor(revision=99))
+  before=self.s.memory.history()['through']
+  with patch.object(self.s.memory,'append',side_effect=ValueError('receipt refused')):
+   self.assertEqual(actions.step(self.s,now=10)['status'],'waiting')
+  self.assertEqual(self.s.memory.history()['through'],before)
+  self.assertEqual(self.s.db.execute('SELECT count(*) FROM canonical_action_obstructions').fetchone()[0],0)
+  self.assertEqual(self.s.db.execute('SELECT count(*) FROM story_places').fetchone()[0],0)
+  self.assertIn('seq',actions.step(self.s,now=16))
