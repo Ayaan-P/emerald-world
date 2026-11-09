@@ -53,6 +53,10 @@ def admin_request(socket_path, request, timeout: float = 120):
     state_dir/admin.sock for deployment authority. Legacy test sockets retain
     PATH.admin. Never fall back to a game-visible admin endpoint in production.
     """
+    if request.get('command')=='inspect':
+        if len((_json(request)+'\n').encode())>1024:raise ValueError('admin request exceeds server line limit')
+        from .client import admin_request as bounded_inspect
+        return bounded_inspect(socket_path,request,timeout)
     socket_path = Path(socket_path)
     admin_path = (socket_path.parent.parent / 'admin.sock'
                   if socket_path.parent.name == 'transport'
@@ -157,7 +161,8 @@ not fields to place only inside state. Objects stored only in state are not rend
 Return the complete top-level objects key to spawn/preserve NPCs, for example:
 return {'state': new_state, 'tiles': [], 'objects': [npc_dict]}
 Tests of visible NPCs must assert result['objects'], not result['state']['objects'].
-An optional 'objects' list defines at most 8 shared interactable NPCs. Each has
+An optional 'objects' list defines up to 64 shared objects, at most 8 per exact
+map/revision. Native snapshots contain only the player's current scope. Each has
 fields id,group,num,x,y,gfx,text. Generated-map characters additionally require
 region_revision: exact opened immutable region or archived shared XL digest, with walkable placement
 outside entrance/exit. They are visible only to CHARREG1 clients inside that region.
