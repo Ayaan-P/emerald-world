@@ -461,8 +461,8 @@ class WorldServer:
         if row is None or hashlib.sha256(row[0]).hexdigest()!=revision:
             raise ValueError('archived region unavailable')
         cave=SharedCave(row[0])
-        if cave.version!=1:
-            raise ValueError('REGION1 supports immutable plain caves only')
+        if cave.version not in (1,10):
+            raise ValueError('REGION1 supports immutable plain or Expansion wildlife caves only')
         place=self.memory.place(revision)
         existing=self.db.execute('SELECT revision FROM world_region_revisions WHERE place_id=?',(place,)).fetchone()
         if existing and existing[0]!=revision:
@@ -487,7 +487,8 @@ class WorldServer:
         start=int(offset)
         rows=self.db.execute("""SELECT r.place_id,a.label FROM world_region_revisions r
             JOIN generated_area_archive a ON a.identity=r.revision
-            ORDER BY r.place_id LIMIT 5 OFFSET ?""",(start,)).fetchall()
+            WHERE (? OR substr(a.template,1,8)=?)
+            ORDER BY r.place_id LIMIT 5 OFFSET ?""",(bool(conn.get('cave_expansion')),b'EWGMAP01',start)).fetchall()
         next_page=start+4 if len(rows)>4 else 0
         self._queue(conn,f'REGION BEGIN {start} {min(len(rows),4)} {next_page}\n')
         for place,label in rows[:4]:
@@ -513,7 +514,7 @@ class WorldServer:
             if row is None or hashlib.sha256(row[0]).hexdigest()!=row[1]:
                 raise ValueError('region unavailable')
             cave=SharedCave(row[0])
-            if cave.version!=1:
+            if cave.version not in (1,10) or (cave.version==10 and not conn.get('cave_expansion')):
                 raise ValueError('region format unavailable')
             conn['region_cave']=cave
             conn['region_place']=place

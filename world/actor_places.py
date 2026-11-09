@@ -3,7 +3,7 @@ import json
 import time
 
 
-def create(server, actor, row, args):
+def create(server, actor, row, args, *, population=None):
     from .actor_runtime import Committed, _receipt
     from .cave_blueprint import proposal_from_blueprint
     from .shared_cave import SharedCave
@@ -18,6 +18,9 @@ def create(server, actor, row, args):
     except (TypeError,ValueError):raise ValueError('Invalid cave blueprint JSON')
     proposal=proposal_from_blueprint(blueprint,side=31)
     blob=b'EWGMAP01'+''.join(proposal['rows']).encode('ascii')
+    if population is not None:
+        from .offline_cave import encode_wildlife
+        blob=encode_wildlife(proposal,population['profile'],population['rate'],population['slots'],cohort='expansion-native')
     cave=SharedCave(blob)
     if server.db.execute('SELECT 1 FROM generated_area_archive WHERE identity=?',(cave.identity,)).fetchone():
         raise ValueError('This exact geometry already exists; reuse its existing place rather than inventing another identity')
@@ -32,8 +35,23 @@ def create(server, actor, row, args):
             (cave.identity,label,'cave',blob,int(time.time())))
         opened=server._pin_region(cave.identity)
         result=dict(place_id=opened['place_id'],revision=cave.identity,label=label,side=31,
-            outcome='region_opened',required_client_capability='REGION1',entry='REGION1 selection then existing cave entrance',
+            outcome='region_opened',required_client_capability='CAVE10+REGION1' if population is not None else 'REGION1',entry='REGION1 selection then existing cave entrance',
             walkable_tiles=sum(r.count('.') for r in proposal['rows']))
+        if population is not None:
+            result['population']=population
         seq=_receipt(server,actor,record,plan,step,'succeeded',result)
     server.revision=server.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
     return Committed(seq,result)
+
+
+def create_habitat(server, actor, row, args):
+    if set(args)!={'label','blueprint','population'} or type(args['population']) is not str or len(args['population'])>500:
+        raise ValueError('Supply compact population JSON with profile, rate and 12 [species_name,level] slots')
+    try: population=json.loads(args['population'])
+    except (TypeError,ValueError):raise ValueError('Invalid population JSON')
+    if type(population) is not dict or set(population)!={'profile','rate','slots'} or type(population['slots']) is not list or len(population['slots'])!=12:
+        raise ValueError('Population needs profile, rate and exactly 12 weighted slots')
+    if any(type(p) is not list or len(p)!=2 for p in population['slots']):
+        raise ValueError('Each slot needs [enabled_species_name,level]')
+    population=dict(population,slots=[dict(species=p[0],level=p[1]) for p in population['slots']])
+    return create(server,actor,row,{k:args[k] for k in ('label','blueprint')},population=population)
