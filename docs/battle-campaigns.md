@@ -75,3 +75,25 @@ This follow-up is stacked on #345, still pinned to native #40, not RC12. Fixture
 feed actual personalized authority rows into the pinned native C parser/menu
 components, then test save isolation, restart and normal battle-to-next-route
 transition. Rendered party/shop gameplay and integration with RC12 remain Maya's QA.
+
+## Native campaign board
+
+The paired native board removes typed IDs from the player flow. In the idle field,
+press **Ctrl+B**. Browse pages with Left/Right, select with Enter, refresh with R,
+and close with Escape. It lists published campaigns, current opponents and their
+actual positions, branching route choices, preparation options and their selected
+camp location. Actual battles still begin at the NPC Battle prompt; native Shop
+and Tutor still perform all party/bag/money operations.
+
+The board uses authenticated CORE requests, bound to world/save/nonce, not a parsed
+chat message. Selection tokens are session-private, single-use, expire after a
+minute and bind the current campaign state. Stale choices refuse. Unknown servers
+refuse safely. On a missing reply the UI reports an unknown outcome: refresh the
+board rather than automatically repeating an action. Focus loss or Escape closes
+the interface and releases game controls. No menu action claims a battle result.
+
+Board candidate pairs native 2abe34bd2b39ec9085e1d1aa5eda4cd5e65b8ed6 with this app,
+stacked on #346; the preceding native #40 pin is superseded for this board only.
+It remains divergent from released RC12. Compiled C fixtures exercise the actual
+keyboard/sender/parser functions, including real app replies. They are not a linked
+or rendered gameplay demonstration. Maya owns those checks and release integration.
