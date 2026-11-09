@@ -312,7 +312,15 @@ class RuntimeGM:
                     return source
             except (OSError, ValueError, KeyError):
                 pass
-        return None
+        # Capabilities may commit a new source outside this worker's local cache.
+        # Retrieve only the exact admitted hash via the existing host-admin API.
+        from world import gm
+        result=gm.admin_request(self.socket_path,dict(command='mechanic_source',expected_hash=active),self.timeout)
+        source=result.get('source') if type(result) is dict else None
+        if (type(result) is not dict or result.get('ok') is not True or result.get('sha256')!=active or type(source) is not str
+            or len(source.encode())>256*1024 or hashlib.sha256(source.encode()).hexdigest()!=active):
+            raise ValueError('Active mechanic source unavailable or changed')
+        return source
 
     def step(self):
         from world import gm
