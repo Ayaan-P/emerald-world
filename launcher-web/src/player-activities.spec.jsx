@@ -10,9 +10,9 @@ vi.mock('./api', () => ({ loadState:vi.fn(), perform:vi.fn(), forgetCapability:v
 afterEach(cleanup);
 const state = { connected:true, world_key:'local', trainer:'Scout', local_host:true, local_worlds:[{key:'local',name:'My world',trainer:'Scout'}], local_hosts:['local'], hosting:{available:true,enrolled:true,worlds:[{id:'remote',name:'Cloud world'}]} };
 it('renders only authority survey progress and public recap without mutations', async () => {
- const onRequest=vi.fn().mockResolvedValue({trainer:'Scout',survey:{revision:'abc',active:true,in_scope:true,visited:['camp'],landmarks:[{id:'camp',x:1,y:1},{id:'ridge',x:8,y:9}]},guild:null,offers:[],recap:[{seq:5,title:'Area activated',details:['Lantern Trail']}],coverage_start_seq:0});
+ const onRequest=vi.fn().mockResolvedValue({trainer:'Scout',survey:{revision:'abc',active:true,in_scope:true,complete:false,next_objective:{id:'ridge',x:8,y:9,revision:'abc'},visited:['camp'],landmarks:[{id:'camp',x:1,y:1},{id:'wrong-first',x:2,y:2},{id:'ridge',x:8,y:9}]},guild:null,offers:[],recap:[{seq:5,title:'Area activated',details:['Lantern Trail']}],coverage_start_seq:0});
  render(<PlayerActivities state={state} ready busy={false} onRequest={onRequest} onAdventure={()=>{}} />);
- await screen.findByText('1 of 2 landmarks discovered');
+ await screen.findByText('1 of 3 landmarks discovered');
  expect(screen.getByText(/ridge near/)).toBeTruthy();
  expect(screen.getByRole('heading',{name:'Public world recap'})).toBeTruthy();
  expect(screen.getByText(/explicit share confirmation/)).toBeTruthy();

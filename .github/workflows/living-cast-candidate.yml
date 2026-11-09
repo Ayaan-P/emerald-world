@@ -1,0 +1,31 @@
+name: Living cast candidate components
+on:
+  pull_request:
+    branches: [main, dot/rc12-core-story, dot/rc12-living-cast]
+    paths:
+      - 'world/**'
+      - 'test/world/**'
+      - 'scripts/check_living_cast.py'
+      - 'scripts/build_expansion.py'
+      - 'engines/living-cast-candidate.json'
+      - '.github/workflows/living-cast-candidate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  authority-components:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Generate map constants for production C fixtures
+        run: |
+          make -C tools/mapjson
+          tools/mapjson/mapjson groups emerald data/maps/map_groups.json data/maps include/constants
+          tools/mapjson/mapjson layouts emerald data/layouts/layouts.json data/layouts include/constants
+      - name: Authority, author contracts and setup components without credentials
+        run: python3 scripts/check_living_cast.py
+      # Native source-only fixtures may skip here. Linked-native and live-model
+      # acceptance belong to the separate integration checkout, not this job.

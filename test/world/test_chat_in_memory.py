@@ -23,6 +23,8 @@ class ChatRoutingTests(unittest.TestCase):
         self.addCleanup(self.server.db.close)
         self.server.world_rules = WorldRules(self.server.db)
         self.server.host_controls = HostControls(self.server.db)
+        from world.canonical_scenes import CanonicalScenes
+        self.server.cast_scenes = CanonicalScenes(self.server)
         self.server.landmark_survey = LandmarkSurvey(self.server)
         self.server.chat_serial = 0
         self.server.peers = {name: peer(name, name != 'legacy') for name in ('alice', 'bob', 'carol', 'legacy')}

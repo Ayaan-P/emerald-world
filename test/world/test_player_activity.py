@@ -39,6 +39,24 @@ class PlayerActivityTests(unittest.TestCase):
         self.assertNotIn('token',json.dumps(value))
         self.assertNotIn('Survey complete',json.dumps(value))
 
+    def test_next_objective_is_authoritative_nearest_with_exact_scope(self):
+        self.f.command('/explore start')
+        sites = self.f.report['landmarks'][1:-1]
+        target = sites[-1]
+        self.f.state(self.f.conn, target['x'] - 2, target['y'])
+        value = self.call()['survey']
+        self.assertEqual(value['next_objective']['id'], target['id'])
+        self.assertEqual(value['next_objective']['revision'], self.f.revision)
+        self.assertIn('Next: ' + target['id'], ' '.join(self.s.landmark_survey.lines(self.f.conn)))
+        self.f.conn['cave_ack'] = '0' * 64
+        self.assertIsNone(self.call()['survey']['next_objective'])
+        self.assertFalse(self.call()['survey']['in_scope'])
+        import time
+        self.f.conn['cave_ack'] = self.f.revision
+        self.f.conn['state_time'] = time.monotonic() + 60
+        self.assertIsNone(self.call()['survey']['next_objective'])
+        self.assertFalse(self.call()['survey']['in_scope'])
+
     def test_recap_is_latest_public_commits_not_private_notes(self):
         self.f.f.bury_bridge_history()
         self.f.send(self.f.conn,'STATE '+str(self.f.conn['seq']+1)+' 0 9 8 8 4 7 1 '+'a'*16+' '+'b'*16)

@@ -50,7 +50,17 @@ class GuildChat:
             with s.lock:
                 try:
                     command=text[6:].strip();words=command.split()
-                    if words and words[0].lower()=='online': lines=self.online(conn['id'],words[1:])
+                    if words and words[0].lower()=='cast':
+                        from .canonical_cast import guild_command
+                        lines=guild_command(s,conn,words[1:])
+                        self.epoch+=1
+                    elif words and words[0].lower()=='play' and getattr(s, 'activities', None):
+                        lines=[line[:113] for line in s.activities.command(conn,words[1:])]
+                    elif words and words[0].lower()=='flag' and getattr(s, 'flags', None):
+                        lines=s.flags.command(conn,words[1:])
+                    elif words and words[0].lower()=='relay' and getattr(s, 'relays', None):
+                        lines=s.relays.command(conn,words[1:])
+                    elif words and words[0].lower()=='online': lines=self.online(conn['id'],words[1:])
                     else:
                         generated=None
                         if (len(words)==4 and words[0].lower() in ('expedition','meet')
@@ -68,6 +78,8 @@ class GuildChat:
                         lines=(s.guilds.expedition(conn['id'],['start','here',words[3]],place=generated) if generated else s.guilds.command(conn['id'],command))
                         self.epoch+=1
                 except GuildError as exc: lines=[str(exc)]
+                if not words:lines.append('Original character field proposals: /guild cast ACTOR')
+                if not words and getattr(s, 'relays', None):lines.append('Find games and partners: /guild play')
                 for line in lines: self.message(conn,conn['id'],'Guild: '+line)
                 parts=text.split()
                 if len(parts)==3 and parts[1].lower()=='invite' and lines[0].startswith('Invited '):

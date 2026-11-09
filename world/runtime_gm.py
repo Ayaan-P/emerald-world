@@ -1,4 +1,4 @@
-"""Durable, opt-in Luna developer GM. Intent text and world snapshots are data.
+"""Durable, opt-in provider-selected developer GM. Intent text and world snapshots are data.
 
 IntentQueue is safe for concurrent submitters. A runtime holds a separate flock
 for its entire life. Claimed requests are never automatically replayed, even if
@@ -59,6 +59,8 @@ class IntentQueue:
                 CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             ''')
             (self.root / 'runtime.sqlite3').chmod(0o600)
+            from world.character_reactions import setup
+            setup(self)
         except BaseException:
             if hasattr(self, 'db'):
                 self.db.close()
@@ -232,7 +234,8 @@ class IntentQueue:
         for row in rows:
             row['result'] = json.loads(row['result']) if row['result'] else None
         runtime = self.db.execute("SELECT value FROM metadata WHERE key='runtime'").fetchone()
-        return {'requests': rows, 'purposes': dict(self.db.execute('SELECT player,text FROM purposes')),
+        from world.character_reactions import subscriptions
+        return {'characters': subscriptions(self), 'requests': rows, 'purposes': dict(self.db.execute('SELECT player,text FROM purposes')),
                 'runtime': json.loads(runtime[0]) if runtime else None}
 
 
@@ -243,8 +246,11 @@ class RuntimeGM:
     or run(stop_event) for polling. Do not call step concurrently on one object.
     """
     def __init__(self, state_dir, socket_path, *, model, timeout=120, poll_interval=2,
-                 observe_events=True, min_author_interval=15):
-        validate_config(model, timeout, poll_interval)
+                 observe_events=True, min_author_interval=15, provider="codex"):
+        from world.author_backends import validate
+        validate(provider,model,timeout)
+        if type(poll_interval) not in (int,float) or not math.isfinite(poll_interval) or not 0<poll_interval<=3600:raise ValueError("Invalid poll interval")
+        self.provider=provider
         if (type(min_author_interval) not in (int, float) or not math.isfinite(min_author_interval)
                 or not 0 <= min_author_interval <= 3600):
             raise ValueError('min_author_interval must be finite in [0,3600] seconds')
@@ -319,6 +325,8 @@ class RuntimeGM:
                                           self.timeout)
             self.queue.observe_events(event_page, enqueue=self.observe_events)
             self.queue.observe(inspection, enqueue=self.observe_events)
+            from world.character_reactions import observe
+            observe(self.queue, inspection, lambda request: gm.admin_request(self.socket_path, request, self.timeout), enqueue=self.observe_events)
         except (OSError, ValueError, TimeoutError) as exc:
             self.queue.set_runtime({'state': 'inspection_failed', 'model': self.model,
                                     'error': type(exc).__name__, 'at': time.time()})
@@ -331,12 +339,13 @@ class RuntimeGM:
                                 'request_id': item['id'], 'at': time.time()})
         try:
             runtime_context = {'request_id': item['id'], 'kind': item['kind'], 'player': item['player'],
-                               'model': self.model, 'adapter': 'public_codex_exec',
+                               'model': self.model, 'adapter': self.provider,
                                'previous_source': self._previous_source(inspection),
                                'selected_purposes': self.queue.status()['purposes'],
                                'observed_event': json.loads(item['result']) if item['result'] else None}
+            from world.author_backends import argv as backend_argv
             report = gm.author_and_deploy(self.root, self.socket_path, item['text'],
-                                          luna_author_argv(self.model, self.timeout), self.timeout,
+                                          backend_argv(self.provider,self.model,self.timeout), self.timeout,
                                           runtime_context=runtime_context)
             report['runtime_model'] = self.model
             status = 'succeeded' if report['ok'] else 'failed'
@@ -360,6 +369,24 @@ class RuntimeGM:
 # core/src/tools/spec_plan.rs: add_shell_tools and add_core_utility_tools.
 # apply_patch is catalog-driven, NOT controlled by features.apply_patch_freeform.
 CODEX_VERSION = 'codex-cli 0.156.1'
+
+
+class AuthorPrerequisitesError(ValueError):
+    """Sanitized local setup error, safe to display without provider output."""
+
+
+def preflight_author():
+    """Read only local bundled metadata; no login, model request or queue claim."""
+    import subprocess
+    try:
+        version=subprocess.check_output(['codex','--version'],text=True,timeout=10,stderr=subprocess.DEVNULL).strip()
+        if version!=CODEX_VERSION:
+            raise AuthorPrerequisitesError('Author CLI version is not reviewed; requires '+CODEX_VERSION+'. Queued work was not claimed.')
+        wire=subprocess.check_output(['codex','debug','models','--bundled'],text=True,timeout=10,stderr=subprocess.DEVNULL)
+        tool_disabled_catalog(wire)
+    except (OSError,subprocess.SubprocessError,KeyError,TypeError,json.JSONDecodeError) as exc:
+        raise AuthorPrerequisitesError('Author prerequisites unavailable; no queued work claimed. Check reviewed Codex CLI and bundled Luna catalogue.') from None
+    return dict(ok=True,cli=CODEX_VERSION,model=MODEL,scope='local_prerequisites_only',live_model_verified=False)
 
 
 def tool_disabled_catalog(wire):
@@ -402,7 +429,7 @@ def codex_argv(model, catalog_path):
     return argv + ['-']
 
 
-def decode_codex(wire):
+def decode_codex(wire, *, private_cast=False):
     """Decode the supported Codex exec JSONL agent_message event contract."""
     messages = []
     completed = False
@@ -423,8 +450,11 @@ def decode_codex(wire):
     if not completed or not messages or not isinstance(messages[-1], str):
         raise ValueError('Codex did not complete an author response')
     response = json.loads(messages[-1])
-    if type(response) is not dict or set(response) not in ({'source', 'tests'}, {'character_plan', 'tests'}, {'character_actions', 'tests'}):
-        raise ValueError('Codex author must return source/tests, character_plan/tests or character_actions/tests')
+    if private_cast:
+        if type(response) is not dict or set(response)!={'reply','interpretation'}:raise ValueError('private character reply cannot change shared world state')
+        return response
+    if type(response) is not dict or set(response) not in ({'source', 'tests'}, {'character_plan', 'tests'}, {'character_actions', 'tests'}, {'canonical_actions', 'tests'}):
+        raise ValueError('Codex author must return source/tests, character_plan/tests, character_actions/tests or canonical_actions/tests')
     return response
 
 
@@ -440,12 +470,24 @@ def main(argv=None):
     submit.add_argument('--player', required=True)
     submit.add_argument('--intent', required=True)
     submit.add_argument('--request-id', help='stable client idempotency key')
+    follow = sub.add_parser('follow-character', help='opt in an existing actor to public offered-expedition results; starts no model')
+    follow.add_argument('--state-dir', required=True)
+    follow.add_argument('--socket', required=True)
+    follow.add_argument('--id', required=True)
+    follow.add_argument('--purpose', required=True)
+    unfollow = sub.add_parser('unfollow-character')
+    unfollow.add_argument('--state-dir', required=True)
+    unfollow.add_argument('--id', required=True)
+    check = sub.add_parser('check-author', help='check selected author prerequisites without a model call or queue write')
+    check.add_argument('--provider',choices=['codex','openai-responses','anthropic-messages'],default='codex')
+    check.add_argument('--model',default=MODEL)
     status = sub.add_parser('status')
     status.add_argument('--state-dir', required=True)
-    run = sub.add_parser('run', help='explicitly enable the public Luna author')
+    run = sub.add_parser('run', help='explicitly enable the selected public author backend')
     run.add_argument('--state-dir', required=True)
     run.add_argument('--socket', required=True)
-    run.add_argument('--model', required=True, choices=[MODEL])
+    run.add_argument('--model', required=True)
+    run.add_argument('--provider',choices=['codex','openai-responses','anthropic-messages'],default='codex')
     run.add_argument('--timeout', type=float, default=120)
     run.add_argument('--poll-interval', type=float, default=2)
     run.add_argument('--min-author-interval', type=float, default=15,
@@ -455,9 +497,13 @@ def main(argv=None):
     author = sub.add_parser('author', help='trusted Codex CLI adapter; prompt on stdin')
     author.add_argument('--model', required=True, choices=[MODEL])
     author.add_argument('--timeout', type=float, default=120)
+    author.add_argument('--private-cast', action='store_true',help='bounded private response schema, no shared-world source')
     args = parser.parse_args(argv)
     try:
-        if args.command == 'author':
+        if args.command == 'check-author':
+            from world.author_backends import preflight
+            print(json.dumps(preflight(args.provider,args.model)))
+        elif args.command == 'author':
             validate_config(args.model, args.timeout, 2)
             prompt = sys.stdin.buffer.read(gm.MAX_RESPONSE + 1)
             if len(prompt) > gm.MAX_RESPONSE:
@@ -479,11 +525,18 @@ def main(argv=None):
                 catalog_path = Path(tmp) / 'catalog.json'
                 gm._write(catalog_path, json.dumps(catalog))
                 wire = invoke(codex_argv(args.model, catalog_path), prompt.decode())
-            print(json.dumps(decode_codex(wire)))
-        elif args.command in ('submit', 'status'):
+            print(json.dumps(decode_codex(wire,private_cast=args.private_cast)))
+        elif args.command in ('submit', 'status', 'follow-character', 'unfollow-character'):
             queue = IntentQueue(args.state_dir)
             try:
-                if args.command == 'submit':
+                if args.command in ('follow-character', 'unfollow-character'):
+                    from world.character_reactions import configure, unfollow
+                    if args.command == 'follow-character':
+                        configure(queue, gm.admin_request(args.socket, {'command':'inspect'}), args.id, args.purpose)
+                    else:
+                        unfollow(queue, args.id)
+                    print(json.dumps({'ok':True, 'character':args.id}))
+                elif args.command == 'submit':
                     identifier = queue.submit(args.player, args.intent, args.request_id)
                     print(json.dumps({'id': identifier}))
                 else:
@@ -491,6 +544,8 @@ def main(argv=None):
             finally:
                 queue.close()
         else:
+            from world.author_backends import preflight
+            preflight(args.provider,args.model,args.timeout) # Before queue access; no fallback.
             stop = threading.Event()
             previous = {}
             for sig in (signal.SIGTERM, signal.SIGINT):
@@ -498,7 +553,7 @@ def main(argv=None):
             try:
                 with RuntimeGM(args.state_dir, args.socket, model=args.model, timeout=args.timeout,
                                poll_interval=args.poll_interval, observe_events=not args.no_events,
-                               min_author_interval=args.min_author_interval) as worker:
+                               min_author_interval=args.min_author_interval,provider=args.provider) as worker:
                     if args.once:
                         result = worker.step()
                         print(json.dumps(result, sort_keys=True))
@@ -513,7 +568,7 @@ def main(argv=None):
     except (OSError, ValueError, TimeoutError) as exc:
         # Do not persist provider stderr, environment values, or credential errors.
         print(json.dumps({'ok': False, 'error': type(exc).__name__,
-                          'detail': 'author/provider/configuration operation failed; no automatic replay'}))
+                          'detail': str(exc) if isinstance(exc,AuthorPrerequisitesError) else 'author/provider/configuration operation failed; no automatic replay'}))
         return 1
 
 

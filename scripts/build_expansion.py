@@ -12,7 +12,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '5cb76554ca986a95230a49d9d34c9cc3ef24388d'
+PIN = '2643c8f8aba36076e2c86aa4f505dc703a184665'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -22,11 +22,11 @@ class ReleaseConfig:
     regional_state: int = 1
     kanto_content: int = 1
     generated_world_regions: int = 0
-    version_suffix: str = 'rc11.3'
+    version_suffix: str = 'rc12-13-candidate'
 
 
-# Frozen existing RC11 cohort. RC12's final paired pin/version is set only by
-# the release integrator, never inferred from a moving engine branch.
+# Frozen RC12/13 integration cohort. Candidate only: not an installed release.
+# The paired engine pin is explicit, never inferred from a moving branch.
 RELEASE_CONFIG = ReleaseConfig()
 
 

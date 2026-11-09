@@ -19,7 +19,9 @@ def snapshot(server, trainer):
             seen = [r[0] for r in server.db.execute('SELECT landmark FROM survey_visits WHERE trainer=? AND revision=? ORDER BY landmark', (trainer,row[0]))]
             conn = server.peers.get(trainer)
             survey = dict(revision=row[0],active=bool(row[1]),visited=seen,landmarks=sites,
-                          in_scope=bool(conn and not conn.get('closing') and server.landmark_survey.scope(conn)==row[0]))
+                          in_scope=bool(conn and not conn.get('closing') and server.landmark_survey.scope(conn)==row[0]),
+                          complete=bool(sites) and all(site['id'] in seen for site in sites),
+                          next_objective=server.landmark_survey.next_objective(conn, row[0], sites, seen, bool(row[1])))
         guild = None
         membership = server.guilds._member(trainer)
         if membership:

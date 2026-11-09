@@ -100,6 +100,29 @@ class CharacterIdentityTests(unittest.TestCase):
             with self.subTest(portrait=portrait), self.assertRaises(ValueError):
                 records({'world_characters': {'may': dict(self.fixture.character, battle_portrait=portrait)}})
 
+    def test_v4_combines_authored_identity_and_plain_team_without_tag_ambiguity(self):
+        conn = self.fixture.peer(role='SOCIALCHAR1CHARIDENT1CHARIDENT2')
+        reply = self.fixture.send(conn, 'CHARACTER_CHALLENGE 1 may 1')
+        self.assertEqual(reply, 'CHARACTER_BATTLE_V4 1 may 1 1 ' + b'Field Scholar'.hex() + ' scientist 1 277 12\n')
+        self.assertTrue(conn['character_identity2_capable'])
+
+    def test_v4_preserves_persistent_companion_identity_and_authored_portrait(self):
+        self.fixture.character['version'] = 2
+        self.fixture.character['team'] = [dict(species=277, level=12, individual='scholar_partner')]
+        self.fixture.character['battle_portrait'] = 'ranger_f'
+        self.assertIsNone(self.fixture.commit({'may': self.fixture.character}, self.fixture.npc))
+        conn = self.fixture.peer(role='SOCIALCHAR1CHARPK1CHARPK2CHARIDENT1CHARIDENT2')
+        reply = self.fixture.send(conn, 'CHARACTER_CHALLENGE 1 may 2').split()
+        self.assertEqual(reply[:8], ['CHARACTER_BATTLE_V4','1','may','2','1',b'Field Scholar'.hex(),'ranger_f','2'])
+        self.assertEqual(list(map(int,reply[8:])), conn['character_pending']['individual_values'])
+        self.assertEqual(conn['character_pending']['name'], 'Field Scholar')
+        self.assertEqual(conn['character_pending']['portrait'], 'ranger_f')
+
+    def test_v4_identity_suffix_coexists_with_all_new_paired_capabilities(self):
+        conn = self.fixture.peer(role='SOCIALCHATCAVE16CHAR1CHARQUEST1CHARREG1CHARWALK1COMMANDS1MOUNTS1CORE1CHARPK1CHARPK2CHARIDENT1CHARIDENT2PLACEQUEST1')
+        for key in ('character_identity2_capable','character_identity_capable','character_pokemon_capable','character_state_capable','core_story_capable','private_commands','mount_capable','place_quest_capable'):
+            self.assertTrue(conn[key],key)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -20,7 +20,7 @@ export default function PlayerActivities({ state, ready, busy, onRequest, onAdve
   }
   useEffect(() => { setData(null); setError(''); setLoading(false); load(); return () => { serial.current++; }; }, [world, state.trainer, ready]);
   const survey = data?.survey;
-  const next = survey?.landmarks.find(site => !survey.visited.includes(site.id));
+  const next = survey?.active && survey?.in_scope && survey?.next_objective?.revision === survey?.revision ? survey.next_objective : null;
   return <div className="interior narrow">
     <header className="page-heading"><div><h1>Your objectives & recap</h1><p>Only the trainer connected in this launcher can read their private activity.</p></div></header>
     <button className="button ghost" disabled={!world || !ready || busy || loading} onClick={load}>Refresh activities</button>
@@ -28,7 +28,7 @@ export default function PlayerActivities({ state, ready, busy, onRequest, onAdve
     {loading && <p role="status">Reading your activities…</p>}{error && <p role="alert">{error}</p>}
     <section className="settings-card"><div><h2>Private landmark survey</h2>
       {!survey && <p>No private survey is shown. Enter a registered route in the native game and opt in with its exploration controls. Merely opening this page never starts a survey.</p>}
-      {survey && <><p>{survey.visited.length} of {survey.landmarks.length} landmarks discovered</p><p>{survey.active ? 'Active survey' : 'Paused survey'}{!survey.in_scope && '. Return to the same map revision to continue.'}</p>{next ? <p>Next clearing: {next.id} near ({next.x}, {next.y}). Reach its center in the game.</p> : <p>The authority has recorded every clearing in this survey.</p>}</>}
+      {survey && <><p>{survey.visited.length} of {survey.landmarks.length} landmarks discovered</p><p>{survey.active ? 'Active survey' : 'Paused survey'}{!survey.in_scope && '. Return to the same map revision to continue.'}</p>{next ? <p>Next clearing: {next.id} near ({next.x}, {next.y}). Reach its center in the game.</p> : survey.complete ? <p>The authority has recorded every clearing in this survey.</p> : <p>Refresh in your active survey destination for the authority’s next clearing.</p>}</>}
       <p className="field-hint">Discoveries remain private. Public history requires explicit share confirmation in the game beside a discovered landmark. That persistent record includes its name, coordinates and map revision, not your name or private trail. Agents and other players can read shared records.</p>
     </div></section>
     {data && <>

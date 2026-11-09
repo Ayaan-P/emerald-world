@@ -21,22 +21,14 @@ def handle(server,conn,text):
 
 
 def guide(server,conn,identity):
-    from .characters import records
     survey=server.landmark_survey
-    revision=survey.scope(conn);state=conn.get('state')
+    revision=survey.scope(conn)
     if (revision is None or server.peers.get(conn.get('id')) is not conn or conn.get('closing')
             or not 0<=time.monotonic()-conn.get('state_time',0)<=5):
         return ['Stand ready in your acknowledged survey destination to ask a guide.']
-    character=records(server.module_state).get(identity)
-    obj=next((o for o in server.objects if o['id']==identity),None)
-    if (not character or character['status']!='active' or 'guide' not in character.get('services',[])
-            or obj is None or obj.get('region_revision')!=revision or state[:2]!=[obj['group'],obj['num']]):
-        return ['That resident is not available as a guide in this place.']
-    dx,dy={1:(0,1),2:(0,-1),3:(-1,0),4:(1,0)}.get(state[4],(0,0))
-    motion=server.module_state.get('world_character_controls',{}).get(identity,{}).get('walk')
-    if ((state[2]+dx,state[3]+dy)!=(obj['x'],obj['y']) or
-            (motion and motion['index']<len(motion['path'])-1)):
-        return ['Stand beside and face the resting guide before asking.']
+    error = _guide_presence_error(server, conn, identity, revision)
+    if error:
+        return [error]
     session=server.db.execute('SELECT revision,active FROM survey_sessions WHERE trainer=?',(conn['id'],)).fetchone()
     if session!=(revision,1):
         return ['Use /explore start first. Guidance uses only your active private survey.']
@@ -48,16 +40,43 @@ def guide(server,conn,identity):
     return _directions(server,conn,revision,sites,identity)
 
 
+def _guide_presence_error(server, conn, identity, revision):
+    from .characters import records
+    character = records(server.module_state).get(identity)
+    obj = next((o for o in server.objects if o['id'] == identity), None)
+    state = conn['state']
+    if (not character or character['status'] != 'active' or 'guide' not in character.get('services', [])
+            or obj is None or obj.get('region_revision') != revision or state[:2] != [obj['group'], obj['num']]):
+        return 'That resident is not available as a guide in this place.'
+    delta = {1: (0, 1), 2: (0, -1), 3: (-1, 0), 4: (1, 0)}.get(state[4])
+    motion = server.module_state.get('world_character_controls', {}).get(identity, {}).get('walk')
+    if (delta is None or (state[2]+delta[0], state[3]+delta[1]) != (obj['x'], obj['y'])
+            or (motion and motion['index'] < len(motion['path'])-1)):
+        return 'Stand beside and face the resting guide before asking.'
+    return None
+
+
+def _adjacent_directions(server, conn, revision):
+    from .characters import records
+    for identity in sorted(records(server.module_state)):
+        if _guide_presence_error(server, conn, identity, revision) is None:
+            return guide(server, conn, identity)
+    return ['Ask an adjacent resident: stand beside and face a resting guide, then choose Guide directions.']
+
+
 def directions(server,conn):
     revision=server.landmark_survey.scope(conn)
-    if revision is None:return ['Enter the exact acknowledged destination to read your guide notes.']
+    if (revision is None or server.peers.get(conn.get('id')) is not conn or conn.get('closing')
+            or not 0 <= time.monotonic()-conn.get('state_time', 0) <= 5):
+        return ['Enter the exact acknowledged destination to read your guide notes.']
     _schema(server)
     note=server.db.execute('SELECT revision,landmark,guide FROM survey_guidance WHERE trainer=?',(conn['id'],)).fetchone()
     session=server.db.execute('SELECT revision,active FROM survey_sessions WHERE trainer=?',(conn['id'],)).fetchone()
-    if note is None:return ['Ask an adjacent resident with /explore guide NPC_ID first.']
+    if note is None:
+        return _adjacent_directions(server, conn, revision)
     if note[0]!=revision or session!=(revision,1):return ['Resume your private survey in the same destination to use these notes.']
     if server.db.execute('SELECT 1 FROM survey_visits WHERE trainer=? AND revision=? AND landmark=?',(conn['id'],revision,note[1])).fetchone():
-        return ['You reached the clearing in your guide notes. That discovery remains private.']
+        return ['You reached the clearing in your guide notes. That discovery remains private.'] + _adjacent_directions(server, conn, revision)
     row=server.db.execute('SELECT sites FROM survey_routes WHERE revision=?',(revision,)).fetchone()
     sites=[site for site in json.loads(row[0]) if site['id']==note[1]] if row else []
     return _directions(server,conn,revision,sites,None)
