@@ -243,3 +243,6 @@ CAPABILITIES['world.program_object']=Capability('Install a reusable interactive 
 
 from .cave_links import install as install_cave_link
 CAPABILITIES['world.link_caves']=Capability('Bind an observed unused anchored prop to another already-opened plain cave.',dict(object='observed anchored prop ID',revision='observed program_revision',place='exact opened destination place ID',destination='exact format-1 destination revision'),'Durable one-way physical link. Capable player A opens confirmation; separate destination transfer preserves original Hoenn return. No actor/player travel claimed by installation; no outdoor formats.',install_cave_link,None,('world',))
+
+from .actor_cave_travel import traverse, poll as cave_travel_poll
+CAPABILITIES['world.traverse_link']=Capability('Traverse an adjacent observed physical cave link as this world-owned actor.',dict(object='observed anchored link prop ID',revision='observed program_revision'),'Committed authority departure/arrival under one identity; no canonical relocation, player warp or animated portal claim.',traverse,cave_travel_poll,('world',))

@@ -1,3 +1,30 @@
+## Independent actor cave traversal
+This branch continues #319 with no native changes: paired native #35 remains
+1f7a2e52212d9f6ba69acda70ef3f96e044285e5.
+world.observe now reports actual cave-link destinations on nearby props.
+A world-owned character may compose world.navigate with world.traverse_link,
+using the observed object ID and program_revision. It must be adjacent and idle,
+with no pending player battle. Canonical actor bindings cannot call this tool.
+
+The existing character-action executor stages a versioned relocation through
+normal mechanic admission. The same identity, team, relationships and plan are
+retained. Source observers receive removal; destination observers receive the
+actor through existing exact-revision native object snapshots. An entrance
+neighborhood tile is chosen from actual validated geometry, avoiding objects,
+player entrance and ready players; concurrent occupancy fails admission.
+The durable tool result is emitted only after the committed state is verified.
+A link installation or pending deployment never counts as travel.
+
+This is an authority portal transition, not a walk animation, elapsed-time
+journey, player warp, catch or canonical story change. Agent-authored decisions
+remain model-dependent; tests use supplied plans. Source staging still inherits
+the existing character-action source/receipt consolidation bounds; this adds no
+background movement scheduler or infinite-growth claim.
+Four focused travel tests cover two actors, source/destination observer snapshots,
+retained team/identity, restart, unadmitted staging and concurrent occupancy.
+Rendered multiplayer and full native QA remain Maya's responsibility.
+
+---
 ## Habitat-link continuation
 This branch continues #318, pairing native draft #35 at
 1f7a2e52212d9f6ba69acda70ef3f96e044285e5. It overrides the prior pin below.

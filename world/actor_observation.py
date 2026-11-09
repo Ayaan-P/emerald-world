@@ -42,6 +42,9 @@ def observe(server, actor, row, args):
         if obj.get('kind')=='prop':
             from .actor_objects import digest
             entity['program_revision']=digest([obj,server.candidate.sha256 if server.candidate else None])
+            from .actor_cave_travel import observed_link
+            link=observed_link(server,obj)
+            if link:entity['cave_link']=link
         if obj.get('kind')=='prop' and obj.get('portable') is True:
             from .actor_objects import digest
             entity['portable_revision']=digest(obj)
