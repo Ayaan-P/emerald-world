@@ -145,6 +145,8 @@ class WorldServer:
         from .character_companions import setup as setup_companions
         setup_companions(self.db)
         self.guilds = Guilds(self.db, catalog_maps(), record_outcome=self.memory.append)
+        from .canonical_councils import install as install_councils
+        install_councils(self.db)
         self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
         from .cooperative_mysteries import Mysteries
         from .opportunities import Opportunities
