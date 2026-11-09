@@ -12,15 +12,19 @@ class ActivityBoard:
 
     def catalog(self):
         result=[]
-        for kind,table in [('mystery','mystery_packs'),('relay','relay_courses'),('flag','flag_arenas')]:
+        for kind,table in [('mystery','mystery_packs'),('relay','relay_courses'),('flag','flag_arenas'),('race','race_courses')]:
             for key,raw in self.s.db.execute(f'SELECT id,document FROM {table} ORDER BY id'):
                 doc=json.loads(raw)
                 points=([x['at'] for x in doc['stages'][0]['stations']] if kind=='mystery' else
-                        [x['start'] for x in doc['legs']] if kind=='relay' else doc['bases'])
+                        [x['start'] for x in doc['legs']] if kind=='relay' else doc['starts'] if kind=='race' else doc['bases'])
                 result.append(dict(kind=kind,id=key,title=doc['title'],players=len(points),at=points[0]))
         return result
 
     def current(self,name,kind):
+        if kind=='race':
+            r=self.s.races.current(name)
+            if not r:return None
+            return dict(id=r['id'],key=r['course']['id'],host=r['members'][0]['id'],open=r['phase']=='lobby' and len(r['members'])<len(r['course']['starts']))
         if kind=='mystery':
             r=self.s.mysteries._current(name)
             if not r:return None
@@ -30,7 +34,7 @@ class ActivityBoard:
         return dict(id=r['id'],key=r['course']['id'] if kind=='relay' else r['arena']['id'],host=r['members'][0]['id'],open=r['phase']=='lobby' and len(r['members'])<(len(r['course']['legs']) if kind=='relay' else 2))
 
     def prune(self):
-        self.s.relays.tick();self.s.flags.tick()
+        self.s.relays.tick();self.s.flags.tick();self.s.races.tick()
         for host,a in list(self.adverts.items()):
             member=self.s.guilds._member(host);peer=self.s.peers.get(host);r=self.current(host,a['kind'])
             if (not member or member[0]!=a['guild'] or not peer or peer.get('closing') or peer is not a['peer']
@@ -38,6 +42,7 @@ class ActivityBoard:
 
     def dispatch(self,c,kind,words):
         try:
+            if kind=='race':return self.s.races.command(c,words)
             if kind=='mystery':return self.s.mysteries.command(c['id'],words)
             return (self.s.relays if kind=='relay' else self.s.flags).command(c,words)
         except ValueError as exc:raise GuildError(str(exc)) from None
@@ -45,7 +50,7 @@ class ActivityBoard:
     def command(self,c,words):
         if not c.get('private_commands'):raise GuildError('Activities need the matched RC12 private-command client.')
         guild=self.s.guilds._require(c['id']);self.prune()
-        kinds=('mystery','relay','flag')
+        kinds=('mystery','relay','flag','race')
         if not words:return ['Activity board: /guild play list or /guild play open',
             'Start: /guild play start KIND ID. Resume: /guild play status',
             'Host opt-in: /guild play share KIND advertises to your guild.',

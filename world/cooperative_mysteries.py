@@ -96,6 +96,7 @@ class Mysteries:
         return lines
 
     def command(self,trainer,words):
+        if len(words)==2 and words[0] in ('start','join') and getattr(self.s,'races',None) and self.s.races.current(trainer):raise ValueError('Leave your current race first.')
         if not words or words==['status']:return self.status(trainer)
         with self.db:
             if words==['list']:
