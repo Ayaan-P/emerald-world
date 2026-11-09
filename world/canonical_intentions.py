@@ -12,12 +12,14 @@ def validate(row, bindings, identity):
     for task in tasks:
         if (type(task) is not dict or set(task)!={'id','kind','target','reason'}
                 or type(task['id']) is not str or not re.fullmatch('[a-z][a-z0-9_]{0,23}',task['id'])
-                or task['id'] in seen or task['kind'] not in ('letter','project','contribution','practice')
+                or task['id'] in seen or task['kind'] not in ('letter','project','study','contribution','practice')
                 or type(task['reason']) is not str or not 1<=len(task['reason'])<=160
                 or any(not 32<=ord(c)<=126 for c in task['reason'])):raise ValueError('invalid retained intention')
         seen.add(task['id'])
         if task['kind']=='letter':
             if type(task['target']) is not str or task['target'] not in bindings or task['target']==identity:raise ValueError('letter intention requires a bound actor')
+        elif task['kind']=='study':
+            if type(task['target']) is not str or not re.fullmatch('[0-9a-f]{64}',task['target']):raise ValueError('study intention requires exact archived revision')
         elif task['kind']=='project':
             if task['target']!='petalburg_relay':raise ValueError('unsupported project intention')
         elif type(task['target']) is not str or not re.fullmatch('[a-z][a-z0-9_]{0,23}',task['target']):
@@ -35,7 +37,7 @@ def selected(before, after):
     if task['kind']=='practice':raise ValueError('practice completion requires a verified host receipt; live fulfillment is not enabled')
     effect=after.get(task['kind'])
     if not effect or effect==before.get(task['kind']):raise ValueError('fulfillment requires a new actual action')
-    target=effect.get('to') if task['kind']=='letter' else effect.get('kind') if task['kind']=='project' else effect.get('course')
+    target=effect.get('revision') if task['kind']=='study' else effect.get('to') if task['kind']=='letter' else effect.get('kind') if task['kind']=='project' else effect.get('course')
     if target!=task['target']:raise ValueError('action does not match retained intention target')
     return task
 
@@ -46,7 +48,7 @@ def complete(server, change, after_seq):
     identity=change['character_id']
     if server.db.execute('SELECT 1 FROM canonical_intent_receipts WHERE actor=? AND intention=?',(identity,task['id'])).fetchone():
         raise ValueError('intention was already fulfilled')
-    expected={'letter':'canonical_letter_delivered','project':'canonical_project_published','contribution':'canonical_contribution_proposed'}[task['kind']]
+    expected={'letter':'canonical_letter_delivered','project':'canonical_project_published','study':'canonical_study_published','contribution':'canonical_contribution_proposed'}[task['kind']]
     receipt=None
     for seq,raw in server.db.execute("SELECT seq,data FROM events WHERE seq>? AND kind='world_memory' ORDER BY seq",(after_seq,)):
         event=json.loads(raw)

@@ -164,6 +164,18 @@ def prepare(context, fetch):
             or len(events) != 1 or events[0].get('seq') != seq
             or not matched):
         raise ValueError('character reaction lacks exact public offer completion')
+    study_target=(reaction.get('intention') or {}).get('target') if (reaction.get('intention') or {}).get('kind')=='study' else (character.get('study') or {}).get('revision')
+    if character.get('canonical') and study_target:
+        saved=fetch(dict(command='inspect_saved_place',revision=study_target))
+        if (saved.get('ok') is not True or saved.get('world_id')!=memory['world_id']
+                or saved.get('captured_at_seq')!=memory['through'] or saved.get('revision')!=study_target
+                or saved.get('template_version')!=16 or saved.get('side')!=127
+                or type(saved.get('rows')) is not list or len(saved['rows'])!=127
+                or any(type(line) is not str or len(line)!=127 or set(line)-set('#.') for line in saved['rows'])):
+            raise ValueError('study geometry does not match exact inspected world boundary')
+        # Explicit allowlist: no private survey sessions/visits or trainer data.
+        context['character_study_map']={key:saved[key] for key in ('revision','place_id','template_version','side','rows')}
+        context['character_study_map']['limits']='Existing archived geometry only. Do not claim the actor traveled or found anything.'
     # Public fictional actors need committed public results, not player purposes
     # or current private party/save observations from the general GM inspection.
     data['players']=[]

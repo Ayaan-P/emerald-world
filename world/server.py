@@ -2015,6 +2015,8 @@ class WorldServer:
                             deliver_letter(self,change)
                             from .canonical_projects import publish as publish_cast_project
                             publish_cast_project(self,change)
+                            from .canonical_studies import publish as publish_cast_study
+                            publish_cast_study(self,change)
                             from .canonical_collaboration import apply as apply_cast_collaboration
                             apply_cast_collaboration(self,change)
                             from .canonical_intentions import complete as complete_cast_intent

@@ -47,6 +47,10 @@ def describe(event, place=None):
         title=BINDINGS[event['character_id']]['name']+' '+('offered project guidance' if kind.endswith('proposed') else 'decided on a contribution')
         details=[event.get('text',event.get('decision','')), 'Project: '+event['course'],
                  'Public author collaboration. No physical attendance or player participation is implied.']
+    elif kind == 'canonical_study_published':
+        title=event['character_name']+' installed '+event['title']
+        details=[str(len(event['sites']))+' optional survey sites on map revision '+event['revision'][:12],
+                 'An exploration activity, not character travel or discoveries. Player visits stay private unless shared.']
     elif kind == 'canonical_project_published':
         title=event['character_name']+' published '+event['title']
         details=['Playable relay course installed: '+event['course'],

@@ -77,10 +77,12 @@ class LandmarkSurvey:
         if old:return ['That landmark discovery is already in public world history.']
         place=s.db.execute('SELECT place_id FROM world_places WHERE revision=?',(revision,)).fetchone()
         if place is None:return ['Archived place identity unavailable; nothing was shared.']
+        study=s.db.execute('SELECT actor,digest FROM canonical_studies WHERE revision=?',(revision,)).fetchone()
+        attribution=dict(study_actor=study[0],study_digest=study[1]) if study else {}
         try:
             with s.db:
                 seq=s.memory.append('landmark_discovery_shared',dict(place_id=place[0],revision=revision,
-                    landmark=landmark,x=site['x'],y=site['y'],publication='explicit_player_share',
+                    landmark=landmark,x=site['x'],y=site['y'],publication='explicit_player_share',**attribution,
                     basis='authenticated_acknowledged_client_presence',
                     limits='A player chose to share this arrival. Travel is client-reported, not independently simulated.'))
                 s.db.execute('INSERT INTO survey_publications VALUES (?,?,?)',(revision,landmark,seq))

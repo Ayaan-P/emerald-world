@@ -61,6 +61,8 @@ class CoreStory:
         CREATE TABLE IF NOT EXISTS canonical_contributions(
             seq INTEGER PRIMARY KEY, course TEXT NOT NULL, actor TEXT NOT NULL, owner TEXT NOT NULL,
             text TEXT NOT NULL, status TEXT NOT NULL, UNIQUE(course,actor));
+        CREATE TABLE IF NOT EXISTS canonical_studies(
+            revision TEXT PRIMARY KEY, actor TEXT NOT NULL, digest TEXT NOT NULL, document TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS canonical_projects(
             course TEXT PRIMARY KEY, actor TEXT NOT NULL, digest TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS canonical_conversations(
