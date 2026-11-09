@@ -7,6 +7,8 @@ from .companion_practice import state as parse_state
 def setup(db):
  from .actor_practice import setup as request_setup
  request_setup(db)
+ from .actor_moves import setup as moves_setup
+ moves_setup(db)
  db.executescript('''CREATE TABLE IF NOT EXISTS character_training(actor TEXT,individual TEXT,engine TEXT,authored_level INTEGER,state TEXT,PRIMARY KEY(actor,individual));
  CREATE TABLE IF NOT EXISTS character_training_receipts(job TEXT PRIMARY KEY,actor TEXT,individual TEXT,seq INTEGER,fingerprint TEXT);''')
 
@@ -83,5 +85,7 @@ def intentions(server):
  actors.update({key:dict(version=row['version'],binding='world_character',intentions=row.get('intentions',[])) for key,row in records(server.module_state).items() if row['status']!='retired'})
  from .actor_practice import tasks
  for actor,row in actors.items():
-  if row['binding']=='world_character':row['intentions']=list(row['intentions'])+tasks(server,actor)
+  if row['binding']=='world_character':
+   from .actor_moves import tasks as move_tasks
+   row['intentions']=list(row['intentions'])+tasks(server,actor)+move_tasks(server,actor)
  return dict(ok=True,world_id=server.memory.world_id,actors=actors)
