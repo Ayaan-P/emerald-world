@@ -139,6 +139,9 @@ class CoreStory:
             raise ValueError('Invalid canonical story request.')
         _, run, action, key, confirmation = fields
         trainer = conn['id']
+        if action in ('RING','RSET','RACK'):
+            from .canonical_calls import handle
+            return handle(self.s,conn,run,action,key,confirmation)
         if action=='CALL' and confirmation=='registered':
             from .canonical_cast import remote_response
             return remote_response(self.s,conn,run,key)

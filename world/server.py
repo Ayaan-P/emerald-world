@@ -149,6 +149,8 @@ class WorldServer:
         install_councils(self.db)
         from .canonical_dialogues import install as install_dialogues
         install_dialogues(self.db)
+        from .canonical_calls import install as install_calls
+        install_calls(self.db)
         self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
         from .cooperative_mysteries import Mysteries
         from .opportunities import Opportunities
@@ -830,7 +832,9 @@ class WorldServer:
                     result = self.core_story.handle(conn, fields[:5] if nonce else fields)
                     if nonce:
                         prefix='CORE REPLY '+nonce+' '+fields[1]+' '+fields[2]+' '+fields[3]+' '
-                        if fields[2]=='DIALOG':
+                        if fields[2]=='RING':
+                            reply=self.memory.world_id+' '+result['caller']+' '+result['token']+' '+(result['text'].encode().hex() if result['text'] else '-')
+                        elif fields[2]=='DIALOG':
                             reply=' '.join([result['world_id'],str(result['version']),result['session'],str(result['role']),str(len(result['options'])),result['question'].encode().hex()]+[value for option in result['options'] for value in (option['label'].encode().hex(),str(option['advice']))])
                         elif fields[2] in ('OFFER','CAST','CALL'):
                             reply=result['world_id']+' '+result['digest']+' '+(result['briefing'] if fields[2]=='CALL' else result['briefing']+' '+result['objective']).encode().hex()
