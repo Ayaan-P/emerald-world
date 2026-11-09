@@ -221,3 +221,6 @@ def _receipt(server,actor,row,plan,step,status,result):
     server.db.execute('INSERT OR REPLACE INTO actor_tool_receipts VALUES(?,?,?,?,?,?)',(actor,plan['id'],step['id'],status,json.dumps(result,sort_keys=True),seq))
     server.revision=seq
     return seq
+
+from .actor_landscapes import create as create_landscape
+CAPABILITIES['world.create_landscape']=Capability('Compile and activate a new outdoor XL layout in the shared destination, archiving prior geometry.',dict(label='literal label 1..20 ASCII characters',layout='clearings or connected_shapes',blueprint='JSON <=800 chars. clearings: seed, loops, landmarks [{id,x,y,radius}], reservations [[x,y,w,h]]. connected_shapes: rooms [[x,y,w,h]], links [[a,b]], entrance_room, exit_room; optional style rooms/rounded/organic/maze, seed, corridor_width 1..3. Interior 1..125.'),'Actual 127x127 CAVE16 outdoor destination and stable place ID. Refuses occupied or populated active maps. Existing native grass/obstacle palette only, not new biome art, seamless travel or actor labor.',create_landscape,None,('canonical','world'))
