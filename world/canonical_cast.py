@@ -39,7 +39,7 @@ def records(state):
     from .build_catalog import catalog_maps
     places={'native:'+m['name'] for m in catalog_maps().values()}
     for identity,row in value.items():
-        if type(row) is not dict or set(row)-{'routine','cooperate','worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'version','goal','dialogue','places','evidence','reason'}:
+        if type(row) is not dict or set(row)-{'journey_interests','routine','cooperate','worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'version','goal','dialogue','places','evidence','reason'}:
             raise ValueError('invalid canonical actor fields')
         if type(row['version']) is not int or not 1<=row['version']<=2**31-1:raise ValueError('invalid canonical actor version')
         for field,limit in [('goal',160),('reason',240)]:
@@ -51,6 +51,8 @@ def records(state):
         validate_intentions(row,value,identity)
         from .canonical_collaboration import validate_fields
         validate_fields(row)
+        interests=row.get('journey_interests',[])
+        if type(interests) is not list or len(interests)>4 or any(type(r) is not str or not re.fullmatch('[0-9a-f]{64}',r) for r in interests) or len(set(interests))!=len(interests):raise ValueError('journey interests need up to four exact archived revisions')
         from .canonical_routines import validate as validate_routine
         validate_routine(row.get('routine'))
         from .canonical_cooperation import validate as validate_cooperation
@@ -107,6 +109,8 @@ def validate_transition(before, after, objects, db):
         if any(o['id']==identity for o in objects):raise ValueError('canonical actor must not be duplicated as a world object')
         if row==old.get(identity):continue
         if row['version']!=(old[identity]['version']+1 if identity in old else 1):raise ValueError('canonical actor version must advance once')
+        for revision in row.get('journey_interests',[]):
+            if db.execute('SELECT 1 FROM generated_area_archive WHERE identity=?',(revision,)).fetchone() is None:raise ValueError('journey interest must name an existing archived map')
         from .canonical_intentions import selected
         selected(old.get(identity) or {},row)
         if any(db.execute('SELECT 1 FROM canonical_intent_receipts WHERE actor=? AND intention=?',(identity,t['id'])).fetchone() for t in row.get('intentions',[])):
@@ -145,7 +149,7 @@ def compile_actions(actions, context):
     if type(actions) is not list or len(actions)!=1:raise ValueError('one bounded canonical action required')
     action=actions[0]
     if type(action) is not dict or set(action)!={'id','expected_version','changes'} or action['id'] not in BINDINGS:raise ValueError('invalid canonical action')
-    if type(action['changes']) is not dict or set(action['changes'])-{'routine','cooperate','worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'goal','dialogue','places','evidence','reason'}:raise ValueError('invalid canonical changes')
+    if type(action['changes']) is not dict or set(action['changes'])-{'journey_interests','routine','cooperate','worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'goal','dialogue','places','evidence','reason'}:raise ValueError('invalid canonical changes')
     old=cast.get(action['id']);version=old['version'] if old else 0
     if type(action['expected_version']) is not int or action['expected_version']!=version:raise ValueError('stale canonical action')
     row=copy.deepcopy(action['changes']);row['version']=version+1
@@ -189,7 +193,7 @@ def response(server, conn, run, key):
 def contract():
     return dict(response='canonical_actions/tests',bindings=BINDINGS,location_aliases=LOCATION_ALIASES,
                 action_fields=['id','expected_version','changes'],
-                change_fields=['goal','dialogue','places','evidence','reason','routine (optional quiet-world decision interval)','cooperate (optional independent exact project join/decline)','worksite (optional authority construction plan)','study (optional archived-map exploration project)','offer (optional native map/count)','relationships (optional directional assessments)','conversation (optional private player choices)','letter (optional public cast correspondence)','project (optional playable practice course)','contribution (optional project guidance)','resolve_contribution (optional owner decision)','intentions (up to three retained tasks)','fulfill (one prior task ID)'],
+                change_fields=['goal','dialogue','places','evidence','reason','journey_interests (optional up to four exact archived revision digests)','routine (optional quiet-world decision interval)','cooperate (optional independent exact project join/decline)','worksite (optional authority construction plan)','study (optional archived-map exploration project)','offer (optional native map/count)','relationships (optional directional assessments)','conversation (optional private player choices)','letter (optional public cast correspondence)','project (optional playable practice course)','contribution (optional project guidance)','resolve_contribution (optional owner decision)','intentions (up to three retained tasks)','fulfill (one prior task ID)'],
                 intentions=dict(fields=['id','kind (letter, project, study, construction, contribution or practice)','target','reason'],completion='set fulfill to a prior retained ID, remove it from agenda, execute the matching new action; authority requires a real action receipt',practice='target is an already host-registered fictional companion ID; isolated dispatcher only, no live fulfillment or story-party changes',initiative='followed actors may attempt retained work without a new player event; eight attempts per actor/world, once per task ID, no automatic retry or hidden model startup'),
                 collaboration=dict(contribution=['course','digest','text (200 literal characters)'],resolve_contribution=['seq (proposal evidence)','decision (accept or decline)'],effect='another existing actor contributes to exact published project; owner decides; accepted text becomes actual activity briefing',limits='one contribution per actor/project; only public evidence, no inferred participation or private results'),
                 routine=dict(fields=['interval_seconds (60..86400)'],effect='already followed actors may reconsider their own goals during quiet-world periods through the configured author runtime',limits='eight scheduled attempts per actor/world/UTC day; durable no-catch-up scheduling; no hidden worker startup, fake outcome or automatic XP',evidence='scheduled turns still cite inspected prior public evidence; clock passage is never outcome evidence'),
@@ -273,6 +277,8 @@ def guild_command(server, conn, args):
 
 
 def reaction_activity(event, identity, row):
+    from .character_journeys import relevant as journey_relevant
+    if journey_relevant(event,row.get('journey_interests',[])):return True
     from .canonical_cooperation import relevant as cooperation_relevant
     if cooperation_relevant(event,identity):return True
     from .canonical_construction import relevant as construction_relevant
@@ -339,6 +345,8 @@ def decision_evidence(event, identity, row):
     from .canonical_projects import public_project
     from .canonical_collaboration import relevant
     from .canonical_intentions import fulfilled
+    from .character_journeys import relevant as journey_relevant
+    if journey_relevant(event,row.get('journey_interests',[])):return True
     from .canonical_cooperation import relevant as cooperation_relevant
     if cooperation_relevant(event,identity):return True
     from .canonical_construction import relevant as construction_relevant

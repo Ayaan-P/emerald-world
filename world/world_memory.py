@@ -66,6 +66,8 @@ def evidence_index(event, *, current_catalog=False):
                 place = native_place(*key[:2])
                 if place and preserved is None:
                     places.add(place)
+    elif event.get('event') == 'character_journey_arrived':
+        words.extend((event['character_id'],event['character_name'],'completed authority walking journey'))
     elif event.get('event') == 'character_practice_completed':
         words.extend((event['character_id'],event['individual'],'completed isolated simulated practice'))
     elif event.get('event') == 'character_changed':

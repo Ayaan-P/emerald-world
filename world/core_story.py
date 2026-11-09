@@ -61,6 +61,8 @@ class CoreStory:
         CREATE TABLE IF NOT EXISTS canonical_contributions(
             seq INTEGER PRIMARY KEY, course TEXT NOT NULL, actor TEXT NOT NULL, owner TEXT NOT NULL,
             text TEXT NOT NULL, status TEXT NOT NULL, UNIQUE(course,actor));
+        CREATE TABLE IF NOT EXISTS character_journey_receipts(
+            actor TEXT, journey TEXT, seq INTEGER NOT NULL, PRIMARY KEY(actor,journey));
         CREATE TABLE IF NOT EXISTS canonical_construction_receipts(
             actor TEXT, intention TEXT, signature TEXT NOT NULL, revision TEXT NOT NULL, seq INTEGER NOT NULL,
             PRIMARY KEY(actor,intention));

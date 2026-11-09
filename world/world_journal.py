@@ -38,6 +38,10 @@ def describe(event, place=None):
         details.append('Team plan: ' + ', '.join('species ' + str(mon['species']) +
                        ' at level ' + str(mon['level']) for mon in character['team']))
         details.append('This is an authored character change, not proof of a battle or catch.')
+    elif kind == 'character_journey_arrived':
+        title=event['character_name']+' reached a destination'
+        details=[str(event['steps'])+' authority walking steps on exact map '+event['revision'][:12],
+                 'Authority arrival; clients may still be rendering movement. No player or original story NPC travel is implied.']
     elif kind == 'canonical_intention_fulfilled':
         from .canonical_cast import BINDINGS
         title=BINDINGS[event['character_id']]['name']+' completed a retained intention'

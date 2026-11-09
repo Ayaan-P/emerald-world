@@ -2011,6 +2011,8 @@ class WorldServer:
                             change['places'] = overlay_places([], [obj for obj in self.objects + objects
                                 if obj['id'] == change['character_id']],self.db)
                             self.revision = self.memory.append('character_changed', change)
+                        from .character_journeys import commit as commit_journeys
+                        commit_journeys(self,self.module_state,result['state'])
                         for change in canonical_changes:
                             effect_after=self.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
                             self.revision=self.memory.append('canonical_actor_changed',change)
