@@ -16,6 +16,24 @@ Do not reset dirty engine sources or use a player's live save for integration.
 Normal clean-pin checks, ABI probes and sandboxing remain mandatory. The native
 source is a clean descendant of the previous pin, not a partial-tree replacement.
 
+## Launcher entry point
+
+In the Expansion React launcher, open Local worlds → Living cast for the desired
+world. Open that local host, select Anthropic or OpenAI and an explicit API model,
+review the data/cost notice, then start the world author. The page can queue a
+first character request, follow an existing original actor, stop following and
+stop the worker. It never accepts keys in browser fields or starts private
+reflection processing. Credentials must already be supplied to the launcher
+process by the host. No command-line author/enrollment steps are required once
+that environment is configured.
+
+Read-only page entry never starts a worker or model. Follow is for existing
+records; refresh after initial authoring, then follow for future public events.
+Initial requests are idempotent for the same actor/purpose. If no allowed public
+evidence exists, authoring cannot invent it. Other worlds and remote/friend
+servers cannot be controlled from this local-owner page. Closing/disconnecting
+the hosting session stops its existing worker and preserves queues.
+
 ## What actually starts the characters
 
 A server starts no model by itself. Original actors have no extra behavior until
@@ -36,12 +54,13 @@ It uses the CLI's existing ordinary login; this check does not inspect credentia
 or prove provider login/network access. Do not loosen the version/tool isolation
 gate merely to get a green check. A different CLI needs separate security review.
 
-Using the existing running world's admin socket and a dedicated author state dir,
+Using the existing running world's transport socket (the client resolves the
+separate host-only admin socket internally) and a dedicated author state dir,
 the host can queue one explicit initialization request (replace placeholders):
 
     python3 -m world.runtime_gm submit --state-dir AUTHOR_STATE --player HOST \
       --intent "Consider one original cast member using actual inspected public history. Use canonical_actions, preserve original scripts, and invent no outcomes."
-    python3 -m world.runtime_gm run --state-dir AUTHOR_STATE --socket ADMIN_SOCKET \
+    python3 -m world.runtime_gm run --state-dir AUTHOR_STATE --socket TRANSPORT_SOCKET \
       --model openai-codex/gpt-6-luna --once
 
 This is a real model/deployment request, not a dry run. If evidence is insufficient,
@@ -49,9 +68,9 @@ resolve that normally; do not manufacture history. After a canonical actor exist
 explicitly enroll its future public-history reactions:
 
     python3 -m world.runtime_gm follow-character --state-dir AUTHOR_STATE \
-      --socket ADMIN_SOCKET --id canon_rydel \
+      --socket TRANSPORT_SOCKET --id canon_rydel \
       --purpose "Develop Rydel from actual public events and supported actions, preserving his bike service and individual trainers."
-    python3 -m world.runtime_gm run --state-dir AUTHOR_STATE --socket ADMIN_SOCKET \
+    python3 -m world.runtime_gm run --state-dir AUTHOR_STATE --socket TRANSPORT_SOCKET \
       --model openai-codex/gpt-6-luna
 
 Use the corresponding existing `canon_wally`, `canon_briney`, or `canon_steven`
@@ -81,7 +100,7 @@ was attempted. The per-call adapter still rechecks its version and isolation.
 - Private memory/reflection is a separate opt-in, never shared-author input.
   The private worker is separately and explicitly started, for example:
 
-    python3 -m world.private_cast_worker --socket ADMIN_SOCKET \
+    python3 -m world.private_cast_worker --socket TRANSPORT_SOCKET \
       --model openai-codex/gpt-6-luna --watch --max-jobs 8
 
 See the connected journey and feature documents for exact commands and limits.

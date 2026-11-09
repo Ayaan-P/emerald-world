@@ -461,6 +461,9 @@ class LauncherBridge:
                     raise
                 except Exception:
                     raise SessionError('Area generation could not complete. Check model login and local host setup before retrying.') from None
+            elif action.startswith('cast_agent_'):
+                from .cast_agent_ui import action as cast_agent_action
+                return cast_agent_action(self.session,self.local_expeditions(),action,payload)
             elif action in ('content_read', 'content_preview', 'content_apply'):
                 if self.engine != 'expansion-native':
                     raise SessionError('Content workshop requires the Expansion launcher.')

@@ -27,7 +27,7 @@ quality, pricing and authentication are not verified by local preflight.
 
     python3 -m world.runtime_gm check-author \
       --provider anthropic-messages --model ACTUAL_CLAUDE_MODEL_ID
-    python3 -m world.runtime_gm run --state-dir AUTHOR_STATE --socket ADMIN_SOCKET \
+    python3 -m world.runtime_gm run --state-dir AUTHOR_STATE --socket TRANSPORT_SOCKET \
       --provider anthropic-messages --model ACTUAL_CLAUDE_MODEL_ID
 
 Replace the provider/model explicitly for OpenAI. Existing enrollment, retained
@@ -63,7 +63,7 @@ of those grants is rejected before claiming them, even when invoked through
 Python rather than the CLI. A future private provider change requires a
 provider-bound consent design, not reuse of an existing grant.
 
-    python3 -m world.private_cast_worker --socket ADMIN_SOCKET \
+    python3 -m world.private_cast_worker --socket TRANSPORT_SOCKET \
       --provider openai-responses --model ACTUAL_OPENAI_MODEL_ID \
       --watch --max-jobs 8
 
