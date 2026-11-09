@@ -111,3 +111,11 @@ it('distinguishes the actual mounted course from the trainer footrace and explai
   expect(screen.getByText(/No Pokemon are granted by this mode/)).toBeTruthy();
   expect(screen.getByText(/Missing or overflowed movement reports cancel/)).toBeTruthy();
 });
+it('discovers living cast from Local worlds without starting a model', async () => {
+  loadState.mockResolvedValue({local_worlds:[{key:'local',name:'My world',trainer:'Player'}],local_hosts:['local'],engine:'expansion-native',local_host:true,world_key:'local',worlds:[],offline_saves:[],games:[],hosting:{available:false,worlds:[]},setup:[],status:'Ready'});
+  perform.mockResolvedValue({running:false,queued:0,failed_requests:0,providers:[],actors:[]});
+  render(<App />);fireEvent.click(await screen.findByRole('button',{name:'Local worlds'}));fireEvent.click(await screen.findByRole('button',{name:'Living cast'}));
+  await screen.findByRole('heading',{name:'Living cast agents'});
+  await waitFor(()=>expect(perform).toHaveBeenCalledWith('cast_agent_read',{world:'local'}));
+  expect(perform.mock.calls.some(([a])=>a==='cast_agent_start')).toBe(false);
+});

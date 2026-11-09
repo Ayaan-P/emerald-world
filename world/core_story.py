@@ -26,7 +26,28 @@ BEATS = {
         'proof': 'FLAG_RECOVERED_DEVON_GOODS after reward and rescue completion',
         'outcome': 'devon_goods_secured',
         'public': 'Explorers recovered Devon goods and rescued Peeko in Rusturf Tunnel.'},
+    'devon_met': {'map': 'RustboroCity_DevonCorp_3F', 'requires': 'goods_recovered',
+        'hook': 'RustboroCity_DevonCorp_3F_EventScript_MeetPresident after original scene completion',
+        'proof': 'VAR_DEVON_CORP_3F_STATE >= 1',
+        'outcome': 'devon_delivery_requested',
+        'public': 'Explorers received Devons request to deliver a letter to Steven in Dewford.'},
 }
+
+def shared_outcome(event, places):
+    """Allow only existing explicitly shared native story receipts as cast evidence.
+
+Native attestation remains attestation, not server-simulated battle proof. Private
+REPORT/SYNC progress and arbitrary client prose never qualify.
+"""
+    beat=BEATS.get(event.get('beat'))
+    return bool(beat and event.get('event')=='canonical_story_outcome'
+                and event.get('arc')=='devon_aqua_v1'
+                and event.get('source')=='explicitly_shared_native_attestation'
+                and event.get('outcome')==beat['outcome']
+                and event.get('summary')==beat['public']
+                and event.get('places')==['native:'+beat['map']]
+                and 'native:'+beat['map'] in places)
+
 CHECKPOINTS = {
     'rusturf_grunt': {'map': 'RusturfTunnel', 'requires': 'woods_rescued',
         'completed': 'goods_recovered', 'outcome': 'devon_warned',
@@ -48,6 +69,34 @@ class CoreStory:
         self.s = server
         self.db = server.db
         self.db.executescript('''
+        CREATE TABLE IF NOT EXISTS canonical_reflections(
+            id TEXT PRIMARY KEY, trainer TEXT, actor TEXT, run TEXT, fingerprint TEXT, context TEXT,
+            status TEXT, created REAL, lease TEXT, reply TEXT, interpretation TEXT, version INTEGER,
+            UNIQUE(trainer,actor));
+        CREATE TABLE IF NOT EXISTS canonical_perspectives(
+            trainer TEXT, run TEXT, actor TEXT, interpretation TEXT NOT NULL,
+            reflection TEXT NOT NULL, updated REAL NOT NULL, PRIMARY KEY(trainer,run,actor));
+        CREATE TABLE IF NOT EXISTS canonical_memory_optin(trainer TEXT,actor TEXT,PRIMARY KEY(trainer,actor));
+        CREATE TABLE IF NOT EXISTS canonical_encounters(
+            trainer TEXT, run TEXT, actor TEXT, talks INTEGER, updated REAL, version INTEGER, goal TEXT, text TEXT,
+            PRIMARY KEY(trainer,run,actor));
+        CREATE TABLE IF NOT EXISTS canonical_intent_receipts(
+            actor TEXT, intention TEXT, action_receipt INTEGER NOT NULL, PRIMARY KEY(actor,intention));
+        CREATE TABLE IF NOT EXISTS canonical_contributions(
+            seq INTEGER PRIMARY KEY, course TEXT NOT NULL, actor TEXT NOT NULL, owner TEXT NOT NULL,
+            text TEXT NOT NULL, status TEXT NOT NULL, UNIQUE(course,actor));
+        CREATE TABLE IF NOT EXISTS character_journey_receipts(
+            actor TEXT, journey TEXT, seq INTEGER NOT NULL, PRIMARY KEY(actor,journey));
+        CREATE TABLE IF NOT EXISTS canonical_construction_receipts(
+            actor TEXT, intention TEXT, signature TEXT NOT NULL, revision TEXT NOT NULL, seq INTEGER NOT NULL,
+            PRIMARY KEY(actor,intention));
+        CREATE TABLE IF NOT EXISTS canonical_studies(
+            revision TEXT PRIMARY KEY, actor TEXT NOT NULL, digest TEXT NOT NULL, document TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS canonical_projects(
+            course TEXT PRIMARY KEY, actor TEXT NOT NULL, digest TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS canonical_conversations(
+            trainer TEXT, actor TEXT, version INTEGER NOT NULL, choice TEXT NOT NULL,
+            PRIMARY KEY(trainer,actor));
         CREATE TABLE IF NOT EXISTS core_story_progress(
             trainer TEXT, run TEXT, beat TEXT, PRIMARY KEY(trainer,run,beat));
         CREATE TABLE IF NOT EXISTS core_story_shared(
@@ -56,6 +105,8 @@ class CoreStory:
             trainer TEXT, run TEXT, checkpoint TEXT, document TEXT,
             PRIMARY KEY(trainer,run,checkpoint));
         ''')
+        from .campaign_milestones import install
+        install(self.db)
         self.db.commit()
 
     def contract(self):
@@ -88,6 +139,46 @@ class CoreStory:
             raise ValueError('Invalid canonical story request.')
         _, run, action, key, confirmation = fields
         trainer = conn['id']
+        if action in ('RING','RSET','RACK'):
+            from .canonical_calls import handle
+            return handle(self.s,conn,run,action,key,confirmation)
+        if action=='CALL' and confirmation=='registered':
+            from .canonical_cast import remote_response
+            return remote_response(self.s,conn,run,key)
+        if action=='ALLY':
+            from .canonical_cast import records,check_actor_location
+            row=records(self.s.module_state).get('canon_steven')
+            from .canonical_activity_projects import visible
+            row=visible(self.s,'canon_steven',row)
+            reached=conn.get('canonical_location') or {}
+            if (key!='steven' or confirmation!='confirm' or not row or row.get('companion')!='steven_wild_once'
+                    or reached.get('actor')!='canon_steven' or reached.get('run')!=run
+                    or conn.get('core_active_run')!=run or reached.get('version')!=row['version']
+                    or reached.get('expires',0)<time.monotonic() or not (conn.get('state') or [0]*7)[6]):
+                raise ValueError('No current Steven companion invitation at this conversation.')
+            check_actor_location(self.s,conn,'canon_steven')
+            return dict(ok=True) # Frozen one-shot permission, not battle completion or a shared reward.
+        if action=='PROJECT':
+            from .canonical_project_panel import panel
+            return panel(self.s,conn,run,key,confirmation)
+        if action=='DIALOG':
+            from .canonical_dialogues import native_panel
+            return native_panel(self.s,conn,run,key,confirmation)
+        if action=='MILE':
+            from .campaign_milestones import handle
+            return handle(self.s,conn,run,key,confirmation)
+        if action=='SEEN' and re.fullmatch('[0-9a-f]{64}',confirmation):
+            from .canonical_cast import location
+            from .canonical_memory import acknowledge
+            actor,map_name=location(key)
+            if actor is None:raise ValueError('Unknown actor.')
+            return acknowledge(self.s,conn,run,actor,confirmation,map_name=map_name)
+        if action=='SCENES' and key=='native' and confirmation=='private':
+            conn['cast_scene_supported']=True
+            return dict(schema=1,supported=True)
+        if action == 'CAST' and confirmation == 'safe':
+            from .canonical_cast import response
+            return response(self.s,conn,run,key)
         with self.db:
             if action == 'SYNC' and confirmation == 'private':
                 if key not in ('0','1','3','7'):
@@ -103,6 +194,7 @@ class CoreStory:
                 self.db.execute('DELETE FROM core_story_progress WHERE trainer=? AND run=?',(trainer,run))
                 self.db.executemany('INSERT INTO core_story_progress VALUES(?,?,?)',
                                     ((trainer,run,name) for name in current))
+                conn['core_active_run']=run
                 return dict(schema=1,run=run,progress=int(key),source='native_client_attestation')
             if action == 'REPORT' and confirmation == 'complete':
                 beat = BEATS.get(key)

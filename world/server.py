@@ -142,7 +142,23 @@ class WorldServer:
         self.memory = WorldMemory(self.db)
         from .core_story import CoreStory
         self.core_story = CoreStory(self)
+        from .character_companions import setup as setup_companions
+        setup_companions(self.db)
         self.guilds = Guilds(self.db, catalog_maps(), record_outcome=self.memory.append)
+        from .canonical_councils import install as install_councils
+        install_councils(self.db)
+        from .canonical_dialogues import install as install_dialogues
+        install_dialogues(self.db)
+        from .canonical_calls import install as install_calls
+        install_calls(self.db)
+        from .canonical_initiatives import install as install_initiatives
+        install_initiatives(self.db)
+        from .canonical_project_requests import install as install_project_requests
+        install_project_requests(self.db)
+        from .canonical_rapport import install as install_rapport
+        install_rapport(self.db)
+        from .canonical_scenes import CanonicalScenes
+        self.cast_scenes=CanonicalScenes(self)
         self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
         from .cooperative_mysteries import Mysteries
         from .opportunities import Opportunities
@@ -411,6 +427,7 @@ class WorldServer:
             del self.link_channels[conn['id']]
             self._deliver_links(self.link_protocol.disconnect(conn['id']))
         if conn['id'] and self.peers.get(conn['id']) is conn:
+            self.cast_scenes.disconnected(conn)
             self.rally.disconnect(conn)
             self._flush_states()
             del self.peers[conn['id']]
@@ -627,6 +644,10 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                character_state_capable=role.endswith('CHARPK2')
+                if character_state_capable:role=role[:-7]
+                character_pokemon_capable=role.endswith('CHARPK1')
+                if character_pokemon_capable:role=role[:-7]
                 core_story_capable = role.endswith('CORE1')
                 if core_story_capable:role=role[:-5]
                 mount_capable = role.endswith('MOUNTS1')
@@ -752,6 +773,9 @@ class WorldServer:
                 if len(self.peers) >= self.max_players:
                     self._error(conn, 'FULL')
                     return
+                if self.cast_scenes.live is not None:
+                    self._error(conn, 'SCENE_BUSY')
+                    return
                 conn['id'] = name
                 conn['social'] = social
                 conn['core_story_capable'] = core_story_capable
@@ -760,6 +784,8 @@ class WorldServer:
                 conn['private_commands'] = private_commands
                 conn['character_walk_capable'] = character_walk_capable
                 conn['character_region_capable'] = character_region_capable
+                conn['character_pokemon_capable']=character_pokemon_capable and character_capable
+                conn['character_state_capable']=character_state_capable and conn['character_pokemon_capable']
                 conn['character_capable'] = character_capable
                 conn['character_quest_capable'] = character_quest_capable
                 conn['rules_capable'] = rules_capable
@@ -808,6 +834,13 @@ class WorldServer:
             if conn.get('control'):
                 self._control_line(conn, raw)
                 return
+            if fields[:2]==['CORE','SCENE']:
+                try:self.cast_scenes.handle(conn,fields[2:])
+                except (ValueError,KeyError,TypeError):
+                    self._queue(conn,'CORE SCENE REFUSED\n')
+                    self.guild_chat.message(conn,'World','Scene unavailable or restoration pending. Check /history scene; everyone must be ready in the Bike Shop.')
+                self._broadcast()
+                return
             if fields and fields[0] == 'CORE':
                 nonce=None
                 try:
@@ -818,8 +851,12 @@ class WorldServer:
                     result = self.core_story.handle(conn, fields[:5] if nonce else fields)
                     if nonce:
                         prefix='CORE REPLY '+nonce+' '+fields[1]+' '+fields[2]+' '+fields[3]+' '
-                        if fields[2]=='OFFER':
-                            reply=result['world_id']+' '+result['digest']+' '+(result['briefing']+' '+result['objective']).encode().hex()
+                        if fields[2]=='RING':
+                            reply=self.memory.world_id+' '+result['caller']+' '+result['token']+' '+(result['text'].encode().hex() if result['text'] else '-')
+                        elif fields[2] in ('DIALOG','PROJECT'):
+                            reply=' '.join([result['world_id'],str(result['version']),result['session'],str(result['role']),str(len(result['options'])),result['question'].encode().hex()]+[value for option in result['options'] for value in (option['label'].encode().hex(),str(option['advice']))])
+                        elif fields[2] in ('OFFER','CAST','CALL'):
+                            reply=result['world_id']+' '+result['digest']+' '+(result['briefing'] if fields[2]=='CALL' else result['briefing']+' '+result['objective']).encode().hex()
                         else:
                             reply='OK'
                         self._queue(conn,prefix+reply+'\n')
@@ -1272,7 +1309,7 @@ class WorldServer:
                 self._queue(conn, json.dumps(future.result(), ensure_ascii=True) + '\n')
         self.control_jobs = remaining
 
-    def _persist_cave(self, blob, *, label=None, previous_revision=None, history_evidence=None, character_continuation=None):
+    def _persist_cave(self, blob, *, label=None, previous_revision=None, history_evidence=None, character_continuation=None, cast_construction=None):
         if not self.persist_generated_cave:
             return
         try:
@@ -1306,6 +1343,9 @@ class WorldServer:
                 if character_continuation is not None:
                     from .character_rebinding import persist
                     persist(self, character_continuation, place_id, previous_revision, identity)
+                if cast_construction is not None:
+                    from .canonical_construction import persist as persist_construction
+                    persist_construction(self,cast_construction,previous_revision,identity,place_id)
             if character_continuation is not None:
                 self.candidate = character_continuation['candidate']
                 self.objects = character_continuation['objects']
@@ -1318,7 +1358,7 @@ class WorldServer:
         except sqlite3.Error:
             raise ValueError('generated cave could not be persisted') from None
 
-    def _replace_cave(self, blob, *, label=None, previous_revision=None, expected_world_id=None, expected_sequence=None, history_evidence=None, character_continuation=None):
+    def _replace_cave(self, blob, *, label=None, previous_revision=None, expected_world_id=None, expected_sequence=None, history_evidence=None, character_continuation=None, cast_construction=None):
         from .shared_cave import SharedCave
         candidate = SharedCave(blob)  # validate completely before mutating anything
         if previous_revision is not None and (not self.persist_generated_cave or type(previous_revision) is not str or not re.fullmatch(r'[0-9a-f]{64}', previous_revision)):
@@ -1341,7 +1381,7 @@ class WorldServer:
             if (self.wilds_map if candidate.version in (6, 7, 8, 9, 16) else self.cave_map) is None:
                 raise ValueError('generated map missing from catalog')
             if self.shared_cave and candidate.identity == self.shared_cave.identity:
-                self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence, character_continuation=character_continuation)
+                self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence, character_continuation=character_continuation, cast_construction=cast_construction)
                 return candidate.identity
             peers = [peer for peer in self.peers.values() if not peer.get('closing') and not peer.get('region_cave')]
             if any(peer.get('in_generated_cave') or
@@ -1353,7 +1393,7 @@ class WorldServer:
             if any(len(peer['out']) + len(message) > MAX_QUEUE for peer in recipients):
                 raise ValueError('generated cave update is busy')
             old_id = self.shared_cave.identity if self.shared_cave else None
-            self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence, character_continuation=character_continuation)
+            self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence, character_continuation=character_continuation, cast_construction=cast_construction)
             self.shared_cave = candidate
             self._terrain_walk_cache = None
             for peer in recipients:
@@ -1752,6 +1792,27 @@ class WorldServer:
                     return
                 identity = self.create_identity(request['trainer'])
                 result = dict(ok=True, invitation=dict(self.sharing, trainer=identity['id'], token=identity['token']))
+            elif request.get('command') in ('private_cast_claim','private_cast_finish'):
+                from .canonical_reflection import claim,finish
+                try:
+                    if request['command']=='private_cast_claim' and set(request)=={'command'}:result=claim(self)
+                    elif request['command']=='private_cast_finish' and set(request)=={'command','id','lease','result'}:result=finish(self,request['id'],request['lease'],request['result'])
+                    else:raise ValueError('Invalid private reflection command.')
+                except ValueError as exc:result=dict(ok=False,error=str(exc))
+            elif request.get('command') in ('character_practice_source','character_practice_apply'):
+                from .character_training import source,reconcile
+                try:
+                    with self.lock:
+                        if request['command']=='character_practice_source' and set(request)=={'command','actor','individual'}:result=dict(ok=True,source=source(self,request['actor'],request['individual']))
+                        elif request['command']=='character_practice_apply':result=reconcile(self,request)
+                        else:raise ValueError('Invalid practice command')
+                except (ValueError,TypeError,KeyError) as exc:result=dict(ok=False,error=str(exc))
+            elif request.get('command') == 'cast_practice_intentions':
+                from .canonical_cast import records
+                if set(request)!={'command'}:result=dict(ok=False,error='Invalid cast practice inspection')
+                else:
+                    from .character_training import intentions
+                    with self.lock:result=intentions(self)
             elif request.get('command') == 'inspect':
                 result = self.inspect()
             elif request.get('command') == 'world_rules':
@@ -1840,6 +1901,8 @@ class WorldServer:
         self._queue(conn, json.dumps(result, ensure_ascii=True) + '\n')
 
     def inspect(self):
+        from .canonical_initiatives import view as initiative_view
+        from .canonical_project_requests import view as project_request_view
         with self.lock:
             players = []
             for name, conn in sorted(self.peers.items()):
@@ -1855,6 +1918,9 @@ class WorldServer:
                 players.append(player)
             return dict(ok=True, revision=self.revision, players=players,
                         world_memory=self.memory.context(self),
+                        cast_world_actions=self.opportunities.actor_actions()[:32],
+                        cast_initiatives=initiative_view(self),
+                        cast_project_requests=project_request_view(self),
                         sharing=(dict(endpoint=self.sharing['endpoint'], listen=getattr(self, 'sharing_listen', None))
                                  if self.sharing else None),
                         capacity=dict(players=self.max_players, controls=self.max_controls,
@@ -1957,6 +2023,8 @@ class WorldServer:
                 validate_walks(self,self.module_state,result['state'],objects)
                 from .characters import validate_transition
                 character_changes = validate_transition(self.module_state, result['state'], objects, self.db)
+                from .canonical_cast import validate_transition as validate_canonical
+                canonical_changes=validate_canonical(self.module_state,result['state'],objects,self.db)
                 changed = (kind == 'deploy' or result['state'] != self.module_state or tiles != self.tiles
                            or objects != self.objects or cursor != self.interaction_cursor)
                 if changed:
@@ -1971,10 +2039,33 @@ class WorldServer:
                                 places=overlay_places(self.tiles + tiles, self.objects + objects,self.db),
                                 before=dict(tiles=self.tiles, objects=self.objects),
                                 after=dict(tiles=tiles, objects=objects)))
+                        from .character_companions import commit as commit_companions
+                        commit_companions(self.db,self.memory.world_id,character_changes)
                         for change in character_changes:
                             change['places'] = overlay_places([], [obj for obj in self.objects + objects
                                 if obj['id'] == change['character_id']],self.db)
                             self.revision = self.memory.append('character_changed', change)
+                        from .character_journeys import commit as commit_journeys
+                        commit_journeys(self,self.module_state,result['state'],objects)
+                        for change in canonical_changes:
+                            effect_after=self.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
+                            self.revision=self.memory.append('canonical_actor_changed',change)
+                            from .canonical_cast import deliver_letter
+                            deliver_letter(self,change)
+                            from .canonical_cooperation import publish as publish_cooperation
+                            publish_cooperation(self,change)
+                            from .canonical_projects import publish as publish_cast_project
+                            publish_cast_project(self,change)
+                            from .canonical_initiatives import publish as publish_initiative
+                            publish_initiative(self,change)
+                            from .canonical_project_requests import publish as publish_project_request
+                            publish_project_request(self,change)
+                            from .canonical_studies import publish as publish_cast_study
+                            publish_cast_study(self,change)
+                            from .canonical_collaboration import apply as apply_cast_collaboration
+                            apply_cast_collaboration(self,change)
+                            from .canonical_intentions import complete as complete_cast_intent
+                            complete_cast_intent(self,change,effect_after)
                         if kind == 'deploy':
                             self.db.execute('INSERT OR REPLACE INTO status VALUES(1,NULL)')
                     self.candidate, self.module_state, self.tiles = candidate, json.loads(state_json), tiles
@@ -2071,6 +2162,11 @@ class WorldServer:
                 self.flags.tick()
                 self._poll_controls()
                 self._poll_mechanics()
+                from .canonical_construction import step as step_cast_construction
+                step_cast_construction(self)
+                from .canonical_world_actions import step as step_cast_world_action
+                step_cast_world_action(self)
+                self.cast_scenes.tick()
 
     def close(self):
         if self._closed:

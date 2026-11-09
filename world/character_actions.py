@@ -19,7 +19,7 @@ def validate_actions(actions, context):
     known={e['seq'] for e in context.get('recalled_history',{}).get('events',[])+data.get('world_memory',{}).get('recent',[]) if type(e.get('seq')) is int}
     seen=set()
     for action in actions:
-        if type(action) is not dict or set(action)-{'walk'}!={'id','expected_version','evidence','reason','changes','object'}:
+        if type(action) is not dict or set(action)-{'walk','journey','meet','survey'}!={'id','expected_version','evidence','reason','changes','object'}:
             raise ValueError('invalid character action fields')
         identity=action['id']
         if type(identity) is not str or identity not in cast or identity in seen:
@@ -33,12 +33,13 @@ def validate_actions(actions, context):
         if type(evidence) is not list or not evidence or any(type(seq) is not int or seq not in known for seq in evidence):
             raise ValueError('actions require inspected public history evidence')
         changes=action['changes']
-        if type(changes) is not dict or set(changes)-{'goals','relationships','team','status','offer'}:
+        if type(changes) is not dict or set(changes)-{'goals','relationships','team','status','offer','intentions'}:
             raise ValueError('unsupported character action changes')
-        if 'walk' in action:
-            path=action['walk'];obj=action['object']
+        if 'walk' in action and 'journey' in action:raise ValueError('choose walk or journey, not both')
+        if 'walk' in action or 'journey' in action:
+            path=action.get('journey',action.get('walk'));obj=action['object']
             original=next((o for o in data.get('objects',[]) if o['id']==identity),None)
-            if (type(path) is not list or not 2<=len(path)<=6 or
+            if (type(path) is not list or not 2<=len(path)<=(65 if 'journey' in action else 6) or
                     any(type(p) is not list or len(p)!=2 or any(type(v) is not int for v in p) for p in path) or
                     len({tuple(p) for p in path})!=len(path) or
                     any(abs(a[0]-b[0])+abs(a[1]-b[1])!=1 for a,b in zip(path,path[1:])) or
@@ -46,7 +47,14 @@ def validate_actions(actions, context):
                     character['status']!='active' or changes.get('status','active')!='active' or
                     path[0]!=[original['x'],original['y']] or path[-1]!=[obj['x'],obj['y']] or
                     any(original.get(k)!=obj.get(k) for k in ('group','num','region_revision'))):
-                raise ValueError('walk requires 2..6 unique cardinal points in the current generated place')
+                raise ValueError('walk/journey requires bounded unique cardinal points in the current generated place')
+        if 'survey' in action:
+            if 'journey' not in action:raise ValueError('field survey requires an actual journey')
+            from .character_reconnaissance import validate
+            validate(action)
+        if 'meet' in action:
+            from .character_encounters import validate_request
+            validate_request(action,cast,data.get('objects',[]))
         character.update(copy.deepcopy(changes),version=character['version']+1,evidence=evidence,reason=action['reason'])
         if character.get('offer') is None:character.pop('offer',None)
         obj=action['object']
@@ -78,16 +86,29 @@ def action_step(actions, definition, result, context=None):
                              evidence=action['evidence'],reason=action['reason'])
             if character.get('offer') is None:character.pop('offer',None)
             controls[identity]={'character':character,'object':copy.deepcopy(action['object'])}
-            if 'walk' in action:
-                controls[identity]['walk']={'id':definition[:24],'path':copy.deepcopy(action['walk']),'index':0,'last_tick':tick}
-                controls[identity]['object']['x'],controls[identity]['object']['y']=action['walk'][0]
+            if 'walk' in action or 'journey' in action:
+                path=action.get('journey',action.get('walk'))
+                if 'journey' in action:
+                    controls[identity]['journey']={'id':definition[:24],'path':copy.deepcopy(path),'segment':0}
+                    if 'survey' in action:controls[identity]['journey']['survey']=action['survey']
+                    if 'meet' in action:controls[identity]['journey']['meeting']=copy.deepcopy(action['meet'])
+                controls[identity]['walk']={'id':definition[:20]+'0000' if 'journey' in action else definition[:24],'path':copy.deepcopy(path[:6]),'index':0,'last_tick':tick}
+                controls[identity]['object']['x'],controls[identity]['object']['y']=path[0]
         receipts.append(definition)
     for identity,control in sorted(controls.items()):
-        walk=control.get('walk')
+        walk=control.get('walk');journey=control.get('journey')
+        if (journey and walk and walk['index']==len(walk['path'])-1
+                and journey['segment']+len(walk['path'])<len(journey['path']) and walk['last_tick']!=tick):
+            journey['segment']+=5
+            control['character']['version']+=1
+            walk={'id':journey['id'][:20]+('%04x'%journey['segment']),'path':copy.deepcopy(journey['path'][journey['segment']:journey['segment']+6]),'index':0,'last_tick':tick}
+            control['walk']=walk
         if walk and walk['index']<len(walk['path'])-1 and walk['last_tick']!=tick:
             point=walk['path'][walk['index']+1];obj=control['object']
             occupied=any(p.get('ready') and p.get('generated_place',{}).get('revision')==obj.get('region_revision')
                          and [p.get('x'),p.get('y')]==point for p in (context or {}).get('players',[]))
+            obstacles=[o for o in result.get('objects',[]) if o['id'] not in controls]+[c['object'] for key,c in controls.items() if key!=identity and c.get('object')]
+            occupied=occupied or any(o['id']!=identity and o.get('region_revision')==obj.get('region_revision') and [o['x'],o['y']]==point for o in obstacles)
             if not occupied:
                 walk['index']+=1;obj['x'],obj['y']=point
             walk['last_tick']=tick
@@ -117,8 +138,11 @@ def compile_actions(actions, context):
 def contract():
     return {'response':'{"character_actions": actions, "tests": "Python tests"}',
             'action_fields':['id','expected_version','evidence','reason','changes','object'],
+            'optional_survey':'with journey only: public literal title 1..48 characters; completed route measures immutable cardinal access at each visited point and publishes a durable field report; no invented wildlife, resources or player participation',
+            'optional_meet':'with journey only: {target, expected_version, text}; existing active world character on same exact revision, destination adjacent to inspected target. Arrival rechecks position/version/readiness and delivers a public fictional message or records actual missed encounter; never forces reply or friendship',
+            'optional_journey':'2..65 unique cardinal points on the same exact generated map; authority chains existing six-point native walks autonomously, pauses for occupancy, and publishes only actual final authority arrival; no canonical relocation or cross-map teleport',
             'optional_walk':'2..6 unique cardinal [x,y] points including current start and replacement object endpoint, same generated revision only; progresses one point per authority tick, yields to reported ready player occupancy, blocks interactions until complete',
-            'changes':'goals, relationships to existing public NPCs, team, status, optional offer (null removes)',
+            'changes':'goals, relationships to existing public NPCs, team, status, retained practice intentions for own identified companions, optional offer (null removes)',
             'effect':'explicitly take over selected existing NPCs from older scripts; native map object controls actual relocation/dialogue and team controls battle; all unrelated source effects preserved',
             'evidence':'nonempty inspected/recalled public history references; authored intent, never proof of battle or catch',
             'limits':'eight actions per request, 32 action publications before source consolidation; expected version rechecked on admission; native maps or region_revision-bound opened immutable generated regions or archived shared XL revisions',

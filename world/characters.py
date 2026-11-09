@@ -25,7 +25,7 @@ def records(state):
     for identity, character in value.items():
         if type(identity) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}', identity):
             raise ValueError('invalid character identity')
-        if type(character) is not dict or not FIELDS <= set(character) or set(character)-FIELDS-{'offer'}:
+        if type(character) is not dict or not FIELDS <= set(character) or set(character)-FIELDS-{'offer','intentions'}:
             raise ValueError('invalid character fields')
         if type(character['version']) is not int or not 1 <= character['version'] <= 2**31-1:
             raise ValueError('invalid character version')
@@ -53,13 +53,25 @@ def records(state):
         team = character['team']
         if type(team) is not list or not 1 <= len(team) <= 6:
             raise ValueError('character team must contain one to six Pokemon')
+        identified=any(type(m) is dict and 'individual' in m for m in team)
+        individuals=set()
         for mon in team:
-            if type(mon) is not dict or set(mon) != {'species', 'level'}:
+            if type(mon) is not dict or set(mon) != ({'species','level','individual'} if identified else {'species','level'}):
                 raise ValueError('invalid character team member')
+            if identified:
+                key=mon['individual']
+                if type(key) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}',key) or key in individuals:raise ValueError('distinct stable companion identities required')
+                individuals.add(key)
             if type(mon['species']) is not int or mon['species'] not in species:
                 raise ValueError('unknown character species')
             if type(mon['level']) is not int or not 1 <= mon['level'] <= 100:
                 raise ValueError('invalid character level')
+        tasks=character.get('intentions',[])
+        if type(tasks) is not list or len(tasks)>3:raise ValueError('At most three practice intentions')
+        seen=set()
+        for task in tasks:
+            if type(task) is not dict or set(task)!={'id','kind','target','reason'} or task['kind']!='practice' or type(task['id']) is not str or not re.fullmatch('[a-z][a-z0-9_]{0,23}',task['id']) or task['id'] in seen or task['target'] not in individuals:raise ValueError('Practice intention must name an owned identified companion')
+            _text(task['reason'],160);seen.add(task['id'])
         evidence = character['evidence']
         if (type(evidence) is not list or len(evidence) > 8 or
                 any(type(seq) is not int or seq < 1 for seq in evidence) or
@@ -78,6 +90,8 @@ def validate_transition(before, after, objects, db):
     for identity, character in new.items():
         if (character['status'] == 'active') != (identity in visible):
             raise ValueError('active characters must have a rendered object; away/retired must not')
+        from .character_companions import validate as validate_companions
+        validate_companions(db,identity,character)
         previous = old.get(identity)
         if previous == character:
             continue
@@ -102,6 +116,7 @@ def validate_transition(before, after, objects, db):
 def author_contract():
     return {
         'state_key': KEY,
+        'companions': 'optional individual ID on every team slot; stable native personality/fictional owner/15 IVs across level changes and reordering; species immutable until supported evolution adapter; trusted isolated practice receipts may preserve full EXP/moves through CHARPK2, never infer victories/catches from client reports',
         'record_fields': sorted(FIELDS),
         'optional_offer': {'id':'stable offer ID','revision':'positive revision, increase when destination/count changes','kind':'expedition','place_id':'native:canonical map','target':'1..50 guild members'},
         'offer_consent':'CHARQUEST1 native explicit acceptance; guild leader only, existing chronicle ON required, never toggle publication; completion uses existing guild authority',
@@ -148,9 +163,23 @@ def challenge(server, conn, fields):
     delta = {1:(0,1), 2:(0,-1), 3:(-1,0), 4:(1,0)}.get(state[4])
     if delta is None or (state[2]+delta[0], state[3]+delta[1]) != (obj['x'], obj['y']):
         raise ValueError('character challenge requires adjacent facing player')
+    persistent=all('individual' in mon for mon in character['team'])
+    if persistent and not conn.get('character_pokemon_capable'):raise ValueError('persistent companion battle needs matched CHARPK1 client')
     frozen = json.loads(json.dumps({'seq': seq, 'id': fields[2], 'version': version, 'team': character['team']}))
+    if persistent:
+        from .character_companions import descriptor
+        frozen['individual_values']=descriptor(server,fields[2],frozen['team'])
+        from .character_training import battle_values
+        full=battle_values(server,fields[2],frozen['team'])
+        if full:
+            if not conn.get('character_state_capable'):raise ValueError('Trained companion requires matched CHARPK2 client')
+            frozen['full_values']=full
     conn['character_pending'] = frozen
     conn['seq'] = seq
+    if frozen.get('full_values'):
+        return 'CHARACTER_BATTLE_V3 '+' '.join(map(str,[seq,fields[2],version,len(frozen['team']),*frozen['full_values']]))+'\n'
+    if persistent:
+        return 'CHARACTER_BATTLE_V2 '+' '.join(map(str,[seq,fields[2],version,len(frozen['team']),*frozen['individual_values']]))+'\n'
     return 'CHARACTER_BATTLE_V1 ' + ' '.join(map(str, [seq, fields[2], version, len(frozen['team']),
         *[value for mon in frozen['team'] for value in (mon['species'], mon['level'])]])) + '\n'
 

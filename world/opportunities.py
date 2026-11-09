@@ -34,9 +34,20 @@ def validate(pack,places):
             if key not in qualities or type(bounds) is not list or len(bounds)!=2 or any(type(n) is not int for n in bounds) or not 0<=bounds[0]<=bounds[1]<=qualities[key]['max']:raise ValueError('Invalid quality requirement.')
     for key,scene in scenes.items():
         identity(key)
-        if type(scene) is not dict or not {'place','text','requires','once','choices'} <= set(scene) or not set(scene) <= {'place','text','requires','once','choices','mystery'}:raise ValueError('Invalid scene.')
+        if type(scene) is not dict or not {'place','text','requires','once','choices'} <= set(scene) or not set(scene) <= {'place','text','requires','once','choices','mystery','actors'}:raise ValueError('Invalid scene.')
         if scene['place'] not in places or scene['once'] not in ('player','world'):raise ValueError('Invalid scene place or repetition rule.')
         if 'mystery' in scene:identity(scene['mystery'])
+        if 'actors' in scene:
+            actors=scene['actors']
+            if (type(actors) is not list or not 1<=len(actors)<=4 or any(type(a) is not str for a in actors) or len(set(actors))!=len(actors)
+                    or any(a not in ('canon_wally','canon_briney','canon_steven','canon_rydel') for a in actors)
+                    or scene['once']!='world' or 'mystery' in scene):raise ValueError('Actor scenes require explicit canonical actors and world-only execution.')
+            used=set(scene['requires'])
+            if type(scene['choices']) is not dict:raise ValueError('Invalid actor choices.')
+            for action in scene['choices'].values():
+                if type(action) is not dict:raise ValueError('Invalid actor choice.')
+                used.update(action.get('requires',{}));used.update(action.get('effects',{}))
+            if any(k not in qualities or qualities[k]['scope']!='place' for k in used):raise ValueError('Actor scenes cannot access player qualities.')
         text(scene['text']);requirements(scene['requires'])
         choices=scene['choices']
         if type(choices) is not dict or not 1<=len(choices)<=3:raise ValueError('Scenes need 1..3 choices.')
@@ -96,6 +107,7 @@ class Opportunities:
     def _eligible(self,trainer,pack,place,shared,private,world_played,player_played):
         values=dict(shared,**private);result=[]
         for key,scene in pack['scenes'].items():
+            if 'actors' in scene:continue
             if 'mystery' in scene and (self.mysteries is None or not self.mysteries.completed(trainer,scene['mystery'])):continue
             played=world_played if scene['once']=='world' else player_played
             if scene['place']!=place or key in played or not self._matches(scene['requires'],values):continue
@@ -140,3 +152,34 @@ class Opportunities:
             result=dict(ok=True,revision=current+1,text=action['result'])
             self.db.execute('INSERT INTO story_receipts VALUES(?,?,?,?,?)',(pack_id,trainer,request,payload,encoded(result)))
             return result
+
+    def actor_actions(self,actor=None):
+        """Only explicitly actor-owned public choices; never load a trainer profile."""
+        result=[]
+        for key,raw in self.db.execute('SELECT id,document FROM story_packs ORDER BY id'):
+            pack=json.loads(raw)
+            for sid,scene in pack['scenes'].items():
+                if not scene.get('actors') or actor is not None and actor not in scene['actors']:continue
+                row=self.db.execute('SELECT revision,state,played FROM story_places WHERE pack=? AND place=?',(key,scene['place'])).fetchone()
+                revision,values,played=(row[0],json.loads(row[1]),json.loads(row[2])) if row else (0,{k:q['initial'] for k,q in pack['qualities'].items() if q['scope']=='place'},[])
+                if sid in played or not self._matches(scene['requires'],values):continue
+                choices={cid:action for cid,action in scene['choices'].items() if self._matches(action['requires'],values)
+                         and all(0<=values[k]+d<=pack['qualities'][k]['max'] for k,d in action['effects'].items())}
+                if choices:result.append(dict(pack=key,scene=sid,place=scene['place'],revision=revision,actors=scene['actors'],text=scene['text'],choices=choices))
+        return result
+
+    def actor_choose(self,actor,request):
+        """Caller owns transaction and receipt. No player table, grant or location claim."""
+        options=self.actor_actions(actor)
+        selected=next((o for o in options if all(o[k]==request[k] for k in ('pack','scene','place','revision'))),None)
+        if not selected or request['choice'] not in selected['choices']:raise ValueError('Actor action is stale, unavailable or not assigned to this actor.')
+        action=selected['choices'][request['choice']]
+        raw=self.db.execute('SELECT document FROM story_packs WHERE id=?',(request['pack'],)).fetchone()[0]
+        pack=json.loads(raw)
+        row=self.db.execute('SELECT state,played FROM story_places WHERE pack=? AND place=?',(request['pack'],request['place'])).fetchone()
+        state,played=(json.loads(row[0]),json.loads(row[1])) if row else ({k:q['initial'] for k,q in pack['qualities'].items() if q['scope']=='place'},[])
+        for key,delta in action['effects'].items():state[key]+=delta
+        played.append(request['scene']);revision=request['revision']+1
+        self.db.execute('INSERT OR REPLACE INTO story_places VALUES(?,?,?,?,?)',(request['pack'],request['place'],revision,encoded(state),encoded(played)))
+        self.db.execute('INSERT INTO story_consequences VALUES(?,?,?,?,?,?)',(request['pack'],request['place'],revision,request['scene'],request['choice'],encoded(action['effects'])))
+        return dict(revision=revision,text=action['result'],changes=action['effects'])

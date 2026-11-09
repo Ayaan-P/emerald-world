@@ -564,9 +564,12 @@ class DesktopSession:
             raise ValueError('GM state cannot be a symlink')
         return IntentQueue(self.state)
 
-    def start_gm(self):
+    def start_gm(self, *, provider="codex", model=None):
         import threading
         from .runtime_gm import MODEL, RuntimeGM
+        from .author_backends import preflight
+        model=MODEL if model is None else model
+        preflight(provider,model,30)
         queue = self._gm_queue()
         queue.close()
         if self.gm_thread is not None and self.gm_thread.is_alive():
@@ -574,10 +577,12 @@ class DesktopSession:
         self.gm_stop = threading.Event()
         ready = threading.Event()
         self.gm_error = None
+        self.gm_provider,self.gm_model=provider,model
+        state=self.state
         def work():
             try:
                 from .launcher import engine_state
-                with RuntimeGM(self.state, str(engine_state(self.state, self.engine)/'transport/world.sock'), model=MODEL,
+                with RuntimeGM(state, str(engine_state(state, self.engine)/'transport/world.sock'), model=model,provider=provider,
                                timeout=30, poll_interval=1) as runtime:
                     ready.set()
                     runtime.run(self.gm_stop)
@@ -585,12 +590,12 @@ class DesktopSession:
                 self.gm_error = type(exc).__name__
             finally:
                 ready.set()
-        self.gm_thread = threading.Thread(target=work, name='desktop-luna-gm', daemon=True)
+        self.gm_thread = threading.Thread(target=work, name='desktop-world-author', daemon=True)
         self.gm_thread.start()
         if not ready.wait(5) or self.gm_error:
             self.stop_gm()
             raise ValueError('runtime GM could not acquire its host authority')
-        self.status = 'Luna developer GM enabled. Player intentions are optional.'
+        self.status = 'Selected world author enabled. Player intentions are optional.'
 
     def stop_gm(self):
         if self.gm_stop is not None:
@@ -599,7 +604,7 @@ class DesktopSession:
             # Runtime's existing author lifecycle bounds each call to 30 seconds
             # and kills its owned author process group before returning.
             self.gm_thread.join()
-        self.status = 'Luna developer GM stopped. Queued requests and outcomes are kept.'
+        self.status = 'World author stopped. Queued requests and outcomes are kept.'
 
     def _intent_client(self, trainer):
         from .client import IntentClient
