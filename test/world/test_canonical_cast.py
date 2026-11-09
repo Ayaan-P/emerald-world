@@ -408,6 +408,81 @@ class CanonicalCastTests(unittest.TestCase):
         a['changes']['project']['legs']=[]
         with self.assertRaises(ValueError):cast.compile_actions([a],self.context())
 
+    def test_characters_collaborate_on_real_project_and_publish_actual_runner_guidance(self):
+        from world.canonical_projects import course_for
+        a=self.action();a['changes']['places'].append('native:PetalburgCity')
+        a['changes']['project']=dict(kind='petalburg_relay',title='Shared Practice',limit=240,mounted=False)
+        self.apply(a);course=course_for('canon_rydel',a['changes']['project'])
+        published=next(e for e in self.s.memory.history()['events'] if e['event']=='canonical_project_published')
+        w=self.action();w['id']='canon_wally';w['changes']['places'].append('native:PetalburgCity');self.apply(w)
+        c=self.peer();b=self.peer('Bob');self.f.connections.update(Alice=c,Bob=b)
+        with tempfile.TemporaryDirectory() as tmp:
+            q=IntentQueue(tmp)
+            try:
+                for identity in ('canon_rydel','canon_wally'):
+                    reactions.configure(q,self.s.inspect(),identity,'Consider actual project collaboration, never invented race participation.')
+                contribution=deepcopy(w);contribution['expected_version']=1
+                contribution['changes'].update(evidence=[published['seq']],contribution=dict(course=course['id'],digest=published['digest'],text='Wait for your partner at the handoff. A calm start is better than a hurried mistake.'))
+                self.apply(contribution)
+                proposal=next(e for e in self.s.memory.history()['events'] if e['event']=='canonical_contribution_proposed')
+                self.assertEqual(proposal['recipient'],'canon_rydel')
+                from world.canonical_collaboration import briefing
+                self.assertEqual(briefing(self.s,course['id']),[])
+                self.assertEqual(len(reactions.observe(q,self.s.inspect(),self.fetch)),1)
+                turn=q.claim();self.assertEqual(turn['player'],'canon_rydel')
+                ctx=self.context();ctx['runtime'].update(kind='character',observed_event=json.loads(turn['result']))
+                reaction=reactions.prepare(ctx,self.fetch)
+                decision=deepcopy(a);decision['expected_version']=1
+                decision['changes'].update(evidence=[proposal['seq']],goal='Make partner patience part of this practice project',resolve_contribution=dict(seq=proposal['seq'],decision='accept'))
+                reactions.check_response(dict(canonical_actions=[decision],tests='assert True'),reaction)
+                self.apply(decision);q.finish(turn['id'],'succeeded',dict(ok=True))
+                resolved=next(e for e in self.s.memory.history()['events'] if e['event']=='canonical_contribution_resolved')
+                self.assertEqual(resolved['outcome'],'activity_guidance_published')
+                # Actual start/join shows accepted guidance to participants only.
+                bob_before=deepcopy(b['chat_history'])
+                self.f.command('relay start '+course['id'])
+                run=self.s.relays._current('Alice')
+                self.assertTrue(any('calm start' in line for line in run['cast_briefing']))
+                self.assertEqual(b['chat_history'],bob_before)
+                self.f.command('relay join '+run['id'],trainer='Bob')
+                self.assertTrue(any('calm start' in bytes.fromhex(m[3]).decode() for m in b['chat_history']))
+                self.assertEqual(run['phase'],'lobby');self.assertEqual(self.f.stats()[0],10)
+                self.assertEqual(len(reactions.observe(q,self.s.inspect(),self.fetch)),1)
+                turn=q.claim();self.assertEqual(turn['player'],'canon_wally')
+                ctx=self.context();ctx['runtime'].update(kind='character',observed_event=json.loads(turn['result']))
+                reaction=reactions.prepare(ctx,self.fetch)
+                next_goal=deepcopy(w);next_goal['expected_version']=2
+                next_goal['changes'].update(evidence=[resolved['seq']],goal='Keep helping others practice patiently after Rydel adopted my guidance',dialogue='Rydel adopted my advice. I want to keep helping new partners.')
+                reactions.check_response(dict(canonical_actions=[next_goal],tests='assert True'),reaction)
+                self.apply(next_goal);q.finish(turn['id'],'succeeded',dict(ok=True))
+                self.assertEqual(reactions.observe(q,self.s.inspect(),self.fetch),[])
+                self.assertEqual(self.s.db.execute('SELECT status FROM canonical_contributions').fetchall(),[('accept',)])
+                self.s.close();self.f.case.server=self.f.case.open();self.s=self.f.case.server;self.f.server=self.s
+                self.assertTrue(any('calm start' in line for line in briefing(self.s,course['id'])))
+                self.assertIn('helping',self.s.module_state[cast.KEY]['canon_wally']['goal'])
+            finally:q.close()
+
+    def test_project_contribution_needs_exact_publication_and_owner_resolution(self):
+        a=self.action();a['changes']['places'].append('native:PetalburgCity')
+        a['changes']['project']=dict(kind='petalburg_relay',title='Public Practice',limit=240,mounted=False);self.apply(a)
+        published=next(e for e in self.s.memory.history()['events'] if e['event']=='canonical_project_published')
+        w=self.action();w['id']='canon_wally';w['changes']['places'].append('native:PetalburgCity');self.apply(w)
+        bad=deepcopy(w);bad['expected_version']=1
+        bad['changes']['contribution']=dict(course=published['course'],digest=published['digest'],text='Patient advice.')
+        with self.assertRaises(ValueError):cast.compile_actions([bad],self.context())
+        bad['changes']['evidence']=[published['seq']];bad['changes']['contribution']['digest']='0'*64
+        with self.assertRaises(ValueError):cast.compile_actions([bad],self.context())
+        bad['changes']['contribution']['digest']=published['digest'];self.apply(bad)
+        proposal=next(e for e in self.s.memory.history()['events'] if e['event']=='canonical_contribution_proposed')
+        self_resolve=deepcopy(w);self_resolve['expected_version']=2
+        self_resolve['changes'].update(evidence=[proposal['seq']],resolve_contribution=dict(seq=proposal['seq'],decision='accept'))
+        with self.assertRaises(ValueError):cast.compile_actions([self_resolve],self.context())
+        decline=deepcopy(a);decline['expected_version']=1
+        decline['changes'].update(evidence=[proposal['seq']],resolve_contribution=dict(seq=proposal['seq'],decision='decline'));self.apply(decline)
+        from world.canonical_collaboration import briefing
+        self.assertEqual(briefing(self.s,published['course']),[])
+        self.assertEqual(self.s.db.execute('SELECT status FROM canonical_contributions').fetchall(),[('decline',)])
+
     @unittest.skipUnless(__import__('os').environ.get('EW_NATIVE_SOURCE'),'set EW_NATIVE_SOURCE for actual native adapter pairing')
     def test_actual_authority_reply_enters_original_script_adapter(self):
         from pathlib import Path

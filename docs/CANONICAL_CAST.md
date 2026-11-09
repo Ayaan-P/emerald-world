@@ -208,3 +208,33 @@ time, followed by Rydel informing Wally of the actual publication and Wally
 reconsidering his goal. It also covers restart and atomic collision rollback.
 110 focused app/author/relay/activity-board tests pass. Rendered native gameplay
 and live-model initiative are still not claimed; Maya owns paired build and QA.
+
+## Social project participation and owner decisions
+
+A character can propose `contribution: {course, digest, text}` for another
+existing actor's installed project. The exact public publication must be among
+the inspected evidence. This is authored practical guidance, not a claim that
+the contributor raced or attended. One immutable contribution per actor/project
+bounds duplicate work; the three supported cast identities imply at most two
+contributors to a project. Player/private race data is never copied.
+
+Authority proposal delivery queues a turn for the project's followed owner. The
+owner can independently choose `resolve_contribution: {seq, decision}`, where
+`decision` is `accept` or `decline`, citing the exact proposal. Only the real
+project owner can resolve an outstanding proposal. A decision is not inferred
+from friendship, public reputation, guild leadership or player progress.
+
+Acceptance publishes the contributed text into the actual activity briefing.
+The existing relay start/join commands show it to participating players; existing
+runs retain their start-time briefing snapshot. No player is joined automatically,
+non-participants receive no unsolicited messages, and declining publishes no
+guidance. The resolved decision becomes exact evidence for the contributor's
+next configured author turn and can change its actual goal/dialogue. Authored
+changes alone do not sustain an automatic loop. Both parties may wait instead.
+
+The test executes Wally's proposal, Rydel's independent acceptance, actual runner
+start/join with Wally's adopted advice, Wally's resulting goal change, and restart
+persistence. Separate cases reject wrong evidence/digest and self-resolution and
+exercise a real decline. This extends the existing project rather than creating
+another race variant. It does not simulate physical attendance, training or
+private player-specific AI. 112 focused app/author/activity tests pass.

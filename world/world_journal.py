@@ -38,6 +38,11 @@ def describe(event, place=None):
         details.append('Team plan: ' + ', '.join('species ' + str(mon['species']) +
                        ' at level ' + str(mon['level']) for mon in character['team']))
         details.append('This is an authored character change, not proof of a battle or catch.')
+    elif kind in ('canonical_contribution_proposed','canonical_contribution_resolved'):
+        from .canonical_cast import BINDINGS
+        title=BINDINGS[event['character_id']]['name']+' '+('offered project guidance' if kind.endswith('proposed') else 'decided on a contribution')
+        details=[event.get('text',event.get('decision','')), 'Project: '+event['course'],
+                 'Public author collaboration. No physical attendance or player participation is implied.']
     elif kind == 'canonical_project_published':
         title=event['character_name']+' published '+event['title']
         details=['Playable relay course installed: '+event['course'],

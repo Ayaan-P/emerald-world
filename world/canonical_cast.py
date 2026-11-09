@@ -22,7 +22,7 @@ def records(state):
     from .build_catalog import catalog_maps
     places={'native:'+m['name'] for m in catalog_maps().values()}
     for identity,row in value.items():
-        if type(row) is not dict or set(row)-{'offer','relationships','conversation','letter','project'}!={'version','goal','dialogue','places','evidence','reason'}:
+        if type(row) is not dict or set(row)-{'offer','relationships','conversation','letter','project','contribution','resolve_contribution'}!={'version','goal','dialogue','places','evidence','reason'}:
             raise ValueError('invalid canonical actor fields')
         if type(row['version']) is not int or not 1<=row['version']<=2**31-1:raise ValueError('invalid canonical actor version')
         for field,limit in [('goal',160),('reason',240)]:
@@ -30,6 +30,8 @@ def records(state):
         if type(row['dialogue']) is not str or not re.fullmatch("[A-Za-z0-9 .,!?'-]{1,200}",row['dialogue']):raise ValueError('canonical dialogue requires bounded literal native text')
         if type(row['places']) is not list or not 1<=len(row['places'])<=4 or len(set(row['places']))!=len(row['places']) or any(p not in places for p in row['places']):raise ValueError('canonical interests require known native places')
         if type(row['evidence']) is not list or not 1<=len(row['evidence'])<=8 or any(type(n) is not int or n<1 for n in row['evidence']) or len(set(row['evidence']))!=len(row['evidence']):raise ValueError('canonical actor needs public evidence')
+        from .canonical_collaboration import validate_fields
+        validate_fields(row)
         from .canonical_projects import validate_project
         validate_project(row.get('project'))
         if row.get('project') and 'native:PetalburgCity' not in row['places']:raise ValueError('practice project needs PetalburgCity in actor interests')
@@ -81,6 +83,8 @@ def validate_transition(before, after, objects, db):
         for seq in row['evidence']:
             event=db.execute("SELECT data FROM events WHERE seq=? AND kind='world_memory'",(seq,)).fetchone()
             if event is None or not decision_evidence(json.loads(event[0]),identity,row):raise ValueError('canonical actor evidence must be an actual opted-in public activity in its interests')
+        from .canonical_collaboration import validate_evidence
+        validate_evidence(row,lambda n: json.loads(db.execute("SELECT data FROM events WHERE seq=? AND kind='world_memory'",(n,)).fetchone()[0]))
         validate_letter(row,lambda n: json.loads(db.execute("SELECT data FROM events WHERE seq=? AND kind='world_memory'",(n,)).fetchone()[0]))
         validate_relationship_evidence(row,lambda n: json.loads(db.execute("SELECT data FROM events WHERE seq=? AND kind='world_memory'",(n,)).fetchone()[0]))
         changes.append(dict(character_id=identity,character_name=BINDINGS[identity]['name'],before=old.get(identity),after=row,places=sorted(set(row['places']+['native:'+BINDINGS[identity]['map']])),source='authored_public_activity_interpretation'))
@@ -108,13 +112,15 @@ def compile_actions(actions, context):
     if type(actions) is not list or len(actions)!=1:raise ValueError('one bounded canonical action required')
     action=actions[0]
     if type(action) is not dict or set(action)!={'id','expected_version','changes'} or action['id'] not in BINDINGS:raise ValueError('invalid canonical action')
-    if type(action['changes']) is not dict or set(action['changes'])-{'offer','relationships','conversation','letter','project'}!={'goal','dialogue','places','evidence','reason'}:raise ValueError('invalid canonical changes')
+    if type(action['changes']) is not dict or set(action['changes'])-{'offer','relationships','conversation','letter','project','contribution','resolve_contribution'}!={'goal','dialogue','places','evidence','reason'}:raise ValueError('invalid canonical changes')
     old=cast.get(action['id']);version=old['version'] if old else 0
     if type(action['expected_version']) is not int or action['expected_version']!=version:raise ValueError('stale canonical action')
     row=copy.deepcopy(action['changes']);row['version']=version+1
     state.setdefault(KEY,{})[action['id']]=row;records(state)
     known={e['seq']:e for e in context.get('recalled_history',{}).get('events',[])+data.get('world_memory',{}).get('recent',[])}
     if any(n not in known or not decision_evidence(known[n],action['id'],row) for n in row['evidence']):raise ValueError('canonical action requires inspected public activity evidence')
+    from .canonical_collaboration import validate_evidence
+    validate_evidence(row,lambda n: known[n])
     validate_letter(row,lambda n: known[n])
     validate_relationship_evidence(row,lambda n: known[n])
     previous=context.get('runtime',{}).get('previous_source')
@@ -141,7 +147,8 @@ def response(server, conn, run, key):
 def contract():
     return dict(response='canonical_actions/tests',bindings=BINDINGS,
                 action_fields=['id','expected_version','changes'],
-                change_fields=['goal','dialogue','places','evidence','reason','offer (optional native map/count)','relationships (optional directional assessments)','conversation (optional private player choices)','letter (optional public cast correspondence)','project (optional playable practice course)'],
+                change_fields=['goal','dialogue','places','evidence','reason','offer (optional native map/count)','relationships (optional directional assessments)','conversation (optional private player choices)','letter (optional public cast correspondence)','project (optional playable practice course)','contribution (optional project guidance)','resolve_contribution (optional owner decision)'],
+                collaboration=dict(contribution=['course','digest','text (200 literal characters)'],resolve_contribution=['seq (proposal evidence)','decision (accept or decline)'],effect='another existing actor contributes to exact published project; owner decides; accepted text becomes actual activity briefing',limits='one contribution per actor/project; only public evidence, no inferred participation or private results'),
                 project=dict(kind='petalburg_relay',fields=['title (55 characters)','limit (30..900 seconds)','mounted (boolean)'],effect='installs an immutable playable two-runner relay on existing Petalburg layout; no player autojoin, terrain or save change',limits='eight per actor; actual publication evidence, no inferred participation or results'),
                 letter=dict(fields=['to (existing canonical identity)','text (200 literal characters)'],effect='authority delivers a public in-world letter and records exact evidence; no physical meeting',basis='public activity or received letter; at most two deliveries per reply chain; recipient may reconsider goals or respond'),
                 conversation=dict(choice='1..3 lowercase IDs',fields=['label (48 literal characters)','reply (200 literal characters)'],privacy='only player explicitly selects their own option; selection never enters world history or author context',scope='per authenticated trainer and actor; actor version changes require choosing again; no auto affinity, gifts or story changes'),
@@ -203,6 +210,8 @@ def guild_command(server, conn, args):
 
 
 def reaction_activity(event, identity, row):
+    from .canonical_collaboration import relevant
+    if relevant(event,identity):return True
     if received_letter(event,identity):return True
     if not public_activity(event,row.get('places',[])):return False
     if event.get('character_id') in row.get('relationships',{}) and event.get('character_offer_id')=='field_plan':return True
@@ -253,7 +262,8 @@ def received_letter(event, identity):
 
 def decision_evidence(event, identity, row):
     from .canonical_projects import public_project
-    return public_activity(event,row['places']) or received_letter(event,identity) or public_project(event,row['places'])
+    from .canonical_collaboration import relevant
+    return relevant(event,identity) or public_activity(event,row['places']) or received_letter(event,identity) or public_project(event,row['places'])
 
 
 def validate_letter(row, lookup):

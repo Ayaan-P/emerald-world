@@ -1983,6 +1983,8 @@ class WorldServer:
                             deliver_letter(self,change)
                             from .canonical_projects import publish as publish_cast_project
                             publish_cast_project(self,change)
+                            from .canonical_collaboration import apply as apply_cast_collaboration
+                            apply_cast_collaboration(self,change)
                         if kind == 'deploy':
                             self.db.execute('INSERT OR REPLACE INTO status VALUES(1,NULL)')
                     self.candidate, self.module_state, self.tiles = candidate, json.loads(state_json), tiles
