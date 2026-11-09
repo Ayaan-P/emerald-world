@@ -145,6 +145,17 @@ class CoreStory:
         if action=='CALL' and confirmation=='registered':
             from .canonical_cast import remote_response
             return remote_response(self.s,conn,run,key)
+        if action=='REMATCH':
+            from .canonical_cast import records,check_actor_location
+            row=records(self.s.module_state).get('canon_wally')
+            reached=conn.get('canonical_location') or {}
+            if (key!='wally' or confirmation!='confirm' or not row or row.get('rematch')!='wally_native'
+                    or reached.get('actor')!='canon_wally' or reached.get('map')!='VictoryRoad_1F'
+                    or reached.get('run')!=run or conn.get('core_active_run')!=run
+                    or reached.get('version')!=row['version'] or reached.get('expires',0)<time.monotonic()
+                    or not (conn.get('state') or [0]*7)[6]):raise ValueError('No current original Wally rematch invitation here')
+            check_actor_location(self.s,conn,'canon_wally')
+            return dict(ok=True) # Native checks personal progression; never battle completion.
         if action=='ALLY':
             from .canonical_cast import records,check_actor_location
             row=records(self.s.module_state).get('canon_steven')
