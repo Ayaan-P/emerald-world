@@ -7,7 +7,9 @@ from .author_backends import API_BACKENDS,validate
 
 def action(session,worlds,command,payload):
     fields={'world'}
-    if command=='cast_agent_population':fields|={'enabled','confirmed'}
+    if command=='cast_agent_population':
+        fields|={'enabled','confirmed'}
+        if type(payload) is dict and ('turn_limit' in payload or 'period_hours' in payload):fields|={'turn_limit','period_hours'}
     elif command=='cast_agent_goal':fields|={'actor','goal','request_id','confirmed'}
     elif command=='cast_agent_enroll_cast':fields|={'confirmed'}
     elif command=='cast_agent_start':fields|={'provider','model','confirmed'}
@@ -25,7 +27,7 @@ def action(session,worlds,command,payload):
             from .population_agents import configure
             with server.lock:inspection=server.inspect()
             queue=session._gm_queue()
-            try:configure(queue,inspection,payload['enabled'])
+            try:configure(queue,inspection,payload['enabled'],turn_limit=payload.get('turn_limit',8),period_hours=payload.get('period_hours',24))
             finally:queue.close()
         elif command=='cast_agent_goal':
             if payload['confirmed'] is not True:raise ValueError('Confirm host goal processing')
@@ -79,7 +81,7 @@ def action(session,worlds,command,payload):
         provider=getattr(session,'gm_provider',None),model=getattr(session,'gm_model',None),
         failed=bool(session.gm_error),providers=[dict(id=k,credential_ready=bool(os.environ.get(v[1]))) for k,v in API_BACKENDS.items()],
         actors=[dict(id=k,name=v['name'],authored=k in actors,followed=k in followed,goal=actors.get(k,{}).get('goal')) for k,v in BINDINGS.items()],
-        population_agents=dict(enabled=lifecycle.get('enabled',False),max_turns=8,characters=managed),
+        population_agents=dict(enabled=lifecycle.get('enabled',False),turn_limit=lifecycle.get('turn_limit',8),period_hours=lifecycle.get('period_hours',24),characters=managed),
         goal_actors=[dict(id=k,name=v.get('name',BINDINGS.get(k,{}).get('name',k)),followed=k in followed) for k,v in goal_actors.items() if v.get('status')=='active'],
         goals=[dict(id=r['id'],actor=r['player'],status=r['status']) for r in status.get('requests',[]) if r['id'].startswith('world-goal-')][-8:],
         queued=sum(r['status']=='queued' for r in status.get('requests',[])),

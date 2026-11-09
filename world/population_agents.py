@@ -4,6 +4,7 @@ import time
 from .character_reactions import actors, cancel_queued
 
 MAX_TURNS = 8
+PERIOD_HOURS = 24
 
 def setup(queue):
     queue.db.execute('CREATE TABLE IF NOT EXISTS population_agents(id TEXT PRIMARY KEY,world TEXT,creation INTEGER,started REAL,status TEXT,attempts INTEGER NOT NULL DEFAULT 0)')
@@ -11,7 +12,14 @@ def setup(queue):
 def reserve(queue, actor):
     managed=queue.db.execute('SELECT status,attempts FROM population_agents WHERE id=?',(actor,)).fetchone()
     if managed is None:return True
-    if managed['status']!='active' or managed['attempts']>=MAX_TURNS:return False
+    if managed['status']!='active':return False
+    settings=policy(queue);now=time.time()
+    start=queue.db.execute('SELECT started FROM population_agents WHERE id=?',(actor,)).fetchone()[0]
+    if now>=start+settings.get('period_hours',PERIOD_HOURS)*3600:
+        queue.db.execute('UPDATE population_agents SET attempts=0,started=? WHERE id=?',(now,actor))
+        attempts=0
+    else:attempts=managed['attempts']
+    if attempts>=settings.get('turn_limit',MAX_TURNS):return False
     queue.db.execute('UPDATE population_agents SET attempts=attempts+1 WHERE id=?',(actor,))
     return True
 
@@ -19,20 +27,22 @@ def policy(queue):
     row=queue.db.execute("SELECT value FROM metadata WHERE key='population_agents'").fetchone()
     return json.loads(row[0]) if row else dict(enabled=False)
 
-def configure(queue, inspection, enabled):
+def configure(queue, inspection, enabled, *, turn_limit=MAX_TURNS, period_hours=PERIOD_HOURS):
+    if type(turn_limit) is not int or not 1<=turn_limit<=64 or type(period_hours) is not int or not 1<=period_hours<=168:
+        raise ValueError('Use 1..64 turns per 1..168 hours')
     memory=inspection.get('data',inspection).get('world_memory',{})
     if inspection.get('ok') is not True or type(enabled) is not bool or not memory.get('world_id') or type(memory.get('through')) is not int:
         raise ValueError('Inspected world and explicit lifecycle setting required')
     with queue.db:
         queue.db.execute('BEGIN IMMEDIATE')
         prior=policy(queue)
-        if prior.get('enabled')==enabled and prior.get('world')==memory['world_id']:return
+        cursor=prior['cursor'] if prior.get('enabled') and enabled and prior.get('world')==memory['world_id'] else memory['through']
         if not enabled:
             for actor, in queue.db.execute("SELECT id FROM population_agents WHERE status='active'").fetchall():
                 queue.db.execute('DELETE FROM character_reactions WHERE id=?',(actor,));cancel_queued(queue,actor)
             queue.db.execute("UPDATE population_agents SET status='stopped' WHERE status='active'")
         queue.db.execute("INSERT OR REPLACE INTO metadata VALUES('population_agents',?)",
-                         (json.dumps(dict(enabled=enabled,world=memory['world_id'],cursor=memory['through'])),))
+                         (json.dumps(dict(enabled=enabled,world=memory['world_id'],cursor=cursor,turn_limit=turn_limit,period_hours=period_hours)),))
 
 def creation(event, identity):
     result=event.get('result',{})
@@ -52,10 +62,21 @@ def observe(queue, inspection, fetch):
     with queue.db:
         queue.db.execute('BEGIN IMMEDIATE')
         if policy(queue)!=p:return []
+        # Migrate only old lifetime-budget pauses, never explicit host stops.
+        for managed in queue.db.execute("SELECT * FROM population_agents WHERE status='budget_reached'").fetchall():
+            child=cast.get(managed['id'],{});now=time.time()
+            if (child.get('status')!='active' or now<managed['started']+p.get('period_hours',PERIOD_HOURS)*3600
+                or queue.db.execute('SELECT count(*) FROM character_reactions').fetchone()[0]>=8):continue
+            identity=managed['id'];purpose='Pursue your own goals through actual supported actions and receipts.'
+            queue.db.execute("UPDATE population_agents SET status='active',attempts=0,started=? WHERE id=?",(now,identity))
+            queue.db.execute('INSERT OR IGNORE INTO character_reactions VALUES(?,?,?,?)',(identity,purpose,p['world'],memory['through']))
+            packet=dict(id=identity,world_id=p['world'],expected_version=child['version'],canonical=False,evidence=managed['creation'],purpose=purpose)
+            key='population-resume-'+str(managed['creation'])
+            queue.db.execute('INSERT OR IGNORE INTO requests(id,player,text,kind,status,created,result) VALUES(?,?,?,?,?,?,?)',
+                (key,identity,'Resume independent planning from current state. A budget pause is not fictional activity or new experience.','character','queued',now,json.dumps(packet)))
         for managed in queue.db.execute("SELECT * FROM population_agents WHERE status='active'").fetchall():
             actor=managed['id'];sub=queue.db.execute('SELECT 1 FROM character_reactions WHERE id=?',(actor,)).fetchone()
-            count=managed['attempts']
-            reason='stopped' if not sub else 'inactive' if cast.get(actor,{}).get('status')!='active' else 'budget_reached' if count>=MAX_TURNS else None
+            reason='stopped' if not sub else 'inactive' if cast.get(actor,{}).get('status')!='active' else None
             if reason:
                 queue.db.execute('DELETE FROM character_reactions WHERE id=?',(actor,));cancel_queued(queue,actor)
                 queue.db.execute('UPDATE population_agents SET status=? WHERE id=?',(reason,actor))
