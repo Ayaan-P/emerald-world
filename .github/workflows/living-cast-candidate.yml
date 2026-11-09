@@ -1,7 +1,7 @@
 name: Living cast candidate components
 on:
   pull_request:
-    branches: [main, dot/rc12-core-story, dot/rc12-living-cast, dot/actor-capability-runtime]
+    branches: [main, dot/rc12-core-story, dot/rc12-living-cast, dot/actor-capability-runtime, dot/actor-object-runtime]
     paths:
       - 'world/**'
       - 'test/world/**'
