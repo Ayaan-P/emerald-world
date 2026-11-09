@@ -78,6 +78,7 @@ def step(ledger,engine,request,*,validated_native=False,steps=256,cap=20):
                 status='completed_in_host_ledger'
                 if training_source is not None:
                     payload=dict(command='character_practice_apply',actor=actor,individual=individual,token=training_source['token'],job=job,engine=engine.digest,before=companion['state'],after=after['state'],steps=steps,cap=cap)
+                    if task.get('capability_request'):payload['capability_request']=task['capability_request']
                     receipt['authority_payload']=payload
                     with ledger.db:ledger.db.execute('UPDATE cast_practice_dispatch SET status=?,receipt=? WHERE world=? AND actor=? AND intention=?',('awaiting_reconciliation',json.dumps(receipt,sort_keys=True),*key))
                     applied=request(payload)
