@@ -1009,6 +1009,10 @@ class WorldServer:
                         return
                 self._error(conn, 'CAVE')
                 return
+            if fields and fields[0] in ('BASE_OFFER','BASE_ACCEPT','BASE_DECLINE'):
+                from .secret_base_share import handle
+                with self.lock:handle(self,conn,fields)
+                return
             if bytes(raw) == b'CHAT_ENABLE' and conn.get('social'):
                 conn['chat'] = True
                 self._queue(conn, self._snapshot(conn))
@@ -1161,6 +1165,10 @@ class WorldServer:
         if fields[2] != '*' and (not target or not target.get('chat') or target.get('closing')):
             conn['chat_status'] = 'unavailable'
             self._queue(conn, self._snapshot(conn))
+            return
+        if fields[2]=='*' and (text==b'/base' or text.startswith(b'/base ')):
+            self.guild_chat.message(conn,'World','Secret Base sharing requires the matching native client; this command was not broadcast.')
+            self._queue(conn,self._snapshot(conn))
             return
         now = time.monotonic()
         credit = min(4, conn.get('chat_credit', 4) + now - conn.get('chat_time', now))
