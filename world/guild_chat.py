@@ -50,7 +50,10 @@ class GuildChat:
             with s.lock:
                 try:
                     command=text[6:].strip();words=command.split()
-                    if words and words[0].lower()=='research':
+                    if words and words[0].lower()=='rematches':
+                        from .route_rematch_events import command as rematch_command
+                        lines=rematch_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='research':
                         from .shared_research import command as research_command
                         lines=research_command(s,conn,words[1:])
                     elif words and words[0].lower()=='tactics':
