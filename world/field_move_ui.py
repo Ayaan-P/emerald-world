@@ -19,6 +19,9 @@ def handle(server,conn,raw):
         if f[1] in ('SGET','CLUE'):
             from .move_sensing import handle as sensing_handle
             return sensing_handle(server,channel,conn,f,seq)
+        if f[1]=='WGET' and len(f)==4 and f[3].isdigit() and 0<int(f[3])<=65535:
+            from .move_weather import offer
+            return offer(server,conn,seq,int(f[3]))
         if f[1]=='PGET' and len(f)==4 and f[3].isdigit() and 0<int(f[3])<=65535:
             from .encounter_profiles import offer
             return offer(server,conn,seq,int(f[3]))
