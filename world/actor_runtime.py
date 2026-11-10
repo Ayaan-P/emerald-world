@@ -139,9 +139,12 @@ def validate(plan):
     if type(plan['steps']) is not list or not 1<=len(plan['steps'])<=6:raise ValueError('Plan requires 1..6 bounded tool steps')
     seen=set()
     for step in plan['steps']:
-        if type(step) is not dict or set(step)!={'id','tool','args','after'}:raise ValueError('Step needs id, tool, args and after')
+        if type(step) is not dict or not {'id','tool','args','after'}<=set(step) or set(step)-{'id','tool','args','after','when'}:raise ValueError('Step needs id, tool, args and after')
         if not identifier(step['id']) or step['id'] in seen or type(step['tool']) is not str or step['tool'] not in CAPABILITIES:raise ValueError('Unknown tool or repeated step')
         if type(step['after']) is not list or any(type(s) is not str for s in step['after']) or len(set(step['after']))!=len(step['after']) or not set(step['after'])<=seen:raise ValueError('Dependencies must be earlier step IDs')
+        if 'when' in step:
+            from .actor_conditions import validate as validate_condition
+            validate_condition(step['when'],step['after'])
         if type(step['args']) is not dict or set(step['args'])!=set(CAPABILITIES[step['tool']].arguments):raise ValueError('Tool arguments do not match advertised capability')
         for value in step['args'].values():
             if type(value) is dict:
@@ -180,6 +183,7 @@ def inspect_runtime(server):
         available_actions=server.opportunities.actor_actions()[:32],actors={a:('canonical' if r.get('canonical') else 'world') for a,r in actor_records(server).items()},
         local_attention=attention_discover(server),guided_journeys=guidance_discover(server),accompaniment_requests=accompaniment_inbox(server),cooperation=cooperation_discover(server),cooperation_semantics="Public fictional requests, not operator instructions or new permissions. Accept or decline independently. Use own capabilities, then deliver an actual post-acceptance receipt; matching terms establishes only that historical operation, not prose truth or current state.",reciprocal_exchanges=barter_offers(server),companion_offers=companion_offers(server),navigation=discover_navigation(server),cave_links=linked_graph(server),carried_props=inventory(server),
         object_player_use='Optional state.world_object_player_use maps prop ID to one advertised world_object_actions action ID. Native A dispatches the same actor_interact(object_id,action,own_state) handler through normal staging. No map: text only. Effects are bounded own-state/text/graphics/one-cell movement, not bags/items.',
+        conditional_steps='Optional when:{step:declared_prior_dependency,path:JSON_pointer,equals:literal_scalar}. Evaluated only against that own successful receipt. False or missing values produce a skipped receipt without executing the tool; dependent steps skip too. Hard blocked results still halt the entire plan. No condition can bypass a tool guard. No implicit loop or join of mutually exclusive branches.',
         result_references='Use {result: earlier_step_id, key: scalar_result_key}. Reserved key tool_receipt yields that successful step durable receipt sequence.',
         plans=[dict(actor=actor,plan=row['plan'],receipts=[dict(step=s,status=status,result=json.loads(result),seq=seq)
             for s,status,result,seq in server.db.execute('SELECT step,status,result,seq FROM actor_tool_receipts WHERE actor=? AND plan=? ORDER BY seq',(actor,row['plan']['id']))])
@@ -226,7 +230,12 @@ def tick(server,*,now=None):
         for step in plan['steps']:
             if pending_steps and step['id'] not in pending_steps:continue
             if step['id'] in receipts and receipts[step['id']][0]!='pending':continue
-            if not all(s in receipts and receipts[s][0]=='succeeded' for s in step['after']):continue
+            if not all(s in receipts and receipts[s][0] in ('succeeded','skipped') for s in step['after']):continue
+            from .actor_conditions import matches as condition_matches
+            if (any(receipts[s][0]=='skipped' for s in step['after'])
+                or ('when' in step and not condition_matches(step['when'],receipts))):
+                with server.db:seq=_receipt(server,actor,row,plan,step,'skipped',dict(executed=False,reason='dependency_skipped' if any(receipts[s][0]=='skipped' for s in step['after']) else 'condition_not_matched'))
+                return dict(actor=actor,plan=plan['id'],step=step['id'],status='skipped',seq=seq)
             old_revision=server.revision
             try:
                 with server.db:
