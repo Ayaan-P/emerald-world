@@ -53,6 +53,9 @@ class GuildChat:
                     if words and words[0].lower()=='pyramid':
                         from .pyramid_courses import command as pyramid_command
                         lines=pyramid_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='tower':
+                        from .tower_exchange import command as tower_command
+                        lines=tower_command(s,conn,words[1:])
                     elif words and words[0].lower()=='bases':
                         from .base_neighborhood import command as base_directory_command
                         lines=base_directory_command(s,conn,words[1:])
