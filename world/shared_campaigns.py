@@ -40,7 +40,7 @@ def command(server, conn, words, current):
     from .battle_campaigns import document, save
     me = member(conn)
     if len(words) == 2 and words[0] == 'share':
-        if current and current[1]['status'] != 'complete':
+        if current and current[1]['status'] not in ('complete', 'withdrawn'):
             raise ValueError('Leave your current campaign first')
         doc = document(server, words[1]); key = secrets.token_hex(6)
         group = dict(campaign=doc['id'], members=[me], speaker=me, status='lobby', node=doc['entry'], results={}, advice={})
@@ -49,7 +49,7 @@ def command(server, conn, words, current):
             save(server, conn, doc['id'], dict(shared=key, node=doc['entry'], status='lobby', choices=[], history=[]))
         return True
     if len(words) == 2 and words[0] == 'join':
-        if current and current[1]['status'] != 'complete':
+        if current and current[1]['status'] not in ('complete', 'withdrawn'):
             raise ValueError('Leave your current campaign first')
         key = words[1]; group = load(server, key)
         if group['status'] != 'lobby' or len(group['members']) >= 4 or any(m[0] == me[0] for m in group['members']):
@@ -61,6 +61,9 @@ def command(server, conn, words, current):
     if not current or not current[1].get('shared'):
         return False
     key = current[1]['shared']; group = load(server, key)
+    from .campaign_regroup import command as regroup_command
+    if regroup_command(server, conn, words, key, group):
+        return True
     if words == ['begin']:
         if me != group['speaker'] or group['status'] != 'lobby' or len(group['members']) < 2:
             raise ValueError('Speaker can begin after 2–4 trainers join')
@@ -148,4 +151,6 @@ def rows(server, conn, current):
             out.append(('Advise route '+choice, ['advise', choice]))
         for trainer, choice in sorted(group['advice'].items()):
             out.append((trainer+' advises '+choice, None))
+    from .campaign_regroup import rows as regroup_rows
+    out.extend(regroup_rows(conn, group))
     return out

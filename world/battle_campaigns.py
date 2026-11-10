@@ -90,7 +90,7 @@ def command(server,conn,words):
         if handled:
             pass
         elif len(words)==2 and words[0]=='start':
-            if current and current[1]['status']!='complete':raise ValueError('Leave the current campaign first')
+            if current and current[1]['status'] not in ('complete', 'withdrawn'):raise ValueError('Leave the current campaign first')
             d=document(server,words[1])
             if any('roles' in n for n in d['nodes'].values()):raise ValueError('Split-party campaigns require a shared run')
             data=dict(node=d['entry'],status='ready',choices=[],history=[])
@@ -112,6 +112,7 @@ def command(server,conn,words):
         current=active(server,conn)
         if not current:return ['No active battle campaign.']
         key,data=current;d=document(server,key)
+        if data['status']=='withdrawn':return [d['title']+': withdrawn. Other party members are unchanged.', 'Your prior stage reports remain here until you start or join another run.']
         if data['status']=='complete':return [d['title']+': finished.', 'Reported battles: '+str(len(data['history']))]
         if data['status']=='choice':return [d['title']+': choose your next route.', 'Routes: '+', '.join(data['choices']), 'Use /guild campaign choose NODE.']
         if data['status'] in ('lobby','waiting','deploying'):
