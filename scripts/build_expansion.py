@@ -11,7 +11,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = 'a35c854620c97acc66ddfc49091252baba948389'
+PIN = 'a2d6f3d2945dcfe7568862540241cf78ba6eb314'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -40,6 +40,7 @@ def main():
                         help='enable selectable generated places (independent of regional saves/Kanto)')
     parser.add_argument('--regional-state', action='store_true',
                         help='enable experimental regional saves (requires --development)')
+    parser.add_argument('--experimental-regional-starters', action='store_true', help='enable experimental isolated Kanto starter choices; requires existing regional readers; linked QA pending')
     parser.add_argument('--experimental-kanto-rematches', action='store_true', help='enable experimental separate Kanto rematches; requires custody/completion readers; linked QA pending')
     parser.add_argument('--experimental-route5-custody', action='store_true', help='enable experimental separate Route 5 daycare; requires regional completion migration; linked QA pending')
     parser.add_argument('--experimental-regional-completion', action='store_true', help='enable explicit regional championship migration; requires experimental regional badges; linked QA pending')
@@ -75,6 +76,8 @@ def main():
         parser.error('--experimental-npc-coop requires --development; linked two-client QA pending')
     if args.regional_state and not args.development:
         parser.error('--regional-state requires --development and is not a release cohort')
+    if args.experimental_regional_starters and not args.experimental_kanto_rematches:
+        parser.error('--experimental-regional-starters requires --experimental-kanto-rematches and all regional reader prerequisites')
     if args.experimental_kanto_rematches and not args.experimental_route5_custody:
         parser.error('--experimental-kanto-rematches requires --experimental-route5-custody and regional completion prerequisites')
     if args.experimental_route5_custody and not args.experimental_regional_completion:
@@ -194,6 +197,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'WORLD_MAZE_COURSE_EXPERIMENT={int(args.experimental_maze_courses)}',
                 f'WORLD_PYRAMID_COURSES_EXPERIMENT={int(args.experimental_pyramid_courses)}',
                 f'EW_REGIONAL_BADGES={int(args.experimental_regional_badges)}',
+                f'EW_REGIONAL_STARTERS={int(args.experimental_regional_starters)}',
                 f'EW_KANTO_REMATCHES={int(args.experimental_kanto_rematches)}',
                 f'EW_ROUTE5_CUSTODY={int(args.experimental_route5_custody)}',
                 f'EW_REGIONAL_COMPLETION={int(args.experimental_regional_completion)}',
