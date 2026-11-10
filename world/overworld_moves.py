@@ -65,6 +65,10 @@ def command(server,conn,words):
         if not choices:return ['No player move actions here.']
         lines=[obj['text'],'Selected move/action becomes public shared-world history, not your party.',
                'Use /fieldmove PARTY_SLOT MOVE_SLOT TOKEN ACTION yes.']
+        cooperation=offer.get('cooperation',{})
+        for gate in cooperation.get('gates',[]):
+            lines.append('Co-op '+gate['object']+'/'+gate['action']+(': ready' if gate['ready'] else ': needs distinct participants'))
+            for need in gate['needs']:lines.append('  Commit move at '+need['object']+'/'+need['action'])
         for action,moves in choices.items():
             from .move_selectors import describe
             label=describe(server.module_state['world_object_moves'][obj['id']][action])
