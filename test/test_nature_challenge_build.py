@@ -9,7 +9,7 @@ class NatureBuildTests(unittest.TestCase):
    with self.assertRaises(SystemExit) as e:build_expansion.main()
   self.assertEqual(e.exception.code,2);self.assertIn('--development',err.getvalue())
  def test_default_off_and_paired_pin(self):
-  self.assertEqual(build_expansion.PIN,'526e4bd45f290676cd09b45dcfb5c4f0d163b0f4')
+  self.assertEqual(build_expansion.PIN,'fddcf429bd6c93e476a914daac5e3580aa22e6c5')
   root=Path(__file__).resolve().parents[1]
   self.assertIn('WORLD_NATURE_CHALLENGES ?= 0',(root/'engines/expansion.mk').read_text())
   self.assertIn('int(args.experimental_nature_challenges)',(root/'scripts/build_expansion.py').read_text())
