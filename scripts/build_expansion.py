@@ -11,7 +11,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '6ea6125d4937238824cd4752eb32b68cbb912791'
+PIN = '53f4a2007ee33b2b5703a84de55b5412d49b9609'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -25,6 +25,7 @@ def main():
     parser.add_argument('--development', action='store_true',
                         help='build explicit local candidate integration changes on top of the verified engine pin')
     parser.add_argument('--experimental-tower-records', action='store_true', help='enable experimental explicit Tower record imports; requires --development')
+    parser.add_argument('--experimental-starter-offers', action='store_true', help='enable experimental optional fresh-save starters; requires --development')
     parser.add_argument('--experimental-pyramid-courses', action='store_true', help='enable experimental authored Pyramid courses; requires --development')
     parser.add_argument('--experimental-secret-bases', action='store_true', help='enable unverified own-base sharing; requires --development')
     parser.add_argument('--experimental-npc-coop', action='store_true',
@@ -41,6 +42,8 @@ def main():
         parser.error('--jobs must be positive')
     if args.experimental_tower_records and not args.development:
         parser.error('--experimental-tower-records requires --development; native save/appearance QA pending')
+    if args.experimental_starter_offers and not args.development:
+        parser.error('--experimental-starter-offers requires --development; intro/save QA pending')
     if args.experimental_pyramid_courses and not args.development:
         parser.error('--experimental-pyramid-courses requires --development; linked suspend/save QA pending')
     if args.experimental_secret_bases and not args.development:
@@ -148,6 +151,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'WORLD_CHARACTER_COOP_EXPERIMENT={int(args.experimental_npc_coop)}',
                 f'WORLD_BASE_SHARE_EXPERIMENT={int(args.experimental_secret_bases)}',
                 f'WORLD_TOWER_RECORD_EXPERIMENT={int(args.experimental_tower_records)}',
+                f'WORLD_STARTER_OFFER_EXPERIMENT={int(args.experimental_starter_offers)}',
                 f'WORLD_PYRAMID_COURSES_EXPERIMENT={int(args.experimental_pyramid_courses)}',
                 f'EW_REGION_STATE={int(args.regional_state)}',
                 f'EW_KANTO_CONTENT={int(args.kanto_content)}',
