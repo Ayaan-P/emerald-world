@@ -36,7 +36,10 @@ def object_step(result,request,handler):
     actions=state.get('world_object_actions',{}).get(request['object'],{})
     if not target or target!=request['target'] or actions!=request['actions'] or request['object'] in actors:
         raise ValueError('Object interaction preconditions changed')
-    if request.get('player_use'):
+    if request.get('player_choice'):
+        if request['action'] not in state.get('world_object_player_choices',{}).get(request['object'],[]):
+            raise ValueError('Player choice is no longer advertised')
+    elif request.get('player_use'):
         if state.get('world_object_player_use',{}).get(request['object'])!=request['action']:
             raise ValueError('Default player-use action changed')
     elif (actor.get('status')!='active' or actor.get('version')!=request['version'] or not source
@@ -167,15 +170,20 @@ def dispatch_source(old,request,state):
     assignments=[n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='_ew_object_request_v1' for t in n.targets)]
     if assignments:
         functions=[n for n in tree.body if isinstance(n,ast.FunctionDef)]
+        legacy=helper.replace("    if request.get('player_choice'):\n        if request['action'] not in state.get('world_object_player_choices',{}).get(request['object'],[]):\n            raise ValueError('Player choice is no longer advertised')\n    elif request.get('player_use'):\n        if state.get('world_object_player_use',{}).get(request['object'])!=request['action']:\n            raise ValueError('Default player-use action changed')\n","    if request.get('player_use'):\n        if state.get('world_object_player_use',{}).get(request['object'])!=request['action']:\n            raise ValueError('Default player-use action changed')\n")
         expected=ast.dump(ast.parse(helper).body[0],include_attributes=False)
-        if len(assignments)!=1 or len(assignments[0].targets)!=1 or not any(ast.dump(n,include_attributes=False)==expected for n in functions) or not any(ast.dump(n,include_attributes=False)==ast.dump(ast.parse(wrapper).body[0],include_attributes=False) for n in functions):
+        legacy_expected=ast.dump(ast.parse(legacy).body[0],include_attributes=False)
+        if len(assignments)!=1 or len(assignments[0].targets)!=1 or not any(ast.dump(n,include_attributes=False) in (expected,legacy_expected) for n in functions) or not any(ast.dump(n,include_attributes=False)==ast.dump(ast.parse(wrapper).body[0],include_attributes=False) for n in functions):
             raise ValueError('Reusable object dispatcher changed; explicit mechanic consolidation required')
         seeds=[n for n in tree.body if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id=='_ew_object_seed_v1']
         if len(seeds)!=1:raise ValueError('Object dispatcher seed changed')
         lines=old.splitlines(keepends=True)
-        for node,value in sorted([(assignments[0],request),(seeds[0],state)],key=lambda pair:pair[0].lineno,reverse=True):
-            ast.literal_eval(node.value) # Never replace an executable expression.
-            lines[node.lineno-1:node.end_lineno]=[f'{node.targets[0].id}={value!r}\n']
+        edits=[(assignments[0],f'_ew_object_request_v1={request!r}\n'),(seeds[0],f'_ew_object_seed_v1={state!r}\n')]
+        for n in functions:
+            if ast.dump(n,include_attributes=False)==legacy_expected:edits.append((n,helper+'\n'))
+        for node,replacement in sorted(edits,key=lambda pair:pair[0].lineno,reverse=True):
+            if isinstance(node,ast.Assign):ast.literal_eval(node.value) # Never replace executable expressions.
+            lines[node.lineno-1:node.end_lineno]=[replacement]
         return ''.join(lines)
     if any(isinstance(n,ast.Name) and n.id.startswith('_ew_object_') for n in ast.walk(tree)):
         raise ValueError('Reserved object dispatcher names are already in use')

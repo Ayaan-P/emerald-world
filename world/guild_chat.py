@@ -53,6 +53,9 @@ class GuildChat:
                     if words and words[0].lower()=='npc':
                         from .npc_conversations import command as npc_command
                         lines=npc_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='object':
+                        from .object_choices import command as object_command
+                        lines=object_command(s,conn,words[1:])
                     elif words and words[0].lower()=='contests':
                         from .contest_guests import command as contest_command
                         lines=contest_command(s,conn,words[1:])
@@ -96,7 +99,9 @@ class GuildChat:
                         self.epoch+=1
                 except GuildError as exc: lines=[str(exc)]
                 if not words:lines.append('Original character field proposals: /guild cast ACTOR')
-                if not words:lines.append('Talk publicly to nearby recurring NPCs: /guild npc')
+                if not words:
+                    lines.append('Talk publicly to nearby recurring NPCs: /guild npc')
+                    lines.append('Choose shared object actions while facing one: /guild object choices')
                 if not words and getattr(s, 'relays', None):lines.append('Find games and partners: /guild play')
                 for line in lines: self.message(conn,conn['id'],'Guild: '+line)
                 parts=text.split()
