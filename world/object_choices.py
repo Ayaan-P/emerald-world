@@ -18,6 +18,9 @@ def facing(server,conn):
 
 
 def command(server,conn,words):
+    if words and words[0] in ('moves','move'):
+        from .overworld_moves import command as move_command
+        return move_command(server,conn,words)
     obj=facing(server,conn);offer=actor_objects.offers(server,obj)
     allowed=server.module_state.get('world_object_player_choices',{}).get(obj['id'],[])
     actions=[a for a in allowed if a in offer.get('actions',{})]

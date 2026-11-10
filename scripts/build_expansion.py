@@ -11,7 +11,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '37d58c3124b004bc69c5a352cc97af31bb944e68'
+PIN = '0d7e1a808ad50d9187778f9a92ea7a72947226aa'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -26,6 +26,7 @@ def main():
                         help='build explicit local candidate integration changes on top of the verified engine pin')
     parser.add_argument('--experimental-tower-records', action='store_true', help='enable experimental explicit Tower record imports; requires --development')
     parser.add_argument('--experimental-starter-offers', action='store_true', help='enable experimental optional fresh-save starters; requires --development')
+    parser.add_argument('--experimental-field-moves', action='store_true', help='enable learned moves on shared props; requires --development')
     parser.add_argument('--experimental-party-practice', action='store_true', help='enable local native egg-move practice; requires --development')
     parser.add_argument('--experimental-maze-courses', action='store_true', help='enable experimental generated Trainer Hill mazes; requires --development')
     parser.add_argument('--experimental-pyramid-courses', action='store_true', help='enable experimental authored Pyramid courses; requires --development')
@@ -40,6 +41,8 @@ def main():
                         help='enable combined Hoenn/Kanto content (requires --regional-state)')
     parser.add_argument('--jobs', type=int, default=4)
     args = parser.parse_args()
+    if args.experimental_field_moves and not args.development:
+        parser.error('--experimental-field-moves requires --development; native object UI QA pending')
     if args.experimental_party_practice and not args.development:
         parser.error('--experimental-party-practice requires --development; native UI/save QA pending')
     if args.jobs < 1:
@@ -158,6 +161,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'WORLD_BASE_SHARE_EXPERIMENT={int(args.experimental_secret_bases)}',
                 f'WORLD_TOWER_RECORD_EXPERIMENT={int(args.experimental_tower_records)}',
                 f'WORLD_STARTER_OFFER_EXPERIMENT={int(args.experimental_starter_offers)}',
+                f'WORLD_FIELD_MOVES_EXPERIMENT={int(args.experimental_field_moves)}',
                 f'WORLD_PARTY_PRACTICE_EXPERIMENT={int(args.experimental_party_practice)}',
                 f'WORLD_MAZE_COURSE_EXPERIMENT={int(args.experimental_maze_courses)}',
                 f'WORLD_PYRAMID_COURSES_EXPERIMENT={int(args.experimental_pyramid_courses)}',
