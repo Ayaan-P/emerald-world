@@ -11,7 +11,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '783746b54dd3ccfe50943c116a3e43240f7c6eaf'
+PIN = '6ea6125d4937238824cd4752eb32b68cbb912791'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -24,6 +24,7 @@ def main():
                         help='existing extracted libc/GCC multilib root for mandatory ABI probes')
     parser.add_argument('--development', action='store_true',
                         help='build explicit local candidate integration changes on top of the verified engine pin')
+    parser.add_argument('--experimental-tower-records', action='store_true', help='enable experimental explicit Tower record imports; requires --development')
     parser.add_argument('--experimental-pyramid-courses', action='store_true', help='enable experimental authored Pyramid courses; requires --development')
     parser.add_argument('--experimental-secret-bases', action='store_true', help='enable unverified own-base sharing; requires --development')
     parser.add_argument('--experimental-npc-coop', action='store_true',
@@ -38,6 +39,8 @@ def main():
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error('--jobs must be positive')
+    if args.experimental_tower_records and not args.development:
+        parser.error('--experimental-tower-records requires --development; native save/appearance QA pending')
     if args.experimental_pyramid_courses and not args.development:
         parser.error('--experimental-pyramid-courses requires --development; linked suspend/save QA pending')
     if args.experimental_secret_bases and not args.development:
@@ -144,6 +147,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'GENERATED_WORLD_REGIONS={int(args.generated_regions)}',
                 f'WORLD_CHARACTER_COOP_EXPERIMENT={int(args.experimental_npc_coop)}',
                 f'WORLD_BASE_SHARE_EXPERIMENT={int(args.experimental_secret_bases)}',
+                f'WORLD_TOWER_RECORD_EXPERIMENT={int(args.experimental_tower_records)}',
                 f'WORLD_PYRAMID_COURSES_EXPERIMENT={int(args.experimental_pyramid_courses)}',
                 f'EW_REGION_STATE={int(args.regional_state)}',
                 f'EW_KANTO_CONTENT={int(args.kanto_content)}',
