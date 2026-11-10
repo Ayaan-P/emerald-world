@@ -1273,6 +1273,10 @@ class WorldServer:
             from .starter_offers import handle as starter_handle
             self._queue(conn,starter_handle(self,conn,raw))
             return
+        if raw.startswith(b'FP '):
+            from .floorplans import handle as floorplan_handle
+            self._queue(conn,floorplan_handle(self,conn,raw))
+            return
         if raw.startswith(b'NT '):
             from .native_trade_offers import handle as trade_offer_handle
             self._queue(conn,trade_offer_handle(self,conn,raw))
