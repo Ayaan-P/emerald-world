@@ -1,7 +1,7 @@
 name: Living cast candidate components
 on:
   pull_request:
-    branches: [main, dot/shared-battle-runs, dot/cast-campaign-formats, dot/authored-region-networks, dot/cast-world-racing, dot/cast-world-television, dot/cast-world-cooperation, dot/campaign-npc-experiences, dot/companion-move-learning, dot/rc12-core-story, dot/rc12-living-cast, dot/actor-capability-runtime, dot/actor-object-runtime, dot/actor-space-authoring, dot/actor-place-authoring, dot/actor-habitat-authoring, dot/actor-population, dot/actor-author-loop, dot/player-object-use, dot/actor-landscapes, dot/world-goal-author, dot/population-agents, dot/persistent-agent-cadence, dot/agent-trainer-lineups, dot/agent-practice-capability, dot/practice-session, dot/actor-event-waits, dot/actor-object-programs, dot/npc-public-conversation]
+    branches: [main, dot/shared-fishing-grounds, dot/shared-battle-runs, dot/cast-campaign-formats, dot/authored-region-networks, dot/cast-world-racing, dot/cast-world-television, dot/cast-world-cooperation, dot/campaign-npc-experiences, dot/companion-move-learning, dot/rc12-core-story, dot/rc12-living-cast, dot/actor-capability-runtime, dot/actor-object-runtime, dot/actor-space-authoring, dot/actor-place-authoring, dot/actor-habitat-authoring, dot/actor-population, dot/actor-author-loop, dot/player-object-use, dot/actor-landscapes, dot/world-goal-author, dot/population-agents, dot/persistent-agent-cadence, dot/agent-trainer-lineups, dot/agent-practice-capability, dot/practice-session, dot/actor-event-waits, dot/actor-object-programs, dot/npc-public-conversation]
     paths:
       - 'world/**'
       - 'test/world/**'

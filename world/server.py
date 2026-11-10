@@ -625,6 +625,8 @@ class WorldServer:
         if outbreak:lines.append(outbreak)
         from .shared_fishing import lines as fishing_lines
         lines.extend(fishing_lines(self,conn))
+        from .battle_watch import lines as watch_lines
+        lines.extend(watch_lines(self,conn))
         from .actor_bulletins import line as bulletin_line
         bulletin=bulletin_line(self,conn)
         if bulletin:lines.append(bulletin)
@@ -686,6 +688,8 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                battle_watch_capable=role.endswith('WATCH1')
+                if battle_watch_capable:role=role[:-6]
                 fishing_capable=role.endswith('FISHING1')
                 if fishing_capable:role=role[:-8]
                 character_format_capable=role.endswith('CHARFORM1')
@@ -859,6 +863,7 @@ class WorldServer:
                 conn['contest_guest_capable']=contest_guest_capable
                 conn['outbreak_capable']=outbreak_capable
                 conn['fishing_capable']=fishing_capable
+                conn['battle_watch_capable']=battle_watch_capable
                 conn['world_bulletin_capable']=world_bulletin_capable
                 conn['outdoor_weather_capable']=outdoor_weather_capable and cave_xl
                 conn['character_format_capable']=character_format_capable and character_capable
@@ -1043,6 +1048,17 @@ class WorldServer:
             if fields and fields[0] in ('BASE_OFFER','BASE_ACCEPT','BASE_DECLINE'):
                 from .secret_base_share import handle
                 with self.lock:handle(self,conn,fields)
+                return
+            if fields and fields[0]=='WATCH':
+                from .battle_watch import handle as watch_handle
+                with self.lock:
+                    try:watch_handle(self,conn,fields)
+                    except (ValueError,TypeError,KeyError):
+                        if fields[1:2]==['FRAME']:
+                            conn['watch_sharing']=False;conn.pop('watch_frame',None)
+                            self._queue(conn,'WATCH_PERMISSION 0\n')
+                        self._queue(conn,'WATCH_INFO '+b'Battle view unavailable. Use /watch list.'.hex()+'\n')
+                    self._broadcast()
                 return
             if bytes(raw) == b'CHAT_ENABLE' and conn.get('social'):
                 conn['chat'] = True
