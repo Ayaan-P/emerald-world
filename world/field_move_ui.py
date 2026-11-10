@@ -11,6 +11,9 @@ def handle(server,conn,raw):
         if server.link_channels.get(channel['id']) is not channel or server.peers.get(channel['id']) is not conn:raise ValueError()
         f=raw.decode('ascii').split()
         if len(f)<3 or f[0]!='FM' or not re.fullmatch('[1-9][0-9]{0,9}',f[2]):raise ValueError()
+        if f==['FM','WATCH','1']:
+            channel['move_feedback']=True
+            return 'FM WATCH 1\n'
         seq=int(f[2])
         if seq>0xffffffff or server.link_protocol.busy(conn['id']):raise ValueError()
         if f[1]=='GET' and len(f)==4 and f[3].isdigit() and 0<int(f[3])<=65535:

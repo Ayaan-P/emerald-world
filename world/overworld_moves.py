@@ -85,6 +85,8 @@ def command(server,conn,words):
 
 def remember(server,request):
     if not request.get('move_effect'):return
+    from .move_feedback import remember as remember_visual
+    remember_visual(server,request)
     server.db.execute('CREATE TABLE IF NOT EXISTS world_move_intents(id TEXT PRIMARY KEY,object TEXT,action TEXT,evidence TEXT,seq INTEGER)')
     server.db.execute('INSERT OR IGNORE INTO world_move_intents VALUES(?,?,?,?,NULL)',(request['id'],request['object'],request['action'],json.dumps(request['move_effect'],sort_keys=True)))
 
@@ -95,3 +97,5 @@ def admitted(server,identity):
     if not row or row[3] is not None:return
     seq=server.memory.append('object_move_committed',dict(object=row[0],action=row[1],request=identity,**json.loads(row[2]),limits='Admitted shared prop effect; no battle, PP use, growth or independently verified player party asserted.'))
     server.db.execute('UPDATE world_move_intents SET seq=? WHERE id=?',(seq,identity));server.revision=seq
+    from .move_feedback import committed
+    committed(server,identity,seq,json.loads(row[2])['move'])
