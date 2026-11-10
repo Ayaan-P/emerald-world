@@ -1843,6 +1843,12 @@ class WorldServer:
                     return
                 except ValueError as exc:
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'world_reactions':
+                try:
+                    from .history_world_rules import control
+                    result=control(self,request)
+                except ValueError as exc:
+                    result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'construct_outpost':
                 try:
                     from .frontier_outposts import construct
@@ -2349,6 +2355,8 @@ class WorldServer:
                 step_cast_world_action(self)
                 from .actor_runtime import tick as tick_actor_runtime
                 tick_actor_runtime(self)
+                from .history_world_rules import tick as tick_history_world_rules
+                tick_history_world_rules(self)
                 if getattr(self,'capture_service',None):self.capture_service.tick(self)
                 from .npc_conversations import flush as flush_npc_replies
                 flush_npc_replies(self)
