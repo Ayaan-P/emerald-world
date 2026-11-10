@@ -1,0 +1,13 @@
+# Information can travel with independently acting NPCs
+
+App-only child of #394 ddbe5da55ff15ae9ed7cdb32e8f897a3f0a5a9dd; native pin stays #57 84ec1023888b616f163b9e1b82e60450cb07639a. Not RC12-based. Frozen #384/#56, Maya integration and denied/uncertain operations are untouched.
+
+Previously only the original observer could hand over an authority observation. world.relay_report lets a generated NPC pass on a report it actually received, using the existing exact-map/revision, actual adjacency, non-walking and non-busy recipient checks. The report snapshot is unchanged. Original observer, global observation receipt, preceding delivery and hop count are durable. The immediate sender is never described as having witnessed it. Recipient versions are checked at execution.
+
+Each actor still decides independently: a received relay is a real reaction event, not agreement or an automatic new goal. The existing runtime/provider can choose to recall, investigate with navigation/observation, disagree or do nothing. There is no live model call in these tests. No named character story, automatic trust score or achievement is authored by this system.
+
+Already-informed recipients return an explicit report_already_known result without another delivery/reaction event. The original observer also counts as informed. This prevents circular propagation while allowing fresh observations to circulate later. There is no lifetime relay counter or model call per hop. Same supported generated place only for each physical handoff; cross-place travel remains a separate existing capability, and canonical Hoenn actors are not relocated.
+
+Nearby ready players receive a short factual native chat notice after the handoff transaction commits. Existing spatial geometry and freshness checks constrain the audience. Uncommitted relays create no notice. Notices expire after five seconds and are consumed before delivery, so a crash may lose a notice rather than duplicate one; the authoritative report and world-journal event remain durable. Original sightings are not republished as present facts. The existing player journal describes who relayed to whom and the original observation receipt.
+
+Tests exercise real observation/approach/handoff, a third independent recipient, model-turn enqueueing without a model, immutable source provenance, circular-delivery prevention, restart, wrong-recipient/remote denial and rollback. Notice tests check the post-commit delivery adapter using a mocked nearby-audience predicate, not native rendering. Normal navigation/observe executors remain required to obtain new first-hand evidence.

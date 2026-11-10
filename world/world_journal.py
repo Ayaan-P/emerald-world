@@ -29,6 +29,9 @@ def describe(event, place=None):
         details = [f"({t['x']}, {t['y']}): {t['before']} → {t['after']}" for t in event['tiles'][:8]]
         if len(event['tiles']) > 8:
             details.append(str(len(event['tiles']) - 8) + ' more changed cells in this record.')
+    elif kind == 'character_report_relayed':
+        title = event['character_id'] + ' passed along an observation'
+        details = ['Recipient: '+event['recipient'], 'Original observer: '+event['observer'], 'Original observation receipt: '+str(event['observation']), 'A dated report, not new sight or proof the world is unchanged.']
     elif kind == 'character_archived':
         title = event['name'] + ' entered the historical cast'
         details = ['Their explicitly retired simulation record is archived.', 'Identity, relationships, original history and individual roster are retained; this does not mean death.']

@@ -2365,6 +2365,8 @@ class WorldServer:
                 step_cast_world_action(self)
                 from .actor_runtime import tick as tick_actor_runtime
                 tick_actor_runtime(self)
+                from .knowledge_relays import flush as flush_knowledge_relays
+                flush_knowledge_relays(self)
                 from .history_world_rules import tick as tick_history_world_rules
                 tick_history_world_rules(self)
                 if getattr(self,'capture_service',None):self.capture_service.tick(self)
