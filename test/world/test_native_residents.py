@@ -58,7 +58,16 @@ class ResidentTests(unittest.TestCase):
   with self.assertRaises(ValueError):self.s._validated(dict(state=self.s.module_state,objects=self.s.objects,tiles=[dict(group=obj['group'],num=obj['num'],x=0,y=0,metatile=0,collision=0)]))
  def test_catalog_pin_and_connectivity_fail_closed(self):
   self.assertGreaterEqual(len(catalog()),2)
-  with patch('scripts.build_expansion.PIN','0'*40):
-   with self.assertRaises(ValueError):catalog()
-   self.assertEqual(residents.discover(self.s)['maps'],{})
+  import tempfile
+  from pathlib import Path
+  from world import native_resident_sites
+  with tempfile.TemporaryDirectory() as directory:
+   path=Path(directory)/'native_resident_sites.json'
+   path.write_text(native_resident_sites.PATH.read_text())
+   traits=json.loads(native_resident_sites.PATH.with_name('encounter_traits.json').read_text())
+   traits['engine_commit']='0'*40
+   path.with_name('encounter_traits.json').write_text(json.dumps(traits))
+   with patch.object(native_resident_sites,'PATH',path):
+    with self.assertRaises(ValueError):catalog()
+    self.assertEqual(residents.discover(self.s)['maps'],{})
   self.assertFalse(connected({(1,1),(3,1)}));self.assertTrue(connected({(1,1),(2,1),(3,1)}))

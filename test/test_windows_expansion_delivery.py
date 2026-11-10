@@ -247,6 +247,11 @@ class DeliveryTests(unittest.TestCase):
                     'world/encounter_traits.json': b'{}',
                     'world/practice_trainer_sources.json': b'{}',
                     'world/rental_catalog.json': b'{}',
+                    'world/pyramid_catalog.json': b'{}',
+                    'world/starter_catalog.json': b'{}',
+                    'world/move_traits.json': b'{}',
+                    'world/native_resident_sites.json': b'{}',
+                    'world/secret_base_locations.json': b'{}',
                     'launcher-web/index.html': b'<html>',
                     'scripts/windows_expansion_entry.py': b'# entry\n',
                     'engines/expansion.mk': b'# flags\n', '.gitignore': b'build/\n'}.items():
