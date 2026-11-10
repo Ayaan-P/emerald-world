@@ -50,7 +50,10 @@ class GuildChat:
             with s.lock:
                 try:
                     command=text[6:].strip();words=command.split()
-                    if words and words[0].lower()=='bases':
+                    if words and words[0].lower()=='pyramid':
+                        from .pyramid_courses import command as pyramid_command
+                        lines=pyramid_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='bases':
                         from .base_neighborhood import command as base_directory_command
                         lines=base_directory_command(s,conn,words[1:])
                     elif words and words[0].lower()=='tournament':

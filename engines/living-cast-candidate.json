@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "native_repository": "Ayaan-P/pokeemerald-expansion-native",
-  "native_revision": "9f1ce070e244f46c931183040601d1ddfa382d8f",
-  "native_pull_request": 64,
+  "native_revision": "722ce4b323a8713d9a16d0cbf21b45e5b1e1acf4",
+  "native_pull_request": 65,
   "app_pull_request": null,
   "reviewed_author_cli": "codex-cli 0.156.1",
   "author_model": "explicit per backend; legacy Codex uses openai-codex/gpt-6-luna",
@@ -14,7 +14,7 @@
     "openai-responses",
     "anthropic-messages"
   ],
-  "app_branch": "dot/base-neighborhood",
+  "app_branch": "dot/pyramid-courses",
   "capability_stack_base": "f81be46b6d9296e2710563af5878b3d4500b0b4e",
   "build_arguments": [
     "--generated-regions"
@@ -24,5 +24,10 @@
     "default": false,
     "launch_flag": "--field-skills",
     "native_verified": false
+  },
+  "experimental_pyramid_courses": {
+    "default": false,
+    "build_flag": "--development --experimental-pyramid-courses",
+    "native_linked_verified": false
   }
 }
