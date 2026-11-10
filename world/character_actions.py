@@ -38,7 +38,7 @@ def validate_actions(actions, context):
             if condition['source']['id']!=identity or condition['arrival']!=action['object']:
                 raise ValueError('Preconditions must bind this actor and exact destination')
         changes=action['changes']
-        if type(changes) is not dict or set(changes)-{'plan','goals','relationships','team','status','offer','services','battle_portrait','intentions'}:
+        if type(changes) is not dict or set(changes)-{'plan','goals','relationships','team','status','offer','services','battle_portrait','intentions','campaign_interests'}:
             raise ValueError('unsupported character action changes')
         if 'walk' in action and 'journey' in action:raise ValueError('choose walk or journey, not both')
         if 'walk' in action or 'journey' in action:
@@ -150,7 +150,7 @@ def contract():
             'optional_journey':'2..65 unique cardinal points on the same exact generated map; authority chains existing six-point native walks autonomously, pauses for occupancy, and publishes only actual final authority arrival; no canonical relocation or cross-map teleport',
             'optional_walk':'2..6 unique cardinal [x,y] points including current start and replacement object endpoint, same generated revision only; progresses one point per authority tick, yields to reported ready player occupancy, blocks interactions until complete',
             'plan':'Optional generic capability plan for this world-owned actor; inspect actor_runtime for tools, geometry request and actual pending/completed receipts. world.navigate takes revision and destination x/y, not an authored path. Canonical-only capabilities are unavailable.',
-            'changes':'plan, goals, relationships to existing public NPCs, team, status, services (guide), battle_portrait, retained practice intentions for own identified companions, optional offer (null removes)',
+            'changes':'campaign_interests (up to four native map public report interests), plan, goals, relationships to existing public NPCs, team, status, services (guide), battle_portrait, retained practice intentions for own identified companions, optional offer (null removes)',
             'effect':'explicitly take over selected existing NPCs from older scripts; native map object controls actual relocation/dialogue and team controls battle; all unrelated source effects preserved',
             'evidence':'nonempty inspected/recalled public history references; authored intent, never proof of battle or catch',
             'limits':'eight actions per request, reusable verified dispatcher for new publications, durable authority history; expected version rechecked on admission; native maps or region_revision-bound opened immutable generated regions or archived shared XL revisions',

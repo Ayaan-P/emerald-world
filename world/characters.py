@@ -20,13 +20,13 @@ def _text(value, maximum):
 
 def records(state):
     value = state.get(KEY, {}) if type(state) is dict else {}
-    if type(value) is not dict or len(value) > 8:
-        raise ValueError('at most eight persistent characters')
+    if type(value) is not dict or len(value) > 32:
+        raise ValueError('at most 32 persistent world characters')
     species = set(json.loads(Path(__file__).with_name('expansion_species.json').read_text())['species'].values())
     for identity, character in value.items():
         if type(identity) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}', identity):
             raise ValueError('invalid character identity')
-        if type(character) is not dict or not FIELDS <= set(character) or set(character)-FIELDS-{'plan','offer','services','battle_portrait','intentions'}:
+        if type(character) is not dict or not FIELDS <= set(character) or set(character)-FIELDS-{'plan','offer','services','battle_portrait','intentions','campaign_interests'}:
             raise ValueError('invalid character fields')
         if ('battle_portrait' in character and
                 (type(character['battle_portrait']) is not str or character['battle_portrait'] not in BATTLE_PORTRAITS)):
@@ -47,6 +47,11 @@ def records(state):
             raise ValueError('unsupported character service')
         from .actor_runtime import validate as validate_plan
         validate_plan(character.get('plan'))
+        interests=character.get('campaign_interests',[])
+        from .build_catalog import catalog_maps
+        allowed={'native:'+m['name'] for m in catalog_maps().values() if not m['name'].startswith('GeneratedWorld')}
+        if type(interests) is not list or len(interests)>4 or any(type(v) is not str or v not in allowed for v in interests) or len(set(interests))!=len(interests):
+            raise ValueError('Campaign interests must be up to four existing original places')
         goals = character['goals']
         if type(goals) is not list or len(goals) > 4:
             raise ValueError('invalid character goals')
@@ -144,7 +149,7 @@ def author_contract():
         'evidence': 'up to eight exact public world_memory sequence IDs; creation may have none; rationale is authored interpretation, never proof of battles or catches',
         'runtime': 'character_history is an ordered bounded batch after state.character_history_cursor. Process every event once, then acknowledge through in that state key. Empty or has_more does not mean history is absent. Preserve the cursor across script replacements. world_history is only the recent tail.',
         'interaction_order': 'Native dialogue emits INTERACT before battle consent. Keep meet-memory outside the versioned character record if a battle is offered; moving or revising the character during that prompt intentionally invalidates the challenge.',
-        'limits': 'eight public fictional characters, four goals, relationships only to other registered NPC identities; never store private player teams or save fields',
+        'limits': '32 public fictional characters within the unchanged state budget, four goals, relationships only to other registered NPC identities; never store private player teams or save fields',
         'native_battles': 'not available through this character registry alone; do not claim a battle occurred or a team is native until the battle adapter confirms it',
     }
 
@@ -153,7 +158,7 @@ def challenge(server, conn, fields):
     """Freeze one explicitly requested opponent for exactly this authenticated peer."""
     import time
     region=fields[0]=='CHARACTER_CHALLENGE_REGION'
-    if (len(fields) != (5 if region else 4) or not conn.get('character_capable') or
+    if (len(fields) not in ((5,6) if region else (4,5)) or not conn.get('character_capable') or
             server.peers.get(conn.get('id')) is not conn or conn.get('closing')):
         raise ValueError('character challenge unavailable')
     try:
@@ -162,6 +167,14 @@ def challenge(server, conn, fields):
         raise ValueError('invalid character challenge') from None
     if str(seq) != fields[1] or str(version) != fields[3] or not conn['seq'] < seq <= 2**31-1:
         raise ValueError('stale character challenge')
+    from .actor_battle_formats import current as battle_format
+    format_revision, mode = battle_format(server,fields[2])
+    extended=len(fields)==(6 if region else 5)
+    if extended:
+        if not conn.get('character_format_capable') or fields[-1]!=str(format_revision):
+            raise ValueError('Battle format changed; choose again')
+    elif mode or conn.get('character_format_capable'):
+        raise ValueError('Battle format requires current explicit native choice')
     pending = conn.get('character_pending')
     if pending:
         raise ValueError('character challenge already pending')
@@ -182,6 +195,7 @@ def challenge(server, conn, fields):
     if delta is None or (state[2]+delta[0], state[3]+delta[1]) != (obj['x'], obj['y']):
         raise ValueError('character challenge requires adjacent facing player')
     persistent=all('individual' in mon for mon in character['team'])
+    if mode and (len(character['team'])<2 or not persistent):raise ValueError('Doubles lineup needs two owned individuals')
     if persistent and not conn.get('character_pokemon_capable'):raise ValueError('persistent companion battle needs matched CHARPK1 client')
     frozen = json.loads(json.dumps({'seq': seq, 'id': fields[2], 'version': version, 'team': character['team']}))
     identity_fields = []
@@ -205,14 +219,23 @@ def challenge(server, conn, fields):
         if full:
             if not conn.get('character_state_capable'):raise ValueError('Trained companion requires matched CHARPK2 client')
             frozen['full_values']=full
+    frozen.update(format_revision=format_revision,battle_format=mode)
+    from .battle_campaigns import bind
+    bind(server,conn,frozen)
     conn['character_pending'] = frozen
     conn['seq'] = seq
     if conn.get('character_identity2_capable'):
         # Identity and companion state share an explicitly negotiated schema.
         # V2 historically names two independent payloads and cannot encode both.
-        mode = 3 if frozen.get('full_values') else 2 if persistent else 1
+        persistence_mode = 3 if frozen.get('full_values') else 2 if persistent else 1
         payload = frozen.get('full_values') or frozen.get('individual_values') or [value for mon in frozen['team'] for value in (mon['species'],mon['level'])]
-        return 'CHARACTER_BATTLE_V4 '+' '.join(map(str,[seq,fields[2],version,len(frozen['team']),*identity_fields,mode,*payload]))+'\n'
+        if conn.get('character_format_capable'):
+            return 'CHARACTER_BATTLE_V5 '+' '.join(map(str,[seq,fields[2],version,len(frozen['team']),*identity_fields,persistence_mode,format_revision,frozen['battle_format'],*payload]))+'\n'
+        return 'CHARACTER_BATTLE_V4 '+' '.join(map(str,[seq,fields[2],version,len(frozen['team']),*identity_fields,persistence_mode,*payload]))+'\n'
+    if conn.get('character_format_capable'):
+        persistence=2 if frozen.get('full_values') else int(persistent)
+        values=frozen.get('full_values') or frozen.get('individual_values') or [v for mon in frozen['team'] for v in (mon['species'],mon['level'])]
+        return 'CHARACTER_BATTLE_V4 '+' '.join(map(str,[seq,fields[2],version,len(frozen['team']),format_revision,mode,persistence,*values]))+'\n'
     if frozen.get('full_values'):
         return 'CHARACTER_BATTLE_V3 '+' '.join(map(str,[seq,fields[2],version,len(frozen['team']),*frozen['full_values']]))+'\n'
     if persistent:
@@ -231,9 +254,13 @@ def report_result(server, conn, fields):
             not fields[4].isdigit() or not 0 <= int(fields[4]) <= 255):
         raise ValueError('unmatched character result')
     with server.db:
+        from .battle_campaigns import result
+        result(server,conn,pending,int(fields[4]))
         server._event('character_battle_report', dict(player=conn['id'], character=pending['id'],
             version=pending['version'], outcome=int(fields[4]), evidence='authenticated_client_report_not_verified_outcome'))
     conn.pop('character_pending')
+    if pending.get('campaign_binding'):
+        server.guild_chat.message(conn,'World','Campaign battle reported. Use /guild campaign status for your next route.')
     return 'CHARACTER_RESULT_ACK ' + ' '.join(fields[1:4]) + '\n'
 
 

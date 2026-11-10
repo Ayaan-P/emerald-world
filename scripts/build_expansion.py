@@ -12,7 +12,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '993de6ae2d06fb13485c49e40f7f0a8c05f0a9c1'
+PIN = '430ccf09dcf78587953247c677b3ad7739847848'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -22,7 +22,7 @@ class ReleaseConfig:
     regional_state: int = 1
     kanto_content: int = 1
     generated_world_regions: int = 0
-    version_suffix: str = 'daily-20261109'
+    version_suffix: str = 'rc13'
 
 
 # Frozen RC12/13 integration cohort. Candidate only: not an installed release.
@@ -50,7 +50,10 @@ def main():
     parser.add_argument('--multilib-sysroot', '--multilib-root', type=Path,
                         help='existing extracted libc/GCC multilib root for mandatory ABI probes')
     parser.add_argument('--development', action='store_true',
-                        help='build explicit local integration changes on top of the verified engine pin')
+                        help='build explicit local candidate integration changes on top of the verified engine pin')
+    parser.add_argument('--experimental-secret-bases', action='store_true', help='enable unverified own-base sharing; requires --development')
+    parser.add_argument('--experimental-npc-coop', action='store_true',
+                        help='enable unverified dynamic NPC co-op wire (requires --development; both clients must match)')
     parser.add_argument('--generated-regions', action='store_true',
                         help='enable selectable generated places without changing the regional save/content cohort')
     parser.add_argument('--regional-state', action='store_true',
@@ -61,6 +64,10 @@ def main():
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error('--jobs must be positive')
+    if args.experimental_secret_bases and not args.development:
+        parser.error('--experimental-secret-bases requires --development; linked save QA pending')
+    if args.experimental_npc_coop and not args.development:
+        parser.error('--experimental-npc-coop requires --development; linked two-client QA pending')
     if args.development and args.kanto_content and not args.regional_state:
         parser.error('--kanto-content requires --regional-state')
     for flag, path in (('--sysroot', args.sysroot), ('--multilib-sysroot', args.multilib_sysroot)):
@@ -165,6 +172,8 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
     command += ['--', 'make', '-f', str(ROOT / 'engines/expansion.mk'), f'-j{args.jobs}',
                 f'EW_REGION_STATE={regional_state}', f'EW_KANTO_CONTENT={kanto_content}',
                 f'MAP_VERSION={RELEASE_CONFIG.map_version if not args.development else map_version}',
+                f'WORLD_CHARACTER_COOP_EXPERIMENT={int(args.experimental_npc_coop)}',
+                f'WORLD_BASE_SHARE_EXPERIMENT={int(args.experimental_secret_bases)}',
                 f'GENERATED_WORLD_REGIONS={int(args.generated_regions) or RELEASE_CONFIG.generated_world_regions}',
                 'native', 'BITS=64', f'TARGET_CC={compiler}', f'NATIVE_VERSION={head[:12]}-{RELEASE_CONFIG.version_suffix}',
                 'build/native64/data_relocations.checked', 'build/native64/data_layout.checked',

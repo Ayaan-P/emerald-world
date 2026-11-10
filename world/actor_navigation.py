@@ -3,7 +3,7 @@ from collections import deque
 import copy,hashlib,json
 
 
-def route(server,actor,destination,revision):
+def route(server,actor,destination,revision,*,avoid=()):
     from .characters import records
     from .shared_cave import SharedCave
     from .character_walks import walking
@@ -19,6 +19,7 @@ def route(server,actor,destination,revision):
     forbidden={(1,1),(cave.side-2,cave.side-2),(cave.side-2,cave.side-3)}
     forbidden|={(o['x'],o['y']) for o in server.objects if o['id']!=actor and o.get('region_revision')==revision}
     forbidden|={(p['x'],p['y']) for p in server.inspect()['players'] if p.get('ready') and p.get('generated_place',{}).get('revision')==revision}
+    forbidden.update(avoid)
     queue=deque([start]);previous={start:None};depth={start:0}
     while queue:
         point=queue.popleft()

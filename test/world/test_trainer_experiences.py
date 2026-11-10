@@ -37,7 +37,7 @@ class TrainerExperienceTests(unittest.TestCase):
     for secret in ('Alice','Bob','a'*32,'b'*32):self.assertNotIn(secret,json.dumps(event))
    finally:q.close()
  def test_actual_native_packet_dispatch_and_catalogue_match(self):
-  root=Path(os.environ.get('EW_NATIVE_SOURCE','../native-battle-experiences')).resolve()
+  root=Path(os.environ.get('EW_TRAINER_NATIVE_SOURCE',os.environ.get('EW_NATIVE_SOURCE','../native-battle-experiences'))).resolve()
   test=root/'tests/test_trainer_experiences.py'
   if not test.exists():self.skipTest('paired native source required')
   spec=importlib.util.spec_from_file_location('native_trainer_fixture',test);module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)

@@ -20,6 +20,20 @@ def actors(state):
 
 
 def dynamic_result(event, identity, character):
+    from .actor_stories import relevant as story_relevant
+    if story_relevant(event,identity):return True
+    from .actor_agreements import relevant as agreement_relevant
+    if agreement_relevant(event,identity):return True
+    from .actor_attention import relevant as attention_relevant
+    if attention_relevant(event,identity):return True
+    from .trainer_experiences import relevant as campaign_relevant
+    if campaign_relevant(event,character.get('campaign_interests',[])):return True
+    from .npc_accompaniment import relevant as accompaniment_relevant
+    if accompaniment_relevant(event,identity):return True
+    from .actor_cooperation import relevant as cooperation_relevant
+    if cooperation_relevant(event,identity):return True
+    from .companion_barter import relevant as barter_relevant
+    if barter_relevant(event,identity):return True
     from .npc_conversations import relevant as speech_relevant
     if speech_relevant(event,identity):return True
     from .actor_knowledge import relevant as knowledge_relevant
@@ -33,7 +47,9 @@ def dynamic_result(event, identity, character):
     if event.get('character_id')!=identity:return False
     from .character_reconnaissance import observed as survey_observed
     if survey_observed(event,[event.get('revision')]):return True
-    if event.get('event')=='character_journey_arrived' and event.get('publication')=='public_world_character_movement' and event.get('basis')=='committed_authority_cardinal_steps':return True
+    if event.get('event')=='character_journey_arrived' and event.get('publication')=='public_world_character_movement' and event.get('basis')=='committed_authority_cardinal_steps':
+        # An ongoing walking invitation executes locally, not a model call per tile.
+        return not any(step.get('tool') in ('world.accompany_player','world.guide_players') for step in (character.get('plan') or {}).get('steps',[]))
     if (event.get('event')=='character_practice_completed' and event.get('publication')=='public_fictional_character_practice'
         and event.get('basis')=='trusted_local_host_native_receipt' and event.get('character_version')==character['version']):return True
     offer=character.get('offer') or {}
@@ -240,6 +256,8 @@ def prepare(context, fetch):
         recall(context,character,fetch)
     # Public fictional actors need committed public results, not player purposes
     # or current private party/save observations from the general GM inspection.
+    if events[0].get('event')=='canonical_trainer_result':
+        context['campaign_report_limits']='This is an anonymous voluntarily shared client report, not server-verified victory, earned NPC experience, the actor witnessing a battle, or any known player identity. Choose a supported action or wait; do not invent personal history or award growth.'
     data['players']=[]
     runtime['selected_purposes']={}
     context.setdefault('recalled_history', {}).setdefault('events', []).extend(events)

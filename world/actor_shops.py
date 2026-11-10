@@ -25,6 +25,10 @@ def configure(server,actor,row,args):
 
 def line(server,conn,actor,version):
  if not conn.get('character_shop_capable'):return None
+ from .campaign_preparation import offer
+ personal=offer(server,conn,actor)
+ if personal and personal['items']:
+  return 'CHARACTER_SHOP '+' '.join(map(str,[actor,version,personal['revision'],len(personal['items']),*personal['items']]))
  saved=server.db.execute('SELECT revision,items FROM actor_shops WHERE actor=?',(actor,)).fetchone()
  if not saved:return None
  items=json.loads(saved[1])

@@ -12,6 +12,9 @@ def validate_region_objects(server, objects, state):
         if revision is None:continue
         if obj['id'] not in {o['id'] for o in server.objects} and any(not p.get('closing') and p.get('state') and p['state'][6] and server._region_scope(p)==revision and p['state'][2:4]==[obj['x'],obj['y']] for p in server.peers.values()):
             raise ValueError('New population overlaps a ready player')
+        if obj['id'] in state.get('world_pushables',{}):
+            if any(not p.get('closing') and p.get('state') and server._region_scope(p)==revision and p['state'][2:4]==[obj['x'],obj['y']] for p in server.peers.values()):
+                raise ValueError('Pushable destination overlaps a player, including menus')
         if obj.get('kind')=='prop':
             if obj['id'] in cast:raise ValueError('Props cannot be characters')
             if any(not p.get('closing') and p.get('state') and p['state'][6] and server._region_scope(p)==revision and p['state'][2:4]==[obj['x'],obj['y']] for p in server.peers.values()):

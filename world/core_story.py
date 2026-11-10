@@ -190,6 +190,9 @@ class CoreStory:
             from .canonical_partner_memory import admit
             admit(self.s,conn,run)
             return dict(ok=True) # Frozen one-shot permission, not battle completion or a shared reward.
+        if action=='CAMP':
+            from .campaign_board import handle
+            return handle(self.s,conn,run,key,confirmation)
         if action=='PROJECT':
             from .canonical_project_panel import panel
             return panel(self.s,conn,run,key,confirmation)

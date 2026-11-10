@@ -162,17 +162,21 @@ class WorldServer:
         from .canonical_scenes import CanonicalScenes
         self.cast_scenes=CanonicalScenes(self)
         self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
+        from .battle_campaigns import install as install_battle_campaigns
+        install_battle_campaigns(self.db)
         from .cooperative_mysteries import Mysteries
         from .opportunities import Opportunities
         from .opportunity_chat import OpportunityChat
         self.mysteries = Mysteries(self, validate_coords, TRAVEL_FRESH_SECONDS)
         from .canonical_investigations import choice_receipt
-        self.opportunities = Opportunities(self.db, [m['name'] for m in catalog_maps().values()], self.mysteries,record_outcome=lambda *args:choice_receipt(self,*args))
+        self.opportunities = Opportunities(self.db, [m['name'] for m in catalog_maps().values()], self.mysteries,record_public=self.memory.append,record_outcome=lambda *args:choice_receipt(self,*args))
         self.opportunity_chat = OpportunityChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
         from .field_relays import FieldRelays
         self.relays = FieldRelays(self, validate_coords)
         from .field_flags import FieldFlags
         self.flags = FieldFlags(self)
+        from .shared_races import SharedRaces
+        self.races = SharedRaces(self, validate_coords)
         from .activity_board import ActivityBoard
         self.activities = ActivityBoard(self)
         from .landmark_survey import LandmarkSurvey
@@ -581,7 +585,11 @@ class WorldServer:
             lines += friends
         lines += ['TILE ' + ' '.join(map(str, tile)) for tile in self.tiles
                   if tuple(tile[:2]) not in (self.cave_map, self.wilds_map)]
+        from .characters import records as character_records
+        scoped_characters=character_records(self.module_state) if conn.get('character_capable') else {}
         for obj in self.objects:
+            state=conn.get('state')
+            if not state or state[:2]!=[obj['group'],obj['num']]:continue
             from .character_walks import walk_for,walking
             walk=walk_for(self.module_state,obj['id'])
             if walking(self.module_state,obj['id']) and not conn.get('character_walk_capable'):continue
@@ -595,9 +603,12 @@ class WorldServer:
                          + ' ' + obj['text'].encode('ascii').hex())
             if conn.get('character_capable'):
                 from .characters import records
-                character = records(self.module_state).get(obj['id'])
+                character = scoped_characters.get(obj['id'])
                 if character and character['status'] == 'active':
                     lines.append('CHARACTER ' + obj['id'] + ' ' + str(character['version']))
+                    from .actor_battle_formats import line as format_line
+                    battle_format=format_line(self,conn,obj['id'],character['version'])
+                    if battle_format:lines.append(battle_format)
                     from .actor_shops import line as shop_line
                     retail=shop_line(self,conn,obj['id'],character['version'])
                     if retail:lines.append(retail)
@@ -615,6 +626,21 @@ class WorldServer:
                                 lines.append('CHARACTER_PLACE_OFFER '+' '.join(map(str,[obj['id'],character['version'],offer['id'],offer['revision'],offer['target'],place['place_id'],place['revision'],place['label'].encode('ascii').hex()])))
                         else:
                             lines.append('CHARACTER_OFFER '+ ' '.join(map(str,[obj['id'],character['version'],offer['id'],offer['revision'],offer['target'],offer['place_id'][7:]])))
+        from .rental_pools import line as rental_line
+        rentals=rental_line(self,conn)
+        if rentals:lines.append(rentals)
+        from .contest_guests import lines as contest_lines
+        lines.extend(contest_lines(self,conn))
+        from .shared_outbreaks import line as outbreak_line
+        outbreak=outbreak_line(self,conn)
+        if outbreak:lines.append(outbreak)
+        from .shared_fishing import lines as fishing_lines
+        lines.extend(fishing_lines(self,conn))
+        from .battle_watch import lines as watch_lines
+        lines.extend(watch_lines(self,conn))
+        from .actor_bulletins import line as bulletin_line
+        bulletin=bulletin_line(self,conn)
+        if bulletin:lines.append(bulletin)
         from .actor_weather import line as weather_line
         weather=weather_line(self,conn)
         if weather:lines.append(weather)
@@ -673,6 +699,20 @@ class WorldServer:
             fields = raw.decode('ascii').split()
             if conn['id'] is None:
                 role = fields[4] if len(fields) == 5 else ''
+                battle_watch_capable=role.endswith('WATCH1')
+                if battle_watch_capable:role=role[:-6]
+                fishing_capable=role.endswith('FISHING1')
+                if fishing_capable:role=role[:-8]
+                character_format_capable=role.endswith('CHARFORM1')
+                if character_format_capable:role=role[:-9]
+                world_bulletin_capable=role.endswith('WORLDTV1')
+                if world_bulletin_capable:role=role[:-8]
+                rental_capable=role.endswith('RENTALS1')
+                if rental_capable:role=role[:-8]
+                contest_guest_capable=role.endswith('CONTEST1')
+                if contest_guest_capable:role=role[:-8]
+                outbreak_capable=role.endswith('OUTBREAK1')
+                if outbreak_capable:role=role[:-9]
                 character_tutor_capable=role.endswith('CHARTUTOR1')
                 if character_tutor_capable:role=role[:-10]
                 outdoor_weather_capable=role.endswith('WEATHER1')
@@ -846,7 +886,16 @@ class WorldServer:
                 conn['cave_link_wildlife']=cave_link_wildlife and conn['cave_link_capable'] and cave_expansion
                 conn['world_props_capable']=world_props_capable and character_region_capable
                 conn['character_state_capable']=character_state_capable and conn['character_pokemon_capable']
+                conn['rental_capable']=rental_capable
+                conn['contest_guest_capable']=contest_guest_capable
+                conn['outbreak_capable']=outbreak_capable
+                conn['fishing_capable']=fishing_capable
+                # The cumulative donor contains an unaccepted native stream. Do not
+                # admit spectating until the corrected consumer is paired and tested.
+                conn['battle_watch_capable']=False
+                conn['world_bulletin_capable']=world_bulletin_capable
                 conn['outdoor_weather_capable']=outdoor_weather_capable and cave_xl
+                conn['character_format_capable']=character_format_capable and character_capable
                 conn['character_tutor_capable']=character_tutor_capable and character_capable
                 conn['character_shop_capable']=character_shop_capable and character_capable
                 conn['character_capable'] = character_capable
@@ -920,6 +969,8 @@ class WorldServer:
                             reply=result['battle_mode']
                         elif fields[2]=='RING':
                             reply=self.memory.world_id+' '+result['caller']+' '+result['token']+' '+(native_text(result['text']).encode('ascii').hex() if result['text'] else '-')
+                        elif fields[2]=='CAMP':
+                            reply=' '.join([result['world'],str(result['page']),str(result['total']),result['token'],result['text'].encode().hex(),result['label'].encode().hex()])
                         elif fields[2] in ('DIALOG','PROJECT'):
                             reply=' '.join([result['world_id'],str(result['version']),result['session'],str(result['role']),str(len(result['options'])),native_text(result['question']).encode('ascii').hex()]+[value for option in result['options'] for value in (native_text(option['label']).encode('ascii').hex(),str(option['advice']))])
                         elif fields[2] in ('OFFER','CAST','CALL'):
@@ -1024,6 +1075,21 @@ class WorldServer:
                             self._error(conn, 'CAVE')
                         return
                 self._error(conn, 'CAVE')
+                return
+            if fields and fields[0] in ('BASE_OFFER','BASE_ACCEPT','BASE_DECLINE'):
+                from .secret_base_share import handle
+                with self.lock:handle(self,conn,fields)
+                return
+            if fields and fields[0]=='WATCH':
+                from .battle_watch import handle as watch_handle
+                with self.lock:
+                    try:watch_handle(self,conn,fields)
+                    except (ValueError,TypeError,KeyError):
+                        if fields[1:2] in (['FRAME'],['SOLO']):
+                            conn['watch_sharing']=False;conn.pop('watch_frame',None)
+                            self._queue(conn,'WATCH_PERMISSION 0\n')
+                        self._queue(conn,'WATCH_INFO '+b'Battle view unavailable. Use /watch list.'.hex()+'\n')
+                    self._broadcast()
                 return
             if bytes(raw) == b'CHAT_ENABLE' and conn.get('social'):
                 conn['chat'] = True
@@ -1155,6 +1221,7 @@ class WorldServer:
                 self.landmark_survey.observe(conn)
                 if getattr(self, 'relays', None):self.relays.tick()
                 if getattr(self, 'flags', None):self.flags.tick()
+                if getattr(self, 'races', None):self.races.tick()
         except (UnicodeError, ValueError):
             self._error(conn, 'MALFORMED')
 
@@ -1177,6 +1244,10 @@ class WorldServer:
         if fields[2] != '*' and (not target or not target.get('chat') or target.get('closing')):
             conn['chat_status'] = 'unavailable'
             self._queue(conn, self._snapshot(conn))
+            return
+        if fields[2]=='*' and (text==b'/base' or text.startswith(b'/base ')):
+            self.guild_chat.message(conn,'World','Secret Base sharing requires the matching native client; this command was not broadcast.')
+            self._queue(conn,self._snapshot(conn))
             return
         now = time.monotonic()
         credit = min(4, conn.get('chat_credit', 4) + now - conn.get('chat_time', now))
@@ -1215,6 +1286,10 @@ class WorldServer:
             return
         # Only connected native link peers may be invited. CONTROL connections
         # neither approve requests nor contribute native engine rounds.
+        if raw.startswith(b'S '):
+            from .safari_outings import handle as safari_handle
+            self._queue(conn, safari_handle(self,conn,raw))
+            return
         fields = raw.split(b' ')
         if ((len(fields) == 4 and fields[:2] == [b'L', b'OFFER'])
                 or (len(fields) == 3 and fields[:2] == [b'T', b'OFFER'])):
@@ -1602,7 +1677,7 @@ class WorldServer:
                     except Exception:peer['closing']=True
             return {'ok':True,'identity':identity,'revision':revision,'tiles':len(merged),'changed':True,'queued':queued,'delivery_failed':delivery_failed}
 
-    def set_shared_geometry(self, identity, tiles, replace=False, *, expected_world_id=None, expected_revision=None, history_evidence=None):
+    def set_shared_geometry(self, identity, tiles, replace=False, *, expected_world_id=None, expected_revision=None, history_evidence=None, actor_tool_commit=None):
         """Commit connected terrain geometry only while the generated area is empty."""
         from .shared_terrain import validate,encode,project
         if type(identity) is not str or not re.fullmatch(r'[0-9a-f]{64}',identity) or type(tiles) is not list or type(replace) is not bool or len(tiles)>512 or (not tiles and not replace):raise ValueError('invalid shared geometry request')
@@ -1637,7 +1712,11 @@ class WorldServer:
                 if kind is None:merged.pop((x,y),None)
                 else:merged[(x,y)]=kind
             payload=encode(cave,merged)
-            if payload==old:return {'ok':True,'identity':identity,'revision':revision,'tiles':len(merged),'changed':False}
+            if payload==old:
+                result={'ok':True,'identity':identity,'revision':revision,'tiles':len(merged),'changed':False}
+                if actor_tool_commit is not None:
+                    with self.db:actor_tool_commit(result)
+                return result
             if revision>=2147483647:raise ValueError('terrain revision exhausted')
             reset=f'CAVE RESET {identity}\n';recipients=[p for p in peers if p.get('cave_ack')==identity or p.get('cave_offer')==identity]
             if any(len(p['out'])+len(reset)>MAX_QUEUE for p in recipients):raise ValueError('trainer connection is busy')
@@ -1649,6 +1728,8 @@ class WorldServer:
                                        revision=identity, terrain_revision=revision,
                                        tiles=terrain_delta(cave, old, payload),
                                        **({'history_evidence':history_evidence} if history_evidence is not None else {})))
+                    if actor_tool_commit is not None:
+                        actor_tool_commit(dict(ok=True,identity=identity,revision=revision,tiles=len(merged),changed=True))
                 self.revision = self.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
             except sqlite3.Error:raise ValueError('shared geometry could not be persisted') from None
             self._terrain_walk_cache=(identity,revision,project(cave,payload));queued=0;delivery_failed=0
@@ -1881,6 +1962,14 @@ class WorldServer:
                     return
                 identity = self.create_identity(request['trainer'])
                 result = dict(ok=True, invitation=dict(self.sharing, trainer=identity['id'], token=identity['token']))
+            elif request.get('command') in ('private_mystery_claim','private_mystery_finish'):
+                from .private_mystery_partners import claim,finish
+                try:
+                    with self.lock:
+                        if request['command']=='private_mystery_claim' and set(request)=={'command','actor','run'}:result=claim(self,request['actor'],request['run'])
+                        elif request['command']=='private_mystery_finish' and set(request)=={'command','actor','lease','decision'}:result=finish(self,request['actor'],request['lease'],request['decision'])
+                        else:raise ValueError('Invalid private mystery command')
+                except (ValueError,TypeError,sqlite3.Error):result=dict(ok=False,error='Private mystery turn unavailable or invalid')
             elif request.get('command') in ('private_cast_claim','private_cast_finish'):
                 from .canonical_reflection import claim,finish
                 try:
@@ -1895,6 +1984,11 @@ class WorldServer:
                         if request['command']=='character_practice_source' and set(request)=={'command','actor','individual'}:result=dict(ok=True,source=source(self,request['actor'],request['individual']))
                         elif request['command']=='character_practice_apply':result=reconcile(self,request)
                         else:raise ValueError('Invalid practice command')
+                except (ValueError,TypeError,KeyError) as exc:result=dict(ok=False,error=str(exc))
+            elif request.get('command') in ('character_moves_finish','character_moves_fail'):
+                from .actor_moves import finish,fail
+                try:
+                    with self.lock:result=(finish if request['command']=='character_moves_finish' else fail)(self,request)
                 except (ValueError,TypeError,KeyError) as exc:result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'cast_practice_intentions':
                 from .canonical_cast import records
@@ -1916,6 +2010,16 @@ class WorldServer:
                     result=dict(ok=True,source=stored[0],sha256=expected)
             elif request.get('command') == 'inspect':
                 result = self.inspect()
+                if request.get('chunked') is True:
+                    from .inspection_transfer import begin
+                    try:result=begin(conn,result)
+                    except ValueError as exc:result=dict(ok=False,error=str(exc))
+                elif len(json.dumps(result,ensure_ascii=True).encode())+1>MAX_QUEUE:
+                    result=dict(ok=False,error='Inspection needs chunked transfer; use the updated host client')
+            elif request.get('command') == 'inspect_chunk':
+                from .inspection_transfer import next_chunk
+                try:result=next_chunk(conn,request)
+                except ValueError as exc:result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'world_rules':
                 try:
                     action = request.get('action')
@@ -2121,7 +2225,7 @@ class WorldServer:
                 from .prop_custody import project as project_custody
                 result=project_custody(self,result)
                 from .object_networks import project as project_networks
-                result=project_networks(result)
+                result=project_networks(result,self)
                 state_json, tiles = self._validated(result)
                 objects = result.get('objects', [])
                 from .region_characters import validate_region_objects
@@ -2277,6 +2381,7 @@ class WorldServer:
                 self.rally.tick()
                 self.relays.tick()
                 self.flags.tick()
+                self.races.tick()
                 self._poll_controls()
                 self._poll_mechanics()
                 from .actor_objects import poll_player
