@@ -253,3 +253,27 @@ server routing with controlled fixtures, not an emulator or native playtest.
 Agent-authored extensions must use new reviewed arc versions and safe native
 checkpoints; arbitrary executable scripts, save offsets and flag changes are
 not accepted by this protocol.
+
+## Explicit Claude or OpenAI vision co-player (draft)
+
+A separately launched ordinary agent trainer can now use a direct API vision policy, without the Codex CLI. This uses its existing private controller endpoint, native framebuffer capture and normal GBA buttons. It has no GM, administrator, other trainer control, arbitrary file, shell or model-tool access.
+
+Launch the agent trainer through the existing agent-control workflow above, then explicitly select a provider and API model:
+
+```sh
+python3 -m world.player_runtime --endpoint /absolute/agent-profile/player.sock \
+  --provider anthropic-messages --model YOUR_EXPLICIT_API_MODEL \
+  --share-game-view --interval 60 --min-model-interval 60
+```
+
+Or select `--provider openai-responses` with an explicit compatible vision model. The host supplies `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in the worker environment. Do not put a key in a command, game message or checked-in configuration. No provider or model fallback occurs. Missing credentials or the missing sharing flag fail before attaching the controller.
+
+`--share-game-view` explicitly permits sending this agent's game image and observation state, including visible public game text and trainer names, to the selected provider. It does not authorize reading the desktop, human save files or other control endpoints. API charges apply. The worker keeps running until stopped and the interval settings limit call frequency, not monetary spend. With the example settings, calls are at least 60 seconds apart, including failed turns. Stop with Ctrl-C; an already submitted provider request may still be charged. No same-request retry occurs. A later fresh decision can still make a new request.
+
+Each decision receives the current screenshot from exactly the bound profile's regular, non-symlink `screenshot.ppm`, validated using the existing MCP image reader. Its path is removed before transmission. Only a strict JSON batch of up to eight ordinary button holds returns. No generated program is executed. The API runs in the existing bounded child-process boundary so cancellation can terminate local provider work. Network destinations are fixed official APIs, HTTPS certificate checks stay enabled, and redirects are refused. Provider errors and credentials are not logged.
+
+Normal independent game/save ownership and unknown-input safeguards remain: a lost press acknowledgment halts the controller rather than replaying an uncertain action. Saving, catching, battles and progression are only what the real game actually executes. A provider adapter is not evidence that a model can reliably finish the campaign, and no catch or victory is inferred from a model's reason text.
+
+Validation for this draft uses fake providers, actual PNG conversion and policy validation. Component transport-fixture tests exercise screenshot→API payload→validated buttons. The local environment denied Unix socket creation, so real socket tests remain unverified locally and are retained in a dedicated CI job; no socket restriction was bypassed. No live API, credentials, native game or rendered co-op session was used for this change.
+
+App-only child of #371 at 8dda00e4b87fe3ec1d5cc5d512d2f7a3a6d9b753, with unchanged native #55 pin babbe0e3272120523d509cecf22705f158429586. Neither pending native upload is included. The stack is not released RC12-based; Maya's integration/release stay untouched. The inherited app spectating mitigation still rejects the uncorrected stream.
