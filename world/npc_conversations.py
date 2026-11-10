@@ -24,6 +24,9 @@ def nearby(server,conn,actor):
 
 
 def command(server,conn,words):
+    if words and words[0]=='speak-public':
+        from .spatial_speech import command as group_speech
+        return group_speech(server,conn,words[1:])
     if words and words[0] in ('guide','join-guide','leave-guide'):
         from .npc_guidance import command as guide_command
         return guide_command(server,conn,words)
@@ -31,6 +34,7 @@ def command(server,conn,words):
         from .npc_accompaniment import command as walk_command
         return walk_command(server,conn,words)
     if not words:return ['NPC speech is PUBLIC world history, visible to world agents and players. Do not enter personal information.',
+        'Group conversation: /guild npc speak-public MESSAGE (public history and nearby audience).',
         'Use /guild npc nearby, or /guild npc say-public ID MESSAGE. Agent replies are not guaranteed.',
         'An NPC may offer to lead a group: /guild npc guide ID, join-guide ID, or leave-guide.',
         'Invite a generated NPC to walk with you: /guild npc walk-with ID. Stop: /guild npc walk-stop.']

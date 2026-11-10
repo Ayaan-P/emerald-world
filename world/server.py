@@ -2352,6 +2352,8 @@ class WorldServer:
                 if getattr(self,'capture_service',None):self.capture_service.tick(self)
                 from .npc_conversations import flush as flush_npc_replies
                 flush_npc_replies(self)
+                from .spatial_speech import flush as flush_spatial_speech
+                flush_spatial_speech(self)
                 self.cast_scenes.tick()
 
     def close(self):

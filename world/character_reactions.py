@@ -20,6 +20,8 @@ def actors(state):
 
 
 def dynamic_result(event, identity, character):
+    from .spatial_speech import relevant as spatial_relevant
+    if spatial_relevant(event,identity):return True
     from .actor_stories import relevant as story_relevant
     if story_relevant(event,identity):return True
     from .actor_agreements import relevant as agreement_relevant
