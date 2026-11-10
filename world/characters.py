@@ -207,6 +207,8 @@ def challenge(server, conn, fields):
     frozen.update(format_revision=format_revision,battle_format=mode)
     from .battle_campaigns import bind
     bind(server,conn,frozen)
+    from .player_npc_memory import bind as bind_memory
+    bind_memory(server,conn,frozen)
     conn['character_pending'] = frozen
     conn['seq'] = seq
     if conn.get('character_format_capable'):
@@ -232,6 +234,8 @@ def report_result(server, conn, fields):
     with server.db:
         from .battle_campaigns import result
         result(server,conn,pending,int(fields[4]))
+        from .player_npc_memory import report as remember_result
+        remember_result(server,conn,pending,int(fields[4]))
         server._event('character_battle_report', dict(player=conn['id'], character=pending['id'],
             version=pending['version'], outcome=int(fields[4]), evidence='authenticated_client_report_not_verified_outcome'))
     conn.pop('character_pending')
