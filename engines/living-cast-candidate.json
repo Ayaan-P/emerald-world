@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "native_repository": "Ayaan-P/pokeemerald-expansion-native",
-  "native_revision": "be9bd71ea4a252837491c269f2bbb9ea2da53366",
-  "native_pull_request": 75,
+  "native_revision": "59d0fb4e70ca5e0b11d80816892ebe7f0e149a84",
+  "native_pull_request": 76,
   "app_pull_request": null,
   "reviewed_author_cli": "codex-cli 0.156.1",
   "author_model": "explicit per backend; legacy Codex uses openai-codex/gpt-6-luna",
@@ -14,7 +14,7 @@
     "openai-responses",
     "anthropic-messages"
   ],
-  "app_branch": "dot/field-calls",
+  "app_branch": "dot/field-care",
   "capability_stack_base": "f81be46b6d9296e2710563af5878b3d4500b0b4e",
   "build_arguments": [
     "--generated-regions"
@@ -34,6 +34,12 @@
     "default": false,
     "build_flag": "--development --experimental-field-moves",
     "scope": "private ordinary native wild encounters from selected learned sound moves",
+    "native_linked_verified": false
+  },
+  "experimental_field_care": {
+    "default": false,
+    "flag": "--development --experimental-field-moves",
+    "scope": "private party HP recovery for learned restore-HP/Heal Pulse moves; costs one PP; new field rule",
     "native_linked_verified": false
   }
 }
