@@ -50,7 +50,10 @@ class GuildChat:
             with s.lock:
                 try:
                     command=text[6:].strip();words=command.split()
-                    if words and words[0].lower()=='npc':
+                    if words and words[0].lower()=='chart':
+                        from .shared_cartography import command as chart_command
+                        lines=chart_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='npc':
                         from .npc_conversations import command as npc_command
                         lines=npc_command(s,conn,words[1:])
                     elif words and words[0].lower()=='safari':

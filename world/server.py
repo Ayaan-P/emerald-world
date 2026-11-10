@@ -1188,6 +1188,8 @@ class WorldServer:
                     self._schedule_presence(now)
                 self.guild_chat.observe(conn, state)
                 self.landmark_survey.observe(conn)
+                from .shared_cartography import observe as chart_observe
+                chart_observe(self,conn)
                 if getattr(self, 'relays', None):self.relays.tick()
                 if getattr(self, 'flags', None):self.flags.tick()
                 if getattr(self, 'races', None):self.races.tick()
