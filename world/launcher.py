@@ -233,8 +233,10 @@ def check_player_endpoint(paths):
     raise ValueError('An existing player control endpoint is active. Stop its owner first.')
 
 
-def game_command(binary, state_dir, paths, display=None, agent_control=False, *, online=True, engine='vanilla'):
+def game_command(binary, state_dir, paths, display=None, agent_control=False, *, online=True, engine='vanilla', field_skills=False):
     """Construct explicit allowlist mounts. Never mount whole HOME or /run."""
+    if type(field_skills) is not bool or (field_skills and engine != 'expansion-native'):
+        raise ValueError('Field skills require an explicit boolean and the paired Expansion engine')
     engine_state(state_dir, engine)
     mismatched_binary = 'pokeemerald-native' if engine == 'vanilla' else 'pokeemerald64'
     if (Path(binary).name == mismatched_binary or Path(binary).resolve().name == mismatched_binary):
@@ -288,6 +290,8 @@ def game_command(binary, state_dir, paths, display=None, agent_control=False, *,
     if expanded:
         command = args + ['--', str(binary), '--data-dir', str(paths['profile']),
                           '--save', str(paths['save']), '--rtc-offset', str(paths['profile'] / 'clock.rtc')]
+        if field_skills:
+            command += ['--field-skills']
         if agent_control:
             command += ['--player-control', str(player_endpoint(paths))]
         return command + ([] if display else ['--headless', '--silent'])
@@ -400,6 +404,7 @@ def main(argv=None):
     join.add_argument('trainer')
     join.add_argument('--binary', type=Path)
     join.add_argument('--engine', choices=('vanilla', 'expansion-native'), default='vanilla')
+    join.add_argument('--field-skills', action='store_true', help='Optional paired-native HM skills; own HM, badge and compatible party member required')
     join.add_argument('--replay', type=Path, help='Expansion donor replay script')
     join.add_argument('--frames', type=int, help='Expansion frame limit')
     join.add_argument('--seed-save', type=Path, help='explicit copy into a new profile; never modifies original')
@@ -416,6 +421,7 @@ def main(argv=None):
     offline.add_argument('trainer')
     offline.add_argument('--binary', type=Path)
     offline.add_argument('--engine', choices=('vanilla', 'expansion-native'), default='vanilla')
+    offline.add_argument('--field-skills', action='store_true', help='Optional paired-native HM skills; own HM, badge and compatible party member required')
     offline.add_argument('--replay', type=Path, help='Expansion donor replay script')
     offline.add_argument('--frames', type=int, help='Expansion frame limit')
     seed = offline.add_mutually_exclusive_group()
@@ -447,8 +453,8 @@ def main(argv=None):
         if args.engine == 'expansion-native':
             from world.expansion import run
             return run(args)
-        if args.replay or args.frames is not None:
-            p.error('--replay and --frames require --engine expansion-native')
+        if args.replay or args.frames is not None or args.field_skills:
+            p.error('--replay, --frames and --field-skills require --engine expansion-native')
         args.binary = args.binary or REPO / 'build/pokeemerald64'
     if args.command == 'offline':
         from world.offline import run_offline

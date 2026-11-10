@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "native_repository": "Ayaan-P/pokeemerald-expansion-native",
-  "native_revision": "739be20ecf1101f84cc2fb272587978350955b6d",
-  "native_pull_request": 56,
+  "native_revision": "84ec1023888b616f163b9e1b82e60450cb07639a",
+  "native_pull_request": 57,
   "app_pull_request": null,
   "reviewed_author_cli": "codex-cli 0.156.1",
   "author_model": "explicit per backend; legacy Codex uses openai-codex/gpt-6-luna",
@@ -14,10 +14,15 @@
     "openai-responses",
     "anthropic-messages"
   ],
-  "app_branch": "dot/shared-safari-outings",
+  "app_branch": "dot/hm-field-skills",
   "capability_stack_base": "f81be46b6d9296e2710563af5878b3d4500b0b4e",
   "build_arguments": [
     "--generated-regions"
   ],
-  "selectable_regions_require_build_flag": true
+  "selectable_regions_require_build_flag": true,
+  "optional_field_skills": {
+    "default": false,
+    "launch_flag": "--field-skills",
+    "native_verified": false
+  }
 }

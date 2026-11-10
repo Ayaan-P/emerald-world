@@ -111,7 +111,7 @@ class ExpansionSession:
                 or not re.fullmatch(r'[0-9a-fA-F]{64}', fields['token'])):
             raise ValueError('Expansion profile is not prepared for this engine authority')
 
-    def start(self, binary=BINARY, display=None, *, agent_control=False, provision_online=True):
+    def start(self, binary=BINARY, display=None, *, agent_control=False, provision_online=True, field_skills=False):
         """Start one browser-managed native client and return its held profile lock."""
         import shutil
         import subprocess
@@ -150,7 +150,7 @@ class ExpansionSession:
             if display and not Path('/tmp/.X11-unix/X' + display[1:]).is_socket():
                 raise ValueError('Dedicated game display is missing')
             command = game_command(binary, self.base, self.paths, display,
-                                   agent_control=agent_control, online=self.online, engine=ENGINE)
+                                   agent_control=agent_control, online=self.online, engine=ENGINE, field_skills=field_skills)
             symbols = Path(str(binary.resolve()) + '.symbols')
             if symbols.is_file():
                 boundary = command.index('--')
@@ -195,7 +195,7 @@ class ExpansionSession:
             except OSError as exc:
                 raise ValueError('Expansion world authority is not accepting connections; start the expansion host first') from exc
 
-    def run(self, binary=BINARY, display=None, *, replay=None, frames=None, agent_control=False, print_command=False):
+    def run(self, binary=BINARY, display=None, *, replay=None, frames=None, agent_control=False, print_command=False, field_skills=False):
         if self.state.resolve() != self.state:
             raise ValueError('Expansion state cannot contain symlinks')
         if self.online:
@@ -211,7 +211,7 @@ class ExpansionSession:
             if agent_control:
                 check_player_endpoint(self.paths)
             command = game_command(binary, self.base, self.paths, display, agent_control=agent_control,
-                                  online=self.online, engine=ENGINE)
+                                  online=self.online, engine=ENGINE, field_skills=field_skills)
             boundary = command.index('--')
             extra = []
             symbols = Path(str(Path(binary).resolve()) + '.symbols')
@@ -263,4 +263,4 @@ def run(args):
     session = ExpansionSession(args.state_dir, args.trainer, online=args.command == 'join')
     return session.run(args.binary or BINARY, args.display, replay=args.replay, frames=args.frames,
                        agent_control=bool(getattr(args, 'agent_control', False)),
-                       print_command=args.print_command)
+                       print_command=args.print_command, field_skills=bool(getattr(args, 'field_skills', False)))
