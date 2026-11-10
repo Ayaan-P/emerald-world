@@ -99,15 +99,21 @@ def command(server, conn, words, current):
 def result(server, conn, key, data, pending, outcome):
     """Inside the existing exact nonce/save-bound battle result transaction."""
     from .battle_campaigns import document, save
+    record=dict(node=data['node'],opponent=pending['id'],version=pending['version'],outcome=outcome,basis='client_attested')
+    complete_stage(server,conn,key,data,outcome,record)
+
+
+def complete_stage(server,conn,key,data,outcome,record):
+    from .battle_campaigns import document,save,routes
     shared = data['shared']; group = load(server, shared)
     if group['status'] != 'ready' or member(conn) not in group['members'] or conn['id'] in group['results']:
         raise ValueError('Shared stage is no longer available')
     group['results'][conn['id']] = outcome
-    data['history'].append(dict(node=data['node'], opponent=pending['id'], version=pending['version'], outcome=outcome, basis='client_attested'))
+    data['history'].append(record)
     data.update(status='waiting', choices=[]); save(server, conn, key, data)
     if len(group['results']) == len(group['members']):
         outcome_key = 'win' if all(v == 1 for v in group['results'].values()) else 'loss'
-        choices = document(server, key)['nodes'][group['node']][outcome_key]
+        choices = routes(document(server,key)['nodes'][group['node']],outcome_key)
         group.update(choices=choices, status='choice' if choices else 'complete')
         update_members(server, shared, group, status=group['status'], choices=choices)
     store(server, shared, group)
@@ -118,8 +124,8 @@ def rows(server, conn, current):
         return []
     key = current[1]['shared']; group = load(server, key)
     out = [('Shared run '+key+' - '+group['status'], None),
-           ('Joining shares stage reports with this party only. No verified wins or rewards.', None),
-           ('Each trainer fights separately. Any reported loss takes the loss route.', None)]
+           ('Joining shares battle reports and voluntary visit check-ins with this party only.', None),
+           ('Separate battles; all members check in at visit stages. No verified wins or rewards.', None)]
     if group['status'] == 'lobby':
         out.append(('Invite with /guild campaign join '+key, None))
         out.append(('Joined trainers '+str(len(group['members']))+' of 4', None))

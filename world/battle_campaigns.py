@@ -23,19 +23,24 @@ def publish(server, actor, row, args):
     nodes=d['nodes']
     if type(nodes) is not dict or not 1<=len(nodes)<=16 or type(d['entry']) is not str or d['entry'] not in nodes:raise ValueError('Use 1..16 nodes and an entry')
     for key,n in nodes.items():
-        if not re.fullmatch('[a-z][a-z0-9_]{0,15}',key) or type(n) is not dict or not {'opponent','win','loss'}<=set(n) or set(n)-{'opponent','win','loss','preparation'}:raise ValueError('Invalid battle node')
-        if type(n['opponent']) is not str or n['opponent'] not in cast or not cast[n['opponent']]['team']:raise ValueError('Opponent must be an existing world trainer with a team')
+        if not re.fullmatch('[a-z][a-z0-9_]{0,15}',key) or type(n) is not dict:raise ValueError('Invalid campaign node')
+        if 'visit' in n:
+            from .campaign_visits import validate
+            validate(server,n)
+        else:
+            if not {'opponent','win','loss'}<=set(n) or set(n)-{'opponent','win','loss','preparation'}:raise ValueError('Invalid battle node')
+            if type(n['opponent']) is not str or n['opponent'] not in cast or not cast[n['opponent']]['team']:raise ValueError('Opponent must be an existing world trainer with a team')
         from .campaign_preparation import validate as validate_preparation
         validate_preparation(n.get('preparation',{}),cast)
         for outcome in ('win','loss'):
-            edges=n[outcome]
+            edges=routes(n,outcome)
             if type(edges) is not list or len(edges)>4 or any(type(x) is not str or x not in nodes for x in edges) or len(set(edges))!=len(edges):raise ValueError('Invalid route choices')
     seen=set();visiting=set()
     def visit(k):
         if k in visiting:raise ValueError('Campaign graph must be acyclic')
         if k in seen:return
         visiting.add(k)
-        for target in nodes[k]['win']+nodes[k]['loss']:visit(target)
+        for target in routes(nodes[k],'win')+routes(nodes[k],'loss'):visit(target)
         visiting.remove(k);seen.add(k)
     visit(d['entry'])
     if seen!=set(nodes):raise ValueError('All nodes must be reachable')
@@ -43,7 +48,11 @@ def publish(server, actor, row, args):
     old=server.db.execute('SELECT actor,document FROM battle_campaigns WHERE id=?',(d['id'],)).fetchone()
     if old and tuple(old)!=(actor,encoded):raise ValueError('Published campaign identities are immutable')
     server.db.execute('INSERT OR IGNORE INTO battle_campaigns VALUES(?,?,?)',(d['id'],actor,encoded))
-    return dict(outcome='battle_campaign_published',campaign=d['id'],nodes=len(nodes),basis='Optional native battles; private client-attested progress, no rewards or simulated results')
+    return dict(outcome='battle_campaign_published',campaign=d['id'],nodes=len(nodes),basis='Optional native battles and voluntary presence check-ins; private save-scoped progress, no rewards or verified travel claims')
+
+
+def routes(node,outcome='win'):
+    return node['next'] if 'visit' in node else node[outcome]
 
 
 def active(server,conn):
@@ -86,6 +95,9 @@ def command(server,conn,words):
             if not current or current[1]['status']!='choice' or words[1] not in current[1]['choices']:raise ValueError('Choose one of the offered routes')
             key,data=current;data.update(node=words[1],status='ready',choices=[]);data.pop('preparation',None)
             with server.db:save(server,conn,key,data)
+        elif words==['check-in']:
+            from .campaign_visits import check_in
+            check_in(server,conn,current)
         elif len(words)==2 and words[0]=='prepare':
             from .campaign_preparation import choose
             choose(server,conn,current,words[1])
@@ -94,10 +106,14 @@ def command(server,conn,words):
         if not current:return ['No active battle campaign.']
         key,data=current;d=document(server,key)
         if data['status']=='complete':return [d['title']+': finished.', 'Reported battles: '+str(len(data['history']))]
-        if data['status']=='choice':return [d['title']+': choose your next opponent.', 'Routes: '+', '.join(data['choices']), 'Use /guild campaign choose NODE.']
+        if data['status']=='choice':return [d['title']+': choose your next route.', 'Routes: '+', '.join(data['choices']), 'Use /guild campaign choose NODE.']
         if data['status'] in ('lobby','waiting'):
             return [text for text,_ in shared_campaigns.rows(server,conn,current)]+['Waiting for fellow trainers. Leave cancels the shared run.']
-        opponent=d['nodes'][data['node']]['opponent']
+        node=d['nodes'][data['node']]
+        if 'visit' in node:
+            from .campaign_visits import describe
+            return describe(node)+['Use the campaign board Check in option, or /guild campaign check-in.']
+        opponent=node['opponent']
         obj=next((x for x in server.objects if x['id']==opponent),None)
         from .campaign_preparation import describe
         return (describe(server,data,d['nodes'][data['node']])+[d['title']+': '+data['node'], 'Approach '+opponent+' and choose Battle.', ('Location: map %s/%s tile %s,%s'%(obj['group'],obj['num'],obj['x'],obj['y'])) if obj else 'Opponent currently away; progress is retained.'] + (['Region: '+obj['region_revision']] if obj and obj.get('region_revision') else []))
@@ -108,7 +124,7 @@ def bind(server,conn,pending):
     current=active(server,conn)
     if not current or current[1]['status']!='ready':return
     key,data=current
-    if document(server,key)['nodes'][data['node']]['opponent']==pending['id']:
+    if document(server,key)['nodes'][data['node']].get('opponent')==pending['id']:
         pending['campaign_binding']=[conn['campaign_run'],key,data['node'],len(data['history'])]
 
 
