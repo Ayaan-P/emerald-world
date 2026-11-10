@@ -166,7 +166,7 @@ class WorldServer:
         from .opportunities import Opportunities
         from .opportunity_chat import OpportunityChat
         self.mysteries = Mysteries(self, validate_coords, TRAVEL_FRESH_SECONDS)
-        self.opportunities = Opportunities(self.db, [m['name'] for m in catalog_maps().values()], self.mysteries)
+        self.opportunities = Opportunities(self.db, [m['name'] for m in catalog_maps().values()], self.mysteries,record_public=self.memory.append)
         self.opportunity_chat = OpportunityChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
         from .field_relays import FieldRelays
         self.relays = FieldRelays(self, validate_coords)
