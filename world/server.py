@@ -1260,6 +1260,10 @@ class WorldServer:
             return
         # Only connected native link peers may be invited. CONTROL connections
         # neither approve requests nor contribute native engine rounds.
+        if raw.startswith(b'B '):
+            from .base_neighborhood import handle as base_directory_handle
+            self._queue(conn,base_directory_handle(self,conn,raw))
+            return
         if raw.startswith(b'U '):
             from .player_tournaments import result as tournament_result
             self._queue(conn,tournament_result(self,conn,raw))
