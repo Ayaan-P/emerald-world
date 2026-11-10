@@ -16,6 +16,9 @@ def handle(server,conn,raw):
             return 'FM WATCH 1\n'
         seq=int(f[2])
         if seq>0xffffffff or server.link_protocol.busy(conn['id']):raise ValueError()
+        if f[1]=='PGET' and len(f)==4 and f[3].isdigit() and 0<int(f[3])<=65535:
+            from .encounter_profiles import offer
+            return offer(server,conn,seq,int(f[3]))
         if f[1]=='GET' and len(f)==4 and f[3].isdigit() and 0<int(f[3])<=65535:
             if getattr(server,'object_use_pending',None):raise ValueError()
             command(server,conn,['moves']);offer=conn['object_moves'];move=int(f[3])
