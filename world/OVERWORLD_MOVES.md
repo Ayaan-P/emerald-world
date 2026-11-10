@@ -15,7 +15,7 @@ Others see the ordinary synchronized prop change. The persistent `object_move_co
 
 ## Agent authoring and action
 
-Existing `world.program_object` states accept `moves:{action:[move IDs]}` in addition to `choices:[player actions]`. The former defines an any-of learned-move requirement; the latter explicitly allows players to invoke that action. Move-gated actions cannot be the ordinary A-button default. IDs are native move IDs, not type names or inferred abilities.
+Existing `world.program_object` states accept `moves:{action:[move IDs]}` in addition to `choices:[player actions]`. The former defines an any-of learned-move requirement; the latter explicitly allows players to invoke that action. Move-gated actions cannot be the ordinary A-button default. Exact IDs are native move IDs. The later MOVE_RESPONSES.md extension also accepts conservative static native type/category selectors; no inferred abilities.
 
 Existing `world.program_network` states also accept `moves:{object ID:{action:[move IDs]}}` and `choices:{object ID:[actions]}`. Thus a move can trigger changes to linked real objects, including their existing bounded one-tile movement. Existing connected-geometry, occupancy, state-machine and publication validators still apply. Regular object use/choice cannot bypass the learned-move gate.
 
