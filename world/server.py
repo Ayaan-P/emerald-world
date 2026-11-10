@@ -1246,6 +1246,9 @@ class WorldServer:
             if (channel is not None and not channel.get('closing')
                     and self.link_protocol.delivery_current(trainer, line)):
                 self._queue(channel, line)
+                from .player_tournaments import observe as tournament_observe
+                watch=tournament_observe(self,trainer,line)
+                if watch:self._queue(channel,watch)
 
     def _link_line(self, conn, raw):
         if (conn.get('closing') or self.link_channels.get(conn['id']) is not conn
@@ -1257,6 +1260,10 @@ class WorldServer:
             return
         # Only connected native link peers may be invited. CONTROL connections
         # neither approve requests nor contribute native engine rounds.
+        if raw.startswith(b'U '):
+            from .player_tournaments import result as tournament_result
+            self._queue(conn,tournament_result(self,conn,raw))
+            return
         if raw.startswith(b'J '):
             from .route_rematch_events import wire as rematch_wire
             self._queue(conn, rematch_wire(self,conn,raw))
