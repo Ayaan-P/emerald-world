@@ -11,13 +11,15 @@ from .guilds import GuildError
 
 
 def requirements(server,obj):
-    return server.module_state.get('world_object_moves',{}).get(obj['id'],{})
+    from .move_selectors import resolve
+    return {a:resolve(v) for a,v in server.module_state.get('world_object_moves',{}).get(obj['id'],{}).items()}
 
 
 def validate_node(node):
     value=node.get('moves',{})
-    if (type(value) is not dict or set(value)-set(node['on']) or any(type(v) is not list or not 1<=len(v)<=8 or any(type(m) is not int or not 1<=m<=65535 or str(m) not in move_names() for m in v) or len(set(v))!=len(v) for v in value.values())):
-        raise ValueError('Move requirements map actions to 1..8 distinct native learned move IDs')
+    from .move_selectors import resolve
+    if type(value) is not dict or set(value)-set(node['on']):raise ValueError('Move requirements name advertised actions')
+    for selector in value.values():resolve(selector)
     if node.get('use') in value:raise ValueError('Move actions require explicit selection, never ordinary A default')
 
 
@@ -64,6 +66,11 @@ def command(server,conn,words):
         lines=[obj['text'],'Selected move/action becomes public shared-world history, not your party.',
                'Use /fieldmove PARTY_SLOT MOVE_SLOT TOKEN ACTION yes.']
         for action,moves in choices.items():
+            from .move_selectors import describe
+            label=describe(server.module_state['world_object_moves'][obj['id']][action])
+            if label:
+                lines.append(f'{token} {action}: '+label)
+                continue
             prefix=f'{token} {action}: ';line=prefix
             for move in moves:
                 label=move_names().get(str(move),'move')+' ('+str(move)+')'
