@@ -9,6 +9,8 @@ def install(db):
       PRIMARY KEY(trainer,lineage));''')
     from .campaign_preparation import install as preparation_install
     preparation_install(db)
+    from .shared_campaigns import install as shared_install
+    shared_install(db)
 
 
 def publish(server, actor, row, args):
@@ -69,7 +71,11 @@ def command(server,conn,words):
         if not conn.get('campaign_run'):raise ValueError('Synchronize the current save before starting a campaign')
         if conn.get('character_pending'):raise ValueError('Finish the current battle first')
         current=active(server,conn)
-        if len(words)==2 and words[0]=='start':
+        from . import shared_campaigns
+        handled=shared_campaigns.command(server,conn,words,current)
+        if handled:
+            pass
+        elif len(words)==2 and words[0]=='start':
             if current and current[1]['status']!='complete':raise ValueError('Leave the current campaign first')
             d=document(server,words[1]);data=dict(node=d['entry'],status='ready',choices=[],history=[])
             with server.db:save(server,conn,d['id'],data)
@@ -83,12 +89,14 @@ def command(server,conn,words):
         elif len(words)==2 and words[0]=='prepare':
             from .campaign_preparation import choose
             choose(server,conn,current,words[1])
-        elif words!=['status']:raise ValueError('Use /guild campaign list|start ID|status|choose NODE|prepare OPTION|leave')
+        elif words!=['status']:raise ValueError('Use /guild campaign list|start ID|share ID|join CODE|begin|status|choose NODE|advise NODE|prepare OPTION|leave')
         current=active(server,conn)
         if not current:return ['No active battle campaign.']
         key,data=current;d=document(server,key)
         if data['status']=='complete':return [d['title']+': finished.', 'Reported battles: '+str(len(data['history']))]
         if data['status']=='choice':return [d['title']+': choose your next opponent.', 'Routes: '+', '.join(data['choices']), 'Use /guild campaign choose NODE.']
+        if data['status'] in ('lobby','waiting'):
+            return [text for text,_ in shared_campaigns.rows(server,conn,current)]+['Waiting for fellow trainers. Leave cancels the shared run.']
         opponent=d['nodes'][data['node']]['opponent']
         obj=next((x for x in server.objects if x['id']==opponent),None)
         from .campaign_preparation import describe
@@ -113,6 +121,10 @@ def result(server,conn,pending,outcome):
     if not current:return
     key,data=current
     if [key,data['node'],len(data['history'])]!=binding[1:] or data['status']!='ready':return
+    if data.get('shared'):
+        from .shared_campaigns import result as shared_result
+        shared_result(server,conn,key,data,pending,outcome)
+        return
     choices=document(server,key)['nodes'][data['node']]['win' if outcome==1 else 'loss']
     data['history'].append(dict(node=data['node'],opponent=pending['id'],version=pending['version'],outcome=outcome,basis='client_attested'))
     data.update(choices=choices,status='choice' if choices else 'complete')

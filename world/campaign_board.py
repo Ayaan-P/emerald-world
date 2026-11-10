@@ -9,21 +9,30 @@ def literal(text,limit=96):
 
 
 def state_key(server,conn):
-    return hashlib.sha256(json.dumps(active(server,conn),sort_keys=True).encode()).hexdigest()
+    from .shared_campaigns import load
+    current=active(server,conn)
+    group=load(server,current[1]['shared']) if current and current[1].get('shared') else None
+    return hashlib.sha256(json.dumps([current,group],sort_keys=True).encode()).hexdigest()
 
 
 def rows(server,conn):
-    current=active(server,conn);out=[]
+    current=active(server,conn)
+    from . import shared_campaigns
+    out=shared_campaigns.rows(server,conn,current)
     if not current or current[1]['status']=='complete':
         if current:out.append(('Campaign finished. Reported battles '+str(len(current[1]['history'])),None))
         for key,text in server.db.execute('SELECT id,document FROM battle_campaigns ORDER BY id LIMIT 32'):
             out.append(('Start '+json.loads(text)['title'],['start',key]))
+            out.append(('Host shared '+json.loads(text)['title'],['share',key]))
         if not out:out.append(('No campaigns published. A configured world author can create one.',None))
     else:
         key,data=current;d=document(server,key)
         out.append((d['title']+' - '+data['status'],None))
-        if data['status']=='choice':
-            for node in data['choices']:
+        if data['status'] in ('lobby','waiting'):
+            pass
+        elif data['status']=='choice':
+            group=shared_campaigns.load(server,data['shared']) if data.get('shared') else None
+            for node in data['choices'] if not group or shared_campaigns.member(conn)==group['speaker'] else []:
                 out.append(('Take route '+node+' against '+d['nodes'][node]['opponent'],['choose',node]))
         else:
             node=d['nodes'][data['node']];actor=node['opponent']
@@ -37,7 +46,7 @@ def rows(server,conn):
             if data.get('preparation'):
                 for text in describe(server,data,node):
                     if text.startswith(('Selected ','Camp ','Region:','Camp actor')):out.append((text,None))
-        out.append(('Leave campaign. Your normal Pokemon and story remain unchanged.',['leave']))
+        out.append(('Cancel shared run for everyone' if data.get('shared') else 'Leave campaign. Pokemon and story unchanged.',['leave']))
     return out
 
 
