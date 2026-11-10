@@ -70,6 +70,8 @@ def dynamic_result(event, identity, character):
 
 
 def setup(queue):
+    from .npc_goal_reviews import setup as setup_reviews
+    setup_reviews(queue)
     from .canonical_intentions import setup as setup_intentions
     setup_intentions(queue)
     from .canonical_routines import setup as setup_routines
@@ -198,6 +200,9 @@ def observe(queue, inspection, fetch, *, enqueue=True):
                 busy=bool(queue.db.execute("SELECT 1 FROM requests WHERE kind='character' AND player=? AND status IN ('queued','running')",(sub['id'],)).fetchone())
                 scheduled=enqueue_routine(queue,sub,character,defer=busy or through!=memory['through'])
                 if scheduled:queued.append(scheduled)
+                from .npc_goal_reviews import enqueue as enqueue_review
+                reviewed=enqueue_review(queue,sub,character,data,defer=busy or through!=memory['through'])
+                if reviewed:queued.append(reviewed)
             queue.db.execute('UPDATE character_reactions SET cursor=? WHERE id=?', (through, sub['id']))
             queue.db.execute("DELETE FROM requests WHERE kind='character' AND status NOT IN ('queued','running') AND seq NOT IN (SELECT seq FROM requests WHERE kind='character' AND status NOT IN ('queued','running') ORDER BY seq DESC LIMIT 64)")
     return queued
@@ -243,6 +248,11 @@ def prepare(context, fetch):
     if scheduled:
         from .canonical_cast import decision_evidence
         matched=len(events)==1 and decision_evidence(events[0],reaction['id'],character)
+    from .npc_goal_reviews import check as check_goal_review,unfinished
+    if check_goal_review(reaction,character):
+        if unfinished(data,reaction['id'],character):raise ValueError('An unfinished plan must settle before goal review')
+        matched=len(events)==1 and seq in character['evidence']
+        context['goal_review_limits']='One-shot reconsideration of an own committed goal. Time is not an event or achievement. Inspect current state/history; choose a guarded action, revise or wait. A new future review needs a new id. No replay of old successes.'
     if reaction.get('intention'):
         from .canonical_cast import decision_evidence
         if reaction['intention'] not in character.get('intentions',[]):raise ValueError('retained intention changed')
