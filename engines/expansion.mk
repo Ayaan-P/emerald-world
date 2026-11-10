@@ -1,3 +1,5 @@
+EW_ROUTE5_CUSTODY ?= 0
+export NATIVE_EXTRA_CPPFLAGS += -DEW_ROUTE5_CUSTODY=$(EW_ROUTE5_CUSTODY)
 WORLD_CHARACTER_CAPTURE_EXPERIMENT ?= 0
 # Run in the pinned donor directory; this integration may live elsewhere.
 EW_INTEGRATION_DIR := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
