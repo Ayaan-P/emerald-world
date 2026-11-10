@@ -1268,6 +1268,10 @@ class WorldServer:
             from .starter_offers import handle as starter_handle
             self._queue(conn,starter_handle(self,conn,raw))
             return
+        if raw.startswith(b'MC '):
+            from .maze_courses import handle as maze_handle
+            self._queue(conn,maze_handle(self,conn,raw))
+            return
         if raw.startswith(b'H '):
             from .spatial_signals import handle as signal_handle
             self._queue(conn,signal_handle(self,conn,raw))
