@@ -21,6 +21,13 @@ def records(state):
     value = state.get(KEY, {}) if type(state) is dict else {}
     if type(value) is not dict or len(value) > 32:
         raise ValueError('at most 32 persistent world characters')
+    archived = state.get('world_character_archive_refs', {})
+    if type(archived) is not dict or len(archived)>256 or set(archived)&set(value):
+        raise ValueError('Invalid archived relationship references')
+    for identity, row in archived.items():
+        if not re.fullmatch('[A-Za-z0-9_-]{1,24}',identity) or type(row) is not dict or set(row)!={'name','version'} or type(row['version']) is not int or row['version']<1:
+            raise ValueError('Invalid archived relationship reference')
+        _text(row['name'],32)
     species = set(json.loads(Path(__file__).with_name('expansion_species.json').read_text())['species'].values())
     for identity, character in value.items():
         if type(identity) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}', identity):
@@ -54,7 +61,7 @@ def records(state):
         if type(relations) is not dict or len(relations) > 8:
             raise ValueError('invalid character relationships')
         for target, relationship in relations.items():
-            if target not in value or target == identity:
+            if (target not in value and target not in archived) or target == identity:
                 raise ValueError('relationships must reference other public characters')
             _text(relationship, 120)
         team = character['team']
@@ -136,11 +143,11 @@ def author_contract():
         'offer_consent':'CHARQUEST1 native explicit acceptance; guild leader only, existing chronicle ON required, never toggle publication; completion uses existing guild authority',
         'team_member': {'species': 'enabled numeric species ID', 'level': 'integer 1..100'},
         'presence': 'active requires a matching top-level objects entry; away/retired must not render',
-        'identity': 'stable ID matches object_id, never delete; retire explicitly; version starts at 1 and increments exactly once per committed changed record, not once per processed history event; coalesce a batch before assigning the version',
+        'identity': 'stable ID matches object_id, never delete active/away actors; retire explicitly; the authority archives previously committed retired records and rejects altered/resurrected echoes; version starts at 1 and increments exactly once per committed changed record, not once per processed history event; coalesce a batch before assigning the version',
         'evidence': 'up to eight exact public world_memory sequence IDs; creation may have none; rationale is authored interpretation, never proof of battles or catches',
         'runtime': 'character_history is an ordered bounded batch after state.character_history_cursor. Process every event once, then acknowledge through in that state key. Empty or has_more does not mean history is absent. Preserve the cursor across script replacements. world_history is only the recent tail.',
         'interaction_order': 'Native dialogue emits INTERACT before battle consent. Keep meet-memory outside the versioned character record if a battle is offered; moving or revising the character during that prompt intentionally invalidates the challenge.',
-        'limits': '32 public fictional characters within the unchanged state budget, four goals, relationships only to other registered NPC identities; never store private player teams or save fields',
+        'limits': '32 live simulation records within the unchanged state budget, four goals; relationships may reference live NPCs or authority-derived world_character_archive_refs. Full immutable retired records are recalled with world.recall_character, never re-created as live actors. Never store private player teams or save fields',
         'native_battles': 'not available through this character registry alone; do not claim a battle occurred or a team is native until the battle adapter confirms it',
     }
 

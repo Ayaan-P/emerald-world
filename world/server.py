@@ -2039,6 +2039,12 @@ class WorldServer:
                 if set(request) != {'command'}:
                     raise ValueError('Invalid canonical contract request.')
                 result = dict(ok=True, **self.core_story.contract())
+            elif request.get('command') == 'character_archive':
+                try:
+                    from .character_archive import recall
+                    if set(request)-{'command','identity','after'}:raise ValueError('Invalid archive query')
+                    result=dict(ok=True,**recall(self,None,None,dict(identity=request.get('identity',''),after=request.get('after',''))))
+                except ValueError as exc:result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'world_history':
                 try:
                     if not set(request) <= {'command', 'after', 'limit', 'place_id', 'through'}:
@@ -2193,6 +2199,8 @@ class WorldServer:
                 result=project_custody(self,result)
                 from .object_networks import project as project_networks
                 result=project_networks(result,self)
+                from .character_archive import project as project_character_archive
+                result, character_before, pending_archives = project_character_archive(self,result)
                 state_json, tiles = self._validated(result)
                 objects = result.get('objects', [])
                 from .region_characters import validate_region_objects
@@ -2200,7 +2208,7 @@ class WorldServer:
                 from .character_walks import validate_walks
                 validate_walks(self,self.module_state,result['state'],objects)
                 from .characters import validate_transition
-                character_changes = validate_transition(self.module_state, result['state'], objects, self.db)
+                character_changes = validate_transition(character_before, result['state'], objects, self.db)
                 from .canonical_cast import validate_transition as validate_canonical
                 canonical_changes=validate_canonical(self.module_state,result['state'],objects,self.db)
                 changed = (kind == 'deploy' or result['state'] != self.module_state or tiles != self.tiles
@@ -2217,6 +2225,8 @@ class WorldServer:
                                 places=overlay_places(self.tiles + tiles, self.objects + objects,self.db),
                                 before=dict(tiles=self.tiles, objects=self.objects),
                                 after=dict(tiles=tiles, objects=objects)))
+                        from .character_archive import commit as commit_character_archive
+                        commit_character_archive(self,pending_archives)
                         from .character_dispatch import archive as archive_character_action
                         archive_character_action(self,self.module_state,result['state'],objects)
                         from .actor_cargo import commit as commit_cargo
