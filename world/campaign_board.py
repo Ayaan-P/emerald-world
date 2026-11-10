@@ -19,8 +19,8 @@ def rows(server,conn):
     current=active(server,conn)
     from . import shared_campaigns
     out=shared_campaigns.rows(server,conn,current)
-    if not current or current[1]['status']=='complete':
-        if current:out.append(('Campaign finished. Reported battles '+str(len(current[1]['history'])),None))
+    if not current or current[1]['status'] in ('complete', 'withdrawn'):
+        if current:out.append((('Campaign withdrawn. Reported stages ' if current[1]['status']=='withdrawn' else 'Campaign finished. Reported stages ')+str(len(current[1]['history'])),None))
         for key,text in server.db.execute('SELECT id,document FROM battle_campaigns ORDER BY id LIMIT 32'):
             doc=json.loads(text);sizes=[len(n['roles']) for n in doc['nodes'].values() if 'roles' in n]
             if not sizes:out.append(('Start '+doc['title'],['start',key]))
