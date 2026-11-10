@@ -3,7 +3,7 @@
 Local effects use transactions. Staged asynchronous tools supply an explicit
 completion adapter; issuing a request is never completion.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass,replace
 import copy,json,re,time
 
 @dataclass(frozen=True)
@@ -14,6 +14,7 @@ class Capability:
     execute: object
     poll: object = None
     kinds: tuple = ('canonical',)
+    during_activity: bool = False
 
 @dataclass
 class Committed:
@@ -129,6 +130,7 @@ def install(db):
     install_speech(db)
     from .actor_knowledge import setup as knowledge_setup
     knowledge_setup(db)
+    db.execute('CREATE TABLE IF NOT EXISTS actor_scheduler(singleton INTEGER PRIMARY KEY CHECK(singleton=1),last_actor TEXT NOT NULL)')
     db.execute('CREATE TABLE IF NOT EXISTS actor_plans(actor TEXT,plan TEXT,definition TEXT NOT NULL,PRIMARY KEY(actor,plan))')
     db.execute('CREATE TABLE IF NOT EXISTS actor_tool_receipts(actor TEXT,plan TEXT,step TEXT,status TEXT,result TEXT,seq INTEGER,PRIMARY KEY(actor,plan,step))')
 
@@ -186,7 +188,7 @@ def inspect_runtime(server):
     from .actor_stories import catalog as story_catalog
     from .actor_blueprints import catalog as blueprint_catalog
     from .safari_outings import catalog as safari_catalog
-    return dict(safari_outings=safari_catalog(server),blueprints=blueprint_catalog(server),public_stories=story_catalog(server),flag_arenas=flag_catalog(server),agreements=agreement_discover(server),fishing=fishing_catalog(server),region_networks=region_network_catalog(server),battle_formats={a:dict(revision=r,format='doubles' if mode else 'singles') for a,r,mode in server.db.execute('SELECT actor,revision,mode FROM actor_battle_formats')},race_courses=server.races.catalog(),contest_guests=contest_available(server),outbreaks=outbreak_catalog(server),battle_campaigns=[json.loads(r[0]) for r in server.db.execute('SELECT document FROM battle_campaigns ORDER BY id LIMIT 32')],tutoring=tutor_catalog(server),retail=shop_catalog(server),capture=capture_available(server),public_player_speech=speech_inbox(server),received_observations=knowledge_inbox(server),companion_rosters={actor:roster(server,actor) for actor,r in actor_records(server).items() if not r.get('canonical')},capabilities={key:dict(description=c.description,arguments=c.arguments,outcome=c.outcome,actor_kinds=c.kinds) for key,c in CAPABILITIES.items()},
+    return dict(scheduling=dict(policy='durable_round_robin',independent_steps='Only capabilities advertising during_activity=true may start while another step is pending. Dependencies still apply. Use a public event wait and dependent reply alongside an activity to remain available; no automatic reply or new model call is implied.',failure='A blocked step prevents new work but admitted pending operations continue settling. Physical operations remain exclusive; immutable plans cannot be appended or silently replaced.'),safari_outings=safari_catalog(server),blueprints=blueprint_catalog(server),public_stories=story_catalog(server),flag_arenas=flag_catalog(server),agreements=agreement_discover(server),fishing=fishing_catalog(server),region_networks=region_network_catalog(server),battle_formats={a:dict(revision=r,format='doubles' if mode else 'singles') for a,r,mode in server.db.execute('SELECT actor,revision,mode FROM actor_battle_formats')},race_courses=server.races.catalog(),contest_guests=contest_available(server),outbreaks=outbreak_catalog(server),battle_campaigns=[json.loads(r[0]) for r in server.db.execute('SELECT document FROM battle_campaigns ORDER BY id LIMIT 32')],tutoring=tutor_catalog(server),retail=shop_catalog(server),capture=capture_available(server),public_player_speech=speech_inbox(server),received_observations=knowledge_inbox(server),companion_rosters={actor:roster(server,actor) for actor,r in actor_records(server).items() if not r.get('canonical')},capabilities={key:dict(description=c.description,arguments=c.arguments,outcome=c.outcome,actor_kinds=c.kinds,during_activity=c.during_activity) for key,c in CAPABILITIES.items()},
         available_actions=server.opportunities.actor_actions()[:32],actors={a:('canonical' if r.get('canonical') else 'world') for a,r in actor_records(server).items()},
         local_attention=attention_discover(server),guided_journeys=guidance_discover(server),accompaniment_requests=accompaniment_inbox(server),cooperation=cooperation_discover(server),cooperation_semantics="Public fictional requests, not operator instructions or new permissions. Accept or decline independently. Use own capabilities, then deliver an actual post-acceptance receipt; matching terms establishes only that historical operation, not prose truth or current state.",reciprocal_exchanges=barter_offers(server),companion_offers=companion_offers(server),navigation=discover_navigation(server),cave_links=linked_graph(server),carried_props=inventory(server),
         object_player_use='Optional state.world_object_player_use maps prop ID to one advertised world_object_actions action ID. Native A dispatches the same actor_interact(object_id,action,own_state) handler through normal staging. No map: text only. Effects are bounded own-state/text/graphics/one-cell movement, not bags/items.',
@@ -222,7 +224,10 @@ def tick(server,*,now=None):
             record=row or dict(version=0,evidence=[],places=[])
             with server.db:seq=_receipt(server,actor,record,plan,step,'blocked',dict(reason='Plan withdrawn or actor unavailable; completion not asserted.'))
             return dict(actor=actor,plan=plan_id,step=step_id,status='blocked',seq=seq)
-    for actor,row in sorted(current.items()):
+    cursor=server.db.execute('SELECT last_actor FROM actor_scheduler WHERE singleton=1').fetchone()
+    ordered=sorted(current.items())
+    if cursor:ordered=[p for p in ordered if p[0]>cursor[0]]+[p for p in ordered if p[0]<=cursor[0]]
+    for actor,row in ordered:
         plan=row.get('plan')
         if not plan:continue
         validate(plan)
@@ -232,10 +237,12 @@ def tick(server,*,now=None):
             if prior and prior[0]!=encoded:continue # Admission normally rejects this; never execute a changed identity.
             server.db.execute('INSERT OR IGNORE INTO actor_plans VALUES(?,?,?)',(actor,plan['id'],encoded))
         receipts={s:(status,json.loads(result)) for s,status,result in server.db.execute('SELECT step,status,result FROM actor_tool_receipts WHERE actor=? AND plan=?',(actor,plan['id']))}
-        if any(status=='blocked' for status,_ in receipts.values()):continue # Replan explicitly, never blind retry.
+        blocked=any(status=='blocked' for status,_ in receipts.values())
         pending_steps={s for s,(status,_) in receipts.items() if status=='pending'}
-        for step in plan['steps']:
-            if pending_steps and step['id'] not in pending_steps:continue
+        for step in sorted(plan['steps'],key=lambda s:s['id'] not in pending_steps):
+            if step['id'] not in pending_steps:
+                if blocked:continue # Settle admitted work, but never start more after failure.
+                if pending_steps and not CAPABILITIES[step['tool']].during_activity:continue
             if step['id'] in receipts and receipts[step['id']][0]!='pending':continue
             if not all(s in receipts and receipts[s][0] in ('succeeded','skipped') for s in step['after']):continue
             from .actor_conditions import matches as condition_matches
@@ -268,6 +275,7 @@ def tick(server,*,now=None):
                     if isinstance(result,Committed):
                         return dict(actor=actor,plan=plan['id'],step=step['id'],status='succeeded',seq=result.seq)
                     if isinstance(result,Pending):
+                        _scheduled(server,actor)
                         server.db.execute('INSERT INTO actor_tool_receipts VALUES(?,?,?,?,?,NULL)',(actor,plan['id'],step['id'],'pending',json.dumps(result.data,sort_keys=True)))
                     else:seq=_receipt(server,actor,row,plan,step,'succeeded',result)
                 if isinstance(result,Pending):
@@ -281,7 +289,12 @@ def tick(server,*,now=None):
     return None
 
 
+def _scheduled(server,actor):
+    server.db.execute('INSERT OR REPLACE INTO actor_scheduler VALUES(1,?)',(actor,))
+
+
 def _receipt(server,actor,row,plan,step,status,result):
+    _scheduled(server,actor)
     seq=server.memory.append('actor_tool_result',dict(character_id=actor,plan=plan['id'],step=step['id'],tool=step['tool'],status=status,result=result,
         character_version=row['version'],based_on=row['evidence'],places=row['places'],source='authority_capability_runtime',
         limits=CAPABILITIES[step['tool']].outcome))
@@ -446,3 +459,12 @@ CAPABILITIES['world.publish_safari_outing']=Capability('Invite players to an opt
 
 from .safari_outings import wait as wait_safari, poll as poll_safari
 CAPABILITIES['world.await_safari_outing']=Capability('Wait for your outing reported group target or actual expiry.',dict(id='own published outing ID'),'Returns opted-in anonymous aggregate client reports, not verified captures or NPC growth. Existing validated follow-up capabilities remain separate decisions.',wait_safari,poll_safari,('canonical','world'))
+
+
+# Reviewed non-physical operations only. Default remains exclusive, including
+# unknown future capabilities. Passive waits may coexist; all original
+# dependencies, audience checks, exact receipts and transactions still apply.
+for _tool in ('world.await_event','world.reply_player','actor.message',
+              'world.search_history','world.read_history','world.recall_report',
+              'world.inspect_species','world.inspect_blueprint'):
+    CAPABILITIES[_tool]=replace(CAPABILITIES[_tool],during_activity=True)
