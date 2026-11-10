@@ -12,6 +12,32 @@ class PrivatePartners(unittest.TestCase):
  def chat(self,p,message):
   p['chat_credit']=4;self.s._line(p,f"CHAT {p['seq']+1} * {message.encode().hex()}".encode())
   lines=[bytes.fromhex(x[3]).decode() for x in p['chat_history']];p['chat_history']=[];return lines
+ def test_canonical_lineage_run_refuses_unbound_npc_without_partial_membership(self):
+  from world.canonical_investigations import install
+  install(self.s.db)
+  with self.s.db:
+   self.s.db.execute('INSERT INTO canonical_investigations VALUES(?,?,?)',('private_pair','canon_wally','fixture'))
+   self.a['core_active_run']='a'*32
+   self.s.db.execute('INSERT INTO mystery_lineages VALUES(?,?,?)',(self.run,'Alice','a'*32))
+  self.assertIsNotNone(self.s.mysteries._current('Alice'))
+  lines=self.chat(self.a,'/mystery npc field_researcher')
+  self.assertTrue(any('unbound two-role' in x for x in lines),lines)
+  self.assertEqual(self.s.db.execute('SELECT count(*) FROM mystery_members WHERE run=?',(self.run,)).fetchone()[0],1)
+  self.assertEqual(self.s.db.execute('SELECT status FROM mystery_runs WHERE id=?',(self.run,)).fetchone()[0],'waiting')
+  self.assertEqual(self.s.db.execute('SELECT count(*) FROM private_mystery_partners').fetchone()[0],0)
+
+ def test_three_role_run_refuses_npc_without_premature_activation(self):
+  import copy
+  self.chat(self.a,'/mystery leave');pack=copy.deepcopy(self.pack);pack['id']='private_three';pack['roles'].append('Third')
+  point=list(self.a['state'][:4]);point[2]+=2
+  pack['stages'][0]['stations'].append(dict(at=point,clue='THIRD_CLUE_ONLY'))
+  self.s.mysteries.publish(pack);self.chat(self.a,'/mystery start private_three');run=self.s.mysteries._current('Alice')[0]
+  lines=self.chat(self.a,'/mystery npc field_researcher')
+  self.assertTrue(any('unbound two-role' in x for x in lines),lines)
+  self.assertEqual(self.s.db.execute('SELECT count(*) FROM mystery_members WHERE run=?',(run,)).fetchone()[0],1)
+  self.assertEqual(self.s.db.execute('SELECT status FROM mystery_runs WHERE id=?',(run,)).fetchone()[0],'waiting')
+  self.assertEqual(self.s.db.execute('SELECT count(*) FROM private_mystery_partners').fetchone()[0],0)
+
  def ready(self):
   self.assertTrue(any('role reserved' in x for x in self.chat(self.a,'/mystery npc field_researcher')))
   self.chat(self.a,'/mystery clue');self.chat(self.a,'/mystery npc-send PRIVATE_PLAYER_MESSAGE')

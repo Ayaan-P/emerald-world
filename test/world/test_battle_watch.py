@@ -19,6 +19,7 @@ class BattleWatchTests(unittest.TestCase):
   native=pathlib.Path(os.environ.get('EW_WATCH_NATIVE_SOURCE','../native-battle-spectating'))/'tests/test_watch.py'
   if not native.exists():self.skipTest('Native spectating source unavailable')
   spec=importlib.util.spec_from_file_location('native_watch',native.resolve());mod=importlib.util.module_from_spec(spec);spec.loader.exec_module(mod)
+  if not getattr(mod,'WATCH_ENABLED',True):self.skipTest('Spectating is intentionally disabled in this release; native and authority boundary tests cover refusal')
   with tempfile.TemporaryDirectory() as d:frame=subprocess.check_output([str(mod.build(d))],text=True).strip()
   before=self.s.db.execute('SELECT COUNT(*) FROM events').fetchone()[0]
   self.send(self.a,frame);self.assertFalse(self.a.get('watch_sharing'))

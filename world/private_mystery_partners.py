@@ -45,7 +45,10 @@ def command(server,trainer,words):
     rid,key,stage,status,role=run
     if role!=0:raise ValueError('Only the initiating participant manages its NPC partner')
     if len(words)==2 and words[0]=='npc':
-        actor=words[1];point=m._pack(key)['stages'][stage]['stations'][1]['at']
+        pack=m._pack(key)
+        if m._canonical(key) or len(pack['roles'])!=2:
+            raise ValueError('Private NPC partners support only unbound two-role mysteries; this investigation needs human partners')
+        actor=words[1];point=pack['stages'][stage]['stations'][1]['at']
         if status!='waiting' or not at(server,alias(actor),point):raise ValueError('A generated NPC must already stand at the second station of this waiting mystery')
         if server.db.execute("SELECT 1 FROM private_mystery_partners p JOIN mystery_runs r ON r.id=p.run WHERE p.actor=? AND r.status IN ('waiting','active')",(actor,)).fetchone():raise ValueError('NPC already participates in another mystery')
         server.db.execute('INSERT INTO mystery_members VALUES(?,1,?)',(rid,alias(actor)))

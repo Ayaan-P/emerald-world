@@ -27,7 +27,7 @@ class SetupTests(unittest.TestCase):
   manifest=json.loads((Path(__file__).resolve().parents[2]/'engines/living-cast-candidate.json').read_text())
   self.assertEqual(build_expansion.PIN,manifest['native_revision'])
   if manifest['release_status']!='verified_for_delivery':
-   self.assertEqual(manifest['release_status'],'daily_integration_pending_pair_build_acceptance')
+   self.assertIn(manifest['release_status'],('daily_integration_pending_pair_build_acceptance','rc13_integration_pending_pair_build_acceptance'))
    self.assertFalse(manifest['linked_native_verified'])
    self.assertFalse(manifest['live_author_verified'])
    self.assertNotIn('verification_file',manifest)

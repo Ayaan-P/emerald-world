@@ -482,6 +482,10 @@ def received_letter(event, identity):
 
 
 def decision_evidence(event, identity, row):
+    from .actor_stories import relevant as story_choice
+    if story_choice(event,identity):return True
+    from .actor_agreements import relevant as agreement_event
+    if agreement_event(event,identity):return True
     from .canonical_investigations import relevant as investigation_choice
     if investigation_choice(event,identity):return True
     from .actor_cooperation import relevant as work_relevant
