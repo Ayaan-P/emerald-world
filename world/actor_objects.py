@@ -231,5 +231,7 @@ def archive_transition(server,before,state,objects):
         return
     seq=server.memory.append('object_transition_committed',dict(object=obj['id'],request=identity,revision=obj.get('region_revision'),before=previous,after=obj,state_digest=value['state_digest'],source='validated_mechanic_admission'))
     server.db.execute('INSERT INTO object_transition_archive VALUES(?,?,?)',(identity,encoded,seq));server.revision=seq
+    from .campaign_mechanisms import admitted as campaign_admitted
+    campaign_admitted(server,identity,seq,before,state)
     from .overworld_moves import admitted
     admitted(server,identity)

@@ -9,6 +9,8 @@ def install(db):
       PRIMARY KEY(trainer,lineage));''')
     from .campaign_preparation import install as preparation_install
     preparation_install(db)
+    from .campaign_mechanisms import install as mechanism_install
+    mechanism_install(db)
     from .shared_campaigns import install as shared_install
     shared_install(db)
 
@@ -27,6 +29,9 @@ def publish(server, actor, row, args):
         if 'roles' in n:
             from .parallel_campaigns import validate as validate_parallel
             validate_parallel(server,n,cast)
+        elif 'mechanism' in n:
+            from .campaign_mechanisms import validate
+            validate(server,n)
         elif 'visit' in n:
             from .campaign_visits import validate
             validate(server,n)
@@ -57,7 +62,7 @@ def publish(server, actor, row, args):
 
 
 def routes(node,outcome='win'):
-    return node['next'] if 'visit' in node else node[outcome]
+    return node['next'] if 'visit' in node or 'mechanism' in node else node[outcome]
 
 
 def active(server,conn):
@@ -102,6 +107,12 @@ def command(server,conn,words):
             if not current or current[1]['status']!='choice' or words[1] not in current[1]['choices']:raise ValueError('Choose one of the offered routes')
             key,data=current;data.update(node=words[1],status='ready',choices=[]);data.pop('preparation',None)
             with server.db:save(server,conn,key,data)
+        elif words==['mechanism-watch']:
+            from .campaign_mechanisms import arm
+            arm(server,conn)
+        elif words==['mechanism-check']:
+            from .campaign_mechanisms import check
+            check(server,conn)
         elif words==['check-in']:
             from .campaign_visits import check_in
             check_in(server,conn,current)
@@ -119,6 +130,9 @@ def command(server,conn,words):
             return [text for text,_ in shared_campaigns.rows(server,conn,current)]+['Waiting for fellow trainers. Leave cancels the shared run.']
         from .parallel_campaigns import effective
         node=effective(server,key,data)
+        if 'mechanism' in node:
+            from .campaign_mechanisms import rows
+            return [text for text,_ in rows(server,data,node)]+['Use the campaign board to watch and check.']
         if 'visit' in node:
             from .campaign_visits import describe
             return describe(node)+['Use the campaign board Check in option, or /guild campaign check-in.']

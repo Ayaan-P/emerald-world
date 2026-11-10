@@ -144,7 +144,7 @@ def rows(server, conn, current):
         return []
     key = current[1]['shared']; group = load(server, key)
     out = [('Shared run '+key+' - '+group['status'], None),
-           ('Joining shares battle reports and voluntary visit check-ins with this party only.', None),
+           ('Joining shares battle reports, visit check-ins and mechanism witnesses with this party only.', None),
            ('Independent tasks in split stages; ordinary stages are repeated by everyone. No verified wins or rewards.', None)]
     from .parallel_campaigns import rows as deployment_rows
     out.extend(deployment_rows(server,conn,current,group))
