@@ -72,3 +72,77 @@ class PopulationTests(unittest.TestCase):
   self.assertEqual(runtime.tick(self.s,now=40)['status'],'succeeded')
   self.assertEqual(runtime.tick(self.s,now=46)['status'],'succeeded')
   self.assertEqual(observe(self.s,'researcher',{},dict(radius=1))['x'],6)
+
+class PersistentPopulationTests(PopulationTests):
+ def create(self,style='rooms',identity='new_place',now=10):
+  self.f.plan(style=style,identity=identity)
+  self.assertEqual(runtime.tick(self.s,now=now)['status'],'succeeded')
+  return self.f.result()['revision']
+ def group(self,revision,definitions):
+  from world.actor_population import populate_group
+  return populate_group(self.s,'harbor_guide',self.s.module_state['world_characters']['harbor_guide'],dict(revision=revision,definitions=json.dumps(definitions,separators=(',',':'))))
+ def test_group_atomic_native_population_and_restart(self):
+  from world.actor_population import poll
+  revision=self.create();a=self.define();b=self.define('colleague');b.update(x=7)
+  pending=self.group(revision,[a,b]);self.assertNotIn('researcher',self.s.module_state['world_characters'])
+  pending.dispatch();self.admit();result=poll(self.s,'harbor_guide',{},pending.data)
+  self.assertEqual(result['outcome'],'population_group_admitted');self.assertEqual(len(result['members']),2)
+  self.assertEqual(observe(self.s,'researcher',{},dict(radius=4))['revision'],revision)
+  client=self.f.connect('GroupVisitor');client.select_region(self.f.result()['place_id']);peer=client.sock.conn
+  peer['character_capable']=peer['character_region_capable']=peer['world_object_capable']=True
+  client.send_state(peer['seq']+1,*self.s.cave_map,5,4,1,7,1,'a'*16,'b'*16)
+  self.assertIn('CHARACTER researcher 1',self.s._snapshot(peer))
+  self.s.close();base=self.f.f.f.f.f.f.f;base.server=base.open();self.s=base.server
+  self.assertEqual(poll(self.s,'harbor_guide',{},pending.data),result)
+  self.assertEqual(len([o for o in self.s.objects if o['id'] in ('researcher','colleague')]),2)
+ def test_group_bad_second_member_never_stages_first(self):
+  revision=self.create();a=self.define();b=self.define('duplicate');b['x']=1;b['y']=1
+  before=deepcopy(self.s.module_state)
+  with self.assertRaises(ValueError):self.group(revision,[a,b])
+  self.assertIsNone(self.s.deployment);self.assertEqual(before,self.s.module_state)
+  with self.assertRaises(ValueError):self.group(revision,[a,a])
+  self.assertNotIn('researcher',self.s.module_state['world_characters'])
+ def test_twenty_actual_admissions_across_three_places_without_wrapper_chain(self):
+  from world.actor_population import spawn,poll
+  index=0
+  for map_index,style in enumerate(('rooms','rounded','organic')):
+   revision=self.create(style,'place_'+str(map_index),10+map_index*100)
+   from world.shared_cave import SharedCave
+   cave=SharedCave(self.s.db.execute('SELECT template FROM generated_area_archive WHERE identity=?',(revision,)).fetchone()[0])
+   cells=[(x,y) for y in range(3,29) for x in range(3,29) if cave.walkable(x,y)]
+   count=0
+   for x,y in cells:
+    definition=self.define('prop_'+str(index),'prop');definition.update(x=x,y=y)
+    try:pending=spawn(self.s,'harbor_guide',self.s.module_state['world_characters']['harbor_guide'],dict(revision=revision,definition=json.dumps(definition)))
+    except ValueError:continue
+    pending.dispatch();self.admit();self.assertEqual(poll(self.s,'harbor_guide',{},pending.data)['object'],definition['id']);index+=1;count+=1
+    if count==(7 if map_index<2 else 6):break
+  self.assertEqual(index,20)
+  source=self.s.candidate.source
+  self.assertEqual(source.count('def _ew_population_step_v1('),1)
+  self.assertEqual(source.count('_ew_population_previous_v1=update'),1)
+  self.assertEqual(len(self.s.module_state['world_population_receipts']),20)
+  self.s.close();base=self.f.f.f.f.f.f.f;base.server=base.open();self.s=base.server
+  self.assertEqual(len([o for o in self.s.objects if o['id'].startswith('prop_')]),20)
+  self.assertEqual(len(self.s.module_state['world_population_receipts']),20)
+ def test_dispatcher_tampering_refused_and_legacy_source_preserved(self):
+  from world.actor_population import dispatch_source
+  old='def update(context,state):\n    return dict(state=state,objects=[])\n'
+  request=dict(request='a',object=dict(id='one'),character=None)
+  source=dispatch_source(old,[request],{})
+  second=dict(request='b',object=dict(id='two'),character=None)
+  self.assertTrue(dispatch_source(source,[second],{}).startswith(old))
+  with self.assertRaises(ValueError):dispatch_source(source.replace('result=_ew_population_previous_v1(context,state)','result={}'),[second],{})
+  with self.assertRaises(ValueError):dispatch_source(source,[request],{})
+ def test_old_append_only_projector_and_receipts_survive_new_dispatcher(self):
+  import inspect
+  from world.actor_population import population_step,dispatch_source
+  first=dict(request='legacy',object=dict(id='old',region_revision='a'*64),character=None)
+  second=dict(request='new',object=dict(id='new',region_revision='b'*64),character=None)
+  base='def update(context,state):\n    return dict(state=state,objects=[])\n'
+  old=base+'\n_old_population=update\n'+inspect.getsource(population_step)+'\ndef update(context,state):\n    return population_step(_old_population(context,state),'+repr(first)+')\n'
+  source=dispatch_source(old,[second],{})
+  self.assertTrue(source.startswith(old));ns={};exec(source,ns)
+  result=ns['update']({},{});again=ns['update']({},deepcopy(result['state']))
+  self.assertEqual(result,again);self.assertEqual(set(result['state']['world_population_receipts']),{'legacy','new'})
+  self.assertEqual([o['id'] for o in result['objects']],['old','new'])
