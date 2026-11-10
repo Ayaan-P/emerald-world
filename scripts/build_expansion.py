@@ -11,7 +11,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '999b40dc0bb9471a9d54e6f34154c64fb7c09dea'
+PIN = 'a8355423fcd4ba90a6668b4d230134da5325354e'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -27,6 +27,7 @@ def main():
     parser.add_argument('--experimental-tower-records', action='store_true', help='enable experimental explicit Tower record imports; requires --development')
     parser.add_argument('--experimental-starter-offers', action='store_true', help='enable experimental optional fresh-save starters; requires --development')
     parser.add_argument('--experimental-field-moves', action='store_true', help='enable learned moves on shared props; requires --development')
+    parser.add_argument('--experimental-native-trades', action='store_true', help='enable local opt-in authored trade templates; requires --development')
     parser.add_argument('--experimental-nature-challenges', action='store_true', help='enable local opt-in nature-driven NPC singles; requires --development')
     parser.add_argument('--experimental-party-practice', action='store_true', help='enable local native egg-move practice; requires --development')
     parser.add_argument('--experimental-maze-courses', action='store_true', help='enable experimental generated Trainer Hill mazes; requires --development')
@@ -50,6 +51,8 @@ def main():
         parser.error('--jobs must be positive')
     if args.experimental_tower_records and not args.development:
         parser.error('--experimental-tower-records requires --development; native save/appearance QA pending')
+    if args.experimental_native_trades and not args.development:
+        parser.error('--experimental-native-trades requires --development; native trade QA pending')
     if args.experimental_nature_challenges and not args.development:
         parser.error('--experimental-nature-challenges requires --development; linked battle QA pending')
     if args.experimental_starter_offers and not args.development:
@@ -161,6 +164,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
     command += ['--', 'make', '-B', '-f', str(ROOT / 'engines/expansion.mk'), f'-j{args.jobs}',
                 f'GENERATED_WORLD_REGIONS={int(args.generated_regions)}',
                 f'WORLD_NATURE_CHALLENGES={int(args.experimental_nature_challenges)}',
+                f'WORLD_TRADE_OFFERS={int(args.experimental_native_trades)}',
                 f'WORLD_CHARACTER_COOP_EXPERIMENT={int(args.experimental_npc_coop)}',
                 f'WORLD_BASE_SHARE_EXPERIMENT={int(args.experimental_secret_bases)}',
                 f'WORLD_TOWER_RECORD_EXPERIMENT={int(args.experimental_tower_records)}',
