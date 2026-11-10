@@ -32,7 +32,9 @@ class DeliveryTests(unittest.TestCase):
         from unittest.mock import patch
         d = load()
         required = {'world/expansion_species.json', 'world/map_catalog.json',
-                    'world/trainer_reference.json', 'world/trainer_experience_catalog.json'}
+                    'world/trainer_reference.json', 'world/trainer_experience_catalog.json',
+                    'world/companion_move_names.json', 'world/encounter_traits.json',
+                    'world/practice_trainer_sources.json', 'world/rental_catalog.json'}
         base = {name: b'{}' for name in required}
         base.update({'world/windows_client.py': b'', 'launcher-web/index.html': b'', d.ENTRY: b''})
         for absent in required:
@@ -84,7 +86,22 @@ class DeliveryTests(unittest.TestCase):
                 'assert catalog_maps(); assert CATALOGUE_PATH.is_file()'], cwd=tmp, check=True)
 
     def test_regions_match_approved_linux_cohort(self):
-        self.assertEqual(load().FLAGS['GENERATED_WORLD_REGIONS'], '0')
+        import json
+        manifest = json.loads((ROOT/'engines/living-cast-candidate.json').read_text())
+        self.assertIn('--generated-regions', manifest['build_arguments'])
+        self.assertEqual(load().FLAGS['GENERATED_WORLD_REGIONS'], '1')
+
+    def test_regions_follow_selected_manifest_not_a_windows_constant(self):
+        from unittest.mock import patch
+        with patch.object(Path, 'read_text', return_value='{"build_arguments": []}'):
+            self.assertEqual(load().FLAGS['GENERATED_WORLD_REGIONS'], '0')
+        with patch.object(Path, 'read_text', return_value='{"build_arguments": ["--generated-regions"]}'):
+            self.assertEqual(load().FLAGS['GENERATED_WORLD_REGIONS'], '1')
+
+    def test_excluded_experiments_are_explicitly_disabled(self):
+        flags = load().FLAGS
+        self.assertEqual(flags['WORLD_CHARACTER_COOP_EXPERIMENT'], '0')
+        self.assertEqual(flags['WORLD_BASE_SHARE_EXPERIMENT'], '0')
 
     def test_expansion_guest_uses_native_cli_and_private_environment(self):
         import json
@@ -163,13 +180,17 @@ class DeliveryTests(unittest.TestCase):
         self.assertTrue(hasattr(d, 'verify_receipt'), 'missing build receipt verifier')
         receipt = {'schema': 1, 'engine': 'expansion-native', 'app_commit': 'a'*40,
                    'engine_commit': 'b'*40, 'flags': {'BITS': '64', 'TARGET_OS': 'windows',
-                   'EW_REGION_STATE': '1', 'EW_KANTO_CONTENT': '1', 'GENERATED_WORLD_REGIONS': '0',
+                   'EW_REGION_STATE': '1', 'EW_KANTO_CONTENT': '1', 'GENERATED_WORLD_REGIONS': '1',
+                   'WORLD_CHARACTER_COOP_EXPERIMENT': '0', 'WORLD_BASE_SHARE_EXPERIMENT': '0',
                    'MAP_VERSION': 'combined'}, 'binary_sha256': d.sha256(pe()),
                    'integration_sha256': d.sha256(b'flags'), 'command': ['make'], 'tools': {'gcc': 'test'}}
         d.verify_receipt(receipt, 'a'*40, 'b'*40, pe(), b'flags')
         for key, value in [('engine', 'vanilla'), ('app_commit', 'c'*40),
                            ('engine_commit', 'd'*40), ('binary_sha256', '0'*64),
-                           ('integration_sha256', '0'*64), ('flags', {'BITS': '32'})]:
+                           ('integration_sha256', '0'*64), ('flags', {'BITS': '32'}),
+                           ('flags', dict(d.FLAGS, GENERATED_WORLD_REGIONS='0')),
+                           ('flags', dict(d.FLAGS, WORLD_CHARACTER_COOP_EXPERIMENT='1')),
+                           ('flags', dict(d.FLAGS, WORLD_BASE_SHARE_EXPERIMENT='1'))]:
             with self.subTest(key=key), self.assertRaises(ValueError):
                 d.verify_receipt(dict(receipt, **{key: value}), 'a'*40, 'b'*40, pe(), b'flags')
 
@@ -222,6 +243,10 @@ class DeliveryTests(unittest.TestCase):
                     'world/map_catalog.json': b'{}',
                     'world/trainer_reference.json': b'{}',
                     'world/trainer_experience_catalog.json': b'{"trainers":{}}',
+                    'world/companion_move_names.json': b'{}',
+                    'world/encounter_traits.json': b'{}',
+                    'world/practice_trainer_sources.json': b'{}',
+                    'world/rental_catalog.json': b'{}',
                     'launcher-web/index.html': b'<html>',
                     'scripts/windows_expansion_entry.py': b'# entry\n',
                     'engines/expansion.mk': b'# flags\n', '.gitignore': b'build/\n'}.items():
@@ -264,6 +289,15 @@ class DeliveryTests(unittest.TestCase):
             entry = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(entry)
             self.assertEqual(entry.verify(stage), stage/'game/pokeemerald-native.exe')
+            for flag, value in [('GENERATED_WORLD_REGIONS', '0'),
+                                ('WORLD_CHARACTER_COOP_EXPERIMENT', '1'),
+                                ('WORLD_BASE_SHARE_EXPERIMENT', '1')]:
+                wrong = dict(manifest, build=dict(manifest['build'],
+                             flags=dict(d.FLAGS, **{flag: value})))
+                (stage/'provenance.json').write_text(json.dumps(wrong))
+                with self.subTest(flag=flag), self.assertRaisesRegex(ValueError, 'cohort'):
+                    entry.verify(stage)
+            (stage/'provenance.json').write_text(json.dumps(manifest))
             (stage/'world/windows_client.py').write_text('# tampered')
             with self.assertRaisesRegex(ValueError, 'hash mismatch'):
                 entry.verify(stage)

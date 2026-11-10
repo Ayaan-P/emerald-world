@@ -18,7 +18,8 @@ def verify(root):
     build = manifest.get('build', {})
     if (manifest.get('engine') != 'expansion-native' or build.get('engine') != 'expansion-native'
             or build.get('flags') != {'BITS': '64', 'TARGET_OS': 'windows', 'EW_REGION_STATE': '1',
-                'EW_KANTO_CONTENT': '1', 'GENERATED_WORLD_REGIONS': '0', 'MAP_VERSION': 'combined'}):
+                'EW_KANTO_CONTENT': '1', 'GENERATED_WORLD_REGIONS': '1', 'MAP_VERSION': 'combined',
+                'WORLD_CHARACTER_COOP_EXPERIMENT': '0', 'WORLD_BASE_SHARE_EXPERIMENT': '0'}):
         raise ValueError('Not the matched Expansion Windows cohort')
     files = manifest.get('files', {})
     required = {'scripts/windows_expansion_entry.py', 'world/windows_client.py',

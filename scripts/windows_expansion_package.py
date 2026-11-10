@@ -61,11 +61,20 @@ def check_pe(data, *, dll=False):
     if machine != 0x8664 or magic != 0x20b or bool(flags & 0x2000) != dll:
         raise ValueError('Expected x64 PE32+ DLL' if dll else 'Expected x64 PE32+ executable')
 
+# Match the selected Linux cohort, including its explicit manifest arguments.
+# The generic release default alone does not select generated regions.
+BUILD_ARGUMENTS = json.loads((Path(__file__).resolve().parents[1] /
+                             'engines/living-cast-candidate.json').read_text())['build_arguments']
 FLAGS = {'BITS': '64', 'TARGET_OS': 'windows', 'EW_REGION_STATE': '1',
-         'EW_KANTO_CONTENT': '1', 'GENERATED_WORLD_REGIONS': '0', 'MAP_VERSION': 'combined'}
+         'EW_KANTO_CONTENT': '1',
+         'GENERATED_WORLD_REGIONS': '1' if '--generated-regions' in BUILD_ARGUMENTS else '0',
+         'MAP_VERSION': 'combined', 'WORLD_CHARACTER_COOP_EXPERIMENT': '0',
+         'WORLD_BASE_SHARE_EXPERIMENT': '0'}
 SECRET = re.compile(rb'-----BEGIN (?:[A-Z ]*PRIVATE KEY)-----|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|sk-(?:proj-)?[A-Za-z0-9_-]{30,}|AKIA[A-Z0-9]{16}')
 DATA = {'world/expansion_species.json', 'world/map_catalog.json',
-        'world/trainer_reference.json', 'world/trainer_experience_catalog.json'}
+        'world/trainer_reference.json', 'world/trainer_experience_catalog.json',
+        'world/companion_move_names.json', 'world/encounter_traits.json',
+        'world/practice_trainer_sources.json', 'world/rental_catalog.json'}
 ENTRY = 'scripts/windows_expansion_entry.py'
 
 
