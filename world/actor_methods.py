@@ -112,7 +112,7 @@ def catalog(server):
 def command(server,conn,args):
     rows=catalog(server)
     if args:rows=[r for r in rows if r['actor']==args[0]]
-    return ['Retained NPC methods: public completed actions, not promises of future success.']+[f"{r['actor']}: {r['name']} ({len(r['steps'])} steps; evidence {','.join(map(str,r['evidence']))})" for r in rows[:8]]
+    return ['Retained NPC methods: public completed actions, not promises of future success.']+[f"{r['actor']}: {r['name']} [teacher: {r.get('teacher',{}).get('actor','own experience')}] ({len(r['steps'])} steps; evidence {','.join(map(str,r['evidence']))})" for r in rows[:8]]
 
 
 def expanded_plan(server,actor,plan):
