@@ -1054,7 +1054,7 @@ class WorldServer:
                 with self.lock:
                     try:watch_handle(self,conn,fields)
                     except (ValueError,TypeError,KeyError):
-                        if fields[1:2]==['FRAME']:
+                        if fields[1:2] in (['FRAME'],['SOLO']):
                             conn['watch_sharing']=False;conn.pop('watch_frame',None)
                             self._queue(conn,'WATCH_PERMISSION 0\n')
                         self._queue(conn,'WATCH_INFO '+b'Battle view unavailable. Use /watch list.'.hex()+'\n')

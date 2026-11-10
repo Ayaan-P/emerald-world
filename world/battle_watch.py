@@ -26,7 +26,7 @@ def handle(server,conn,fields):
         if not target or target is conn or target.get('closing') or not target.get('watch_sharing'):raise ValueError('Trainer not sharing')
         conn.pop('watch_list',None)
         conn['watch_target']=target # exact connection, never silently follow reconnect
-    elif len(fields)>=4 and fields[1]=='FRAME':
+    elif len(fields)>=4 and fields[1]=='SOLO':
         if not conn.get('watch_sharing'):raise ValueError('Sharing not enabled')
         seq=int(fields[2]);count=int(fields[3])
         if not 0<seq<=2147483647 or seq<=conn.get('watch_sequence',0) or count not in (0,1,2,3,4) or len(fields)!=4+count:raise ValueError('Invalid frame')

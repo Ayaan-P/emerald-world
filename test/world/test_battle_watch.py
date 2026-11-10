@@ -31,7 +31,7 @@ class BattleWatchTests(unittest.TestCase):
   self.send(self.a,'WATCH SHARE 0');self.assertNotIn('23/30',str(battle_watch.lines(self.s,self.b)))
  def test_stale_frames_disconnect_reconnect_and_legacy(self):
   self.send(self.a,'WATCH SHARE 1');self.send(self.b,'WATCH TARGET Alice')
-  with patch('world.battle_watch.time.monotonic',return_value=100):self.send(self.a,'WATCH FRAME 1 2 0:280:12:23:30 1:278:15:40:40')
+  with patch('world.battle_watch.time.monotonic',return_value=100):self.send(self.a,'WATCH SOLO 1 2 0:280:12:23:30 1:278:15:40:40')
   with patch('world.battle_watch.time.monotonic',return_value=103):
    text=bytes.fromhex(battle_watch.lines(self.s,self.b)[0].split()[1]).decode()
    self.assertIn('waiting',text)
@@ -44,9 +44,14 @@ class BattleWatchTests(unittest.TestCase):
   self.send(self.a,'WATCH SHARE 1');self.send(self.b,'WATCH LIST')
   self.assertIn('Alice',str([bytes.fromhex(x).decode() for x in battle_watch.lines(self.s,self.b)[0].split()[1:]]))
   self.send(self.b,'WATCH OFF');self.assertEqual(battle_watch.lines(self.s,self.b),[])
-  self.send(self.a,'WATCH FRAME 1 2 0:280:12:23:30 1:278:15:40:40')
-  self.send(self.a,'WATCH FRAME 1 2 0:280:12:23:30 1:278:15:40:40')
+  self.send(self.a,'WATCH SOLO 1 2 0:280:12:23:30 1:278:15:40:40')
+  self.send(self.a,'WATCH SOLO 1 2 0:280:12:23:30 1:278:15:40:40')
   self.assertFalse(self.a.get('watch_sharing'));self.assertNotIn('watch_frame',self.a)
-  self.send(self.a,'WATCH SHARE 1');self.send(self.a,'WATCH FRAME 2 1 0:280:12:100:30')
+  self.send(self.a,'WATCH SHARE 1');self.send(self.a,'WATCH SOLO 2 1 0:280:12:100:30')
   self.assertFalse(self.a['watch_sharing'])
   self.assertNotIn('watch_frame',self.a)
+ def test_old_unfiltered_frame_is_refused_and_withdrawn(self):
+  self.send(self.a,'WATCH SHARE 1');self.send(self.b,'WATCH TARGET Alice')
+  self.send(self.a,'WATCH FRAME 1 1 1:280:12:23:30')
+  self.assertFalse(self.a['watch_sharing']);self.assertNotIn('watch_frame',self.a)
+  self.assertNotIn('RALTS',str(battle_watch.lines(self.s,self.b)))
