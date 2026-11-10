@@ -21,8 +21,15 @@ def validate(server,node,cast):
 
 
 def party_size(doc,size):
-    if any('roles' in node and len(node['roles'])!=size for node in doc['nodes'].values()):
-        raise ValueError('This campaign requires exactly one trainer for each split-stage role')
+    for node in doc['nodes'].values():
+        if 'roles' not in node:continue
+        roles=node['roles'];optional=sum('revision' in task.get('visit',{}) for task in roles.values())
+        if not len(roles)-optional<=size<=len(roles):
+            raise ValueError('This campaign requires enough trainers for all non-NPC roles')
+
+
+def assignment_count(group):
+    return len(group.get('roles',{}))+len(group.get('npc_roles',{}))
 
 
 def stage_status(doc,node):
@@ -48,12 +55,12 @@ def choose(server,conn,key,group,role):
     if not current or current[1].get('shared')!=key or current[1]['status']!='deploying':raise ValueError('Current save is not in this deployment')
     node=document(server,group['campaign'])['nodes'][group['node']]
     assignments=group.setdefault('roles',{})
-    if role not in node['roles'] or role in assignments.values() or conn['id'] in assignments:
+    if role not in node['roles'] or role in list(assignments.values())+list(group.get('npc_roles',{}).values()) or conn['id'] in assignments:
         raise ValueError('Choose an unclaimed role; selected roles remain fixed for this stage')
     with server.db:
         assignments[conn['id']]=role
         data=current[1];data['role']=role;save(server,conn,current[0],data)
-        if len(assignments)==len(group['members']):
+        if assignment_count(group)==len(node['roles']):
             group['status']='ready';update_members(server,key,group,status='ready')
         store(server,key,group)
 
@@ -64,7 +71,7 @@ def rows(server,conn,current,group):
     if 'roles' not in node:return []
     assignments=group.get('roles',{});out=[('Split party. Each trainer chooses one distinct task. All must report before regrouping.',None)]
     for role,task in node['roles'].items():
-        claimed=next((trainer for trainer,chosen in assignments.items() if chosen==role),None)
+        claimed=next((trainer for trainer,chosen in list(assignments.items())+list(group.get('npc_roles',{}).items()) if chosen==role),None)
         label=task['visit']['label'] if 'visit' in task else 'Battle '+task['opponent']
         action=['role',role] if group['status']=='deploying' and claimed is None and conn['id'] not in assignments else None
         out.append((role+' - '+label+(' - claimed by '+claimed if claimed else ' - available'),action))

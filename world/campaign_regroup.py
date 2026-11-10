@@ -27,7 +27,7 @@ def command(server, conn, words, key, group):
             if me != group['speaker'] or group['status'] != 'choice' or words[1] not in group['choices']:
                 raise ValueError('Speaker chooses an available next route before reopening the party')
             document(server, group['campaign'])['nodes'][words[1]]
-            group.update(node=words[1], status='lobby', results={}, advice={}, choices=[], roles={}, speaker_volunteers=[])
+            group.update(node=words[1], status='lobby', results={}, advice={}, choices=[], roles={}, npc_roles={}, npc_results={}, npc_status={}, speaker_volunteers=[])
             update_members(server, key, group, node=words[1], status='lobby', choices=[])
         elif words == ['withdraw']:
             if group['status'] != 'lobby':
