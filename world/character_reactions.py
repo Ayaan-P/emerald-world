@@ -20,6 +20,8 @@ def actors(state):
 
 
 def dynamic_result(event, identity, character):
+    from .actor_agreements import relevant as agreement_relevant
+    if agreement_relevant(event,identity):return True
     from .actor_attention import relevant as attention_relevant
     if attention_relevant(event,identity):return True
     from .trainer_experiences import relevant as campaign_relevant
