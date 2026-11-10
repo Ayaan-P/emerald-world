@@ -20,6 +20,8 @@ def actors(state):
 
 
 def dynamic_result(event, identity, character):
+    from .method_exchange import relevant as lesson_relevant
+    if lesson_relevant(event,identity):return True
     from .move_assistance import relevant as assistance_relevant
     if assistance_relevant(event,identity):return True
     from .player_npc_memory import relevant as remembered_player
