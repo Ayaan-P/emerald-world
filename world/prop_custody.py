@@ -28,7 +28,8 @@ def project(server,result):
     for identity,owner,raw,_ in rows:
         if identity in actors:raise ValueError('A custodied prop cannot become a character')
         if owner is not None:
-            if owner not in actors or actors[owner].get('status')=='retired':raise ValueError('Place carried props before retiring or removing their carrier')
+            from .player_cargo import is_player
+            if not is_player(server.db,owner) and (owner not in actors or actors[owner].get('status')=='retired'):raise ValueError('Place carried props before retiring or removing their carrier')
             carrier=objects.get(owner)
             if carrier and carrier.get('region_revision')!=json.loads(raw)['region_revision']:
                 from .actor_cargo import matching
