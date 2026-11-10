@@ -461,6 +461,9 @@ class LauncherBridge:
                     raise
                 except Exception:
                     raise SessionError('Area generation could not complete. Check model login and local host setup before retrying.') from None
+            elif action.startswith('cast_agent_'):
+                from .cast_agent_ui import action as cast_agent_action
+                return cast_agent_action(self.session,self.local_expeditions(),action,payload,binary=self.binary)
             elif action in ('content_read', 'content_preview', 'content_apply'):
                 if self.engine != 'expansion-native':
                     raise SessionError('Content workshop requires the Expansion launcher.')
@@ -468,6 +471,30 @@ class LauncherBridge:
                 if not hasattr(self, 'content_workshop'):
                     self.content_workshop = ContentWorkshop()
                 return self.content_workshop.action(self.session, self.local_expeditions(), action, payload)
+            elif action in ('adventure_read', 'adventure_preview', 'adventure_apply'):
+                if self.engine != 'expansion-native':
+                    raise SessionError('Lantern Trail requires the Expansion launcher.')
+                fields = {'adventure_read': {'world'}, 'adventure_preview': {'world', 'adventure'},
+                          'adventure_apply': {'world', 'token', 'confirmed'}}
+                if (type(payload) is not dict or set(payload) != fields[action]
+                        or type(payload.get('world')) is not str):
+                    raise SessionError('Choose an owned adventure world and supported review fields.')
+                if action == 'adventure_apply' and payload['confirmed'] is not True:
+                    raise SessionError('Review and confirm the exact adventure before applying.')
+                if payload['world'].startswith('hosted-'):
+                    world_id = payload['world'][len('hosted-'):]
+                    if not re.fullmatch(r'[0-9a-f]{16}', world_id):
+                        raise SessionError('Choose an owned hosted world from the library.')
+                    if not callable(getattr(self.hosted, 'adventure_action', None)):
+                        raise SessionError('This hosted service does not provide adventure management yet. Remote area generation remains available in Explore.')
+                    return self.hosted.adventure_action(action, {**payload, 'world': world_id})
+                from .product_adventure import AdventureWorkshop
+                if not hasattr(self, 'adventure_workshop'):
+                    self.adventure_workshop = AdventureWorkshop()
+                return self.adventure_workshop.action(self.session, self.local_expeditions(), action, payload)
+            elif action == 'player_activity_read':
+                from .player_activity import read_activity
+                return read_activity(self.session, self.local_expeditions(), payload)
             elif action == 'journal_read':
                 from .world_journal import read_journal
                 return read_journal(self.session, self.local_expeditions(), payload)
@@ -866,7 +893,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     from scripts.linux_client import discover_binary, prerequisites
     binary = args.binary or discover_binary(args.engine)
-    build_hint = ('python3 scripts/build_expansion.py' if args.engine == 'expansion-native'
+    build_hint = ('python3 scripts/build_expansion.py --generated-regions' if args.engine == 'expansion-native'
                   else 'make linux CFLAGS=-g WERROR=1')
     checks = [(name, ready, detail if name != 'binary' else f'{binary}. Build with: {build_hint}')
               for name, ready, detail in prerequisites(binary) if name != 'tkinter']

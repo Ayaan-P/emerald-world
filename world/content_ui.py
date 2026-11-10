@@ -53,7 +53,10 @@ class ContentWorkshop:
                     identity=cave.identity if cave else None, version=cave.version if cave else None,
                     rows=[row.decode('ascii') for row in cave._rows] if cave else [],
                     outcomes=outcomes, residents=sorted(server.module_state.get('world_characters', {})),
-                    players=sum(not peer.get('closing') for peer in server.peers.values()))
+                    players=sum(not peer.get('closing') for peer in server.peers.values()),
+                    activities=server.activities.catalog(),
+                    relay_courses=[dict(id=key,title=json.loads(raw)['title'],runners=len(json.loads(raw)['legs']))
+                                   for key,raw in server.db.execute('SELECT id,document FROM relay_courses ORDER BY id LIMIT 8')])
 
     @staticmethod
     def _guard(current):
@@ -80,6 +83,16 @@ class ContentWorkshop:
                         raise ValueError('content plan exceeds 16384 bytes')
                     plan = deepcopy(payload['plan']); kind = payload['kind']; label = payload['label']
                     request: dict[str, Any]
+                    if kind == 'field_story':
+                        from .field_story_bundle import curated, inspect
+                        if plan != {}:raise ValueError('The curated field story uses its reviewed built-in plan.')
+                        plan=curated();report=inspect(server,plan);token=secrets.token_hex(24)
+                        self.draft=dict(token=token,server=server,guard=self._guard(current),
+                                        request=dict(command='publish_field_story',bundle=plan),report=report,
+                                        expires=time.monotonic()+900)
+                        return dict(current,token=token,kind=kind,mode='install',plan=plan,report=report,
+                                    proposed_rows=current['rows'],
+                                    validation='Install both story parts together. Existing geography, trainers and progress are retained. Requires two matched RC12 clients. Station walkability still needs in-game QA.')
                     if kind == 'field_test':
                         if current['identity'] is not None or server.candidate is not None or server.objects:
                             raise SessionError('Use a separate empty local world for the RC11 field test. Existing geography and inhabitants cannot be replaced.')
@@ -142,6 +155,10 @@ class ContentWorkshop:
                 # automatically replayed, even if the HTTP response is lost.
                 self.draft = None
                 request = draft['request']
+                if request['command'] == 'publish_field_story':
+                    from .field_story_bundle import install
+                    installed=install(server,request['bundle'])
+                    return dict(self._read(server,payload['world']),saved=True,field_story=installed)
                 if request['command'] == 'construct_outpost':
                     from .frontier_outposts import construct
                     construct(server, request)

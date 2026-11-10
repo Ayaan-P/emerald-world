@@ -1,0 +1,98 @@
+{
+  "id": "signal_after_v2",
+  "title": "The River Signal Returns",
+  "qualities": {
+    "relay": {
+      "scope": "place",
+      "initial": 0,
+      "max": 2
+    },
+    "heard": {
+      "scope": "player",
+      "initial": 0,
+      "max": 1
+    }
+  },
+  "scenes": {
+    "decision": {
+      "place": "RustboroCity",
+      "text": "Your decoded signal reveals an old flood warning relay. What should the town do?",
+      "requires": {
+        "relay": [
+          0,
+          0
+        ]
+      },
+      "once": "world",
+      "mystery": "signal_v2",
+      "choices": {
+        "restore": {
+          "text": "Restore the public warning relay.",
+          "requires": {},
+          "effects": {
+            "relay": 1
+          },
+          "result": "The town adopts the warning signal. Later visitors will hear its story."
+        },
+        "archive": {
+          "text": "Preserve the message in the town archive.",
+          "requires": {},
+          "effects": {
+            "relay": 2
+          },
+          "result": "The town preserves the decoded message. Later visitors can learn its history."
+        }
+      }
+    },
+    "warning": {
+      "place": "RustboroCity",
+      "text": "Townspeople tell you two explorers recovered the river warning signal.",
+      "requires": {
+        "relay": [
+          1,
+          1
+        ],
+        "heard": [
+          0,
+          0
+        ]
+      },
+      "once": "player",
+      "choices": {
+        "listen": {
+          "text": "Learn the warning call.",
+          "requires": {},
+          "effects": {
+            "heard": 1
+          },
+          "result": "You remember the story of the restored relay."
+        }
+      }
+    },
+    "archive": {
+      "place": "RustboroCity",
+      "text": "The archive displays an old river message recovered by two explorers.",
+      "requires": {
+        "relay": [
+          2,
+          2
+        ],
+        "heard": [
+          0,
+          0
+        ]
+      },
+      "once": "player",
+      "choices": {
+        "read": {
+          "text": "Read the recovered message.",
+          "requires": {},
+          "effects": {
+            "heard": 1
+          },
+          "result": "You remember the story of the archived signal."
+        }
+      }
+    }
+  }
+}

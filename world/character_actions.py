@@ -14,12 +14,10 @@ def validate_actions(actions, context):
     cast=copy.deepcopy(records(state))
     if type(actions) is not list or not 1<=len(actions)<=8 or len(json.dumps(actions).encode())>16384:
         raise ValueError('one to eight character actions within 16 KiB required')
-    if len(state.get('world_character_action_receipts',[]))>=32:
-        raise ValueError('consolidate existing source before adding more character actions')
     known={e['seq'] for e in context.get('recalled_history',{}).get('events',[])+data.get('world_memory',{}).get('recent',[]) if type(e.get('seq')) is int}
     seen=set()
     for action in actions:
-        if type(action) is not dict or set(action)-{'walk'}!={'id','expected_version','evidence','reason','changes','object'}:
+        if type(action) is not dict or set(action)-{'walk','journey','meet','survey','preconditions'}!={'id','expected_version','evidence','reason','changes','object'}:
             raise ValueError('invalid character action fields')
         identity=action['id']
         if type(identity) is not str or identity not in cast or identity in seen:
@@ -32,13 +30,21 @@ def validate_actions(actions, context):
         evidence=action['evidence']
         if type(evidence) is not list or not evidence or any(type(seq) is not int or seq not in known for seq in evidence):
             raise ValueError('actions require inspected public history evidence')
+        if 'preconditions' in action:
+            condition=action['preconditions']
+            if type(condition) is not dict or set(condition)!={'source','prop','arrival'}:
+                raise ValueError('Invalid action preconditions')
+            validate_objects([condition['source'],condition['prop']])
+            if condition['source']['id']!=identity or condition['arrival']!=action['object']:
+                raise ValueError('Preconditions must bind this actor and exact destination')
         changes=action['changes']
-        if type(changes) is not dict or set(changes)-{'goals','relationships','team','status','offer'}:
+        if type(changes) is not dict or set(changes)-{'plan','goals','relationships','team','status','offer','services','battle_portrait','intentions','campaign_interests'}:
             raise ValueError('unsupported character action changes')
-        if 'walk' in action:
-            path=action['walk'];obj=action['object']
+        if 'walk' in action and 'journey' in action:raise ValueError('choose walk or journey, not both')
+        if 'walk' in action or 'journey' in action:
+            path=action.get('journey',action.get('walk'));obj=action['object']
             original=next((o for o in data.get('objects',[]) if o['id']==identity),None)
-            if (type(path) is not list or not 2<=len(path)<=6 or
+            if (type(path) is not list or not 2<=len(path)<=(65 if 'journey' in action else 6) or
                     any(type(p) is not list or len(p)!=2 or any(type(v) is not int for v in p) for p in path) or
                     len({tuple(p) for p in path})!=len(path) or
                     any(abs(a[0]-b[0])+abs(a[1]-b[1])!=1 for a,b in zip(path,path[1:])) or
@@ -46,7 +52,14 @@ def validate_actions(actions, context):
                     character['status']!='active' or changes.get('status','active')!='active' or
                     path[0]!=[original['x'],original['y']] or path[-1]!=[obj['x'],obj['y']] or
                     any(original.get(k)!=obj.get(k) for k in ('group','num','region_revision'))):
-                raise ValueError('walk requires 2..6 unique cardinal points in the current generated place')
+                raise ValueError('walk/journey requires bounded unique cardinal points in the current generated place')
+        if 'survey' in action:
+            if 'journey' not in action:raise ValueError('field survey requires an actual journey')
+            from .character_reconnaissance import validate
+            validate(action)
+        if 'meet' in action:
+            from .character_encounters import validate_request
+            validate_request(action,cast,data.get('objects',[]))
         character.update(copy.deepcopy(changes),version=character['version']+1,evidence=evidence,reason=action['reason'])
         if character.get('offer') is None:character.pop('offer',None)
         obj=action['object']
@@ -73,21 +86,42 @@ def action_step(actions, definition, result, context=None):
             identity=action['id'];character=cast[identity]
             if character['version']!=action['expected_version']:
                 raise ValueError('character changed before action admission')
+            if 'preconditions' in action:
+                condition=action['preconditions'];visible={o['id']:o for o in result.get('objects',[])}
+                if controls.get(identity,{}).get('object',visible.get(identity))!=condition['source'] or visible.get(condition['prop']['id'])!=condition['prop']:
+                    raise ValueError('Cave link source changed before admission')
+                arrival=condition['arrival']
+                if any(p.get('ready') and p.get('generated_place',{}).get('revision')==arrival.get('region_revision')
+                    and [p.get('x'),p.get('y')]==[arrival['x'],arrival['y']] for p in (context or {}).get('players',[])):
+                    raise ValueError('Cave arrival tile became occupied')
             character=copy.deepcopy(character)
             character.update(copy.deepcopy(action['changes']),version=character['version']+1,
                              evidence=action['evidence'],reason=action['reason'])
             if character.get('offer') is None:character.pop('offer',None)
             controls[identity]={'character':character,'object':copy.deepcopy(action['object'])}
-            if 'walk' in action:
-                controls[identity]['walk']={'id':definition[:24],'path':copy.deepcopy(action['walk']),'index':0,'last_tick':tick}
-                controls[identity]['object']['x'],controls[identity]['object']['y']=action['walk'][0]
+            if 'walk' in action or 'journey' in action:
+                path=action.get('journey',action.get('walk'))
+                if 'journey' in action:
+                    controls[identity]['journey']={'id':definition[:24],'path':copy.deepcopy(path),'segment':0}
+                    if 'survey' in action:controls[identity]['journey']['survey']=action['survey']
+                    if 'meet' in action:controls[identity]['journey']['meeting']=copy.deepcopy(action['meet'])
+                controls[identity]['walk']={'id':definition[:20]+'0000' if 'journey' in action else definition[:24],'path':copy.deepcopy(path[:6]),'index':0,'last_tick':tick}
+                controls[identity]['object']['x'],controls[identity]['object']['y']=path[0]
         receipts.append(definition)
     for identity,control in sorted(controls.items()):
-        walk=control.get('walk')
+        walk=control.get('walk');journey=control.get('journey')
+        if (journey and walk and walk['index']==len(walk['path'])-1
+                and journey['segment']+len(walk['path'])<len(journey['path']) and walk['last_tick']!=tick):
+            journey['segment']+=5
+            control['character']['version']+=1
+            walk={'id':journey['id'][:20]+('%04x'%journey['segment']),'path':copy.deepcopy(journey['path'][journey['segment']:journey['segment']+6]),'index':0,'last_tick':tick}
+            control['walk']=walk
         if walk and walk['index']<len(walk['path'])-1 and walk['last_tick']!=tick:
             point=walk['path'][walk['index']+1];obj=control['object']
             occupied=any(p.get('ready') and p.get('generated_place',{}).get('revision')==obj.get('region_revision')
                          and [p.get('x'),p.get('y')]==point for p in (context or {}).get('players',[]))
+            obstacles=[o for o in result.get('objects',[]) if o['id'] not in controls]+[c['object'] for key,c in controls.items() if key!=identity and c.get('object')]
+            occupied=occupied or any(o['id']!=identity and o.get('region_revision')==obj.get('region_revision') and [o['x'],o['y']]==point for o in obstacles)
             if not occupied:
                 walk['index']+=1;obj['x'],obj['y']=point
             walk['last_tick']=tick
@@ -104,22 +138,20 @@ def compile_actions(actions, context):
     if type(previous) is not str or hashlib.sha256(previous.encode()).hexdigest()!=data.get('module_hash'):
         raise ValueError('verified active source required for character actions')
     definition=hashlib.sha256(json.dumps(actions,sort_keys=True).encode()).hexdigest()
-    suffix=definition[:16]
-    helper=inspect.getsource(action_step).replace('def action_step(',f'def _action_step_{suffix}(',1)
-    # Fresh sandbox staging must continue the inspected durable world, not
-    # recreate the previous source's first chapter. Nonempty runtime state
-    # remains authoritative, including admission/version checks below.
-    checkpoint=copy.deepcopy(data.get('state',{}))
-    return (previous+'\n'+f'_action_previous_{suffix}=update\n'+helper+'\n'+
-            f'def update(context,state):\n    if not state:\n        import copy\n        state=copy.deepcopy({checkpoint!r})\n    return _action_step_{suffix}({actions!r}, {definition!r}, _action_previous_{suffix}(context,state), context)\n')
+    from .character_dispatch import source
+    return source(previous,actions,definition,copy.deepcopy(data.get('state',{})))
 
 
 def contract():
     return {'response':'{"character_actions": actions, "tests": "Python tests"}',
             'action_fields':['id','expected_version','evidence','reason','changes','object'],
+            'optional_survey':'with journey only: public literal title 1..48 characters; completed route measures immutable cardinal access at each visited point and publishes a durable field report; no invented wildlife, resources or player participation',
+            'optional_meet':'with journey only: {target, expected_version, text}; existing active world character on same exact revision, destination adjacent to inspected target. Arrival rechecks position/version/readiness and delivers a public fictional message or records actual missed encounter; never forces reply or friendship',
+            'optional_journey':'2..65 unique cardinal points on the same exact generated map; authority chains existing six-point native walks autonomously, pauses for occupancy, and publishes only actual final authority arrival; no canonical relocation or cross-map teleport',
             'optional_walk':'2..6 unique cardinal [x,y] points including current start and replacement object endpoint, same generated revision only; progresses one point per authority tick, yields to reported ready player occupancy, blocks interactions until complete',
-            'changes':'goals, relationships to existing public NPCs, team, status, optional offer (null removes)',
+            'plan':'Optional generic capability plan for this world-owned actor; inspect actor_runtime for tools, geometry request and actual pending/completed receipts. world.navigate takes revision and destination x/y, not an authored path. Canonical-only capabilities are unavailable.',
+            'changes':'campaign_interests (up to four native map public report interests), plan, goals, relationships to existing public NPCs, team, status, services (guide), battle_portrait, retained practice intentions for own identified companions, optional offer (null removes)',
             'effect':'explicitly take over selected existing NPCs from older scripts; native map object controls actual relocation/dialogue and team controls battle; all unrelated source effects preserved',
             'evidence':'nonempty inspected/recalled public history references; authored intent, never proof of battle or catch',
-            'limits':'eight actions per request, 32 action publications before source consolidation; expected version rechecked on admission; native maps or region_revision-bound opened immutable generated regions or archived shared XL revisions',
+            'limits':'eight actions per request, reusable verified dispatcher for new publications, durable authority history; expected version rechecked on admission; native maps or region_revision-bound opened immutable generated regions or archived shared XL revisions',
             'execution':'source compiler only; normal tests, sandbox and atomic authority validation remain mandatory; no autonomous LLM call or live publication'}

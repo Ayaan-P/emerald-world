@@ -63,6 +63,13 @@ class CharacterChapterTests(unittest.TestCase):
         self.assertEqual(result['state']['world_character_chapters'][p['id']]['chapter'],1)
         self.assertEqual(result['state']['world_characters'][p['id']]['evidence'],[2])
 
+    def test_guidance_is_an_explicit_authored_service(self):
+        p=plan();p['chapters'][0]['services']=['guide'];validate_plan(p)
+        result=chapter_step(p,'guide',0,{'character_history':{'events':[],'through':0}},dict(state={},tiles=[],objects=[]))
+        self.assertEqual(result['state']['world_characters'][p['id']]['services'],['guide'])
+        p['chapters'][0]['services']=['auto_publish']
+        with self.assertRaises(ValueError):validate_plan(p)
+
     def test_compile_requires_exact_previous_source_and_known_evidence(self):
         p=plan();p['origin_evidence']=[42]
         with self.assertRaises(ValueError):compile_plan(p,{'state':{}})

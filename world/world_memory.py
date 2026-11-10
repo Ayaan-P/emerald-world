@@ -43,6 +43,9 @@ def terrain_delta(cave, before, after):
 
 def evidence_index(event, *, current_catalog=False):
     """Search only changed public content, never every unchanged overlay object."""
+    # Looking up history does not change a place or create new source content.
+    if event.get('event') == 'actor_tool_result' and event.get('tool') in ('world.search_history', 'world.read_history'):
+        return [], ''
     preserved = None if current_catalog else event.get('changed_places', event.get('places'))
     places, words = set(preserved or []), []
     if event.get('place_id'):
@@ -66,9 +69,48 @@ def evidence_index(event, *, current_catalog=False):
                 place = native_place(*key[:2])
                 if place and preserved is None:
                     places.add(place)
+    elif event.get('event') == 'canonical_speaker_decided':
+        words.extend((event['character_id'],event['question'],event['label'],'speaker decision with optional advice not consensus'))
+    elif event.get('event') == 'canonical_council_agreed':
+        words.extend((event['character_id'],event['question'],event['label'],'unanimous shared cast preference'))
+    elif event.get('event') == 'canonical_campaign_milestone':
+        words.extend((event['milestone'],event['summary'],'shared Hoenn campaign milestone'))
+    elif event.get('event') == 'character_field_report':
+        words.extend((event['character_id'],event['character_name'],event['title'],'field reconnaissance access geometry'))
+    elif event.get('event') == 'character_encounter':
+        words.extend((event['character_id'],event['recipient'],event['outcome'],event.get('text',''),'world character encounter'))
+    elif event.get('event') == 'character_journey_arrived':
+        words.extend((event['character_id'],event['character_name'],'completed authority walking journey'))
+    elif event.get('event') == 'character_practice_completed':
+        words.extend((event['character_id'],event['individual'],'completed isolated simulated practice'))
     elif event.get('event') == 'character_changed':
         words.extend((event['character_id'], event['after']['name'], event['after']['role'],
                       event['after']['reason'], *event['after']['goals']))
+    elif event.get('event') == 'canonical_action_obstructed':
+        words.extend((event['character_id'],event['intention'],event['action']['pack'],'unavailable retained action not completed'))
+    elif event.get('event') == 'canonical_intention_fulfilled':
+        words.extend((event['character_id'],event['intention'],event['kind'],event['target'],'fulfilled retained intention'))
+    elif event.get('event') in ('canonical_contribution_proposed','canonical_contribution_resolved'):
+        words.extend((event['character_id'],event['recipient'],event['course'],event.get('text',''),event.get('decision',''),'public project collaboration'))
+    elif event.get('event') in ('canonical_project_invited','canonical_project_decided'):
+        words.extend((event['character_id'],event['recipient'],event['intention'],event.get('decision','invited'),'cast cooperation'))
+    elif event.get('event') == 'canonical_construction_completed':
+        words.extend((event['character_id'],event['label'],'completed courtyard construction'))
+    elif event.get('event') == 'canonical_study_published':
+        words.extend((event['character_id'],event['character_name'],event['title'],'optional field study installed'))
+    elif event.get('event') == 'canonical_project_published':
+        words.extend((event['character_id'],event['character_name'],event['course'],event['title'],'playable relay project'))
+    elif event.get('event') == 'canonical_letter_delivered':
+        words.extend((event['sender'],event['recipient'],event['text'],'public cast correspondence'))
+    elif event.get('event') in ('canonical_project_requested','canonical_project_responded'):
+        words.extend((event['sender'],event['recipient'],event['request_id'],event['message'],'public cast project exchange'))
+    elif event.get('event') == 'canonical_shared_project_decided':
+        places.update(event['places'])
+        words.extend((event['character_id'],event['pack'],event['scene'],event['choice'],'shared investigation decision'))
+    elif event.get('event') == 'canonical_actor_changed':
+        words.extend((event['character_id'],event['character_name'],event['after']['goal'],event['after']['dialogue'],event['after']['reason']))
+    elif event.get('event') == 'canonical_story_outcome':
+        words.extend((event['arc'], event['outcome'], event['summary']))
     elif event.get('event') == 'guild_goal_completed':
         words.extend((event['guild_name'],event['goal_kind'],'completed guild goal'))
     elif event.get('event') in ('area_activated','region_opened'):

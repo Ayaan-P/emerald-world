@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "scope": "Verified release-branch runtime, not a claim of installation or host activation",
+  "runtime_world_tree_sha": "dca1548aa34025b3fd4b8686b877462628e7bce5",
+  "reviewed_actor_revision": "e1e9b1eab6e92b602c16568c00ec0bb277a3e387",
+  "native": {
+    "release_revision": "f7a813317d1b9fec803b48b682f5d74245c79037",
+    "release_binary_sha256": "687795df6ee5d91b11abd6f3049653283bbfec716b5b765c932870862f417a51",
+    "played_revision": "90fdff8988b078fd6d46cb6948306c8b28a7a30f",
+    "played_binary_sha256": "93f1b2eaf8b4a4c467936853ff79f979111b1a0f63922534263335404a94531d",
+    "linked_gameplay_passed": true,
+    "gameplay_fixture": true,
+    "gameplay_coverage": [
+      "cold Continue from existing disposable Birch fixture",
+      "stock outdoors -> WORLD -> authored Lantern Trail",
+      "normal walking -> adjacent Ivo",
+      "explicit B decline: no challenge or battle result, party unchanged",
+      "explicit A consent -> real V4 Ivo/scientist, Wingull level 4",
+      "actual native battle victory outcome 1 -> free field -> authority ACK",
+      "native S private survey start",
+      "WORLD Leave generated area -> Littleroot Town",
+      "normal START Save -> changed save bytes",
+      "owned native stopped -> cold same-save Continue",
+      "exact private party/story flags+vars and private survey retained"
+    ],
+    "allocated_runtime_equivalent": true,
+    "allocated_sections": 40,
+    "equivalence_exception": "Only literal NATIVE_VERSION string differs; ELF build-ID note is metadata",
+    "fresh_final_binary_smoke": "600 actual headless frames completed with exit 0"
+  },
+  "live_author": {
+    "passed": true,
+    "verified_backend": "codex",
+    "verified_model": "openai-codex/gpt-6-luna",
+    "fresh_verification_calls": 1,
+    "retries": 0,
+    "actor": "canon_rydel",
+    "actor_version": 1,
+    "goal": "Help trainers choose a bike that suits the routes they want to ride.",
+    "sandbox": "passed_by_admin",
+    "restart_verified": true,
+    "model_tests_unchanged": true,
+    "native_wire_ascii": true,
+    "stored_semantics_preserved": true,
+    "provider_configuration_changed": false
+  },
+  "evidence_sha256": {
+    "npc-final/acceptance-summary.json": "e0e53f1a7905ccf5a100e95e4ce96a7ea315944392d613fa1817c711c745532a",
+    "runtime-equivalence.json": "97270fa8413afb95e46afcf1d06328f7a572e337d46579b2f5076121c248e326",
+    "cast-native-text/live-final/verdict.json": "9b6a1cf83eba7fb4d843ce60908690332dc387a5c4ec55989491b3e0b4648482",
+    "cast-review.json": "da31fd6eb58426a83a6adbc1171c148cf3c169c3c7caf5cb63ccdfc02e5cd522"
+  },
+  "limits": [
+    "Windows hardware acceptance is not claimed",
+    "Native gameplay used a labeled disposable fixture, never a personal save",
+    "This does not establish natural acquisition of every species or every optional mechanic",
+    "Only the Codex backend had a real provider call in this verification",
+    "No hosted update or installation is asserted by this source receipt"
+  ]
+}
