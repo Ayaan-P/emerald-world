@@ -38,6 +38,7 @@ def observe(server, actor, row, args):
     from .actor_objects import offers
     for entity in entities:
         obj=next(o for o in server.objects if o['id']==entity['id'])
+        entity.update(gfx=obj['gfx'],text=obj['text'],kind=obj.get('kind','character' if obj['id'] in characters else 'object'))
         entity.update(offers(server,obj))
         if obj.get('kind')=='prop':
             from .actor_objects import digest
