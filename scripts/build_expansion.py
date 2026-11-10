@@ -11,7 +11,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '23b5a42d58b30be435ed4b7e2fe5a629ee9ce52f'
+PIN = 'a072d4497dc44775cb6e561f75ec52518735ac4f'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -40,6 +40,7 @@ def main():
                         help='enable selectable generated places (independent of regional saves/Kanto)')
     parser.add_argument('--regional-state', action='store_true',
                         help='enable experimental regional saves (requires --development)')
+    parser.add_argument('--experimental-regional-badges', action='store_true', help='enable explicit personal regional badge migration; requires --kanto-content')
     parser.add_argument('--experimental-combined-presence', action='store_true', help='negotiate the fixed combined-world authority profile; requires --kanto-content')
     parser.add_argument('--kanto-content', action='store_true',
                         help='enable combined Hoenn/Kanto content (requires --regional-state)')
@@ -71,6 +72,8 @@ def main():
         parser.error('--experimental-npc-coop requires --development; linked two-client QA pending')
     if args.regional_state and not args.development:
         parser.error('--regional-state requires --development and is not a release cohort')
+    if args.experimental_regional_badges and not args.kanto_content:
+        parser.error('--experimental-regional-badges requires --kanto-content, --regional-state and --development')
     if args.experimental_combined_presence and not args.kanto_content:
         parser.error('--experimental-combined-presence requires --kanto-content, --regional-state and --development')
     if args.kanto_content and not args.regional_state:
@@ -181,6 +184,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'WORLD_PARTY_PRACTICE_EXPERIMENT={int(args.experimental_party_practice)}',
                 f'WORLD_MAZE_COURSE_EXPERIMENT={int(args.experimental_maze_courses)}',
                 f'WORLD_PYRAMID_COURSES_EXPERIMENT={int(args.experimental_pyramid_courses)}',
+                f'EW_REGIONAL_BADGES={int(args.experimental_regional_badges)}',
                 f'EW_REGION_STATE={int(args.regional_state)}',
                 f'EW_KANTO_CONTENT={int(args.kanto_content)}',
                 *(['MAP_VERSION=combined'] if args.kanto_content else []),
