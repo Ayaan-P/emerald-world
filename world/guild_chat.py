@@ -89,6 +89,9 @@ class GuildChat:
                     elif words and words[0].lower()=='cargo':
                         from .player_cargo import command as cargo_command
                         lines=cargo_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='methods':
+                        from .actor_methods import command as methods_command
+                        lines=methods_command(s,conn,words[1:])
                     elif words and words[0].lower()=='reconstruction':
                         from .reconstruction import command as reconstruction_command
                         lines=reconstruction_command(s,conn,words[1:])
