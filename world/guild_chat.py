@@ -50,12 +50,51 @@ class GuildChat:
             with s.lock:
                 try:
                     command=text[6:].strip();words=command.split()
-                    if words and words[0].lower()=='npc':
+                    if words and words[0].lower()=='pyramid':
+                        from .pyramid_courses import command as pyramid_command
+                        lines=pyramid_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='tower':
+                        from .tower_exchange import command as tower_command
+                        lines=tower_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='starters':
+                        from .starter_offers import command as starter_command
+                        lines=starter_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='mazes':
+                        from .maze_courses import command as maze_command
+                        lines=maze_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='bases':
+                        from .base_neighborhood import command as base_directory_command
+                        lines=base_directory_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='tournament':
+                        from .player_tournaments import command as tournament_command
+                        lines=tournament_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='rematches':
+                        from .route_rematch_events import command as rematch_command
+                        lines=rematch_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='research':
+                        from .shared_research import command as research_command
+                        lines=research_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='tactics':
+                        from .npc_tactics import command as tactics_command
+                        lines=tactics_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='chart':
+                        from .shared_cartography import command as chart_command
+                        lines=chart_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='npc':
                         from .npc_conversations import command as npc_command
                         lines=npc_command(s,conn,words[1:])
                     elif words and words[0].lower()=='safari':
                         from .safari_outings import command as safari_command
                         lines=safari_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='cargo':
+                        from .player_cargo import command as cargo_command
+                        lines=cargo_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='methods':
+                        from .actor_methods import command as methods_command
+                        lines=methods_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='reconstruction':
+                        from .reconstruction import command as reconstruction_command
+                        lines=reconstruction_command(s,conn,words[1:])
                     elif words and words[0].lower()=='object':
                         from .object_choices import command as object_command
                         lines=object_command(s,conn,words[1:])

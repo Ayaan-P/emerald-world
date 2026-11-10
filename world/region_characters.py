@@ -5,6 +5,8 @@ import hashlib
 def validate_region_objects(server, objects, state):
     from .characters import records
     from .shared_cave import SharedCave
+    from .native_resident_population import validate as validate_residents
+    validate_residents(server,objects,state)
     cast=records(state)
     placements={}
     for obj in objects:

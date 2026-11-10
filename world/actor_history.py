@@ -37,7 +37,7 @@ def search(server,actor,row,args):
     if 'event' in q:
         clauses.append("json_extract(e.data,'$.event')=?");values.append(q['event'])
     if 'actor' in q:
-        clauses.append("(json_extract(e.data,'$.character_id')=? OR json_extract(e.data,'$.sender')=? OR json_extract(e.data,'$.recipient')=?)");values.extend([q['actor']]*3)
+        clauses.append("(json_extract(e.data,'$.character_id')=? OR json_extract(e.data,'$.sender')=? OR json_extract(e.data,'$.recipient')=? OR EXISTS (SELECT 1 FROM json_each(e.data,'$.recipients') r WHERE CASE WHEN r.type='object' THEN json_extract(r.value,'$.id') END=?))");values.extend([q['actor']]*4)
     # Exclude our own receipts in SQL: retrieval cannot recursively copy itself
     # or starve a page behind an arbitrarily long run of prior searches.
     clauses.append("NOT (coalesce(json_extract(e.data,'$.event'),'')='actor_tool_result' AND coalesce(json_extract(e.data,'$.tool'),'') IN (?,?))")

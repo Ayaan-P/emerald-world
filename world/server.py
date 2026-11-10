@@ -599,6 +599,11 @@ class WorldServer:
                 from .region_characters import scoped
                 if not scoped(self,conn,obj,obj.get('region_revision')):continue
                 prefix=('REGION_PROP ' if obj.get('kind')=='prop' else 'REGION_OBJECT ')+obj['region_revision']+' '
+            from .passage_lifecycle import caption as passage_caption
+            if obj.get('kind')=='prop':obj=dict(obj,text=passage_caption(self,obj))
+            elif obj['id'] in scoped_characters:
+                from .player_npc_memory import caption as memory_caption
+                obj=dict(obj,text=memory_caption(self,conn,obj))
             lines.append(prefix + obj['id'] + ' ' + ' '.join(str(obj[k]) for k in ('group','num','x','y','gfx'))
                          + ' ' + obj['text'].encode('ascii').hex())
             if conn.get('character_capable'):
@@ -1219,6 +1224,8 @@ class WorldServer:
                     self._schedule_presence(now)
                 self.guild_chat.observe(conn, state)
                 self.landmark_survey.observe(conn)
+                from .shared_cartography import observe as chart_observe
+                chart_observe(self,conn)
                 if getattr(self, 'relays', None):self.relays.tick()
                 if getattr(self, 'flags', None):self.flags.tick()
                 if getattr(self, 'races', None):self.races.tick()
@@ -1275,6 +1282,9 @@ class WorldServer:
             if (channel is not None and not channel.get('closing')
                     and self.link_protocol.delivery_current(trainer, line)):
                 self._queue(channel, line)
+                from .player_tournaments import observe as tournament_observe
+                watch=tournament_observe(self,trainer,line)
+                if watch:self._queue(channel,watch)
 
     def _link_line(self, conn, raw):
         if (conn.get('closing') or self.link_channels.get(conn['id']) is not conn
@@ -1286,6 +1296,54 @@ class WorldServer:
             return
         # Only connected native link peers may be invited. CONTROL connections
         # neither approve requests nor contribute native engine rounds.
+        if raw.startswith(b'TR '):
+            from .tower_exchange import handle as tower_handle
+            self._queue(conn,tower_handle(self,conn,raw))
+            return
+        if raw.startswith(b'SO '):
+            from .starter_offers import handle as starter_handle
+            self._queue(conn,starter_handle(self,conn,raw))
+            return
+        if raw.startswith(b'FM '):
+            from .field_move_ui import handle as field_move_ui_handle
+            self._queue(conn,field_move_ui_handle(self,conn,raw))
+            return
+        if raw.startswith(b'MC '):
+            from .maze_courses import handle as maze_handle
+            self._queue(conn,maze_handle(self,conn,raw))
+            return
+        if raw.startswith(b'H '):
+            from .spatial_signals import handle as signal_handle
+            self._queue(conn,signal_handle(self,conn,raw))
+            return
+        if raw.startswith(b'E '):
+            from .pyramid_courses import handle as pyramid_handle
+            self._queue(conn,pyramid_handle(self,conn,raw))
+            return
+        if raw.startswith(b'B '):
+            from .base_neighborhood import handle as base_directory_handle
+            self._queue(conn,base_directory_handle(self,conn,raw))
+            return
+        if raw.startswith(b'U '):
+            from .player_tournaments import result as tournament_result
+            self._queue(conn,tournament_result(self,conn,raw))
+            return
+        if raw.startswith(b'J '):
+            from .route_rematch_events import wire as rematch_wire
+            self._queue(conn, rematch_wire(self,conn,raw))
+            return
+        if raw.startswith(b'D '):
+            from .shared_research import handle as research_handle
+            self._queue(conn, research_handle(self,conn,raw))
+            return
+        if raw.startswith(b'A '):
+            from .npc_tactics import wire as tactics_wire
+            self._queue(conn, tactics_wire(self,conn,raw))
+            return
+        if raw.startswith(b'C '):
+            from .contest_results import handle as contest_result_handle
+            self._queue(conn, contest_result_handle(self,conn,raw))
+            return
         if raw.startswith(b'S '):
             from .safari_outings import handle as safari_handle
             self._queue(conn, safari_handle(self,conn,raw))
@@ -1884,6 +1942,12 @@ class WorldServer:
                     return
                 except ValueError as exc:
                     result = dict(ok=False, error=str(exc))
+            elif request.get('command') == 'world_reactions':
+                try:
+                    from .history_world_rules import control
+                    result=control(self,request)
+                except ValueError as exc:
+                    result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'construct_outpost':
                 try:
                     from .frontier_outposts import construct
@@ -1902,6 +1966,14 @@ class WorldServer:
                     result=self.set_event_tile(request['trainer'],request['identity'],request['x'],request['y'],request['terrain'])
                 except ValueError as exc:
                     result=dict(ok=False,error=str(exc))
+            elif request.get('command') == 'reconstruction':
+                from .reconstruction import catalog,cancel_id
+                try:
+                    with self.lock,self.db:
+                        if set(request)=={'command'}:result=dict(ok=True,plans=catalog(self))
+                        elif set(request)=={'command','cancel'} and type(request['cancel']) is str:result=dict(ok=True,**cancel_id(self,request['cancel']))
+                        else:raise ValueError('Use reconstruction list or exact cancel ID')
+                except ValueError as exc:result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'set_shared_geometry_compact':
                 try:
                     if set(request)!={'command','identity','data','replace'} or type(request['data']) is not str:raise ValueError('invalid compact geometry')
@@ -2074,6 +2146,12 @@ class WorldServer:
                 if set(request) != {'command'}:
                     raise ValueError('Invalid canonical contract request.')
                 result = dict(ok=True, **self.core_story.contract())
+            elif request.get('command') == 'character_archive':
+                try:
+                    from .character_archive import recall
+                    if set(request)-{'command','identity','after'}:raise ValueError('Invalid archive query')
+                    result=dict(ok=True,**recall(self,None,None,dict(identity=request.get('identity',''),after=request.get('after',''))))
+                except ValueError as exc:result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'world_history':
                 try:
                     if not set(request) <= {'command', 'after', 'limit', 'place_id', 'through'}:
@@ -2203,6 +2281,8 @@ class WorldServer:
                 raise ValueError('duplicate tile')
             seen.add(location)
             normalized.append(values)
+        from .native_resident_population import validate_terrain
+        validate_terrain(result['state'],tiles)
         normalized.sort()
         return state, normalized
 
@@ -2226,6 +2306,8 @@ class WorldServer:
                 result=project_custody(self,result)
                 from .object_networks import project as project_networks
                 result=project_networks(result,self)
+                from .character_archive import project as project_character_archive
+                result, character_before, pending_archives = project_character_archive(self,result)
                 state_json, tiles = self._validated(result)
                 objects = result.get('objects', [])
                 from .region_characters import validate_region_objects
@@ -2235,7 +2317,7 @@ class WorldServer:
                 from .character_walks import validate_walks
                 validate_walks(self,self.module_state,result['state'],objects)
                 from .characters import validate_transition
-                character_changes = validate_transition(self.module_state, result['state'], objects, self.db)
+                character_changes = validate_transition(character_before, result['state'], objects, self.db)
                 from .canonical_cast import validate_transition as validate_canonical
                 canonical_changes=validate_canonical(self.module_state,result['state'],objects,self.db)
                 changed = (kind == 'deploy' or result['state'] != self.module_state or tiles != self.tiles
@@ -2252,6 +2334,8 @@ class WorldServer:
                                 places=overlay_places(self.tiles + tiles, self.objects + objects,self.db),
                                 before=dict(tiles=self.tiles, objects=self.objects),
                                 after=dict(tiles=tiles, objects=objects)))
+                        from .character_archive import commit as commit_character_archive
+                        commit_character_archive(self,pending_archives)
                         from .character_dispatch import archive as archive_character_action
                         archive_character_action(self,self.module_state,result['state'],objects)
                         from .actor_cargo import commit as commit_cargo
@@ -2392,9 +2476,15 @@ class WorldServer:
                 step_cast_world_action(self)
                 from .actor_runtime import tick as tick_actor_runtime
                 tick_actor_runtime(self)
+                from .knowledge_relays import flush as flush_knowledge_relays
+                flush_knowledge_relays(self)
+                from .history_world_rules import tick as tick_history_world_rules
+                tick_history_world_rules(self)
                 if getattr(self,'capture_service',None):self.capture_service.tick(self)
                 from .npc_conversations import flush as flush_npc_replies
                 flush_npc_replies(self)
+                from .spatial_speech import flush as flush_spatial_speech
+                flush_spatial_speech(self)
                 self.cast_scenes.tick()
 
     def close(self):

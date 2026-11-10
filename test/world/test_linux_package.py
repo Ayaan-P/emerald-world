@@ -63,6 +63,18 @@ class LinuxPackageTests(unittest.TestCase):
                 'assert json.loads((Path(sys.argv[1])/"world/companion_move_names.json").read_text())["names"]')
         subprocess.run([sys.executable, '-I', '-c', code, str(bundle)], check=True)
 
+    def test_daily_catalogues_work_without_development_scripts(self):
+        bundle = self.extract(self.package(engine='expansion-native'))
+        for name in ('pyramid_catalog.json', 'starter_catalog.json', 'move_traits.json',
+                     'native_resident_sites.json', 'secret_base_locations.json'):
+            self.assertEqual((bundle / 'world' / name).read_bytes(),
+                             (REPO / 'world' / name).read_bytes())
+        code = ('import sys; sys.path.insert(0,sys.argv[1]); '
+                'import world.pyramid_courses, world.starter_offers; '
+                'from world.native_resident_sites import catalog; assert catalog(); '
+                'assert "scripts.build_expansion" not in sys.modules')
+        subprocess.run([sys.executable, '-I', '-c', code, str(bundle)], check=True)
+
     def test_relative_vite_index_asset_paths_are_supported(self):
         (self.dist / 'index.html').write_text('<html><script src="./assets/main.js"></script></html>')
         archive = self.package()

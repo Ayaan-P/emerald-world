@@ -68,7 +68,7 @@ def validate_actions(actions, context):
             validate_objects([obj])
 
         elif obj is not None:raise ValueError('absent character action must remove object')
-    records({'world_characters':cast})
+    records(dict(state,world_characters=cast))
     return copy.deepcopy(actions)
 
 

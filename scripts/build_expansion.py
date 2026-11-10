@@ -12,7 +12,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '20099ca11b0b8f581b59915338a65bb45a734073'
+PIN = 'd3ded489d97dd9b9951289b10583ff30c929e573'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -51,6 +51,12 @@ def main():
                         help='existing extracted libc/GCC multilib root for mandatory ABI probes')
     parser.add_argument('--development', action='store_true',
                         help='build explicit local candidate integration changes on top of the verified engine pin')
+    parser.add_argument('--experimental-tower-records', action='store_true', help='enable experimental explicit Tower record imports; requires --development')
+    parser.add_argument('--experimental-starter-offers', action='store_true', help='enable experimental optional fresh-save starters; requires --development')
+    parser.add_argument('--experimental-field-moves', action='store_true', help='enable learned moves on shared props; requires --development')
+    parser.add_argument('--experimental-party-practice', action='store_true', help='enable local native egg-move practice; requires --development')
+    parser.add_argument('--experimental-maze-courses', action='store_true', help='enable experimental generated Trainer Hill mazes; requires --development')
+    parser.add_argument('--experimental-pyramid-courses', action='store_true', help='enable experimental authored Pyramid courses; requires --development')
     parser.add_argument('--experimental-secret-bases', action='store_true', help='enable unverified own-base sharing; requires --development')
     parser.add_argument('--experimental-npc-coop', action='store_true',
                         help='enable unverified dynamic NPC co-op wire (requires --development; both clients must match)')
@@ -62,8 +68,20 @@ def main():
                         help='enable Kanto in development (requires --regional-state; already enabled for release)')
     parser.add_argument('--jobs', type=int, default=4)
     args = parser.parse_args()
+    if args.experimental_field_moves and not args.development:
+        parser.error('--experimental-field-moves requires --development; native object UI QA pending')
+    if args.experimental_party_practice and not args.development:
+        parser.error('--experimental-party-practice requires --development; native UI/save QA pending')
     if args.jobs < 1:
         parser.error('--jobs must be positive')
+    if args.experimental_tower_records and not args.development:
+        parser.error('--experimental-tower-records requires --development; native save/appearance QA pending')
+    if args.experimental_starter_offers and not args.development:
+        parser.error('--experimental-starter-offers requires --development; intro/save QA pending')
+    if args.experimental_maze_courses and not args.development:
+        parser.error('--experimental-maze-courses requires --development; native layout/save QA pending')
+    if args.experimental_pyramid_courses and not args.development:
+        parser.error('--experimental-pyramid-courses requires --development; linked suspend/save QA pending')
     if args.experimental_secret_bases and not args.development:
         parser.error('--experimental-secret-bases requires --development; linked save QA pending')
     if args.experimental_npc_coop and not args.development:
@@ -175,6 +193,12 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'WORLD_CHARACTER_COOP_EXPERIMENT={int(args.experimental_npc_coop)}',
                 f'WORLD_BASE_SHARE_EXPERIMENT={int(args.experimental_secret_bases)}',
                 f'GENERATED_WORLD_REGIONS={int(args.generated_regions) or RELEASE_CONFIG.generated_world_regions}',
+                f'WORLD_TOWER_RECORD_EXPERIMENT={int(args.experimental_tower_records)}',
+                f'WORLD_STARTER_OFFER_EXPERIMENT={int(args.experimental_starter_offers)}',
+                f'WORLD_FIELD_MOVES_EXPERIMENT={int(args.experimental_field_moves)}',
+                f'WORLD_PARTY_PRACTICE_EXPERIMENT={int(args.experimental_party_practice)}',
+                f'WORLD_MAZE_COURSE_EXPERIMENT={int(args.experimental_maze_courses)}',
+                f'WORLD_PYRAMID_COURSES_EXPERIMENT={int(args.experimental_pyramid_courses)}',
                 'native', 'BITS=64', f'TARGET_CC={compiler}', f'NATIVE_VERSION={head[:12]}-{RELEASE_CONFIG.version_suffix}',
                 'build/native64/data_relocations.checked', 'build/native64/data_layout.checked',
                 'build/native64/battle_script_operands.checked']

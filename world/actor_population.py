@@ -62,16 +62,16 @@ def prepare(server,actor,row,args,*,state=None,objects=None):
     return request
 
 
-def stage(server,actor,row,requests):
+def stage(server,actor,row,requests,*,projector=None,source_builder=None):
     from .actor_runtime import Pending
     from .characters import validate_transition
     from .region_characters import validate_region_objects
     if server.job is not None or server.deployment is not None or not server.candidate:raise ValueError('A current idle mechanic source is required')
     proposed=dict(state=copy.deepcopy(server.module_state),objects=copy.deepcopy(server.objects),tiles=[])
-    for request in requests:proposed=population_step(proposed,request)
+    for request in requests:proposed=(projector or population_step)(proposed,request)
     server._validated(proposed);validate_transition(server.module_state,proposed['state'],proposed['objects'],server.db)
     validate_region_objects(server,proposed['objects'],proposed['state'])
-    source=dispatch_source(server.candidate.source,requests,server.module_state)
+    source=(source_builder or dispatch_source)(server.candidate.source,requests,server.module_state)
     if len(source.encode())>256*1024:raise ValueError('Population source budget reached')
     sha=hashlib.sha256(source.encode()).hexdigest();path=server.runtime.candidates/('population_'+sha+'.py')
     try:

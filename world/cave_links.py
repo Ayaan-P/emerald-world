@@ -33,6 +33,8 @@ def acknowledge(server,conn,seq,revision):
  pending=conn.get('cave_link_pending')
  if not pending or pending['seq']!=seq or pending['target'].identity!=revision or pending['phase']!='offered':raise ValueError('Unexpected cave transfer acknowledgement')
  if time.monotonic()-conn.get('state_time',0)>5 or server.link_protocol.busy(conn['id']) or server.rally.current(conn) is not None or time.monotonic()>pending['expires'] or conn.get('cave_ack')!=pending['source'] or conn.get('state')!=pending['state']:raise ValueError('Source changed before transfer commit')
+ from .passage_lifecycle import validate_pending
+ validate_pending(server,pending)
  destination(server,pending['place'],revision)
  pending['phase']='committed';pending['expires']=time.monotonic()+30
  conn['region_cave']=pending['target'];conn['region_place']=pending['place']
@@ -72,7 +74,11 @@ def interact(server,conn,obj,seq):
  if not server.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='cave_links'").fetchone():return False
  link=server.db.execute('SELECT source,place,destination FROM cave_links WHERE object=?',(obj['id'],)).fetchone()
  if not link or link[0]!=obj.get('region_revision'):return False
+ from .passage_lifecycle import status,bind
+ if not status(server,obj['id'])['enabled']:
+  server.guild_chat.message(conn,conn['id'],'This passage is closed. Other routes and your original return remain available.');return True
  offer(server,conn,seq,*link)
+ bind(server,conn['cave_link_pending'],obj['id'])
  conn['cave_link_pending']['phase']='consent'
  label=server.db.execute('SELECT label FROM generated_area_archive WHERE identity=?',(link[2],)).fetchone()[0] or 'Cave'
  label=''.join(c if c.isascii() and (c.isalnum() or c in " .,'!?-") else ' ' for c in label).strip()[:20] or 'Cave'
@@ -89,6 +95,8 @@ def line(server,conn,fields):
   raise ValueError('Transfer expired; no arrival inferred')
  if fields[1]=='ACCEPT' and len(fields)==3 and p['phase']=='consent':
   if time.monotonic()>p['expires']:raise ValueError('Link consent expired')
+  from .passage_lifecycle import validate_pending
+  validate_pending(server,p)
   p['phase']='offered'
   for frame in p['target'].frames().splitlines():server._queue(conn,'LINK DATA '+str(seq)+' '+frame+'\n')
  elif fields[1]=='ACK' and len(fields)==4:

@@ -17,7 +17,12 @@ def graph(server):
   if not source_place:continue
   try:destination(server,source_place[0],source)
   except ValueError:continue
-  result.append(dict(object=identity,source=source,place=place,destination=target))
+  from .passage_lifecycle import status
+  lifecycle=status(server,identity)
+  if not lifecycle['enabled']:continue
+  edge=dict(object=identity,source=source,place=place,destination=target)
+  if lifecycle['revision']:edge['passage_revision']=lifecycle['revision']
+  result.append(edge)
  return result
 
 def route(server,source,target):
@@ -73,8 +78,8 @@ def poll(server,actor,row,pending):
   if edge not in graph(server) or obj['region_revision']!=edge['source']:raise ValueError('Route link changed; inspect and replan')
   prop=next(o for o in server.objects if o['id']==edge['object'])
   if abs(obj['x']-prop['x'])+abs(obj['y']-prop['y'])==1:
-   from .actor_objects import digest
-   operation=actor_cave_travel.traverse(server,actor,row,dict(object=prop['id'],revision=digest([prop,server.candidate.sha256])))
+   from .passage_lifecycle import program_revision
+   operation=actor_cave_travel.traverse(server,actor,row,dict(object=prop['id'],revision=program_revision(server,prop)))
    kind='traverse'
   else:
    paths=[]

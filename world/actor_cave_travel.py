@@ -7,11 +7,13 @@ def observed_link(server,obj):
  if not server.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='cave_links'").fetchone():return None
  link=server.db.execute('SELECT source,place,destination FROM cave_links WHERE object=?',(obj['id'],)).fetchone()
  if not link or link[0]!=obj.get('region_revision'):return None
+ from .passage_lifecycle import status
+ if not status(server,obj['id'])['enabled']:return None
  return dict(place=link[1],destination=link[2],operation='world.traverse_link')
 
 def traverse(server,actor,row,args):
  from .actor_runtime import Pending
- from .actor_objects import digest
+ from .passage_lifecycle import program_revision
  from .cave_links import destination
  from .region_characters import validate_region_objects
  from .character_actions import compile_actions
@@ -22,7 +24,7 @@ def traverse(server,actor,row,args):
  link=observed_link(server,prop) if prop else None
  if (not current or current['status']!='active' or not source or not prop or not link
      or walking(server.module_state,actor) or prop.get('kind')!='prop' or prop.get('portable')
-     or digest([prop,server.candidate.sha256 if server.candidate else None])!=args['revision']
+     or program_revision(server,prop)!=args['revision']
      or any(source.get(k)!=prop.get(k) for k in ('group','num','region_revision'))
      or abs(source['x']-prop['x'])+abs(source['y']-prop['y'])!=1):
   raise ValueError('Actor must be idle and adjacent to the exact observed physical link')

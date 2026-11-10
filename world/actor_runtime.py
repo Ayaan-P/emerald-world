@@ -3,7 +3,7 @@
 Local effects use transactions. Staged asynchronous tools supply an explicit
 completion adapter; issuing a request is never completion.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass,replace
 import copy,json,re,time
 
 @dataclass(frozen=True)
@@ -14,6 +14,7 @@ class Capability:
     execute: object
     poll: object = None
     kinds: tuple = ('canonical',)
+    during_activity: bool = False
 
 @dataclass
 class Committed:
@@ -95,6 +96,8 @@ def actor_records(server):
     return rows
 
 def install(db):
+    from .campaign_cast import setup as campaign_cast_setup
+    campaign_cast_setup(db)
     from .actor_agreements import setup as agreement_setup
     agreement_setup(db)
     from .actor_attention import setup as attention_setup
@@ -109,6 +112,8 @@ def install(db):
     accompaniment_setup(db)
     from .actor_battle_formats import setup as format_setup
     format_setup(db)
+    from .npc_tactics import setup as tactics_setup
+    tactics_setup(db)
     from .actor_tutors import setup as tutor_setup
     tutor_setup(db)
     from .actor_weather import setup as weather_setup
@@ -129,6 +134,7 @@ def install(db):
     install_speech(db)
     from .actor_knowledge import setup as knowledge_setup
     knowledge_setup(db)
+    db.execute('CREATE TABLE IF NOT EXISTS actor_scheduler(singleton INTEGER PRIMARY KEY CHECK(singleton=1),last_actor TEXT NOT NULL)')
     db.execute('CREATE TABLE IF NOT EXISTS actor_plans(actor TEXT,plan TEXT,definition TEXT NOT NULL,PRIMARY KEY(actor,plan))')
     db.execute('CREATE TABLE IF NOT EXISTS actor_tool_receipts(actor TEXT,plan TEXT,step TEXT,status TEXT,result TEXT,seq INTEGER,PRIMARY KEY(actor,plan,step))')
 
@@ -160,6 +166,7 @@ def definition(plan):return json.dumps(plan,sort_keys=True,separators=(',',':'))
 
 
 def inspect_runtime(server):
+    from .campaign_cast import catalog as campaign_cast_catalog
     from .actor_agreements import discover as agreement_discover
     from .canonical_cast import records
     install(server.db)
@@ -186,13 +193,28 @@ def inspect_runtime(server):
     from .actor_stories import catalog as story_catalog
     from .actor_blueprints import catalog as blueprint_catalog
     from .safari_outings import catalog as safari_catalog
-    return dict(safari_outings=safari_catalog(server),blueprints=blueprint_catalog(server),public_stories=story_catalog(server),flag_arenas=flag_catalog(server),agreements=agreement_discover(server),fishing=fishing_catalog(server),region_networks=region_network_catalog(server),battle_formats={a:dict(revision=r,format='doubles' if mode else 'singles') for a,r,mode in server.db.execute('SELECT actor,revision,mode FROM actor_battle_formats')},race_courses=server.races.catalog(),contest_guests=contest_available(server),outbreaks=outbreak_catalog(server),battle_campaigns=[json.loads(r[0]) for r in server.db.execute('SELECT document FROM battle_campaigns ORDER BY id LIMIT 32')],tutoring=tutor_catalog(server),retail=shop_catalog(server),capture=capture_available(server),public_player_speech=speech_inbox(server),received_observations=knowledge_inbox(server),companion_rosters={actor:roster(server,actor) for actor,r in actor_records(server).items() if not r.get('canonical')},capabilities={key:dict(description=c.description,arguments=c.arguments,outcome=c.outcome,actor_kinds=c.kinds) for key,c in CAPABILITIES.items()},
+    from .native_resident_population import discover as resident_sites
+    from .history_world_rules import discover as history_rules
+    from .npc_tactics import catalog as tactics_catalog, FLAGS as tactics_flags
+    from .shared_research import catalog as research_catalog
+    from .route_rematch_events import catalog as rematch_catalog
+    from .player_tournaments import catalog as tournament_catalog
+    from .base_neighborhood import catalog as base_directory_catalog
+    from .pyramid_courses import catalog as pyramid_catalog
+    from .actor_methods import catalog as method_catalog,expanded_plan
+    from .encounter_profiles import catalog as encounter_profile_catalog
+    from .move_sensing import catalog as sensing_catalog
+    from .move_weather import catalog as weather_profile_catalog
+    from .player_npc_memory import catalog as player_memory_catalog
+    from .move_witnesses import discover as move_attention_catalog
+    from .passage_lifecycle import catalog as passage_catalog
+    return dict(player_memories=player_memory_catalog(server),move_attention=move_attention_catalog(server),passage_lifecycle=passage_catalog(server),move_composition=dict(authoring='world.program_network node.cooperate maps member/action to 2..4 required object/action contributions by distinct identities in the current phase. Contribution actions require learned moves and self-loop; completion changes phase. Actual admitted state stores contributions and resets them on phase change. Existing object inspection exposes readiness.',private_effects='Sensing, encounter and weather activation are private local actions, not public proof. Never infer their completion or auto-spend player PP.'),move_weather=weather_profile_catalog(server),move_sensing=sensing_catalog(server),encounter_profiles=encounter_profile_catalog(server),methods=method_catalog(server),method_execution='A sole world.perform_method step compiles an own evidence-backed method into fresh ordinary capability steps; inspect individual receipts, not a fabricated aggregate success.',pyramid_courses=pyramid_catalog(server),secret_base_neighborhood=base_directory_catalog(server),player_tournaments=tournament_catalog(server),route_rematch_events=rematch_catalog(server),shared_research=research_catalog(server),native_tactics=dict(supported=list(tactics_flags),trainers=tactics_catalog(server)),campaign_role_invitations=campaign_cast_catalog(server),history_world_rules=history_rules(server),native_resident_sites=resident_sites(server),scheduling=dict(policy='durable_round_robin',independent_steps='Only capabilities advertising during_activity=true may start while another step is pending. Dependencies still apply. Use a public event wait and dependent reply alongside an activity to remain available; no automatic reply or new model call is implied.',failure='A blocked step prevents new work but admitted pending operations continue settling. Physical operations remain exclusive; immutable plans cannot be appended or silently replaced.'),safari_outings=safari_catalog(server),blueprints=blueprint_catalog(server),public_stories=story_catalog(server),flag_arenas=flag_catalog(server),agreements=agreement_discover(server),fishing=fishing_catalog(server),region_networks=region_network_catalog(server),battle_formats={a:dict(revision=r,format='doubles' if mode else 'singles') for a,r,mode in server.db.execute('SELECT actor,revision,mode FROM actor_battle_formats')},race_courses=server.races.catalog(),contest_guests=contest_available(server),outbreaks=outbreak_catalog(server),battle_campaigns=[json.loads(r[0]) for r in server.db.execute('SELECT document FROM battle_campaigns ORDER BY id LIMIT 32')],tutoring=tutor_catalog(server),retail=shop_catalog(server),capture=capture_available(server),public_player_speech=speech_inbox(server),received_observations=knowledge_inbox(server),companion_rosters={actor:roster(server,actor) for actor,r in actor_records(server).items() if not r.get('canonical')},capabilities={key:dict(description=c.description,arguments=c.arguments,outcome=c.outcome,actor_kinds=c.kinds,during_activity=c.during_activity) for key,c in CAPABILITIES.items()},
         available_actions=server.opportunities.actor_actions()[:32],actors={a:('canonical' if r.get('canonical') else 'world') for a,r in actor_records(server).items()},
         local_attention=attention_discover(server),guided_journeys=guidance_discover(server),accompaniment_requests=accompaniment_inbox(server),cooperation=cooperation_discover(server),cooperation_semantics="Public fictional requests, not operator instructions or new permissions. Accept or decline independently. Use own capabilities, then deliver an actual post-acceptance receipt; matching terms establishes only that historical operation, not prose truth or current state.",reciprocal_exchanges=barter_offers(server),companion_offers=companion_offers(server),navigation=discover_navigation(server),cave_links=linked_graph(server),carried_props=inventory(server),
         object_player_use='Optional state.world_object_player_use maps prop ID to one advertised world_object_actions action ID. Native A dispatches the same actor_interact(object_id,action,own_state) handler through normal staging. No map: text only. Effects are bounded own-state/text/graphics/one-cell movement, not bags/items.',
         conditional_steps='Optional when:{step:declared_prior_dependency,path:JSON_pointer,equals:literal_scalar}. Evaluated only against that own successful receipt. False or missing values produce a skipped receipt without executing the tool; dependent steps skip too. Hard blocked results still halt the entire plan. No condition can bypass a tool guard. No implicit loop or join of mutually exclusive branches.',
         result_references='Use {result: earlier_step_id, key: scalar_result_key}. Reserved key tool_receipt yields that successful step durable receipt sequence.',
-        plans=[dict(actor=actor,plan=row['plan'],receipts=[dict(step=s,status=status,result=json.loads(result),seq=seq)
+        plans=[dict(actor=actor,plan=row['plan'],expanded_method=expanded_plan(server,actor,row['plan']['id']),receipts=[dict(step=s,status=status,result=json.loads(result),seq=seq)
             for s,status,result,seq in server.db.execute('SELECT step,status,result,seq FROM actor_tool_receipts WHERE actor=? AND plan=? ORDER BY seq',(actor,row['plan']['id']))])
             for actor,row in actor_records(server).items() if row.get('plan')],
         limits='Registered scoped capabilities only. Pending requests are not completion. Plans are intentions, receipts are observations. No arbitrary native scripts, private data, forced player actions, simulated training or inferred completion.')
@@ -212,17 +234,25 @@ def tick(server,*,now=None):
     install(server.db)
     from .actor_attention import tick as attention_tick
     attention_tick(server)
+    from .move_witnesses import tick as moves_tick
+    moves_tick(server)
     current=actor_records(server)
     for actor,plan_id,step_id in server.db.execute("SELECT actor,plan,step FROM actor_tool_receipts WHERE status='pending'").fetchall():
         row=current.get(actor)
         if row and (row.get('plan') or {}).get('id')==plan_id:continue
         saved=server.db.execute('SELECT definition FROM actor_plans WHERE actor=? AND plan=?',(actor,plan_id)).fetchone()
         if saved:
-            plan=json.loads(saved[0]);step=next(s for s in plan['steps'] if s['id']==step_id)
+            plan=json.loads(saved[0])
+            from .actor_methods import expand
+            plan=expand(server,actor,plan)
+            step=next(s for s in plan['steps'] if s['id']==step_id)
             record=row or dict(version=0,evidence=[],places=[])
             with server.db:seq=_receipt(server,actor,record,plan,step,'blocked',dict(reason='Plan withdrawn or actor unavailable; completion not asserted.'))
             return dict(actor=actor,plan=plan_id,step=step_id,status='blocked',seq=seq)
-    for actor,row in sorted(current.items()):
+    cursor=server.db.execute('SELECT last_actor FROM actor_scheduler WHERE singleton=1').fetchone()
+    ordered=sorted(current.items())
+    if cursor:ordered=[p for p in ordered if p[0]>cursor[0]]+[p for p in ordered if p[0]<=cursor[0]]
+    for actor,row in ordered:
         plan=row.get('plan')
         if not plan:continue
         validate(plan)
@@ -231,11 +261,24 @@ def tick(server,*,now=None):
             prior=server.db.execute('SELECT definition FROM actor_plans WHERE actor=? AND plan=?',(actor,plan['id'])).fetchone()
             if prior and prior[0]!=encoded:continue # Admission normally rejects this; never execute a changed identity.
             server.db.execute('INSERT OR IGNORE INTO actor_plans VALUES(?,?,?)',(actor,plan['id'],encoded))
+        from .actor_methods import expand,invocation
+        if invocation(plan):
+            try:
+                with server.db:
+                    if row.get('canonical'):raise ValueError('Methods are available only to generated world actors')
+                    plan=expand(server,actor,plan)
+            except (ValueError,json.JSONDecodeError) as exc:
+                step=plan['steps'][0]
+                if server.db.execute('SELECT 1 FROM actor_tool_receipts WHERE actor=? AND plan=?',(actor,plan['id'])).fetchone():continue
+                with server.db:seq=_receipt(server,actor,row,plan,step,'blocked',dict(reason=str(exc)[:240]))
+                return dict(actor=actor,plan=plan['id'],step=step['id'],status='blocked',seq=seq)
         receipts={s:(status,json.loads(result)) for s,status,result in server.db.execute('SELECT step,status,result FROM actor_tool_receipts WHERE actor=? AND plan=?',(actor,plan['id']))}
-        if any(status=='blocked' for status,_ in receipts.values()):continue # Replan explicitly, never blind retry.
+        blocked=any(status=='blocked' for status,_ in receipts.values())
         pending_steps={s for s,(status,_) in receipts.items() if status=='pending'}
-        for step in plan['steps']:
-            if pending_steps and step['id'] not in pending_steps:continue
+        for step in sorted(plan['steps'],key=lambda s:s['id'] not in pending_steps):
+            if step['id'] not in pending_steps:
+                if blocked:continue # Settle admitted work, but never start more after failure.
+                if pending_steps and not CAPABILITIES[step['tool']].during_activity:continue
             if step['id'] in receipts and receipts[step['id']][0]!='pending':continue
             if not all(s in receipts and receipts[s][0] in ('succeeded','skipped') for s in step['after']):continue
             from .actor_conditions import matches as condition_matches
@@ -268,6 +311,7 @@ def tick(server,*,now=None):
                     if isinstance(result,Committed):
                         return dict(actor=actor,plan=plan['id'],step=step['id'],status='succeeded',seq=result.seq)
                     if isinstance(result,Pending):
+                        _scheduled(server,actor)
                         server.db.execute('INSERT INTO actor_tool_receipts VALUES(?,?,?,?,?,NULL)',(actor,plan['id'],step['id'],'pending',json.dumps(result.data,sort_keys=True)))
                     else:seq=_receipt(server,actor,row,plan,step,'succeeded',result)
                 if isinstance(result,Pending):
@@ -281,7 +325,12 @@ def tick(server,*,now=None):
     return None
 
 
+def _scheduled(server,actor):
+    server.db.execute('INSERT OR REPLACE INTO actor_scheduler VALUES(1,?)',(actor,))
+
+
 def _receipt(server,actor,row,plan,step,status,result):
+    _scheduled(server,actor)
     seq=server.memory.append('actor_tool_result',dict(character_id=actor,plan=plan['id'],step=step['id'],tool=step['tool'],status=status,result=result,
         character_version=row['version'],based_on=row['evidence'],places=row['places'],source='authority_capability_runtime',
         limits=CAPABILITIES[step['tool']].outcome))
@@ -305,7 +354,7 @@ from .actor_events import start as event_wait,poll as event_poll
 CAPABILITIES['world.await_event']=Capability('Wait for a future committed public world event without repeated model calls.',dict(event='public world history event type',where='JSON object <=600 chars with up to four exact top-level scalar filters; empty object matches any event of this type'),'First actual matching record after subscription, with event_seq, payload and scalar event_FIELD results for composition. Durable bounded paging; not private information, direct perception or an invented outcome. One-shot; agent chooses whether to subscribe again.',event_wait,event_poll,('canonical','world'))
 
 from .actor_object_programs import install as program_object,poll as program_poll
-CAPABILITIES['world.program_object']=Capability('Install a reusable interactive state machine on an observed unprogrammed anchored prop.',dict(object='observed prop ID',revision='observed program_revision',program='JSON <=700 chars: initial state name, states {name:{text <=28 ASCII,gfx 0/1,on:{action:next_state},use:action or empty, optional choices:[player_action]}}; 1..4 states, up to4 transitions each. Native A invokes use; /guild object choices exposes only explicitly listed player choices; agents choose advertised actions.'),'Admitted persistent prop program through normal mechanic staging. Appearance, text and available actions change through real player/agent use; no bag, rewards, movement or claimed interactions.',program_object,program_poll,('world',))
+CAPABILITIES['world.program_object']=Capability('Install a reusable interactive state machine on an observed unprogrammed anchored prop.',dict(object='observed prop ID',revision='observed program_revision',program='JSON <=700 chars: initial state name, states {name:{text <=28 ASCII,gfx 0/1,on:{action:next_state},use:action or empty, optional choices:[player_action], optional moves:{action:[native learned move IDs] or {types:[water],categories:[special],exclude:[ID]}}}}; 1..4 states, up to4 transitions each. Native A invokes use; /guild object choices exposes only explicitly listed player choices; agents choose advertised actions.'),'Admitted persistent prop program through normal mechanic staging. Appearance, text and available actions change through real player/agent use; no bag, rewards, movement or claimed interactions.',program_object,program_poll,('world',))
 
 from .cave_links import install as install_cave_link
 CAPABILITIES['world.link_caves']=Capability('Bind an observed unused anchored prop to another already-opened plain cave.',dict(object='observed anchored prop ID',revision='observed program_revision',place='exact opened destination place ID',destination='exact format-1 destination revision'),'Durable one-way physical link. Capable player A opens confirmation; separate destination transfer preserves original Hoenn return. No actor/player travel claimed by installation; no outdoor formats.',install_cave_link,None,('world',))
@@ -322,10 +371,10 @@ CAPABILITIES['world.respond_companion']=Capability('Accept/decline a companion o
 
 from .actor_knowledge import share as share_observation,recall as recall_observation
 CAPABILITIES['world.share_observation']=Capability('Pass a real own observation to an adjacent independent world character.',dict(target='existing recipient',expected_version='current recipient version',observation='own successful world.observe receipt sequence'),'Durable dated facts and provenance delivered; not current sight or agreement. Recipient can react independently.',share_observation,None,('world',))
-CAPABILITIES['world.recall_report']=Capability('Read a factual report actually received from another character.',dict(delivery='received_observations delivery sequence'),'Dated snapshot and report_revision/report_x/report_y for planning; inspect again after travel, not current first-hand knowledge.',recall_observation,None,('world',))
+CAPABILITIES['world.recall_report']=Capability('Read an immutable dated report actually received from another character, preserving the original observer.',dict(delivery='received_observations delivery sequence'),'Dated snapshot, original-observer/previous-delivery/hop provenance and report_revision/report_x/report_y for planning; the sender may be a relay. Inspect again after travel, not current first-hand knowledge.',recall_observation,None,('world',))
 
 from .object_networks import install as install_network,poll as poll_network
-CAPABILITIES['world.program_network']=Capability('Build shared interactive or spatial prop mechanisms.',dict(definition='JSON <=2600: id, objects[2..4], program {initial,states:{phase:{objects:{id:{x,y,gfx,text}},on:{id:{action:phase}},use:{id:action},when?:[{to,mode:all|any,occupied:bool,hold:1..30,zones:[{x,y,radius:0..2,players:0..4,characters:0..8}]}]}}}. Max6 phases,2 rules,4 zones. gfx0/1,text28,one-tile moves.'),'Actual shared objects; fresh scoped positions, connected geometry and occupancy enforced. No rewards or fictional labor.',install_network,poll_network,('world',))
+CAPABILITIES['world.program_network']=Capability('Build shared interactive or spatial prop mechanisms.',dict(definition='JSON <=2600: id, objects[2..4], program {initial,states:{phase:{objects:{id:{x,y,gfx,text}},on:{id:{action:phase}},use:{id:action},moves?:{id:{action:[learned move IDs] or {types:[water],categories:[special],exclude:[ID]}}},choices?:{id:[player actions]},when?:[{to,mode:all|any,occupied:bool,hold:1..30,zones:[{x,y,radius:0..2,players:0..4,characters:0..8}]}]}}}. Max6 phases,2 rules,4 zones. gfx0/1,text28,one-tile moves.'),'Actual shared objects; fresh scoped positions, connected geometry and occupancy enforced. No rewards or fictional labor.',install_network,poll_network,('world',))
 
 from .npc_conversations import reply as reply_player
 CAPABILITIES['world.reply_player']=Capability('Reply publicly to an actual nearby player speech addressed to this recurring NPC.',dict(speech='own public_player_speech receipt integer',text='1..80 printable characters of public fictional reply'),'Durable public reply; native chat if original speaker remains nearby. No obedience, action completion or private relationship invented.',reply_player,None,('world',))
@@ -363,7 +412,7 @@ CAPABILITIES['world.inspect_habitat']=Capability('Inspect the real configured na
 CAPABILITIES['world.revise_habitat']=Capability('Populate or revise the existing shared cave wildlife while retaining its place identity and exact geometry.',dict(observation='own world.inspect_habitat receipt',profile='existing profile or granite/meteor/ice/victory for previously plain cave',rate='native encounter rate 1..100',slots='JSON <=650 chars: exactly 12 [enabled Expansion species name,level 1..100] pairs'),'Actual CAVE10/11 native encounter data with atomic revision/history receipt. Players must leave the shared destination. Opened immutable regions, outdoors, Hoenn encounters and player saves unchanged. No simulated migration, catch or NPC training.',revise_habitat,None,('canonical','world'))
 
 from .battle_campaigns import publish as publish_campaign
-CAPABILITIES["world.publish_battle_campaign"]=Capability("Publish a branching optional adventure of existing NPC battles and ordinary-map visit stages.",dict(campaign="JSON id/title/entry/nodes; each node either opponent/win/loss routes (optional preparation {choice:{actor,items,move}}), or visit:{label,point:[group,num,x,y]}/next routes. Stable normal maps only; bounds checked, walkability needs playtest"),"Immutable playable graph, not completed battles or travel. Existing native campaign board offers voluntary fresh-presence check-in; shared party waits for all check-ins, not simultaneous presence. Player chooses routes; exact native reports retain private save-scoped progress. No rewards, forced fights or invented growth.",publish_campaign,None,("world","canonical"))
+CAPABILITIES["world.publish_battle_campaign"]=Capability("Publish a branching optional adventure, including split-party roles with concurrent independent battles or visits.",dict(campaign="JSON id/title/entry/nodes; each node either opponent/win/loss routes (optional preparation {choice:{actor,items,move}}), or visit:{label,point:[group,num,x,y]}/next routes. Or roles:{role:{opponent,preparation?}|{visit:{label,point}}}/win/loss: 2..4 distinct tasks, shared-only. visit may include revision for exact admitted generated geometry; ordinary maps omit revision. Generated visit roles may be offered to independently consenting NPCs through the campaign board; battle/ordinary-map roles require humans. Native bounds or actual generated walkability checked"),"Immutable playable graph, not completed battles or travel. Existing native campaign board offers voluntary fresh-presence check-in; shared party waits for all check-ins, not simultaneous presence. Player chooses routes; exact native reports retain private save-scoped progress. No rewards, forced fights or invented growth.",publish_campaign,None,("world","canonical"))
 
 from .shared_outbreaks import configure as configure_outbreak
 CAPABILITIES['world.configure_outbreak']=Capability('Author or end a temporary public land encounter population on a reviewed Hoenn route.',dict(map='route name from outbreaks.maps',species='enabled Expansion species name',level='1..100',chance='1..50 percent of native outbreak tests',minutes='1..60, or 0 to end own population'),'Actual temporary encounter configuration, not simulated migration/catches. Native terrain, encounter rate, Repel, capture and party rules remain intact. Saved personal outbreaks take priority. Never modifies a player saved outbreak or forces a battle.',configure_outbreak,None,('canonical','world'))
@@ -446,3 +495,89 @@ CAPABILITIES['world.publish_safari_outing']=Capability('Invite players to an opt
 
 from .safari_outings import wait as wait_safari, poll as poll_safari
 CAPABILITIES['world.await_safari_outing']=Capability('Wait for your outing reported group target or actual expiry.',dict(id='own published outing ID'),'Returns opted-in anonymous aggregate client reports, not verified captures or NPC growth. Existing validated follow-up capabilities remain separate decisions.',wait_safari,poll_safari,('canonical','world'))
+
+
+# Reviewed non-physical operations only. Default remains exclusive, including
+# unknown future capabilities. Passive waits may coexist; all original
+# dependencies, audience checks, exact receipts and transactions still apply.
+for _tool in ('world.await_event','world.reply_player','actor.message',
+              'world.search_history','world.read_history','world.recall_report',
+              'world.inspect_species','world.inspect_blueprint'):
+    CAPABILITIES[_tool]=replace(CAPABILITIES[_tool],during_activity=True)
+
+from .native_resident_population import spawn as populate_native, poll as native_population_poll
+CAPABILITIES['world.populate_native']=Capability('Create a new original recurring NPC at a source-verified ordinary Hoenn residence site.',dict(map='eligible map name from native_resident_sites',definition='JSON <=700: id,name,role,goals,team [{species,level}],x,y,gfx 7/8,text; choose an advertised site'),'Actual persistent NPC using existing normal-map rendering and optional interactions. One resident per eligible room, players must leave during admission. No canonical duplicates, travel, captures or native save changes. Exact native asset pin required.',populate_native,native_population_poll,('canonical','world'))
+
+from .spatial_speech import speak as spatial_speak
+CAPABILITIES['world.speak']=Capability('Speak publicly to actually nearby recurring NPCs and eligible nearby players, without selecting their response.',dict(text='1..80 printable fictional public characters',radius='1..4 generated connected-ground steps; native maps clamp to same-map proximity radius2'),'Durable public speech and exact NPC recipient IDs; independent recipient turns. Existing chat attempts one-shot delivery to frozen nearby player sessions. Stationary non-battle world actors only; 30-second per-actor cooldown. No claim of rendered hearing, truth, agreement, or physical action.',spatial_speak,None,('world',))
+
+from .history_world_rules import publish as publish_history_rule, pause as pause_history_rule
+CAPABILITIES['world.publish_reaction']=Capability('Install an ongoing bounded response to future committed public events.',dict(id='immutable own rule ID',rule='JSON <=650: event/where/tool/args/cooldown/per_hour. Discover history_world_rules for reviewed events and operations. Fixed scalar args; cooldown60..86400, attempts1..12 per hour.'),'Durable registration only. Current validated native-world operation runs later on matching real public records, with causal receipt and recurring attempt budget. No model call or inferred truth.',publish_history_rule,None,('world','canonical'))
+CAPABILITIES['world.pause_reaction']=Capability('Stop your own persistent world reaction.',dict(id='own existing rule ID'),'No future effects from this rule; existing committed world state and receipts retained.',pause_history_rule,None,('world','canonical'))
+
+from .campaign_cast import decide as campaign_decide, finish as campaign_finish, poll as campaign_poll
+CAPABILITIES['world.decide_campaign_role']=Capability('Independently accept, decline or withdraw an addressed public generated-map visit invitation.',dict(invitation='advertised invitation ID',decision='accept, decline or withdraw'),'Choice only, never movement. Human party history remains private. Accepted roles need a subsequent real navigation arrival.',campaign_decide,None,('world',))
+CAPABILITIES['world.complete_campaign_role']=Capability('Submit your own actual post-acceptance journey arrival for an accepted generated visit role.',dict(invitation='accepted invitation ID',arrival_receipt='arrival_receipt returned by world.navigate'),'Waits until party deployment is ready; requires matching authority journey and current exact-revision position. No human results/history or fabricated battles.',campaign_finish,campaign_poll,('world',))
+
+from .character_archive import recall as recall_archived_character
+CAPABILITIES['world.recall_character']=Capability('Recall permanent public retired-character identities and relationships outside live capacity.',dict(after='ID cursor, empty starts first page',identity='exact archived ID for full final record, or empty to list eight'), 'Dated final authored record and archive event; never a present actor or verified achievement. Original history remains searchable.',recall_archived_character,None,('canonical','world'),True)
+
+from .knowledge_relays import relay as relay_received_report
+CAPABILITIES['world.relay_report']=Capability('Pass a genuinely received public observation to another actually adjacent generated NPC.',dict(target='existing inspected character ID',expected_version='current recipient version',delivery='own received report delivery ID'),'Immutable dated observation with original observer and prior-delivery provenance, never new sight or automatic trust. Already-informed recipients do not create new deliveries or reaction loops. Nearby players see a post-commit notice.',relay_received_report,None,('world',))
+
+from .npc_tactics import configure as configure_tactics
+CAPABILITIES["world.set_tactics"]=Capability("Choose composable native battle AI preferences for this generated trainer optional challenges.",dict(flags="JSON list: setup_first, risky, seek_two_hit_ko, baton_pass, hp_aware, field_status, prefer_status, reserve_ace; [] restores normal"),"Frozen at battle preparation; no guaranteed moves, new stats, training or victories. Existing moves/party only; canonical and co-op encounters unchanged. No omniscience.",configure_tactics,None,("world",))
+
+from .route_rematch_events import configure as configure_rematch_event
+CAPABILITIES['world.organize_rematches']=Capability('Organize temporary optional rematch availability on an existing Hoenn route.',dict(route='route from route_rematch_events catalog',minutes='0..1440; zero closes own event'),'Original registered previously defeated trainers, personal native badge and team progression. No forced fights, attendance, consent, outcome, shared credit or growth inferred. Other organizer active events cannot be replaced.',configure_rematch_event,None,('canonical','world'))
+
+from .player_tournaments import publish as publish_tournament
+CAPABILITIES['world.publish_tournament']=Capability('Invite 2/4/8 consenting players to a persistent native singles tournament.',dict(id='stable public ID <=24',title='public title <=60 ASCII',size='2,4 or8'),'Public entrant names and matching session-bound native client reports, not verified victories. Each match requires normal proximity and opponent acceptance; disagreement/disconnect needs both entrants to retry. No party normalization or save/reward changes.',publish_tournament,None,('canonical','world'))
+from .player_tournaments import cancel as cancel_tournament
+CAPABILITIES['world.cancel_tournament']=Capability('Cancel your own open tournament without inventing winners or stopping native battles.',dict(id='own tournament ID'),'Durable cancellation, releasing active capacity. Previously reported results remain historical; in-flight battles are separate and do not advance this bracket.',cancel_tournament,None,('canonical','world'))
+
+from .pyramid_courses import publish as publish_pyramid, close as close_pyramid
+CAPABILITIES["world.publish_pyramid_course"]=Capability("Publish a reproducible seven-floor course using native Battle Pyramid geometry.",dict(id="immutable lowercase course ID",seed="uint32 generation seed"),"Native seed/template forecast and optional player admission. Existing facility rules and private save progression apply; no visits, identical enemy teams or victories inferred.",publish_pyramid,None,("world","canonical"))
+CAPABILITIES["world.close_pyramid_course"]=Capability("Close own Pyramid course to new downloads.",dict(id="own course ID"),"Already downloaded/admitted personal courses remain valid.",close_pyramid,None,("world","canonical"))
+
+from .spatial_signals import signal as spatial_signal
+CAPABILITIES["world.signal"]=Capability("Place a short-lived visible intent marker at this stationary native-map resident position.",dict(kind="look, meet, help or danger"),"Nearby opted-in players may see a stock field arrow. Actual public town/route position, not verified danger, assistance or rendered acknowledgement. No collision objects or save edits.",spatial_signal,None,("world",))
+
+from .starter_offers import tool as starter_offer_tool
+CAPABILITIES['world.starters']=Capability('Inspect, publish or close optional fresh-save starter offers using native Birch selection.',dict(operation='inspect, publish or close',value='inspect: empty string; publish: JSON {id,species:[three distinct catalog names]}; close: own offer ID'),'Player explicitly loads and chooses. Native level-5 grant, story and rival slot teams remain native. No Pokemon adoption or victory inferred.',starter_offer_tool,None,('world','canonical'))
+
+from .maze_courses import tool as maze_course_tool
+CAPABILITIES['world.maze_courses']=Capability('Preview and publish newly generated collision-checked maze layouts in native Trainer Hill.',dict(operation='inspect, preview, publish or close',value='inspect: empty string; preview: seed 0..4095; publish: JSON {id,seed}; close: own ID'),'Four real generated layouts with native selected-mode trainers. Explicit next-run player opt-in; no vanilla prizes or best-time writes, no completed exploration/battle inferred.',maze_course_tool,None,('world','canonical'))
+
+from .overworld_moves import use as use_world_move
+CAPABILITIES['world.use_move']=Capability('Use an actually learned companion move on an observed authored prop action.',dict(object='observed prop ID',action='advertised move action',object_revision='observed object_revision',individual='owned on-team individual with matching current native move inspection',move='learned native move ID'),'Existing shared-object executor admits actual state/appearance change. Requires current reconciled native move slots; no battle, PP consumption, growth or canonical-world destruction.',use_world_move,poll_object,('world',))
+
+from .move_selectors import inspect_rules
+CAPABILITIES['world.inspect_move_rules']=Capability('Inspect native move selectors before authoring reusable world responses.',dict(selector='JSON exact ID list or {types:[water],categories:[special],exclude:[ID]}; types/categories intersect, values within each list are alternatives',after='last move ID for paging, initially 0'),'Up to24 static catalog entries; never evidence of ownership or learned moves. Configuration-dependent traits omitted.',inspect_rules,None,('canonical','world'))
+
+from .reconstruction import queue as queue_reconstruction,poll as poll_reconstruction,cancel as cancel_reconstruction
+CAPABILITIES['world.reconstruct_environment']=Capability('Plan inspected terrain reconstruction after the area becomes vacant.',dict(observation='own world.inspect_environment receipt',tiles='JSON <=700 chars of inspected {x,y,terrain} cells'),'Pending durable plan, not live construction. Unchanged native geometry transaction commits only while empty; stale revision conflicts, no automatic rebase.',queue_reconstruction,poll_reconstruction,('canonical','world'))
+CAPABILITIES['world.cancel_reconstruction']=Capability('Cancel own pending reconstruction without terrain changes.',dict(id='own reconstruction ID'),'No rollback of completed work.',cancel_reconstruction,None,('canonical','world'),during_activity=True)
+
+from .actor_methods import remember as remember_method,unavailable as perform_method,inspect_object
+CAPABILITIES['world.remember_method']=Capability('Retain your own actually completed public action sequence as an immutable reusable method.',dict(name='new lowercase method name',plan='own completed plan ID',parameters='JSON object up to8 name:{step,argument} literal slots. Reviewed observe/navigate/inspect_object/use_object/set_weather only; every prior step must be a dependency, revisions and use_object identity must reference fresh observations.'),'Stored public method with exact successful outcome evidence; no new effect or skill mastery invented.',remember_method,None,('world',))
+CAPABILITIES['world.perform_method']=Capability('As the sole step of a new plan, compile an own retained method into ordinary fresh capability steps.',dict(method='own retained method name',digest='exact retained digest',bindings='JSON object supplying every parameter with the original scalar type'),'Fresh observations and guarded real actions, independently receipted. Reuses no past state, receipt or success. Restart resumes exact expanded plan; no nested executor or canonical/player-save effects.',perform_method,None,('world',))
+CAPABILITIES['world.inspect_object']=Capability('Inspect a specific adjacent public object through a fresh bounded local observation.',dict(object='nearby public object ID'),'Fresh scalar object identity/revision and advertised actions for result-reference composition; no remote/private knowledge.',inspect_object,None,('world',))
+
+from .encounter_profiles import configure as configure_encounter_profile
+CAPABILITIES['world.configure_encounter_profile']=Capability('Author a voluntary move-driven ordinary walking encounter filter for a reviewed Hoenn route.',dict(map='route from encounter_profiles.maps',selector='JSON move selector, same as world.inspect_move_rules',accept='25..99 percent acceptance of ordinary generated encounters',prefer_move_type='0 or 1: matching final species types retain 100 percent acceptance',steps='10..200 eligible walking step countdown',pp='1..4 PP cost shown before player confirmation'),'Configuration only. Native actual learned move, PP and explicit consent are required. Filters actual post-shuffle table species; never creates species, guarantees catches, alters personal roamers/outbreaks or changes item counters.',configure_encounter_profile,None,('canonical','world'))
+
+from .move_sensing import configure as configure_move_sensing
+CAPABILITIES['world.configure_move_sensing']=Capability('Author optional move-based hidden-item reconnaissance on a reviewed ordinary route.',dict(map='route from move_sensing.maps',selector='existing bounded move selector JSON',radius='1..5 current-map tile radius',pp='1..4 native PP cost per scan'),'Configuration only. Player needs Itemfinder and actual learned move, separately consents to lookup, scan/PP and any nearby clue sharing. Personal collection flags remain private unless a clue is explicitly volunteered. No item granted, NPC knowledge, verified discovery or collection implied.',configure_move_sensing,None,('canonical','world'))
+
+from .move_weather import configure as configure_move_weather
+CAPABILITIES['world.configure_move_weather']=Capability('Author optional learned-move temporary local weather on a reviewed route.',dict(map='route from move_weather.maps',selector='bounded existing move selector JSON',weather='rain, sandstorm or sun',frames='600..3600 weather-task ticks; paused during battle',pp='1..4 native PP cost'),'Configuration only. Player explicitly requests a profile and confirms native PP cost. No shared climate or verified activation. Native clear stable weather required; story/map weather takes priority. Stock weather forms and initial battle weather apply.',configure_move_weather,None,('canonical','world'))
+
+from .passage_lifecycle import configure as configure_passage
+CAPABILITIES['world.set_passage']=Capability('Close or reopen both directions of an owned existing physical cave passage.',dict(connection='exact ID from passage_lifecycle discovery',revision='current passage lifecycle revision',operation='close or open'),'Atomic durable route availability and native closed caption. Refuses affected in-flight player transfers or current NPC journeys. No redirect, deletion, forced travel or loss of private return warp; regional menus remain available.',configure_passage,None,('canonical','world'))
+
+from .move_witnesses import configure as configure_move_attention
+CAPABILITIES['world.attend_moves']=Capability('Notice locally committed shared move actions, including unchanged-object contributions, and independently choose how to react.',dict(mode='local or off',radius='connected cardinal radius integer 1..4',cooldown='minimum notice interval seconds integer 30..3600'),'Opt-in durable observation at actual admission; bounded batches retain exact receipts and client/native provenance. Existing enrolled author and host budgets, no automatic model launch or scripted response. Reobserve before acting.',configure_move_attention,None,('world',))
+
+from .player_npc_memory import appraise as appraise_player
+CAPABILITIES['world.appraise_player']=Capability('Form a subjective fictional appraisal of a visitor who explicitly consented to this NPC remembering future public interactions.',dict(visitor='own active consented pseudonymous visitor handle',evidence='exact subsequent linked speech or reported challenge event sequence',text='subjective appraisal, 1..160 ASCII characters',battle='open, invite or decline this optional dynamic challenge',greeting='personalized native dialogue, 1..28 ASCII characters'),'Public interpretation, never verified victory, friendship score or forced battle. No retroactive identity linkage or private party access. Current consent and policy checked before native opponent freeze; revocation does not rewrite accepted battles.',appraise_player,None,('world',))

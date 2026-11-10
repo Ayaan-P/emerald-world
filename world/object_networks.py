@@ -8,10 +8,13 @@ def project(result, server=None):
     for key,network in state.get('world_object_networks',{}).items():
         program=network['program'];ids=network['objects'];status=state.setdefault('world_object_network_state',{}).setdefault(key,dict(phase=program['initial'],turn=0))
         updates=[controls[i]['state'] for i in ids if i in controls and controls[i]['state'].get('turn',0)>status['turn']]
+        from .cooperative_moves import validate_projection
+        validate_projection(server,state,key,network,status,updates)
         if len(updates)>1:raise ValueError('Conflicting network interactions')
         if updates:
             update=updates[0]
             if update['turn']!=status['turn']+1 or update['phase'] not in program['states']:raise ValueError('Invalid network transition')
+            if update['phase']!=status['phase']:update=dict(update,cooperators={}) if 'cooperators' in status else update
             status.update(update)
             if server is not None:
                 holds=getattr(server,'_spatial_mechanism_holds',{})
@@ -22,6 +25,7 @@ def project(result, server=None):
             target=transition(server,key,network,status)
             if target is not None and target!=status['phase']:
                 status.update(phase=target,turn=status['turn']+1)
+                if 'cooperators' in status:status['cooperators']={}
         node=program['states'][status['phase']]
         objects={o['id']:o for o in result['objects']}
         for identity in ids:
@@ -29,7 +33,11 @@ def project(result, server=None):
             obj=objects[identity];appearance=node['objects'][identity]
             obj.update(appearance)
             controls[identity]=dict(state=dict(status),object=dict(appearance))
-            state.setdefault('world_object_actions',{})[identity]={action:action for action in node['on'].get(identity,{})}
+            from .cooperative_moves import visible_actions
+            available=visible_actions(node,identity,status.get('cooperators',{}))
+            state.setdefault('world_object_actions',{})[identity]={action:action for action in available}
+            state.setdefault('world_object_moves',{})[identity]=copy.deepcopy(node.get('moves',{}).get(identity,{}))
+            state.setdefault('world_object_player_choices',{})[identity]=list(node.get('choices',{}).get(identity,[]))
             defaults=state.setdefault('world_object_player_use',{})
             if node['use'].get(identity):defaults[identity]=node['use'][identity]
             else:defaults.pop(identity,None)
@@ -62,12 +70,27 @@ def install(server,actor,row,args):
     if type(program) is not dict or set(program)!={'initial','states'} or type(program['states']) is not dict or not 1<=len(program['states'])<=6 or type(program['initial']) is not str or program['initial'] not in program['states']:raise ValueError('Invalid state graph')
     name=lambda s:type(s) is str and bool(re.fullmatch('[a-z][a-z0-9_]{0,15}',s))
     for phase,node in program['states'].items():
-        if not name(phase) or type(node) is not dict or set(node) not in ({'objects','on','use'},{'objects','on','use','when'}) or any(type(node[k]) is not dict for k in ('objects','on','use')) or set(node['objects'])!=set(ids) or set(node['on'])-set(ids) or set(node['use'])-set(ids):raise ValueError('State must describe every member and its actions')
+        if not name(phase) or type(node) is not dict or not {'objects','on','use'}<=set(node) or set(node)-{'objects','on','use','when','moves','choices','cooperate'} or any(type(node[k]) is not dict for k in ('objects','on','use')) or set(node['objects'])!=set(ids) or set(node['on'])-set(ids) or set(node['use'])-set(ids):raise ValueError('State must describe every member and its actions')
+        for key in ('moves','choices'):
+            if type(node.get(key,{})) is not dict or set(node.get(key,{}))-set(ids):raise ValueError('Move/choice maps require known network members')
         for i,appearance in node['objects'].items():
             if type(appearance) is not dict or set(appearance)!={'x','y','gfx','text'} or any(type(appearance[k]) is not int for k in ('x','y','gfx')) or appearance['gfx'] not in (0,1) or type(appearance['text']) is not str or not 1<=len(appearance['text'])<=28 or any(not 32<=ord(c)<127 for c in appearance['text']):raise ValueError('Unsupported appearance')
             if abs(appearance['x']-objects[i]['x'])+abs(appearance['y']-objects[i]['y'])>1:raise ValueError('Each object remains within one tile of its anchor')
             actions=node['on'].get(i,{})
+            from .overworld_moves import validate_node
+            validate_node(dict(on=actions,use=node['use'].get(i,''),moves=node.get('moves',{}).get(i,{})))
+            choices=node.get('choices',{}).get(i,[])
+            if type(choices) is not list or any(type(a) is not str or a not in actions for a in choices) or len(set(choices))!=len(choices):raise ValueError('Player choices require distinct member actions')
             if type(actions) is not dict or len(actions)>4 or any(not name(a) or not name(t) or t not in program['states'] for a,t in actions.items()) or type(node['use'].get(i,'')) is not str or node['use'].get(i,'') and node['use'][i] not in actions:raise ValueError('Invalid interaction transition')
+        from .cooperative_moves import validate as validate_cooperation
+        validate_cooperation(node,ids)
+        for actions in node.get('cooperate',{}).values():
+            for needs in actions.values():
+                for need in needs:
+                    if node['on'][need['object']][need['action']]!=phase:raise ValueError('Contribution actions must stay in their current phase')
+        for obj,actions in node.get('cooperate',{}).items():
+            for action in actions:
+                if node['on'][obj][action]==phase:raise ValueError('Completion must leave the cooperative phase')
         trial=[dict(o,**node['objects'][o['id']]) if o['id'] in ids else o for o in server.objects]
         validate_region_objects(server,trial,server.module_state)
     from .spatial_mechanisms import validate as validate_spatial

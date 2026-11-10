@@ -42,11 +42,15 @@ def recall(server,actor,row,args):
     saved=server.db.execute('SELECT sender,observation,snapshot FROM actor_knowledge WHERE recipient=? AND delivered=?',(actor,args['delivery'])).fetchone()
     if not saved:raise ValueError('This character did not receive that report')
     sender,observation,raw=saved;snapshot=json.loads(raw)
+    from .knowledge_relays import lineage
+    provenance=lineage(server,args['delivery'],sender,observation)
     return dict(outcome='dated_report_recalled',sender=sender,observation=observation,delivery=args['delivery'],
-        report_revision=snapshot['revision'],report_x=snapshot['x'],report_y=snapshot['y'],snapshot=snapshot,
-        semantics='Sender observed this at the recorded revision. Navigate and observe again before acting; not recipient first-hand sight or proof entities remain.')
+        provenance=provenance,report_revision=snapshot['revision'],report_x=snapshot['x'],report_y=snapshot['y'],snapshot=snapshot,
+        semantics='The named original observer recorded this; the immediate sender may only be relaying it. Navigate and observe again before acting; not recipient first-hand sight or proof entities remain.')
 
 
 def relevant(event,actor):
+    from .knowledge_relays import relevant as relayed
+    if relayed(event,actor):return True
     return (event.get('event')=='character_knowledge_shared' and event.get('recipient')==actor
         and event.get('publication')=='public_world_observation' and event.get('basis')=='adjacent_authority_observation_handoff')

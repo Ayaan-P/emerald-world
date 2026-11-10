@@ -20,6 +20,16 @@ def actors(state):
 
 
 def dynamic_result(event, identity, character):
+    from .player_npc_memory import relevant as remembered_player
+    if remembered_player(event,identity):return True
+    from .move_witnesses import relevant as move_relevant
+    if move_relevant(event,identity):return True
+    from .contest_results import relevant as contest_result_relevant
+    if contest_result_relevant(event,identity):return True
+    from .campaign_cast import relevant as campaign_cast_relevant
+    if campaign_cast_relevant(event,identity):return True
+    from .spatial_speech import relevant as spatial_relevant
+    if spatial_relevant(event,identity):return True
     from .actor_stories import relevant as story_relevant
     if story_relevant(event,identity):return True
     from .actor_agreements import relevant as agreement_relevant

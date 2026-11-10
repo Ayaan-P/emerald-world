@@ -24,7 +24,10 @@ def publish(server, actor, row, args):
     if type(nodes) is not dict or not 1<=len(nodes)<=16 or type(d['entry']) is not str or d['entry'] not in nodes:raise ValueError('Use 1..16 nodes and an entry')
     for key,n in nodes.items():
         if not re.fullmatch('[a-z][a-z0-9_]{0,15}',key) or type(n) is not dict:raise ValueError('Invalid campaign node')
-        if 'visit' in n:
+        if 'roles' in n:
+            from .parallel_campaigns import validate as validate_parallel
+            validate_parallel(server,n,cast)
+        elif 'visit' in n:
             from .campaign_visits import validate
             validate(server,n)
         else:
@@ -35,6 +38,8 @@ def publish(server, actor, row, args):
         for outcome in ('win','loss'):
             edges=routes(n,outcome)
             if type(edges) is not list or len(edges)>4 or any(type(x) is not str or x not in nodes for x in edges) or len(set(edges))!=len(edges):raise ValueError('Invalid route choices')
+    sizes={len(n['roles']) for n in nodes.values() if 'roles' in n}
+    if len(sizes)>1:raise ValueError('All split stages must use the same party size')
     seen=set();visiting=set()
     def visit(k):
         if k in visiting:raise ValueError('Campaign graph must be acyclic')
@@ -85,8 +90,10 @@ def command(server,conn,words):
         if handled:
             pass
         elif len(words)==2 and words[0]=='start':
-            if current and current[1]['status']!='complete':raise ValueError('Leave the current campaign first')
-            d=document(server,words[1]);data=dict(node=d['entry'],status='ready',choices=[],history=[])
+            if current and current[1]['status'] not in ('complete', 'withdrawn'):raise ValueError('Leave the current campaign first')
+            d=document(server,words[1])
+            if any('roles' in n for n in d['nodes'].values()):raise ValueError('Split-party campaigns require a shared run')
+            data=dict(node=d['entry'],status='ready',choices=[],history=[])
             with server.db:save(server,conn,d['id'],data)
         elif words==['leave']:
             with server.db:server.db.execute('DELETE FROM battle_campaign_runs WHERE trainer=? AND lineage=?',(conn['id'],conn['campaign_run']))
@@ -101,22 +108,24 @@ def command(server,conn,words):
         elif len(words)==2 and words[0]=='prepare':
             from .campaign_preparation import choose
             choose(server,conn,current,words[1])
-        elif words!=['status']:raise ValueError('Use /guild campaign list|start ID|share ID|join CODE|begin|status|choose NODE|advise NODE|prepare OPTION|leave')
+        elif words!=['status']:raise ValueError('Use /guild campaign list|start ID|share ID|join CODE|begin|status|role ROLE|choose NODE|advise NODE|prepare OPTION|leave')
         current=active(server,conn)
         if not current:return ['No active battle campaign.']
         key,data=current;d=document(server,key)
+        if data['status']=='withdrawn':return [d['title']+': withdrawn. Other party members are unchanged.', 'Your prior stage reports remain here until you start or join another run.']
         if data['status']=='complete':return [d['title']+': finished.', 'Reported battles: '+str(len(data['history']))]
         if data['status']=='choice':return [d['title']+': choose your next route.', 'Routes: '+', '.join(data['choices']), 'Use /guild campaign choose NODE.']
-        if data['status'] in ('lobby','waiting'):
+        if data['status'] in ('lobby','waiting','deploying'):
             return [text for text,_ in shared_campaigns.rows(server,conn,current)]+['Waiting for fellow trainers. Leave cancels the shared run.']
-        node=d['nodes'][data['node']]
+        from .parallel_campaigns import effective
+        node=effective(server,key,data)
         if 'visit' in node:
             from .campaign_visits import describe
             return describe(node)+['Use the campaign board Check in option, or /guild campaign check-in.']
         opponent=node['opponent']
         obj=next((x for x in server.objects if x['id']==opponent),None)
         from .campaign_preparation import describe
-        return (describe(server,data,d['nodes'][data['node']])+[d['title']+': '+data['node'], 'Approach '+opponent+' and choose Battle.', ('Location: map %s/%s tile %s,%s'%(obj['group'],obj['num'],obj['x'],obj['y'])) if obj else 'Opponent currently away; progress is retained.'] + (['Region: '+obj['region_revision']] if obj and obj.get('region_revision') else []))
+        return (describe(server,data,node)+[d['title']+': '+data['node'], 'Approach '+opponent+' and choose Battle.', ('Location: map %s/%s tile %s,%s'%(obj['group'],obj['num'],obj['x'],obj['y'])) if obj else 'Opponent currently away; progress is retained.'] + (['Region: '+obj['region_revision']] if obj and obj.get('region_revision') else []))
     except (ValueError,TypeError,KeyError) as exc:raise GuildError(str(exc)) from None
 
 
@@ -124,7 +133,8 @@ def bind(server,conn,pending):
     current=active(server,conn)
     if not current or current[1]['status']!='ready':return
     key,data=current
-    if document(server,key)['nodes'][data['node']].get('opponent')==pending['id']:
+    from .parallel_campaigns import effective
+    if effective(server,key,data).get('opponent')==pending['id']:
         pending['campaign_binding']=[conn['campaign_run'],key,data['node'],len(data['history'])]
 
 

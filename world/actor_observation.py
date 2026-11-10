@@ -42,7 +42,10 @@ def observe(server, actor, row, args):
         entity.update(offers(server,obj))
         if obj.get('kind')=='prop':
             from .actor_objects import digest
-            entity['program_revision']=digest([obj,server.candidate.sha256 if server.candidate else None])
+            from .passage_lifecycle import program_revision,status,caption
+            entity['program_revision']=program_revision(server,obj)
+            if status(server,obj['id'])['revision']:
+                entity['passage']=status(server,obj['id']);entity['text']=caption(server,obj)
             from .actor_cave_travel import observed_link
             link=observed_link(server,obj)
             if link:entity['cave_link']=link

@@ -74,7 +74,9 @@ SECRET = re.compile(rb'-----BEGIN (?:[A-Z ]*PRIVATE KEY)-----|gh[pousr]_[A-Za-z0
 DATA = {'world/expansion_species.json', 'world/map_catalog.json',
         'world/trainer_reference.json', 'world/trainer_experience_catalog.json',
         'world/companion_move_names.json', 'world/encounter_traits.json',
-        'world/practice_trainer_sources.json', 'world/rental_catalog.json'}
+        'world/practice_trainer_sources.json', 'world/rental_catalog.json',
+        'world/pyramid_catalog.json', 'world/starter_catalog.json', 'world/move_traits.json',
+        'world/native_resident_sites.json', 'world/secret_base_locations.json'}
 ENTRY = 'scripts/windows_expansion_entry.py'
 
 

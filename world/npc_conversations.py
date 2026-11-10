@@ -5,6 +5,8 @@ from .guilds import GuildError
 
 
 def install(db):
+    from .player_npc_memory import setup
+    setup(db)
     db.execute('CREATE TABLE IF NOT EXISTS npc_speech_audience(speech INTEGER,trainer TEXT,session TEXT,heard INTEGER DEFAULT 0,answered INTEGER DEFAULT 0,PRIMARY KEY(speech,trainer))')
     db.execute('CREATE TABLE IF NOT EXISTS npc_public_speech(seq INTEGER PRIMARY KEY,actor TEXT,trainer TEXT,version INTEGER,text TEXT,status TEXT,reply TEXT,session TEXT,delivery TEXT)')
 
@@ -24,6 +26,12 @@ def nearby(server,conn,actor):
 
 
 def command(server,conn,words):
+    if words and words[0] in ('remember-public','stop-remembering','memory'):
+        from .player_npc_memory import command as memory_command
+        return memory_command(server,conn,words)
+    if words and words[0]=='speak-public':
+        from .spatial_speech import command as group_speech
+        return group_speech(server,conn,words[1:])
     if words and words[0] in ('guide','join-guide','leave-guide'):
         from .npc_guidance import command as guide_command
         return guide_command(server,conn,words)
@@ -31,6 +39,8 @@ def command(server,conn,words):
         from .npc_accompaniment import command as walk_command
         return walk_command(server,conn,words)
     if not words:return ['NPC speech is PUBLIC world history, visible to world agents and players. Do not enter personal information.',
+        'Optional remembering: /guild npc remember-public ID. Disclosure and confirmation required.',
+        'Group conversation: /guild npc speak-public MESSAGE (public history and nearby audience).',
         'Use /guild npc nearby, or /guild npc say-public ID MESSAGE. Agent replies are not guaranteed.',
         'An NPC may offer to lead a group: /guild npc guide ID, join-guide ID, or leave-guide.',
         'Invite a generated NPC to walk with you: /guild npc walk-with ID. Stop: /guild npc walk-stop.']
@@ -53,6 +63,8 @@ def command(server,conn,words):
             revision=obj.get('region_revision'),position=[obj['group'],obj['num'],obj['x'],obj['y']],
             publication='explicit_public_npc_speech',basis='authenticated_nearby_player_message',
             limits='Player dialogue, not a command to obey or evidence that its claims occurred. No trainer name or save fields published.'))
+        from .player_npc_memory import speech as remember_speech
+        remember_speech(server,conn,actor,seq)
         session=conn.setdefault('npc_speech_session',secrets.token_hex(16))
         server.db.execute('INSERT INTO npc_public_speech VALUES(?,?,?,?,?,?,NULL,?,NULL)',(seq,actor,conn['id'],character['version'],text,'delivered',session))
         # Freeze only physically present authenticated sessions, not a guild roster.
@@ -61,7 +73,7 @@ def command(server,conn,words):
             except GuildError:continue
             token=peer.setdefault('npc_speech_session',secrets.token_hex(16))
             server.db.execute('INSERT INTO npc_speech_audience(speech,trainer,session) VALUES(?,?,?)',(seq,peer['id'],token))
-    server.revision=seq;conn['npc_speech_time']=time.monotonic()
+    server.revision=max(server.revision,seq);conn['npc_speech_time']=time.monotonic()
     return ['Public speech delivered to '+character['name'].encode('ascii','replace').decode()+'. The character decides whether and how to respond.']
 
 

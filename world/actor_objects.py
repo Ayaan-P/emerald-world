@@ -17,7 +17,8 @@ def offers(server,obj):
     try:
         if not any(isinstance(n,ast.FunctionDef) and n.name=='actor_interact' for n in ast.parse(server.candidate.source).body):return {}
     except SyntaxError:return {}
-    return dict(actions=valid,object_revision=digest([obj,actions,server.candidate.sha256])) if valid else {}
+    from .cooperative_moves import inspect as inspect_cooperation
+    return dict(cooperation=inspect_cooperation(server,obj),actions=valid,move_actions=server.module_state.get('world_object_moves',{}).get(obj['id'],{}),object_revision=digest([obj,actions,server.candidate.sha256])) if valid else {}
 
 
 def object_step(result,request,handler):
@@ -48,6 +49,13 @@ def object_step(result,request,handler):
         raise ValueError('Object interaction preconditions changed')
     previous=controls.get(request['object'],{}).get('state',{})
     value=handler(request['object'],request['action'],copy.deepcopy(previous))
+    cooperation=request.get('network_cooperation')
+    if cooperation:
+        if state.get('world_object_networks',{}).get(cooperation['network'])!=cooperation['definition'] or previous!=cooperation['previous']:
+            raise ValueError('Cooperative contribution state changed')
+        if value['state'].get('phase')==previous.get('phase'):
+            value['state']['cooperators']=copy.deepcopy(cooperation['ledger'])
+        else:value['state']['cooperators']={}
     if type(value) is not dict or set(value)!={'state','x','y','gfx','text'} or type(value['state']) is not dict or len(json.dumps(value['state'],allow_nan=False))>2048:
         raise ValueError('Object handler requires bounded own state and x/y/gfx/text')
     if (any(type(value[k]) is not int for k in ('x','y','gfx')) or abs(value['x']-target['x'])+abs(value['y']-target['y'])>1
@@ -61,7 +69,7 @@ def object_step(result,request,handler):
     return result
 
 
-def use(server,actor,row,args):
+def use(server,actor,row,args,move_effect=None):
     from .actor_runtime import Pending
     from .characters import records
     from .character_walks import walking
@@ -76,11 +84,16 @@ def use(server,actor,row,args):
         or abs(source['x']-obj['x'])+abs(source['y']-obj['y'])!=1):raise ValueError('Object action unavailable, stale or not adjacent')
     execution=server.actor_tool_execution
     request=dict(actor=actor,version=current['version'],object=obj['id'],action=args['action'],target=copy.deepcopy(obj),actions=offer['actions'],plan=execution[2]['id'],step=execution[3]['id'])
+    if move_effect:request['move_effect']=move_effect
     return stage(server,request,position=(source['x'],source['y']))
 
 
 def stage(server,request,position=None):
     from .actor_runtime import Pending
+    from .overworld_moves import authorize,remember
+    authorize(server,request)
+    from .cooperative_moves import prepare
+    prepare(server,request)
     obj=request['target']
     old=server.candidate.source
     if obj['id'] in server.module_state.get('world_pushables',{}):
@@ -95,6 +108,9 @@ def stage(server,request,position=None):
         with path.open('x') as f:f.write(source_code)
     except FileExistsError:
         if path.is_symlink() or path.read_text()!=source_code:raise ValueError('Object candidate conflict')
+    remember(server,request)
+    from .cooperative_moves import remember as remember_cooperation
+    remember_cooperation(server,request)
     def dispatch():server.deployment=(None,path,None)
     return Pending(dict(request=identity,object=obj['id'],revision=obj['region_revision'],before=copy.deepcopy(obj),state_digest=digest(server.module_state.get('world_object_controls',{}).get(obj['id'],{}).get('state',{}))),dispatch)
 
@@ -148,6 +164,9 @@ def poll_player(server):
     except ValueError:message='Object action was not applied.'
     conn=pending['conn']
     if server.peers.get(conn.get('id')) is conn and not conn.get('closing'):
+        channel=pending.get('field_move_ui_channel')
+        if pending.get('field_move_ui_seq') and server.link_channels.get(conn['id']) is channel and not channel.get('closing'):
+            server._queue(channel,'FM DONE %s %s\n'%(pending['field_move_ui_seq'],int(message=='Object action applied.')))
         server.guild_chat.message(conn,conn['id'],message)
         server._queue(conn,server._snapshot(conn))
 
@@ -171,16 +190,19 @@ def dispatch_source(old,request,state):
     if assignments:
         functions=[n for n in tree.body if isinstance(n,ast.FunctionDef)]
         legacy=helper.replace("    if request.get('player_choice'):\n        if request['action'] not in state.get('world_object_player_choices',{}).get(request['object'],[]):\n            raise ValueError('Player choice is no longer advertised')\n    elif request.get('player_use'):\n        if state.get('world_object_player_use',{}).get(request['object'])!=request['action']:\n            raise ValueError('Default player-use action changed')\n","    if request.get('player_use'):\n        if state.get('world_object_player_use',{}).get(request['object'])!=request['action']:\n            raise ValueError('Default player-use action changed')\n")
+        pre_cooperation=helper.replace("    cooperation=request.get('network_cooperation')\n    if cooperation:\n        if state.get('world_object_networks',{}).get(cooperation['network'])!=cooperation['definition'] or previous!=cooperation['previous']:\n            raise ValueError('Cooperative contribution state changed')\n        if value['state'].get('phase')==previous.get('phase'):\n            value['state']['cooperators']=copy.deepcopy(cooperation['ledger'])\n        else:value['state']['cooperators']={}\n",'')
+        pre_cooperation_legacy=legacy.replace("    cooperation=request.get('network_cooperation')\n    if cooperation:\n        if state.get('world_object_networks',{}).get(cooperation['network'])!=cooperation['definition'] or previous!=cooperation['previous']:\n            raise ValueError('Cooperative contribution state changed')\n        if value['state'].get('phase')==previous.get('phase'):\n            value['state']['cooperators']=copy.deepcopy(cooperation['ledger'])\n        else:value['state']['cooperators']={}\n",'')
+        prior_expected=[ast.dump(ast.parse(v).body[0],include_attributes=False) for v in (pre_cooperation,pre_cooperation_legacy)]
         expected=ast.dump(ast.parse(helper).body[0],include_attributes=False)
         legacy_expected=ast.dump(ast.parse(legacy).body[0],include_attributes=False)
-        if len(assignments)!=1 or len(assignments[0].targets)!=1 or not any(ast.dump(n,include_attributes=False) in (expected,legacy_expected) for n in functions) or not any(ast.dump(n,include_attributes=False)==ast.dump(ast.parse(wrapper).body[0],include_attributes=False) for n in functions):
+        if len(assignments)!=1 or len(assignments[0].targets)!=1 or not any(ast.dump(n,include_attributes=False) in (expected,legacy_expected,*prior_expected) for n in functions) or not any(ast.dump(n,include_attributes=False)==ast.dump(ast.parse(wrapper).body[0],include_attributes=False) for n in functions):
             raise ValueError('Reusable object dispatcher changed; explicit mechanic consolidation required')
         seeds=[n for n in tree.body if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id=='_ew_object_seed_v1']
         if len(seeds)!=1:raise ValueError('Object dispatcher seed changed')
         lines=old.splitlines(keepends=True)
         edits=[(assignments[0],f'_ew_object_request_v1={request!r}\n'),(seeds[0],f'_ew_object_seed_v1={state!r}\n')]
         for n in functions:
-            if ast.dump(n,include_attributes=False)==legacy_expected:edits.append((n,helper+'\n'))
+            if ast.dump(n,include_attributes=False)in (legacy_expected,*prior_expected):edits.append((n,helper+'\n'))
         for node,replacement in sorted(edits,key=lambda pair:pair[0].lineno,reverse=True):
             if isinstance(node,ast.Assign):ast.literal_eval(node.value) # Never replace executable expressions.
             lines[node.lineno-1:node.end_lineno]=[replacement]
@@ -209,3 +231,5 @@ def archive_transition(server,before,state,objects):
         return
     seq=server.memory.append('object_transition_committed',dict(object=obj['id'],request=identity,revision=obj.get('region_revision'),before=previous,after=obj,state_digest=value['state_digest'],source='validated_mechanic_admission'))
     server.db.execute('INSERT INTO object_transition_archive VALUES(?,?,?)',(identity,encoded,seq));server.revision=seq
+    from .overworld_moves import admitted
+    admitted(server,identity)

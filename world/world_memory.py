@@ -119,6 +119,9 @@ def evidence_index(event, *, current_catalog=False):
         words.extend((event['before'], event['after']))
     elif event.get('event') == 'landmark_discovery_shared':
         words.append(event['landmark'])
+    elif event.get('event') == 'spatial_public_speech' and event.get('publication') == 'explicit_public_spatial_speech':
+        words.extend([event.get('character_id') or '',event.get('text') or ''])
+        words.extend(r['id'] for r in event.get('recipients',[]) if type(r) is dict and type(r.get('id')) is str)
     elif event.get('event') == 'terrain_changed':
         words.extend(sorted({tile[key] for tile in event['tiles'] for key in ('before','after')}))
     words.extend(sorted(places))
