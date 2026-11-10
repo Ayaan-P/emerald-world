@@ -1255,6 +1255,10 @@ class WorldServer:
             return
         # Only connected native link peers may be invited. CONTROL connections
         # neither approve requests nor contribute native engine rounds.
+        if raw.startswith(b'C '):
+            from .contest_results import handle as contest_result_handle
+            self._queue(conn, contest_result_handle(self,conn,raw))
+            return
         if raw.startswith(b'S '):
             from .safari_outings import handle as safari_handle
             self._queue(conn, safari_handle(self,conn,raw))
