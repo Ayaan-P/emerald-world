@@ -54,9 +54,11 @@ def admitted(server,peer):
 
 def announce(server,link,raw):
     peer=link['presence']
-    if not server.combined_regions or raw!=('RGC 1 '+DIGEST).encode():
+    if not server.combined_regions or raw not in (('RGC 1 '+DIGEST).encode(),('RGC 2 '+DIGEST).encode()):
         server._error(link,'REGISTRY');server._error(peer,'REGISTRY');return
     link['registry_digest']=DIGEST
+    # Version 1 clients do not understand ACK lines; preserve their presence-only path.
+    if raw.startswith(b'RGC 2 '):server._queue(link,'RGC OK 2 '+DIGEST+'\n')
     server._queue(peer,server._snapshot(peer))
 
 
