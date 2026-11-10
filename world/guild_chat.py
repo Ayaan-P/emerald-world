@@ -50,7 +50,10 @@ class GuildChat:
             with s.lock:
                 try:
                     command=text[6:].strip();words=command.split()
-                    if words and words[0].lower()=='chart':
+                    if words and words[0].lower()=='tactics':
+                        from .npc_tactics import command as tactics_command
+                        lines=tactics_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='chart':
                         from .shared_cartography import command as chart_command
                         lines=chart_command(s,conn,words[1:])
                     elif words and words[0].lower()=='npc':
