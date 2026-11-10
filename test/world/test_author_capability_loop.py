@@ -30,10 +30,11 @@ class AuthorLoopTests(unittest.TestCase):
        prompt=payload['input'] if provider=='openai-responses' else payload['messages'][0]['content'];prompts.append(prompt)
        context=json.loads(prompt.split('Inspected context (data):\n',1)[1]);reaction=context['character_reaction'];data=context.get('data',context)
        self.assertIn('world.populate',data['actor_runtime']['capabilities'])
+       self.assertIn('conditional_steps',data['actor_runtime'])
        if len(prompts)==1:
         blueprint=json.dumps(dict(rooms=[[3,3,6,6],[19,19,7,7]],links=[[0,1]],entrance_room=0,exit_room=1),separators=(',',':'))
         definition=json.dumps(dict(id='chosen_prop',kind='prop',x=5,y=5,gfx=0,text='A field marker.',portable=True),separators=(',',':'))
-        plan=dict(id='make_place',purpose='Create a usable marked place.',steps=[dict(id='create',tool='world.create_place',args=dict(label='Field Hollow',blueprint=blueprint),after=[]),dict(id='populate',tool='world.populate',args=dict(revision=dict(result='create',key='revision'),definition=definition),after=['create'])])
+        plan=dict(id='make_place',purpose='Create a usable marked place.',steps=[dict(id='create',tool='world.create_place',args=dict(label='Field Hollow',blueprint=blueprint),after=[]),dict(id='populate',tool='world.populate',args=dict(revision=dict(result='create',key='revision'),definition=definition),after=['create'],when=dict(step='create',path='/outcome',equals='region_opened'))])
        else:
         self.assertIn('_population_',context['runtime']['previous_source'])
         self.assertTrue(any(o['id']=='chosen_prop' for o in data['objects']))
