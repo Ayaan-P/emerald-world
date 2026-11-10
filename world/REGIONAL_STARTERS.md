@@ -15,3 +15,9 @@ Schema 0x4B4E5406 wraps the exact prior regional schema and payload together und
 Verification: 21 native host tests (including existing regression suite), actual callback tests for all nine Hoenn/Kanto choices, all thirty branch source checks, failed exclusive backup/atomic replacement, fresh-process reload, previous-counter recovery, coexistence with custody/rematches and exact prior-reader downgrade refusal. Synthetic fixtures only, no real saves.
 
 Not verified: full linked native build, rendered confirmation/monpic flow, script VM/controller playthrough, exhaustive flash-write interruptions or linked multiplayer sessions. The helper tests stub script operand reading; source checks do not execute the entire story VM. Keep disabled pending those checks. No full Kanto campaign claim.
+
+## Existing-party delivery correction
+
+Native #99 requires room in the party before Oak records a new choice, removes its ball, or advances gift flags in combined-region builds. Full parties may make room and retry. Naming uses the existing gift-recipient helper instead of assuming slot zero, preserving an arriving Hoenn party's lead. This correction also applies with the isolated-starter option off when combined Kanto content is built; it does not change standalone FRLG or Hoenn behavior, schemas, or migration decisions.
+
+Native pin: `19ce99fe5a097b085e752e7ab1bed267f1cb6931`, stacked on #98. 23 native host tests pass, including the production gift function with synthetic compact parties of sizes zero through six. Full script VM, rendered/controller nickname and cancel/retry QA, and full native linking remain unverified. No real saves were used.
