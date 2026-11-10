@@ -17,7 +17,7 @@ class ActivityBoard:
                 doc=json.loads(raw)
                 points=([x['at'] for x in doc['stages'][0]['stations']] if kind=='mystery' else
                         [x['start'] for x in doc['legs']] if kind=='relay' else doc['starts'] if kind=='race' else doc['bases'])
-                result.append(dict(kind=kind,id=key,title=doc['title'],players=len(points),at=points[0]))
+                result.append(dict(kind=kind,id=key,title=doc['title'],players=len(doc.get('starts',points)),at=points[0]))
         return result
 
     def current(self,name,kind):
@@ -31,7 +31,7 @@ class ActivityBoard:
             return dict(id=r[0],key=r[1],host=self.s.db.execute('SELECT trainer FROM mystery_members WHERE run=? AND role=0',(r[0],)).fetchone()[0],open=r[3]=='waiting')
         r=(self.s.relays._current(name) if kind=='relay' else self.s.flags.current(name))
         if not r:return None
-        return dict(id=r['id'],key=r['course']['id'] if kind=='relay' else r['arena']['id'],host=r['members'][0]['id'],open=r['phase']=='lobby' and len(r['members'])<(len(r['course']['legs']) if kind=='relay' else 2))
+        return dict(id=r['id'],key=r['course']['id'] if kind=='relay' else r['arena']['id'],host=r['members'][0]['id'],open=r['phase']=='lobby' and len(r['members'])<(len(r['course']['legs']) if kind=='relay' else len(self.s.flags.starts(r['arena']))))
 
     def prune(self):
         self.s.relays.tick();self.s.flags.tick();self.s.races.tick()
