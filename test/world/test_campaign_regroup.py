@@ -1,12 +1,12 @@
 import sqlite3
-from test_shared_campaigns import SharedCampaignTests
+import test_shared_campaigns as shared
 from world.battle_campaigns import command, active, install
 from world.shared_campaigns import load
 from world.campaign_board import rows, handle
 from world.guilds import GuildError
 
 
-class RegroupTests(SharedCampaignTests):
+class RegroupTests(shared.SharedCampaignTests):
     def checkpoint(self):
         self.start(); self.battle(self.a, 1); self.battle(self.b, 1)
 
