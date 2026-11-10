@@ -1264,6 +1264,10 @@ class WorldServer:
             from .tower_exchange import handle as tower_handle
             self._queue(conn,tower_handle(self,conn,raw))
             return
+        if raw.startswith(b'SO '):
+            from .starter_offers import handle as starter_handle
+            self._queue(conn,starter_handle(self,conn,raw))
+            return
         if raw.startswith(b'H '):
             from .spatial_signals import handle as signal_handle
             self._queue(conn,signal_handle(self,conn,raw))
