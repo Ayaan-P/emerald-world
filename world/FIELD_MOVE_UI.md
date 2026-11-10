@@ -21,3 +21,15 @@ No denied `world_bridge.c` change or replacement is included. Native additions u
 Compiled native controller fixtures exercise feature off/on, choosing/confirming, exact response sequencing, no feedback before commitment, no repeated success effect, changed party/position, timeout and cancellation. Source checks verify real party-menu/overlay/transport hooks and absence of a bridge-file edit. Authority tests exercise the actual authenticated channel binding, offer selection, stale facing, replay, successful admission and failed-admission result.
 
 These checks do not substitute for a complete linked native build or rendered playtest. Actual party-menu layout, return-to-field behavior, keyboard release handling, sparkle allocation/palette behavior, save coexistence and live two-client presentation still require Maya's QA. No live model was used.
+
+## Readable choices and explicit preview
+
+Matched native clients request `FM VIEW sequence token action` after receiving the existing action offer and whenever the selected action changes. The authority validates the live facing target, sequence/token, revision and expiry without staging any effect. `FM DETAIL` returns printable-ASCII hex for actual target text, public label and authored expected response. Replies fit the existing 512-byte line bound. The bounded native tokenizer accommodates all eight offered actions. Older clients retain their existing offer/use behavior.
+
+Screen one shows the target and readable choice. Enter previews; it does not use the move. Screen two labels the expectation **Authored**, states that no PP is consumed and the move/action becomes public, and offers Enter to use, Left to return or Escape to cancel. No preview success is represented as a committed effect. Native party/position/facing snapshots are checked again on confirmation, and the authority revalidates the original revision through normal use admission.
+
+This applies to shared prop move actions, not local weather, sensing, healing or encounter-profile activation. Descriptions are explicit public authoring, not inference from private state or arbitrary handler execution. Existing generic handlers without descriptions remain usable with a truthful missing-description label. The feature remains behind the existing world-field-moves experimental switch. No battle PP, inventories or saves are changed by previews.
+
+Validation uses actual authority fixtures and a compiled native controller harness. Full linked/rendered UI, real keyboard/controller play and multi-client gameplay remain unverified.
+
+Paired native draft #100: `bd88c0f08e1eea42297130c34b8e5ffbdb123a6c`, based on #99. App ancestry is #451, not RC12 or the reconciled integration candidate. 41 focused authority tests and 10 native host tests pass; linked visual QA is still required.

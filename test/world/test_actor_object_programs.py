@@ -37,3 +37,16 @@ class ProgramTests(unittest.TestCase):
  def test_existing_handler_never_overwritten(self):
   self.s.module_state['world_object_actions']={'fixture':{'move':'Existing custom action'}};self.plan()
   self.assertEqual(runtime.tick(self.s,now=10)['status'],'blocked')
+
+ def test_public_labels_and_expected_responses_follow_current_state(self):
+  from world.actor_object_programs import program_step
+  self.program['states']['first']['labels']={'turn':'Rotate face'}
+  self.program['states']['first']['previews']={'turn':'Face should turn'}
+  self.install()
+  offered=actor_objects.offers(self.s,self.s.objects[-1])
+  self.assertEqual(offered['actions']['turn'],'Rotate face')
+  self.assertEqual(offered['previews']['turn'],'Face should turn')
+  self.assertEqual(self.s.module_state.get('world_object_controls',{}).get('fixture'),None)
+ def test_unknown_preview_action_rejected(self):
+  self.program['states']['first']['previews']={'missing':'Never advertised'}
+  self.plan();self.assertEqual(runtime.tick(self.s,now=10)['status'],'blocked')
