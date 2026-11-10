@@ -1,5 +1,5 @@
 {
-  "engine_commit": "659eb2ae1fd66dc6be9b0c733a8850b9b3b40c74",
+  "engine_commit": "23b5a42d58b30be435ed4b7e2fe5a629ee9ce52f",
   "inputs": {
     "data/layouts/House2/map.bin": "0e9f079644001531511005e3e4d2431049de8772",
     "data/layouts/HouseWithBed/map.bin": "b91b7153be1b30c6adb9a10d823198a65166be93",
