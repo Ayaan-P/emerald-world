@@ -152,6 +152,9 @@ def poll_player(server):
     except ValueError:message='Object action was not applied.'
     conn=pending['conn']
     if server.peers.get(conn.get('id')) is conn and not conn.get('closing'):
+        channel=pending.get('field_move_ui_channel')
+        if pending.get('field_move_ui_seq') and server.link_channels.get(conn['id']) is channel and not channel.get('closing'):
+            server._queue(channel,'FM DONE %s %s\n'%(pending['field_move_ui_seq'],int(message=='Object action applied.')))
         server.guild_chat.message(conn,conn['id'],message)
         server._queue(conn,server._snapshot(conn))
 
