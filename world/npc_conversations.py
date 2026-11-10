@@ -26,6 +26,9 @@ def nearby(server,conn,actor):
 
 
 def command(server,conn,words):
+    if words and words[0]=='availability':
+        from .npc_absence import command as absence_command
+        return absence_command(server,words)
     if words and words[0] in ('remember-public','stop-remembering','memory'):
         from .player_npc_memory import command as memory_command
         return memory_command(server,conn,words)

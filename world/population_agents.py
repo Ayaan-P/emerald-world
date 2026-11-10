@@ -76,7 +76,9 @@ def observe(queue, inspection, fetch):
                 (key,identity,'Resume independent planning from current state. A budget pause is not fictional activity or new experience.','character','queued',now,json.dumps(packet)))
         for managed in queue.db.execute("SELECT * FROM population_agents WHERE status='active'").fetchall():
             actor=managed['id'];sub=queue.db.execute('SELECT 1 FROM character_reactions WHERE id=?',(actor,)).fetchone()
-            reason='stopped' if not sub else 'inactive' if cast.get(actor,{}).get('status')!='active' else None
+            from .npc_absence import retained
+            absent=cast.get(actor,{}).get('status')=='away' and retained(data,actor)
+            reason='stopped' if not sub else 'inactive' if cast.get(actor,{}).get('status')!='active' and not absent else None
             if reason:
                 queue.db.execute('DELETE FROM character_reactions WHERE id=?',(actor,));cancel_queued(queue,actor)
                 queue.db.execute('UPDATE population_agents SET status=? WHERE id=?',(reason,actor))
