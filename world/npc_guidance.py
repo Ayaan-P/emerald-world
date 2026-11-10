@@ -89,9 +89,9 @@ def finish(server,key,actor,data,reason):
     return result
 
 
-def halt(server,actor,current,obj):
+def halt(server,actor,current,obj,*,reason='End a voluntary guided journey at the actual current tile.'):
     from .character_actions import compile_actions
-    action=dict(id=actor,expected_version=current['version'],evidence=current['evidence'],reason='End a voluntary guided journey at the actual current tile.',changes={},object=obj)
+    action=dict(id=actor,expected_version=current['version'],evidence=current['evidence'],reason=reason,changes={},object=obj)
     context=server.inspect();context['runtime']=dict(previous_source=server.candidate.source)
     context['recalled_history']=dict(events=[dict(json.loads(server.db.execute("SELECT data FROM events WHERE seq=? AND kind='world_memory'",(seq,)).fetchone()[0]),seq=seq) for seq in current['evidence']])
     source=compile_actions([action],context);digest=hashlib.sha256(source.encode()).hexdigest();path=server.runtime.candidates/('guidance_stop_'+digest+'.py')
