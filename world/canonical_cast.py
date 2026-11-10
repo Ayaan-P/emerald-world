@@ -345,6 +345,8 @@ def guild_command(server, conn, args):
 
 
 def reaction_activity(event, identity, row):
+    from .actor_agreements import relevant as agreement_relevant
+    if agreement_relevant(event,identity):return True
     from .actor_cooperation import relevant as work_relevant
     if work_relevant(event,identity):return True
     from .actor_runtime import relevant as tool_relevant
