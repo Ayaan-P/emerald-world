@@ -1920,6 +1920,14 @@ class WorldServer:
                     result=self.set_event_tile(request['trainer'],request['identity'],request['x'],request['y'],request['terrain'])
                 except ValueError as exc:
                     result=dict(ok=False,error=str(exc))
+            elif request.get('command') == 'reconstruction':
+                from .reconstruction import catalog,cancel_id
+                try:
+                    with self.lock,self.db:
+                        if set(request)=={'command'}:result=dict(ok=True,plans=catalog(self))
+                        elif set(request)=={'command','cancel'} and type(request['cancel']) is str:result=dict(ok=True,**cancel_id(self,request['cancel']))
+                        else:raise ValueError('Use reconstruction list or exact cancel ID')
+                except ValueError as exc:result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'set_shared_geometry_compact':
                 try:
                     if set(request)!={'command','identity','data','replace'} or type(request['data']) is not str:raise ValueError('invalid compact geometry')

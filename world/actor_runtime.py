@@ -531,3 +531,7 @@ CAPABILITIES['world.use_move']=Capability('Use an actually learned companion mov
 
 from .move_selectors import inspect_rules
 CAPABILITIES['world.inspect_move_rules']=Capability('Inspect native move selectors before authoring reusable world responses.',dict(selector='JSON exact ID list or {types:[water],categories:[special],exclude:[ID]}; types/categories intersect, values within each list are alternatives',after='last move ID for paging, initially 0'),'Up to24 static catalog entries; never evidence of ownership or learned moves. Configuration-dependent traits omitted.',inspect_rules,None,('canonical','world'))
+
+from .reconstruction import queue as queue_reconstruction,poll as poll_reconstruction,cancel as cancel_reconstruction
+CAPABILITIES['world.reconstruct_environment']=Capability('Plan inspected terrain reconstruction after the area becomes vacant.',dict(observation='own world.inspect_environment receipt',tiles='JSON <=700 chars of inspected {x,y,terrain} cells'),'Pending durable plan, not live construction. Unchanged native geometry transaction commits only while empty; stale revision conflicts, no automatic rebase.',queue_reconstruction,poll_reconstruction,('canonical','world'))
+CAPABILITIES['world.cancel_reconstruction']=Capability('Cancel own pending reconstruction without terrain changes.',dict(id='own reconstruction ID'),'No rollback of completed work.',cancel_reconstruction,None,('canonical','world'),during_activity=True)
