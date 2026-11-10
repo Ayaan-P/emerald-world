@@ -100,7 +100,9 @@ def assemble(binary, web_dist, version, output, engine='vanilla'):
     # Explicit reviewed runtime data only; never recurse over arbitrary JSON.
     # Trainer sharing and author context read these catalogs after installation.
     for name in ('map_catalog.json', 'expansion_species.json',
-                 'trainer_experience_catalog.json', 'trainer_reference.json'):
+                 'trainer_experience_catalog.json', 'trainer_reference.json',
+                 'companion_move_names.json', 'encounter_traits.json',
+                 'practice_trainer_sources.json', 'rental_catalog.json'):
         frozen['world/' + name] = (plain(REPO / 'world' / name).read_bytes(), 0o644)
     frozen['scripts/__init__.py'] = (b'', 0o644)  # Prevent an installed scripts package shadowing this helper.
     for source, name in [('linux_client.py', 'scripts/linux_client.py'),

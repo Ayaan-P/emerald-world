@@ -50,6 +50,19 @@ class LinuxPackageTests(unittest.TestCase):
                 'assert author_context("Roxanne")["story_progression"]')
         subprocess.run([sys.executable, '-I', '-c', code, str(bundle)], check=True)
 
+    def test_cumulative_runtime_catalogues_survive_packaging(self):
+        bundle = self.extract(self.package(engine='expansion-native'))
+        for name in ('companion_move_names.json', 'encounter_traits.json',
+                     'practice_trainer_sources.json', 'rental_catalog.json'):
+            with self.subTest(name=name):
+                asset = bundle / 'world' / name
+                self.assertTrue(asset.is_file(), 'Missing runtime asset: ' + name)
+                self.assertEqual(asset.read_bytes(), (REPO / 'world' / name).read_bytes())
+        code = ('import sys,json; from pathlib import Path; sys.path.insert(0,sys.argv[1]); '
+                'import world.server; import world.rental_pools; '
+                'assert json.loads((Path(sys.argv[1])/"world/companion_move_names.json").read_text())["names"]')
+        subprocess.run([sys.executable, '-I', '-c', code, str(bundle)], check=True)
+
     def test_relative_vite_index_asset_paths_are_supported(self):
         (self.dist / 'index.html').write_text('<html><script src="./assets/main.js"></script></html>')
         archive = self.package()
