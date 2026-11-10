@@ -59,6 +59,9 @@ class GuildChat:
                     elif words and words[0].lower()=='starters':
                         from .starter_offers import command as starter_command
                         lines=starter_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='mazes':
+                        from .maze_courses import command as maze_command
+                        lines=maze_command(s,conn,words[1:])
                     elif words and words[0].lower()=='bases':
                         from .base_neighborhood import command as base_directory_command
                         lines=base_directory_command(s,conn,words[1:])

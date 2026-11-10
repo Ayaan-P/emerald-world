@@ -522,3 +522,6 @@ CAPABILITIES["world.signal"]=Capability("Place a short-lived visible intent mark
 
 from .starter_offers import tool as starter_offer_tool
 CAPABILITIES['world.starters']=Capability('Inspect, publish or close optional fresh-save starter offers using native Birch selection.',dict(operation='inspect, publish or close',value='inspect: empty string; publish: JSON {id,species:[three distinct catalog names]}; close: own offer ID'),'Player explicitly loads and chooses. Native level-5 grant, story and rival slot teams remain native. No Pokemon adoption or victory inferred.',starter_offer_tool,None,('world','canonical'))
+
+from .maze_courses import tool as maze_course_tool
+CAPABILITIES['world.maze_courses']=Capability('Preview and publish newly generated collision-checked maze layouts in native Trainer Hill.',dict(operation='inspect, preview, publish or close',value='inspect: empty string; preview: seed 0..4095; publish: JSON {id,seed}; close: own ID'),'Four real generated layouts with native selected-mode trainers. Explicit next-run player opt-in; no vanilla prizes or best-time writes, no completed exploration/battle inferred.',maze_course_tool,None,('world','canonical'))
