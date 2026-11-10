@@ -1,0 +1,426 @@
+{
+  "native_revision": "9f1ce070e244f46c931183040601d1ddfa382d8f",
+  "source_blob": "d6ccfb0d65b414a154a826fbe0787ef9e500289a",
+  "source": "src/battle_pyramid.c",
+  "templates": [
+    {
+      "items": 7,
+      "trainers": 3,
+      "item_positions": "OBJ_POSITIONS_UNIFORM",
+      "trainer_positions": "OBJ_POSITIONS_UNIFORM",
+      "run_multiplier": 128,
+      "layout_offsets": [
+        0,
+        0,
+        1,
+        1,
+        2,
+        2,
+        3,
+        3
+      ]
+    },
+    {
+      "items": 6,
+      "trainers": 3,
+      "item_positions": "OBJ_POSITIONS_UNIFORM",
+      "trainer_positions": "OBJ_POSITIONS_UNIFORM",
+      "run_multiplier": 128,
+      "layout_offsets": [
+        1,
+        1,
+        2,
+        2,
+        3,
+        3,
+        4,
+        4
+      ]
+    },
+    {
+      "items": 5,
+      "trainers": 3,
+      "item_positions": "OBJ_POSITIONS_UNIFORM",
+      "trainer_positions": "OBJ_POSITIONS_UNIFORM",
+      "run_multiplier": 120,
+      "layout_offsets": [
+        2,
+        2,
+        3,
+        3,
+        4,
+        4,
+        5,
+        5
+      ]
+    },
+    {
+      "items": 4,
+      "trainers": 4,
+      "item_positions": "OBJ_POSITIONS_UNIFORM",
+      "trainer_positions": "OBJ_POSITIONS_UNIFORM",
+      "run_multiplier": 120,
+      "layout_offsets": [
+        3,
+        3,
+        4,
+        4,
+        5,
+        5,
+        6,
+        6
+      ]
+    },
+    {
+      "items": 4,
+      "trainers": 4,
+      "item_positions": "OBJ_POSITIONS_UNIFORM",
+      "trainer_positions": "OBJ_POSITIONS_IN_AND_NEAR_ENTRANCE",
+      "run_multiplier": 112,
+      "layout_offsets": [
+        4,
+        4,
+        5,
+        5,
+        6,
+        6,
+        7,
+        7
+      ]
+    },
+    {
+      "items": 3,
+      "trainers": 5,
+      "item_positions": "OBJ_POSITIONS_UNIFORM",
+      "trainer_positions": "OBJ_POSITIONS_IN_AND_NEAR_EXIT",
+      "run_multiplier": 112,
+      "layout_offsets": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "items": 3,
+      "trainers": 5,
+      "item_positions": "OBJ_POSITIONS_UNIFORM",
+      "trainer_positions": "OBJ_POSITIONS_UNIFORM",
+      "run_multiplier": 104,
+      "layout_offsets": [
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13
+      ]
+    },
+    {
+      "items": 2,
+      "trainers": 4,
+      "item_positions": "OBJ_POSITIONS_UNIFORM",
+      "trainer_positions": "OBJ_POSITIONS_IN_AND_NEAR_ENTRANCE",
+      "run_multiplier": 104,
+      "layout_offsets": [
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ]
+    },
+    {
+      "items": 4,
+      "trainers": 5,
+      "item_positions": "OBJ_POSITIONS_UNIFORM",
+      "trainer_positions": "OBJ_POSITIONS_IN_AND_NEAR_EXIT",
+      "run_multiplier": 96,
+      "layout_offsets": [
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ]
+    },
+    {
+      "items": 3,
+      "trainers": 6,
+      "item_positions": "OBJ_POSITIONS_UNIFORM",
+      "trainer_positions": "OBJ_POSITIONS_NEAR_EXIT",
+      "run_multiplier": 96,
+      "layout_offsets": [
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ]
+    },
+    {
+      "items": 2,
+      "trainers": 3,
+      "item_positions": "OBJ_POSITIONS_UNIFORM",
+      "trainer_positions": "OBJ_POSITIONS_UNIFORM",
+      "run_multiplier": 88,
+      "layout_offsets": [
+        12,
+        13,
+        14,
+        12,
+        13,
+        14,
+        12,
+        13
+      ]
+    },
+    {
+      "items": 4,
+      "trainers": 5,
+      "item_positions": "OBJ_POSITIONS_UNIFORM",
+      "trainer_positions": "OBJ_POSITIONS_UNIFORM",
+      "run_multiplier": 88,
+      "layout_offsets": [
+        11,
+        11,
+        11,
+        11,
+        11,
+        11,
+        11,
+        11
+      ]
+    },
+    {
+      "items": 3,
+      "trainers": 7,
+      "item_positions": "OBJ_POSITIONS_UNIFORM",
+      "trainer_positions": "OBJ_POSITIONS_UNIFORM",
+      "run_multiplier": 80,
+      "layout_offsets": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "items": 2,
+      "trainers": 4,
+      "item_positions": "OBJ_POSITIONS_UNIFORM",
+      "trainer_positions": "OBJ_POSITIONS_UNIFORM",
+      "run_multiplier": 80,
+      "layout_offsets": [
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13
+      ]
+    },
+    {
+      "items": 3,
+      "trainers": 6,
+      "item_positions": "OBJ_POSITIONS_UNIFORM",
+      "trainer_positions": "OBJ_POSITIONS_UNIFORM",
+      "run_multiplier": 80,
+      "layout_offsets": [
+        14,
+        14,
+        14,
+        14,
+        14,
+        14,
+        14,
+        14
+      ]
+    },
+    {
+      "items": 3,
+      "trainers": 8,
+      "item_positions": "OBJ_POSITIONS_UNIFORM",
+      "trainer_positions": "OBJ_POSITIONS_UNIFORM",
+      "run_multiplier": 80,
+      "layout_offsets": [
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15
+      ]
+    }
+  ],
+  "options": [
+    [
+      40,
+      0
+    ],
+    [
+      70,
+      1
+    ],
+    [
+      90,
+      2
+    ],
+    [
+      100,
+      3
+    ],
+    [
+      35,
+      1
+    ],
+    [
+      55,
+      2
+    ],
+    [
+      75,
+      3
+    ],
+    [
+      90,
+      4
+    ],
+    [
+      100,
+      10
+    ],
+    [
+      35,
+      2
+    ],
+    [
+      55,
+      3
+    ],
+    [
+      75,
+      4
+    ],
+    [
+      90,
+      5
+    ],
+    [
+      100,
+      11
+    ],
+    [
+      35,
+      3
+    ],
+    [
+      55,
+      4
+    ],
+    [
+      75,
+      5
+    ],
+    [
+      90,
+      6
+    ],
+    [
+      100,
+      12
+    ],
+    [
+      35,
+      4
+    ],
+    [
+      55,
+      5
+    ],
+    [
+      75,
+      6
+    ],
+    [
+      90,
+      7
+    ],
+    [
+      100,
+      13
+    ],
+    [
+      35,
+      5
+    ],
+    [
+      55,
+      6
+    ],
+    [
+      75,
+      7
+    ],
+    [
+      90,
+      8
+    ],
+    [
+      100,
+      14
+    ],
+    [
+      35,
+      6
+    ],
+    [
+      55,
+      7
+    ],
+    [
+      75,
+      8
+    ],
+    [
+      90,
+      9
+    ],
+    [
+      100,
+      15
+    ]
+  ],
+  "offsets": [
+    0,
+    4,
+    9,
+    14,
+    19,
+    24,
+    29
+  ]
+}
