@@ -4,6 +4,7 @@ These effects change narrative state, never native money, creatures or map bytes
 Authored packs are immutable. The authority, not a model or player, evaluates
 requirements and commits a choice and its resulting opportunities together.
 """
+from contextlib import nullcontext
 import hashlib
 import json
 import re
@@ -63,9 +64,12 @@ def validate(pack,places):
 
 
 class Opportunities:
-    def __init__(self,db,places,mysteries=None):
+    def __init__(self,db,places,mysteries=None,record_public=None):
+        self.record_public=record_public
         self.db=db;self.places=set(places);self.mysteries=mysteries
         db.executescript('''
+        CREATE TABLE IF NOT EXISTS story_public_authors(pack TEXT PRIMARY KEY,actor TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS story_public_results(pack TEXT,cursor INTEGER,result TEXT,PRIMARY KEY(pack,cursor));
         CREATE TABLE IF NOT EXISTS story_packs(id TEXT PRIMARY KEY,document TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS story_places(pack TEXT,place TEXT,revision INTEGER,state TEXT,played TEXT,PRIMARY KEY(pack,place));
         CREATE TABLE IF NOT EXISTS story_players(pack TEXT,trainer TEXT,state TEXT,played TEXT,PRIMARY KEY(pack,trainer));
@@ -74,13 +78,13 @@ class Opportunities:
         ''')
         db.commit()
 
-    def publish(self,pack):
+    def publish(self,pack,*,commit=True):
         validate(pack,self.places);document=encoded(pack)
         for scene in pack['scenes'].values():
             if 'mystery' in scene:
                 if self.mysteries is None:raise ValueError('Mystery prerequisites are unavailable.')
                 self.mysteries._pack(scene['mystery'])
-        with self.db:
+        with self.db if commit else nullcontext():
             old=self.db.execute('SELECT document FROM story_packs WHERE id=?',(pack['id'],)).fetchone()
             if old and old[0]!=document:raise ValueError('Story identity already names different content.')
             if not old:
@@ -124,10 +128,15 @@ class Opportunities:
         for key in identities:
             pack,revision,shared,private,wp,pp=self._load(key,trainer,place)
             scenes=self._eligible(trainer,pack,place,shared,private,wp,pp)
-            if scenes:results.append(dict(id=key,title=pack['title'],revision=revision,scenes=scenes))
+            if scenes:
+                public=self.db.execute('SELECT actor FROM story_public_authors WHERE pack=?',(key,)).fetchone()
+                results.append(dict(id=key,title=pack['title'],revision=revision,scenes=scenes,**(dict(public_author=public[0]) if public else {})))
         return results
 
-    def choose(self,trainer,place,pack_id,scene_id,choice_id,revision,request):
+    def choose(self,trainer,place,pack_id,scene_id,choice_id,revision,request,*,public=False):
+        owner=self.db.execute("SELECT actor FROM story_public_authors WHERE pack=?",(pack_id,)).fetchone()
+        if bool(owner)!=public:raise ValueError("Use the displayed public choice command for a public story; private stories remain private.")
+        if owner and self.record_public is None:raise ValueError("Public story history is unavailable")
         identity(request)
         if type(revision) is not int or revision<0:raise ValueError('Invalid story revision.')
         payload=encoded(dict(place=place,scene=scene_id,choice=choice_id,revision=revision))
@@ -147,9 +156,16 @@ class Opportunities:
                 if target is shared:public[key]=delta
             (wp if scene['once']=='world' else pp).append(scene_id)
             self.db.execute('INSERT OR REPLACE INTO story_places VALUES(?,?,?,?,?)',(pack_id,place,current+1,encoded(shared),encoded(wp)))
-            self.db.execute('INSERT OR REPLACE INTO story_players VALUES(?,?,?,?)',(pack_id,trainer,encoded(private),encoded(pp)))
+            if not owner:self.db.execute('INSERT OR REPLACE INTO story_players VALUES(?,?,?,?)',(pack_id,trainer,encoded(private),encoded(pp)))
             self.db.execute('INSERT INTO story_consequences VALUES(?,?,?,?,?,?)',(pack_id,place,current+1,scene_id,choice_id,encoded(public)))
             result=dict(ok=True,revision=current+1,text=action['result'])
+            if owner:
+                # No trainer identity, save lineage, private quality or free-form player text.
+                public_result=dict(outcome='public_story_choice',pack=pack_id,place=place,scene=scene_id,choice=choice_id,revision=current+1,changes=public,author=owner[0],publication='explicit_public_story_choice',basis='authority_choice_commit_not_native_world_effect')
+                seq=self.record_public('public_story_choice_committed',public_result)
+                public_result['receipt']=seq;public_result['cursor']=seq
+                self.db.execute('INSERT INTO story_public_results VALUES(?,?,?)',(pack_id,seq,encoded(public_result)))
+                result['public_receipt']=seq
             self.db.execute('INSERT INTO story_receipts VALUES(?,?,?,?,?)',(pack_id,trainer,request,payload,encoded(result)))
             return result
 
