@@ -3,6 +3,7 @@
 This coordinates existing native walking/chat, not new map geometry or rewards.
 Locations remain client reports under the existing world's trust model.
 """
+from contextlib import nullcontext
 import json
 import re
 import secrets
@@ -41,6 +42,8 @@ def validate(pack,coords):
 class Mysteries:
     def __init__(self,server,coords,freshness):
         self.s=server;self.db=server.db;self.coords=coords;self.freshness=freshness
+        from .private_mystery_partners import setup
+        setup(self.db)
         self.db.executescript('''
         CREATE TABLE IF NOT EXISTS mystery_packs(id TEXT PRIMARY KEY,document TEXT);
         CREATE TABLE IF NOT EXISTS mystery_runs(id TEXT PRIMARY KEY,pack TEXT,stage INTEGER,status TEXT);
@@ -73,6 +76,9 @@ class Mysteries:
         return json.loads(row[0])
 
     def _at(self,trainer,position):
+        if trainer.startswith("@npc:"):
+            from .private_mystery_partners import at
+            return at(self.s,trainer,position)
         peer=self.s.peers.get(trainer)
         if not peer or peer.get('closing'):return False
         state=peer.get('state');updated=peer.get('state_time')
@@ -95,10 +101,13 @@ class Mysteries:
         if role==1:lines.append(f'/mystery solve {index+1} ANSWER')
         return lines
 
-    def command(self,trainer,words):
+    def command(self,trainer,words,*,transaction=True):
         if len(words)==2 and words[0] in ('start','join') and getattr(self.s,'races',None) and self.s.races.current(trainer):raise ValueError('Leave your current race first.')
         if not words or words==['status']:return self.status(trainer)
-        with self.db:
+        with self.db if transaction else nullcontext():
+            from .private_mystery_partners import command as private_command
+            handled=private_command(self.s,trainer,words)
+            if handled is not None:return handled
             if words==['list']:
                 return [key+': '+self._pack(key)['title'] for key, in self.db.execute('SELECT id FROM mystery_packs ORDER BY id LIMIT 12')] or ['No mysteries have been published.']
             if len(words)==2 and words[0]=='start':
@@ -125,6 +134,8 @@ class Mysteries:
             rid,key,index,state,role=run;pack=self._pack(key);stage=pack['stages'][index]
             if words==['leave']:
                 self.db.execute("UPDATE mystery_runs SET status='cancelled' WHERE id=?",(rid,))
+                from .private_mystery_partners import cancel
+                cancel(self.s,rid)
                 return ['Mystery ended for both participants. No saves or inventory changed.']
             if words==['clue']:
                 if state!='active':raise ValueError('Wait for your partner to join before reading clues.')

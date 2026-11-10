@@ -1917,6 +1917,14 @@ class WorldServer:
                     return
                 identity = self.create_identity(request['trainer'])
                 result = dict(ok=True, invitation=dict(self.sharing, trainer=identity['id'], token=identity['token']))
+            elif request.get('command') in ('private_mystery_claim','private_mystery_finish'):
+                from .private_mystery_partners import claim,finish
+                try:
+                    with self.lock:
+                        if request['command']=='private_mystery_claim' and set(request)=={'command','actor','run'}:result=claim(self,request['actor'],request['run'])
+                        elif request['command']=='private_mystery_finish' and set(request)=={'command','actor','lease','decision'}:result=finish(self,request['actor'],request['lease'],request['decision'])
+                        else:raise ValueError('Invalid private mystery command')
+                except (ValueError,TypeError,sqlite3.Error):result=dict(ok=False,error='Private mystery turn unavailable or invalid')
             elif request.get('command') in ('private_cast_claim','private_cast_finish'):
                 from .canonical_reflection import claim,finish
                 try:
