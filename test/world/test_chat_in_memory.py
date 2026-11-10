@@ -35,6 +35,7 @@ class ChatRoutingTests(unittest.TestCase):
         self.server._broadcast = Mock()
         self.server._queue = Mock()
         self.server.revision = 0
+        self.server.module_state = {}  # Same empty character state as the real constructor.
         self.server.tiles = []
         self.server.objects = []
         self.server._error = Mock()
