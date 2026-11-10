@@ -26,8 +26,7 @@ def inspect_patch(server, actor, row, args):
                for x in range(args['x'],args['x']+args['width'])])
 
 
-def reshape(server, actor, row, args):
-    from .actor_runtime import Committed, _receipt
+def inspected_change(server, actor, args):
     if (set(args) != {'observation','tiles'} or type(args['observation']) is not int
             or type(args['tiles']) is not str or len(args['tiles']) > 700):
         raise ValueError('Use an own terrain inspection and bounded tile JSON')
@@ -43,6 +42,12 @@ def reshape(server, actor, row, args):
             or type(t['x']) is not int or type(t['y']) is not int
             or (t['x'],t['y']) not in allowed for t in tiles)):
         raise ValueError('Only inspected unprotected tiles may change')
+    return observation,tiles
+
+
+def reshape(server, actor, row, args):
+    from .actor_runtime import Committed, _receipt
+    observation,tiles=inspected_change(server,actor,args)
     execution=getattr(server,'actor_tool_execution',None)
     if not execution or execution[0] != actor:
         raise ValueError('Terrain authoring requires the durable plan executor')
