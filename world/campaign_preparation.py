@@ -27,7 +27,8 @@ def choose(server,conn,current,key):
     from .battle_campaigns import document,save
     if not current or current[1]['status']!='ready':raise ValueError('Choose a battle route before preparing')
     campaign,data=current
-    options=document(server,campaign)['nodes'][data['node']].get('preparation',{})
+    from .parallel_campaigns import effective
+    options=effective(server,campaign,data).get('preparation',{})
     if key not in options:raise ValueError('Choose a listed preparation option')
     option=options[key]
     if option['items'] and not conn.get('character_shop_capable'):raise ValueError('This preparation requires a matched native shop client')
@@ -44,7 +45,8 @@ def offer(server,conn,actor):
     current=active(server,conn)
     if not current or current[1]['status']!='ready':return None
     campaign,data=current;key=data.get('preparation')
-    option=document(server,campaign)['nodes'][data['node']].get('preparation',{}).get(key)
+    from .parallel_campaigns import effective
+    option=effective(server,campaign,data).get('preparation',{}).get(key)
     if not option or option['actor']!=actor:return None
     row=server.db.execute('SELECT revision FROM campaign_preparation_choices WHERE trainer=? AND lineage=? AND campaign=? AND node=? AND choice=?',
                           (conn['id'],conn['campaign_run'],campaign,data['node'],key)).fetchone()

@@ -24,7 +24,9 @@ def describe(node):
 def check_in(server,conn,current):
     from .battle_campaigns import document,save,routes
     if not current or current[1]['status']!='ready':raise ValueError('No active visit stage ready for check-in')
-    key,data=current;node=document(server,key)['nodes'][data['node']]
+    key,data=current
+    from .parallel_campaigns import effective
+    node=effective(server,key,data)
     if 'visit' not in node:raise ValueError('Current stage requires its normal battle')
     state=conn.get('state')
     if (server.peers.get(conn.get('id')) is not conn or conn.get('closing') or not state or not state[6]

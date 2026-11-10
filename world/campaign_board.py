@@ -22,22 +22,24 @@ def rows(server,conn):
     if not current or current[1]['status']=='complete':
         if current:out.append(('Campaign finished. Reported battles '+str(len(current[1]['history'])),None))
         for key,text in server.db.execute('SELECT id,document FROM battle_campaigns ORDER BY id LIMIT 32'):
-            out.append(('Start '+json.loads(text)['title'],['start',key]))
-            out.append(('Host shared '+json.loads(text)['title'],['share',key]))
+            doc=json.loads(text);sizes=[len(n['roles']) for n in doc['nodes'].values() if 'roles' in n]
+            if not sizes:out.append(('Start '+doc['title'],['start',key]))
+            out.append(('Host shared '+doc['title']+(f' - {sizes[0]} trainers' if sizes else ''),['share',key]))
         if not out:out.append(('No campaigns published. A configured world author can create one.',None))
     else:
         key,data=current;d=document(server,key)
         out.append((d['title']+' - '+data['status'],None))
-        if data['status'] in ('lobby','waiting'):
+        if data['status'] in ('lobby','waiting','deploying'):
             pass
         elif data['status']=='choice':
             group=shared_campaigns.load(server,data['shared']) if data.get('shared') else None
             for node in data['choices'] if not group or shared_campaigns.member(conn)==group['speaker'] else []:
                 target=d['nodes'][node]
-                label=target['visit']['label'] if 'visit' in target else target['opponent']
+                label='Split party' if 'roles' in target else target['visit']['label'] if 'visit' in target else target['opponent']
                 out.append(('Take route '+node+' - '+label,['choose',node]))
         else:
-            node=d['nodes'][data['node']]
+            from .parallel_campaigns import effective
+            node=effective(server,key,data)
             if 'visit' in node:
                 from .campaign_visits import describe as describe_visit
                 out.extend((line,None) for line in describe_visit(node))

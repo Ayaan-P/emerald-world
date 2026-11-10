@@ -31,6 +31,7 @@ def update_members(server, key, group, **updates):
         if data.get('shared') != key:
             raise ValueError('Shared member save binding changed')
         data.update(updates)
+        if 'node' in updates:data.pop('role',None)
         data.pop('preparation', None)
         server.db.execute('UPDATE battle_campaign_runs SET data=? WHERE trainer=? AND lineage=?', (json.dumps(data), trainer, lineage))
 
@@ -63,10 +64,15 @@ def command(server, conn, words, current):
     if words == ['begin']:
         if me != group['speaker'] or group['status'] != 'lobby' or len(group['members']) < 2:
             raise ValueError('Speaker can begin after 2–4 trainers join')
+        from .parallel_campaigns import party_size,stage_status
+        doc=document(server,group['campaign']);party_size(doc,len(group['members']))
         with server.db:
-            group['status'] = 'ready'; store(server, key, group)
-            update_members(server, key, group, status='ready')
+            group['status'] = stage_status(doc,group['node']);group['roles']={}; store(server, key, group)
+            update_members(server, key, group, status=group['status'])
         return True
+    if len(words)==2 and words[0]=='role':
+        from .parallel_campaigns import choose
+        choose(server,conn,key,group,words[1]);return True
     if len(words) == 2 and words[0] in ('choose', 'advise'):
         if group['status'] != 'choice' or words[1] not in group['choices']:
             raise ValueError('Choose an available shared route')
@@ -77,9 +83,10 @@ def command(server, conn, words, current):
             if me != group['speaker']:
                 raise ValueError('Only the speaker chooses; other trainers may advise')
             with server.db:
-                group.update(node=words[1], status='ready', results={}, advice={}, choices=[])
+                from .parallel_campaigns import stage_status
+                group.update(node=words[1], status=stage_status(document(server,group['campaign']),words[1]), results={}, advice={}, choices=[],roles={})
                 store(server, key, group)
-                update_members(server, key, group, node=words[1], status='ready', choices=[])
+                update_members(server, key, group, node=words[1], status=group['status'], choices=[])
         return True
     if words == ['leave']:
         with server.db:
@@ -108,6 +115,7 @@ def complete_stage(server,conn,key,data,outcome,record):
     shared = data['shared']; group = load(server, shared)
     if group['status'] != 'ready' or member(conn) not in group['members'] or conn['id'] in group['results']:
         raise ValueError('Shared stage is no longer available')
+    if data.get('role'):record=dict(record,role=data['role'])
     group['results'][conn['id']] = outcome
     data['history'].append(record)
     data.update(status='waiting', choices=[]); save(server, conn, key, data)
@@ -125,7 +133,9 @@ def rows(server, conn, current):
     key = current[1]['shared']; group = load(server, key)
     out = [('Shared run '+key+' - '+group['status'], None),
            ('Joining shares battle reports and voluntary visit check-ins with this party only.', None),
-           ('Separate battles; all members check in at visit stages. No verified wins or rewards.', None)]
+           ('Independent tasks in split stages; ordinary stages are repeated by everyone. No verified wins or rewards.', None)]
+    from .parallel_campaigns import rows as deployment_rows
+    out.extend(deployment_rows(server,conn,current,group))
     if group['status'] == 'lobby':
         out.append(('Invite with /guild campaign join '+key, None))
         out.append(('Joined trainers '+str(len(group['members']))+' of 4', None))
