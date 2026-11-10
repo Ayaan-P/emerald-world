@@ -33,9 +33,18 @@ def rows(server,conn):
         elif data['status']=='choice':
             group=shared_campaigns.load(server,data['shared']) if data.get('shared') else None
             for node in data['choices'] if not group or shared_campaigns.member(conn)==group['speaker'] else []:
-                out.append(('Take route '+node+' against '+d['nodes'][node]['opponent'],['choose',node]))
+                target=d['nodes'][node]
+                label=target['visit']['label'] if 'visit' in target else target['opponent']
+                out.append(('Take route '+node+' - '+label,['choose',node]))
         else:
-            node=d['nodes'][data['node']];actor=node['opponent']
+            node=d['nodes'][data['node']]
+            if 'visit' in node:
+                from .campaign_visits import describe as describe_visit
+                out.extend((line,None) for line in describe_visit(node))
+                out.append(('Check in here. Report this stage to your run party.',['check-in']))
+                out.append(('Cancel shared run for everyone' if data.get('shared') else 'Leave campaign. Pokemon and story unchanged.',['leave']))
+                return out
+            actor=node['opponent']
             obj=next((o for o in server.objects if o['id']==actor),None)
             out.append(('Battle '+actor+(' at map %s %s tile %s %s'%(obj['group'],obj['num'],obj['x'],obj['y']) if obj else ' - currently away'),None))
             for choice,p in node.get('preparation',{}).items():
