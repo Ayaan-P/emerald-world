@@ -24,7 +24,8 @@ def rows(server,conn):
         for key,text in server.db.execute('SELECT id,document FROM battle_campaigns ORDER BY id LIMIT 32'):
             doc=json.loads(text);sizes=[len(n['roles']) for n in doc['nodes'].values() if 'roles' in n]
             if not sizes:out.append(('Start '+doc['title'],['start',key]))
-            out.append(('Host shared '+doc['title']+(f' - {sizes[0]} trainers' if sizes else ''),['share',key]))
+            mixed=any('revision' in t.get('visit',{}) for n in doc['nodes'].values() for t in n.get('roles',{}).values())
+            out.append(('Host shared '+doc['title']+(f' - {sizes[0]} '+('roles including optional NPC visits' if mixed else 'trainers') if sizes else ''),['share',key]))
         if not out:out.append(('No campaigns published. A configured world author can create one.',None))
     else:
         key,data=current;d=document(server,key)
