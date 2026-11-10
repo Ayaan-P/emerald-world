@@ -1260,6 +1260,10 @@ class WorldServer:
             return
         # Only connected native link peers may be invited. CONTROL connections
         # neither approve requests nor contribute native engine rounds.
+        if raw.startswith(b'H '):
+            from .spatial_signals import handle as signal_handle
+            self._queue(conn,signal_handle(self,conn,raw))
+            return
         if raw.startswith(b'E '):
             from .pyramid_courses import handle as pyramid_handle
             self._queue(conn,pyramid_handle(self,conn,raw))

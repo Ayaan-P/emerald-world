@@ -516,3 +516,6 @@ CAPABILITIES['world.cancel_tournament']=Capability('Cancel your own open tournam
 from .pyramid_courses import publish as publish_pyramid, close as close_pyramid
 CAPABILITIES["world.publish_pyramid_course"]=Capability("Publish a reproducible seven-floor course using native Battle Pyramid geometry.",dict(id="immutable lowercase course ID",seed="uint32 generation seed"),"Native seed/template forecast and optional player admission. Existing facility rules and private save progression apply; no visits, identical enemy teams or victories inferred.",publish_pyramid,None,("world","canonical"))
 CAPABILITIES["world.close_pyramid_course"]=Capability("Close own Pyramid course to new downloads.",dict(id="own course ID"),"Already downloaded/admitted personal courses remain valid.",close_pyramid,None,("world","canonical"))
+
+from .spatial_signals import signal as spatial_signal
+CAPABILITIES["world.signal"]=Capability("Place a short-lived visible intent marker at this stationary native-map resident position.",dict(kind="look, meet, help or danger"),"Nearby opted-in players may see a stock field arrow. Actual public town/route position, not verified danger, assistance or rendered acknowledgement. No collision objects or save edits.",spatial_signal,None,("world",))
