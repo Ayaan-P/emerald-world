@@ -10,6 +10,8 @@ Recharge and readiness last 100 steps; changing maps clears readiness while reta
 
 Combined schema 0x4B4E5405 appends rematches to flags/vars/badges/completion/optional custody. PENSAV6 refuses downgrade. Counter recovery retains prior snapshots. No SaveBlock layout edits. Whole-file rollback restores the whole personal history; this is not a uniqueness or anti-cheat system.
 
-Verification: 17 host tests cover native selection/enable helpers, source routing, synthetic counter/map/expiry state, custody retention, fresh-process file load, failed atomic replacement and exact prior-reader refusal; previous regression tests included. The separately retained policy comparison covers 452,608 combinations against pinned FireRed functions. No real saves were used.
+Verification: 18 host tests cover native selection/enable helpers, source routing, synthetic counter/map/expiry state, custody retention, fresh-process file load, failed atomic replacement and exact prior-reader refusal; previous regression tests included. The separately retained policy comparison covers 452,608 combinations against pinned FireRed functions. No real saves were used.
 
 Limitations: no full native link or rendered/controller gameplay QA; a syntax-check attempt using the older local full checkout stopped at missing generated map_groups.h and is not a compile pass. No exhaustive flash byte-failure sweep or multiplayer session test. Before release, test item cancellation, nearby/hidden/maximum trainer scans, every regional rematch script kind, stage selection, wins/losses/doubles, expired movement restoration, map changes, save/restart and both region transitions in the exact linked cohort. Keep disabled meanwhile.
+
+Follow-up correction restores the unchanged Hoenn charging expression and adds a compile/run regression for that production function. Native pin: a35c854620c97acc66ddfc49091252baba948389.
