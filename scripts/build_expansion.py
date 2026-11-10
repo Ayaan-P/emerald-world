@@ -11,7 +11,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '31b800a1376d68e6361e8c22a7ee0778f3adf897'
+PIN = '40f9efdc8dcb705e270647f452925e31bfa28715'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -40,6 +40,7 @@ def main():
                         help='enable selectable generated places (independent of regional saves/Kanto)')
     parser.add_argument('--regional-state', action='store_true',
                         help='enable experimental regional saves (requires --development)')
+    parser.add_argument('--experimental-combined-presence', action='store_true', help='negotiate the fixed combined-world authority profile; requires --kanto-content')
     parser.add_argument('--kanto-content', action='store_true',
                         help='enable combined Hoenn/Kanto content (requires --regional-state)')
     parser.add_argument('--jobs', type=int, default=4)
@@ -70,6 +71,8 @@ def main():
         parser.error('--experimental-npc-coop requires --development; linked two-client QA pending')
     if args.regional_state and not args.development:
         parser.error('--regional-state requires --development and is not a release cohort')
+    if args.experimental_combined_presence and not args.kanto_content:
+        parser.error('--experimental-combined-presence requires --kanto-content, --regional-state and --development')
     if args.kanto_content and not args.regional_state:
         parser.error('--kanto-content requires --regional-state')
     for flag, path in (('--sysroot', args.sysroot), ('--multilib-sysroot', args.multilib_sysroot)):
@@ -168,6 +171,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'GENERATED_WORLD_REGIONS={int(args.generated_regions)}',
                 f'WORLD_NATURE_CHALLENGES={int(args.experimental_nature_challenges)}',
                 f'WORLD_TRADE_OFFERS={int(args.experimental_native_trades)}',
+                f'WORLD_COMBINED_PRESENCE={int(args.experimental_combined_presence)}',
                 f'WORLD_FLOORPLANS={int(args.experimental_floorplans)}',
                 f'WORLD_CHARACTER_COOP_EXPERIMENT={int(args.experimental_npc_coop)}',
                 f'WORLD_BASE_SHARE_EXPERIMENT={int(args.experimental_secret_bases)}',
