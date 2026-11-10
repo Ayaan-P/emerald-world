@@ -1,8 +1,7 @@
 # Shared world cargo (draft)
 
 Players can now take and place the same portable world props that independent
-NPC plans use. An NPC can place a prop, a player can transport it within that
-exact generated map, and another NPC can take it afterwards. There is one
+NPC plans use. An NPC can place a prop, a player can transport it through supported cave portals when explicitly enabled, and another NPC can take it afterwards. There is one
 custody record and object identity throughout, not copies or new bag items.
 
 ## Play
@@ -26,8 +25,11 @@ existing world-wide custody capacity. Disconnects, process restarts and save
 switches retain custody without dropping or duplicating objects. The same
 trainer and lineage can resume. Another save or trainer cannot drop them.
 
-This draft supports same-map transport only: after leaving, return to the exact
-original map revision to place cargo. It does not implement cross-region cargo
+By default cargo remains scoped to its original map. Enable `/guild cargo travel on` after taking a prop to let this save carry source-scoped props through existing format-1/format-10 cave portals. `/guild cargo travel off` stops future transfers. Menu region selection does not relocate cargo. Source custody remains until negotiated ARRIVED with fresh destination admission; ACK, abort or disconnect alone never counts. Taking/dropping and setting changes wait until the passage ends. Other-source cargo stays where it was.
+
+A confirmed arrival atomically changes the exact frozen cargo records and records arrival. Dropping still requires current map admission, collision/connectivity validation and normal object projection. No native bag or save mutation occurs. A server restart before arrival keeps source scope; after committed arrival it keeps destination scope even if the final DONE packet was lost. The player may need to return to that exact destination to retrieve/drop it. This is not atomic native-save/authority travel and does not guarantee seamless reconnect recovery.
+
+Independent draft on #427, native #79 unchanged; not Maya #410 or released RC12. No new native transport or rendered playtest. It does not implement arbitrary outdoor or canonical-map cargo
 migration, an emergency remote return, or recovery from losing that save lineage.
 Held props remain reserved in that case. Do not use cargo for irreplaceable
 progression gates. Map revision changes remain subject to existing custody

@@ -36,14 +36,18 @@ def command(server,conn,words):
     from .region_characters import scoped,validate_region_objects
     from .characters import validate_transition
     install(server.db);owner=identity(server,conn)
+    if words and words[0]=='travel':
+        from .player_cargo_links import configure
+        return configure(server,conn,words)
     if not words:
         held=server.db.execute('SELECT id,object FROM world_prop_custody WHERE owner=? ORDER BY id',(owner,)).fetchall() if owner else []
         return ['World cargo: /guild cargo take while facing a portable prop; /guild cargo drop ID to place ahead.',
                 'Shared objects only, not bag items. Custody survives restart for this save; no carrying animation.',
-                'Drop only in the original map revision. Return there after travel. Other saves cannot use this cargo.']+[
+                'Default: cargo stays in its map. /guild cargo travel on enables confirmed cave portals for this save.']+[
                     f'{i}: map {json.loads(raw)["region_revision"][:12]}' for i,raw in held]
     if words!=['take'] and not (len(words)==2 and words[0]=='drop'):
         raise GuildError('Use /guild cargo, take, or drop ID.')
+    if conn.get('cave_link_pending'):raise GuildError('Finish or cancel the passage before taking or placing cargo.')
     s=ready(server,conn)
     taking=words==['take']
     state=copy.deepcopy(server.module_state)
