@@ -11,7 +11,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = 'a8355423fcd4ba90a6668b4d230134da5325354e'
+PIN = '31b800a1376d68e6361e8c22a7ee0778f3adf897'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -27,6 +27,7 @@ def main():
     parser.add_argument('--experimental-tower-records', action='store_true', help='enable experimental explicit Tower record imports; requires --development')
     parser.add_argument('--experimental-starter-offers', action='store_true', help='enable experimental optional fresh-save starters; requires --development')
     parser.add_argument('--experimental-field-moves', action='store_true', help='enable learned moves on shared props; requires --development')
+    parser.add_argument('--experimental-floorplans', action='store_true', help='enable opt-in native owned-furniture guidance; requires --development')
     parser.add_argument('--experimental-native-trades', action='store_true', help='enable local opt-in authored trade templates; requires --development')
     parser.add_argument('--experimental-nature-challenges', action='store_true', help='enable local opt-in nature-driven NPC singles; requires --development')
     parser.add_argument('--experimental-party-practice', action='store_true', help='enable local native egg-move practice; requires --development')
@@ -51,6 +52,8 @@ def main():
         parser.error('--jobs must be positive')
     if args.experimental_tower_records and not args.development:
         parser.error('--experimental-tower-records requires --development; native save/appearance QA pending')
+    if args.experimental_floorplans and not args.development:
+        parser.error('--experimental-floorplans requires --development; native decoration QA pending')
     if args.experimental_native_trades and not args.development:
         parser.error('--experimental-native-trades requires --development; native trade QA pending')
     if args.experimental_nature_challenges and not args.development:
@@ -165,6 +168,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'GENERATED_WORLD_REGIONS={int(args.generated_regions)}',
                 f'WORLD_NATURE_CHALLENGES={int(args.experimental_nature_challenges)}',
                 f'WORLD_TRADE_OFFERS={int(args.experimental_native_trades)}',
+                f'WORLD_FLOORPLANS={int(args.experimental_floorplans)}',
                 f'WORLD_CHARACTER_COOP_EXPERIMENT={int(args.experimental_npc_coop)}',
                 f'WORLD_BASE_SHARE_EXPERIMENT={int(args.experimental_secret_bases)}',
                 f'WORLD_TOWER_RECORD_EXPERIMENT={int(args.experimental_tower_records)}',
