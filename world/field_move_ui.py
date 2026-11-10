@@ -32,6 +32,21 @@ def handle(server,conn,raw):
             if not 1<=len(actions)<=8:raise ValueError()
             channel['field_move_ui']=dict(seq=seq,move=move,token=offer['token'],actions=actions)
             return 'FM OFFER '+str(seq)+' '+offer['token']+' '+str(len(actions))+' '+' '.join(actions)+'\n'
+        if f[1]=='VIEW' and len(f)==5:
+            import time
+            from . import actor_objects,object_choices
+            pending=channel.get('field_move_ui');saved=conn.get('object_moves')
+            obj=object_choices.facing(server,conn);current=actor_objects.offers(server,obj)
+            if (not pending or not saved or pending['seq']!=seq or pending['token']!=f[3]
+                or f[4] not in pending['actions'] or saved['token']!=f[3]
+                or saved['until']<time.monotonic() or saved['object']!=obj['id']
+                or saved['revision']!=current.get('object_revision')):raise ValueError()
+            label=current['actions'][f[4]]
+            if len(label)>28:label=label[:25]+'...'
+            response=current.get('previews',{}).get(f[4],'Response not described')
+            values=[obj['text'],label,response]
+            if any(type(v) is not str or not 1<=len(v)<=28 or any(not 32<=ord(c)<127 for c in v) for v in values):raise ValueError()
+            return 'FM DETAIL '+str(seq)+' '+f[3]+' '+f[4]+' '+' '.join(v.encode('ascii').hex() for v in values)+'\n'
         if f[1]=='USE' and len(f)==5:
             pending=channel.pop('field_move_ui',None)
             if not pending or pending['seq']!=seq or pending['token']!=f[3] or f[4] not in pending['actions']:raise ValueError()

@@ -39,3 +39,9 @@ not cumulative uses of installed programs.
 Tests run the actual authority's authenticated generated-map interaction path,
 program staging, native-wire player use, agent use, changed available actions and
 restart. Rendering itself, linked-engine and live model QA remain unverified here.
+
+## Public move-choice descriptions
+
+A state can optionally supply `labels` and `previews`, each mapping existing action IDs to 1–28 printable ASCII characters. These are deliberately public authored descriptions, not private clues or guaranteed outcomes. For example, `"labels":{"turn":"Rotate face"},"previews":{"turn":"Face should turn"}`. Omitted labels retain action IDs; omitted previews say that the response is not described. Existing JSON/source limits remain unchanged.
+
+The current state's labels and previews travel with its admitted program. A preview-only change invalidates outstanding object revisions. Actual effects still use the existing transition handler, learned-move requirements and shared admission checks; a description cannot grant an action or bypass a co-op requirement.

@@ -25,3 +25,23 @@ class UI(unittest.TestCase):
   self.assertEqual(handle(self.s,self.c,b'FM GET 1 55'),'FM FAIL 1\n')
   token=self.get();self.assertEqual(handle(self.s,self.c,('FM USE 2 '+token+' turn').encode()),'FM FAIL 2\n')
   self.s._line(self.c,b'FM GET 3 52');self.assertIn(b'FM OFFER 3 ',self.c['out'])
+
+ def test_readable_preview_is_nonmutating_and_revision_bound(self):
+  self.s.module_state['world_object_previews']={'fixture':{'turn':'Face rotates'}}
+  self.s.module_state['world_object_actions']['fixture']['turn']='Rotate the face'
+  token=self.get();before=list(self.s.objects)
+  reply=handle(self.s,self.c,('FM VIEW 1 '+token+' turn').encode()).split()
+  self.assertEqual(reply[:5],['FM','DETAIL','1',token,'turn'])
+  self.assertEqual([bytes.fromhex(x).decode() for x in reply[5:]],['First face.','Rotate the face','Face rotates'])
+  self.assertIsNone(self.s.deployment);self.assertEqual(before,self.s.objects)
+  self.s.module_state['world_object_previews']['fixture']['turn']='Different expectation'
+  self.assertEqual(handle(self.s,self.c,('FM USE 1 '+token+' turn').encode()),'FM FAIL 1\n')
+  self.assertIsNone(self.s.deployment)
+ def test_preview_rejects_expiry_wrong_target_and_malformed_text(self):
+  token=self.get();self.p['object_moves']['until']=0
+  self.assertEqual(handle(self.s,self.c,('FM VIEW 1 '+token+' turn').encode()),'FM FAIL 1\n')
+  token=self.get();self.p['state'][4]=2
+  self.assertEqual(handle(self.s,self.c,('FM VIEW 1 '+token+' turn').encode()),'FM FAIL 1\n')
+  self.p['state'][4]=1
+  self.s.module_state['world_object_previews']={'fixture':{'turn':'bad\ntext'}}
+  self.assertEqual(handle(self.s,self.c,b'FM GET 1 52'),'FM FAIL 1\n')
