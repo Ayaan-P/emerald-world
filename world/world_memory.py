@@ -43,6 +43,9 @@ def terrain_delta(cave, before, after):
 
 def evidence_index(event, *, current_catalog=False):
     """Search only changed public content, never every unchanged overlay object."""
+    # Looking up history does not change a place or create new source content.
+    if event.get('event') == 'actor_tool_result' and event.get('tool') in ('world.search_history', 'world.read_history'):
+        return [], ''
     preserved = None if current_catalog else event.get('changed_places', event.get('places'))
     places, words = set(preserved or []), []
     if event.get('place_id'):
