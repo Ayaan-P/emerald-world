@@ -596,6 +596,9 @@ class WorldServer:
                 prefix=('REGION_PROP ' if obj.get('kind')=='prop' else 'REGION_OBJECT ')+obj['region_revision']+' '
             from .passage_lifecycle import caption as passage_caption
             if obj.get('kind')=='prop':obj=dict(obj,text=passage_caption(self,obj))
+            elif obj['id'] in scoped_characters:
+                from .player_npc_memory import caption as memory_caption
+                obj=dict(obj,text=memory_caption(self,conn,obj))
             lines.append(prefix + obj['id'] + ' ' + ' '.join(str(obj[k]) for k in ('group','num','x','y','gfx'))
                          + ' ' + obj['text'].encode('ascii').hex())
             if conn.get('character_capable'):
