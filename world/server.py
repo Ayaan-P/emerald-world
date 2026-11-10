@@ -176,11 +176,11 @@ class WorldServer:
         self.opportunities = Opportunities(self.db, [m['name'] for m in catalog_maps().values()], self.mysteries,record_public=self.memory.append)
         self.opportunity_chat = OpportunityChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
         from .field_relays import FieldRelays
-        self.relays = FieldRelays(self, validate_coords)
+        self.relays = FieldRelays(self, combined_coords if self.combined_regions else validate_coords)
         from .field_flags import FieldFlags
         self.flags = FieldFlags(self)
         from .shared_races import SharedRaces
-        self.races = SharedRaces(self, validate_coords)
+        self.races = SharedRaces(self, combined_coords if self.combined_regions else validate_coords)
         from .activity_board import ActivityBoard
         self.activities = ActivityBoard(self)
         from .landmark_survey import LandmarkSurvey

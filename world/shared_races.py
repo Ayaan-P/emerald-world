@@ -37,7 +37,8 @@ class SharedRaces:
  def course(self,key):
   row=self.db.execute('SELECT document FROM race_courses WHERE id=?',(key,)).fetchone()
   if not row:raise GuildError('Race course unavailable')
-  return json.loads(row[0])
+  course=json.loads(row[0]);validate(course,self.coords,(self.s.cave_map,self.s.wilds_map))
+  return course
  def current(self,name):return next((r for r in self.runs.values() if any(c['id']==name for c in r['members'])),None)
  def tell(self,r,lines):
   for c in r['members']:
