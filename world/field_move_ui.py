@@ -1,0 +1,33 @@
+"""Typed UI negotiation over the existing move-effect authority; no alternate effects."""
+import re
+from .guilds import GuildError
+from .overworld_moves import command
+
+
+def handle(server,conn,raw):
+    seq=0;channel=conn
+    try:
+        conn=channel['presence']
+        if server.link_channels.get(channel['id']) is not channel or server.peers.get(channel['id']) is not conn:raise ValueError()
+        f=raw.decode('ascii').split()
+        if len(f)<3 or f[0]!='FM' or not re.fullmatch('[1-9][0-9]{0,9}',f[2]):raise ValueError()
+        seq=int(f[2])
+        if seq>0xffffffff or server.link_protocol.busy(conn['id']):raise ValueError()
+        if f[1]=='GET' and len(f)==4 and f[3].isdigit() and 0<int(f[3])<=65535:
+            if getattr(server,'object_use_pending',None):raise ValueError()
+            command(server,conn,['moves']);offer=conn['object_moves'];move=int(f[3])
+            actions=[a for a,moves in offer['choices'].items() if move in moves]
+            if not 1<=len(actions)<=8:raise ValueError()
+            channel['field_move_ui']=dict(seq=seq,move=move,token=offer['token'],actions=actions)
+            return 'FM OFFER '+str(seq)+' '+offer['token']+' '+str(len(actions))+' '+' '.join(actions)+'\n'
+        if f[1]=='USE' and len(f)==5:
+            pending=channel.pop('field_move_ui',None)
+            if not pending or pending['seq']!=seq or pending['token']!=f[3] or f[4] not in pending['actions']:raise ValueError()
+            command(server,conn,['move',f[3],f[4],str(pending['move'])])
+            server.object_use_pending['field_move_ui_seq']=seq
+            server.object_use_pending['field_move_ui_channel']=channel
+            return f'FM WAIT {seq}\n'
+        raise ValueError()
+    except (ValueError,KeyError,UnicodeError,GuildError):
+        channel.pop('field_move_ui',None)
+        return f'FM FAIL {seq}\n'
