@@ -15,8 +15,10 @@ def validate(server,node):
 
 
 def describe(node):
+    from .build_catalog import catalog_maps
     v=node['visit'];g,n,x,y=v['point']
-    return ['Visit '+v['label'],f'Destination map {g} {n} tile {x} {y}.', 'Travel normally, then check in. Presence is client-reported, not proof of a journey.']
+    name=catalog_maps()[(g,n)]['name'].replace('_',' ')
+    return ['Visit '+v['label'],f'{name} - tile {x} {y}.', 'Travel normally, then check in. Presence is client-reported, not proof of a journey.']
 
 
 def check_in(server,conn,current):
