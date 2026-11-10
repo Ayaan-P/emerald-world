@@ -108,5 +108,7 @@ def admitted(server,identity):
     if not row or row[3] is not None:return
     seq=server.memory.append('object_move_committed',dict(object=row[0],action=row[1],request=identity,**json.loads(row[2]),limits='Admitted shared prop effect; no battle, PP use, growth or independently verified player party asserted.'))
     server.db.execute('UPDATE world_move_intents SET seq=? WHERE id=?',(seq,identity));server.revision=seq
+    from .move_witnesses import admitted as noticed
+    noticed(server,identity,seq,row[0],json.loads(row[2]))
     from .move_feedback import committed
     committed(server,identity,seq,json.loads(row[2])['move'])
