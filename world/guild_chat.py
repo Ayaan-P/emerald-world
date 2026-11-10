@@ -50,7 +50,10 @@ class GuildChat:
             with s.lock:
                 try:
                     command=text[6:].strip();words=command.split()
-                    if words and words[0].lower()=='tournament':
+                    if words and words[0].lower()=='bases':
+                        from .base_neighborhood import command as base_directory_command
+                        lines=base_directory_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='tournament':
                         from .player_tournaments import command as tournament_command
                         lines=tournament_command(s,conn,words[1:])
                     elif words and words[0].lower()=='rematches':
