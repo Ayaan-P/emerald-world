@@ -167,6 +167,8 @@ def challenge(server, conn, fields):
         raise ValueError('invalid character challenge') from None
     if str(seq) != fields[1] or str(version) != fields[3] or not conn['seq'] < seq <= 2**31-1:
         raise ValueError('stale character challenge')
+    from .npc_absence import guarded as absence_guarded
+    if absence_guarded(server,fields[2]):raise ValueError('Character availability is changing; choose again later')
     from .actor_battle_formats import current as battle_format
     format_revision, mode = battle_format(server,fields[2])
     extended=len(fields)==(6 if region else 5)

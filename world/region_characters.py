@@ -4,6 +4,8 @@ import hashlib
 
 def validate_region_objects(server, objects, state):
     from .characters import records
+    from .npc_absence import validate_objects as validate_absence
+    validate_absence(server,objects,state)
     from .shared_cave import SharedCave
     from .native_resident_population import validate as validate_residents
     validate_residents(server,objects,state)
