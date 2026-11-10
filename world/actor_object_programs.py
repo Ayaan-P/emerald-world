@@ -12,6 +12,7 @@ def program_step(result,request):
  phase=control.get('phase',program['initial']);node=program['states'][phase]
  state.setdefault('world_object_actions',{})[identity]={a:a for a in node['on']}
  state.setdefault('world_object_player_choices',{})[identity]=list(node.get('choices',[]))
+ state.setdefault('world_object_moves',{})[identity]=copy.deepcopy(node.get('moves',{}))
  defaults=state.setdefault('world_object_player_use',{})
  if node['use']:defaults[identity]=node['use']
  else:defaults.pop(identity,None)
@@ -35,9 +36,11 @@ def install(server,actor,row,args):
  name=lambda s:type(s) is str and bool(re.fullmatch('[a-z][a-z0-9_]{0,15}',s))
  if type(program) is not dict or set(program)!={'initial','states'} or not name(program['initial']) or type(program['states']) is not dict or not 1<=len(program['states'])<=4 or program['initial'] not in program['states']:raise ValueError('Program needs initial state and one to four states')
  for key,node in program['states'].items():
-  if not name(key) or type(node) is not dict or not {'text','gfx','on','use'}<=set(node) or set(node)-{'text','gfx','on','use','choices'}:raise ValueError('State requires text, gfx, action transitions and optional native use action')
+  if not name(key) or type(node) is not dict or not {'text','gfx','on','use'}<=set(node) or set(node)-{'text','gfx','on','use','choices','moves'}:raise ValueError('State requires text, gfx, action transitions and optional native use action')
   if type(node['text']) is not str or not 1<=len(node['text'])<=28 or any(not 32<=ord(c)<127 for c in node['text']) or type(node['gfx']) is not int or node['gfx'] not in (0,1):raise ValueError('Unsupported prop appearance')
   if type(node['on']) is not dict or len(node['on'])>4 or any(not name(a) or not name(target) or target not in program['states'] for a,target in node['on'].items()):raise ValueError('Transitions must name defined states')
+  from .overworld_moves import validate_node
+  validate_node(node)
   choices=node.get('choices',[])
   if type(choices) is not list or len(choices)>4 or any(type(a) is not str or a not in node['on'] for a in choices) or len(set(choices))!=len(choices):raise ValueError('Player choices must name distinct advertised transitions')
   if type(node['use']) is not str or (node['use'] and node['use'] not in node['on']):raise ValueError('Native use must name an advertised transition or be empty')
