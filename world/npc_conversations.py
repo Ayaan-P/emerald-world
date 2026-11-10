@@ -24,18 +24,24 @@ def nearby(server,conn,actor):
 
 
 def command(server,conn,words):
+    if words and words[0] in ('guide','join-guide','leave-guide'):
+        from .npc_guidance import command as guide_command
+        return guide_command(server,conn,words)
     if words and words[0] in ('walk-with','walk-stop'):
         from .npc_accompaniment import command as walk_command
         return walk_command(server,conn,words)
     if not words:return ['NPC speech is PUBLIC world history, visible to world agents and players. Do not enter personal information.',
         'Use /guild npc nearby, or /guild npc say-public ID MESSAGE. Agent replies are not guaranteed.',
+        'An NPC may offer to lead a group: /guild npc guide ID, join-guide ID, or leave-guide.',
         'Invite a generated NPC to walk with you: /guild npc walk-with ID. Stop: /guild npc walk-stop.']
     if words==['nearby']:
         found=[]
         for actor,c in records(server.module_state).items():
             try:nearby(server,conn,actor)
             except GuildError:continue
-            found.append(actor+': '+c['name'].encode('ascii','replace').decode())
+            from .npc_guidance import discover
+            guide=next((g for g in discover(server) if g['actor']==actor),None)
+            found.append(actor+': '+c['name'].encode('ascii','replace').decode()+(' - guide offered; /guild npc guide '+actor if guide else ''))
         return ['Nearby recurring NPCs:']+(found or ['None nearby and ready.'])
     if len(words)<3 or words[0]!='say-public':raise GuildError('Use /guild npc say-public ID MESSAGE. Speech enters public world history.')
     actor=words[1];text=' '.join(words[2:])
