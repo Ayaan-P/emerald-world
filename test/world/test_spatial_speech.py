@@ -100,3 +100,14 @@ class SpatialSpeechTests(unittest.TestCase):
  def test_real_pending_movement_prevents_physical_speech_claim(self):
   self.f.plan('harbor_guide',78,70);runtime.tick(self.s,now=10);self.f.advance(0,True)
   with self.assertRaises(ValueError):self.publish()
+
+ def test_public_history_retrieval_finds_recipient_place_and_spoken_words(self):
+  from world.actor_history import search
+  result=self.publish(text='Study the old trees.')
+  place=self.s.memory.place(self.f.revision)
+  found=search(self.s,'second',{},dict(query=json.dumps(dict(actor='second',place=place,terms=['old trees'])),after=0,through=0))
+  self.assertEqual(found['first_sequence'],result['speech'])
+  self.assertEqual(found['events'][0]['record']['text'],'Study the old trees.')
+  # Unrelated event schemas cannot cause JSON parsing errors in recipient search.
+  with self.s.db:self.s.memory.append('other_public_event',dict(recipients=['not an object']))
+  search(self.s,'second',{},dict(query=json.dumps(dict(actor='second')),after=0,through=0))

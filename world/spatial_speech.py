@@ -63,6 +63,9 @@ def emit(server,origin,name,text,actor=None):
  if actor is None and not recipients:raise ValueError('Stand near an available recurring NPC before speaking to the group')
  data=dict(character_id=actor,recipients=recipients,text=text,origin=origin,publication='explicit_public_spatial_speech',basis='authority_positions_and_opted_public_dialogue',
            limits='Public fictional speech, not truth of its claims, agreement, completed action or proof of rendered hearing. Native maps use same-map proximity, not wall-aware acoustics.')
+ from .world_memory import native_place
+ place=server.memory.place(origin['region_revision']) if origin.get('region_revision') else native_place(origin['group'],origin['num'])
+ if place:data['place_id']=place
  seq=server.memory.append('spatial_public_speech',data)
  server.db.execute('INSERT INTO spatial_speech VALUES(?,?,?,?,?)',(seq,json.dumps(origin,sort_keys=True),name,text,time.time()))
  for peer in audience:
