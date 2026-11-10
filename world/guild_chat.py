@@ -56,6 +56,9 @@ class GuildChat:
                     elif words and words[0].lower()=='safari':
                         from .safari_outings import command as safari_command
                         lines=safari_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='cargo':
+                        from .player_cargo import command as cargo_command
+                        lines=cargo_command(s,conn,words[1:])
                     elif words and words[0].lower()=='object':
                         from .object_choices import command as object_command
                         lines=object_command(s,conn,words[1:])
