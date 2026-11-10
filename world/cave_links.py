@@ -25,6 +25,8 @@ def offer(server,conn,seq,source,target_place,target_revision):
  conn['cave_link_pending']=dict(seq=seq,source=source,target=target,place=target_place,
      source_place=conn.get('region_place'),source_cave=conn.get('region_cave'),state=list(state),
      expires=time.monotonic()+30,phase='offered')
+ from .player_cargo_links import freeze
+ freeze(server,conn,conn['cave_link_pending'])
  # Caller performs actual object/facing validation before calling offer.
  # Source region_cave/cave_ack remain untouched while destination is downloaded.
  return target.frames()
@@ -36,6 +38,8 @@ def acknowledge(server,conn,seq,revision):
  from .passage_lifecycle import validate_pending
  validate_pending(server,pending)
  destination(server,pending['place'],revision)
+ from .player_cargo_links import validate as validate_cargo
+ validate_cargo(server,conn,pending)
  pending['phase']='committed';pending['expires']=time.monotonic()+30
  conn['region_cave']=pending['target'];conn['region_place']=pending['place']
  conn['cave_offer']=conn['cave_ack']=revision;conn['cave_transfer_pending']=False
@@ -106,7 +110,11 @@ def line(server,conn,fields):
  elif fields[1]=='ARRIVED' and len(fields)==4 and p['phase']=='committed' and fields[3]==p['target'].identity:
   state=conn.get('state')
   if not state or not state[6] or tuple(state[:2])!=server.cave_map or state[2:4]!=[1,1]:raise ValueError('Destination arrival not observed')
-  with server.db:server._event('cave_link_arrival',dict(player=conn['id'],source=p['source'],destination=p['target'].identity,place=p['place']))
+  from .player_cargo_links import arrived as cargo_arrived
+  with server.db:
+   cargo_seq=cargo_arrived(server,conn,p)
+   server._event('cave_link_arrival',dict(player=conn['id'],source=p['source'],destination=p['target'].identity,place=p['place']))
+  if cargo_seq is not None:server.revision=cargo_seq
   conn['cave_link_pending']=None;server._queue(conn,f'LINK DONE {seq}\n')
  else:raise ValueError('Invalid cave transfer phase')
 
