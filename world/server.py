@@ -1255,6 +1255,10 @@ class WorldServer:
             return
         # Only connected native link peers may be invited. CONTROL connections
         # neither approve requests nor contribute native engine rounds.
+        if raw.startswith(b'S '):
+            from .safari_outings import handle as safari_handle
+            self._queue(conn, safari_handle(self,conn,raw))
+            return
         fields = raw.split(b' ')
         if ((len(fields) == 4 and fields[:2] == [b'L', b'OFFER'])
                 or (len(fields) == 3 and fields[:2] == [b'T', b'OFFER'])):
