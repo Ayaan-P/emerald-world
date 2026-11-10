@@ -47,7 +47,7 @@ def configure(queue, inspection, enabled, *, turn_limit=MAX_TURNS, period_hours=
 def creation(event, identity):
     result=event.get('result',{})
     return (event.get('event')=='actor_tool_result' and event.get('source')=='authority_capability_runtime'
-        and event.get('tool')=='world.populate' and event.get('status')=='succeeded'
+        and event.get('tool') in ('world.populate','world.populate_native') and event.get('status')=='succeeded'
         and result.get('outcome')=='population_admitted' and result.get('kind')=='character' and result.get('object')==identity)
 
 def observe(queue, inspection, fetch):

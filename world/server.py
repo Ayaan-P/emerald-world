@@ -2162,6 +2162,8 @@ class WorldServer:
                 raise ValueError('duplicate tile')
             seen.add(location)
             normalized.append(values)
+        from .native_resident_population import validate_terrain
+        validate_terrain(result['state'],tiles)
         normalized.sort()
         return state, normalized
 
