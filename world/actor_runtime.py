@@ -603,3 +603,10 @@ CAPABILITIES['world.configure_native_trade']=Capability('Offer a repeatable newl
 
 from .floorplans import configure as configure_floorplan
 CAPABILITIES['world.publish_floorplan']=Capability('Publish an immutable optional Secret Base furniture layout, never a player inventory edit.',dict(id='unique lowercase id',design='JSON {title,layout,placements:[[decoration_id,x,y],...]}; 1..16 native bottom-left anchors, or empty to close'),'Public design metadata only. Player requests guidance privately, chooses their own unused furniture in stock PC UI, and explicitly confirms native placement. No automatic build, save, completion or sharing.',configure_floorplan,None,('canonical','world'))
+
+from .regional_campaigns import inspect as inspect_campaign_destinations
+CAPABILITIES['world.inspect_campaign_destinations']=Capability(
+    'Inspect a bounded page of existing Hoenn or combined Kanto maps for optional campaign visit stages.',
+    dict(region='hoenn or kanto',offset='nonnegative page offset, default 0'),
+    'Exact map bounds and required registry; not a route, unlock, visit or completion.',
+    inspect_campaign_destinations,None,('canonical','world'))

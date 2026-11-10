@@ -150,7 +150,8 @@ class WorldServer:
         self.core_story = CoreStory(self)
         from .character_companions import setup as setup_companions
         setup_companions(self.db)
-        self.guilds = Guilds(self.db, catalog_maps(), record_outcome=self.memory.append)
+        from .combined_regions import catalog as combined_catalog, coords as combined_coords
+        self.guilds = Guilds(self.db, combined_catalog() if self.combined_regions else catalog_maps(), record_outcome=self.memory.append)
         from .canonical_councils import install as install_councils
         install_councils(self.db)
         from .canonical_dialogues import install as install_dialogues
@@ -165,7 +166,7 @@ class WorldServer:
         install_rapport(self.db)
         from .canonical_scenes import CanonicalScenes
         self.cast_scenes=CanonicalScenes(self)
-        self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
+        self.guild_chat = GuildChat(self, combined_coords if self.combined_regions else validate_coords, TRAVEL_FRESH_SECONDS)
         from .battle_campaigns import install as install_battle_campaigns
         install_battle_campaigns(self.db)
         from .cooperative_mysteries import Mysteries
