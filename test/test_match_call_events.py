@@ -63,10 +63,17 @@ static int BattleSetup_UsesKantoTutorialRules(void){return kanto;}
 static int DoesCurrentMapMatchRematchTrainerMap(int id,const struct RematchTrainer *table,unsigned g,unsigned m){return table[id].mapGroup==g&&table[id].mapNum==m;}
 static char sent[40];int LinkTransport_RematchEventSend(const char *s){strcpy(sent,s);return 1;}
 '''
+  sender=function((NATIVE/'src/world/link_transport.c').read_text(),'LinkTransport_RematchEventSend')
+  prefix=prefix.replace('int LinkTransport_RematchEventSend(const char *s){strcpy(sent,s);return 1;}', 'static struct {int ready,session;} sLink={1,0}; static int Queue(const char *s){strcpy(sent,s);return 1;}')
+  funcs=sender+'\n'+funcs
   main=r'''
 int main(void){
  char *list[]={"J","LIST","00111e001202"};char *map[]={"J","MAP","0","17","30"};
  char *bad[]={"J","LIST","00111e00111e"};char *none[]={"J","NONE"};
+ assert(!LinkTransport_RematchEventSend("J GET 3\n"));
+ sLink.ready=0;assert(!LinkTransport_RematchEventSend("J GET 1\n"));sLink.ready=1;
+ sLink.session=1;assert(!LinkTransport_RematchEventSend("J GET 1\n"));sLink.session=0;
+ assert(LinkTransport_RematchEventSend("J GET 2\n")==EW_MATCH_CALL_EVENTS);
  WorldRematchEvent_Reset();WorldRematchEvent_Pump();
  assert(!strcmp(sent,EW_MATCH_CALL_EVENTS?"J GET 2\n":"J GET 1\n"));
  assert(WorldRematchEvent_Line(3,list)==EW_MATCH_CALL_EVENTS);

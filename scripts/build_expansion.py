@@ -12,7 +12,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '0a337e13b1d9e1103f27209a3f7a954b1901a144'
+PIN = 'adcb97a611132eacc5aac2729b4410004d570b92'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 

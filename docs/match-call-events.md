@@ -28,4 +28,6 @@ These fixtures do not run an original trainer script, actual PokéNav renderer o
 
 Separate stack on app #488 `5adfa7765cd769b011f5c957e74b26334efe73ab` / native #126 `bcb77ed4c13a6b937de4a4169b15bea8c81c3c05`. Maya's #410/#72 and all held operations are untouched. Maya owns integration and release.
 
-Paired native draft #127: https://github.com/Ayaan-P/pokeemerald-expansion-native/pull/127 at `0a337e13b1d9e1103f27209a3f7a954b1901a144`. Focused test command: `python3 -m unittest discover -s test -p test_match_call_events.py -v`.
+Paired native draft #127: https://github.com/Ayaan-P/pokeemerald-expansion-native/pull/127 at `adcb97a611132eacc5aac2729b4410004d570b92`. Focused test command: `python3 -m unittest discover -s test -p test_match_call_events.py -v`.
+
+Pre-integration correction: the initial draft parser tests missed that the native sender admitted only literal GET1. The sender now explicitly permits GET2 only when the experimental flag is enabled. The compiled test now includes that actual sender, its connection/session checks and rejection of unrelated commands, rather than replacing it with a permissive stub. No linked-play claim follows from this correction.
