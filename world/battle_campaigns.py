@@ -118,6 +118,12 @@ def command(server,conn,words):
             if not current or current[1]['status']!='choice' or words[1] not in current[1]['choices']:raise ValueError('Choose one of the offered routes')
             key,data=current;data.update(node=words[1],status='ready',choices=[]);data.pop('preparation',None)
             with server.db:save(server,conn,key,data)
+        elif words in (['expedition-follow'],['expedition-stop']):
+            from .field_expeditions import follow
+            follow(server,conn,words==['expedition-follow'])
+        elif len(words)==2 and words[0]=='expedition-continue':
+            from .field_expeditions import continuation
+            continuation(server,conn,words[1])
         elif words==['expedition-ready']:
             from .field_expeditions import ready
             ready(server,conn)
@@ -141,7 +147,7 @@ def command(server,conn,words):
         if not current:return ['No active battle campaign.']
         key,data=current;d=document(server,key)
         if data['status']=='withdrawn':return [d['title']+': withdrawn. Other party members are unchanged.', 'Your prior stage reports remain here until you start or join another run.']
-        if data['status']=='complete':return [d['title']+': finished.', 'Reported battles: '+str(len(data['history']))]
+        if data['status']=='complete':return [d['title']+': finished.', 'Recorded stages: '+str(len(data['history']))]
         if data['status']=='choice':return [d['title']+': choose your next route.', 'Routes: '+', '.join(data['choices']), 'Use /guild campaign choose NODE.']
         if data['status'] in ('lobby','waiting','deploying'):
             return [text for text,_ in shared_campaigns.rows(server,conn,current)]+['Waiting for fellow trainers. Leave cancels the shared run.']

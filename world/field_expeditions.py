@@ -125,21 +125,88 @@ def rows(server, data, node):
     out.append((mechanisms.location(server,network),None))
     for phase, resolution in goal['resolutions'].items():
         out.append((resolution['label'] + '. Then ' + (', '.join(resolution['next']) or 'finish expedition'), None))
+    locked=None
     if data.get('shared'):
         from .shared_campaigns import load
-        group = load(server, data['shared'])
-        checkpoint = group.get('expedition', {})
-        if checkpoint.get('node') == data['node']:
-            out.append(('Ready trainers ' + str(len(checkpoint['ready'])) + '/' + str(len(group['members'])) + '. Wait for everyone before acting.', None))
-            if 'phase' in checkpoint:
-                out.append(('Party resolution: ' + goal['resolutions'][checkpoint['phase']]['label'], None))
-    if data.get('expedition_ready') != data['node']:
-        out.append(('Ready. Share my nearby world observations with this run.', ['expedition-ready']))
-    elif data.get('expedition_watch', {}).get('node') != data['node']:
-        out.append(('Waiting for all trainers. Earlier changes will not count.', None))
+        checkpoint=load(server,data['shared']).get('expedition',{})
+        if checkpoint.get('node')==data['node']:locked=checkpoint.get('phase')
+        if locked:out.append(('Party route: '+goal['resolutions'][locked]['label']+'. Later world changes need not be reversed.',None))
+    if data.get('expedition_follow'):
+        out.append(('Nearby outcomes are recorded automatically. No action credit.',['expedition-stop']))
     else:
-        out.append(('Explore and act normally. Return here to witness a committed outcome.', None))
-        phase = server.module_state.get('world_object_network_state', {}).get(goal['network'], {}).get('phase')
-        if phase in goal['resolutions']:
-            out.append(('Witness ' + goal['resolutions'][phase]['label'], ['expedition-check', phase]))
+        out.append(('Follow field stages: share my future nearby observations with this run.',['expedition-follow']))
+    out.append(('Earlier world changes count as current observations, not your actions.',None))
+    mechanisms.install(server.db)
+    for phase,resolution in goal['resolutions'].items():
+        if locked and locked!=phase:continue
+        if server.db.execute('SELECT 1 FROM campaign_mechanism_receipts WHERE network=? AND definition=? AND phase=?',
+            (goal['network'],goal['definition'],phase)).fetchone():
+            out.append(('Continue via recorded '+resolution['label']+'. No visit or participation claimed.',['expedition-continue',phase]))
+    out.append(('Recorded routes are voluntary alternatives when the place has changed or you were absent.',None))
     return out
+
+
+def follow(server,conn,enabled):
+    from .battle_campaigns import active,save
+    value=active(server,conn)
+    if not value:raise ValueError('No active campaign')
+    key,data=value
+    if enabled:current(server,conn)
+    data['expedition_follow']=enabled
+    with server.db:save(server,conn,key,data)
+    if enabled:observe(server,conn)
+
+
+def continuation(server,conn,phase,*,observed=False):
+    """Advance from real world evidence, with distinct observation and route assent."""
+    from .battle_campaigns import save
+    from .shared_campaigns import load,store,complete_stage,member
+    from .region_characters import scoped
+    key,data,node=current(server,conn);goal=node['expedition']
+    if phase not in goal['resolutions']:raise ValueError('Unknown expedition resolution')
+    if server.peers.get(conn.get('id')) is not conn or conn.get('closing') or conn.get('character_pending'):
+        raise ValueError('An authenticated idle player is required')
+    network=mechanisms.definition(server,goal['network'])
+    if observed:
+        state=conn.get('state')
+        if (not data.get('expedition_follow') or not state or not state[6]
+            or not 0<=time.monotonic()-conn.get('state_time',0)<=5):raise ValueError('No current consented observation')
+        if not any(o['id'] in network['objects'] and state[:2]==[o['group'],o['num']]
+            and abs(state[2]-o['x'])+abs(state[3]-o['y'])<=1
+            and scoped(server,conn,o,o.get('region_revision')) for o in server.objects):raise ValueError('Not at the exact mechanism')
+        if server.module_state.get('world_object_network_state',{}).get(goal['network'],{}).get('phase')!=phase:
+            raise ValueError('World outcome changed')
+    mechanisms.install(server.db)
+    receipt=server.db.execute('SELECT request,seq FROM campaign_mechanism_receipts WHERE network=? AND definition=? AND phase=? ORDER BY seq DESC LIMIT 1',
+        (goal['network'],goal['definition'],phase)).fetchone()
+    if not receipt:raise ValueError('No admitted transition supports this outcome')
+    record=dict(node=data['node'],network=goal['network'],phase=phase,request=receipt[0],seq=receipt[1],
+        basis='observed_committed_current_state' if observed else 'voluntary_recorded_outcome_continuation',
+        presence='client_reported_nearby' if observed else 'not_asserted',
+        attribution='no_personal_action_credit',current_state_observed=observed)
+    with server.db:
+        if data.get('shared'):
+            group=load(server,data['shared'])
+            if member(conn) not in group['members'] or group['node']!=data['node']:raise ValueError('Party binding changed')
+            checkpoint=group.get('expedition',{})
+            if checkpoint.get('node')!=data['node']:checkpoint=dict(node=data['node'],definition=goal['definition'],ready=[])
+            if checkpoint.get('definition')!=goal['definition']:raise ValueError('Party definition changed')
+            if checkpoint.get('phase',phase)!=phase:raise ValueError('Party selected another outcome; follow its recorded route or leave')
+            checkpoint['phase']=phase;store(server,data['shared'],dict(group,expedition=checkpoint))
+            complete_stage(server,conn,key,data,1,record)
+        else:
+            data['history'].append(record);choices=goal['resolutions'][phase]['next']
+            data.update(status='choice' if choices else 'complete',choices=choices);save(server,conn,key,data)
+
+
+def observe(server,conn):
+    """Fresh STATE hook. No opt-in, no proximity or no receipt means no report."""
+    if not conn.get('campaign_run'):return
+    try:
+        key,data,node=current(server,conn)
+        if not data.get('expedition_follow'):return
+        phase=server.module_state.get('world_object_network_state',{}).get(node['expedition']['network'],{}).get('phase')
+        continuation(server,conn,phase,observed=True)
+        server.guild_chat.message(conn,'World','Field observation recorded. No action credit. Open the campaign board for the next route.')
+    except (ValueError,KeyError,TypeError):
+        return
