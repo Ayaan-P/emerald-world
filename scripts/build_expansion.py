@@ -12,7 +12,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = 'd9fc88c076b617b1781ea926a4387fcbac0f7790'
+PIN = '414fa149b58b5caa5aa75271fab040e272d6d217'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -51,6 +51,8 @@ def main():
                         help='existing extracted libc/GCC multilib root for mandatory ABI probes')
     parser.add_argument('--development', action='store_true',
                         help='build explicit local candidate integration changes on top of the verified engine pin')
+    parser.add_argument('--experimental-coop-turn-plan', action='store_true',
+                        help='default-off bilateral turn review; matching peers and --development; linked QA pending')
     parser.add_argument('--experimental-coop-hold-back', action='store_true',
                         help='default-off cooperative Hold back turn; matching peers and --development; linked QA pending')
     parser.add_argument('--experimental-dual-trainers', action='store_true',
@@ -86,6 +88,8 @@ def main():
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error('--jobs must be positive')
+    if args.experimental_coop_turn_plan and not args.development:
+        parser.error('--experimental-coop-turn-plan requires --development')
     if args.experimental_coop_hold_back and not args.development:
         parser.error('--experimental-coop-hold-back requires --development and matching native peers; linked QA pending')
     if args.experimental_dual_trainers and not args.development:
@@ -215,7 +219,8 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
     map_version = 'combined' if kanto_content else 'emerald'
     command += ['--', 'make', '-f', str(ROOT / 'engines/expansion.mk'), f'-j{args.jobs}',
                 f'EW_RUSTURF_RECOVERY={int(args.experimental_rusturf_recovery)}',
-                f'EW_COOP_HOLD_BACK={int(args.experimental_coop_hold_back)}',
+                f'EW_COOP_TURN_PLAN={int(args.experimental_coop_turn_plan)}',
+        f'EW_COOP_HOLD_BACK={int(args.experimental_coop_hold_back)}',
                 f'EW_DUAL_TRAINERS={int(args.experimental_dual_trainers)}',
                 f'EW_COOP_DISCOVERY={int(args.experimental_coop_discovery)}',
                 f'EW_COOP_RETREAT={int(args.experimental_coop_retreat)}',
