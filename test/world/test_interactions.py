@@ -288,8 +288,9 @@ static bool8 MetatileBehavior_IsCounter(unsigned behavior) {return behavior==1;}
         with tempfile.TemporaryDirectory(prefix='meet-') as tmp:
             server = WorldServer(tmp+'/sock', tmp+'/state')
             try:
-                a = dict(id='alice', state=[0,1,10,13,2,7,1], seq=1, social=True)
-                b = dict(id='bob', state=[0,1,10,12,1,7,1], seq=1, social=True)
+                now = time.monotonic()
+                a = dict(id='alice', state=[0,1,10,13,2,7,1], state_time=now, seq=1, social=True)
+                b = dict(id='bob', state=[0,1,10,12,1,7,1], state_time=now, seq=1, social=True)
                 server.peers = dict(alice=a,bob=b)
                 server._broadcast = lambda: None
                 for update, target in (({},'alice'), ({},'missing'), ({'social':False},'bob'),

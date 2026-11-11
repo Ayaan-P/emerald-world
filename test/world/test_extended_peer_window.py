@@ -1,6 +1,6 @@
 """Exercise authenticated relevance-window negotiation without sockets."""
 from pathlib import Path
-import ast,subprocess,tempfile,unittest
+import ast,subprocess,tempfile,time,unittest
 from test_save_isolation import function
 from world.server import WorldServer
 
@@ -20,10 +20,12 @@ class ExtendedPeerWindow(unittest.TestCase):
     return conn
    legacy=connect('legacy','SOCIALTRAVELCHAT');intermediate=connect('intermediate','SOCIALTRAVELCHATPEER16');extended=connect('extended','SOCIALTRAVELCHATPEER32')
    self.assertIn(b'WELCOME',legacy['out']);self.assertIn(b'WELCOME',intermediate['out']);self.assertIn(b'WELCOME',extended['out'])
+   now=time.monotonic()
    for i in range(40):
-    server.peers[f'P{i:02}']={'id':f'P{i:02}','closing':False,'state':[1,1,i+1,3,1,7,1],'field':True}
+    server.peers[f'P{i:02}']={'id':f'P{i:02}','closing':False,'state':[1,1,i+1,3,1,7,1],'state_time':now,'field':True}
    for conn,want in ((legacy,8),(intermediate,16),(extended,32)):
     conn['state']=[1,1,0,3,1,7,1]
+    conn['state_time']=now
     peers=[line for line in server._snapshot(conn).splitlines() if line.startswith('PEER ')]
     self.assertEqual(len(peers),want)
     self.assertTrue(any(line.startswith('PEER P00 ') for line in peers))
