@@ -1288,6 +1288,14 @@ class WorldServer:
             return
         # Only connected native link peers may be invited. CONTROL connections
         # neither approve requests nor contribute native engine rounds.
+        if raw.startswith(b'CT '):
+            from .shared_cut import handle as cut_handle
+            for trainer, line in cut_handle(self,conn,raw):
+                channel=self.link_channels.get(trainer)
+                if (channel is not None and not channel.get('closing')
+                        and self.peers.get(trainer) is channel.get('presence')):
+                    self._queue(channel,line)
+            return
         if raw.startswith(b'S '):
             from .safari_outings import handle as safari_handle
             self._queue(conn, safari_handle(self,conn,raw))
