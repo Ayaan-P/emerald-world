@@ -2495,7 +2495,7 @@ class WorldServer:
                         self._drop(conn)
             for conn in list(self.connections.values()):
                 transfer=conn.get('inspection_transfer')
-                if conn['admin'] and transfer and time.monotonic()>transfer[0]:
+                if transfer and conn['admin'] and time.monotonic()>transfer[0]:
                     self._drop(conn)
                     continue
                 if self.combined_regions and conn.get('id') and self.peers.get(conn['id']) is conn:
