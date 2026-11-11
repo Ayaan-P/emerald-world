@@ -158,6 +158,9 @@ class CoreStory:
         if action in ('BATTLE','BAUTO','CBATTLE','CAUTO'):
             from .trainer_experiences import handle
             return handle(self.s,conn,run,key,confirmation,automatic=action in ('BAUTO','CAUTO'),cooperative=action in ('CBATTLE','CAUTO'))
+        if action=='STUDY':
+            from .birch_field_studies import handle
+            return handle(self.s,conn,run,key,confirmation)
         if action=='TUTOR':
             from .canonical_services import handle
             return handle(self.s,conn,run,key,confirmation)

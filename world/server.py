@@ -965,7 +965,10 @@ class WorldServer:
                     result = self.core_story.handle(conn, fields[:5] if nonce else fields)
                     if nonce:
                         prefix='CORE REPLY '+nonce+' '+fields[1]+' '+fields[2]+' '+fields[3]+' '
-                        if fields[2]=='TUTOR':
+                        if fields[2]=='STUDY':
+                            from .birch_field_studies import wire
+                            reply=wire(result)
+                        elif fields[2]=='TUTOR':
                             reply=str(result['tutor_move'])+' '+result['tutor_token']
                         elif fields[2] in ('BMODE','CMODE'):
                             reply=result['battle_mode']

@@ -12,7 +12,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '15618acb311c7cd5ee1c60bf84596eaafefd5dca'
+PIN = '5fdaf2fc3ed138ed3b69983f451fd49cbebb9072'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -52,6 +52,7 @@ def main():
     parser.add_argument('--development', action='store_true',
                         help='build explicit local candidate integration changes on top of the verified engine pin')
     parser.add_argument('--experimental-match-call-events', action='store_true', help='Temporary world rematches in original Match Call, linked QA pending')
+    parser.add_argument('--experimental-birch-studies', action='store_true', help='optional retained private field studies and local native tutoring; requires --development')
     parser.add_argument('--experimental-wally-invitation', action='store_true', help='enable optional native Wally invitation; requires --development')
     parser.add_argument('--experimental-map-offers', action='store_true', help='Read actual public settings on original Hoenn map, linked QA pending')
     parser.add_argument('--experimental-rydel-routes', action='store_true', help='Optional Rydel route board, linked QA pending')
@@ -94,6 +95,8 @@ def main():
                         help='enable Kanto in development (requires --regional-state; already enabled for release)')
     parser.add_argument('--jobs', type=int, default=4)
     args = parser.parse_args()
+    if args.experimental_birch_studies and not args.development:
+        parser.error('--experimental-birch-studies requires --development')
     if args.experimental_wally_invitation and not args.development:
         parser.error('--experimental-wally-invitation requires --development')
     if args.jobs < 1:
@@ -243,10 +246,11 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
     map_version = 'combined' if kanto_content else 'emerald'
     command += ['--', 'make', '-f', str(ROOT / 'engines/expansion.mk'), f'-j{args.jobs}',
                 f'EW_RUSTURF_RECOVERY={int(args.experimental_rusturf_recovery)}',
-                f'EW_BIRCH_RESEARCH={int(args.experimental_birch_research)}',
+                f'EW_BIRCH_RESEARCH={int(args.experimental_birch_research or args.experimental_birch_studies)}',
                 f'EW_RYDEL_ROUTES={int(args.experimental_rydel_routes)}',
                 f'EW_MAP_OFFERS={int(args.experimental_map_offers)}',
                 f'EW_WALLY_INVITATION={int(args.experimental_wally_invitation)}',
+                f'EW_BIRCH_STUDIES={int(args.experimental_birch_studies)}',
                 f'EW_MATCH_CALL_EVENTS={int(args.experimental_match_call_events)}',
                 f'EW_HOENN_MARKETS={int(args.experimental_hoenn_markets)}',
                 f'EW_SHARED_CONTEST={int(args.experimental_shared_contest)}',
