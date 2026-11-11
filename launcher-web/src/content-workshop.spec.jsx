@@ -119,3 +119,20 @@ it('discovers living cast from Local worlds without starting a model', async () 
   await waitFor(()=>expect(perform).toHaveBeenCalledWith('cast_agent_read',{world:'local'}));
   expect(perform.mock.calls.some(([a])=>a==='cast_agent_start')).toBe(false);
 });
+
+it('reviews a real adventure graph and provides the correct entry without auto-enrolling', async () => {
+  const plan={id:'journey',title:'My journey',entry:'meet',nodes:{meet:{visit:{label:'Meeting place',point:[0,9,8,8]},next:[]}}};
+  const report={id:'journey',title:'My journey',entry:'meet',shared_only:false,stages:[{id:'meet',tasks:[{role:'all',kind:'visit',label:'Meeting place',point:[0,9,8,8]}],routes:[],loss_routes:[]}]};
+  const request=vi.fn(async action => action==='content_preview' ? {...info,kind:'adventure',token:'adventure-review',report,plan,proposed_rows:info.rows} : action==='content_apply' ? {...info,saved:true,adventure:{...report,installed:true}} : {...info,adventures:[]});
+  render(<ContentWorkshop {...props} onRequest={request} />);
+  fireEvent.change(await screen.findByLabelText('Content type'),{target:{value:'adventure'}});
+  fireEvent.change(screen.getByLabelText('Adventure JSON'),{target:{value:JSON.stringify(plan)}});
+  fireEvent.click(screen.getByRole('button',{name:'Review adventure'}));
+  await screen.findByRole('heading',{name:'Review content'});
+  expect(screen.getByText(/Map 0\/9, tile 8,8/)).toBeTruthy();
+  expect(request.mock.calls.filter(([a])=>a==='content_apply')).toHaveLength(0);
+  fireEvent.click(screen.getByLabelText(/I reviewed/));fireEvent.click(screen.getByRole('button',{name:'Apply reviewed content'}));
+  await screen.findByRole('heading',{name:'Adventure saved'});
+  expect(screen.getByText(/campaign start journey/)).toBeTruthy();
+  expect(request).toHaveBeenLastCalledWith('content_apply',{world:'local',token:'adventure-review',confirmed:true});
+});
