@@ -12,7 +12,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '377a7892e12ebcde149befa33d99c64c3b19342a'
+PIN = 'cb2cacc4ec398294d6bb6056d8503bfb76412212'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -95,7 +95,10 @@ def main():
     parser.add_argument('--kanto-content', action='store_true',
                         help='enable Kanto in development (requires --regional-state; already enabled for release)')
     parser.add_argument('--jobs', type=int, default=4)
+    parser.add_argument("--experimental-field-support", action="store_true", help="private companion Heal Pulse on original Hoenn routes; requires --development")
     args = parser.parse_args()
+    if args.experimental_field_support and not args.development:
+        parser.error("--experimental-field-support requires --development")
     if args.experimental_rematch_strategies and not args.development:
         parser.error('--experimental-rematch-strategies requires --development')
     if args.experimental_birch_studies and not args.development:
@@ -253,6 +256,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'EW_RYDEL_ROUTES={int(args.experimental_rydel_routes)}',
                 f'EW_MAP_OFFERS={int(args.experimental_map_offers)}',
                 f'EW_WALLY_INVITATION={int(args.experimental_wally_invitation)}',
+                f'EW_FIELD_SUPPORT={int(args.experimental_field_support)}',
                 f'EW_REMATCH_STRATEGIES={int(args.experimental_rematch_strategies)}',
                 f'EW_BIRCH_STUDIES={int(args.experimental_birch_studies)}',
                 f'EW_MATCH_CALL_EVENTS={int(args.experimental_match_call_events)}',
