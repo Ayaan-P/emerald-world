@@ -66,6 +66,12 @@ def rows(server,conn):
                 place=server.db.execute('SELECT label FROM generated_area_archive WHERE identity=?',(obj['region_revision'],)).fetchone()
             destination=(' in '+place[0]+' tile %s %s'%(obj['x'],obj['y']) if place else ' at map %s %s tile %s %s'%(obj['group'],obj['num'],obj['x'],obj['y'])) if obj else ' - currently away'
             out.append(('Battle '+actor+destination,None))
+            if 'decline' in node:
+                out.append(('Optional trainer battle. Defeat can white out and cost money. No instant retry.',None))
+                out.append(('Win routes: '+(', '.join(node['win']) or 'finish')+'. Loss routes: '+(', '.join(node['loss']) or 'finish'),None))
+                out.append(('Decline battle. No battle credit. Routes: '+(', '.join(node['decline']) or 'finish'),['decline-challenge']))
+                if data.get('shared'):
+                    out.append(('Anyone may decline. After all decisions or battles, the party takes the decline route.',None))
             for choice,p in node.get('preparation',{}).items():
                 from .actor_shops import ITEMS
                 from .actor_tutors import MOVES

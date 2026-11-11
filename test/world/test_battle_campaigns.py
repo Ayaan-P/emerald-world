@@ -78,3 +78,13 @@ class BattleCampaignTests(unittest.TestCase):
         self.assertIn('agent_circuit',[r['id'] for r in catalog])
         command(self.s,self.a,['start','agent_circuit']);self.battle(1)
         self.assertEqual(active(self.s,self.a)[1]['choices'],['left','right'])
+
+    def test_optional_private_exit_and_invalid_alternative_graph(self):
+        d=deepcopy(self.d);d['id']='optional';d['nodes']['first']['decline']=['recover']
+        with self.s.db:publish(self.s,'field_researcher',{},dict(campaign=json.dumps(d)))
+        command(self.s,self.a,['start','optional']);command(self.s,self.a,['decline-challenge'])
+        data=active(self.s,self.a)[1]
+        self.assertEqual(data['choices'],['recover']);self.assertNotIn('outcome',data['history'][0])
+        for value in (['missing'],['first'],'recover'):
+            bad=deepcopy(d);bad['id']='invalid';bad['nodes']['first']['decline']=value
+            with self.assertRaises(ValueError):publish(self.s,'field_researcher',{},dict(campaign=json.dumps(bad)))
