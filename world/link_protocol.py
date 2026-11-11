@@ -14,11 +14,11 @@ from .link_sessions import LinkError, LinkSessions
 
 _NAME = re.compile(r'[A-Za-z0-9_-]{1,24}\Z')
 _HEX = re.compile(r'[0-9a-f]{32}\Z')
-_KINDS = {1: 'battle_single', 2: 'battle_double', 3: 'trade', 4: 'coop_wild'}
+_KINDS = {1: 'battle_single', 2: 'battle_double', 3: 'trade', 4: 'coop_wild', 5: 'contest'}
 _LINK_TYPES = {1: frozenset((0x2211, 0x2233)),
                2: frozenset((0x2211, 0x2244)),
                3: frozenset((0x1111, 0x1122, 0x1133, 0x1144)),
-               4: frozenset((0x2255, 0x2211))}
+               4: frozenset((0x2255, 0x2211)), 5: frozenset((0x6602,))}
 
 
 @dataclass
@@ -67,6 +67,21 @@ class LinkProtocol:
         self._tags = {}
         self._tag_actor = {}
         self._encounters = {}  # connection-local tag/token; never save progress
+
+    def admit_contest(self, members, presence):
+        """Only called after both counter selections and native ACKs are verified."""
+        actor,target=members
+        wire=self._new_id()
+        offered=self.sessions.offer(actor,target,'contest',presence)
+        event=next(e for e in offered.events if e.data['type']=='offer')
+        entry=_WireSession(offered.session_id,offered.generation,5,event.data['participants'])
+        self._wire[wire]=entry;self._internal[entry.internal]=wire
+        try:
+            accepted=self.sessions.accept(target,entry.internal,presence)
+        except Exception:
+            self._deliver(self.sessions.disconnect(actor).events)
+            raise
+        return wire,self._deliver(accepted.events)
 
     def busy(self, actor):
         """Region selection must not carry an existing link/tag into a new place."""
@@ -354,7 +369,7 @@ class LinkProtocol:
             elif len(fields) == 10 and fields[1] == 'EVENT':
                 kind = _uint(fields[2], 5)
                 wire = _uint(fields[3], 2**64-1)
-                mode = _uint(fields[4], 4)
+                mode = _uint(fields[4], 5)
                 slot = _uint(fields[5], 1)
                 generation = _uint(fields[6], 2**32-1)
                 step = _uint(fields[7], 2**32-1)
