@@ -14,7 +14,6 @@ def admin_request(socket_path, request, timeout=5, admin_path=None):
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
         sock.settimeout(timeout)
         sock.connect(str(admin_path))
-        if request.get('command')=='inspect':request=dict(request,chunked=True)
         with sock.makefile('rb') as stream:
             def exchange(value):
                 remaining=deadline-time.monotonic()
@@ -24,11 +23,8 @@ def admin_request(socket_path, request, timeout=5, admin_path=None):
                 raw=stream.readline(65537)
                 if not raw.endswith(b'\n') or len(raw)>65536:raise ValueError('invalid admin response')
                 return json.loads(raw)
-            first=exchange(request)
-            if request.get('command')=='inspect':
-                from .inspection_transfer import receive
-                return receive(first,exchange)
-            return first
+            from .inspection_transfer import request as transfer_request
+            return transfer_request(request,exchange)
 
 
 

@@ -29,6 +29,13 @@ def next_chunk(conn,request):
     else:conn['inspection_transfer']=(expires,digest,chunks,index+1)
     return result
 
+def request(value,exchange):
+    """Negotiate and finish inspection on one connection-bound exchange."""
+    if value.get('command')=='inspect':
+        return receive(exchange(dict(value,chunked=True)),exchange)
+    return exchange(value)
+
+
 def receive(first,exchange):
     if not isinstance(first,dict) or 'inspection_chunks' not in first:return first
     count=first.get('inspection_chunks');size=first.get('inspection_bytes');digest=first.get('digest')

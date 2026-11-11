@@ -8,21 +8,8 @@ from test_author_backends import openai,anthropic
 
 class AuthorLoopTests(unittest.TestCase):
  def admin(self,s,request):
-  conn=dict(out=bytearray(),closing=False,sock=object(),id=None,admin=True)
-  s.connections[conn['sock']]=conn
-  try:
-   def exchange(value):
-    conn['out'].clear();s._admin_line(conn,json.dumps(value).encode())
-    until=time.monotonic()+15
-    while not conn['out'] and time.monotonic()<until:
-     s._poll_mechanics();time.sleep(.01)
-    if not conn['out']:raise AssertionError('Admin response timeout')
-    return json.loads(conn['out'])
-   if request.get('command')=='inspect':
-    from world.inspection_transfer import receive
-    return receive(exchange(dict(request,chunked=True)),exchange)
-   return exchange(request)
-  finally:s.connections.pop(conn['sock'],None)
+  from admin_transport import admin_request
+  return admin_request(s, request)
  def test_both_providers_worker_plan_real_effect_source_recovery_and_replan(self):
   for provider,wrap in [('openai-responses',openai),('anthropic-messages',anthropic)]:
    with self.subTest(provider=provider):

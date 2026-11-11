@@ -29,9 +29,8 @@ class WorldMemoryTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def admin(self, request):
-        conn = dict(id=None, out=bytearray(), closing=False, sock=object())
-        self.server._admin_line(conn, json.dumps(request).encode())
-        return json.loads(conn['out'])
+        from admin_transport import admin_request
+        return admin_request(self.server, request)
 
     def test_history_context_restart_and_noop(self):
         identity = self.server._replace_cave(BLOB)
