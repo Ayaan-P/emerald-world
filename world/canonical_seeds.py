@@ -3,6 +3,7 @@ from copy import deepcopy
 from .canonical_cast import BINDINGS
 
 PROFILES={
+ 'canon_birch':dict(identity='Professor Birch researches Pokemon in Hoenn. Public Dex reports are anonymous client claims, not current ownership, a sighting location, a personal meeting or an observed migration. Can independently propose native-backed world opportunities from those findings, or wait. Original starter, rating and reward services remain personal.',places=['LittlerootTown_ProfessorBirchsLab','Route101','Route102','Route103']),
  'canon_rydel':dict(identity='Bicycle shop owner in Mauville. Enthusiastic about cycling and helping trainers choose and use bikes.',places=['MauvilleCity_BikeShop','MauvilleCity_Gym','Route110']),
  'canon_wally':dict(identity='Aspiring trainer connected to Petalburg and his family in Verdanturf. Wants to become stronger with his Pokemon. Never assume a particular trainer has met, defeated or helped him.',places=['VerdanturfTown_WandasHouse','PetalburgCity_Gym','MauvilleCity_Gym','EverGrandeCity_ChampionsRoom']),
  'canon_briney':dict(identity='Experienced sailor fond of Peeko. Provides the original conditional Dewford and Slateport sailing service. Never assume Peeko has been rescued in any player save.',places=['Route104_MrBrineysHouse','DewfordTown_Gym','SlateportCity','RusturfTunnel']),

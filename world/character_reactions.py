@@ -256,6 +256,8 @@ def prepare(context, fetch):
         recall(context,character,fetch)
     # Public fictional actors need committed public results, not player purposes
     # or current private party/save observations from the general GM inspection.
+    if events[0].get('event')=='shared_research_published':
+        context['research_report_limits']='Anonymous explicitly published historical Dex deltas. Not sightings at any location, currently owned individuals, the identity of a reporter, Birch witnessing anything, or proof that a new population is natural. An authored encounter configuration is a world change, not an observed migration. Choose a supported action or wait.'
     if events[0].get('event')=='canonical_trainer_result':
         context['campaign_report_limits']='This is an anonymous voluntarily shared client report, not server-verified victory, earned NPC experience, the actor witnessing a battle, or any known player identity. Choose a supported action or wait; do not invent personal history or award growth.'
     data['players']=[]

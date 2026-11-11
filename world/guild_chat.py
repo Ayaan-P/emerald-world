@@ -65,6 +65,9 @@ class GuildChat:
                     elif words and words[0].lower()=='fishing':
                         from .shared_fishing import command as fishing_command
                         lines=fishing_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='research':
+                        from .shared_research import command as research_command
+                        lines=research_command(s,conn,words[1:])
                     elif words and words[0].lower()=='outbreaks':
                         from .shared_outbreaks import command as outbreak_command
                         lines=outbreak_command(s,conn,words[1:])
