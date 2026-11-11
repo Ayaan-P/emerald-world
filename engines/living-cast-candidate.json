@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "native_repository": "Ayaan-P/pokeemerald-expansion-native",
-  "native_revision": "e20af3fc9042858ae06d34bd816fe2877e8fa2c9",
+  "native_revision": "700fb548b8d13d8a7611cb066cb173bd57006438",
   "native_pull_request": null,
   "app_pull_request": null,
   "donor_native_pull_request": 79,
