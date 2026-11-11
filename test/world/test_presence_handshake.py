@@ -37,6 +37,7 @@ class PresenceHandshake(unittest.TestCase):
 #include <sys/un.h>
 #include <poll.h>
 #include "platform/world_rally.h"
+#include "platform/chat_command_gate.h"
 void WorldRally_Disconnected(void) {}
 #define FALSE 0
 #define TRUE 1
@@ -55,7 +56,7 @@ static bool8 WorldCatalog_Metatile(unsigned g,unsigned n,unsigned t) {
             source += function(bridge, name)
         source += r'''
 void start(const char *path) {
-    memset(&sWorld,0,sizeof(sWorld));sWorld.fd=-1;
+    memset(&sWorld,0,sizeof(sWorld));sWorld.fd=-1;sWorld.commandsLegacy=TRUE;
     strcpy(sWorld.socketPath,path);strcpy(sWorld.trainer,"alice");
     memset(sWorld.token,'a',64);sWorld.token[64]=0;
     sWorld.enabled=TRUE;

@@ -1,0 +1,32 @@
+{
+  "native_parent": "6ea6125d4937238824cd4752eb32b68cbb912791",
+  "species": {
+    "BULBASAUR": 1,
+    "CHARMANDER": 4,
+    "SQUIRTLE": 7,
+    "CHIKORITA": 152,
+    "CYNDAQUIL": 155,
+    "TOTODILE": 158,
+    "TREECKO": 252,
+    "TORCHIC": 255,
+    "MUDKIP": 258,
+    "TURTWIG": 387,
+    "CHIMCHAR": 390,
+    "PIPLUP": 393,
+    "SNIVY": 495,
+    "TEPIG": 498,
+    "OSHAWOTT": 501,
+    "CHESPIN": 650,
+    "FENNEKIN": 653,
+    "FROAKIE": 656,
+    "ROWLET": 722,
+    "LITTEN": 725,
+    "POPPLIO": 728,
+    "GROOKEY": 810,
+    "SCORBUNNY": 813,
+    "SOBBLE": 816,
+    "SPRIGATITO": 1289,
+    "FUECOCO": 1292,
+    "QUAXLY": 1295
+  }
+}

@@ -14,9 +14,9 @@ typedef unsigned char bool8;
 #define TRUE 1
 #define FALSE 0
 #define GENERATED_MAP_READY 1
-static struct {bool8 rallyProbe,rallyLegacy,travelProbe,travelLegacy,chatProbe,chatLegacy,caveProbe,caveLegacy;char trainer[25],token[65],output[4096];int outputSize;} sWorld;
+static struct {bool8 commandsProbe,commandsLegacy,rallyProbe,rallyLegacy,travelProbe,travelLegacy,chatProbe,chatLegacy,caveProbe,caveLegacy;char trainer[25],token[65],output[4096];int outputSize;} sWorld;
 '''+function(src,'CaveProbeRejected')+function(src,'QueueHello')+r'''
-int main(void){char *err[]={"ERROR","AUTH"};strcpy(sWorld.trainer,"alice");strcpy(sWorld.token,"token");
+int main(void){sWorld.commandsLegacy=1;char *err[]={"ERROR","AUTH"};strcpy(sWorld.trainer,"alice");strcpy(sWorld.token,"token");
  QueueHello(0);assert(strstr(sWorld.output,"SOCIALTRAVELCHATRALLYCAVE\n") && sWorld.caveProbe);
  assert(CaveProbeRejected(2,err)&&sWorld.caveLegacy);
  QueueHello(0);assert(strstr(sWorld.output,"SOCIALTRAVELCHATRALLY\n") && !sWorld.caveProbe);
