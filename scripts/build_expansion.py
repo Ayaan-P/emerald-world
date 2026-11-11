@@ -12,7 +12,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = 'dab28c1b3518d4c8891ee9ad505408788a9699ba'
+PIN = '0aacf14f9dae6cb7d572b5a90d85cc780b80ddd8'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -51,6 +51,8 @@ def main():
                         help='existing extracted libc/GCC multilib root for mandatory ABI probes')
     parser.add_argument('--development', action='store_true',
                         help='build explicit local candidate integration changes on top of the verified engine pin')
+    parser.add_argument('--experimental-roxanne-continuation', action='store_true',
+                        help='default-off synthetic-tested guest Gym continuation; requires experimental Rusturf readers')
     parser.add_argument('--experimental-rusturf-recovery', action='store_true',
                         help='enable unverified personal Rusturf recovery and all regional payload readers; requires --development --regional-state --kanto-content; synthetic saves only until linked QA')
     parser.add_argument('--experimental-secret-bases', action='store_true', help='enable unverified own-base sharing; requires --development')
@@ -66,6 +68,8 @@ def main():
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error('--jobs must be positive')
+    if args.experimental_roxanne_continuation and not args.experimental_rusturf_recovery:
+        parser.error('--experimental-roxanne-continuation requires --experimental-rusturf-recovery')
     if args.experimental_rusturf_recovery and not (args.development and args.regional_state and args.kanto_content):
         parser.error('--experimental-rusturf-recovery requires --development --regional-state --kanto-content; linked rescue and save QA pending')
     if args.experimental_secret_bases and not args.development:
@@ -175,6 +179,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
     map_version = 'combined' if kanto_content else 'emerald'
     command += ['--', 'make', '-f', str(ROOT / 'engines/expansion.mk'), f'-j{args.jobs}',
                 f'EW_RUSTURF_RECOVERY={int(args.experimental_rusturf_recovery)}',
+                f'EW_ROXANNE_CONTINUATION={int(args.experimental_roxanne_continuation)}',
                 *[f'{name}={int(args.experimental_rusturf_recovery)}' for name in ('EW_REGIONAL_BADGES','EW_REGIONAL_COMPLETION','EW_ROUTE5_CUSTODY','EW_KANTO_REMATCHES','EW_REGIONAL_STARTERS')],
                 f'EW_REGION_STATE={regional_state}', f'EW_KANTO_CONTENT={kanto_content}',
                 f'MAP_VERSION={RELEASE_CONFIG.map_version if not args.development else map_version}',
