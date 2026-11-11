@@ -12,7 +12,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = 'bcb77ed4c13a6b937de4a4169b15bea8c81c3c05'
+PIN = '0a337e13b1d9e1103f27209a3f7a954b1901a144'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -51,6 +51,7 @@ def main():
                         help='existing extracted libc/GCC multilib root for mandatory ABI probes')
     parser.add_argument('--development', action='store_true',
                         help='build explicit local candidate integration changes on top of the verified engine pin')
+    parser.add_argument('--experimental-match-call-events', action='store_true', help='Temporary world rematches in original Match Call, linked QA pending')
     parser.add_argument('--experimental-rydel-routes', action='store_true', help='Optional Rydel route board, linked QA pending')
     parser.add_argument('--experimental-birch-research', action='store_true', help='Living Birch after original lab Pokedex service (linked QA pending)')
     parser.add_argument('--experimental-hoenn-markets', action='store_true', help='Optional visiting stock at original Hoenn marts (rendered QA pending)')
@@ -93,6 +94,8 @@ def main():
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error('--jobs must be positive')
+    if args.experimental_match_call_events and not args.development:
+        parser.error('--experimental-match-call-events requires --development')
     if args.experimental_rydel_routes and not args.development:
         parser.error('--experimental-rydel-routes requires --development')
     if args.experimental_birch_research and not args.development:
@@ -236,6 +239,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'EW_RUSTURF_RECOVERY={int(args.experimental_rusturf_recovery)}',
                 f'EW_BIRCH_RESEARCH={int(args.experimental_birch_research)}',
                 f'EW_RYDEL_ROUTES={int(args.experimental_rydel_routes)}',
+                f'EW_MATCH_CALL_EVENTS={int(args.experimental_match_call_events)}',
                 f'EW_HOENN_MARKETS={int(args.experimental_hoenn_markets)}',
                 f'EW_SHARED_CONTEST={int(args.experimental_shared_contest)}',
                 f'EW_SHARED_STRENGTH={int(args.experimental_shared_strength)}',
