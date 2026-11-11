@@ -1380,6 +1380,10 @@ class WorldServer:
             from .native_trade_offers import handle as trade_offer_handle
             self._queue(conn,trade_offer_handle(self,conn,raw))
             return
+        if raw.startswith(b'DT '):
+            from .dewford_trends import handle
+            self._queue(conn,handle(self,conn,raw))
+            return
         if raw.startswith(b'FM '):
             from .field_move_ui import handle as field_move_ui_handle
             self._queue(conn,field_move_ui_handle(self,conn,raw))
