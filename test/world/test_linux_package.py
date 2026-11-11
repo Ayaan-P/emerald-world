@@ -66,11 +66,12 @@ class LinuxPackageTests(unittest.TestCase):
     def test_daily_catalogues_work_without_development_scripts(self):
         bundle = self.extract(self.package(engine='expansion-native'))
         for name in ('pyramid_catalog.json', 'starter_catalog.json', 'move_traits.json',
-                     'native_resident_sites.json', 'secret_base_locations.json'):
+                     'native_resident_sites.json', 'secret_base_locations.json',
+                     'floorplan_catalog.json', 'combined_map_catalog.json'):
             self.assertEqual((bundle / 'world' / name).read_bytes(),
                              (REPO / 'world' / name).read_bytes())
         code = ('import sys; sys.path.insert(0,sys.argv[1]); '
-                'import world.pyramid_courses, world.starter_offers; '
+                'import world.pyramid_courses, world.starter_offers, world.actor_runtime, world.combined_regions; '
                 'from world.native_resident_sites import catalog; assert catalog(); '
                 'assert "scripts.build_expansion" not in sys.modules')
         subprocess.run([sys.executable, '-I', '-c', code, str(bundle)], check=True)

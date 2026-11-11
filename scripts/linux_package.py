@@ -100,6 +100,7 @@ def assemble(binary, web_dist, version, output, engine='vanilla'):
     # Explicit reviewed runtime data only; never recurse over arbitrary JSON.
     # Trainer sharing and author context read these catalogs after installation.
     for name in ('map_catalog.json', 'expansion_species.json',
+                 'floorplan_catalog.json', 'combined_map_catalog.json',
                  'trainer_experience_catalog.json', 'trainer_reference.json',
                  'companion_move_names.json', 'encounter_traits.json',
                  'practice_trainer_sources.json', 'rental_catalog.json',
