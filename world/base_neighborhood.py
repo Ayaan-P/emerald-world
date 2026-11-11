@@ -55,7 +55,7 @@ def handle(server,conn,raw):
 def command(server,conn,words):
     from .guilds import GuildError
     entries=catalog(server)
-    if not words:return ['Public Secret Base neighborhood. /guild bases page N (starts at 0).','Experimental native: /neighborhood for disclosure. Publishing is optional; owners may be offline.','Imports use personal free slots; conflicts/full slots refuse. No teleport or automatic save.']
+    if not words:return ['Public Secret Base neighborhood. /guild bases page N (starts at 0).','Experimental native: /neighborhood for disclosure. Publishing is optional; owners may be offline.','Imports use personal free slots; conflicts/full slots refuse. No teleport or automatic save.','Enter a matching published base normally, then /neighborhood meet on to meet opted-in visitors. Requires experimental room client; meet off stops it.']
     if len(words)==2 and words[0]=='page' and words[1].isdigit() and len(words[1])<4:
         rows=entries[int(words[1])*3:int(words[1])*3+3]
         return [line for r in rows for line in (f"{r['owner']} | {r['entrance']['map']} ({r['entrance']['x']},{r['entrance']['y']}) | client snapshot",f"/neighborhood get {r['id']} {r['revision']}")]+([] if rows else ['No published bases on this page.'])
