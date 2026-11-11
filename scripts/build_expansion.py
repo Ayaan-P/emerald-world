@@ -12,7 +12,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '377a7892e12ebcde149befa33d99c64c3b19342a'
+PIN = '6816f47f05d9a462a3427d800f5662e04f095d35'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -52,6 +52,7 @@ def main():
     parser.add_argument('--development', action='store_true',
                         help='build explicit local candidate integration changes on top of the verified engine pin')
     parser.add_argument('--experimental-match-call-events', action='store_true', help='Temporary world rematches in original Match Call, linked QA pending')
+    parser.add_argument('--experimental-trick-quiz', action='store_true', help='optional authored native Trick House quiz; requires --development')
     parser.add_argument('--experimental-rematch-strategies', action='store_true', help='optional persistent native Hoenn rematch tactics; requires --development')
     parser.add_argument('--experimental-birch-studies', action='store_true', help='optional retained private field studies and local native tutoring; requires --development')
     parser.add_argument('--experimental-wally-invitation', action='store_true', help='enable optional native Wally invitation; requires --development')
@@ -96,6 +97,8 @@ def main():
                         help='enable Kanto in development (requires --regional-state; already enabled for release)')
     parser.add_argument('--jobs', type=int, default=4)
     args = parser.parse_args()
+    if args.experimental_trick_quiz and not args.development:
+        parser.error('--experimental-trick-quiz requires --development')
     if args.experimental_rematch_strategies and not args.development:
         parser.error('--experimental-rematch-strategies requires --development')
     if args.experimental_birch_studies and not args.development:
@@ -253,6 +256,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'EW_RYDEL_ROUTES={int(args.experimental_rydel_routes)}',
                 f'EW_MAP_OFFERS={int(args.experimental_map_offers)}',
                 f'EW_WALLY_INVITATION={int(args.experimental_wally_invitation)}',
+                f'EW_TRICK_QUIZ={int(args.experimental_trick_quiz)}',
                 f'EW_REMATCH_STRATEGIES={int(args.experimental_rematch_strategies)}',
                 f'EW_BIRCH_STUDIES={int(args.experimental_birch_studies)}',
                 f'EW_MATCH_CALL_EVENTS={int(args.experimental_match_call_events)}',
