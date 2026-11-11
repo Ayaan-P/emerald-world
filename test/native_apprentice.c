@@ -66,6 +66,7 @@ typedef uint64_t u64;typedef uint8_t u8;typedef uint16_t u16;typedef uint32_t u3
 #define AI_FLAG_SAFARI 0
 #define AI_FLAG_ROAMING 0
 #define AI_FLAG_FIRST_BATTLE 0
+#define EW_APPRENTICE_WALKING 0
 #define EWRAM_DATA
 #define B_MULTI_HALF_TEAMS 0
 #define B_TRAINER_OPPONENT_A 2
@@ -102,6 +103,8 @@ static u32 GetMonData(const struct Pokemon*p,unsigned field){return field==MON_D
 static void SetMonData(struct Pokemon*p,unsigned field,const void*v){assert(field==MON_DATA_HELD_ITEM);p->item=*(const enum Item*)v;}
 static void CreateApprenticeMon(struct Pokemon*p,const struct Apprentice*a,u8 i){*p=(struct Pokemon){100,10,a->party[i].item,a->party[i].species};}
 static unsigned GetBattlerTrainer(unsigned battler){return battler==2?B_TRAINER_PARTNER:battler==0?B_TRAINER_PLAYER:2;}
+static void WorldApprenticeWalk_Reset(void){}
+void WorldApprentice_Tick(void);
 #include "ACTUAL_SOURCE"
 static void LockPlayerFieldControls(void){}static void FreezeObjectEvents(void){}static void StopPlayerAvatar(void){}
 static bool8 IsNPCFollowerWildBattle(void){return follower;}static unsigned CurrentBattlePyramidLocation(void){return pyramid;}static bool8 WorldActivity_TryCoopWildBattle(void){return coop;}

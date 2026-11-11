@@ -95,3 +95,7 @@ export NATIVE_EXTRA_CPPFLAGS += -DEW_BIRCH_STUDIES=$(EW_BIRCH_STUDIES)
 # RAM-only apprentice outings remain experimental pending linked QA.
 EW_APPRENTICE_OUTINGS ?= 0
 export NATIVE_EXTRA_CPPFLAGS += -DEW_APPRENTICE_OUTINGS=$(EW_APPRENTICE_OUTINGS)
+
+# Optional transient object; never enable the save-backed native follower feature.
+EW_APPRENTICE_WALKING ?= 0
+export NATIVE_EXTRA_CPPFLAGS += -DEW_APPRENTICE_WALKING=$(EW_APPRENTICE_WALKING)
