@@ -12,7 +12,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = 'adcb97a611132eacc5aac2729b4410004d570b92'
+PIN = '4c3a5bbb38198f8b5c74d265b03da4a22e0be257'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -52,6 +52,7 @@ def main():
     parser.add_argument('--development', action='store_true',
                         help='build explicit local candidate integration changes on top of the verified engine pin')
     parser.add_argument('--experimental-match-call-events', action='store_true', help='Temporary world rematches in original Match Call, linked QA pending')
+    parser.add_argument('--experimental-map-offers', action='store_true', help='Read actual public settings on original Hoenn map, linked QA pending')
     parser.add_argument('--experimental-rydel-routes', action='store_true', help='Optional Rydel route board, linked QA pending')
     parser.add_argument('--experimental-birch-research', action='store_true', help='Living Birch after original lab Pokedex service (linked QA pending)')
     parser.add_argument('--experimental-hoenn-markets', action='store_true', help='Optional visiting stock at original Hoenn marts (rendered QA pending)')
@@ -96,6 +97,8 @@ def main():
         parser.error('--jobs must be positive')
     if args.experimental_match_call_events and not args.development:
         parser.error('--experimental-match-call-events requires --development')
+    if args.experimental_map_offers and not args.development:
+        parser.error('--experimental-map-offers requires --development')
     if args.experimental_rydel_routes and not args.development:
         parser.error('--experimental-rydel-routes requires --development')
     if args.experimental_birch_research and not args.development:
@@ -239,6 +242,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'EW_RUSTURF_RECOVERY={int(args.experimental_rusturf_recovery)}',
                 f'EW_BIRCH_RESEARCH={int(args.experimental_birch_research)}',
                 f'EW_RYDEL_ROUTES={int(args.experimental_rydel_routes)}',
+                f'EW_MAP_OFFERS={int(args.experimental_map_offers)}',
                 f'EW_MATCH_CALL_EVENTS={int(args.experimental_match_call_events)}',
                 f'EW_HOENN_MARKETS={int(args.experimental_hoenn_markets)}',
                 f'EW_SHARED_CONTEST={int(args.experimental_shared_contest)}',
