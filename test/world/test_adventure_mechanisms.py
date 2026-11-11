@@ -107,3 +107,71 @@ class FieldAdventureTests(unittest.TestCase):
         self.plan(field_adventure(),name='valid');self.assertEqual(self.tick()['status'],'pending');self.f.p.admit();self.assertEqual(self.tick()['status'],'succeeded')
         newer=field_adventure();newer['label']='Other';newer['campaign']['id']='different';newer['trainers'][0]['id']='other_trainer';newer['campaign']['nodes']['battle']['opponent']='other_trainer'
         self.plan(newer,name='conflict');self.assertEqual(self.tick()['status'],'blocked');self.assertEqual(len(catalog(self.s)),1)
+    def test_campaign_free_places_social_resident_and_shared_play(self):
+        from world import returning_places
+        from world.npc_conversations import command as speak
+        doc=field_adventure();doc.pop('campaign')
+        doc['constraints']['places']=3;doc['constraints']['branching']=2
+        entry=self.build(doc);self.assertTrue(entry['published']);self.assertIsNone(entry['campaign'])
+        self.assertEqual(len(entry['places']),3)
+        self.assertEqual(self.s.db.execute('SELECT count(*) FROM battle_campaigns').fetchone()[0],0)
+        clients=[self.f.p.f.connect(n) for n in ('Player','Visitor')]
+        place=entry['places'][0]['place_id']
+        for client in clients:
+            client.sock.conn.update(character_region_capable=True,world_props_capable=True)
+            client.select_region(place)
+            returning_places.command(self.s,client.sock.conn,['watch',place])
+        a,b=[c.sock.conn for c in clients]
+        self.nearby(clients[0],next(o for o in self.s.objects if o['id']=='device'))
+        object_choices.command(self.s,a,['moves']);token=a['object_moves']['token']
+        object_choices.command(self.s,a,['move',token,'spark','85']);self.f.p.admit();actor_objects.poll_player(self.s)
+        self.assertEqual(self.s.module_state['world_object_network_state']['field_device']['phase'],'lit')
+        self.assertIsNone(active(self.s,a));self.assertIsNone(active(self.s,b))
+        clients[1].select_region(entry['places'][2]['place_id'])
+        clients[1].send_state(b['seq']+1,*self.s.cave_map,1,1,1,7,1,'a'*16,'b'*16)
+        clients[1].send_state(b['seq']+1,0,9,8,8,1,7,1,'a'*16,'b'*16)
+        clients[1].select_region(place)
+        self.nearby(clients[1],next(o for o in self.s.objects if o['id']=='device'))
+        snapshot=self.s._snapshot(b)
+        self.assertIn('REGION_PROP '+entry['places'][0]['revision']+' panel',snapshot)
+        self.assertIn('The panel is lit.'.encode().hex(),snapshot)
+        self.assertTrue(any('changed appearance' in line or 'moved to tile' in line for line in returning_places.command(self.s,b,['read',place])))
+        # Social resident has no compulsory battle/campaign enrollment.
+        # Consume already-inspected extended native snapshots; RegionClient only parses the base protocol.
+        a['out'].clear()
+        clients[0].send_state(a['seq']+1,0,9,8,8,1,7,1,'a'*16,'b'*16)
+        clients[0].select_region(entry['places'][1]['place_id'])
+        self.nearby(clients[0],next(o for o in self.s.objects if o['id']=='visitor_1'))
+        speak(self.s,a,['say-public','visitor_1','Hello there.'])
+        self.assertIsNone(a.get('character_pending'));self.assertIsNone(active(self.s,a))
+    def test_quiet_network_without_population_restarts_and_repeats(self):
+        doc=field_adventure();doc.pop('campaign');doc['trainers']=[];doc['mechanisms']=[]
+        self.plan(doc);self.assertEqual(self.tick()['status'],'pending');self.f.p.admit()
+        self.s.close();base=self.f.p.f.f.f.f.f.f.f;base.server=base.open();self.s=base.server;self.f.s=self.s;self.f.p.s=self.s
+        self.assertEqual(self.tick()['status'],'succeeded');self.assertTrue(catalog(self.s)[0]['published'])
+        self.f.p.f.f.f.f.f.f.server=self.s;self.plan(doc,name='repeat_quiet');self.assertEqual(self.tick()['status'],'succeeded')
+        self.assertIsNone(self.s.deployment);self.assertEqual(len(catalog(self.s)),1)
+    def test_optional_campaign_may_leave_residents_and_mechanisms_unassigned(self):
+        doc=field_adventure();doc['trainers']=adventure()['trainers']
+        doc['constraints']['places']=3;doc['constraints']['branching']=2
+        doc['campaign']['entry']='battle';doc['campaign']['nodes']={'battle':dict(opponent='visitor_1',win=[],loss=[])}
+        entry=self.build(doc);self.assertTrue(entry['published']);self.assertEqual(entry['campaign'],'new_journey')
+        self.assertIn('visitor_0',self.s.module_state['world_characters'])
+        self.assertIn('field_device',self.s.module_state['world_object_networks'])
+    def test_campaign_free_invalid_geometry_still_rejected(self):
+        doc=field_adventure();doc.pop('campaign')
+        doc['mechanisms'][0]['program']['states']['lit']['objects']['panel']['dx']=30
+        self.plan(doc);self.assertEqual(self.tick()['status'],'blocked')
+        self.assertEqual(catalog(self.s),[]);self.assertNotIn('device',{o['id'] for o in self.s.objects})
+    def test_quiet_network_still_validates_projected_geometry(self):
+        from unittest.mock import patch
+        doc=field_adventure();doc.pop('campaign');doc['trainers']=[];doc['mechanisms']=[]
+        self.plan(doc);validate=self.s._validated;seen=[]
+        def inspect(result):
+            if result['state'].get('world_region_networks'):
+                seen.append(True)
+                raise ValueError('reject synthetic geometry')
+            return validate(result)
+        with patch.object(self.s,'_validated',side_effect=inspect):
+            self.assertEqual(self.tick()['status'],'blocked')
+        self.assertTrue(seen);self.assertEqual(catalog(self.s),[])

@@ -68,7 +68,9 @@ def stage(server,actor,row,requests,*,projector=None,source_builder=None):
     from .region_characters import validate_region_objects
     if server.job is not None or server.deployment is not None or not server.candidate:raise ValueError('A current idle mechanic source is required')
     proposed=dict(state=copy.deepcopy(server.module_state),objects=copy.deepcopy(server.objects),tiles=[])
-    for request in requests:proposed=(projector or population_step)(proposed,request)
+    # A geometry-only composite still needs the same pre-admission validation.
+    for request in (requests or [None] if projector else requests):
+        proposed=(projector or population_step)(proposed,request)
     server._validated(proposed);validate_transition(server.module_state,proposed['state'],proposed['objects'],server.db)
     validate_region_objects(server,proposed['objects'],proposed['state'])
     source=(source_builder or dispatch_source)(server.candidate.source,requests,server.module_state)
