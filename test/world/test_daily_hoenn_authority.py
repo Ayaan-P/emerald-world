@@ -1,8 +1,8 @@
 """Real authority/compiler/SQLite closure for new Hoenn app source, not native play."""
 import unittest
 import time
-from test_canonical_cast import CanonicalCastTests
-from test_contest_guests import ContestGuests
+import test_canonical_cast as cast_fixture
+import test_contest_guests as contest_fixture
 from world import actor_runtime, birch_field_studies, canonical_cast
 from world.build_catalog import catalog_maps
 from world.species_cohort import species_id
@@ -10,7 +10,7 @@ from world.species_cohort import species_id
 
 class HoennAuthority(unittest.TestCase):
     def test_compiled_birch_study_native_wire_private_acceptance_and_frozen_terms(self):
-        fixture = CanonicalCastTests()
+        fixture = cast_fixture.CanonicalCastTests()
         fixture.setUp()
         self.addCleanup(fixture.doCleanups)
         server = fixture.s
@@ -48,7 +48,7 @@ class HoennAuthority(unittest.TestCase):
         self.assertEqual(server.memory.history()['events'], before)
 
     def test_actual_actor_market_plan_projects_public_shelf_and_keeps_other_capabilities(self):
-        fixture = ContestGuests()
+        fixture = contest_fixture.ContestGuests()
         fixture.setUp()
         self.addCleanup(fixture.doCleanups)
         server = fixture.s
