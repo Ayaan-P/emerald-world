@@ -12,7 +12,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '20099ca11b0b8f581b59915338a65bb45a734073'
+PIN = 'b3cc9d6a7c6d09477114df341d8104635a8ba41b'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -22,10 +22,10 @@ class ReleaseConfig:
     regional_state: int = 1
     kanto_content: int = 1
     generated_world_regions: int = 0
-    version_suffix: str = 'rc13'
+    version_suffix: str = 'rusturf-draft'
 
 
-# Frozen RC12/13 integration cohort. Candidate only: not an installed release.
+# Separate reconciled Rusturf candidate. Not an installed or validated release.
 # The paired engine pin is explicit, never inferred from a moving branch.
 RELEASE_CONFIG = ReleaseConfig()
 
@@ -51,6 +51,8 @@ def main():
                         help='existing extracted libc/GCC multilib root for mandatory ABI probes')
     parser.add_argument('--development', action='store_true',
                         help='build explicit local candidate integration changes on top of the verified engine pin')
+    parser.add_argument('--experimental-rusturf-recovery', action='store_true',
+                        help='enable unverified personal Rusturf recovery and all regional payload readers; requires --development --regional-state --kanto-content; synthetic saves only until linked QA')
     parser.add_argument('--experimental-secret-bases', action='store_true', help='enable unverified own-base sharing; requires --development')
     parser.add_argument('--experimental-npc-coop', action='store_true',
                         help='enable unverified dynamic NPC co-op wire (requires --development; both clients must match)')
@@ -64,6 +66,8 @@ def main():
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error('--jobs must be positive')
+    if args.experimental_rusturf_recovery and not (args.development and args.regional_state and args.kanto_content):
+        parser.error('--experimental-rusturf-recovery requires --development --regional-state --kanto-content; linked rescue and save QA pending')
     if args.experimental_secret_bases and not args.development:
         parser.error('--experimental-secret-bases requires --development; linked save QA pending')
     if args.experimental_npc_coop and not args.development:
@@ -170,6 +174,8 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
     kanto_content = int(args.kanto_content) if args.development else RELEASE_CONFIG.kanto_content
     map_version = 'combined' if kanto_content else 'emerald'
     command += ['--', 'make', '-f', str(ROOT / 'engines/expansion.mk'), f'-j{args.jobs}',
+                f'EW_RUSTURF_RECOVERY={int(args.experimental_rusturf_recovery)}',
+                *[f'{name}={int(args.experimental_rusturf_recovery)}' for name in ('EW_REGIONAL_BADGES','EW_REGIONAL_COMPLETION','EW_ROUTE5_CUSTODY','EW_KANTO_REMATCHES','EW_REGIONAL_STARTERS')],
                 f'EW_REGION_STATE={regional_state}', f'EW_KANTO_CONTENT={kanto_content}',
                 f'MAP_VERSION={RELEASE_CONFIG.map_version if not args.development else map_version}',
                 f'WORLD_CHARACTER_COOP_EXPERIMENT={int(args.experimental_npc_coop)}',
@@ -211,3 +217,4 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
 
 if __name__ == '__main__':
     raise SystemExit(main())
+
