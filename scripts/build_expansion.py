@@ -12,7 +12,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = 'a3c1f33581a74d4520ea1707923ea4c48b55ce30'
+PIN = 'f30b7bb7ef0ccee2dc055bec629fa7c546ee3a8b'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -51,6 +51,8 @@ def main():
                         help='existing extracted libc/GCC multilib root for mandatory ABI probes')
     parser.add_argument('--development', action='store_true',
                         help='build explicit local candidate integration changes on top of the verified engine pin')
+    parser.add_argument('--experimental-coop-retreat', action='store_true',
+                        help='Enable experimental coordinated wild retreat; matching peers and linked QA required')
     parser.add_argument('--experimental-shared-cut', action='store_true',
                         help='default-off tagged outdoor Hoenn Cut sharing; requires --development; linked QA pending')
     parser.add_argument('--experimental-coop-preparation', action='store_true',
@@ -78,6 +80,8 @@ def main():
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error('--jobs must be positive')
+    if args.experimental_coop_retreat and not args.development:
+        parser.error('--experimental-coop-retreat requires --development and matching native peers; linked QA pending')
     if args.experimental_shared_cut and not args.development:
         parser.error('--experimental-shared-cut requires --development and matching native peers; linked QA pending')
     if args.experimental_coop_preparation and not args.development:
@@ -199,6 +203,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
     map_version = 'combined' if kanto_content else 'emerald'
     command += ['--', 'make', '-f', str(ROOT / 'engines/expansion.mk'), f'-j{args.jobs}',
                 f'EW_RUSTURF_RECOVERY={int(args.experimental_rusturf_recovery)}',
+                f'EW_COOP_RETREAT={int(args.experimental_coop_retreat)}',
                 f'EW_SHARED_CUT={int(args.experimental_shared_cut)}',
                 f'EW_COOP_PREPARATION={int(args.experimental_coop_preparation)}',
                 f'EW_PARTNER_MEDICINE={int(args.experimental_partner_medicine)}',
