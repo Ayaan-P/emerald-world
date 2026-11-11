@@ -66,6 +66,7 @@ class LinkProtocol:
         self._last_wire = None
         self._tags = {}
         self._tag_actor = {}
+        self._encounters = {}  # connection-local tag/token; never save progress
 
     def busy(self, actor):
         """Region selection must not carry an existing link/tag into a new place."""
@@ -73,6 +74,8 @@ class LinkProtocol:
 
     def _end_tag(self, tag):
         del self._tags[tag.id]
+        for actor in tag.participants:
+            self._encounters.pop(actor, None)
         for actor in tag.participants:
             del self._tag_actor[actor]
         return [(actor, f'T END {tag.id}\n') for actor in tag.participants]
@@ -232,12 +235,27 @@ class LinkProtocol:
                 return True
             tag = self._tags.get(int(fields[2]))
             return tag is not None and actor in tag.participants
-        if fields[1] in ('ERROR', 'ABORT'):
+        if fields[1] in ('ERROR', 'ABORT', 'HELD', 'RELEASED'):
             return True
         index = 3 if fields[1] == 'COMMIT' else 2
         wire = int(fields[index])
         entry = self._wire.get(wire)
         return entry is not None and actor in entry.participants
+
+    def encounter_target(self, actor, tag_text, token_text):
+        """Resolve TEAM only for the current authenticated encounter hold.
+
+        The server must apply its ordinary LINK/presence/region checks to this
+        target before dispatch, exactly as it does for a literal L OFFER.
+        """
+        try:
+            tag_id, token = _uint(tag_text, 2**64-1), _uint(token_text, 2**32-1)
+        except ValueError:
+            return None
+        tag = self._tags.get(self._tag_actor.get(actor))
+        if tag is None or not tag.active or tag.id != tag_id or self._encounters.get(actor) != (tag_id, token):
+            return None
+        return next(p for p in tag.participants if p != actor)
 
     def process(self, actor, raw, presence, *, now=None):
         """Input actor comes only from the authenticated LINK connection.
@@ -262,6 +280,39 @@ class LinkProtocol:
                 return output
             if any(not field for field in fields) or fields[0] != 'L':
                 raise ValueError('shape')
+            if len(fields) == 5 and fields[1] == 'CHOICE':
+                op, tag_id, token = fields[2], _uint(fields[3], 2**64-1), _uint(fields[4], 2**32-1)
+                tag = self._tags.get(self._tag_actor.get(actor))
+                if not token or tag is None or not tag.active or tag.id != tag_id:
+                    raise LinkError('denied')
+                previous = self._encounters.get(actor)
+                if previous is not None and previous != (tag_id, token):
+                    raise LinkError('conflict')
+                if op == 'HOLD':
+                    # Ordered barrier: withdraw any crossing/pre-battle admission
+                    # before acknowledging. Tag consent is deliberately retained.
+                    if tag.coop_wire is not None:
+                        entry = self._entry(actor, tag.coop_wire)
+                        output.extend(self._deliver(self.sessions.close(actor, entry.internal, now=now).events))
+                    self._encounters[actor] = (tag_id, token)
+                    output.append((actor, f'L HELD {tag_id} {token}\n'))
+                    return output
+                if previous != (tag_id, token):
+                    raise LinkError('not_found')
+                if op == 'RELEASE':
+                    if tag.coop_wire is not None:
+                        raise LinkError('busy')
+                    del self._encounters[actor]
+                    output.append((actor, f'L RELEASED {tag_id} {token}\n'))
+                    return output
+                if op != 'TEAM':
+                    raise ValueError('choice')
+                target = next(p for p in tag.participants if p != actor)
+                # Two separately captured encounters must not borrow one another's
+                # trainer callback or rewards. Neither target can be a guest here.
+                if target in self._encounters:
+                    raise LinkError('busy')
+                fields = ['L', 'OFFER', '4', target]
             if len(fields) == 4 and fields[1] == 'OFFER':
                 mode = _uint(fields[2], 4)
                 target = fields[3]
@@ -272,6 +323,8 @@ class LinkProtocol:
                     tag = self._tags.get(self._tag_actor.get(actor))
                     if tag is None or not tag.active or target not in tag.participants or actor == target:
                         raise LinkError('denied')
+                    if target in self._encounters:
+                        raise LinkError('busy')
                     if tag.coop_wire is not None:
                         entry = self._entry(actor, tag.coop_wire)
                         slot = entry.participants.index(actor)
@@ -344,3 +397,4 @@ class LinkProtocol:
             if channel == 'L' and isinstance(actor, str) and _NAME.fullmatch(actor):
                 output.extend(self._deliver(self.sessions.disconnect(actor, now=now).events))
         return output
+

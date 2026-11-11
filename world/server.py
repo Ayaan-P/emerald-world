@@ -1293,10 +1293,12 @@ class WorldServer:
             self._queue(conn, safari_handle(self,conn,raw))
             return
         fields = raw.split(b' ')
-        if ((len(fields) == 4 and fields[:2] == [b'L', b'OFFER'])
+        team_choice = len(fields) == 5 and fields[:3] == [b'L', b'CHOICE', b'TEAM']
+        if (team_choice or (len(fields) == 4 and fields[:2] == [b'L', b'OFFER'])
                 or (len(fields) == 3 and fields[:2] == [b'T', b'OFFER'])):
             try:
-                target = fields[-1].decode('ascii')
+                target = (self.link_protocol.encounter_target(conn['id'], fields[3].decode('ascii'), fields[4].decode('ascii'))
+                          if team_choice else fields[-1].decode('ascii'))
             except UnicodeError:
                 target = None
             other = self.link_channels.get(target)
@@ -1310,7 +1312,7 @@ class WorldServer:
                 same_instance = (self._region_scope(origin) is not None
                     and origin.get('in_generated_cave') and destination.get('in_generated_cave')
                     and self._region_scope(origin) == self._region_scope(destination))
-                if not same_instance or (fields[0] == b'L' and fields[2] != b'4'):
+                if not same_instance or (fields[0] == b'L' and fields[2] != b'4' and not team_choice):
                     channel = 'T' if fields[0] == b'T' else 'L'
                     self._queue(conn, f'{channel} ERROR UNAVAILABLE\n')
                     return
