@@ -36,6 +36,8 @@ def dynamic_result(event, identity, character):
     if spatial_relevant(event,identity):return True
     from .actor_stories import relevant as story_relevant
     if story_relevant(event,identity):return True
+    from .npc_organizations import relevant as organization_relevant
+    if organization_relevant(event,identity):return True
     from .actor_agreements import relevant as agreement_relevant
     if agreement_relevant(event,identity):return True
     from .actor_attention import relevant as attention_relevant

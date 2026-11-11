@@ -32,7 +32,7 @@ def event(server,key,proposer,agreement_terms,kind,**extra):
     return seq
 
 
-def propose(server,actor,row,args):
+def propose(server,actor,row,args,*,organization=None):
     from .actor_runtime import CAPABILITIES
     if set(args)!={'participants','purpose','tool','args','hours'} or type(args['participants']) is not str or type(args['args']) is not str or len(args['args'])>500:raise ValueError('Supply participants JSON, purpose, exact supported tool/argument JSON and duration')
     try:participants=json.loads(args['participants']);operation=json.loads(args['args'])
@@ -49,6 +49,7 @@ def propose(server,actor,row,args):
     if not execution or execution[0]!=actor:raise ValueError('Durable actor executor required')
     key=hashlib.sha256(json.dumps([server.memory.world_id,actor,execution[2]['id'],execution[3]['id']]).encode()).hexdigest()
     terms=dict(participants=[actor,*participants],purpose=args['purpose'],tool=args['tool'],args=operation)
+    if organization is not None:terms.update(organization)
     if server.db.execute('SELECT 1 FROM actor_agreements WHERE id=?',(key,)).fetchone():raise ValueError('Agreement identity already exists')
     if server.db.execute("SELECT count(*) FROM actor_agreements WHERE status='open' AND expires>?",(time.time(),)).fetchone()[0]>=32:raise ValueError('Resolve or let existing open agreements expire first')
     server.db.execute('INSERT INTO actor_agreements VALUES(?,?,?,?,?,?,NULL)',(key,actor,json.dumps(terms,sort_keys=True),json.dumps({actor:'accept'}),'open',time.time()+args['hours']*3600))
@@ -77,6 +78,8 @@ def commit(server,actor,row,args):
     if actor!=proposer:raise ValueError('Only proposer can execute its own agreed operation')
     if status=='applied':return dict(outcome='agreement_already_applied',agreement=args['agreement'],result=result)
     if status!='open' or expires<=time.time() or not all(decisions.get(a)=='accept' for a in terms['participants']):raise ValueError('Every participant must independently accept before expiry')
+    from .npc_organizations import guard
+    guard(server,args['agreement'],terms)
     records=active_actors(server,terms['participants']);cap=CAPABILITIES[terms['tool']]
     if terms['tool'] not in TOOLS or cap.poll is not None or ('canonical' if records[actor].get('canonical') else 'world') not in cap.kinds:raise ValueError('Agreed operation is no longer available')
     # Called within the ordinary actor executor transaction. Its original
