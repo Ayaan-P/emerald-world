@@ -73,4 +73,56 @@ class PlaceConversations(unittest.TestCase):
  def test_range_and_different_region_fail(self):
   p=self.changed();p['state'][2]=90
   with self.assertRaises(GuildError):self.confirm(p)
+ def inspect_args(self):
+  from world.campaign_mechanisms import definition,fingerprint
+  return dict(network='mechanism',definition=fingerprint(self.s,definition(self.s,'mechanism')))
+ def test_receipt_first_reference_change_then_optional_service_and_challenge(self):
+  from world import actor_runtime,actor_tutors
+  from world.battle_campaigns import publish,command,active
+  # Players act before any resident plan or campaign exists. No witness enrollment.
+  p=self.changed();self.assertIsNone(active(self.s,p));before=copy.deepcopy(self.s.objects)
+  args=self.inspect_args()
+  state=copy.deepcopy(self.s.module_state);actor=state['world_characters']['harbor_guide'];actor['version']+=1
+  actor['plan']=dict(id='consider_changed_place',purpose='Consider offering visitors a useful training opportunity.',steps=[
+   dict(id='look',tool='world.inspect_place_change',args=args,after=[]),
+   dict(id='offer',tool='world.offer_tutoring',args=dict(move=164),after=['look'],when=dict(step='look',path='/phase',equals='on'))])
+  base=self.f.f.f.f.f.f;base.commit(dict(state=state,objects=self.s.objects,tiles=[]));self.assertIsNone(self.s.module_error)
+  self.assertEqual(actor_runtime.tick(self.s,now=500)['step'],'look')
+  result=json.loads(self.s.db.execute("SELECT result FROM actor_tool_receipts WHERE plan='consider_changed_place' AND step='look'").fetchone()[0])
+  self.assertTrue(result['committed']);self.assertNotIn('UserOne',json.dumps(result));self.assertNotIn('cooperators',json.dumps(result))
+  # Restart between independently authored inspection and service decision.
+  self.s.close();root=self.f.f.f.f.f.f.f;root.server=root.open();self.s=root.server
+  self.assertEqual(actor_runtime.tick(self.s,now=510)['step'],'offer')
+  self.assertIsNone(actor_runtime.tick(self.s,now=520))
+  self.assertEqual(actor_tutors.catalog(self.s)['offers']['harbor_guide']['move'],164)
+  self.assertIn('164',actor_tutors.line(self.s,dict(character_tutor_capable=True),'harbor_guide',actor['version']))
+  self.assertIsNone(actor_tutors.line(self.s,{},'harbor_guide',actor['version']))
+  self.assertEqual(self.s.objects,before)
+  # An optional challenge alongside the freely usable place, not the tutor's prerequisite.
+  doc=dict(id='optional_practice',title='Optional practice',entry='try',nodes={'try':dict(opponent='harbor_guide',win=[],loss=[],decline=[])})
+  with self.s.db:publish(self.s,'harbor_guide',{},dict(campaign=json.dumps(doc)))
+  visitor=dict(id='ReturningVisitor',campaign_run='a'*32)
+  command(self.s,visitor,['start','optional_practice']);command(self.s,visitor,['decline-challenge'])
+  self.assertNotIn('outcome',active(self.s,visitor)[1]['history'][0])
+  self.assertEqual(actor_tutors.catalog(self.s)['offers']['harbor_guide']['move'],164)
+ def test_uncommitted_place_does_not_open_conditional_service(self):
+  from world import actor_runtime,actor_tutors
+  state=copy.deepcopy(self.s.module_state);actor=state['world_characters']['harbor_guide'];actor['version']+=1
+  actor['plan']=dict(id='inspect_initial',purpose='Do not assume initial scenery was changed.',steps=[
+   dict(id='look',tool='world.inspect_place_change',args=self.inspect_args(),after=[]),
+   dict(id='offer',tool='world.offer_tutoring',args=dict(move=164),after=['look'],when=dict(step='look',path='/committed',equals=True))])
+  self.f.f.f.f.f.f.commit(dict(state=state,objects=self.s.objects,tiles=[]))
+  self.assertEqual(actor_runtime.tick(self.s,now=500)['status'],'succeeded')
+  actor_runtime.tick(self.s,now=510)
+  self.assertNotIn('harbor_guide',actor_tutors.catalog(self.s)['offers'])
+ def test_receipt_reconciliation_rejects_declared_stale_or_remote_state(self):
+  args=self.inspect_args();actor=self.s.module_state['world_characters']['harbor_guide']
+  self.assertFalse(places.inspect_change(self.s,'harbor_guide',actor,args)['committed'])
+  self.changed();self.assertTrue(places.inspect_change(self.s,'harbor_guide',actor,args)['committed'])
+  with self.assertRaises(ValueError):places.inspect_change(self.s,'harbor_guide',actor,dict(args,definition='wrong'))
+  # A newer unreceipted control mutation is not historical proof of the present.
+  self.s.module_state['world_object_controls']['fixture']['state']['uncommitted']=True
+  self.assertFalse(places.inspect_change(self.s,'harbor_guide',actor,args)['committed'])
+  obj=next(o for o in self.s.objects if o['id']=='harbor_guide');obj['x']+=20
+  with self.assertRaises(ValueError):places.inspect_change(self.s,'harbor_guide',actor,args)
 if __name__=='__main__':unittest.main()
