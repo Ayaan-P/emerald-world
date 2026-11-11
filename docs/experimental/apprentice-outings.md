@@ -1,5 +1,7 @@
 # Apprentice outings (default-off draft)
 
+Optional walking follow-up: see [apprentice-walking.md](apprentice-walking.md). The battle-only behavior below remains available without the walking option.
+
 ## What the player can actually choose
 Finish the original Battle Tower apprentice mentoring conversation first. In a free Tower lobby visit, enter `/apprentice start` in the existing game chat overlay. `/apprentice` explains the limits; `/apprentice status` and `/apprentice end` inspect or end the session.
 
