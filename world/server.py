@@ -1288,6 +1288,10 @@ class WorldServer:
             return
         # Only connected native link peers may be invited. CONTROL connections
         # neither approve requests nor contribute native engine rounds.
+        if raw.startswith(b'MK '):
+            from .hoenn_markets import wire as market_wire
+            self._queue(conn,market_wire(self,conn,raw))
+            return
         if raw.startswith(b'CN '):
             from .shared_contests import handle as contest_handle
             for trainer, line in contest_handle(self,conn,raw):
