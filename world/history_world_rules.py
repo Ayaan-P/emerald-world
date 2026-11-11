@@ -1,8 +1,8 @@
 """Bounded persistent reactions to public facts, using existing world executors."""
 import json,re,time,sqlite3
 
-TOOLS=('world.configure_outbreak','world.configure_fishing','world.set_weather')
-EVENTS=('canonical_trainer_result','landmark_discovery_shared','public_story_choice_committed','character_journey_arrived','player_addressed_character','spatial_public_speech')
+TOOLS=('world.arrange_market_shelf','world.configure_outbreak','world.configure_fishing','world.set_weather')
+EVENTS=('hoenn_market_purchase_reported','canonical_trainer_result','landmark_discovery_shared','public_story_choice_committed','character_journey_arrived','player_addressed_character','spatial_public_speech')
 
 
 def setup(db):
