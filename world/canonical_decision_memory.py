@@ -45,3 +45,19 @@ def commit(server,session,proposal,choice,advice,seq):
 def context(server,trainer,actor,run):
     return [json.loads(row[0]) for row in server.db.execute('''SELECT fact FROM canonical_decision_memory
       WHERE trainer=? AND actor=? AND run=? ORDER BY seq DESC LIMIT 4''',(trainer,actor,run))]
+
+
+def greeting(server,trainer,actor,run):
+    """Recall an explicit answer locally, without requiring a private model grant.
+
+    These are the visitor's words, not a personality assessment or an activity
+    result. Listener advice must never become the speaker's decision.
+    """
+    if not enabled(server,trainer,actor):return None
+    facts=context(server,trainer,actor,run)
+    if not facts:return None
+    fact=facts[0]
+    if fact['role']=='speaker':
+        return 'You chose '+fact['own_answer']+' last time. That was an answer, not a completed journey.'
+    return ('You suggested '+fact['own_answer']+'. The speaker chose '+fact['speaker_answer']+
+            '. That was your advice, not your decision for the group.')

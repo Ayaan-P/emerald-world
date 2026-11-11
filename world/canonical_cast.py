@@ -235,8 +235,10 @@ def response(server, conn, run, key):
     option=row.get('conversation',{}).get(private[1]) if private and private[0]==row['version'] else None
     from .canonical_reflection import private_reply
     personal=private_reply(server,conn['id'],identity,run,row['version'])
+    from .canonical_decision_memory import greeting as decision_greeting
+    remembered=decision_greeting(server,conn['id'],identity,run) if not personal and not option else None
     result=dict(schema=1,world_id=server.memory.world_id,run=run,actor=identity,
-                version=row['version'],briefing=personal or (option['reply'] if option else row['dialogue']),objective=('Guild chat has a shared question.' if row.get('council') else 'Guild chat has conversation choices.' if row.get('conversation') and not option else 'Ask guild chat about my plan.' if row.get('offer') else 'Guild chat has my field studies.' if row.get('study') else 'Guild chat has my practice courses.' if row.get('project') else ''),evidence=row['evidence'])
+                version=row['version'],briefing=personal or (option['reply'] if option else remembered or row['dialogue']),objective=('Guild chat has a shared question.' if row.get('council') else 'Guild chat has conversation choices.' if row.get('conversation') and not option else 'Ask guild chat about my plan.' if row.get('offer') else 'Guild chat has my field studies.' if row.get('study') else 'Guild chat has my practice courses.' if row.get('project') else ''),evidence=row['evidence'])
     if row.get('investigation') and not result.get('objective'):result['objective']='Group investigation: guild cast '+BINDINGS[identity]['wire']+' investigate.'
     if row.get('rematch') and key=='wally_vr' and not result.get('objective'):result['objective']='Optional original rematch. Use history rematch wally.'
     if row.get('scene') and not result.get('objective'):result['objective']='Optional group demonstration. Use history scene.'

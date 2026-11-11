@@ -57,6 +57,7 @@ def command(server, conn, actor, args):
     if args==['remember','on']:
         with server.db:server.db.execute('INSERT OR IGNORE INTO canonical_memory_optin VALUES(?,?)',(conn['id'],actor))
         return ['Private encounter memory enabled for this trainer and actor, separated by save lineage.',
+                'Includes local choice reminders on ordinary visits. No model calls or public memory entries.',
                 'Private conversation and partner encounter summaries only. No public history or shared author access.',
                 'Use remember off to stop remembering, or forget to erase your choices and encounter summaries.']
     if args==['remember','off']:
