@@ -196,6 +196,9 @@ class CoreStory:
         if action=='CAMP':
             from .campaign_board import handle
             return handle(self.s,conn,run,key,confirmation)
+        if action=='RACE':
+            from .rydel_routes import panel
+            return panel(self.s,conn,run,key,confirmation)
         if action=='PROJECT':
             from .canonical_project_panel import panel
             return panel(self.s,conn,run,key,confirmation)

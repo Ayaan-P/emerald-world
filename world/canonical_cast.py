@@ -401,6 +401,8 @@ def guild_command(server, conn, args):
 
 
 def reaction_activity(event, identity, row):
+    from .rydel_routes import relevant as route_relevant
+    if route_relevant(event,identity):return True
     from .shared_research import relevant as research_relevant
     if research_relevant(event,identity):return True
     from .canonical_investigations import relevant as investigation_choice
@@ -508,6 +510,8 @@ def received_letter(event, identity):
 
 
 def decision_evidence(event, identity, row):
+    from .rydel_routes import relevant as route_relevant
+    if route_relevant(event,identity):return True
     from .shared_research import relevant as research_relevant
     if research_relevant(event,identity):return True
     from .actor_stories import relevant as story_choice
