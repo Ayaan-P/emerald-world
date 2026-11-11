@@ -26,6 +26,9 @@ def nearby(server,conn,actor):
 
 
 def command(server,conn,words):
+    if words and words[0]=='show-place':
+        from .place_conversations import command as show_place
+        return show_place(server,conn,words)
     if words and words[0]=='availability':
         from .npc_absence import command as absence_command
         return absence_command(server,words)
@@ -43,6 +46,7 @@ def command(server,conn,words):
         return walk_command(server,conn,words)
     if not words:return ['NPC speech is PUBLIC world history, visible to world agents and players. Do not enter personal information.',
         'Optional remembering: /guild npc remember-public ID. Disclosure and confirmation required.',
+        'Show a changed place: /guild npc show-place NPC lists nearby changes to review.',
         'Group conversation: /guild npc speak-public MESSAGE (public history and nearby audience).',
         'Use /guild npc nearby, or /guild npc say-public ID MESSAGE. Agent replies are not guaranteed.',
         'An NPC may offer to lead a group: /guild npc guide ID, join-guide ID, or leave-guide.',
@@ -60,14 +64,20 @@ def command(server,conn,words):
     actor=words[1];text=' '.join(words[2:])
     if not 1<=len(text)<=80 or any(not 32<=ord(c)<127 for c in text):raise GuildError('Use 1-80 printable characters of public fictional dialogue.')
     character,obj=nearby(server,conn,actor)
+    return deliver(server,conn,character,obj,text)
+
+
+def deliver(server,conn,character,obj,text,*,place_evidence=None):
+    actor=obj['id']
     if time.monotonic()-conn.get('npc_speech_time',-100)<5:raise GuildError('Give the character a moment before speaking again.')
     with server.db:
         seq=server.memory.append('player_addressed_character',dict(character_id=actor,character_version=character['version'],text=text,
             revision=obj.get('region_revision'),position=[obj['group'],obj['num'],obj['x'],obj['y']],
             publication='explicit_public_npc_speech',basis='authenticated_nearby_player_message',
-            limits='Player dialogue, not a command to obey or evidence that its claims occurred. No trainer name or save fields published.'))
+            limits='Player dialogue, not a command to obey or evidence that its claims occurred. No trainer name or save fields published.',
+            **({'place_evidence':place_evidence} if place_evidence is not None else {})))
         from .player_npc_memory import speech as remember_speech
-        remember_speech(server,conn,actor,seq)
+        if place_evidence is None:remember_speech(server,conn,actor,seq)
         session=conn.setdefault('npc_speech_session',secrets.token_hex(16))
         server.db.execute('INSERT INTO npc_public_speech VALUES(?,?,?,?,?,?,NULL,?,NULL)',(seq,actor,conn['id'],character['version'],text,'delivered',session))
         # Freeze only physically present authenticated sessions, not a guild roster.
