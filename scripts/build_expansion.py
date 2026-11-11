@@ -12,7 +12,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '8dea9e7f4ea77e22f3e1dd88da84b1b880ed7174'
+PIN = '32409b1087963532d36e355f82f2b374b6945144'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -72,6 +72,7 @@ def main():
     parser.add_argument('--experimental-map-offers', action='store_true', help='Read actual public settings on original Hoenn map, linked QA pending')
     parser.add_argument('--experimental-rydel-routes', action='store_true', help='Optional Rydel route board, linked QA pending')
     parser.add_argument('--experimental-birch-research', action='store_true', help='Living Birch after original lab Pokedex service (linked QA pending)')
+    parser.add_argument('--experimental-apprentice-outings', action='store_true', help='enable RAM-only trained apprentice wild companions; requires --development; linked QA pending')
     parser.add_argument('--experimental-hoenn-markets', action='store_true', help='Optional visiting stock at original Hoenn marts (rendered QA pending)')
     parser.add_argument('--experimental-shared-contest', action='store_true', help='Stock two-human Emerald contest (linked QA pending)')
     parser.add_argument('--experimental-shared-strength', action='store_true', help='Experimental Fiery Path boulder sharing (linked QA pending)')
@@ -155,6 +156,8 @@ def main():
         parser.error('--experimental-rydel-routes requires --development')
     if args.experimental_birch_research and not args.development:
         parser.error('--experimental-birch-research requires --development')
+    if args.experimental_apprentice_outings and not args.development:
+        parser.error('--experimental-apprentice-outings requires --development; linked QA pending')
     if args.experimental_hoenn_markets and not args.development:
         parser.error('--experimental-hoenn-markets requires --development')
     if args.experimental_shared_contest and not args.development:
@@ -298,6 +301,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'EW_WALLY_INVITATION={int(args.experimental_wally_invitation)}',
                 f'EW_BIRCH_STUDIES={int(args.experimental_birch_studies)}',
                 f'EW_MATCH_CALL_EVENTS={int(args.experimental_match_call_events)}',
+                f'EW_APPRENTICE_OUTINGS={int(args.experimental_apprentice_outings)}',
                 f'EW_HOENN_MARKETS={int(args.experimental_hoenn_markets)}',
                 f'EW_SHARED_CONTEST={int(args.experimental_shared_contest)}',
                 f'EW_SHARED_STRENGTH={int(args.experimental_shared_strength)}',
