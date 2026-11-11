@@ -12,7 +12,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '79746a93accb7ad6b8207169bc777b96087e92e3'
+PIN = '11ef87a7c4261424fbad30db57824809d546156a'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -51,6 +51,8 @@ def main():
                         help='existing extracted libc/GCC multilib root for mandatory ABI probes')
     parser.add_argument('--development', action='store_true',
                         help='build explicit local candidate integration changes on top of the verified engine pin')
+    parser.add_argument('--experimental-woods-continuation', action='store_true',
+                        help='default-off private Woods rescue; requires complete Roxanne/Rusturf reader cohort')
     parser.add_argument('--experimental-roxanne-continuation', action='store_true',
                         help='default-off synthetic-tested guest Gym continuation; requires experimental Rusturf readers')
     parser.add_argument('--experimental-rusturf-recovery', action='store_true',
@@ -68,6 +70,8 @@ def main():
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error('--jobs must be positive')
+    if args.experimental_woods_continuation and not args.experimental_roxanne_continuation:
+        parser.error('--experimental-woods-continuation requires --experimental-roxanne-continuation')
     if args.experimental_roxanne_continuation and not args.experimental_rusturf_recovery:
         parser.error('--experimental-roxanne-continuation requires --experimental-rusturf-recovery')
     if args.experimental_rusturf_recovery and not (args.development and args.regional_state and args.kanto_content):
@@ -179,6 +183,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
     map_version = 'combined' if kanto_content else 'emerald'
     command += ['--', 'make', '-f', str(ROOT / 'engines/expansion.mk'), f'-j{args.jobs}',
                 f'EW_RUSTURF_RECOVERY={int(args.experimental_rusturf_recovery)}',
+                f'EW_WOODS_CONTINUATION={int(args.experimental_woods_continuation)}',
                 f'EW_ROXANNE_CONTINUATION={int(args.experimental_roxanne_continuation)}',
                 *[f'{name}={int(args.experimental_rusturf_recovery)}' for name in ('EW_REGIONAL_BADGES','EW_REGIONAL_COMPLETION','EW_ROUTE5_CUSTODY','EW_KANTO_REMATCHES','EW_REGIONAL_STARTERS')],
                 f'EW_REGION_STATE={regional_state}', f'EW_KANTO_CONTENT={kanto_content}',
