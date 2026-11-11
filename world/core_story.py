@@ -158,6 +158,9 @@ class CoreStory:
         if action in ('BATTLE','BAUTO','CBATTLE'):
             from .trainer_experiences import handle
             return handle(self.s,conn,run,key,confirmation,automatic=action=='BAUTO',cooperative=action=='CBATTLE')
+        if action=='TUTOR':
+            from .canonical_services import handle
+            return handle(self.s,conn,run,key,confirmation)
         if action=='ALLYEND':
             from .canonical_partner_memory import finish
             return finish(self.s,conn,run,key,confirmation)
@@ -293,4 +296,5 @@ class CoreStory:
                 self.db.execute('INSERT INTO core_story_offers VALUES(?,?,?,?)',(trainer,run,key,encoded(result)))
                 return result
             raise ValueError('Invalid canonical story action or confirmation.')
+
 

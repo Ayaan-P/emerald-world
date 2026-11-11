@@ -6,7 +6,7 @@ class Granite(unittest.TestCase):
  def setUp(self):
   self.package='granite_fixture';pkg=types.ModuleType(self.package);pkg.__path__=[];sys.modules[self.package]=pkg
   self.mods={}
-  for name in ('canonical_cast','canonical_memory'):
+  for name in ('actor_tutors','canonical_services','canonical_cast','canonical_memory'):
    spec=importlib.util.spec_from_file_location(self.package+'.'+name,ROOT/'world'/f'{name}.py');m=importlib.util.module_from_spec(spec);sys.modules[spec.name]=m;spec.loader.exec_module(m);self.mods[name]=m
   self.cast=self.mods['canonical_cast'];self.mem=self.mods['canonical_memory']
   def module(name,**kw):
