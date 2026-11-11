@@ -56,7 +56,7 @@ def created(event):
         if type(members) is not list or not 2<=len(members)<=4:return []
     elif tool=='world.build_adventure' and result.get('outcome')=='procedural_adventure_published':
         ids=result.get('trainers',[])
-        if type(ids) is not list or not 2<=len(ids)<=4 or any(type(i) is not str for i in ids) or len(set(ids))!=len(ids):return []
+        if type(ids) is not list or not 0<=len(ids)<=4 or any(type(i) is not str for i in ids) or len(set(ids))!=len(ids):return []
         return ids
     return [m['object'] for m in members if type(m) is dict and m.get('kind')=='character' and type(m.get('object')) is str]
 

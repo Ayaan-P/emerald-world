@@ -26,7 +26,10 @@ def project(result, request):
     result=apply_network(result,request['network'])
     for population in request['population']:
         result=population_step(result,population)
-    return result
+    for mechanism in request.get('mechanisms',[]):
+        result['state'].setdefault('world_object_networks',{}).setdefault(mechanism['id'],copy.deepcopy(mechanism))
+    from .object_networks import project as project_mechanisms
+    return project_mechanisms(result)
 
 
 # These are the existing projectors, not parallel implementations.
@@ -61,21 +64,21 @@ def start(server,actor,row,args):
     if set(args)!={'document'} or type(args['document']) is not str or len(args['document'])>6000:
         raise ValueError('Supply bounded authored adventure JSON')
     doc=json.loads(args['document'])
-    if type(doc) is not dict or set(doc)!={'label','constraints','trainers','campaign'}:
+    if type(doc) is not dict or not {'label','constraints','trainers','campaign'}<=set(doc) or set(doc)-{'label','constraints','trainers','campaign','mechanisms'}:
         raise ValueError('Adventure requires label, procedural constraints, trainers and campaign')
     layout=generate(doc['label'],encode(doc['constraints']))
     trainers=doc['trainers'];campaign=doc['campaign']
-    if type(trainers) is not list or not 2<=len(trainers)<=4 or type(campaign) is not dict:
-        raise ValueError('Use two to four original trainers and an authored campaign')
+    if type(trainers) is not list or not 0<=len(trainers)<=4 or type(campaign) is not dict:
+        raise ValueError('Use up to four original trainers and an authored campaign')
     for trainer in trainers:
         if type(trainer) is not dict or set(trainer)!={'place','id','name','role','goals','team','gfx','text'} or type(trainer['place']) is not int or not 0<=trainer['place']<len(layout['places']):
             raise ValueError('Each original trainer selects an actual generated place index')
     ids=[t['id'] for t in trainers]
-    if any(type(i) is not str for i in ids) or len(set(ids))!=len(ids) or set(t['place'] for t in trainers)!=set(range(len(layout['places']))):
-        raise ValueError('Distinct trainers must populate every generated place')
-    if type(campaign.get('nodes')) is not dict or any(type(n) is not dict or set(n)!={'opponent','win','loss'} or n['opponent'] not in ids for n in campaign['nodes'].values()):
-        raise ValueError('Initial adventure graph uses only these original trainers and explicit win/loss routes')
-    if {n['opponent'] for n in campaign['nodes'].values()}!=set(ids):raise ValueError('Every created trainer must have a campaign role')
+    if any(type(i) is not str for i in ids) or len(set(ids))!=len(ids):
+        raise ValueError('Trainer identities must be distinct')
+    if type(campaign.get('nodes')) is not dict or any(type(n) is not dict or not (set(n)=={'opponent','win','loss'} and n['opponent'] in ids or set(n)=={'mechanism','next'} or set(n)=={'expedition'}) for n in campaign['nodes'].values()):
+        raise ValueError('Use original trainers, new mechanism objectives or expedition branches')
+    if {n['opponent'] for n in campaign['nodes'].values() if 'opponent' in n}!=set(ids):raise ValueError('Every created trainer must have a campaign role')
     if type(campaign.get('id')) is not str:raise ValueError('Campaign requires a literal identity')
     setup(server.db)
     key=hashlib.sha256(encode([actor,doc]).encode()).hexdigest()
@@ -96,9 +99,14 @@ def start(server,actor,row,args):
             definition.update(kind='character',x=x,y=y)
             population=prepare(server,actor,row,dict(revision=revision,definition=encode(definition)),state=trial['state'],objects=trial['objects'])
             trial=population_step(trial,population);populations.append(population)
+        from .adventure_mechanisms import prepare as prepare_mechanisms,bind_campaign
+        trial,props,mechanisms,occupied=prepare_mechanisms(server,actor,row,doc,network,trial)
+        populations.extend(props)
+        if occupied|{t['place'] for t in trainers}!=set(range(len(layout['places']))):raise ValueError('Every generated place requires a trainer or mechanism')
         preview=copy.copy(server);preview.module_state=trial['state'];preview.objects=trial['objects']
+        campaign=bind_campaign(preview,campaign,mechanisms)
         inspect_document(preview,dict(campaign=encode(campaign)))
-        request=dict(id=key,network=network,population=populations,campaign=campaign)
+        request=dict(id=key,network=network,population=populations,campaign=campaign,mechanisms=mechanisms)
         server.db.execute('INSERT INTO procedural_adventures(id,actor,document,request) VALUES(?,?,?,?)',(key,actor,encode(doc),encode(request)))
     # Once admitted, resumption only verifies and publishes; it never rewinds cast state.
     if server.module_state.get('world_region_networks',{}).get(request['network']['id'])==request['network']:
@@ -116,9 +124,12 @@ def update(context,state):
     result=_adventure_apply_network_{suffix}(_adventure_previous_{suffix}(context,state),{request['network']!r})
     for request in {request['population']!r}:
         result=_adventure_population_step_{suffix}(result,request)
+    for mechanism in {request.get('mechanisms',[])!r}:
+        result['state'].setdefault('world_object_networks',{{}}).setdefault(mechanism['id'],mechanism)
     return result
 '''
-        return old+body
+        from .adventure_mechanisms import source
+        return source(old+body,request.get('mechanisms',[]),suffix)
     pending=stage(server,actor,row,request['population'],projector=projector,source_builder=source_builder)
     return Pending(request,pending.dispatch)
 
@@ -129,6 +140,8 @@ def poll(server,actor,row,request):
     from .battle_campaigns import publish
     network_poll(server,actor,row,request['network'])
     population_poll(server,actor,row,request)
+    from .object_networks import poll as mechanism_poll
+    for mechanism in request.get('mechanisms',[]):mechanism_poll(server,actor,row,dict(network=mechanism['id'],definition=mechanism))
     publish(server,actor,row,dict(campaign=encode(request['campaign'])))
     server.db.execute('UPDATE procedural_adventures SET published=1 WHERE id=? AND actor=?',(request['id'],actor))
     return completion(request)
@@ -136,5 +149,5 @@ def poll(server,actor,row,request):
 
 def completion(request):
     return dict(outcome='procedural_adventure_published',adventure=request['id'],campaign=request['campaign']['id'],
-                places=request['network']['places'],trainers=[p['object']['id'] for p in request['population']],
-                limits='Real selectable connected caves, original NPCs and optional native battle campaign. Player starts or hosts voluntarily. No victories, rewards, automatic travel or rendered playtest implied.')
+                places=request['network']['places'],trainers=[p['object']['id'] for p in request['population'] if p['character'] is not None],mechanisms=[p['id'] for p in request.get('mechanisms',[])],
+                limits='Real selectable connected caves, original NPCs, move mechanisms and an optional private or shared campaign. Player starts or hosts voluntarily. No victories, rewards, automatic travel or rendered playtest implied.')

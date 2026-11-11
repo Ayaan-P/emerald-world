@@ -99,9 +99,16 @@ def check(server,conn):
             data.update(choices=choices,status='choice' if choices else 'complete');save(server,conn,key,data)
 
 
+def location(server,network):
+    obj=next((o for o in server.objects if o['id'] in network['objects']),None)
+    if not obj:return 'Mechanism currently unavailable'
+    place=server.db.execute('SELECT label FROM generated_area_archive WHERE identity=?',(obj.get('region_revision'),)).fetchone()
+    return 'Find '+obj['id']+(' in '+place[0] if place else ' at map %s/%s'%(obj['group'],obj['num']))+' tile %s,%s'%(obj['x'],obj['y'])
+
+
 def rows(server,data,node):
     goal=node['mechanism'];watch=data.get('mechanism_watch',{}).get('node')==data['node']
-    return [(goal['label']+' - '+goal['network']+' / '+goal['phase'],None),
+    return [(goal['label']+' - '+goal['network']+' / '+goal['phase'],None),(location(server,definition(server,goal['network'])),None),
         ('Use the real shared mechanism. Moves, choices and cooperative requirements are unchanged.',None),
         ('This records a witnessed world change, not proof you caused it. Party members witness separately.',None),
         ('Check the committed change nearby',['mechanism-check']) if watch else ('Begin watching future changes',['mechanism-watch'])]
