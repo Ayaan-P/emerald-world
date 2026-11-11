@@ -973,7 +973,7 @@ class WorldServer:
                             reply=self.memory.world_id+' '+result['caller']+' '+result['token']+' '+(native_text(result['text']).encode('ascii').hex() if result['text'] else '-')
                         elif fields[2]=='CAMP':
                             reply=' '.join([result['world'],str(result['page']),str(result['total']),result['token'],result['text'].encode().hex(),result['label'].encode().hex()])
-                        elif fields[2] in ('DIALOG','PROJECT'):
+                        elif fields[2] in ('DIALOG','PROJECT','RACE'):
                             reply=' '.join([result['world_id'],str(result['version']),result['session'],str(result['role']),str(len(result['options'])),native_text(result['question']).encode('ascii').hex()]+[value for option in result['options'] for value in (native_text(option['label']).encode('ascii').hex(),str(option['advice']))])
                         elif fields[2] in ('OFFER','CAST','CALL'):
                             reply=result['world_id']+' '+result['digest']+' '+native_text(result['briefing'] if fields[2]=='CALL' else result['briefing']+' '+result['objective']).encode('ascii').hex()
