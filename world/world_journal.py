@@ -52,7 +52,7 @@ def describe(event, place=None):
         details=[event['question'],event['label'],str(event['participants'])+' trainers unanimously agreed. Preference only, not story progression or completed activity.']
     elif kind == 'canonical_trainer_result':
         title=event['summary']
-        details=['Player-authorized ordinary trainer result. Native client attestation, not earned NPC growth or another save progression.']
+        details=[event.get('limits','Player-authorized native client report, not another save progression.')]
     elif kind == 'canonical_campaign_milestone':
         title=event['summary']
         details=['Shared by future campaign opt-in. Native client attestation, not another trainer progression or actor achievement.']

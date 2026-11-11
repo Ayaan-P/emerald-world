@@ -152,12 +152,15 @@ class CoreStory:
         if action=='CALL' and confirmation=='registered':
             from .canonical_cast import remote_response
             return remote_response(self.s,conn,run,key)
-        if action=='BMODE':
+        if action in ('BMODE','CMODE'):
             from .trainer_experiences import participation
-            return participation(self.s,conn,run,key,confirmation)
-        if action in ('BATTLE','BAUTO'):
+            return participation(self.s,conn,run,key,confirmation,cooperative=action=='CMODE')
+        if action in ('BATTLE','BAUTO','CBATTLE','CAUTO'):
             from .trainer_experiences import handle
-            return handle(self.s,conn,run,key,confirmation,automatic=action=='BAUTO')
+            return handle(self.s,conn,run,key,confirmation,automatic=action in ('BAUTO','CAUTO'),cooperative=action in ('CBATTLE','CAUTO'))
+        if action=='TUTOR':
+            from .canonical_services import handle
+            return handle(self.s,conn,run,key,confirmation)
         if action=='ALLYEND':
             from .canonical_partner_memory import finish
             return finish(self.s,conn,run,key,confirmation)

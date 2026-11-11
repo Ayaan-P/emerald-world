@@ -996,7 +996,9 @@ class WorldServer:
                     result = self.core_story.handle(conn, fields[:5] if nonce else fields)
                     if nonce:
                         prefix='CORE REPLY '+nonce+' '+fields[1]+' '+fields[2]+' '+fields[3]+' '
-                        if fields[2]=='BMODE':
+                        if fields[2]=='TUTOR':
+                            reply=str(result['tutor_move'])+' '+result['tutor_token']
+                        elif fields[2] in ('BMODE','CMODE'):
                             reply=result['battle_mode']
                         elif fields[2]=='RING':
                             reply=self.memory.world_id+' '+result['caller']+' '+result['token']+' '+(native_text(result['text']).encode('ascii').hex() if result['text'] else '-')
@@ -1388,15 +1390,25 @@ class WorldServer:
             from .contest_results import handle as contest_result_handle
             self._queue(conn, contest_result_handle(self,conn,raw))
             return
+        if raw.startswith(b'CT '):
+            from .shared_cut import handle as cut_handle
+            for trainer, line in cut_handle(self,conn,raw):
+                channel=self.link_channels.get(trainer)
+                if (channel is not None and not channel.get('closing')
+                        and self.peers.get(trainer) is channel.get('presence')):
+                    self._queue(channel,line)
+            return
         if raw.startswith(b'S '):
             from .safari_outings import handle as safari_handle
             self._queue(conn, safari_handle(self,conn,raw))
             return
         fields = raw.split(b' ')
-        if ((len(fields) == 4 and fields[:2] == [b'L', b'OFFER'])
+        team_choice = len(fields) == 5 and fields[:3] == [b'L', b'CHOICE', b'TEAM']
+        if (team_choice or (len(fields) == 4 and fields[:2] == [b'L', b'OFFER'])
                 or (len(fields) == 3 and fields[:2] == [b'T', b'OFFER'])):
             try:
-                target = fields[-1].decode('ascii')
+                target = (self.link_protocol.encounter_target(conn['id'], fields[3].decode('ascii'), fields[4].decode('ascii'))
+                          if team_choice else fields[-1].decode('ascii'))
             except UnicodeError:
                 target = None
             other = self.link_channels.get(target)
@@ -1410,7 +1422,7 @@ class WorldServer:
                 same_instance = (self._region_scope(origin) is not None
                     and origin.get('in_generated_cave') and destination.get('in_generated_cave')
                     and self._region_scope(origin) == self._region_scope(destination))
-                if not same_instance or (fields[0] == b'L' and fields[2] != b'4'):
+                if not same_instance or (fields[0] == b'L' and fields[2] != b'4' and not team_choice):
                     channel = 'T' if fields[0] == b'T' else 'L'
                     self._queue(conn, f'{channel} ERROR UNAVAILABLE\n')
                     return

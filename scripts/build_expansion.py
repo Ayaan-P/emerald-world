@@ -66,6 +66,30 @@ def main():
     parser.add_argument('--experimental-party-practice', action='store_true', help='enable local native egg-move practice; requires --development')
     parser.add_argument('--experimental-maze-courses', action='store_true', help='enable experimental generated Trainer Hill mazes; requires --development')
     parser.add_argument('--experimental-pyramid-courses', action='store_true', help='enable experimental authored Pyramid courses; requires --development')
+    parser.add_argument('--experimental-coop-turn-plan', action='store_true',
+                        help='default-off bilateral turn review; matching peers and --development; linked QA pending')
+    parser.add_argument('--experimental-coop-hold-back', action='store_true',
+                        help='default-off cooperative Hold back turn; matching peers and --development; linked QA pending')
+    parser.add_argument('--experimental-dual-trainers', action='store_true',
+                        help='Enable experimental two-opponent route co-op; matching peers and linked QA required')
+    parser.add_argument('--experimental-coop-discovery', action='store_true',
+                        help='Enable personal co-op opponent discovery after local presentation; linked QA pending')
+    parser.add_argument('--experimental-coop-retreat', action='store_true',
+                        help='Enable experimental coordinated wild retreat; matching peers and linked QA required')
+    parser.add_argument('--experimental-shared-cut', action='store_true',
+                        help='default-off tagged outdoor Hoenn Cut sharing; requires --development; linked QA pending')
+    parser.add_argument('--experimental-coop-preparation', action='store_true',
+                        help='default-off bilateral opening team preparation; requires --development; linked QA pending')
+    parser.add_argument('--experimental-partner-medicine', action='store_true',
+                        help='default-off active partner medicine; matching native peers and --development required; linked QA pending')
+    parser.add_argument('--experimental-trainer-choice', action='store_true',
+                        help='default-off trainer Team up / Face alone choice; requires matching authority and --development; linked QA pending')
+    parser.add_argument('--experimental-woods-continuation', action='store_true',
+                        help='default-off private Woods rescue; requires complete Roxanne/Rusturf reader cohort')
+    parser.add_argument('--experimental-roxanne-continuation', action='store_true',
+                        help='default-off synthetic-tested guest Gym continuation; requires experimental Rusturf readers')
+    parser.add_argument('--experimental-rusturf-recovery', action='store_true',
+                        help='enable unverified personal Rusturf recovery and all regional payload readers; requires --development --regional-state --kanto-content; synthetic saves only until linked QA')
     parser.add_argument('--experimental-secret-bases', action='store_true', help='enable unverified own-base sharing; requires --development')
     parser.add_argument('--experimental-npc-coop', action='store_true',
                         help='enable unverified dynamic NPC co-op wire (requires --development; both clients must match)')
@@ -108,6 +132,30 @@ def main():
         parser.error('--experimental-maze-courses requires --development; native layout/save QA pending')
     if args.experimental_pyramid_courses and not args.development:
         parser.error('--experimental-pyramid-courses requires --development; linked suspend/save QA pending')
+    if args.experimental_coop_turn_plan and not args.development:
+        parser.error('--experimental-coop-turn-plan requires --development')
+    if args.experimental_coop_hold_back and not args.development:
+        parser.error('--experimental-coop-hold-back requires --development and matching native peers; linked QA pending')
+    if args.experimental_dual_trainers and not args.development:
+        parser.error('--experimental-dual-trainers requires --development and matching native peers; linked QA pending')
+    if args.experimental_coop_discovery and not args.development:
+        parser.error('--experimental-coop-discovery requires --development; linked QA pending')
+    if args.experimental_coop_retreat and not args.development:
+        parser.error('--experimental-coop-retreat requires --development and matching native peers; linked QA pending')
+    if args.experimental_shared_cut and not args.development:
+        parser.error('--experimental-shared-cut requires --development and matching native peers; linked QA pending')
+    if args.experimental_coop_preparation and not args.development:
+        parser.error('--experimental-coop-preparation requires --development and matching native peers; linked QA pending')
+    if args.experimental_partner_medicine and not args.development:
+        parser.error('--experimental-partner-medicine requires --development and matching native peers; linked QA pending')
+    if args.experimental_trainer_choice and not args.development:
+        parser.error('--experimental-trainer-choice requires --development and matching authority; linked QA pending')
+    if args.experimental_woods_continuation and not args.experimental_roxanne_continuation:
+        parser.error('--experimental-woods-continuation requires --experimental-roxanne-continuation')
+    if args.experimental_roxanne_continuation and not args.experimental_rusturf_recovery:
+        parser.error('--experimental-roxanne-continuation requires --experimental-rusturf-recovery')
+    if args.experimental_rusturf_recovery and not (args.development and args.regional_state and args.kanto_content):
+        parser.error('--experimental-rusturf-recovery requires --development --regional-state --kanto-content; linked rescue and save QA pending')
     if args.experimental_secret_bases and not args.development:
         parser.error('--experimental-secret-bases requires --development; linked save QA pending')
     if args.experimental_npc_coop and not args.development:
@@ -214,17 +262,29 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
     kanto_content = int(args.kanto_content) if args.development else RELEASE_CONFIG.kanto_content
     map_version = 'combined' if kanto_content else 'emerald'
     command += ['--', 'make', '-f', str(ROOT / 'engines/expansion.mk'), f'-j{args.jobs}',
+                f'EW_RUSTURF_RECOVERY={int(args.experimental_rusturf_recovery)}',
+                f'EW_COOP_TURN_PLAN={int(args.experimental_coop_turn_plan)}',
+                f'EW_COOP_HOLD_BACK={int(args.experimental_coop_hold_back)}',
+                f'EW_DUAL_TRAINERS={int(args.experimental_dual_trainers)}',
+                f'EW_COOP_DISCOVERY={int(args.experimental_coop_discovery)}',
+                f'EW_COOP_RETREAT={int(args.experimental_coop_retreat)}',
+                f'EW_SHARED_CUT={int(args.experimental_shared_cut)}',
+                f'EW_COOP_PREPARATION={int(args.experimental_coop_preparation)}',
+                f'EW_PARTNER_MEDICINE={int(args.experimental_partner_medicine)}',
+                f'EW_TRAINER_CHOICE={int(args.experimental_trainer_choice)}',
+                f'EW_WOODS_CONTINUATION={int(args.experimental_woods_continuation)}',
+                f'EW_ROXANNE_CONTINUATION={int(args.experimental_roxanne_continuation)}',
                 f'EW_REGION_STATE={regional_state}', f'EW_KANTO_CONTENT={kanto_content}',
                 f'MAP_VERSION={RELEASE_CONFIG.map_version if not args.development else map_version}',
                 f'WORLD_NATURE_CHALLENGES={int(args.experimental_nature_challenges)}',
                 f'WORLD_TRADE_OFFERS={int(args.experimental_native_trades)}',
                 f'WORLD_COMBINED_PRESENCE={int(args.experimental_combined_presence)}',
                 f'WORLD_FLOORPLANS={int(args.experimental_floorplans)}',
-                f'EW_REGIONAL_BADGES={int(args.experimental_regional_badges)}',
-                f'EW_REGIONAL_STARTERS={int(args.experimental_regional_starters)}',
-                f'EW_KANTO_REMATCHES={int(args.experimental_kanto_rematches)}',
-                f'EW_ROUTE5_CUSTODY={int(args.experimental_route5_custody)}',
-                f'EW_REGIONAL_COMPLETION={int(args.experimental_regional_completion)}',
+                f'EW_REGIONAL_BADGES={int(args.experimental_regional_badges or args.experimental_rusturf_recovery)}',
+                f'EW_REGIONAL_STARTERS={int(args.experimental_regional_starters or args.experimental_rusturf_recovery)}',
+                f'EW_KANTO_REMATCHES={int(args.experimental_kanto_rematches or args.experimental_rusturf_recovery)}',
+                f'EW_ROUTE5_CUSTODY={int(args.experimental_route5_custody or args.experimental_rusturf_recovery)}',
+                f'EW_REGIONAL_COMPLETION={int(args.experimental_regional_completion or args.experimental_rusturf_recovery)}',
                 f'WORLD_CHARACTER_COOP_EXPERIMENT={int(args.experimental_npc_coop)}',
                 f'WORLD_BASE_SHARE_EXPERIMENT={int(args.experimental_secret_bases)}',
                 f'GENERATED_WORLD_REGIONS={int(args.generated_regions) or RELEASE_CONFIG.generated_world_regions}',
