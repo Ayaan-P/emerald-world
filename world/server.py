@@ -1288,6 +1288,15 @@ class WorldServer:
             return
         # Only connected native link peers may be invited. CONTROL connections
         # neither approve requests nor contribute native engine rounds.
+        if raw.startswith(b'CN '):
+            from .shared_contests import handle as contest_handle
+            for trainer, line in contest_handle(self,conn,raw):
+                if line.startswith('L ') and not self.link_protocol.delivery_current(trainer,line):
+                    continue
+                channel=self.link_channels.get(trainer)
+                if channel is not None and not channel.get('closing') and self.peers.get(trainer) is channel.get('presence'):
+                    self._queue(channel,line)
+            return
         if raw.startswith(b'ST '):
             from .shared_strength import handle as strength_handle
             for trainer, line in strength_handle(self,conn,raw):
