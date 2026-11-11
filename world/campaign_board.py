@@ -36,11 +36,16 @@ def rows(server,conn):
             group=shared_campaigns.load(server,data['shared']) if data.get('shared') else None
             for node in data['choices'] if not group or shared_campaigns.member(conn)==group['speaker'] else []:
                 target=d['nodes'][node]
-                label='Split party' if 'roles' in target else target['visit']['label'] if 'visit' in target else target['mechanism']['label'] if 'mechanism' in target else target['opponent']
+                label='Split party' if 'roles' in target else target['visit']['label'] if 'visit' in target else target['expedition']['label'] if 'expedition' in target else target['mechanism']['label'] if 'mechanism' in target else target['opponent']
                 out.append(('Take route '+node+' - '+label,['choose',node]))
         else:
             from .parallel_campaigns import effective
             node=effective(server,key,data)
+            if 'expedition' in node:
+                from .field_expeditions import rows as expedition_rows
+                out.extend(expedition_rows(server,data,node))
+                out.append(('Cancel shared run for everyone' if data.get('shared') else 'Leave campaign.',['leave']))
+                return out
             if 'mechanism' in node:
                 from .campaign_mechanisms import rows as mechanism_rows
                 out.extend(mechanism_rows(server,data,node))
