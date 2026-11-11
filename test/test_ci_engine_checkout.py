@@ -22,6 +22,22 @@ def run_script(step):
 
 
 class EngineCheckout(unittest.TestCase):
+    def test_authority_components_match_supported_sandbox_runner(self):
+        authority = (ROOT / '.github/workflows/living-cast-candidate.yml').read_text()
+        authority = authority.split('  authority-components:', 1)[1].split(
+            '  ordinary-player-policy:', 1)[0]
+        baseline = WORKFLOW.read_text().split('  focused-regressions:', 1)[1].split(
+            '  linux-build:', 1)[0]
+        setup = 'uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065'
+        for job in (baseline, authority):
+            self.assertIn('runs-on: ubuntu-22.04', job)
+            self.assertIn(setup, job)
+            self.assertIn("python-version: '3.11'", job)
+        self.assertLess(authority.index(setup), authority.index('run: python3 scripts/check_living_cast.py'))
+        self.assertIn('apt-get install --no-install-recommends -y bubblewrap', authority)
+        self.assertNotIn('continue-on-error:', authority)
+        self.assertNotIn('sysctl', authority)
+
     def test_prerequisite_fails_closed_without_disclosing_input(self):
         step = next(s for s in focused_steps() if s.startswith('Require explicitly'))
         self.assertIn('EW_ENGINE_READ_KEY: ${{ secrets.EW_ENGINE_READ_KEY }}', step)
