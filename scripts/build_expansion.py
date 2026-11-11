@@ -12,7 +12,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '8dea9e7f4ea77e22f3e1dd88da84b1b880ed7174'
+PIN = 'bd959dde203ba47270ba786f5b32ea44d09142a7'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -109,7 +109,10 @@ def main():
     parser.add_argument('--kanto-content', action='store_true',
                         help='enable Kanto in development (requires --regional-state; already enabled for release)')
     parser.add_argument('--jobs', type=int, default=4)
+    parser.add_argument("--experimental-shared-soil-care", action="store_true", help="Route104 shared stage watering, personal harvests; development only")
     args = parser.parse_args()
+    if args.experimental_shared_soil_care and not args.development:
+        parser.error("shared soil care requires --development")
     if any((args.experimental_floorplans, args.experimental_native_trades, args.experimental_nature_challenges,
             args.experimental_regional_starters, args.experimental_kanto_rematches, args.experimental_route5_custody,
             args.experimental_regional_completion, args.experimental_regional_badges,
@@ -301,6 +304,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'EW_HOENN_MARKETS={int(args.experimental_hoenn_markets)}',
                 f'EW_SHARED_CONTEST={int(args.experimental_shared_contest)}',
                 f'EW_SHARED_STRENGTH={int(args.experimental_shared_strength)}',
+                f'EW_SHARED_SOIL_CARE={int(args.experimental_shared_soil_care)}',
                 f'EW_COOP_TURN_PLAN={int(args.experimental_coop_turn_plan)}',
                 f'EW_COOP_HOLD_BACK={int(args.experimental_coop_hold_back)}',
                 f'EW_DUAL_TRAINERS={int(args.experimental_dual_trainers)}',
