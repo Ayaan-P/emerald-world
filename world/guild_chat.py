@@ -50,7 +50,10 @@ class GuildChat:
             with s.lock:
                 try:
                     command=text[6:].strip();words=command.split()
-                    if words and words[0].lower()=='org':
+                    if words and words[0].lower()=='return':
+                        from .returning_places import command as return_command
+                        lines=return_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='org':
                         from .npc_organizations import command as organization_command
                         lines=organization_command(s,conn,words[1:])
                     elif words and words[0].lower()=='pyramid':
@@ -150,6 +153,7 @@ class GuildChat:
                 if not words:
                     lines.append('Talk publicly to nearby recurring NPCs: /guild npc')
                     lines.append('Choose shared object actions while facing one: /guild object choices')
+                if not words:lines.append('Keep private place checkpoints: /guild return')
                 if not words and getattr(s, 'relays', None):lines.append('Find games and partners: /guild play')
                 for line in lines: self.message(conn,conn['id'],'Guild: '+line)
                 parts=text.split()
