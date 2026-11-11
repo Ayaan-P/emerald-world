@@ -18,6 +18,7 @@ class ChatRoutingTests(unittest.TestCase):
     def setUp(self):
         self.server = WorldServer.__new__(WorldServer)
         # Keep the in-memory fixture's admission and chat dependencies real.
+        self.server.combined_regions = False  # Explicit legacy authority, as in __init__.
         self.server.lock = threading.RLock()
         self.server.db = sqlite3.connect(':memory:')
         self.addCleanup(self.server.db.close)

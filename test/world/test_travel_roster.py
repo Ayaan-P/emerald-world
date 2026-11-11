@@ -16,6 +16,7 @@ class TravelRosterTests(unittest.TestCase):
         self.server.lock = threading.RLock()
         self.server.revision = 1
         # This __new__ fixture bypasses constructor initialization.
+        self.server.combined_regions = False  # Explicit legacy authority, as in __init__.
         self.server.cave_map = None
         self.server.wilds_map = None
         self.server.tiles = []

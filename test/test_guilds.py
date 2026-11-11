@@ -161,6 +161,7 @@ class ChatIntegrationTests(unittest.TestCase):
             def _deliver_links(self,msg):pass
             def _schedule_presence(self,now):pass
         self.db=database();self.s=Server();self.s.db=self.db;self.s.guilds=guilds.Guilds(self.db,{(0,9):{'name':'Route101'}});self.s.lock=threading.RLock();self.s.chat_serial=0;self.s.guild_chat=GuildChat(self.s,lambda *args:{'name':'Route101'},3)
+        self.s.combined_regions=False  # Explicit legacy authority, as in WorldServer.__init__.
         self.s.cave_map=None;self.s.wilds_map=None;self.s.shared_cave=None;self.s.pending_states={};self.s.last_presence_broadcast=0
         self.s.landmark_survey=LandmarkSurvey(self.s)
         self.s.revision=1;self.s.tiles=[];self.s.objects=[]
