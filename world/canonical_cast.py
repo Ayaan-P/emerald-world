@@ -10,7 +10,8 @@ import re
 import time
 
 KEY='canonical_cast'
-BINDINGS={'canon_rydel':dict(name='Rydel',map='MauvilleCity_BikeShop',
+BINDINGS={'canon_birch':dict(name='Professor Birch',map='LittlerootTown_ProfessorBirchsLab',hook='ProfBirch_EventScript_WorldResearch',offset=2,wire='birch',effect='supplemental_research_after_original_pokedex_rating_or_decline'),
+    'canon_rydel':dict(name='Rydel',map='MauvilleCity_BikeShop',
     hook='MauvilleCity_BikeShop_EventScript_Rydel',offset=2,
     wire='rydel',effect='supplemental_dialogue_before_original_bike_service'),
     'canon_wally':dict(name='Wally',map='VerdanturfTown_WandasHouse',hook='VerdanturfTown_WandasHouse_EventScript_Wally',offset=2,wire='wally',effect='supplemental_dialogue_before_original_speech'),
@@ -400,6 +401,8 @@ def guild_command(server, conn, args):
 
 
 def reaction_activity(event, identity, row):
+    from .shared_research import relevant as research_relevant
+    if research_relevant(event,identity):return True
     from .canonical_investigations import relevant as investigation_choice
     if investigation_choice(event,identity):return True
     from .actor_stories import relevant as story_relevant
@@ -505,6 +508,8 @@ def received_letter(event, identity):
 
 
 def decision_evidence(event, identity, row):
+    from .shared_research import relevant as research_relevant
+    if research_relevant(event,identity):return True
     from .actor_stories import relevant as story_choice
     if story_choice(event,identity):return True
     from .actor_agreements import relevant as agreement_event

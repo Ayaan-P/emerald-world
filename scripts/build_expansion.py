@@ -12,7 +12,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = 'b4b3fc0851d8bf9ffd279b7f913818d9917020bb'
+PIN = '286f62c04d1fe736a2d7d1f76b198c40c7525053'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -51,6 +51,7 @@ def main():
                         help='existing extracted libc/GCC multilib root for mandatory ABI probes')
     parser.add_argument('--development', action='store_true',
                         help='build explicit local candidate integration changes on top of the verified engine pin')
+    parser.add_argument('--experimental-birch-research', action='store_true', help='Living Birch after original lab Pokedex service (linked QA pending)')
     parser.add_argument('--experimental-hoenn-markets', action='store_true', help='Optional visiting stock at original Hoenn marts (rendered QA pending)')
     parser.add_argument('--experimental-shared-contest', action='store_true', help='Stock two-human Emerald contest (linked QA pending)')
     parser.add_argument('--experimental-shared-strength', action='store_true', help='Experimental Fiery Path boulder sharing (linked QA pending)')
@@ -91,6 +92,8 @@ def main():
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error('--jobs must be positive')
+    if args.experimental_birch_research and not args.development:
+        parser.error('--experimental-birch-research requires --development')
     if args.experimental_hoenn_markets and not args.development:
         parser.error('--experimental-hoenn-markets requires --development')
     if args.experimental_shared_contest and not args.development:
@@ -228,6 +231,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
     map_version = 'combined' if kanto_content else 'emerald'
     command += ['--', 'make', '-f', str(ROOT / 'engines/expansion.mk'), f'-j{args.jobs}',
                 f'EW_RUSTURF_RECOVERY={int(args.experimental_rusturf_recovery)}',
+                f'EW_BIRCH_RESEARCH={int(args.experimental_birch_research)}',
                 f'EW_HOENN_MARKETS={int(args.experimental_hoenn_markets)}',
                 f'EW_SHARED_CONTEST={int(args.experimental_shared_contest)}',
                 f'EW_SHARED_STRENGTH={int(args.experimental_shared_strength)}',
