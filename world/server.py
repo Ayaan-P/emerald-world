@@ -1292,6 +1292,10 @@ class WorldServer:
             from .route_rematch_events import wire as rematch_wire
             self._queue(conn,rematch_wire(self,conn,raw))
             return
+        if raw.startswith(b'WM '):
+            from .map_opportunities import wire as map_offers_wire
+            self._queue(conn,map_offers_wire(self,conn,raw))
+            return
         if raw.startswith(b'D '):
             from .shared_research import handle as research_handle
             self._queue(conn,research_handle(self,conn,raw))
