@@ -92,3 +92,47 @@ class SharedCampaignTests(unittest.TestCase):
         self.battle(self.b,2)
         self.assertEqual(load(self.s,self.key)['choices'],['recover'])
         self.assertEqual(len(load(self.s,self.key)['results']),4)
+
+    def optional(self):
+        import json
+        from copy import deepcopy
+        from world.battle_campaigns import publish
+        d=deepcopy(self.f.d);d['id']='optional';d['nodes']['first']['decline']=['recover']
+        with self.s.db:publish(self.s,'field_researcher',{},dict(campaign=json.dumps(d)))
+        command(self.s,self.a,['share','optional']);self.key=active(self.s,self.a)[1]['shared']
+        command(self.s,self.b,['join',self.key]);command(self.s,self.a,['begin'])
+
+    def test_optional_decline_and_real_battle_keep_individual_credit_after_restart(self):
+        self.optional()
+        opts=rows(self.s,self.b);page=next(i for i,r in enumerate(opts) if r[1]==['decline-challenge'])
+        self.assertTrue(any('white out' in text for text,_ in opts))
+        response=handle(self.s,self.b,self.b['campaign_run'],'view',str(page))
+        handle(self.s,self.b,self.b['campaign_run'],'pick',response['token'])
+        record=active(self.s,self.b)[1]['history'][0]
+        self.assertEqual(record['basis'],'voluntary_challenge_declined');self.assertNotIn('outcome',record)
+        self.assertEqual(active(self.s,self.a)[1]['status'],'ready')
+        with self.assertRaises(ValueError):handle(self.s,self.b,self.b['campaign_run'],'pick',response['token'])
+        db=sqlite3.connect(':memory:');self.s.db.backup(db);old=self.s.db;self.s.db=db
+        try:
+            install(db);self.battle(self.a,1)
+            self.assertEqual(active(self.s,self.a)[1]['choices'],['recover'])
+            self.assertEqual(active(self.s,self.a)[1]['history'][0]['outcome'],1)
+            self.assertEqual(active(self.s,self.b)[1]['history'],[record])
+            self.assertEqual(load(self.s,self.key)['results'],{'Bob':'declined','Alice':1})
+        finally:self.s.db=old;db.close()
+        self.assertEqual(self.f.f.fixture.stats(),(0,0,0))
+
+    def test_decline_rejects_pending_battle_nonoptional_and_other_lineage(self):
+        self.start()
+        with self.assertRaises(GuildError):command(self.s,self.a,['decline-challenge'])
+        command(self.s,self.a,['leave']);self.optional()
+        seq=self.a['seq']+1
+        self.f.f.send(self.a,f'CHARACTER_CHALLENGE {seq} field_researcher 1')
+        with self.assertRaises(GuildError):command(self.s,self.a,['decline-challenge'])
+        self.f.f.send(self.a,f'CHARACTER_RESULT {seq} field_researcher 1 0')
+        self.f.sync(self.a,'c'*32)
+        with self.assertRaises(GuildError):command(self.s,self.a,['decline-challenge'])
+        self.f.sync(self.a,'a'*32)
+        command(self.s,self.a,['decline-challenge']);command(self.s,self.b,['decline-challenge'])
+        self.assertEqual(load(self.s,self.key)['status'],'choice')
+        self.assertTrue(all('outcome' not in active(self.s,c)[1]['history'][0] for c in (self.a,self.b)))

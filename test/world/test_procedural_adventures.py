@@ -89,3 +89,14 @@ class AdventureTests(unittest.TestCase):
         self.assertEqual(runtime.tick(self.s,now=16)['status'],'blocked');self.assertFalse(catalog(self.s)[0]['published'])
         self.assertEqual(self.s.db.execute("SELECT actor FROM battle_campaigns WHERE id='new_journey'").fetchone()[0],'another_author')
         self.assertIn('visitor_0',self.s.module_state['world_characters'])
+
+    def test_generated_challenge_can_be_declined_without_native_battle(self):
+        doc=adventure();doc['campaign']['nodes']['first']['decline']=['second']
+        entry=self.build(doc);self.assertTrue(entry['published'])
+        client=self.p.f.connect('Explorer');peer=client.sock.conn;peer['campaign_run']='a'*32
+        command(self.s,peer,['start','new_journey'])
+        command(self.s,peer,['decline-challenge'])
+        self.assertEqual(active(self.s,peer)[1]['choices'],['second'])
+        self.assertNotIn('outcome',active(self.s,peer)[1]['history'][0])
+        self.assertIsNone(peer.get('character_pending'))
+        self.assertEqual(len(entry['places']),2)

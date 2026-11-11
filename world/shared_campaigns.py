@@ -133,7 +133,7 @@ def complete_stage(server,conn,key,data,outcome,record):
 def settle(server,shared,group):
     from .battle_campaigns import document,routes
     if len(group['results'])==len(group['members']) and len(group.get('npc_results',{}))==len(group.get('npc_roles',{})):
-        outcome_key='win' if all(v==1 for v in group['results'].values()) else 'loss'
+        outcome_key='decline' if 'declined' in group['results'].values() else 'win' if all(v==1 for v in group['results'].values()) else 'loss'
         node=document(server,group['campaign'])['nodes'][group['node']]
         if 'expedition' in node:
             checkpoint=group.get('expedition',{})

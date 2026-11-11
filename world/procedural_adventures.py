@@ -76,7 +76,7 @@ def start(server,actor,row,args):
     ids=[t['id'] for t in trainers]
     if any(type(i) is not str for i in ids) or len(set(ids))!=len(ids):
         raise ValueError('Trainer identities must be distinct')
-    if campaign is not None and (type(campaign.get('nodes')) is not dict or any(type(n) is not dict or not (set(n)=={'opponent','win','loss'} and n['opponent'] in ids or set(n)=={'mechanism','next'} or set(n)=={'expedition'}) for n in campaign['nodes'].values())):
+    if campaign is not None and (type(campaign.get('nodes')) is not dict or any(type(n) is not dict or not ({'opponent','win','loss'}<=set(n) and not set(n)-{'opponent','win','loss','decline'} and n['opponent'] in ids or set(n)=={'mechanism','next'} or set(n)=={'expedition'}) for n in campaign['nodes'].values())):
         raise ValueError('Use original trainers, new mechanism objectives or expedition branches')
     if campaign is not None and type(campaign.get('id')) is not str:raise ValueError('Campaign requires a literal identity')
     setup(server.db)

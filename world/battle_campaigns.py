@@ -39,11 +39,11 @@ def inspect_document(server, args):
             from .campaign_visits import validate
             validate(server,n)
         else:
-            if not {'opponent','win','loss'}<=set(n) or set(n)-{'opponent','win','loss','preparation'}:raise ValueError('Invalid battle node')
+            if not {'opponent','win','loss'}<=set(n) or set(n)-{'opponent','win','loss','preparation','decline'}:raise ValueError('Invalid battle node')
             if type(n['opponent']) is not str or n['opponent'] not in cast or not cast[n['opponent']]['team']:raise ValueError('Opponent must be an existing world trainer with a team')
         from .campaign_preparation import validate as validate_preparation
         validate_preparation(n.get('preparation',{}),cast)
-        for outcome in ('win','loss'):
+        for outcome in ('win','loss','decline') if 'opponent' in n and 'decline' in n else ('win','loss'):
             edges=routes(n,outcome)
             if type(edges) is not list or len(edges)>4 or any(type(x) is not str or x not in nodes for x in edges) or len(set(edges))!=len(edges):raise ValueError('Invalid route choices')
     sizes={len(n['roles']) for n in nodes.values() if 'roles' in n}
@@ -53,7 +53,7 @@ def inspect_document(server, args):
         if k in visiting:raise ValueError('Campaign graph must be acyclic')
         if k in seen:return
         visiting.add(k)
-        for target in routes(nodes[k],'win')+routes(nodes[k],'loss'):visit(target)
+        for target in routes(nodes[k],'win')+routes(nodes[k],'loss')+nodes[k].get('decline',[]):visit(target)
         visiting.remove(k);seen.add(k)
     visit(d['entry'])
     if seen!=set(nodes):raise ValueError('All nodes must be reachable')
@@ -111,6 +111,8 @@ def command(server,conn,words):
             if any('roles' in n for n in d['nodes'].values()):raise ValueError('Split-party campaigns require a shared run')
             data=dict(node=d['entry'],status='ready',choices=[],history=[])
             with server.db:save(server,conn,d['id'],data)
+        elif words==['decline-challenge']:
+            decline(server,conn,current)
         elif words==['leave']:
             with server.db:server.db.execute('DELETE FROM battle_campaign_runs WHERE trainer=? AND lineage=?',(conn['id'],conn['campaign_run']))
             return ['Battle campaign left. Pokemon and normal story unchanged.']
@@ -162,11 +164,29 @@ def command(server,conn,words):
         if 'visit' in node:
             from .campaign_visits import describe
             return describe(node)+['Use the campaign board Check in option, or /guild campaign check-in.']
+        optional=['Optional battle: defeat may white out and cost money. No instant retry.', 'Decline without battle credit: /guild campaign decline-challenge. Alternative: '+(', '.join(node['decline']) or 'finish')] if 'decline' in node else []
         opponent=node['opponent']
         obj=next((x for x in server.objects if x['id']==opponent),None)
         from .campaign_preparation import describe
-        return (describe(server,data,node)+[d['title']+': '+data['node'], 'Approach '+opponent+' and choose Battle.', ('Location: map %s/%s tile %s,%s'%(obj['group'],obj['num'],obj['x'],obj['y'])) if obj else 'Opponent currently away; progress is retained.'] + (['Region: '+obj['region_revision']] if obj and obj.get('region_revision') else []))
+        return (optional+describe(server,data,node)+[d['title']+': '+data['node'], 'Approach '+opponent+' and choose Battle.', ('Location: map %s/%s tile %s,%s'%(obj['group'],obj['num'],obj['x'],obj['y'])) if obj else 'Opponent currently away; progress is retained.'] + (['Region: '+obj['region_revision']] if obj and obj.get('region_revision') else []))
     except (ValueError,TypeError,KeyError) as exc:raise GuildError(str(exc)) from None
+
+
+def decline(server,conn,current):
+    """A voluntary non-battle decision, never a loss or victory report."""
+    if not current or current[1]['status']!='ready':raise ValueError('No current challenge to decline')
+    key,data=current
+    node=document(server,key)['nodes'][data['node']]
+    if 'opponent' not in node or 'decline' not in node:raise ValueError('This stage has no authored alternative')
+    record=dict(node=data['node'],opponent=node['opponent'],basis='voluntary_challenge_declined',attribution='no_battle_participation')
+    with server.db:
+        if data.get('shared'):
+            from .shared_campaigns import complete_stage
+            complete_stage(server,conn,key,data,'declined',record)
+        else:
+            data['history'].append(record)
+            data.update(choices=node['decline'],status='choice' if node['decline'] else 'complete')
+            save(server,conn,key,data)
 
 
 def bind(server,conn,pending):

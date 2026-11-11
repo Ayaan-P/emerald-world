@@ -69,3 +69,16 @@ This app-only workshop follows #453 at `e897a38ef1e45e9ef9719af01dbc61eedf8813f2
 ## Continuity validation
 
 The app-only continuity change follows #462 and retains native #101. Tests exercise actual admitted changes before readiness, a later player's fresh STATE observation, once-only reporting, differing current states with explicit historical-route agreement, no initial/missing-receipt completion, opt-out, stale definition and SQLite recovery. Ordinary legacy readiness, battle/visit and run validation regressions remain covered. No rendered/native two-controller playtest or live model behavior is claimed. No shared reset, native-save changes, public player identity linking or provider calls are introduced.
+
+
+## Optional challenges with honest exits
+
+Battle nodes may add `decline: [next_node, ...]` alongside `opponent`, `win`, and `loss`. The adventure composer accepts this same form for its new residents. The alternatives use existing validated, immutable, acyclic routes; an empty list ends the run. Authors can place a difficult optional opponent beside a low-pressure field interaction and route declining players onward, without pretending they fought. This does not create items, unlock native story flags, or confer battle rewards.
+
+At such a stage, the campaign board explains that ordinary trainer defeat may cause whiteout and money loss, shows the win/loss routes, and offers an explicit decline action. There is no harmless instant retry or automatic transport back. Players may prepare and heal through ordinary gameplay, leave the encounter prompt, or decline through the board before a battle starts. A live pending battle prevents decline. Older campaigns with no alternative retain their existing behavior.
+
+Each shared participant makes their own decision. A decline is retained as `voluntary_challenge_declined` with `no_battle_participation`, not a win, loss, or native result. Other participants may still choose to battle. Once everyone has reported or declined, any decline selects the advertised decline routes; otherwise the existing all-wins/any-loss rule applies. Actual participants retain only their own client-attested battle reports. Nobody silently inherits another player's victory. Waiting for an absent participant is still possible; this change does not force their consent or remove them.
+
+The private decision and selected routes survive server restart under the existing player/save-lineage binding. Shared world state is not reset. Cancellation, missing reports and disconnection are not converted into defeats or victories. A native result lost before acknowledgment remains a separate recovery limitation, not grounds to invent an outcome.
+
+This app-only slice is based on #463, retaining native #101 unchanged. Tests cover the real campaign-board token path, mixed actual protocol reports and voluntary declines, both players declining, restart, wrong lineage, non-optional rejection, pending-battle rejection, immutable graph validation and ordinary campaign regression. It is not a rendered playtest, new native failure mode, persistent reward economy, or complete authored reference place.
