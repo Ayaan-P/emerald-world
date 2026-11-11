@@ -34,7 +34,12 @@ class DeliveryTests(unittest.TestCase):
         required = {'world/expansion_species.json', 'world/map_catalog.json',
                     'world/trainer_reference.json', 'world/trainer_experience_catalog.json',
                     'world/companion_move_names.json', 'world/encounter_traits.json',
-                    'world/practice_trainer_sources.json', 'world/rental_catalog.json'}
+                    'world/practice_trainer_sources.json', 'world/rental_catalog.json',
+                    'world/pyramid_catalog.json', 'world/starter_catalog.json',
+                    'world/move_traits.json', 'world/native_resident_sites.json',
+                    'world/secret_base_locations.json', 'world/combined_map_catalog.json',
+                    'world/floorplan_catalog.json'}
+        self.assertEqual(d.DATA, required)
         base = {name: b'{}' for name in required}
         base.update({'world/windows_client.py': b'', 'launcher-web/index.html': b'', d.ENTRY: b''})
         for absent in required:
@@ -45,6 +50,36 @@ class DeliveryTests(unittest.TestCase):
             with self.subTest(absent=absent), patch.object(d, 'git', side_effect=fake_git):
                 with self.assertRaisesRegex(ValueError, 'missing'):
                     d.pinned_sources(ROOT, 'a'*40)
+
+    def test_runtime_catalogue_closure_from_committed_sources(self):
+        import subprocess
+        import tempfile
+        d = load()
+        catalogues = {'world/combined_map_catalog.json', 'world/floorplan_catalog.json'}
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp)
+            def git(*args):
+                return subprocess.check_output(['git', '-C', str(app), *args], text=True).strip()
+            git('init', '-q')
+            git('config', 'user.email', 'test@example.invalid')
+            git('config', 'user.name', 'Test')
+            required = d.DATA | catalogues | {'world/windows_client.py',
+                                             'launcher-web/index.html', d.ENTRY}
+            for name in required:
+                path = app/name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes((ROOT/name).read_bytes())
+            git('add', '.')
+            git('commit', '-qm', 'complete runtime catalogues')
+            pin = git('rev-parse', 'HEAD')
+            payload = d.pinned_sources(app, pin)
+            for name in catalogues:
+                self.assertEqual(payload[name], (ROOT/name).read_bytes())
+                git('rm', name)
+                git('commit', '-qm', 'missing runtime catalogue')
+                with self.subTest(absent=name), self.assertRaisesRegex(ValueError, 'missing'):
+                    d.pinned_sources(app, git('rev-parse', 'HEAD'))
+                git('checkout', pin, '--', name)
 
     def test_current_bundle_contains_every_local_module_and_loads_runtime_catalogues(self):
         import ast
@@ -83,7 +118,15 @@ class DeliveryTests(unittest.TestCase):
                 'from world.trainer_context import author_context; from world.build_catalog import catalog_maps; '
                 'from world.species_cohort import CATALOGUE_PATH; '
                 'assert catalog(); assert author_context("Rustboro")["summary"]; '
-                'assert catalog_maps(); assert CATALOGUE_PATH.is_file()'], cwd=tmp, check=True)
+                'assert catalog_maps(); assert CATALOGUE_PATH.is_file(); '
+                'from world.combined_regions import catalog as combined_catalog; '
+                'assert len(combined_catalog()) > len(catalog_maps()); '
+                'from world.floorplans import catalog as floorplan_catalog; '
+                'import sqlite3; from types import SimpleNamespace; '
+                'db = sqlite3.connect(":memory:"); '
+                'plans = floorplan_catalog(SimpleNamespace(db=db)); '
+                'assert plans["layouts"] and plans["decorations"]; '
+                'assert plans["plans"] == []; db.close()'], cwd=tmp, check=True)
 
     def test_regions_match_approved_linux_cohort(self):
         import json
@@ -175,6 +218,24 @@ class DeliveryTests(unittest.TestCase):
             with self.subTest(name=name), self.assertRaises(ValueError):
                 d.check_source(name, data)
 
+    def test_catalogue_allowlist_keeps_credentials_and_other_json_closed(self):
+        d = load()
+        for name in ('world/combined_map_catalog.json', 'world/floorplan_catalog.json'):
+            d.check_source(name, (ROOT/name).read_bytes())
+            for data in (b'{"token":"' + b'a'*32 + b'"}',
+                         b'{"password":"' + b'a'*32 + b'"}',
+                         b'{"key":"ghp_' + b'a'*36 + b'"}',
+                         b'-----BEGIN PRIVATE KEY-----'):
+                with self.subTest(name=name, data=data), self.assertRaises(ValueError):
+                    d.check_source(name, data)
+            for bad in ('world/../'+name, name.upper(), name+'.bak',
+                        name.replace('world/', 'world/private/')):
+                with self.subTest(name=bad), self.assertRaises(ValueError):
+                    d.check_source(bad, b'{}')
+        for name in ('world/other_catalog.json', 'world/invitation.json', 'world/profile.json'):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                d.check_source(name, b'{}')
+
     def test_receipt_requires_exact_cohort_and_flags(self):
         d = load()
         self.assertTrue(hasattr(d, 'verify_receipt'), 'missing build receipt verifier')
@@ -241,6 +302,8 @@ class DeliveryTests(unittest.TestCase):
             for name, data in {'world/windows_client.py': b'import json\n',
                     'world/expansion_species.json': b'{"cohort":"expansion-native"}',
                     'world/map_catalog.json': b'{}',
+                    'world/combined_map_catalog.json': b'{}',
+                    'world/floorplan_catalog.json': b'{}',
                     'world/trainer_reference.json': b'{}',
                     'world/trainer_experience_catalog.json': b'{"trainers":{}}',
                     'world/companion_move_names.json': b'{}',

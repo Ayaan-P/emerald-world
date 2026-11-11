@@ -72,6 +72,7 @@ FLAGS = {'BITS': '64', 'TARGET_OS': 'windows', 'EW_REGION_STATE': '1',
          'WORLD_BASE_SHARE_EXPERIMENT': '0'}
 SECRET = re.compile(rb'-----BEGIN (?:[A-Z ]*PRIVATE KEY)-----|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|sk-(?:proj-)?[A-Za-z0-9_-]{30,}|AKIA[A-Z0-9]{16}')
 DATA = {'world/expansion_species.json', 'world/map_catalog.json',
+        'world/combined_map_catalog.json', 'world/floorplan_catalog.json',
         'world/trainer_reference.json', 'world/trainer_experience_catalog.json',
         'world/companion_move_names.json', 'world/encounter_traits.json',
         'world/practice_trainer_sources.json', 'world/rental_catalog.json',
