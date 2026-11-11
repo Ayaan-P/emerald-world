@@ -87,6 +87,17 @@ class LinkProtocol:
         """Region selection must not carry an existing link/tag into a new place."""
         return actor in self.sessions._locks or actor in self._tag_actor
 
+    def field_action_busy(self, actor):
+        """A social tag is not a battle; retain the stricter relocation busy()."""
+        if actor in self.sessions._locks or actor in self._encounters:
+            return True
+        identity = self._tag_actor.get(actor)
+        if identity is None:
+            return False
+        tag = self._tags.get(identity)
+        # An inconsistent tag cannot prove that field execution is safe.
+        return tag is None or actor not in tag.participants or tag.coop_wire is not None
+
     def _end_tag(self, tag):
         del self._tags[tag.id]
         for actor in tag.participants:
