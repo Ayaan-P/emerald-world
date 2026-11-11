@@ -495,6 +495,9 @@ class WorldServer:
         return bool(cave and (conn.get('world_props_capable') or not any(o.get('kind')=='prop' and o.get('region_revision')==cave.identity for o in self.objects)))
 
     def _region_scope(self, conn):
+        from .base_rooms import interior, scope
+        peer=conn.get("presence",conn)
+        if interior(peer.get("state")):return scope(self,peer)
         cave = self._connection_cave(conn)
         return cave.identity if cave and conn.get('cave_ack') == cave.identity else None
 
@@ -573,6 +576,7 @@ class WorldServer:
     def _snapshot(self, conn):
         from .combined_regions import admitted as registry_admitted
         if not registry_admitted(self,conn):return 'BEGIN '+str(self.revision)+'\nEND\n'
+        from .base_rooms import interior as base_interior
         lines = ['BEGIN ' + str(self.revision)]
         if conn.get('mount_capable'):lines.append('MOUNTS 1')
         # World population is not the fixed native render-array capacity.
@@ -587,7 +591,7 @@ class WorldServer:
                 continue
             # A new or legacy connection with no field state must never see
             # generated-cave peers in its first generic snapshot.
-            if tuple(state[:2]) in (self.cave_map, self.wilds_map):
+            if tuple(state[:2]) in (self.cave_map, self.wilds_map) or base_interior(state):
                 if (origin is None or tuple(origin[:2]) != tuple(state[:2])
                         or self._region_scope(conn) is None or self._region_scope(conn) != self._region_scope(peer)):
                     continue
@@ -613,7 +617,7 @@ class WorldServer:
                         or not (state[6] or peer.get('field'))):
                     continue
                 # Fly-to-friend is not yet supported for ephemeral caves.
-                if tuple(state[:2]) in (self.cave_map, self.wilds_map):
+                if tuple(state[:2]) in (self.cave_map, self.wilds_map) or base_interior(state):
                     continue
                 ttl = max(0, min(180, int((TRAVEL_FRESH_SECONDS
                     - (now - peer.get('state_time', now - TRAVEL_FRESH_SECONDS))) * 60)))
@@ -624,12 +628,12 @@ class WorldServer:
             lines.append('TRAVEL ' + str(len(friends)))
             lines += friends
         lines += ['TILE ' + ' '.join(map(str, tile)) for tile in self.tiles
-                  if tuple(tile[:2]) not in (self.cave_map, self.wilds_map)]
+                  if tuple(tile[:2]) not in (self.cave_map, self.wilds_map) and not base_interior(tile)]
         from .characters import records as character_records
         scoped_characters=character_records(self.module_state) if conn.get('character_capable') else {}
         for obj in self.objects:
             state=conn.get('state')
-            if not state or state[:2]!=[obj['group'],obj['num']]:continue
+            if not state or base_interior(state) or state[:2]!=[obj['group'],obj['num']]:continue
             from .character_walks import walk_for,walking
             walk=walk_for(self.module_state,obj['id'])
             if walking(self.module_state,obj['id']) and not conn.get('character_walk_capable'):continue
@@ -713,6 +717,7 @@ class WorldServer:
                 self._queue(conn, self._snapshot(conn))
 
     def _link_presence(self):
+        from .base_rooms import interior as base_interior
         from .link_sessions import RegionPresence
         from .combined_regions import admitted as registry_admitted
         now = time.monotonic()
@@ -723,10 +728,10 @@ class WorldServer:
                 and peer.get('state_time') is not None
                 and 0 <= now - peer['state_time'] < TRAVEL_FRESH_SECONDS
                 and registry_admitted(self, peer)
-                and (tuple(peer['state'][:2]) not in (self.cave_map,self.wilds_map)
+                and ((tuple(peer['state'][:2]) not in (self.cave_map,self.wilds_map) and not base_interior(peer['state']))
                      or self._region_scope(peer) is not None)}
         scopes={name:self._region_scope(self.peers[name])
-                if tuple(state[:2]) in (self.cave_map,self.wilds_map) else None
+                if tuple(state[:2]) in (self.cave_map,self.wilds_map) or base_interior(state) else None
                 for name,state in states.items()}
         return RegionPresence(states,scopes)
 
@@ -736,6 +741,8 @@ class WorldServer:
             self.presence_due = now + PRESENCE_BATCH_INTERVAL
 
     def _poll_presence(self, now):
+        from .base_rooms import expire as expire_base_rooms
+        expire_base_rooms(self,now)
         # Range must expire even when no socket reports another STATE. Updating
         # field presence does not abort already admitted native battle/trade.
         self._deliver_links(self.link_protocol.update_presence(self._link_presence()))
@@ -1396,6 +1403,10 @@ class WorldServer:
             from .pyramid_courses import handle as pyramid_handle
             self._queue(conn,pyramid_handle(self,conn,raw))
             return
+        if raw.startswith((b'B ROOM ',b'B LEAVE ')):
+            from .base_rooms import handle as base_room_handle
+            self._queue(conn,base_room_handle(self,conn,raw))
+            return
         if raw.startswith(b'B '):
             from .base_neighborhood import handle as base_directory_handle
             self._queue(conn,base_directory_handle(self,conn,raw))
@@ -1502,7 +1513,8 @@ class WorldServer:
         if state and tuple(state[:2]) in (self.cave_map, self.wilds_map):
             raise MeetingUnavailable('generated cave interactions unavailable')
         if (target is conn or not target or not target.get('social') or target.get('closing')
-                or not state or not other or not state[6] or not other[6] or state[:2] != other[:2]):
+                or not state or not other or not state[6] or not other[6] or state[:2] != other[:2]
+                or self._region_scope(conn)!=self._region_scope(target)):
             raise MeetingUnavailable('trainer unavailable')
         dx, dy = {1:(0,1),2:(0,-1),3:(-1,0),4:(1,0)}[state[4]]
         if [state[2]+dx, state[3]+dy] != other[2:4]:
@@ -1512,6 +1524,8 @@ class WorldServer:
             raise MeetingUnavailable('trainer interaction rate exceeded')
         data = dict(kind='trainer', player=conn['id'], target=target['id'],
                     signal='explore', group=other[0], num=other[1], x=other[2], y=other[3])
+        from .base_rooms import interior as base_interior
+        if base_interior(state):data['base_room']=self._region_scope(conn)
         with self.db:
             self._event('interaction', data)
         meeting = dict(data, seq=self.revision)
@@ -1521,6 +1535,8 @@ class WorldServer:
         self._broadcast()
 
     def _interact(self, conn, fields):
+        from .base_rooms import interior
+        if interior(conn.get('state')):raise ValueError('private base objects are native only')
         region=fields[0]=='INTERACT_REGION'
         if len(fields) != (4 if region else 3) or not ID.fullmatch(fields[2]):
             raise ValueError('invalid interaction')
