@@ -12,7 +12,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '4d3b736c3385d304b0ffc4913092a3961d6e2676'
+PIN = '74012049a5b9f2208b15c0845da35b4c9c0a00fc'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -51,6 +51,8 @@ def main():
                         help='existing extracted libc/GCC multilib root for mandatory ABI probes')
     parser.add_argument('--development', action='store_true',
                         help='build explicit local candidate integration changes on top of the verified engine pin')
+    parser.add_argument('--experimental-partner-medicine', action='store_true',
+                        help='default-off active partner medicine; matching native peers and --development required; linked QA pending')
     parser.add_argument('--experimental-trainer-choice', action='store_true',
                         help='default-off trainer Team up / Face alone choice; requires matching authority and --development; linked QA pending')
     parser.add_argument('--experimental-woods-continuation', action='store_true',
@@ -72,6 +74,8 @@ def main():
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error('--jobs must be positive')
+    if args.experimental_partner_medicine and not args.development:
+        parser.error('--experimental-partner-medicine requires --development and matching native peers; linked QA pending')
     if args.experimental_trainer_choice and not args.development:
         parser.error('--experimental-trainer-choice requires --development and matching authority; linked QA pending')
     if args.experimental_woods_continuation and not args.experimental_roxanne_continuation:
@@ -187,6 +191,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
     map_version = 'combined' if kanto_content else 'emerald'
     command += ['--', 'make', '-f', str(ROOT / 'engines/expansion.mk'), f'-j{args.jobs}',
                 f'EW_RUSTURF_RECOVERY={int(args.experimental_rusturf_recovery)}',
+                f'EW_PARTNER_MEDICINE={int(args.experimental_partner_medicine)}',
                 f'EW_TRAINER_CHOICE={int(args.experimental_trainer_choice)}',
                 f'EW_WOODS_CONTINUATION={int(args.experimental_woods_continuation)}',
                 f'EW_ROXANNE_CONTINUATION={int(args.experimental_roxanne_continuation)}',
