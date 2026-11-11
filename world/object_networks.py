@@ -50,23 +50,9 @@ def handler(identity,action,state,request):
     return dict(state=dict(phase=target,turn=state.get('turn',0)+1),**appearance)
 
 
-def install(server,actor,row,args):
-    from .actor_runtime import Pending
-    from .actor_observation import observe
-    from .actor_objects import digest
+def validate_program(server,request):
     from .region_characters import validate_region_objects
-    if set(args)!={'definition'} or type(args['definition']) is not str or len(args['definition'])>2600:raise ValueError('Supply bounded linked mechanism JSON')
-    request=json.loads(args['definition'])
-    if type(request) is not dict:raise ValueError('Mechanism must be an object')
-    program=request.get('program');ids=request.get('objects')
-    if set(request)!={'id','objects','program'} or type(request['id']) is not str or not re.fullmatch('[a-z][a-z0-9_]{0,23}',request['id']) or type(ids) is not list or not 2<=len(ids)<=4 or any(type(i) is not str for i in ids) or len(set(ids))!=len(ids):raise ValueError('Mechanism requires stable id and two to four distinct props')
-    if request['id'] in server.module_state.get('world_object_networks',{}):raise ValueError('Existing mechanism preserved')
-    seen=observe(server,actor,row,dict(radius=4));visible={e['id'] for e in seen['entities']}
-    objects={o['id']:o for o in server.objects}
-    for i in ids:
-        obj=objects.get(i,{})
-        if i not in visible or obj.get('kind')!='prop' or obj.get('portable') or i in server.module_state.get('world_object_controls',{}) or server.module_state.get('world_object_actions',{}).get(i):raise ValueError('Only observed unused anchored props may join')
-        if server.db.execute("SELECT 1 FROM sqlite_master WHERE name='cave_links'").fetchone() and server.db.execute('SELECT 1 FROM cave_links WHERE object=?',(i,)).fetchone():raise ValueError('Link behavior preserved')
+    program=request['program'];ids=request['objects'];objects={o['id']:o for o in server.objects}
     if type(program) is not dict or set(program)!={'initial','states'} or type(program['states']) is not dict or not 1<=len(program['states'])<=6 or type(program['initial']) is not str or program['initial'] not in program['states']:raise ValueError('Invalid state graph')
     name=lambda s:type(s) is str and bool(re.fullmatch('[a-z][a-z0-9_]{0,15}',s))
     for phase,node in program['states'].items():
@@ -112,6 +98,25 @@ def install(server,actor,row,args):
                 for member in ids:
                     a=node['objects'][member];b=program['states'][target]['objects'][member]
                     if abs(a['x']-b['x'])+abs(a['y']-b['y'])>1:raise ValueError('A transition moves each member at most one tile')
+
+def install(server,actor,row,args):
+    from .actor_runtime import Pending
+    from .actor_observation import observe
+    from .actor_objects import digest
+    from .region_characters import validate_region_objects
+    if set(args)!={'definition'} or type(args['definition']) is not str or len(args['definition'])>2600:raise ValueError('Supply bounded linked mechanism JSON')
+    request=json.loads(args['definition'])
+    if type(request) is not dict:raise ValueError('Mechanism must be an object')
+    program=request.get('program');ids=request.get('objects')
+    if set(request)!={'id','objects','program'} or type(request['id']) is not str or not re.fullmatch('[a-z][a-z0-9_]{0,23}',request['id']) or type(ids) is not list or not 2<=len(ids)<=4 or any(type(i) is not str for i in ids) or len(set(ids))!=len(ids):raise ValueError('Mechanism requires stable id and two to four distinct props')
+    if request['id'] in server.module_state.get('world_object_networks',{}):raise ValueError('Existing mechanism preserved')
+    seen=observe(server,actor,row,dict(radius=4));visible={e['id'] for e in seen['entities']}
+    objects={o['id']:o for o in server.objects}
+    for i in ids:
+        obj=objects.get(i,{})
+        if i not in visible or obj.get('kind')!='prop' or obj.get('portable') or i in server.module_state.get('world_object_controls',{}) or server.module_state.get('world_object_actions',{}).get(i):raise ValueError('Only observed unused anchored props may join')
+        if server.db.execute("SELECT 1 FROM sqlite_master WHERE name='cave_links'").fetchone() and server.db.execute('SELECT 1 FROM cave_links WHERE object=?',(i,)).fetchone():raise ValueError('Link behavior preserved')
+    validate_program(server,request)
     if server.job is not None or server.deployment is not None:raise ValueError('Wait for mechanic admission')
     suffix=digest(request)[:16];old=server.candidate.source
     helper=inspect.getsource(handler).replace('def handler(',f'def _network_handler_{suffix}(',1)

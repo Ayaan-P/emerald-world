@@ -122,9 +122,7 @@ def rows(server, data, node):
     goal = node['expedition']
     out = [(goal['label'], None), ('Actual world changes decide the next leg. No party, item or story save is changed.', None)]
     network = mechanisms.definition(server, goal['network'])
-    anchor = next((o for o in server.objects if o['id'] in network['objects']), None)
-    if anchor:
-        out.append(('Find ' + anchor['id'] + ' at map %s/%s tile %s,%s' % (anchor['group'], anchor['num'], anchor['x'], anchor['y']), None))
+    out.append((mechanisms.location(server,network),None))
     for phase, resolution in goal['resolutions'].items():
         out.append((resolution['label'] + '. Then ' + (', '.join(resolution['next']) or 'finish expedition'), None))
     if data.get('shared'):
