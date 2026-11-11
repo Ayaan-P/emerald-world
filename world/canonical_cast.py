@@ -46,7 +46,7 @@ def records(state):
     from .build_catalog import catalog_maps
     places={'native:'+m['name'] for m in catalog_maps().values()}
     for identity,row in value.items():
-        if type(row) is not dict or set(row)-{'first_meeting','plan','rematch','memories','investigation','project_request','project_reply','activity_projects','scene','initiative','call','companion','world_action','council','journey_interests','routine','cooperate','worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'version','goal','dialogue','places','evidence','reason'}:
+        if type(row) is not dict or set(row)-{'tutor','first_meeting','plan','rematch','memories','investigation','project_request','project_reply','activity_projects','scene','initiative','call','companion','world_action','council','journey_interests','routine','cooperate','worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'version','goal','dialogue','places','evidence','reason'}:
             raise ValueError('invalid canonical actor fields')
         if type(row['version']) is not int or not 1<=row['version']<=2**31-1:raise ValueError('invalid canonical actor version')
         for field,limit in [('goal',160),('reason',240)]:
@@ -57,6 +57,8 @@ def records(state):
             raise ValueError('First-meeting text requires Steven and bounded native dialogue')
         if type(row['places']) is not list or not 1<=len(row['places'])<=4 or len(set(row['places']))!=len(row['places']) or any(p not in places for p in row['places']):raise ValueError('canonical interests require known native places')
         if type(row['evidence']) is not list or not 1<=len(row['evidence'])<=8 or any(type(n) is not int or n<1 for n in row['evidence']) or len(set(row['evidence']))!=len(row['evidence']):raise ValueError('canonical actor needs public evidence')
+        from .canonical_services import validate as validate_service
+        validate_service(row.get('tutor'),identity)
         if row.get('rematch') is not None and (identity!='canon_wally' or row['rematch']!='wally_native'):raise ValueError('Only Wally has a reviewed original rematch invitation')
         if row.get('scene') is not None:
             from .canonical_scene_paths import binding
@@ -197,7 +199,7 @@ def compile_actions(actions, context):
     if type(actions) is not list or len(actions)!=1:raise ValueError('one bounded canonical action required')
     action=actions[0]
     if type(action) is not dict or set(action)!={'id','expected_version','changes'} or action['id'] not in BINDINGS:raise ValueError('invalid canonical action')
-    if type(action['changes']) is not dict or set(action['changes'])-{'first_meeting','plan','rematch','memories','investigation','project_request','project_reply','activity_projects','scene','initiative','call','companion','world_action','council','journey_interests','routine','cooperate','worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'goal','dialogue','places','evidence','reason'}:raise ValueError('invalid canonical changes')
+    if type(action['changes']) is not dict or set(action['changes'])-{'tutor','first_meeting','plan','rematch','memories','investigation','project_request','project_reply','activity_projects','scene','initiative','call','companion','world_action','council','journey_interests','routine','cooperate','worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'goal','dialogue','places','evidence','reason'}:raise ValueError('invalid canonical changes')
     old=cast.get(action['id']);version=old['version'] if old else 0
     plan=action['changes'].get('plan');prior=(old or {}).get('plan')
     if plan and prior and plan['id']==prior['id'] and plan!=prior:raise ValueError('Replanning requires a new plan id')
@@ -241,6 +243,8 @@ def response(server, conn, run, key):
         if not row.get('first_meeting'):raise ValueError('No authored first-meeting response')
         result=dict(schema=1,world_id=server.memory.world_id,run=run,actor=identity,
                     version=row['version'],briefing=row['first_meeting'],objective='',evidence=row['evidence'])
+        from .canonical_services import hint
+        result['objective']=hint(row,key) if len(result['briefing'])+len(hint(row,key))<239 else ''
         result['digest']=hashlib.sha256(json.dumps(result,sort_keys=True,separators=(',',':')).encode()).hexdigest()
         conn['core_active_run']=run
         conn['canonical_location']=dict(actor=identity,map=map_name,run=run,version=row['version'],expires=time.monotonic()+120)
@@ -257,6 +261,8 @@ def response(server, conn, run, key):
     if row.get('scene') and not result.get('objective'):result['objective']='Optional group demonstration. Use history scene.'
     if row.get('companion') and not result.get('objective'):result['objective']='Companion battle. Ask guild cast Steven.'
     if row.get('initiative') and not result.get('objective'):result['objective']='START opens local project choices. Guild cast initiatives.'
+    from .canonical_services import hint
+    if not result['objective']:result['objective']=hint(row,key) if len(result['briefing'])+len(hint(row,key))<239 else ''
     result['digest']=hashlib.sha256(json.dumps(result,sort_keys=True,separators=(',',':')).encode()).hexdigest()
     conn['core_active_run']=run
     conn['canonical_location']=dict(actor=identity,map=map_name,run=run,version=row['version'],expires=time.monotonic()+120)
@@ -268,6 +274,7 @@ def contract():
     from .canonical_seeds import profile
     return dict(response='canonical_actions/tests',identity_profiles={k:profile(k) for k in BINDINGS},bindings=BINDINGS,location_aliases=LOCATION_ALIASES,
                 action_fields=['id','expected_version','changes'],
+                tutor=dict(fields=['move (reviewed tutor move ID)','appearances (explicit bound conversation keys)'],effect='Optional free local native tutor after original conversation; preview and confirm then choose eligible Pokemon and replacement',limits='Frozen admitted attempt, no teaching proof or public party data. Original tutor flags unchanged. No automatic reward, save or service at other appearances.'),
                 first_meeting=dict(actor='canon_steven',field='first_meeting',limit=200,location='GraniteCave_StevensRoom',effect='Optional line after original letter, TM attempt and contact registration; before original farewell. Same actor, no preset arc.',limits='Absent text falls through to stock scene. No late-game offers, private reflections, reward claims or party inspection. Encounter memory remains separately opt-in.'),
                 experiences=dict(fields=['id','events (one or two exact public source sequence IDs)','interpretation (literal max 240)'],effect='retained actor memories and directional relationship evidence are fetched automatically during real author turns, even after leaving recent history',limits='new or revised memories cite current eligible evidence; no private trainer records, invented events, automatic affinity or fixed growth arc'),
                 investigation=dict(fields='id,title,roles[2..4],ending,stages[title,stations[at,clue],answer,result]',stations=[[0,0,10,10],[0,0,22,12],[0,3,10,40],[0,3,22,40]],limits='Use only reviewed ordinary Hoenn station coordinates in actor interests. Fictional interpretation, not canonical legendary lore or actual discoveries. Private completion may unlock only a player-facing scene in your initiative using mystery=investigation.id; actor scenes cannot inspect it. No rewards or main-story changes.',feedback='Only the subsequent explicit shared project choice emits anonymous canonical_shared_project_decided evidence. No private solver, clue or completion history reaches authors.'),

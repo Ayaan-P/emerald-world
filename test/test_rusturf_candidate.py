@@ -15,7 +15,7 @@ class Candidate(unittest.TestCase):
    self.assertIn('-D'+flag+'=$('+flag+')',make[:make.index('include Makefile.native')])
    self.assertIn(flag,source)
   tree=ast.parse(source)
-  self.assertIn("PIN = 'f2dbd17c6bd17d7bb1e1d7b074b34e175219d064'",source)
+  self.assertIn("PIN = 'dab28c1b3518d4c8891ee9ad505408788a9699ba'",source)
   option=next(n for n in ast.walk(tree) if isinstance(n,ast.Call) and n.args and isinstance(n.args[0],ast.Constant) and n.args[0].value=='--experimental-rusturf-recovery')
   self.assertFalse(any(k.arg=='default' and isinstance(k.value,ast.Constant) and k.value.value for k in option.keywords))
   self.assertIn("'rusturf-draft'",source)
