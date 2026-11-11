@@ -1291,6 +1291,10 @@ class WorldServer:
             return
         # Only connected native link peers may be invited. CONTROL connections
         # neither approve requests nor contribute native engine rounds.
+        if raw.startswith(b'RS '):
+            from .rematch_strategies import wire as strategy_wire
+            self._queue(conn,strategy_wire(self,conn,raw))
+            return
         if raw.startswith(b'J '):
             from .route_rematch_events import wire as rematch_wire
             self._queue(conn,rematch_wire(self,conn,raw))
