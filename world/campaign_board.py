@@ -59,7 +59,11 @@ def rows(server,conn):
                 return out
             actor=node['opponent']
             obj=next((o for o in server.objects if o['id']==actor),None)
-            out.append(('Battle '+actor+(' at map %s %s tile %s %s'%(obj['group'],obj['num'],obj['x'],obj['y']) if obj else ' - currently away'),None))
+            place=None
+            if obj and obj.get('region_revision'):
+                place=server.db.execute('SELECT label FROM generated_area_archive WHERE identity=?',(obj['region_revision'],)).fetchone()
+            destination=(' in '+place[0]+' tile %s %s'%(obj['x'],obj['y']) if place else ' at map %s %s tile %s %s'%(obj['group'],obj['num'],obj['x'],obj['y'])) if obj else ' - currently away'
+            out.append(('Battle '+actor+destination,None))
             for choice,p in node.get('preparation',{}).items():
                 from .actor_shops import ITEMS
                 from .actor_tutors import MOVES
