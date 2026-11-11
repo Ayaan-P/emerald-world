@@ -552,8 +552,9 @@ class WorldServer:
         # Select deterministically by proximity; no extra wire fields are added.
         origin = conn.get('state')
         candidates = []
+        fresh = self._link_presence()
         for name, peer in self.peers.items():
-            state = peer['state']
+            state = fresh.get(name)
             if (name == conn['id'] or state is None or
                     not (state[6] or (conn.get('social') and peer.get('field')))):
                 continue
@@ -686,8 +687,15 @@ class WorldServer:
 
     def _link_presence(self):
         from .link_sessions import RegionPresence
+        from .combined_regions import admitted as registry_admitted
+        now = time.monotonic()
+        # Freshness is independent of readiness: busy trainers still render,
+        # but consent checks below the protocol boundary require ready state.
         states={name:peer['state'] for name,peer in self.peers.items()
                 if peer['state'] is not None and not peer.get('closing')
+                and peer.get('state_time') is not None
+                and 0 <= now - peer['state_time'] < TRAVEL_FRESH_SECONDS
+                and registry_admitted(self, peer)
                 and (tuple(peer['state'][:2]) not in (self.cave_map,self.wilds_map)
                      or self._region_scope(peer) is not None)}
         scopes={name:self._region_scope(self.peers[name])
@@ -701,6 +709,9 @@ class WorldServer:
             self.presence_due = now + PRESENCE_BATCH_INTERVAL
 
     def _poll_presence(self, now):
+        # Range must expire even when no socket reports another STATE. Updating
+        # field presence does not abort already admitted native battle/trade.
+        self._deliver_links(self.link_protocol.update_presence(self._link_presence()))
         if self.presence_dirty and now >= self.presence_due:
             self._broadcast()
 
@@ -1418,8 +1429,9 @@ class WorldServer:
             self._error(conn, 'STALE')
             return
         target = self.peers.get(fields[2])
-        state = conn['state']
-        other = target.get('state') if target else None
+        fresh = self._link_presence()
+        state = fresh.get(conn['id'])
+        other = fresh.get(fields[2])
         if state and tuple(state[:2]) in (self.cave_map, self.wilds_map):
             raise MeetingUnavailable('generated cave interactions unavailable')
         if (target is conn or not target or not target.get('social') or target.get('closing')
