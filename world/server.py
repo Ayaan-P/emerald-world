@@ -3,6 +3,7 @@ import argparse
 import base64
 import binascii
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
 import json
 from pathlib import Path
 import re
@@ -322,8 +323,34 @@ class WorldServer:
         return dict(id=trainer_id, token=row[0], save_path=row[1])
 
     def start(self):
+        if self._closed:
+            raise RuntimeError('world server is closed')
         if self.thread is not None:
             raise RuntimeError('already started')
+        try:
+            return self._start()
+        except BaseException:
+            # The caller still owns the constructed database/activity lease,
+            # but failed startup must not strand listeners or authority.
+            try:
+                if self.selector is not None:
+                    try:
+                        for key in list(self.selector.get_map().values()):
+                            try:
+                                key.fileobj.close()
+                            except OSError:
+                                pass
+                    finally:
+                        self.selector.close()
+                        self.selector = None
+            finally:
+                if self.authority_lock is not None:
+                    self.authority_lock.close()
+                    self.authority_lock = None
+                self.thread = None
+            raise
+
+    def _start(self):
         self.authority_lock = (self.root / 'world.lock').open('a+b')
         os.chmod(self.root / 'world.lock', 0o600)
         try:
@@ -364,7 +391,7 @@ class WorldServer:
             self.selector = None
             Path(self.socket_path).unlink(missing_ok=True)
             raise
-        self.thread = threading.Thread(target=self._loop, name='emerald-world', daemon=True)
+        self.thread = threading.Thread(target=self._serve_loop, name='emerald-world', daemon=True)
         self.thread.start()
         return self
 
@@ -2556,30 +2583,59 @@ class WorldServer:
                 flush_spatial_speech(self)
                 self.cast_scenes.tick()
 
+    def _serve_loop(self):
+        try:
+            self._loop()
+        finally:
+            # A failed authority must disconnect established clients promptly.
+            # The owner still reports persistence errors and releases storage.
+            self.stopping.set()
+            if self.selector is not None:
+                for key in list(self.selector.get_map().values()):
+                    try:
+                        key.fileobj.close()
+                    except OSError:
+                        pass
+
+    def _release_authority_lock(self):
+        if self.authority_lock is not None:
+            try:
+                self.authority_lock.close()
+            finally:
+                self.authority_lock = None
+
     def close(self):
         if self._closed:
             return
         self._closed = True
-        self.stopping.set()
-        if self.thread is not None:
-            self.thread.join()
-        if self.selector is not None:
-            for key in list(self.selector.get_map().values()):
-                key.fileobj.close()
-            self.selector.close()
-            self.selector = None
-            Path(self.socket_path).unlink(missing_ok=True)
-            Path(self.admin_path).unlink(missing_ok=True)
-        if getattr(self,'capture_service',None):self.capture_service.close()
-        self.executor.shutdown(wait=True, cancel_futures=True)
-        self.control_executor.shutdown(wait=True, cancel_futures=True)
-        with self.lock:
-            self._flush_states()
-        if self.authority_lock is not None:
-            self.authority_lock.close()
-            self.authority_lock = None
-        self.db.close()
-        self.activity.close()
+        # Every owner must be released even if unlink, worker shutdown or the
+        # final COMMIT fails. Hold authority until SQLite itself is closed.
+        with ExitStack() as storage:
+            storage.callback(self.activity.close)
+            storage.callback(self._release_authority_lock)
+            storage.callback(self.db.close)
+            with ExitStack() as workers:
+                workers.callback(self.control_executor.shutdown, wait=True, cancel_futures=True)
+                workers.callback(self.executor.shutdown, wait=True, cancel_futures=True)
+                if getattr(self, 'capture_service', None):
+                    workers.callback(self.capture_service.close)
+                self.stopping.set()
+                if self.thread is not None:
+                    self.thread.join()
+                if self.selector is not None:
+                    try:
+                        for key in list(self.selector.get_map().values()):
+                            try:
+                                key.fileobj.close()
+                            except OSError:
+                                pass
+                    finally:
+                        self.selector.close()
+                        self.selector = None
+                    Path(self.socket_path).unlink(missing_ok=True)
+                    Path(self.admin_path).unlink(missing_ok=True)
+            with self.lock:
+                self._flush_states()
 
 
 def create_identity(state_dir, trainer_id, token=None, *, combined_regions=False):
