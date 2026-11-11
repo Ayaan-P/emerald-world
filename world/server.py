@@ -2117,13 +2117,18 @@ class WorldServer:
                 result = self.inspect()
                 if request.get('chunked') is True:
                     from .inspection_transfer import begin
-                    try:result=begin(conn,result)
+                    try:
+                        result=begin(conn,result)
+                        # Only this bounded frozen transfer may span admin requests.
+                        conn['closing']='inspection_transfer' not in conn
                     except ValueError as exc:result=dict(ok=False,error=str(exc))
                 elif len(json.dumps(result,ensure_ascii=True).encode())+1>MAX_QUEUE:
                     result=dict(ok=False,error='Inspection needs chunked transfer; use the updated host client')
             elif request.get('command') == 'inspect_chunk':
                 from .inspection_transfer import next_chunk
-                try:result=next_chunk(conn,request)
+                try:
+                    result=next_chunk(conn,request)
+                    conn['closing']='inspection_transfer' not in conn
                 except ValueError as exc:result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'world_rules':
                 try:
@@ -2489,6 +2494,10 @@ class WorldServer:
                     except (OSError, KeyError):
                         self._drop(conn)
             for conn in list(self.connections.values()):
+                transfer=conn.get('inspection_transfer')
+                if conn['admin'] and transfer and time.monotonic()>transfer[0]:
+                    self._drop(conn)
+                    continue
                 if self.combined_regions and conn.get('id') and self.peers.get(conn['id']) is conn:
                     from .combined_regions import pending as registry_pending
                     registry_pending(self,conn)
