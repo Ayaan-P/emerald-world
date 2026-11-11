@@ -12,7 +12,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '8dea9e7f4ea77e22f3e1dd88da84b1b880ed7174'
+PIN = '305b859ca6efa97c2960ae99ac3879dc73d6429e'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -109,7 +109,10 @@ def main():
     parser.add_argument('--kanto-content', action='store_true',
                         help='enable Kanto in development (requires --regional-state; already enabled for release)')
     parser.add_argument('--jobs', type=int, default=4)
+    parser.add_argument("--experimental-route-trainers",action="store_true",help="voluntary authored Hoenn trainer sight behavior; development only")
     args = parser.parse_args()
+    if args.experimental_route_trainers and not args.development:
+        parser.error("--experimental-route-trainers requires --development")
     if any((args.experimental_floorplans, args.experimental_native_trades, args.experimental_nature_challenges,
             args.experimental_regional_starters, args.experimental_kanto_rematches, args.experimental_route5_custody,
             args.experimental_regional_completion, args.experimental_regional_badges,
@@ -298,6 +301,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'EW_WALLY_INVITATION={int(args.experimental_wally_invitation)}',
                 f'EW_BIRCH_STUDIES={int(args.experimental_birch_studies)}',
                 f'EW_MATCH_CALL_EVENTS={int(args.experimental_match_call_events)}',
+                f'EW_ROUTE_TRAINERS={int(args.experimental_route_trainers)}',
                 f'EW_HOENN_MARKETS={int(args.experimental_hoenn_markets)}',
                 f'EW_SHARED_CONTEST={int(args.experimental_shared_contest)}',
                 f'EW_SHARED_STRENGTH={int(args.experimental_shared_strength)}',
