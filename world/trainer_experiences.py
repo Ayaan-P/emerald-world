@@ -16,8 +16,9 @@ def participation(server,conn,run,key,guard):
         row=server.db.execute('SELECT enabled FROM trainer_experience_participation WHERE trainer=? AND run=?',(conn['id'],run)).fetchone()
     return dict(ok=True,battle_mode='ON' if row and row[0] else 'OFF')
 
-def handle(server,conn,run,key,guard,*,automatic=False):
+def handle(server,conn,run,key,guard,*,automatic=False,cooperative=False):
     from .build_catalog import catalog_maps
+    if cooperative and automatic:raise ValueError('Co-op reports require explicit one-result consent')
     if (conn.get('core_active_run')!=run or not conn.get('state')
             or time.monotonic()-conn.get('state_time',0)>3 or not conn['state'][6]):
         raise ValueError('Battle sharing needs this active save and fresh idle field presence')
@@ -35,16 +36,17 @@ def handle(server,conn,run,key,guard,*,automatic=False):
     with server.db:
         server.db.execute('CREATE TABLE IF NOT EXISTS trainer_experience_receipts(trainer TEXT,run TEXT,session TEXT,serial INTEGER,payload TEXT,seq INTEGER,PRIMARY KEY(trainer,run,session,serial))')
         old=server.db.execute('SELECT payload,seq FROM trainer_experience_receipts WHERE trainer=? AND run=? AND session=? AND serial=?',(conn['id'],run,session,serial)).fetchone()
-        payload=key+':'+guard
+        payload=('coop:' if cooperative else '')+key+':'+guard
         if old:
             if old[0]!=payload:raise ValueError('Battle result serial changed')
             return dict(ok=True,evidence=old[1])
         trainer=catalog()[key]
         summary='A trainer '+('defeated ' if outcome==1 else 'lost to ')+trainer['name']+' in '+place['name']+'.'
+        if cooperative:summary='A trainer reports participating in a co-op '+('win' if outcome==1 else 'loss')+' against '+trainer['name']+' in '+place['name']+'.'
         seq=server.memory.append('canonical_trainer_result',dict(trainer_key=key,opponent=trainer['name'],
             opponent_preset=trainer['symbol'],outcome='won' if outcome==1 else 'lost',summary=summary,
-            places=['native:'+place['name']],source='future_battle_participation_opt_in' if automatic else 'explicitly_shared_native_trainer_callback',
-            limits='Anonymous client attestation from an ordinary single trainer battle. No party, other save, permanent victory, earned NPC growth or server simulation is implied.'))
+            places=['native:'+place['name']],source='explicitly_shared_native_coop_participation' if cooperative else 'future_battle_participation_opt_in' if automatic else 'explicitly_shared_native_trainer_callback',
+            limits=('One consenting local participant report, not a unique battle count or a claim about any partner. No roster, partner consent or credit, save completion, rewards or server simulation is implied.' if cooperative else 'Anonymous client attestation from an ordinary single trainer battle. No party, other save, permanent victory, earned NPC growth or server simulation is implied.')))
         server.db.execute('INSERT INTO trainer_experience_receipts VALUES(?,?,?,?,?,?)',(conn['id'],run,session,serial,payload,seq))
         server.revision=seq
     return dict(ok=True,evidence=seq)
@@ -52,12 +54,16 @@ def handle(server,conn,run,key,guard,*,automatic=False):
 def relevant(event,places,actor=None):
     from .build_catalog import catalog_maps
     row=catalog().get(event.get('trainer_key'))
-    if not row or event.get('event')!='canonical_trainer_result' or event.get('source') not in ('explicitly_shared_native_trainer_callback','future_battle_participation_opt_in'):return False
+    if not row or event.get('event')!='canonical_trainer_result' or event.get('source') not in ('explicitly_shared_native_trainer_callback','future_battle_participation_opt_in','explicitly_shared_native_coop_participation'):return False
     p=event.get('places')
     own_actor=('canon_wally' if row['symbol'].startswith('TRAINER_WALLY_') else 'canon_steven' if row['symbol']=='TRAINER_STEVEN' else None)
     if not isinstance(p,list) or len(p)!=1 or (p[0] not in places and (actor is None or actor!=own_actor)):return False
     name=p[0].removeprefix('native:')
     if name not in {m['name'] for m in catalog_maps().values()} or name.startswith('GeneratedWorld'):return False
     outcome=event.get('outcome')
+    summary=('A trainer reports participating in a co-op '+('win' if outcome=='won' else 'loss')+' against '+row['name']+' in '+name+'.'
+             if event.get('source')=='explicitly_shared_native_coop_participation' else
+             'A trainer '+('defeated ' if outcome=='won' else 'lost to ')+row['name']+' in '+name+'.')
     return (outcome in ('won','lost') and event.get('opponent')==row['name'] and event.get('opponent_preset')==row['symbol']
-            and event.get('summary')=='A trainer '+('defeated ' if outcome=='won' else 'lost to ')+row['name']+' in '+name+'.')
+            and event.get('summary')==summary)
+
