@@ -103,6 +103,7 @@ def configure(queue, inspection, identity, purpose):
     with queue.db:
         if queue.db.execute('SELECT count(*) FROM character_reactions').fetchone()[0] >= 8 and not queue.db.execute('SELECT 1 FROM character_reactions WHERE id=?', (identity,)).fetchone():
             raise ValueError('at most eight followed characters')
+        queue.db.execute("UPDATE population_admissions SET status='manual' WHERE id=? AND status IN ('unclaimed','waiting')",(identity,))
         queue.db.execute('DELETE FROM population_agents WHERE id=?',(identity,)) # Explicit host enrollment takes over lifecycle ownership.
         # Reconfiguration starts at the inspected boundary, never replays old wins.
         queue.db.execute('INSERT OR REPLACE INTO character_reactions VALUES(?,?,?,?)',
@@ -117,6 +118,7 @@ def cancel_queued(queue, identity):
 
 def unfollow(queue, identity):
     with queue.db:
+        queue.db.execute("UPDATE population_admissions SET status='cancelled' WHERE id=? AND status IN ('unclaimed','waiting')",(identity,))
         queue.db.execute('DELETE FROM character_reactions WHERE id=?', (identity,))
         queue.db.execute('DELETE FROM canonical_seed_enrollments WHERE id=?',(identity,))
         cancel_queued(queue, identity)
