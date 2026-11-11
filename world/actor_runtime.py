@@ -360,6 +360,9 @@ CAPABILITIES['world.prepare_challenge']=Capability('Prepare this trainer optiona
 from .actor_practice import request as practice_request,poll as practice_poll
 CAPABILITIES['world.practice']=Capability('Request isolated host practice for an actual on-team individual companion.',dict(individual='owned on-team individual ID from companion_rosters'),'Pending until separately enabled exact-binary QA-validated host runner reconciles full state. Host controls exercise limits; no battle, victory, evolution or player-save effect asserted.',practice_request,practice_poll,('world',))
 
+from .place_conversations import inspect_change
+CAPABILITIES['world.inspect_place_change']=Capability('Reconcile a nearby mechanism with its durable committed transition, including changes before this plan started.',dict(network='existing network ID',definition='exact catalog definition digest'),'Fresh connected local observation and matching archived receipt, or committed=false. No replay, player credit, original eyewitness claim or automatic response. Existing conditional plans may independently choose ordinary services.',inspect_change,None,('world',))
+
 from .actor_events import start as event_wait,poll as event_poll
 CAPABILITIES['world.await_event']=Capability('Wait for a future committed public world event without repeated model calls.',dict(event='public world history event type',where='JSON object <=600 chars with up to four exact top-level scalar filters; empty object matches any event of this type'),'First actual matching record after subscription, with event_seq, payload and scalar event_FIELD results for composition. Durable bounded paging; not private information, direct perception or an invented outcome. One-shot; agent chooses whether to subscribe again.',event_wait,event_poll,('canonical','world'))
 

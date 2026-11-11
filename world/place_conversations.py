@@ -15,6 +15,18 @@ def snapshot(server,conn,actor,network_id):
     network=definition(server,network_id);bound=fingerprint(server,network)
     entities={e['id']:e for e in seen['entities']}
     if any(i not in entities for i in network['objects']):raise GuildError('Bring the character within connected range of the whole mechanism.')
+    status,row=committed_state(server,network_id,bound)
+    # No player identities, contribution ledger or native party information.
+    objects=[{k:entities[i][k] for k in ('id','x','y','gfx','text')} for i in network['objects']]
+    facts=dict(network=network_id,definition=bound,phase=status['phase'],revision=seen['revision'],objects=objects,
+               transition_receipt=row[1],basis='current_authority_state_and_committed_object_transition',
+               limits='Current public state and its exact admitted transition. The visitor is not certified as its author; the character did not witness the original action. Reobserve before acting.')
+    return character,obj,facts
+
+
+def committed_state(server,network_id,bound):
+    """Reconcile durable admitted evidence against current public control state."""
+    from .campaign_mechanisms import install
     status=server.module_state.get('world_object_network_state',{}).get(network_id,{})
     install(server.db)
     row=server.db.execute('SELECT request,seq FROM campaign_mechanism_receipts WHERE network=? AND definition=? AND phase=? ORDER BY seq DESC LIMIT 1',(network_id,bound,status.get('phase'))).fetchone()
@@ -23,12 +35,28 @@ def snapshot(server,conn,actor,network_id):
     if not archived:raise GuildError('The original admitted transition is unavailable.')
     receipt=json.loads(archived[0]);control=server.module_state.get('world_object_controls',{}).get(receipt['object'],{}).get('state',{})
     if receipt['state_digest']!=digest(control):raise GuildError('The mechanism changed after that receipt. Show a newly committed phase instead.')
-    # No player identities, contribution ledger or native party information.
-    objects=[{k:entities[i][k] for k in ('id','x','y','gfx','text')} for i in network['objects']]
-    facts=dict(network=network_id,definition=bound,phase=status['phase'],revision=seen['revision'],objects=objects,
-               transition_receipt=row[1],basis='current_authority_state_and_committed_object_transition',
-               limits='Current public state and its exact admitted transition. The visitor is not certified as its author; the character did not witness the original action. Reobserve before acting.')
-    return character,obj,facts
+    return status,row
+
+
+def inspect_change(server,actor,row,args):
+    """The actor discovers current evidence without a player demonstration or replay."""
+    from .actor_observation import observe
+    from .campaign_mechanisms import definition,fingerprint
+    if set(args)!={'network','definition'} or any(type(v) is not str for v in args.values()):
+        raise ValueError('Supply exact network and definition from discovery')
+    network=definition(server,args['network']);bound=fingerprint(server,network)
+    if bound!=args['definition']:raise ValueError('Mechanism definition changed')
+    seen=observe(server,actor,row,dict(radius=4))
+    entities={e['id']:e for e in seen['entities']}
+    if any(i not in entities for i in network['objects']):raise ValueError('Observe the entire mechanism on connected nearby ground')
+    try:status,receipt=committed_state(server,args['network'],bound)
+    except GuildError:
+        return dict(outcome='no_current_committed_change',committed=False,network=args['network'],definition=bound)
+    return dict(outcome='current_committed_change',committed=True,network=args['network'],definition=bound,
+        phase=status['phase'],transition_receipt=receipt[1],revision=seen['revision'],
+        objects=[{k:entities[i][k] for k in ('id','x','y','gfx','text')} for i in network['objects']],
+        basis='fresh_local_state_reconciled_with_admitted_transition',
+        limits='No personal action credit or original eyewitness claim. A subsequent response is the actor choice; reobserve for current-state decisions.')
 
 
 def command(server,conn,words):
