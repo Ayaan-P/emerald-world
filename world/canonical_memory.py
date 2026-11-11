@@ -12,14 +12,14 @@ def enabled(server, trainer, actor):
     return server.db.execute('SELECT 1 FROM canonical_memory_optin WHERE trainer=? AND actor=?',(trainer,actor)).fetchone() is not None
 
 
-def prepare(server, conn, run, actor, row, response, map_name=None):
+def prepare(server, conn, run, actor, row, response, map_name=None, *, allow_reflection=True):
     if not enabled(server,conn['id'],actor):return response
     previous=server.db.execute('SELECT talks FROM canonical_encounters WHERE trainer=? AND run=? AND actor=?',(conn['id'],run,actor)).fetchone()
     if previous:
         response['briefing']='Good to see you again. '+response['briefing']
         response['objective']='' # Keep the complete literal response inside the native 240-byte limit.
     from .canonical_reflection import ready_record
-    reflection=ready_record(server,conn['id'],actor,run,row['version'])
+    reflection=ready_record(server,conn['id'],actor,run,row['version']) if allow_reflection else None
     response['receipt']=secrets.token_hex(16)
     response['digest']=hashlib.sha256(json.dumps(response,sort_keys=True,separators=(',',':')).encode()).hexdigest()
     conn['cast_seen_pending']=dict(run=run,actor=actor,digest=response['digest'],expires=time.monotonic()+15,
@@ -103,3 +103,4 @@ def forget(server, conn, actor):
     for table in ('canonical_partner_memory','canonical_memory_optin','canonical_encounters','canonical_perspectives','canonical_decision_pending','canonical_decision_memory'):
         server.db.execute(f'DELETE FROM {table} WHERE trainer=? AND actor=?',(conn['id'],actor))
     conn.pop('cast_seen_pending',None)
+

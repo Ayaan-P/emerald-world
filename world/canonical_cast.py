@@ -18,7 +18,8 @@ BINDINGS={'canon_rydel':dict(name='Rydel',map='MauvilleCity_BikeShop',
     'canon_briney':dict(name='Mr. Briney',map='Route104_MrBrineysHouse',hook='Route104_MrBrineysHouse_EventScript_Briney',offset=2,wire='briney',effect='supplemental_dialogue_before_original_sailing')}
 
 # Same canonical actor at reviewed later-story conversation continuations.
-LOCATION_ALIASES={'wally_vr':('canon_wally','VictoryRoad_1F')}
+LOCATION_ALIASES={'wally_vr':('canon_wally','VictoryRoad_1F'),
+                  'steven_gc':('canon_steven','GraniteCave_StevensRoom')}
 
 def location(key):
     if key in LOCATION_ALIASES:return LOCATION_ALIASES[key]
@@ -45,12 +46,15 @@ def records(state):
     from .build_catalog import catalog_maps
     places={'native:'+m['name'] for m in catalog_maps().values()}
     for identity,row in value.items():
-        if type(row) is not dict or set(row)-{'plan','rematch','memories','investigation','project_request','project_reply','activity_projects','scene','initiative','call','companion','world_action','council','journey_interests','routine','cooperate','worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'version','goal','dialogue','places','evidence','reason'}:
+        if type(row) is not dict or set(row)-{'first_meeting','plan','rematch','memories','investigation','project_request','project_reply','activity_projects','scene','initiative','call','companion','world_action','council','journey_interests','routine','cooperate','worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'version','goal','dialogue','places','evidence','reason'}:
             raise ValueError('invalid canonical actor fields')
         if type(row['version']) is not int or not 1<=row['version']<=2**31-1:raise ValueError('invalid canonical actor version')
         for field,limit in [('goal',160),('reason',240)]:
             if type(row[field]) is not str or not 1<=len(row[field])<=limit or any(ord(c)<32 for c in row[field]):raise ValueError('invalid canonical actor text')
         if type(row['dialogue']) is not str or not re.fullmatch("[A-Za-z0-9 .,!?'-]{1,200}",native_text(row['dialogue'])):raise ValueError('canonical dialogue requires bounded literal native text')
+        if row.get('first_meeting') is not None and (identity!='canon_steven' or type(row['first_meeting']) is not str
+                or not re.fullmatch("[A-Za-z0-9 .,!?'-]{1,200}",native_text(row['first_meeting']))):
+            raise ValueError('First-meeting text requires Steven and bounded native dialogue')
         if type(row['places']) is not list or not 1<=len(row['places'])<=4 or len(set(row['places']))!=len(row['places']) or any(p not in places for p in row['places']):raise ValueError('canonical interests require known native places')
         if type(row['evidence']) is not list or not 1<=len(row['evidence'])<=8 or any(type(n) is not int or n<1 for n in row['evidence']) or len(set(row['evidence']))!=len(row['evidence']):raise ValueError('canonical actor needs public evidence')
         if row.get('rematch') is not None and (identity!='canon_wally' or row['rematch']!='wally_native'):raise ValueError('Only Wally has a reviewed original rematch invitation')
@@ -193,7 +197,7 @@ def compile_actions(actions, context):
     if type(actions) is not list or len(actions)!=1:raise ValueError('one bounded canonical action required')
     action=actions[0]
     if type(action) is not dict or set(action)!={'id','expected_version','changes'} or action['id'] not in BINDINGS:raise ValueError('invalid canonical action')
-    if type(action['changes']) is not dict or set(action['changes'])-{'plan','rematch','memories','investigation','project_request','project_reply','activity_projects','scene','initiative','call','companion','world_action','council','journey_interests','routine','cooperate','worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'goal','dialogue','places','evidence','reason'}:raise ValueError('invalid canonical changes')
+    if type(action['changes']) is not dict or set(action['changes'])-{'first_meeting','plan','rematch','memories','investigation','project_request','project_reply','activity_projects','scene','initiative','call','companion','world_action','council','journey_interests','routine','cooperate','worksite','study','offer','relationships','conversation','letter','project','contribution','resolve_contribution','intentions','fulfill'}!={'goal','dialogue','places','evidence','reason'}:raise ValueError('invalid canonical changes')
     old=cast.get(action['id']);version=old['version'] if old else 0
     plan=action['changes'].get('plan');prior=(old or {}).get('plan')
     if plan and prior and plan['id']==prior['id'] and plan!=prior:raise ValueError('Replanning requires a new plan id')
@@ -231,6 +235,17 @@ def response(server, conn, run, key):
     if row is None:raise ValueError('no authored canonical response')
     from .canonical_activity_projects import visible
     row=visible(server,identity,row)
+    if key=='steven_gc':
+        # An early-scene line must be authored explicitly, never adapted from a
+        # late-game reply or a private reflection about some other encounter.
+        if not row.get('first_meeting'):raise ValueError('No authored first-meeting response')
+        result=dict(schema=1,world_id=server.memory.world_id,run=run,actor=identity,
+                    version=row['version'],briefing=row['first_meeting'],objective='',evidence=row['evidence'])
+        result['digest']=hashlib.sha256(json.dumps(result,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+        conn['core_active_run']=run
+        conn['canonical_location']=dict(actor=identity,map=map_name,run=run,version=row['version'],expires=time.monotonic()+120)
+        from .canonical_memory import prepare
+        return prepare(server,conn,run,identity,row,result,map_name=map_name,allow_reflection=False)
     private=server.db.execute('SELECT version,choice FROM canonical_conversations WHERE trainer=? AND actor=?',(conn['id'],identity)).fetchone()
     option=row.get('conversation',{}).get(private[1]) if private and private[0]==row['version'] else None
     from .canonical_reflection import private_reply
@@ -253,6 +268,7 @@ def contract():
     from .canonical_seeds import profile
     return dict(response='canonical_actions/tests',identity_profiles={k:profile(k) for k in BINDINGS},bindings=BINDINGS,location_aliases=LOCATION_ALIASES,
                 action_fields=['id','expected_version','changes'],
+                first_meeting=dict(actor='canon_steven',field='first_meeting',limit=200,location='GraniteCave_StevensRoom',effect='Optional line after original letter, TM attempt and contact registration; before original farewell. Same actor, no preset arc.',limits='Absent text falls through to stock scene. No late-game offers, private reflections, reward claims or party inspection. Encounter memory remains separately opt-in.'),
                 experiences=dict(fields=['id','events (one or two exact public source sequence IDs)','interpretation (literal max 240)'],effect='retained actor memories and directional relationship evidence are fetched automatically during real author turns, even after leaving recent history',limits='new or revised memories cite current eligible evidence; no private trainer records, invented events, automatic affinity or fixed growth arc'),
                 investigation=dict(fields='id,title,roles[2..4],ending,stages[title,stations[at,clue],answer,result]',stations=[[0,0,10,10],[0,0,22,12],[0,3,10,40],[0,3,22,40]],limits='Use only reviewed ordinary Hoenn station coordinates in actor interests. Fictional interpretation, not canonical legendary lore or actual discoveries. Private completion may unlock only a player-facing scene in your initiative using mystery=investigation.id; actor scenes cannot inspect it. No rewards or main-story changes.',feedback='Only the subsequent explicit shared project choice emits anonymous canonical_shared_project_decided evidence. No private solver, clue or completion history reaches authors.'),
                 project_exchange=dict(request=dict(id='new bounded request identity',to='existing other canonical actor',action='exact pack, scene, choice, place, revision from cast_world_actions assigned to recipient; sender must own pack',message='literal public speech, 1..200 characters'),reply=dict(sender='request owner',id='exact request identity',decision='accept or decline',message='literal public response'),evidence='Reply must cite exact addressed canonical_project_requested event. Acceptance atomically executes the assigned shared-state action; decline executes nothing. Do not claim travel or reciprocal feelings. Clear project_reply on later unrelated turns.',limits='Eight immutable invitations per sender; changed state or withdrawn request rejects acceptance, no automatic retry. cast_project_requests contains actual request and response receipts.'),
@@ -563,4 +579,5 @@ def remote_response(server,conn,run,key):
                 briefing=option['reply'] if option else row['dialogue'],objective='')
     result['digest']=hashlib.sha256(json.dumps(result,sort_keys=True,separators=(',',':')).encode()).hexdigest()
     return result
+
 
