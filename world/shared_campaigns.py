@@ -133,8 +133,14 @@ def complete_stage(server,conn,key,data,outcome,record):
 def settle(server,shared,group):
     from .battle_campaigns import document,routes
     if len(group['results'])==len(group['members']) and len(group.get('npc_results',{}))==len(group.get('npc_roles',{})):
-        outcome_key='win' if all(v==1 for v in group['results'].values()) else 'loss'
-        choices=routes(document(server,group['campaign'])['nodes'][group['node']],outcome_key)
+        outcome_key='decline' if 'declined' in group['results'].values() else 'win' if all(v==1 for v in group['results'].values()) else 'loss'
+        node=document(server,group['campaign'])['nodes'][group['node']]
+        if 'expedition' in node:
+            checkpoint=group.get('expedition',{})
+            if checkpoint.get('node')!=group['node'] or checkpoint.get('phase') not in node['expedition']['resolutions']:
+                raise ValueError('No witnessed expedition resolution')
+            choices=node['expedition']['resolutions'][checkpoint['phase']]['next']
+        else:choices=routes(node,outcome_key)
         group.update(choices=choices,status='choice' if choices else 'complete')
         update_members(server,shared,group,status=group['status'],choices=choices)
 
@@ -144,8 +150,8 @@ def rows(server, conn, current):
         return []
     key = current[1]['shared']; group = load(server, key)
     out = [('Shared run '+key+' - '+group['status'], None),
-           ('Joining shares battle reports and voluntary visit check-ins with this party only.', None),
-           ('Independent tasks in split stages; ordinary stages are repeated by everyone. No verified wins or rewards.', None)]
+           ('Joining shares battle reports, visit check-ins and mechanism witnesses with this party only.', None),
+           ('Field stages accept own observations or explicit recorded-route agreement. No verified wins or rewards.', None)]
     from .parallel_campaigns import rows as deployment_rows
     out.extend(deployment_rows(server,conn,current,group))
     from .campaign_cast import rows as cast_rows

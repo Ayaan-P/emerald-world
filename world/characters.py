@@ -33,7 +33,7 @@ def records(state):
     for identity, character in value.items():
         if type(identity) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}', identity):
             raise ValueError('invalid character identity')
-        if type(character) is not dict or not FIELDS <= set(character) or set(character)-FIELDS-{'plan','offer','services','battle_portrait','intentions','campaign_interests'}:
+        if type(character) is not dict or not FIELDS <= set(character) or set(character)-FIELDS-{'plan','offer','services','battle_portrait','intentions','campaign_interests','goal_review'}:
             raise ValueError('invalid character fields')
         if ('battle_portrait' in character and
                 (type(character['battle_portrait']) is not str or character['battle_portrait'] not in BATTLE_PORTRAITS)):
@@ -64,6 +64,8 @@ def records(state):
             raise ValueError('invalid character goals')
         for goal in goals:
             _text(goal, 160)
+        from .npc_goal_reviews import validate as validate_review
+        validate_review(character.get('goal_review'),goals)
         relations = character['relationships']
         if type(relations) is not dict or len(relations) > 8:
             raise ValueError('invalid character relationships')
@@ -174,6 +176,8 @@ def challenge(server, conn, fields):
         raise ValueError('invalid character challenge') from None
     if str(seq) != fields[1] or str(version) != fields[3] or not conn['seq'] < seq <= 2**31-1:
         raise ValueError('stale character challenge')
+    from .npc_absence import guarded as absence_guarded
+    if absence_guarded(server,fields[2]):raise ValueError('Character availability is changing; choose again later')
     from .actor_battle_formats import current as battle_format
     format_revision, mode = battle_format(server,fields[2])
     extended=len(fields)==(6 if region else 5)

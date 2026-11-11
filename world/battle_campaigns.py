@@ -9,11 +9,13 @@ def install(db):
       PRIMARY KEY(trainer,lineage));''')
     from .campaign_preparation import install as preparation_install
     preparation_install(db)
+    from .campaign_mechanisms import install as mechanism_install
+    mechanism_install(db)
     from .shared_campaigns import install as shared_install
     shared_install(db)
 
 
-def publish(server, actor, row, args):
+def inspect_document(server, args):
     from .characters import records
     if set(args)!={'campaign'} or type(args['campaign']) is not str or len(args['campaign'])>6000:raise ValueError('Supply campaign JSON')
     d=json.loads(args['campaign']);cast=records(server.module_state)
@@ -27,15 +29,21 @@ def publish(server, actor, row, args):
         if 'roles' in n:
             from .parallel_campaigns import validate as validate_parallel
             validate_parallel(server,n,cast)
+        elif 'expedition' in n:
+            from .field_expeditions import validate
+            validate(server,n)
+        elif 'mechanism' in n:
+            from .campaign_mechanisms import validate
+            validate(server,n)
         elif 'visit' in n:
             from .campaign_visits import validate
             validate(server,n)
         else:
-            if not {'opponent','win','loss'}<=set(n) or set(n)-{'opponent','win','loss','preparation'}:raise ValueError('Invalid battle node')
+            if not {'opponent','win','loss'}<=set(n) or set(n)-{'opponent','win','loss','preparation','decline'}:raise ValueError('Invalid battle node')
             if type(n['opponent']) is not str or n['opponent'] not in cast or not cast[n['opponent']]['team']:raise ValueError('Opponent must be an existing world trainer with a team')
         from .campaign_preparation import validate as validate_preparation
         validate_preparation(n.get('preparation',{}),cast)
-        for outcome in ('win','loss'):
+        for outcome in ('win','loss','decline') if 'opponent' in n and 'decline' in n else ('win','loss'):
             edges=routes(n,outcome)
             if type(edges) is not list or len(edges)>4 or any(type(x) is not str or x not in nodes for x in edges) or len(set(edges))!=len(edges):raise ValueError('Invalid route choices')
     sizes={len(n['roles']) for n in nodes.values() if 'roles' in n}
@@ -45,19 +53,27 @@ def publish(server, actor, row, args):
         if k in visiting:raise ValueError('Campaign graph must be acyclic')
         if k in seen:return
         visiting.add(k)
-        for target in routes(nodes[k],'win')+routes(nodes[k],'loss'):visit(target)
+        for target in routes(nodes[k],'win')+routes(nodes[k],'loss')+nodes[k].get('decline',[]):visit(target)
         visiting.remove(k);seen.add(k)
     visit(d['entry'])
     if seen!=set(nodes):raise ValueError('All nodes must be reachable')
     encoded=json.dumps(d,sort_keys=True,separators=(',',':'))
+    return d,encoded
+
+
+def publish(server, actor, row, args):
+    d,encoded=inspect_document(server,args)
     old=server.db.execute('SELECT actor,document FROM battle_campaigns WHERE id=?',(d['id'],)).fetchone()
     if old and tuple(old)!=(actor,encoded):raise ValueError('Published campaign identities are immutable')
     server.db.execute('INSERT OR IGNORE INTO battle_campaigns VALUES(?,?,?)',(d['id'],actor,encoded))
-    return dict(outcome='battle_campaign_published',campaign=d['id'],nodes=len(nodes),basis='Optional native battles and voluntary presence check-ins; private save-scoped progress, no rewards or verified travel claims')
+    return dict(outcome='battle_campaign_published',campaign=d['id'],nodes=len(d['nodes']),basis='Optional native battles and voluntary presence check-ins; private save-scoped progress, no rewards or verified travel claims')
 
 
 def routes(node,outcome='win'):
-    return node['next'] if 'visit' in node else node[outcome]
+    if 'expedition' in node:
+        from .field_expeditions import routes as expedition_routes
+        return expedition_routes(node)
+    return node['next'] if 'visit' in node or 'mechanism' in node else node[outcome]
 
 
 def active(server,conn):
@@ -95,6 +111,8 @@ def command(server,conn,words):
             if any('roles' in n for n in d['nodes'].values()):raise ValueError('Split-party campaigns require a shared run')
             data=dict(node=d['entry'],status='ready',choices=[],history=[])
             with server.db:save(server,conn,d['id'],data)
+        elif words==['decline-challenge']:
+            decline(server,conn,current)
         elif words==['leave']:
             with server.db:server.db.execute('DELETE FROM battle_campaign_runs WHERE trainer=? AND lineage=?',(conn['id'],conn['campaign_run']))
             return ['Battle campaign left. Pokemon and normal story unchanged.']
@@ -102,6 +120,24 @@ def command(server,conn,words):
             if not current or current[1]['status']!='choice' or words[1] not in current[1]['choices']:raise ValueError('Choose one of the offered routes')
             key,data=current;data.update(node=words[1],status='ready',choices=[]);data.pop('preparation',None)
             with server.db:save(server,conn,key,data)
+        elif words in (['expedition-follow'],['expedition-stop']):
+            from .field_expeditions import follow
+            follow(server,conn,words==['expedition-follow'])
+        elif len(words)==2 and words[0]=='expedition-continue':
+            from .field_expeditions import continuation
+            continuation(server,conn,words[1])
+        elif words==['expedition-ready']:
+            from .field_expeditions import ready
+            ready(server,conn)
+        elif len(words)==2 and words[0]=='expedition-check':
+            from .field_expeditions import check
+            check(server,conn,words[1])
+        elif words==['mechanism-watch']:
+            from .campaign_mechanisms import arm
+            arm(server,conn)
+        elif words==['mechanism-check']:
+            from .campaign_mechanisms import check
+            check(server,conn)
         elif words==['check-in']:
             from .campaign_visits import check_in
             check_in(server,conn,current)
@@ -113,20 +149,44 @@ def command(server,conn,words):
         if not current:return ['No active battle campaign.']
         key,data=current;d=document(server,key)
         if data['status']=='withdrawn':return [d['title']+': withdrawn. Other party members are unchanged.', 'Your prior stage reports remain here until you start or join another run.']
-        if data['status']=='complete':return [d['title']+': finished.', 'Reported battles: '+str(len(data['history']))]
+        if data['status']=='complete':return [d['title']+': finished.', 'Recorded stages: '+str(len(data['history']))]
         if data['status']=='choice':return [d['title']+': choose your next route.', 'Routes: '+', '.join(data['choices']), 'Use /guild campaign choose NODE.']
         if data['status'] in ('lobby','waiting','deploying'):
             return [text for text,_ in shared_campaigns.rows(server,conn,current)]+['Waiting for fellow trainers. Leave cancels the shared run.']
         from .parallel_campaigns import effective
         node=effective(server,key,data)
+        if 'expedition' in node:
+            from .field_expeditions import rows
+            return [text for text,_ in rows(server,data,node)]
+        if 'mechanism' in node:
+            from .campaign_mechanisms import rows
+            return [text for text,_ in rows(server,data,node)]+['Use the campaign board to watch and check.']
         if 'visit' in node:
             from .campaign_visits import describe
             return describe(node)+['Use the campaign board Check in option, or /guild campaign check-in.']
+        optional=['Optional battle: defeat may white out and cost money. No instant retry.', 'Decline without battle credit: /guild campaign decline-challenge. Alternative: '+(', '.join(node['decline']) or 'finish')] if 'decline' in node else []
         opponent=node['opponent']
         obj=next((x for x in server.objects if x['id']==opponent),None)
         from .campaign_preparation import describe
-        return (describe(server,data,node)+[d['title']+': '+data['node'], 'Approach '+opponent+' and choose Battle.', ('Location: map %s/%s tile %s,%s'%(obj['group'],obj['num'],obj['x'],obj['y'])) if obj else 'Opponent currently away; progress is retained.'] + (['Region: '+obj['region_revision']] if obj and obj.get('region_revision') else []))
+        return (optional+describe(server,data,node)+[d['title']+': '+data['node'], 'Approach '+opponent+' and choose Battle.', ('Location: map %s/%s tile %s,%s'%(obj['group'],obj['num'],obj['x'],obj['y'])) if obj else 'Opponent currently away; progress is retained.'] + (['Region: '+obj['region_revision']] if obj and obj.get('region_revision') else []))
     except (ValueError,TypeError,KeyError) as exc:raise GuildError(str(exc)) from None
+
+
+def decline(server,conn,current):
+    """A voluntary non-battle decision, never a loss or victory report."""
+    if not current or current[1]['status']!='ready':raise ValueError('No current challenge to decline')
+    key,data=current
+    node=document(server,key)['nodes'][data['node']]
+    if 'opponent' not in node or 'decline' not in node:raise ValueError('This stage has no authored alternative')
+    record=dict(node=data['node'],opponent=node['opponent'],basis='voluntary_challenge_declined',attribution='no_battle_participation')
+    with server.db:
+        if data.get('shared'):
+            from .shared_campaigns import complete_stage
+            complete_stage(server,conn,key,data,'declined',record)
+        else:
+            data['history'].append(record)
+            data.update(choices=node['decline'],status='choice' if node['decline'] else 'complete')
+            save(server,conn,key,data)
 
 
 def bind(server,conn,pending):

@@ -17,8 +17,10 @@ def offers(server,obj):
     try:
         if not any(isinstance(n,ast.FunctionDef) and n.name=='actor_interact' for n in ast.parse(server.candidate.source).body):return {}
     except SyntaxError:return {}
+    previews=server.module_state.get('world_object_previews',{}).get(obj['id'],{})
+    if type(previews) is not dict or set(previews)-set(actions) or any(type(v) is not str or not 1<=len(v)<=28 or any(not 32<=ord(c)<127 for c in v) for v in previews.values()):return {}
     from .cooperative_moves import inspect as inspect_cooperation
-    return dict(cooperation=inspect_cooperation(server,obj),actions=valid,move_actions=server.module_state.get('world_object_moves',{}).get(obj['id'],{}),object_revision=digest([obj,actions,server.candidate.sha256])) if valid else {}
+    return dict(previews=previews,cooperation=inspect_cooperation(server,obj),actions=valid,move_actions=server.module_state.get('world_object_moves',{}).get(obj['id'],{}),object_revision=digest([obj,actions,previews,server.candidate.sha256])) if valid else {}
 
 
 def object_step(result,request,handler):
@@ -231,5 +233,7 @@ def archive_transition(server,before,state,objects):
         return
     seq=server.memory.append('object_transition_committed',dict(object=obj['id'],request=identity,revision=obj.get('region_revision'),before=previous,after=obj,state_digest=value['state_digest'],source='validated_mechanic_admission'))
     server.db.execute('INSERT INTO object_transition_archive VALUES(?,?,?)',(identity,encoded,seq));server.revision=seq
+    from .campaign_mechanisms import admitted as campaign_admitted
+    campaign_admitted(server,identity,seq,before,state)
     from .overworld_moves import admitted
     admitted(server,identity)

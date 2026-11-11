@@ -38,7 +38,7 @@ def validate_actions(actions, context):
             if condition['source']['id']!=identity or condition['arrival']!=action['object']:
                 raise ValueError('Preconditions must bind this actor and exact destination')
         changes=action['changes']
-        if type(changes) is not dict or set(changes)-{'plan','goals','relationships','team','status','offer','services','battle_portrait','intentions','campaign_interests'}:
+        if type(changes) is not dict or set(changes)-{'plan','goals','relationships','team','status','offer','services','battle_portrait','intentions','campaign_interests','goal_review'}:
             raise ValueError('unsupported character action changes')
         if 'walk' in action and 'journey' in action:raise ValueError('choose walk or journey, not both')
         if 'walk' in action or 'journey' in action:

@@ -18,6 +18,9 @@ def facing(server,conn):
 
 
 def command(server,conn,words):
+    if words and words[0] in ('ask-help','help-accept','help-status','help-stop'):
+        from .move_assistance import command as assistance_command
+        return assistance_command(server,conn,words)
     if words and words[0] in ('moves','move'):
         from .overworld_moves import command as move_command
         return move_command(server,conn,words)

@@ -20,6 +20,10 @@ def actors(state):
 
 
 def dynamic_result(event, identity, character):
+    from .method_exchange import relevant as lesson_relevant
+    if lesson_relevant(event,identity):return True
+    from .move_assistance import relevant as assistance_relevant
+    if assistance_relevant(event,identity):return True
     from .player_npc_memory import relevant as remembered_player
     if remembered_player(event,identity):return True
     from .move_witnesses import relevant as move_relevant
@@ -32,6 +36,8 @@ def dynamic_result(event, identity, character):
     if spatial_relevant(event,identity):return True
     from .actor_stories import relevant as story_relevant
     if story_relevant(event,identity):return True
+    from .npc_organizations import relevant as organization_relevant
+    if organization_relevant(event,identity):return True
     from .actor_agreements import relevant as agreement_relevant
     if agreement_relevant(event,identity):return True
     from .actor_attention import relevant as attention_relevant
@@ -68,6 +74,8 @@ def dynamic_result(event, identity, character):
 
 
 def setup(queue):
+    from .npc_goal_reviews import setup as setup_reviews
+    setup_reviews(queue)
     from .canonical_intentions import setup as setup_intentions
     setup_intentions(queue)
     from .canonical_routines import setup as setup_routines
@@ -95,6 +103,7 @@ def configure(queue, inspection, identity, purpose):
     with queue.db:
         if queue.db.execute('SELECT count(*) FROM character_reactions').fetchone()[0] >= 8 and not queue.db.execute('SELECT 1 FROM character_reactions WHERE id=?', (identity,)).fetchone():
             raise ValueError('at most eight followed characters')
+        queue.db.execute("UPDATE population_admissions SET status='manual' WHERE id=? AND status IN ('unclaimed','waiting')",(identity,))
         queue.db.execute('DELETE FROM population_agents WHERE id=?',(identity,)) # Explicit host enrollment takes over lifecycle ownership.
         # Reconfiguration starts at the inspected boundary, never replays old wins.
         queue.db.execute('INSERT OR REPLACE INTO character_reactions VALUES(?,?,?,?)',
@@ -109,6 +118,7 @@ def cancel_queued(queue, identity):
 
 def unfollow(queue, identity):
     with queue.db:
+        queue.db.execute("UPDATE population_admissions SET status='cancelled' WHERE id=? AND status IN ('unclaimed','waiting')",(identity,))
         queue.db.execute('DELETE FROM character_reactions WHERE id=?', (identity,))
         queue.db.execute('DELETE FROM canonical_seed_enrollments WHERE id=?',(identity,))
         cancel_queued(queue, identity)
@@ -196,6 +206,9 @@ def observe(queue, inspection, fetch, *, enqueue=True):
                 busy=bool(queue.db.execute("SELECT 1 FROM requests WHERE kind='character' AND player=? AND status IN ('queued','running')",(sub['id'],)).fetchone())
                 scheduled=enqueue_routine(queue,sub,character,defer=busy or through!=memory['through'])
                 if scheduled:queued.append(scheduled)
+                from .npc_goal_reviews import enqueue as enqueue_review
+                reviewed=enqueue_review(queue,sub,character,data,defer=busy or through!=memory['through'])
+                if reviewed:queued.append(reviewed)
             queue.db.execute('UPDATE character_reactions SET cursor=? WHERE id=?', (through, sub['id']))
             queue.db.execute("DELETE FROM requests WHERE kind='character' AND status NOT IN ('queued','running') AND seq NOT IN (SELECT seq FROM requests WHERE kind='character' AND status NOT IN ('queued','running') ORDER BY seq DESC LIMIT 64)")
     return queued
@@ -241,6 +254,11 @@ def prepare(context, fetch):
     if scheduled:
         from .canonical_cast import decision_evidence
         matched=len(events)==1 and decision_evidence(events[0],reaction['id'],character)
+    from .npc_goal_reviews import check as check_goal_review,unfinished
+    if check_goal_review(reaction,character):
+        if unfinished(data,reaction['id'],character):raise ValueError('An unfinished plan must settle before goal review')
+        matched=len(events)==1 and seq in character['evidence']
+        context['goal_review_limits']='One-shot reconsideration of an own committed goal. Time is not an event or achievement. Inspect current state/history; choose a guarded action, revise or wait. A new future review needs a new id. No replay of old successes.'
     if reaction.get('intention'):
         from .canonical_cast import decision_evidence
         if reaction['intention'] not in character.get('intentions',[]):raise ValueError('retained intention changed')

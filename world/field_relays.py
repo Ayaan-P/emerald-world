@@ -64,12 +64,16 @@ class FieldRelays:
     def _course(self,key):
         row=self.db.execute('SELECT document FROM relay_courses WHERE id=?',(key,)).fetchone()
         if not row:raise GuildError('Unknown relay course. Use /guild relay list.')
-        return json.loads(row[0])
+        course=json.loads(row[0])
+        validate(course,self.coords,(self.s.cave_map,self.s.wilds_map))
+        return course
 
     def _current(self,trainer):
         return next((r for r in self.runs.values() if any(c['id']==trainer for c in r['members'])),None)
 
     def _fresh(self,conn,now):
+        from .combined_regions import admitted
+        if getattr(self.s,'combined_regions',False) and not admitted(self.s,conn):return False
         state=conn.get('state');updated=conn.get('state_time')
         return bool(self.s.peers.get(conn['id']) is conn and not conn.get('closing') and conn.get('chat')
                     and state and state[6] and updated is not None and 0<=now-updated<=3

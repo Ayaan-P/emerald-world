@@ -54,6 +54,15 @@ def main():
     parser.add_argument('--experimental-tower-records', action='store_true', help='enable experimental explicit Tower record imports; requires --development')
     parser.add_argument('--experimental-starter-offers', action='store_true', help='enable experimental optional fresh-save starters; requires --development')
     parser.add_argument('--experimental-field-moves', action='store_true', help='enable learned moves on shared props; requires --development')
+    parser.add_argument('--experimental-floorplans', action='store_true', help='enable opt-in native owned-furniture guidance; requires --development')
+    parser.add_argument('--experimental-native-trades', action='store_true', help='enable local opt-in authored trade templates; requires --development')
+    parser.add_argument('--experimental-nature-challenges', action='store_true', help='enable local opt-in nature-driven NPC singles; requires --development')
+    parser.add_argument('--experimental-regional-starters', action='store_true', help='enable experimental isolated Kanto starter choices; linked QA pending')
+    parser.add_argument('--experimental-kanto-rematches', action='store_true', help='enable experimental separate Kanto rematches; linked QA pending')
+    parser.add_argument('--experimental-route5-custody', action='store_true', help='enable experimental separate Route 5 daycare; linked QA pending')
+    parser.add_argument('--experimental-regional-completion', action='store_true', help='enable explicit regional championship migration; linked QA pending')
+    parser.add_argument('--experimental-regional-badges', action='store_true', help='enable explicit personal regional badge migration; requires --kanto-content')
+    parser.add_argument('--experimental-combined-presence', action='store_true', help='negotiate the fixed combined-world authority profile; requires --kanto-content')
     parser.add_argument('--experimental-party-practice', action='store_true', help='enable local native egg-move practice; requires --development')
     parser.add_argument('--experimental-maze-courses', action='store_true', help='enable experimental generated Trainer Hill mazes; requires --development')
     parser.add_argument('--experimental-pyramid-courses', action='store_true', help='enable experimental authored Pyramid courses; requires --development')
@@ -68,6 +77,23 @@ def main():
                         help='enable Kanto in development (requires --regional-state; already enabled for release)')
     parser.add_argument('--jobs', type=int, default=4)
     args = parser.parse_args()
+    if any((args.experimental_floorplans, args.experimental_native_trades, args.experimental_nature_challenges,
+            args.experimental_regional_starters, args.experimental_kanto_rematches, args.experimental_route5_custody,
+            args.experimental_regional_completion, args.experimental_regional_badges,
+            args.experimental_combined_presence)) and not args.development:
+        parser.error('each experimental option requires --development; linked native QA pending')
+    if args.experimental_regional_starters and not args.experimental_kanto_rematches:
+        parser.error('--experimental-regional-starters requires --experimental-kanto-rematches and all regional reader prerequisites')
+    if args.experimental_kanto_rematches and not args.experimental_route5_custody:
+        parser.error('--experimental-kanto-rematches requires --experimental-route5-custody and regional completion prerequisites')
+    if args.experimental_route5_custody and not args.experimental_regional_completion:
+        parser.error('--experimental-route5-custody requires --experimental-regional-completion and its development prerequisites')
+    if args.experimental_regional_completion and not args.experimental_regional_badges:
+        parser.error('--experimental-regional-completion requires --experimental-regional-badges and its development prerequisites')
+    if args.experimental_regional_badges and not args.kanto_content:
+        parser.error('--experimental-regional-badges requires --kanto-content, --regional-state and --development')
+    if args.experimental_combined_presence and not args.kanto_content:
+        parser.error('--experimental-combined-presence requires --kanto-content, --regional-state and --development')
     if args.experimental_field_moves and not args.development:
         parser.error('--experimental-field-moves requires --development; native object UI QA pending')
     if args.experimental_party_practice and not args.development:
@@ -190,6 +216,15 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
     command += ['--', 'make', '-f', str(ROOT / 'engines/expansion.mk'), f'-j{args.jobs}',
                 f'EW_REGION_STATE={regional_state}', f'EW_KANTO_CONTENT={kanto_content}',
                 f'MAP_VERSION={RELEASE_CONFIG.map_version if not args.development else map_version}',
+                f'WORLD_NATURE_CHALLENGES={int(args.experimental_nature_challenges)}',
+                f'WORLD_TRADE_OFFERS={int(args.experimental_native_trades)}',
+                f'WORLD_COMBINED_PRESENCE={int(args.experimental_combined_presence)}',
+                f'WORLD_FLOORPLANS={int(args.experimental_floorplans)}',
+                f'EW_REGIONAL_BADGES={int(args.experimental_regional_badges)}',
+                f'EW_REGIONAL_STARTERS={int(args.experimental_regional_starters)}',
+                f'EW_KANTO_REMATCHES={int(args.experimental_kanto_rematches)}',
+                f'EW_ROUTE5_CUSTODY={int(args.experimental_route5_custody)}',
+                f'EW_REGIONAL_COMPLETION={int(args.experimental_regional_completion)}',
                 f'WORLD_CHARACTER_COOP_EXPERIMENT={int(args.experimental_npc_coop)}',
                 f'WORLD_BASE_SHARE_EXPERIMENT={int(args.experimental_secret_bases)}',
                 f'GENERATED_WORLD_REGIONS={int(args.generated_regions) or RELEASE_CONFIG.generated_world_regions}',

@@ -25,6 +25,19 @@ def handle(server,conn,raw):
         if f[1]=='PGET' and len(f)==4 and f[3].isdigit() and 0<int(f[3])<=65535:
             from .encounter_profiles import offer
             return offer(server,conn,seq,int(f[3]))
+        if f[1]=='LOOK' and len(f)==3:
+            # Public object requirements only; never request or upload a party roster.
+            from . import actor_objects,object_choices
+            from .overworld_moves import requirements
+            obj=object_choices.facing(server,conn);current=actor_objects.offers(server,obj)
+            allowed=server.module_state.get('world_object_player_choices',{}).get(obj['id'],[])
+            moves={m for action,values in requirements(server,obj).items()
+                   if action in allowed and action in current.get('actions',{}) for m in values}
+            if any(not 0<m<1024 for m in moves):raise ValueError()
+            mask=bytearray(128)
+            for move in moves:mask[move//8]|=1<<(move%8)
+            channel.pop('field_move_ui',None);conn.pop('object_moves',None)
+            return f"FM LOOKED {seq} {obj['text'].encode('ascii').hex()} {mask.hex()}\n"
         if f[1]=='GET' and len(f)==4 and f[3].isdigit() and 0<int(f[3])<=65535:
             if getattr(server,'object_use_pending',None):raise ValueError()
             command(server,conn,['moves']);offer=conn['object_moves'];move=int(f[3])
@@ -32,6 +45,21 @@ def handle(server,conn,raw):
             if not 1<=len(actions)<=8:raise ValueError()
             channel['field_move_ui']=dict(seq=seq,move=move,token=offer['token'],actions=actions)
             return 'FM OFFER '+str(seq)+' '+offer['token']+' '+str(len(actions))+' '+' '.join(actions)+'\n'
+        if f[1]=='VIEW' and len(f)==5:
+            import time
+            from . import actor_objects,object_choices
+            pending=channel.get('field_move_ui');saved=conn.get('object_moves')
+            obj=object_choices.facing(server,conn);current=actor_objects.offers(server,obj)
+            if (not pending or not saved or pending['seq']!=seq or pending['token']!=f[3]
+                or f[4] not in pending['actions'] or saved['token']!=f[3]
+                or saved['until']<time.monotonic() or saved['object']!=obj['id']
+                or saved['revision']!=current.get('object_revision')):raise ValueError()
+            label=current['actions'][f[4]]
+            if len(label)>28:label=label[:25]+'...'
+            response=current.get('previews',{}).get(f[4],'Response not described')
+            values=[obj['text'],label,response]
+            if any(type(v) is not str or not 1<=len(v)<=28 or any(not 32<=ord(c)<127 for c in v) for v in values):raise ValueError()
+            return 'FM DETAIL '+str(seq)+' '+f[3]+' '+f[4]+' '+' '.join(v.encode('ascii').hex() for v in values)+'\n'
         if f[1]=='USE' and len(f)==5:
             pending=channel.pop('field_move_ui',None)
             if not pending or pending['seq']!=seq or pending['token']!=f[3] or f[4] not in pending['actions']:raise ValueError()

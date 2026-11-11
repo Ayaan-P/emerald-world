@@ -30,17 +30,29 @@ def rows(server,conn):
     else:
         key,data=current;d=document(server,key)
         out.append((d['title']+' - '+data['status'],None))
+        if data.get('expedition_follow'):
+            out.append(('Stop automatic nearby field observations for this run.',['expedition-stop']))
         if data['status'] in ('lobby','waiting','deploying'):
             pass
         elif data['status']=='choice':
             group=shared_campaigns.load(server,data['shared']) if data.get('shared') else None
             for node in data['choices'] if not group or shared_campaigns.member(conn)==group['speaker'] else []:
                 target=d['nodes'][node]
-                label='Split party' if 'roles' in target else target['visit']['label'] if 'visit' in target else target['opponent']
+                label='Split party' if 'roles' in target else target['visit']['label'] if 'visit' in target else target['expedition']['label'] if 'expedition' in target else target['mechanism']['label'] if 'mechanism' in target else target['opponent']
                 out.append(('Take route '+node+' - '+label,['choose',node]))
         else:
             from .parallel_campaigns import effective
             node=effective(server,key,data)
+            if 'expedition' in node:
+                from .field_expeditions import rows as expedition_rows
+                out.extend(expedition_rows(server,data,node))
+                out.append(('Cancel shared run for everyone' if data.get('shared') else 'Leave campaign.',['leave']))
+                return out
+            if 'mechanism' in node:
+                from .campaign_mechanisms import rows as mechanism_rows
+                out.extend(mechanism_rows(server,data,node))
+                out.append(('Cancel shared run for everyone' if data.get('shared') else 'Leave campaign.',['leave']))
+                return out
             if 'visit' in node:
                 from .campaign_visits import describe as describe_visit
                 out.extend((line,None) for line in describe_visit(node))
@@ -49,7 +61,17 @@ def rows(server,conn):
                 return out
             actor=node['opponent']
             obj=next((o for o in server.objects if o['id']==actor),None)
-            out.append(('Battle '+actor+(' at map %s %s tile %s %s'%(obj['group'],obj['num'],obj['x'],obj['y']) if obj else ' - currently away'),None))
+            place=None
+            if obj and obj.get('region_revision'):
+                place=server.db.execute('SELECT label FROM generated_area_archive WHERE identity=?',(obj['region_revision'],)).fetchone()
+            destination=(' in '+place[0]+' tile %s %s'%(obj['x'],obj['y']) if place else ' at map %s %s tile %s %s'%(obj['group'],obj['num'],obj['x'],obj['y'])) if obj else ' - currently away'
+            out.append(('Battle '+actor+destination,None))
+            if 'decline' in node:
+                out.append(('Optional trainer battle. Defeat can white out and cost money. No instant retry.',None))
+                out.append(('Win routes: '+(', '.join(node['win']) or 'finish')+'. Loss routes: '+(', '.join(node['loss']) or 'finish'),None))
+                out.append(('Decline battle. No battle credit. Routes: '+(', '.join(node['decline']) or 'finish'),['decline-challenge']))
+                if data.get('shared'):
+                    out.append(('Anyone may decline. After all decisions or battles, the party takes the decline route.',None))
             for choice,p in node.get('preparation',{}).items():
                 from .actor_shops import ITEMS
                 from .actor_tutors import MOVES

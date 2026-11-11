@@ -64,7 +64,8 @@ class MeetingUnavailable(ValueError):
 class WorldServer:
     def __init__(self, socket_path, state_dir, mechanics=None, admin_path=None, *,
                  max_players=32, max_controls=None, connection_headroom=8, cave_template=None,
-                 persist_generated_cave=False, archive_generated_areas=False):
+                 persist_generated_cave=False, archive_generated_areas=False, combined_regions=False):
+        self.combined_regions=combined_regions
         from .build_catalog import catalog_maps
         from .shared_cave import SharedCave
         entries = [(group, num) for (group, num), item in catalog_maps().items()
@@ -137,6 +138,11 @@ class WorldServer:
                 seq INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, data TEXT);
             CREATE INDEX IF NOT EXISTS events_kind_seq ON events(kind,seq);
         ''')
+        from .combined_regions import bind_world
+        try:bind_world(self.db,self.combined_regions)
+        except BaseException:
+            self.db.close()
+            raise
         self.world_rules = WorldRules(self.db)
         from .world_memory import WorldMemory
         self.memory = WorldMemory(self.db)
@@ -144,7 +150,8 @@ class WorldServer:
         self.core_story = CoreStory(self)
         from .character_companions import setup as setup_companions
         setup_companions(self.db)
-        self.guilds = Guilds(self.db, catalog_maps(), record_outcome=self.memory.append)
+        from .combined_regions import catalog as combined_catalog, coords as combined_coords
+        self.guilds = Guilds(self.db, combined_catalog() if self.combined_regions else catalog_maps(), record_outcome=self.memory.append)
         from .canonical_councils import install as install_councils
         install_councils(self.db)
         from .canonical_dialogues import install as install_dialogues
@@ -161,7 +168,7 @@ class WorldServer:
         install_rapport(self.db)
         from .canonical_scenes import CanonicalScenes
         self.cast_scenes=CanonicalScenes(self)
-        self.guild_chat = GuildChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
+        self.guild_chat = GuildChat(self, combined_coords if self.combined_regions else validate_coords, TRAVEL_FRESH_SECONDS)
         from .battle_campaigns import install as install_battle_campaigns
         install_battle_campaigns(self.db)
         from .cooperative_mysteries import Mysteries
@@ -172,11 +179,11 @@ class WorldServer:
         self.opportunities = Opportunities(self.db, [m['name'] for m in catalog_maps().values()], self.mysteries,record_public=self.memory.append,record_outcome=lambda *args:choice_receipt(self,*args))
         self.opportunity_chat = OpportunityChat(self, validate_coords, TRAVEL_FRESH_SECONDS)
         from .field_relays import FieldRelays
-        self.relays = FieldRelays(self, validate_coords)
+        self.relays = FieldRelays(self, combined_coords if self.combined_regions else validate_coords)
         from .field_flags import FieldFlags
         self.flags = FieldFlags(self)
         from .shared_races import SharedRaces
-        self.races = SharedRaces(self, validate_coords)
+        self.races = SharedRaces(self, combined_coords if self.combined_regions else validate_coords)
         from .activity_board import ActivityBoard
         self.activities = ActivityBoard(self)
         from .landmark_survey import LandmarkSurvey
@@ -435,6 +442,9 @@ class WorldServer:
         if self.link_channels.get(conn['id']) is conn:
             del self.link_channels[conn['id']]
             self._deliver_links(self.link_protocol.disconnect(conn['id']))
+            if self.combined_regions:
+                presence=conn.get('presence')
+                if presence and presence['sock'] in self.connections:self._drop(presence)
         if conn['id'] and self.peers.get(conn['id']) is conn:
             self.cast_scenes.disconnected(conn)
             self.rally.disconnect(conn)
@@ -534,6 +544,8 @@ class WorldServer:
             self._queue(conn,'REGION SELECTED '+place+' '+cave.identity+'\n')
 
     def _snapshot(self, conn):
+        from .combined_regions import admitted as registry_admitted
+        if not registry_admitted(self,conn):return 'BEGIN '+str(self.revision)+'\nEND\n'
         lines = ['BEGIN ' + str(self.revision)]
         if conn.get('mount_capable'):lines.append('MOUNTS 1')
         # World population is not the fixed native render-array capacity.
@@ -877,6 +889,7 @@ class WorldServer:
                     self._error(conn, 'SCENE_BUSY')
                     return
                 conn['id'] = name
+                conn['registry_wait']=time.monotonic()
                 conn['social'] = social
                 conn['character_identity_capable'] = character_identity_capable
                 conn['character_identity2_capable'] = character_identity2_capable
@@ -952,6 +965,8 @@ class WorldServer:
             if conn.get('control'):
                 self._control_line(conn, raw)
                 return
+            from .combined_regions import pending as registry_pending
+            if registry_pending(self,conn):return
             if fields[:2]==['CORE','SCENE']:
                 try:self.cast_scenes.handle(conn,fields[2:])
                 except (ValueError,KeyError,TypeError):
@@ -1181,7 +1196,10 @@ class WorldServer:
                             or not (cave.walkable(state[2],state[3]) if conn.get('region_cave') else self._active_walkable(state[2], state[3]))):
                         raise ValueError('unadmitted cave state')
                 else:
-                    validate_coords(*state[:4])
+                    if self.combined_regions:
+                        from .combined_regions import coords
+                        coords(*state[:4])
+                    else:validate_coords(*state[:4])
                 if not 1 <= state[4] <= 4 or state[5] > 255:
                     raise ValueError('invalid peer facing or graphics')
                 if not field and state[6] == 0 and state != [0, 0, 0, 0, 1, 7, 0]:
@@ -1226,6 +1244,8 @@ class WorldServer:
                 self.landmark_survey.observe(conn)
                 from .shared_cartography import observe as chart_observe
                 chart_observe(self,conn)
+                from .field_expeditions import observe as expedition_observe
+                expedition_observe(self,conn)
                 if getattr(self, 'relays', None):self.relays.tick()
                 if getattr(self, 'flags', None):self.flags.tick()
                 if getattr(self, 'races', None):self.races.tick()
@@ -1294,6 +1314,11 @@ class WorldServer:
                 or conn['presence'].get('closing')):
             self._error(conn, 'PRESENCE')
             return
+        if raw.startswith(b'RGC '):
+            from .combined_regions import announce
+            announce(self,conn,raw);return
+        from .combined_regions import pending as registry_pending
+        if registry_pending(self,conn['presence']):return
         # Only connected native link peers may be invited. CONTROL connections
         # neither approve requests nor contribute native engine rounds.
         if raw.startswith(b'TR '):
@@ -1303,6 +1328,14 @@ class WorldServer:
         if raw.startswith(b'SO '):
             from .starter_offers import handle as starter_handle
             self._queue(conn,starter_handle(self,conn,raw))
+            return
+        if raw.startswith(b'FP '):
+            from .floorplans import handle as floorplan_handle
+            self._queue(conn,floorplan_handle(self,conn,raw))
+            return
+        if raw.startswith(b'NT '):
+            from .native_trade_offers import handle as trade_offer_handle
+            self._queue(conn,trade_offer_handle(self,conn,raw))
             return
         if raw.startswith(b'FM '):
             from .field_move_ui import handle as field_move_ui_handle
@@ -2456,6 +2489,9 @@ class WorldServer:
                     except (OSError, KeyError):
                         self._drop(conn)
             for conn in list(self.connections.values()):
+                if self.combined_regions and conn.get('id') and self.peers.get(conn['id']) is conn:
+                    from .combined_regions import pending as registry_pending
+                    registry_pending(self,conn)
                 if conn['id'] is None and not conn['admin'] and time.monotonic() - conn['born'] > 5:
                     self._drop(conn)
             with self.lock:
@@ -2513,9 +2549,9 @@ class WorldServer:
         self.activity.close()
 
 
-def create_identity(state_dir, trainer_id, token=None):
+def create_identity(state_dir, trainer_id, token=None, *, combined_regions=False):
     """Provision a trainer or return its existing token. Never rotates credentials."""
-    server = WorldServer('/unused', state_dir)
+    server = WorldServer('/unused', state_dir, combined_regions=combined_regions)
     try:
         return server.create_identity(trainer_id, token)['token']
     finally:
@@ -2574,6 +2610,7 @@ def main(argv=None):
     parser.add_argument('--capture-sha256')
     parser.add_argument('--capture-ledger', type=Path)
     parser.add_argument('--capture-native-qa-validated', action='store_true', help='host attests exact experimental binary passed linked capture QA; disabled otherwise')
+    parser.add_argument('--combined-regions', action='store_true', help='experimental fixed combined-registry presence cohort; new world directory and matching native clients required')
     parser.add_argument('--timeout', type=float, default=120)
     args = parser.parse_args(argv)
     state = Path(args.state_dir).absolute()
@@ -2599,7 +2636,7 @@ def main(argv=None):
             parser.exit(1, 'world: could not export invitation (requires running TLS authority and a new private output path)\n')
         return 0
     if args.create_identity is not None:
-        token = create_identity(args.state_dir, args.create_identity)
+        token = create_identity(args.state_dir, args.create_identity, combined_regions=args.combined_regions)
         print(json.dumps(dict(id=args.create_identity, token=token)))
         return 0
     stopped = threading.Event()
@@ -2614,7 +2651,7 @@ def main(argv=None):
             from .shared_cave import MAX_SIZE
             with args.generated_cave_template.open('rb') as stream:
                 cave_template = stream.read(MAX_SIZE + 1)
-        server = WorldServer(game_socket, state, admin_path=args.admin_socket,
+        server = WorldServer(game_socket, state, combined_regions=args.combined_regions, admin_path=args.admin_socket,
                              max_players=args.max_players, max_controls=args.max_controls,
                              connection_headroom=args.connection_headroom, cave_template=cave_template,
                              persist_generated_cave=args.persist_generated_cave)
