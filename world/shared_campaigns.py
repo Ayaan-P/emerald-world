@@ -134,7 +134,13 @@ def settle(server,shared,group):
     from .battle_campaigns import document,routes
     if len(group['results'])==len(group['members']) and len(group.get('npc_results',{}))==len(group.get('npc_roles',{})):
         outcome_key='win' if all(v==1 for v in group['results'].values()) else 'loss'
-        choices=routes(document(server,group['campaign'])['nodes'][group['node']],outcome_key)
+        node=document(server,group['campaign'])['nodes'][group['node']]
+        if 'expedition' in node:
+            checkpoint=group.get('expedition',{})
+            if checkpoint.get('node')!=group['node'] or checkpoint.get('phase') not in node['expedition']['resolutions']:
+                raise ValueError('No witnessed expedition resolution')
+            choices=node['expedition']['resolutions'][checkpoint['phase']]['next']
+        else:choices=routes(node,outcome_key)
         group.update(choices=choices,status='choice' if choices else 'complete')
         update_members(server,shared,group,status=group['status'],choices=choices)
 

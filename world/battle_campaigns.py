@@ -29,6 +29,9 @@ def publish(server, actor, row, args):
         if 'roles' in n:
             from .parallel_campaigns import validate as validate_parallel
             validate_parallel(server,n,cast)
+        elif 'expedition' in n:
+            from .field_expeditions import validate
+            validate(server,n)
         elif 'mechanism' in n:
             from .campaign_mechanisms import validate
             validate(server,n)
@@ -62,6 +65,9 @@ def publish(server, actor, row, args):
 
 
 def routes(node,outcome='win'):
+    if 'expedition' in node:
+        from .field_expeditions import routes as expedition_routes
+        return expedition_routes(node)
     return node['next'] if 'visit' in node or 'mechanism' in node else node[outcome]
 
 
@@ -107,6 +113,12 @@ def command(server,conn,words):
             if not current or current[1]['status']!='choice' or words[1] not in current[1]['choices']:raise ValueError('Choose one of the offered routes')
             key,data=current;data.update(node=words[1],status='ready',choices=[]);data.pop('preparation',None)
             with server.db:save(server,conn,key,data)
+        elif words==['expedition-ready']:
+            from .field_expeditions import ready
+            ready(server,conn)
+        elif len(words)==2 and words[0]=='expedition-check':
+            from .field_expeditions import check
+            check(server,conn,words[1])
         elif words==['mechanism-watch']:
             from .campaign_mechanisms import arm
             arm(server,conn)
@@ -130,6 +142,9 @@ def command(server,conn,words):
             return [text for text,_ in shared_campaigns.rows(server,conn,current)]+['Waiting for fellow trainers. Leave cancels the shared run.']
         from .parallel_campaigns import effective
         node=effective(server,key,data)
+        if 'expedition' in node:
+            from .field_expeditions import rows
+            return [text for text,_ in rows(server,data,node)]
         if 'mechanism' in node:
             from .campaign_mechanisms import rows
             return [text for text,_ in rows(server,data,node)]+['Use the campaign board to watch and check.']
