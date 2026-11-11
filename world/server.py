@@ -1396,6 +1396,10 @@ class WorldServer:
             from .pyramid_courses import handle as pyramid_handle
             self._queue(conn,pyramid_handle(self,conn,raw))
             return
+        if raw.startswith(b'SF '):
+            from .safari_feeders import handle as safari_feeder_handle
+            self._queue(conn,safari_feeder_handle(self,conn,raw))
+            return
         if raw.startswith(b'B '):
             from .base_neighborhood import handle as base_directory_handle
             self._queue(conn,base_directory_handle(self,conn,raw))

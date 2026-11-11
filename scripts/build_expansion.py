@@ -12,7 +12,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '8dea9e7f4ea77e22f3e1dd88da84b1b880ed7174'
+PIN = '375eee94d5192fec799d94e296b28a23378bc1a7'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -99,6 +99,7 @@ def main():
                         help='default-off synthetic-tested guest Gym continuation; requires experimental Rusturf readers')
     parser.add_argument('--experimental-rusturf-recovery', action='store_true',
                         help='enable unverified personal Rusturf recovery and all regional payload readers; requires --development --regional-state --kanto-content; synthetic saves only until linked QA')
+    parser.add_argument('--experimental-safari-feeders', action='store_true', help='enable shared Safari feeder scents; requires --development')
     parser.add_argument('--experimental-secret-bases', action='store_true', help='enable unverified own-base sharing; requires --development')
     parser.add_argument('--experimental-npc-coop', action='store_true',
                         help='enable unverified dynamic NPC co-op wire (requires --development; both clients must match)')
@@ -185,6 +186,8 @@ def main():
         parser.error('--experimental-roxanne-continuation requires --experimental-rusturf-recovery')
     if args.experimental_rusturf_recovery and not (args.development and args.regional_state and args.kanto_content):
         parser.error('--experimental-rusturf-recovery requires --development --regional-state --kanto-content; linked rescue and save QA pending')
+    if args.experimental_safari_feeders and not args.development:
+        parser.error('--experimental-safari-feeders requires --development; linked Safari QA pending')
     if args.experimental_secret_bases and not args.development:
         parser.error('--experimental-secret-bases requires --development; linked save QA pending')
     if args.experimental_npc_coop and not args.development:
@@ -325,6 +328,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'EW_REGIONAL_COMPLETION={int(args.experimental_regional_completion or args.experimental_rusturf_recovery)}',
                 f'WORLD_CHARACTER_COOP_EXPERIMENT={int(args.experimental_npc_coop)}',
                 f'WORLD_BASE_SHARE_EXPERIMENT={int(args.experimental_secret_bases)}',
+                f'EW_SHARED_SAFARI_FEEDERS={int(args.experimental_safari_feeders)}',
                 f'GENERATED_WORLD_REGIONS={int(args.generated_regions) or RELEASE_CONFIG.generated_world_regions}',
                 f'WORLD_TOWER_RECORD_EXPERIMENT={int(args.experimental_tower_records)}',
                 f'WORLD_STARTER_OFFER_EXPERIMENT={int(args.experimental_starter_offers)}',

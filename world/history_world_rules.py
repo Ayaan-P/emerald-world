@@ -2,7 +2,7 @@
 import json,re,time,sqlite3
 
 TOOLS=('world.configure_outbreak','world.configure_fishing','world.set_weather')
-EVENTS=('canonical_trainer_result','landmark_discovery_shared','public_story_choice_committed','character_journey_arrived','player_addressed_character','spatial_public_speech')
+EVENTS=('safari_feeder_deposit_shared','canonical_trainer_result','landmark_discovery_shared','public_story_choice_committed','character_journey_arrived','player_addressed_character','spatial_public_speech')
 
 
 def setup(db):
