@@ -152,12 +152,12 @@ class CoreStory:
         if action=='CALL' and confirmation=='registered':
             from .canonical_cast import remote_response
             return remote_response(self.s,conn,run,key)
-        if action=='BMODE':
+        if action in ('BMODE','CMODE'):
             from .trainer_experiences import participation
-            return participation(self.s,conn,run,key,confirmation)
-        if action in ('BATTLE','BAUTO','CBATTLE'):
+            return participation(self.s,conn,run,key,confirmation,cooperative=action=='CMODE')
+        if action in ('BATTLE','BAUTO','CBATTLE','CAUTO'):
             from .trainer_experiences import handle
-            return handle(self.s,conn,run,key,confirmation,automatic=action=='BAUTO',cooperative=action=='CBATTLE')
+            return handle(self.s,conn,run,key,confirmation,automatic=action in ('BAUTO','CAUTO'),cooperative=action in ('CBATTLE','CAUTO'))
         if action=='TUTOR':
             from .canonical_services import handle
             return handle(self.s,conn,run,key,confirmation)
@@ -296,5 +296,6 @@ class CoreStory:
                 self.db.execute('INSERT INTO core_story_offers VALUES(?,?,?,?)',(trainer,run,key,encoded(result)))
                 return result
             raise ValueError('Invalid canonical story action or confirmation.')
+
 
 

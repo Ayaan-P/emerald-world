@@ -967,7 +967,7 @@ class WorldServer:
                         prefix='CORE REPLY '+nonce+' '+fields[1]+' '+fields[2]+' '+fields[3]+' '
                         if fields[2]=='TUTOR':
                             reply=str(result['tutor_move'])+' '+result['tutor_token']
-                        elif fields[2]=='BMODE':
+                        elif fields[2] in ('BMODE','CMODE'):
                             reply=result['battle_mode']
                         elif fields[2]=='RING':
                             reply=self.memory.world_id+' '+result['caller']+' '+result['token']+' '+(native_text(result['text']).encode('ascii').hex() if result['text'] else '-')
@@ -2565,4 +2565,5 @@ def main(argv=None):
 
 if __name__ == '__main__':
     raise SystemExit(main())
+
 
