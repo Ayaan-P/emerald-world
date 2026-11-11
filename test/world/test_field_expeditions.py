@@ -52,13 +52,14 @@ class ExpeditionTests(unittest.TestCase):
   self.f.perform(self.b);self.f.perform(self.b);self.check(self.a,'off')
   self.assertEqual(active(self.s,self.a)[1]['status'],'complete')
  def test_board_readiness_stale_tokens_and_target_phase_revalidation(self):
-  self.start();page=next(i for i,(_,a) in enumerate(rows(self.s,self.a)) if a==['expedition-ready'])
+  self.start();page=next(i for i,(_,a) in enumerate(rows(self.s,self.a)) if a==['expedition-follow'])
   pending=handle(self.s,self.a,self.a['campaign_run'],'view',str(page));self.ready(self.b)
   with self.assertRaises(ValueError):handle(self.s,self.a,self.a['campaign_run'],'pick',pending['token'])
   self.ready(self.a);self.f.perform(self.b)
-  page=next(i for i,(_,a) in enumerate(rows(self.s,self.a)) if a==['expedition-check','on'])
+  page=next(i for i,(_,a) in enumerate(rows(self.s,self.a)) if a==['expedition-continue','on'])
   pending=handle(self.s,self.a,self.a['campaign_run'],'view',str(page));self.f.perform(self.b)
-  with self.assertRaises(GuildError):handle(self.s,self.a,self.a['campaign_run'],'pick',pending['token'])
+  handle(self.s,self.a,self.a['campaign_run'],'pick',pending['token'])
+  self.assertFalse(active(self.s,self.a)[1]['history'][-1]['current_state_observed'])
  def test_stale_presence_wrong_revision_and_lineage_cannot_complete(self):
   self.start(False);self.ready(self.a);self.f.perform(self.b)
   self.a['state_time']=0
@@ -92,3 +93,53 @@ class ExpeditionTests(unittest.TestCase):
   self.assertEqual(self.s.module_state['world_object_network_state']['mechanism']['phase'],'off')
   command(self.s,self.a,['start','agent_expedition']);self.ready(self.a);self.f.perform(self.b);self.check(self.a,'on')
   self.assertEqual(active(self.s,self.a)[1]['choices'],['follow'])
+
+ def test_early_change_and_later_arrival_without_ready_or_manual_witness(self):
+  self.start();self.f.perform(self.b)
+  self.b['state'][2]=60
+  command(self.s,self.b,['expedition-follow'])
+  self.assertEqual(active(self.s,self.b)[1]['history'],[])
+  command(self.s,self.a,['expedition-follow'])
+  self.assertEqual(active(self.s,self.a)[1]['status'],'waiting')
+  # Actual authority STATE path, not a direct completion call.
+  self.f.base.state(self.b,*self.s.wilds_map,72,69)
+  self.assertEqual(active(self.s,self.a)[1]['choices'],['follow'])
+  for p in (self.a,self.b):
+   record=active(self.s,p)[1]['history'][-1]
+   self.assertEqual(record['basis'],'observed_committed_current_state')
+   self.assertEqual(record['attribution'],'no_personal_action_credit')
+  self.f.base.state(self.b,*self.s.wilds_map,72,69)
+  self.assertEqual(len(active(self.s,self.b)[1]['history']),1)
+ def test_irreversible_or_different_state_uses_explicit_record_not_fake_observation(self):
+  self.start();self.f.perform(self.b);command(self.s,self.a,['expedition-follow'])
+  self.f.perform(self.b)
+  self.b['state'][2]=60;command(self.s,self.b,['expedition-follow'])
+  self.f.base.state(self.b,*self.s.wilds_map,72,69)
+  self.assertEqual(active(self.s,self.b)[1]['history'],[])
+  self.b['state'][2]=60
+  command(self.s,self.b,['expedition-continue','on'])
+  record=active(self.s,self.b)[1]['history'][-1]
+  self.assertEqual(record['basis'],'voluntary_recorded_outcome_continuation')
+  self.assertEqual(record['presence'],'not_asserted');self.assertFalse(record['current_state_observed'])
+  self.assertEqual(active(self.s,self.b)[1]['choices'],['follow'])
+  self.assertEqual(self.s.module_state['world_object_network_state']['mechanism']['phase'],'off')
+ def test_no_record_no_progress_optout_and_restart(self):
+  self.start(False);command(self.s,self.a,['expedition-follow'])
+  self.assertEqual(active(self.s,self.a)[1]['history'],[])
+  with self.assertRaises(GuildError):command(self.s,self.a,['expedition-continue','off'])
+  command(self.s,self.a,['expedition-stop']);self.f.perform(self.b)
+  self.f.base.state(self.a,*self.s.wilds_map,72,69)
+  self.assertEqual(active(self.s,self.a)[1]['history'],[])
+  copy=sqlite3.connect(':memory:');self.s.db.backup(copy);old=self.s.db;self.s.db=copy
+  try:
+   command(self.s,self.a,['expedition-follow'])
+   self.assertEqual(active(self.s,self.a)[1]['choices'],['follow'])
+   self.assertEqual(len(active(self.s,self.a)[1]['history']),1)
+  finally:self.s.db=old;copy.close()
+ def test_continuation_rejects_missing_receipt_and_wrong_definition(self):
+  self.start(False)
+  with self.assertRaises(GuildError):command(self.s,self.a,['expedition-continue','on'])
+  self.f.perform(self.b)
+  self.s.module_state['world_object_networks']['mechanism']['program']['initial']='on'
+  with self.assertRaises(GuildError):command(self.s,self.a,['expedition-continue','on'])
+  self.assertEqual(active(self.s,self.a)[1]['history'],[])

@@ -30,6 +30,8 @@ def rows(server,conn):
     else:
         key,data=current;d=document(server,key)
         out.append((d['title']+' - '+data['status'],None))
+        if data.get('expedition_follow'):
+            out.append(('Stop automatic nearby field observations for this run.',['expedition-stop']))
         if data['status'] in ('lobby','waiting','deploying'):
             pass
         elif data['status']=='choice':

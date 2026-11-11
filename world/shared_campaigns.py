@@ -151,7 +151,7 @@ def rows(server, conn, current):
     key = current[1]['shared']; group = load(server, key)
     out = [('Shared run '+key+' - '+group['status'], None),
            ('Joining shares battle reports, visit check-ins and mechanism witnesses with this party only.', None),
-           ('Independent tasks in split stages; ordinary stages are repeated by everyone. No verified wins or rewards.', None)]
+           ('Field stages accept own observations or explicit recorded-route agreement. No verified wins or rewards.', None)]
     from .parallel_campaigns import rows as deployment_rows
     out.extend(deployment_rows(server,conn,current,group))
     from .campaign_cast import rows as cast_rows
