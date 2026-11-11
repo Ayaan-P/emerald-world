@@ -45,3 +45,18 @@ class UI(unittest.TestCase):
   self.p['state'][4]=1
   self.s.module_state['world_object_previews']={'fixture':{'turn':'bad\ntext'}}
   self.assertEqual(handle(self.s,self.c,b'FM GET 1 52'),'FM FAIL 1\n')
+ def test_object_first_lookup_is_public_requirements_not_party_or_activation(self):
+  before=list(self.s.objects)
+  reply=handle(self.s,self.c,b'FM LOOK 71').split()
+  self.assertEqual(reply[:3],['FM','LOOKED','71']);self.assertEqual(bytes.fromhex(reply[3]).decode(),'First face.')
+  mask=bytes.fromhex(reply[4]);self.assertEqual(len(mask),128);self.assertTrue(mask[52//8] & (1<<(52%8)))
+  self.assertFalse(mask[55//8] & (1<<(55%8)))
+  self.assertIsNone(self.s.deployment);self.assertEqual(self.s.objects,before)
+  self.assertNotIn('object_moves',self.p);self.assertNotIn('field_move_ui',self.c)
+  self.assertEqual(handle(self.s,self.c,b'FM USE 71 abcdef123456 turn'),'FM FAIL 71\n')
+  self.p['state'][4]=2
+  self.assertEqual(handle(self.s,self.c,b'FM LOOK 72'),'FM FAIL 72\n')
+ def test_object_lookup_empty_and_stale_selection(self):
+  self.s.module_state['world_object_player_choices']['fixture']=[]
+  reply=handle(self.s,self.c,b'FM LOOK 73').split();self.assertEqual(bytes.fromhex(reply[4]),bytes(128))
+  self.assertEqual(handle(self.s,self.c,b'FM GET 74 52'),'FM FAIL 74\n')

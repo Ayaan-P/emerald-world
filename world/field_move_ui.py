@@ -25,6 +25,19 @@ def handle(server,conn,raw):
         if f[1]=='PGET' and len(f)==4 and f[3].isdigit() and 0<int(f[3])<=65535:
             from .encounter_profiles import offer
             return offer(server,conn,seq,int(f[3]))
+        if f[1]=='LOOK' and len(f)==3:
+            # Public object requirements only; never request or upload a party roster.
+            from . import actor_objects,object_choices
+            from .overworld_moves import requirements
+            obj=object_choices.facing(server,conn);current=actor_objects.offers(server,obj)
+            allowed=server.module_state.get('world_object_player_choices',{}).get(obj['id'],[])
+            moves={m for action,values in requirements(server,obj).items()
+                   if action in allowed and action in current.get('actions',{}) for m in values}
+            if any(not 0<m<1024 for m in moves):raise ValueError()
+            mask=bytearray(128)
+            for move in moves:mask[move//8]|=1<<(move%8)
+            channel.pop('field_move_ui',None);conn.pop('object_moves',None)
+            return f"FM LOOKED {seq} {obj['text'].encode('ascii').hex()} {mask.hex()}\n"
         if f[1]=='GET' and len(f)==4 and f[3].isdigit() and 0<int(f[3])<=65535:
             if getattr(server,'object_use_pending',None):raise ValueError()
             command(server,conn,['moves']);offer=conn['object_moves'];move=int(f[3])
