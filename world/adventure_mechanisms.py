@@ -55,8 +55,6 @@ def bind_campaign(server,campaign,programs):
             goal=node[field]
             if type(goal) is not dict or goal.get('network') not in owned or 'definition' in goal:raise ValueError('Reference a newly created mechanism without an invented digest')
             goal['definition']=fingerprint(server,owned[goal['network']])
-    used={n[k]['network'] for n in campaign['nodes'].values() for k in ('mechanism','expedition') if k in n}
-    if used!=set(owned):raise ValueError('Every created mechanism needs a campaign objective')
     return campaign
 
 
