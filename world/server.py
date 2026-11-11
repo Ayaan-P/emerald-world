@@ -1023,7 +1023,10 @@ class WorldServer:
                     result = self.core_story.handle(conn, fields[:5] if nonce else fields)
                     if nonce:
                         prefix='CORE REPLY '+nonce+' '+fields[1]+' '+fields[2]+' '+fields[3]+' '
-                        if fields[2]=='TUTOR':
+                        if fields[2]=='STUDY':
+                            from .birch_field_studies import wire
+                            reply=wire(result)
+                        elif fields[2]=='TUTOR':
                             reply=str(result['tutor_move'])+' '+result['tutor_token']
                         elif fields[2] in ('BMODE','CMODE'):
                             reply=result['battle_mode']
@@ -1031,7 +1034,7 @@ class WorldServer:
                             reply=self.memory.world_id+' '+result['caller']+' '+result['token']+' '+(native_text(result['text']).encode('ascii').hex() if result['text'] else '-')
                         elif fields[2]=='CAMP':
                             reply=' '.join([result['world'],str(result['page']),str(result['total']),result['token'],result['text'].encode().hex(),result['label'].encode().hex()])
-                        elif fields[2] in ('DIALOG','PROJECT'):
+                        elif fields[2] in ('DIALOG','PROJECT','RACE'):
                             reply=' '.join([result['world_id'],str(result['version']),result['session'],str(result['role']),str(len(result['options'])),native_text(result['question']).encode('ascii').hex()]+[value for option in result['options'] for value in (native_text(option['label']).encode('ascii').hex(),str(option['advice']))])
                         elif fields[2] in ('OFFER','CAST','CALL'):
                             reply=result['world_id']+' '+result['digest']+' '+native_text(result['briefing'] if fields[2]=='CALL' else result['briefing']+' '+result['objective']).encode('ascii').hex()
@@ -1416,6 +1419,31 @@ class WorldServer:
         if raw.startswith(b'C '):
             from .contest_results import handle as contest_result_handle
             self._queue(conn, contest_result_handle(self,conn,raw))
+            return
+        if raw.startswith(b'WM '):
+            from .map_opportunities import wire as map_offers_wire
+            self._queue(conn,map_offers_wire(self,conn,raw))
+            return
+        if raw.startswith(b'MK '):
+            from .hoenn_markets import wire as market_wire
+            self._queue(conn,market_wire(self,conn,raw))
+            return
+        if raw.startswith(b'CN '):
+            from .shared_contests import handle as contest_handle
+            for trainer, line in contest_handle(self,conn,raw):
+                if line.startswith('L ') and not self.link_protocol.delivery_current(trainer,line):
+                    continue
+                channel=self.link_channels.get(trainer)
+                if channel is not None and not channel.get('closing') and self.peers.get(trainer) is channel.get('presence'):
+                    self._queue(channel,line)
+            return
+        if raw.startswith(b'ST '):
+            from .shared_strength import handle as strength_handle
+            for trainer, line in strength_handle(self,conn,raw):
+                channel=self.link_channels.get(trainer)
+                if (channel is not None and not channel.get('closing')
+                        and self.peers.get(trainer) is channel.get('presence')):
+                    self._queue(channel,line)
             return
         if raw.startswith(b'CT '):
             from .shared_cut import handle as cut_handle

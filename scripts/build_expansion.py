@@ -66,6 +66,15 @@ def main():
     parser.add_argument('--experimental-party-practice', action='store_true', help='enable local native egg-move practice; requires --development')
     parser.add_argument('--experimental-maze-courses', action='store_true', help='enable experimental generated Trainer Hill mazes; requires --development')
     parser.add_argument('--experimental-pyramid-courses', action='store_true', help='enable experimental authored Pyramid courses; requires --development')
+    parser.add_argument('--experimental-match-call-events', action='store_true', help='Temporary world rematches in original Match Call, linked QA pending')
+    parser.add_argument('--experimental-birch-studies', action='store_true', help='optional retained private field studies and local native tutoring; requires --development')
+    parser.add_argument('--experimental-wally-invitation', action='store_true', help='enable optional native Wally invitation; requires --development')
+    parser.add_argument('--experimental-map-offers', action='store_true', help='Read actual public settings on original Hoenn map, linked QA pending')
+    parser.add_argument('--experimental-rydel-routes', action='store_true', help='Optional Rydel route board, linked QA pending')
+    parser.add_argument('--experimental-birch-research', action='store_true', help='Living Birch after original lab Pokedex service (linked QA pending)')
+    parser.add_argument('--experimental-hoenn-markets', action='store_true', help='Optional visiting stock at original Hoenn marts (rendered QA pending)')
+    parser.add_argument('--experimental-shared-contest', action='store_true', help='Stock two-human Emerald contest (linked QA pending)')
+    parser.add_argument('--experimental-shared-strength', action='store_true', help='Experimental Fiery Path boulder sharing (linked QA pending)')
     parser.add_argument('--experimental-coop-turn-plan', action='store_true',
                         help='default-off bilateral turn review; matching peers and --development; linked QA pending')
     parser.add_argument('--experimental-coop-hold-back', action='store_true',
@@ -132,6 +141,26 @@ def main():
         parser.error('--experimental-maze-courses requires --development; native layout/save QA pending')
     if args.experimental_pyramid_courses and not args.development:
         parser.error('--experimental-pyramid-courses requires --development; linked suspend/save QA pending')
+    if args.experimental_birch_studies and not args.development:
+        parser.error('--experimental-birch-studies requires --development')
+    if args.experimental_wally_invitation and not args.development:
+        parser.error('--experimental-wally-invitation requires --development')
+    if args.jobs < 1:
+        parser.error('--jobs must be positive')
+    if args.experimental_match_call_events and not args.development:
+        parser.error('--experimental-match-call-events requires --development')
+    if args.experimental_map_offers and not args.development:
+        parser.error('--experimental-map-offers requires --development')
+    if args.experimental_rydel_routes and not args.development:
+        parser.error('--experimental-rydel-routes requires --development')
+    if args.experimental_birch_research and not args.development:
+        parser.error('--experimental-birch-research requires --development')
+    if args.experimental_hoenn_markets and not args.development:
+        parser.error('--experimental-hoenn-markets requires --development')
+    if args.experimental_shared_contest and not args.development:
+        parser.error('--experimental-shared-contest requires --development')
+    if args.experimental_shared_strength and not args.development:
+        parser.error('--experimental-shared-strength requires --development')
     if args.experimental_coop_turn_plan and not args.development:
         parser.error('--experimental-coop-turn-plan requires --development')
     if args.experimental_coop_hold_back and not args.development:
@@ -263,6 +292,15 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
     map_version = 'combined' if kanto_content else 'emerald'
     command += ['--', 'make', '-f', str(ROOT / 'engines/expansion.mk'), f'-j{args.jobs}',
                 f'EW_RUSTURF_RECOVERY={int(args.experimental_rusturf_recovery)}',
+                f'EW_BIRCH_RESEARCH={int(args.experimental_birch_research or args.experimental_birch_studies)}',
+                f'EW_RYDEL_ROUTES={int(args.experimental_rydel_routes)}',
+                f'EW_MAP_OFFERS={int(args.experimental_map_offers)}',
+                f'EW_WALLY_INVITATION={int(args.experimental_wally_invitation)}',
+                f'EW_BIRCH_STUDIES={int(args.experimental_birch_studies)}',
+                f'EW_MATCH_CALL_EVENTS={int(args.experimental_match_call_events)}',
+                f'EW_HOENN_MARKETS={int(args.experimental_hoenn_markets)}',
+                f'EW_SHARED_CONTEST={int(args.experimental_shared_contest)}',
+                f'EW_SHARED_STRENGTH={int(args.experimental_shared_strength)}',
                 f'EW_COOP_TURN_PLAN={int(args.experimental_coop_turn_plan)}',
                 f'EW_COOP_HOLD_BACK={int(args.experimental_coop_hold_back)}',
                 f'EW_DUAL_TRAINERS={int(args.experimental_dual_trainers)}',

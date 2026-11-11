@@ -7,8 +7,9 @@ class Transport(unittest.TestCase):
   tag=types.SimpleNamespace(id=3,active=True,participants=('a','b'))
   p=types.SimpleNamespace(_tags={3:tag},_tag_actor={'a':3,'b':3})
   presence={'a':(24,14,9,15,0,0,1),'b':(24,14,11,16,0,0,1)}
-  s=types.SimpleNamespace(link_protocol=p,_link_presence=lambda:presence)
-  def h(w,line):return handle(s,{'id':w},line.encode())
+  channels={w:{'id':w} for w in ('a','b','x')}
+  s=types.SimpleNamespace(link_protocol=p,link_channels=channels,_link_presence=lambda:presence)
+  def h(w,line):return handle(s,channels[w],line.encode())
   self.assertEqual(h('a','ST JOIN 3 1 '+encode(INITIAL)),[])
   self.assertEqual(len(h('b','ST JOIN 3 2 '+encode(INITIAL))),2)
   self.assertEqual(h('x','ST PROPOSE 3 1 0 2 10 15 11 15'),[])

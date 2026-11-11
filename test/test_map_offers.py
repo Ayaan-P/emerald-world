@@ -12,7 +12,7 @@ def function(source,name):
 class Offers(unittest.TestCase):
  def setUp(self):
   db=sqlite3.connect(':memory:');db.executescript('CREATE TABLE shared_outbreaks(map TEXT,species TEXT,level INTEGER,chance INTEGER,expires REAL);CREATE TABLE shared_fishing(map TEXT,population TEXT,expires REAL);CREATE TABLE hoenn_market_shelves(site TEXT,items TEXT,expires REAL);')
-  self.s=types.SimpleNamespace(db=db);self.c=dict(id='private',presence=dict(state=[0,17,1,1,0,0,0],state_time=time.monotonic(),outbreak_capable=True,fishing_capable=True))
+  self.s=types.SimpleNamespace(db=db,combined_regions=False);self.c=dict(id='private',presence=dict(state=[0,17,1,1,0,0,0],state_time=time.monotonic(),outbreak_capable=True,fishing_capable=True))
   db.execute('INSERT INTO shared_outbreaks VALUES(?,?,?,?,?)',('Route102','RALTS',5,10,time.time()+60));db.execute('INSERT INTO hoenn_market_shelves VALUES(?,?,?)',('MauvilleCity_Mart','[28]',time.time()+60));db.commit()
  def page(self,key='Route102',page=1,features=7):
   wire=offers.wire(self.s,self.c,f'WM GET {key} {page} 1 {features}'.encode());f=wire.split();return f,bytes.fromhex(f[-1]).decode().split('|') if f[1]=='PAGE' else []

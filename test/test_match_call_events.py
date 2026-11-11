@@ -14,7 +14,7 @@ class Events(unittest.TestCase):
  def setUp(self):
   db=sqlite3.connect(':memory:');db.execute('CREATE TABLE events(seq INTEGER PRIMARY KEY,data TEXT)')
   def append(kind,row):return db.execute('INSERT INTO events(data) VALUES(?)',(json.dumps(dict(row,event=kind)),)).lastrowid
-  self.s=types.SimpleNamespace(db=db,memory=types.SimpleNamespace(append=append),revision=0)
+  self.s=types.SimpleNamespace(db=db,memory=types.SimpleNamespace(append=append),revision=0,combined_regions=False)
   self.c=dict(id='a',presence=dict(state=[0,17,1,1,0,0,1],state_time=time.monotonic()))
  def test_real_config_snapshot_ownership_expiry_restart(self):
   with self.s.db:

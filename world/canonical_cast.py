@@ -10,7 +10,8 @@ import re
 import time
 
 KEY='canonical_cast'
-BINDINGS={'canon_rydel':dict(name='Rydel',map='MauvilleCity_BikeShop',
+BINDINGS={'canon_birch':dict(name='Professor Birch',map='LittlerootTown_ProfessorBirchsLab',hook='ProfBirch_EventScript_WorldResearch',offset=2,wire='birch',effect='supplemental_research_after_original_pokedex_rating_or_decline'),
+    'canon_rydel':dict(name='Rydel',map='MauvilleCity_BikeShop',
     hook='MauvilleCity_BikeShop_EventScript_Rydel',offset=2,
     wire='rydel',effect='supplemental_dialogue_before_original_bike_service'),
     'canon_wally':dict(name='Wally',map='VerdanturfTown_WandasHouse',hook='VerdanturfTown_WandasHouse_EventScript_Wally',offset=2,wire='wally',effect='supplemental_dialogue_before_original_speech'),
@@ -234,7 +235,11 @@ def response(server, conn, run, key):
     if identity is None:raise ValueError('unknown canonical actor')
     server.core_story._place(conn,map_name)
     row=records(server.module_state).get(identity)
-    if row is None:raise ValueError('no authored canonical response')
+    if row is None:
+        from .birch_field_studies import fallback
+        saved=fallback(server,conn,run,key)
+        if saved:return saved
+        raise ValueError('no authored canonical response')
     from .canonical_activity_projects import visible
     row=visible(server,identity,row)
     if key=='steven_gc':
@@ -273,10 +278,11 @@ def response(server, conn, run, key):
 
 
 def contract():
+    from .birch_field_studies import catalog as study_catalog
     from .canonical_seeds import profile
-    return dict(response='canonical_actions/tests',identity_profiles={k:profile(k) for k in BINDINGS},bindings=BINDINGS,location_aliases=LOCATION_ALIASES,
+    return dict(response='canonical_actions/tests',field_study_species=study_catalog(),identity_profiles={k:profile(k) for k in BINDINGS},bindings=BINDINGS,location_aliases=LOCATION_ALIASES,
                 action_fields=['id','expected_version','changes'],
-                tutor=dict(fields=['move (reviewed tutor move ID)','appearances (explicit bound conversation keys)'],effect='Optional free local native tutor after original conversation; preview and confirm then choose eligible Pokemon and replacement',limits='Frozen admitted attempt, no teaching proof or public party data. Original tutor flags unchanged. No automatic reward, save or service at other appearances.'),
+                tutor=dict(fields=['move (reviewed tutor move ID)','appearances (explicit bound conversation keys)','research (optional Birch-only {species:1..3 reviewed field_study_species names,days:1..7}; retained private invitation, existing local caught knowledge counts, repeatable native tutor until expiry; no completion/catch claim)'],effect='Optional free local native tutor after original conversation; preview and confirm then choose eligible Pokemon and replacement',limits='Frozen admitted attempt, no teaching proof or public party data. Original tutor flags unchanged. No automatic reward, save or service at other appearances.'),
                 first_meeting=dict(actor='canon_steven',field='first_meeting',limit=200,location='GraniteCave_StevensRoom',effect='Optional line after original letter, TM attempt and contact registration; before original farewell. Same actor, no preset arc.',limits='Absent text falls through to stock scene. No late-game offers, private reflections, reward claims or party inspection. Encounter memory remains separately opt-in.'),
                 experiences=dict(fields=['id','events (one or two exact public source sequence IDs)','interpretation (literal max 240)'],effect='retained actor memories and directional relationship evidence are fetched automatically during real author turns, even after leaving recent history',limits='new or revised memories cite current eligible evidence; no private trainer records, invented events, automatic affinity or fixed growth arc'),
                 investigation=dict(fields='id,title,roles[2..4],ending,stages[title,stations[at,clue],answer,result]',stations=[[0,0,10,10],[0,0,22,12],[0,3,10,40],[0,3,22,40]],limits='Use only reviewed ordinary Hoenn station coordinates in actor interests. Fictional interpretation, not canonical legendary lore or actual discoveries. Private completion may unlock only a player-facing scene in your initiative using mystery=investigation.id; actor scenes cannot inspect it. No rewards or main-story changes.',feedback='Only the subsequent explicit shared project choice emits anonymous canonical_shared_project_decided evidence. No private solver, clue or completion history reaches authors.'),
@@ -402,6 +408,10 @@ def guild_command(server, conn, args):
 
 
 def reaction_activity(event, identity, row):
+    from .rydel_routes import relevant as route_relevant
+    if route_relevant(event,identity):return True
+    from .shared_research import relevant as research_relevant
+    if research_relevant(event,identity):return True
     from .canonical_investigations import relevant as investigation_choice
     if investigation_choice(event,identity):return True
     from .actor_stories import relevant as story_relevant
@@ -507,6 +517,10 @@ def received_letter(event, identity):
 
 
 def decision_evidence(event, identity, row):
+    from .rydel_routes import relevant as route_relevant
+    if route_relevant(event,identity):return True
+    from .shared_research import relevant as research_relevant
+    if research_relevant(event,identity):return True
     from .actor_stories import relevant as story_choice
     if story_choice(event,identity):return True
     from .actor_agreements import relevant as agreement_event

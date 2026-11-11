@@ -8,18 +8,22 @@ from .actor_tutors import MOVES
 
 def validate(service, identity):
     if service is None:return
-    if (type(service) is not dict or set(service)!={'move','appearances'}
+    if (type(service) is not dict or set(service)-{'research'}!={'move','appearances'}
             or type(service['move']) is not int or service['move'] not in MOVES
             or type(service['appearances']) is not list or not service['appearances']
             or any(type(k) is not str for k in service['appearances'])
             or len(service['appearances'])>2 or len(set(service['appearances']))!=len(service['appearances'])):
         raise ValueError('Tutor requires a reviewed move and explicit conversation appearances')
+    if 'research' in service:
+        from .birch_field_studies import validate as validate_research
+        validate_research(service['research'],identity,service['appearances'])
     from .canonical_cast import location
     if any(type(key) is not str or location(key)[0]!=identity for key in service['appearances']):
         raise ValueError('Tutor appearance must belong to this original character')
 
 def hint(row,key):
     service=row.get('tutor')
+    if (service or {}).get('research'):return 'L field study. Existing caught knowledge counts.'
     return 'Optional tutor: /history tutor '+key if service and key in service['appearances'] else ''
 
 def handle(server,conn,run,key,guard):
@@ -27,6 +31,7 @@ def handle(server,conn,run,key,guard):
     identity,map_name=location(key)
     row=records(server.module_state).get(identity)
     service=(row or {}).get('tutor')
+    if (service or {}).get('research'):raise ValueError('Use the native field study menu; local Pokedex checks required')
     reached=conn.get('canonical_location') or {}
     if (not service or key not in service['appearances'] or conn.get('core_active_run')!=run
             or reached.get('actor')!=identity or reached.get('map')!=map_name or reached.get('run')!=run

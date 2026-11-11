@@ -11,7 +11,7 @@ class Memory:
 class Research(unittest.TestCase):
  def setUp(self):
   db=sqlite3.connect(':memory:');self.s=types.SimpleNamespace(db=db,memory=Memory(db),revision=0,link_protocol=types.SimpleNamespace(busy=lambda who:False))
-  self.c=dict(id='private-name',presence=dict(state=[1,4,5,5,0,0,1],state_time=time.monotonic()))
+  self.c=dict(id='private-name',presence=dict(campaign_run='a'*32,state=[1,4,5,5,0,0,1],state_time=time.monotonic()))
  def test_publication_then_actual_world_opportunity(self):
   self.assertEqual(research.handle(self.s,self.c,b'D REPORT 1 3'),'D ACK 1\n')
   event=self.s.memory.events()[-1]

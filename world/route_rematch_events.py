@@ -18,9 +18,17 @@ def configure(server,actor,row,args):
  return dict(outcome='rematch_event_opened' if args['minutes'] else 'rematch_event_closed',route=args['route'],expires=expires,revision=seq)
 def wire(server,conn,raw):
  setup(server.db)
- if raw!=b'J GET 1':return 'J NONE\n'
+ if raw not in (b'J GET 1',b'J GET 2'):return 'J NONE\n'
  peer=conn.get('presence',{});state=peer.get('state')
  if not state or time.monotonic()-peer.get('state_time',0)>5:return 'J NONE\n'
+ if raw==b'J GET 2':
+  by_name={row['name']:pair for pair,row in catalog_maps().items()}
+  now=time.time();entries=[]
+  for name,expires in server.db.execute('SELECT route,expires FROM route_rematch_events WHERE expires>? ORDER BY route',(now,)):
+   pair=by_name.get(name);seconds=min(30,int(expires-now))
+   if name not in ROUTES or not pair or seconds<=0:continue
+   entries.append('%02x%02x%02x'%(*pair,seconds))
+  return 'J LIST '+''.join(entries)+'\n' if entries else 'J NONE\n'
  name=catalog_maps().get(tuple(state[:2]),{}).get('name')
  row=server.db.execute('SELECT expires FROM route_rematch_events WHERE route=?',(name,)).fetchone()
  seconds=min(30,int(row[0]-time.time())) if row else 0
