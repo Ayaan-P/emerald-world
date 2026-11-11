@@ -12,7 +12,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '21739ac081d5ed3b0ffc250c4d898feaf52f9938'
+PIN = '33cc6d6092c31df23cd62f223601548941c9ed96'
 UPSTREAM_PIN = '79dd436920845ebc145577649de624f65298c209'
 
 
@@ -51,6 +51,8 @@ def main():
                         help='existing extracted libc/GCC multilib root for mandatory ABI probes')
     parser.add_argument('--development', action='store_true',
                         help='build explicit local candidate integration changes on top of the verified engine pin')
+    parser.add_argument('--experimental-dual-trainers', action='store_true',
+                        help='Enable experimental two-opponent route co-op; matching peers and linked QA required')
     parser.add_argument('--experimental-coop-discovery', action='store_true',
                         help='Enable personal co-op opponent discovery after local presentation; linked QA pending')
     parser.add_argument('--experimental-coop-retreat', action='store_true',
@@ -82,6 +84,8 @@ def main():
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error('--jobs must be positive')
+    if args.experimental_dual_trainers and not args.development:
+        parser.error('--experimental-dual-trainers requires --development and matching native peers; linked QA pending')
     if args.experimental_coop_discovery and not args.development:
         parser.error('--experimental-coop-discovery requires --development; linked QA pending')
     if args.experimental_coop_retreat and not args.development:
@@ -207,6 +211,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
     map_version = 'combined' if kanto_content else 'emerald'
     command += ['--', 'make', '-f', str(ROOT / 'engines/expansion.mk'), f'-j{args.jobs}',
                 f'EW_RUSTURF_RECOVERY={int(args.experimental_rusturf_recovery)}',
+                f'EW_DUAL_TRAINERS={int(args.experimental_dual_trainers)}',
                 f'EW_COOP_DISCOVERY={int(args.experimental_coop_discovery)}',
                 f'EW_COOP_RETREAT={int(args.experimental_coop_retreat)}',
                 f'EW_SHARED_CUT={int(args.experimental_shared_cut)}',
