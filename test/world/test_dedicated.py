@@ -1,6 +1,7 @@
 """Focused production-component checks; no emulator or SDK required."""
 import socket
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -72,9 +73,10 @@ class DedicatedTests(unittest.TestCase):
         server = WorldServer(Path(directory)/'socket', Path(directory)/'state')
         self.addCleanup(server.close)
         viewer = dict(id='Viewer', state=[0, 1, 10, 10, 1, 7, 1], social=True)
+        now = time.monotonic()
         for i in range(20):
-            server.peers[f'P{i:02}'] = dict(state=[0, 1, 10+i, 10, 1, 7, 1], field=True)
-        server.peers['Elsewhere'] = dict(state=[0, 2, 10, 10, 1, 7, 1], field=True)
+            server.peers[f'P{i:02}'] = dict(state=[0, 1, 10+i, 10, 1, 7, 1], field=True, state_time=now)
+        server.peers['Elsewhere'] = dict(state=[0, 2, 10, 10, 1, 7, 1], field=True, state_time=now)
         server.peers['Absent'] = dict(state=[0, 0, 0, 0, 1, 7, 0], field=False)
         lines = server._snapshot(viewer).splitlines()
         names = [line.split()[1] for line in lines if line.startswith('PEER ')]
