@@ -41,6 +41,7 @@ class ContentWorkshop:
         self.draft: dict[str, Any] | None = None
 
     def _read(self, server, world) -> dict[str, Any]:
+        from .adventure_workshop import catalog as adventure_catalog
         cave = server.shared_cave
         if server._closed or not server.archive_generated_areas or not server.persist_generated_cave:
             raise SessionError('Open a durable local world before authoring content.')
@@ -54,7 +55,8 @@ class ContentWorkshop:
                     rows=[row.decode('ascii') for row in cave._rows] if cave else [],
                     outcomes=outcomes, residents=sorted(server.module_state.get('world_characters', {})),
                     players=sum(not peer.get('closing') for peer in server.peers.values()),
-                    activities=server.activities.catalog(),
+                    activities=server.activities.catalog(),adventure_inputs=adventure_catalog(server),
+                    adventures=[dict(id=k,title=json.loads(raw)['title']) for k,raw in server.db.execute('SELECT id,document FROM battle_campaigns ORDER BY id LIMIT 32')],
                     relay_courses=[dict(id=key,title=json.loads(raw)['title'],runners=len(json.loads(raw)['legs']))
                                    for key,raw in server.db.execute('SELECT id,document FROM relay_courses ORDER BY id LIMIT 8')])
 
@@ -83,6 +85,13 @@ class ContentWorkshop:
                         raise ValueError('content plan exceeds 16384 bytes')
                     plan = deepcopy(payload['plan']); kind = payload['kind']; label = payload['label']
                     request: dict[str, Any]
+                    if kind == 'adventure':
+                        from .adventure_workshop import inspect
+                        report=inspect(server,plan);token=secrets.token_hex(24)
+                        self.draft=dict(token=token,server=server,guard=self._guard(current),
+                            request=dict(command='install_adventure',plan=plan),report=report,expires=time.monotonic()+900)
+                        return dict(current,token=token,kind=kind,mode='install',plan=plan,report=report,
+                            proposed_rows=current['rows'],validation='Review every real destination and route. This installs an optional adventure only. It does not create or reset its world objects, enrol players, run an agent, or change saves.')
                     if kind == 'field_story':
                         from .field_story_bundle import curated, inspect
                         if plan != {}:raise ValueError('The curated field story uses its reviewed built-in plan.')
@@ -155,6 +164,10 @@ class ContentWorkshop:
                 # automatically replayed, even if the HTTP response is lost.
                 self.draft = None
                 request = draft['request']
+                if request['command'] == 'install_adventure':
+                    from .adventure_workshop import install
+                    installed=install(server,request['plan'],draft['report'])
+                    return dict(self._read(server,payload['world']),saved=True,adventure=installed)
                 if request['command'] == 'publish_field_story':
                     from .field_story_bundle import install
                     installed=install(server,request['bundle'])

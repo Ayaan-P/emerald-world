@@ -15,7 +15,7 @@ def install(db):
     shared_install(db)
 
 
-def publish(server, actor, row, args):
+def inspect_document(server, args):
     from .characters import records
     if set(args)!={'campaign'} or type(args['campaign']) is not str or len(args['campaign'])>6000:raise ValueError('Supply campaign JSON')
     d=json.loads(args['campaign']);cast=records(server.module_state)
@@ -58,10 +58,15 @@ def publish(server, actor, row, args):
     visit(d['entry'])
     if seen!=set(nodes):raise ValueError('All nodes must be reachable')
     encoded=json.dumps(d,sort_keys=True,separators=(',',':'))
+    return d,encoded
+
+
+def publish(server, actor, row, args):
+    d,encoded=inspect_document(server,args)
     old=server.db.execute('SELECT actor,document FROM battle_campaigns WHERE id=?',(d['id'],)).fetchone()
     if old and tuple(old)!=(actor,encoded):raise ValueError('Published campaign identities are immutable')
     server.db.execute('INSERT OR IGNORE INTO battle_campaigns VALUES(?,?,?)',(d['id'],actor,encoded))
-    return dict(outcome='battle_campaign_published',campaign=d['id'],nodes=len(nodes),basis='Optional native battles and voluntary presence check-ins; private save-scoped progress, no rewards or verified travel claims')
+    return dict(outcome='battle_campaign_published',campaign=d['id'],nodes=len(d['nodes']),basis='Optional native battles and voluntary presence check-ins; private save-scoped progress, no rewards or verified travel claims')
 
 
 def routes(node,outcome='win'):
