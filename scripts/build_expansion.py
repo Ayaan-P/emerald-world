@@ -114,7 +114,10 @@ def main():
                         help='enable Kanto in development (requires --regional-state; already enabled for release)')
     parser.add_argument('--jobs', type=int, default=4)
     parser.add_argument("--experimental-field-support", action="store_true", help="private companion Heal Pulse on original Hoenn routes; requires --development")
+    parser.add_argument("--experimental-route-trainers",action="store_true",help="voluntary authored Hoenn trainer sight behavior; development only")
     args = parser.parse_args()
+    if args.experimental_route_trainers and not args.development:
+        parser.error("--experimental-route-trainers requires --development")
     if any((args.experimental_floorplans, args.experimental_native_trades, args.experimental_nature_challenges,
             args.experimental_regional_starters, args.experimental_kanto_rematches, args.experimental_route5_custody,
             args.experimental_regional_completion, args.experimental_regional_badges,
@@ -318,6 +321,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'EW_MATCH_CALL_EVENTS={int(args.experimental_match_call_events)}',
                 f'EW_APPRENTICE_WALKING={int(args.experimental_apprentice_walking)}',
                 f'EW_APPRENTICE_OUTINGS={int(args.experimental_apprentice_outings)}',
+                f'EW_ROUTE_TRAINERS={int(args.experimental_route_trainers)}',
                 f'EW_HOENN_MARKETS={int(args.experimental_hoenn_markets)}',
                 f'EW_SHARED_CONTEST={int(args.experimental_shared_contest)}',
                 f'EW_SHARED_STRENGTH={int(args.experimental_shared_strength)}',
