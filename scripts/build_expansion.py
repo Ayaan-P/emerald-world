@@ -68,6 +68,7 @@ def main():
     parser.add_argument('--experimental-pyramid-courses', action='store_true', help='enable experimental authored Pyramid courses; requires --development')
     parser.add_argument('--experimental-match-call-events', action='store_true', help='Temporary world rematches in original Match Call, linked QA pending')
     parser.add_argument('--experimental-field-concealment', action='store_true', help='private learned-move route concealment; requires --development')
+    parser.add_argument('--experimental-persistent-cut', action='store_true', help='completed Cut changes archived shared outdoor grass; requires --development')
     parser.add_argument('--experimental-rematch-strategies', action='store_true', help='optional persistent native Hoenn rematch tactics; requires --development')
     parser.add_argument('--experimental-birch-studies', action='store_true', help='optional retained private field studies and local native tutoring; requires --development')
     parser.add_argument('--experimental-wally-invitation', action='store_true', help='enable optional native Wally invitation; requires --development')
@@ -153,6 +154,8 @@ def main():
         parser.error('--experimental-field-concealment requires --development')
     if args.experimental_field_support and not args.development:
         parser.error("--experimental-field-support requires --development")
+    if args.experimental_persistent_cut and not args.development:
+        parser.error('--experimental-persistent-cut requires --development')
     if args.experimental_rematch_strategies and not args.development:
         parser.error('--experimental-rematch-strategies requires --development')
     if args.experimental_birch_studies and not args.development:
@@ -316,6 +319,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'EW_WALLY_INVITATION={int(args.experimental_wally_invitation)}',
                 f'EW_FIELD_CONCEALMENT={int(args.experimental_field_concealment)}',
                 f'EW_FIELD_SUPPORT={int(args.experimental_field_support)}',
+                f'EW_PERSISTENT_CUT={int(args.experimental_persistent_cut)}',
                 f'EW_REMATCH_STRATEGIES={int(args.experimental_rematch_strategies)}',
                 f'EW_BIRCH_STUDIES={int(args.experimental_birch_studies)}',
                 f'EW_MATCH_CALL_EVENTS={int(args.experimental_match_call_events)}',

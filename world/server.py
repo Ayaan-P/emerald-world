@@ -1414,6 +1414,10 @@ class WorldServer:
                 if support_current(self,recipient):
                     self._queue(recipient,line)
             return
+        if raw.startswith(b'PG '):
+            from .player_cut import wire as player_cut_wire
+            self._queue(conn,player_cut_wire(self,conn,raw))
+            return
         if raw.startswith(b'RS '):
             from .rematch_strategies import wire as strategy_wire
             self._queue(conn,strategy_wire(self,conn,raw))
