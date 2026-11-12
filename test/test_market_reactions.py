@@ -1,5 +1,7 @@
-import ast,json,pathlib,sqlite3,subprocess,sys,tempfile,time,types,unittest
-ROOT=pathlib.Path(__file__).resolve().parents[1];NATIVE=ROOT if (ROOT/'src/shop.c').exists() else ROOT/'engines/expansion-native'
+import ast,json,os,pathlib,sqlite3,subprocess,sys,tempfile,time,types,unittest
+ROOT=pathlib.Path(__file__).resolve().parents[1]
+# The app also contains vanilla shop.c; prefer the actual expansion checkout.
+NATIVE=pathlib.Path(os.environ['EW_NATIVE_SOURCE']).resolve() if 'EW_NATIVE_SOURCE' in os.environ else (ROOT/'engines/expansion-native' if (ROOT/'engines/expansion-native/src/world/world_market.c').exists() else ROOT)
 pkg=types.ModuleType('reaction_fixture');pkg.__path__=[str(ROOT/'world')];sys.modules[pkg.__name__]=pkg
 # Use actual inherited retail item catalog; only reviewed map identity lookup is isolated.
 sys.modules['reaction_fixture.build_catalog']=types.SimpleNamespace(catalog_maps=lambda:{})

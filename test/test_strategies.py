@@ -1,5 +1,7 @@
-import ast,importlib.util,json,pathlib,sqlite3,sys,tempfile,time,types,unittest,subprocess
+import ast,importlib.util,json,os,pathlib,sqlite3,sys,tempfile,time,types,unittest,subprocess
 ROOT=pathlib.Path(__file__).resolve().parents[1]
+# battle_setup.c also exists in the app's vanilla tree.
+NATIVE=pathlib.Path(os.environ['EW_NATIVE_SOURCE']).resolve() if 'EW_NATIVE_SOURCE' in os.environ else (ROOT/'engines/expansion-native' if (ROOT/'engines/expansion-native/src/world/rematch_strategy.inc.c').exists() else ROOT)
 pkg=types.ModuleType('strategyfixture');pkg.__path__=[str(ROOT/'world')];sys.modules[pkg.__name__]=pkg
 catalog=types.ModuleType('strategyfixture.build_catalog');catalog.catalog_maps=lambda:{(0,2):{'name':'Route102'}};sys.modules[catalog.__name__]=catalog
 from strategyfixture import rematch_strategies as m
@@ -49,8 +51,7 @@ class Strategies(unittest.TestCase):
   other.execute('UPDATE rematch_strategies SET body=?',(json.dumps(dict(schema=2,types=['grass'],status_moves=1)),))
   self.assertEqual(m.wire(self.s,self.c,b'RS GET 4 calvin'),'RS NONE 4\n')
  def test_native_actual_include_on_off(self):
-  native=ROOT/'src/world/rematch_strategy.inc.c'
-  if not native.exists():native=ROOT/'engines/expansion-native/src/world/rematch_strategy.inc.c'
+  native=NATIVE/'src/world/rematch_strategy.inc.c'
   with tempfile.TemporaryDirectory() as d:
    d=pathlib.Path(d);(d/'constants').mkdir();(d/'move.h').write_text('');(d/'field_message_box.h').write_text('');(d/'constants/characters.h').write_text('')
    source=(ROOT/'test/native_strategy.c').read_text().replace('../src/world/rematch_strategy.inc.c',str(native))
@@ -70,7 +71,7 @@ class Strategies(unittest.TestCase):
   self.s.peers['private-trainer']={};ns['_link_line'](self.s,self.c,b'RS GET 2 calvin');self.assertEqual(errors,['PRESENCE']);self.assertEqual(len(queued),1)
   self.s.link_channels={};ns['_link_line'](self.s,self.c,b'RS GET 3 calvin');self.assertEqual(len(queued),1)
  def test_source_hooks(self):
-  native=ROOT if (ROOT/'src/battle_setup.c').exists() else ROOT/'engines/expansion-native'
+  native=NATIVE
   b=(native/'src/battle_setup.c').read_text();self.assertIn('Strategy_Finish();',b);self.assertIn('if (!Strategy_Begin())Strategy_Original();',b);self.assertIn('Strategy_Apply();',b)
   self.assertIn('WorldRematchStrategy_Line(n,t)',(native/'src/world/link_transport.c').read_text())
   self.assertIn("self._queue(conn,strategy_wire(self,conn,raw))",(ROOT/'world/server.py').read_text())
