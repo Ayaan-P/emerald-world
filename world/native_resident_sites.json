@@ -1,0 +1,360 @@
+{
+  "engine_commit": "8a1fc99d13528154497b66215d8097f01f4b6cd3",
+  "inputs": {
+    "data/layouts/House2/map.bin": "0e9f079644001531511005e3e4d2431049de8772",
+    "data/layouts/HouseWithBed/map.bin": "b91b7153be1b30c6adb9a10d823198a65166be93",
+    "data/layouts/PacifidlogTown_House1/map.bin": "7865fdc7caadd3dbe98d7a191a3e0be67def9127",
+    "data/layouts/RustboroCity_Flat1_1F/map.bin": "017298e71601d1da3bd0cdc3f45bf57b4d640657",
+    "data/layouts/RustboroCity_Flat2_3F/map.bin": "2112fe7996c14ee9705ac8734c7a11f9ce5a39bf",
+    "data/layouts/RustboroCity_House/map.bin": "5a53bbc77f1565f40b96f344bf52ac8f7060d98d",
+    "data/layouts/layouts.json": "8d5bc96bd4b6e4eeb5341e8f774620709caedee6",
+    "data/maps/OldaleTown_House2/map.json": "9e82e321b169686e4bd42b9b324411167faf111b",
+    "data/maps/OldaleTown_House2/scripts.inc": "49e317bac45a957bf570b70403ec39fe1c0ddaa3",
+    "data/maps/PacifidlogTown_House1/map.json": "845cc2ea5a72a81647ff7a43e5fe4db9367ac042",
+    "data/maps/PacifidlogTown_House1/scripts.inc": "b3a39a59d8257cdfb4fa8fd010ed36eff5caba87",
+    "data/maps/PetalburgCity_House2/map.json": "3bcb8e289494ee784e0fa35b0d4c7ec76e813ead",
+    "data/maps/PetalburgCity_House2/scripts.inc": "1770627ed06b3eb7e002d6ff516a3de7e5c16a01",
+    "data/maps/RustboroCity_Flat1_1F/map.json": "133d01bf78cb1abcdd3acf201a8a984a7297fa33",
+    "data/maps/RustboroCity_Flat1_1F/scripts.inc": "43b09a2dc6ea60ba25034eec2496d92e5278bb8e",
+    "data/maps/RustboroCity_Flat2_3F/map.json": "71cd6afbdf68c4c70457ce32ff43854017e16d41",
+    "data/maps/RustboroCity_Flat2_3F/scripts.inc": "3f644f19c26cf2768e9f7026dc380ca9c074df2a",
+    "data/maps/RustboroCity_House2/map.json": "ab99e32ddeed0a5345140336e3dd5b1f67e2992c",
+    "data/maps/RustboroCity_House2/scripts.inc": "6b517a04a36773f2b1c3d6b2a5d7640b50b6b706",
+    "data/maps/SlateportCity_House/map.json": "edd11987b05fe6a091ec24a4c5a53605b7f6a03c",
+    "data/maps/SlateportCity_House/scripts.inc": "d903ba865c3d148ab68e5355d673c02379732312",
+    "data/maps/map_groups.json": "047396b3b66fecb29df9f92595899ae1ec16acd0",
+    "data/tilesets/primary/building/metatile_attributes.bin": "efc3708aa9a361bbfbaf8673f551625464fc0528",
+    "data/tilesets/secondary/generic_building/metatile_attributes.bin": "9bfcd89f22a642b290ccb6a7c0a2d6ee6dcfa5d1",
+    "include/constants/metatile_behaviors.h": "c0b9a711033d27da81260ede19a06b6fa61c6c68",
+    "include/global.fieldmap.h": "4fe25b2a24d6c35643165720661738bc20d43d16",
+    "src/data/tilesets/headers.h": "3cd942cebf184d2438cebf6e02abdde0ed667f35",
+    "src/data/tilesets/metatiles.h": "6dd0f30988dfd5ac8b8a314e3d2e764e80587ad5"
+  },
+  "maps": {
+    "OldaleTown_House2": {
+      "group": 2,
+      "height": 8,
+      "num": 1,
+      "sites": [
+        [
+          1,
+          2
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          1,
+          4
+        ]
+      ],
+      "width": 11
+    },
+    "PacifidlogTown_House1": {
+      "group": 7,
+      "height": 9,
+      "num": 2,
+      "sites": [
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          2
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          8,
+          7
+        ]
+      ],
+      "width": 10
+    },
+    "PetalburgCity_House2": {
+      "group": 8,
+      "height": 8,
+      "num": 3,
+      "sites": [
+        [
+          6,
+          2
+        ],
+        [
+          7,
+          2
+        ],
+        [
+          8,
+          2
+        ]
+      ],
+      "width": 10
+    },
+    "RustboroCity_Flat1_1F": {
+      "group": 11,
+      "height": 8,
+      "num": 8,
+      "sites": [
+        [
+          2,
+          6
+        ],
+        [
+          3,
+          4
+        ],
+        [
+          3,
+          5
+        ],
+        [
+          3,
+          6
+        ],
+        [
+          4,
+          4
+        ],
+        [
+          5,
+          2
+        ],
+        [
+          5,
+          3
+        ],
+        [
+          5,
+          4
+        ],
+        [
+          6,
+          2
+        ],
+        [
+          6,
+          3
+        ],
+        [
+          6,
+          4
+        ]
+      ],
+      "width": 14
+    },
+    "RustboroCity_Flat2_3F": {
+      "group": 11,
+      "height": 9,
+      "num": 15,
+      "sites": [
+        [
+          1,
+          4
+        ],
+        [
+          1,
+          5
+        ],
+        [
+          1,
+          6
+        ],
+        [
+          1,
+          7
+        ],
+        [
+          2,
+          4
+        ],
+        [
+          2,
+          5
+        ],
+        [
+          2,
+          6
+        ],
+        [
+          2,
+          7
+        ],
+        [
+          3,
+          6
+        ],
+        [
+          3,
+          7
+        ],
+        [
+          5,
+          6
+        ],
+        [
+          5,
+          7
+        ],
+        [
+          6,
+          6
+        ],
+        [
+          6,
+          7
+        ],
+        [
+          7,
+          6
+        ],
+        [
+          7,
+          7
+        ],
+        [
+          12,
+          5
+        ]
+      ],
+      "width": 14
+    },
+    "RustboroCity_House2": {
+      "group": 11,
+      "height": 9,
+      "num": 12,
+      "sites": [
+        [
+          1,
+          2
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          1,
+          4
+        ],
+        [
+          1,
+          5
+        ],
+        [
+          1,
+          6
+        ],
+        [
+          1,
+          7
+        ],
+        [
+          7,
+          2
+        ],
+        [
+          7,
+          3
+        ],
+        [
+          7,
+          4
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          8,
+          2
+        ],
+        [
+          8,
+          3
+        ],
+        [
+          8,
+          4
+        ],
+        [
+          8,
+          5
+        ],
+        [
+          9,
+          2
+        ],
+        [
+          9,
+          3
+        ],
+        [
+          9,
+          4
+        ],
+        [
+          9,
+          5
+        ],
+        [
+          9,
+          6
+        ],
+        [
+          9,
+          7
+        ],
+        [
+          10,
+          2
+        ],
+        [
+          10,
+          3
+        ],
+        [
+          10,
+          4
+        ],
+        [
+          10,
+          5
+        ],
+        [
+          10,
+          6
+        ],
+        [
+          10,
+          7
+        ]
+      ],
+      "width": 12
+    },
+    "SlateportCity_House": {
+      "group": 9,
+      "height": 8,
+      "num": 10,
+      "sites": [
+        [
+          1,
+          2
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          1,
+          4
+        ]
+      ],
+      "width": 11
+    }
+  },
+  "version": 1
+}

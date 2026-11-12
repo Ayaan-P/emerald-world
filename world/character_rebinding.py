@@ -10,6 +10,9 @@ from .mechanics import Candidate, validate_objects
 
 
 def prepare(server, previous, revision):
+    from .prop_custody import inventory
+    if any(p['owner'] is not None and p['revision']==previous for p in inventory(server)):
+        raise ValueError('Place carried props before revising their immutable map')
     affected = [obj for obj in server.objects if obj.get('region_revision') == previous]
     if server.db.execute('SELECT 1 FROM world_region_revisions WHERE revision=?', (previous,)).fetchone():
         raise ValueError('opened immutable region characters cannot migrate with the shared slot')

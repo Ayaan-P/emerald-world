@@ -14,11 +14,11 @@ from .link_sessions import LinkError, LinkSessions
 
 _NAME = re.compile(r'[A-Za-z0-9_-]{1,24}\Z')
 _HEX = re.compile(r'[0-9a-f]{32}\Z')
-_KINDS = {1: 'battle_single', 2: 'battle_double', 3: 'trade', 4: 'coop_wild'}
+_KINDS = {1: 'battle_single', 2: 'battle_double', 3: 'trade', 4: 'coop_wild', 5: 'contest'}
 _LINK_TYPES = {1: frozenset((0x2211, 0x2233)),
                2: frozenset((0x2211, 0x2244)),
                3: frozenset((0x1111, 0x1122, 0x1133, 0x1144)),
-               4: frozenset((0x2255, 0x2211))}
+               4: frozenset((0x2255, 0x2211)), 5: frozenset((0x6602,))}
 
 
 @dataclass
@@ -66,13 +66,42 @@ class LinkProtocol:
         self._last_wire = None
         self._tags = {}
         self._tag_actor = {}
+        self._encounters = {}  # connection-local tag/token; never save progress
+
+    def admit_contest(self, members, presence):
+        """Only called after both counter selections and native ACKs are verified."""
+        actor,target=members
+        wire=self._new_id()
+        offered=self.sessions.offer(actor,target,'contest',presence)
+        event=next(e for e in offered.events if e.data['type']=='offer')
+        entry=_WireSession(offered.session_id,offered.generation,5,event.data['participants'])
+        self._wire[wire]=entry;self._internal[entry.internal]=wire
+        try:
+            accepted=self.sessions.accept(target,entry.internal,presence)
+        except Exception:
+            self._deliver(self.sessions.disconnect(actor).events)
+            raise
+        return wire,self._deliver(accepted.events)
 
     def busy(self, actor):
         """Region selection must not carry an existing link/tag into a new place."""
         return actor in self.sessions._locks or actor in self._tag_actor
 
+    def field_action_busy(self, actor):
+        """A social tag is not a battle; retain the stricter relocation busy()."""
+        if actor in self.sessions._locks or actor in self._encounters:
+            return True
+        identity = self._tag_actor.get(actor)
+        if identity is None:
+            return False
+        tag = self._tags.get(identity)
+        # An inconsistent tag cannot prove that field execution is safe.
+        return tag is None or actor not in tag.participants or tag.coop_wire is not None
+
     def _end_tag(self, tag):
         del self._tags[tag.id]
+        for actor in tag.participants:
+            self._encounters.pop(actor, None)
         for actor in tag.participants:
             del self._tag_actor[actor]
         return [(actor, f'T END {tag.id}\n') for actor in tag.participants]
@@ -232,12 +261,27 @@ class LinkProtocol:
                 return True
             tag = self._tags.get(int(fields[2]))
             return tag is not None and actor in tag.participants
-        if fields[1] in ('ERROR', 'ABORT'):
+        if fields[1] in ('ERROR', 'ABORT', 'HELD', 'RELEASED'):
             return True
         index = 3 if fields[1] == 'COMMIT' else 2
         wire = int(fields[index])
         entry = self._wire.get(wire)
         return entry is not None and actor in entry.participants
+
+    def encounter_target(self, actor, tag_text, token_text):
+        """Resolve TEAM only for the current authenticated encounter hold.
+
+        The server must apply its ordinary LINK/presence/region checks to this
+        target before dispatch, exactly as it does for a literal L OFFER.
+        """
+        try:
+            tag_id, token = _uint(tag_text, 2**64-1), _uint(token_text, 2**32-1)
+        except ValueError:
+            return None
+        tag = self._tags.get(self._tag_actor.get(actor))
+        if tag is None or not tag.active or tag.id != tag_id or self._encounters.get(actor) != (tag_id, token):
+            return None
+        return next(p for p in tag.participants if p != actor)
 
     def process(self, actor, raw, presence, *, now=None):
         """Input actor comes only from the authenticated LINK connection.
@@ -262,6 +306,39 @@ class LinkProtocol:
                 return output
             if any(not field for field in fields) or fields[0] != 'L':
                 raise ValueError('shape')
+            if len(fields) == 5 and fields[1] == 'CHOICE':
+                op, tag_id, token = fields[2], _uint(fields[3], 2**64-1), _uint(fields[4], 2**32-1)
+                tag = self._tags.get(self._tag_actor.get(actor))
+                if not token or tag is None or not tag.active or tag.id != tag_id:
+                    raise LinkError('denied')
+                previous = self._encounters.get(actor)
+                if previous is not None and previous != (tag_id, token):
+                    raise LinkError('conflict')
+                if op == 'HOLD':
+                    # Ordered barrier: withdraw any crossing/pre-battle admission
+                    # before acknowledging. Tag consent is deliberately retained.
+                    if tag.coop_wire is not None:
+                        entry = self._entry(actor, tag.coop_wire)
+                        output.extend(self._deliver(self.sessions.close(actor, entry.internal, now=now).events))
+                    self._encounters[actor] = (tag_id, token)
+                    output.append((actor, f'L HELD {tag_id} {token}\n'))
+                    return output
+                if previous != (tag_id, token):
+                    raise LinkError('not_found')
+                if op == 'RELEASE':
+                    if tag.coop_wire is not None:
+                        raise LinkError('busy')
+                    del self._encounters[actor]
+                    output.append((actor, f'L RELEASED {tag_id} {token}\n'))
+                    return output
+                if op != 'TEAM':
+                    raise ValueError('choice')
+                target = next(p for p in tag.participants if p != actor)
+                # Two separately captured encounters must not borrow one another's
+                # trainer callback or rewards. Neither target can be a guest here.
+                if target in self._encounters:
+                    raise LinkError('busy')
+                fields = ['L', 'OFFER', '4', target]
             if len(fields) == 4 and fields[1] == 'OFFER':
                 mode = _uint(fields[2], 4)
                 target = fields[3]
@@ -272,6 +349,8 @@ class LinkProtocol:
                     tag = self._tags.get(self._tag_actor.get(actor))
                     if tag is None or not tag.active or target not in tag.participants or actor == target:
                         raise LinkError('denied')
+                    if target in self._encounters:
+                        raise LinkError('busy')
                     if tag.coop_wire is not None:
                         entry = self._entry(actor, tag.coop_wire)
                         slot = entry.participants.index(actor)
@@ -301,7 +380,7 @@ class LinkProtocol:
             elif len(fields) == 10 and fields[1] == 'EVENT':
                 kind = _uint(fields[2], 5)
                 wire = _uint(fields[3], 2**64-1)
-                mode = _uint(fields[4], 4)
+                mode = _uint(fields[4], 5)
                 slot = _uint(fields[5], 1)
                 generation = _uint(fields[6], 2**32-1)
                 step = _uint(fields[7], 2**32-1)

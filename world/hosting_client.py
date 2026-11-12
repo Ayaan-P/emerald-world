@@ -149,6 +149,27 @@ class HostingClient:
     def resume(self, world_id):
         return self._request(self.profile, 'POST', '/v1/worlds/' + self._world_id(world_id) + '/resume', {})
 
+    def read_adventures(self, world_id):
+        """Read owner-only built-in adventures without a provider or game launch."""
+        return self._request(self.profile, 'GET',
+                             '/v1/worlds/' + self._world_id(world_id) + '/adventure')
+
+    def preview_adventure(self, world_id, adventure='lantern-trail'):
+        if type(adventure) is not str or not re.fullmatch('[a-z0-9-]{1,48}', adventure):
+            raise ValueError('invalid adventure id')
+        return self._request(self.profile, 'POST',
+                             '/v1/worlds/' + self._world_id(world_id) + '/adventure/preview',
+                             dict(adventure=adventure))
+
+    def apply_adventure(self, world_id, review_token, *, confirmed=False):
+        """One explicit attempt; an ambiguous result must be read back, not replayed."""
+        if (confirmed is not True or type(review_token) is not str
+                or not re.fullmatch('[0-9a-f]{48}', review_token)):
+            raise ValueError('Review and confirm the exact adventure before applying.')
+        return self._request(self.profile, 'POST',
+                             '/v1/worlds/' + self._world_id(world_id) + '/adventure/apply',
+                             dict(token=review_token, confirmed=True))
+
     def generated_area_status(self, world_id):
         """Return owner-only capabilities, archive metadata and current occupancy."""
         return self._request(self.profile, 'GET',

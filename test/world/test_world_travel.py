@@ -104,6 +104,9 @@ static int line(const char *text) { char copy[128]; strcpy(copy, text); return L
 int main(void) {
     strcpy(sWorld.trainer, "viewer"); strcpy(sWorld.token, "secret");
     QueueHello(0);
+    assert(strstr(sWorld.output, " SOCIALTRAVELCHATRALLYCOMMANDS1\n"));
+    assert(!line("ERROR AUTH") && sWorld.commandsLegacy && !sWorld.rallyLegacy);
+    QueueHello(0);
     assert(strstr(sWorld.output, " SOCIALTRAVELCHATRALLY\n"));
     assert(!line("ERROR AUTH") && sWorld.rallyLegacy && !sWorld.travelLegacy);
     QueueHello(0);

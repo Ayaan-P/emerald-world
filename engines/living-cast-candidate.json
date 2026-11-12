@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "native_repository": "Ayaan-P/pokeemerald-expansion-native",
+  "native_revision": "8a1fc99d13528154497b66215d8097f01f4b6cd3",
+  "native_pull_request": 106,
+  "app_pull_request": 468,
+  "donor_native_pull_request": 79,
+  "donor_app_pull_request": 423,
+  "reviewed_author_cli": "codex-cli 0.156.1",
+  "author_model": "explicit per backend; legacy Codex uses openai-codex/gpt-6-luna",
+  "linked_native_verified": false,
+  "live_author_verified": false,
+  "release_status": "daily_integration_pending_pair_build_acceptance",
+  "author_backends": [
+    "codex",
+    "openai-responses",
+    "anthropic-messages"
+  ],
+  "app_branch": "integrate/dot-continuation-app",
+  "capability_stack_base": "f81be46b6d9296e2710563af5878b3d4500b0b4e",
+  "build_arguments": [
+    "--development",
+    "--generated-regions",
+    "--regional-state",
+    "--kanto-content",
+    "--experimental-field-moves"
+  ],
+  "selectable_regions_require_build_flag": true,
+  "released_rc12_acceptance_is_historical": "docs/RC12_ACCEPTANCE.json",
+  "optional_field_skills": {
+    "default": false,
+    "launch_flag": "--field-skills",
+    "native_verified": false
+  },
+  "experimental_pyramid_courses": {
+    "default": false,
+    "build_flag": "--development --experimental-pyramid-courses",
+    "native_linked_verified": false
+  },
+  "experimental_field_calls": {
+    "default": false,
+    "build_flag": "--development --experimental-field-moves",
+    "scope": "private ordinary native wild encounters from selected learned sound moves",
+    "native_linked_verified": false
+  },
+  "experimental_field_care": {
+    "default": false,
+    "flag": "--development --experimental-field-moves",
+    "scope": "private party HP recovery for learned restore-HP/Heal Pulse moves; costs one PP; new field rule",
+    "native_linked_verified": false
+  },
+  "experimental_encounter_profiles": {
+    "default": false,
+    "flag": "--development --experimental-field-moves",
+    "scope": "voluntary authored native ordinary-walking candidate acceptance/type preference; real PP; no fabricated encounter results",
+    "native_linked_verified": false
+  },
+  "experimental_move_sensing": {
+    "default": false,
+    "flag": "--development --experimental-field-moves",
+    "scope": "authored learned-move hidden-item sensing; personal flags; separately volunteered client-report clues",
+    "native_linked_verified": false
+  }
+}

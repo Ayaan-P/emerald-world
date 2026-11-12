@@ -1,0 +1,106 @@
+{
+  "native_commit": "8a1fc99d13528154497b66215d8097f01f4b6cd3",
+  "sources": {
+    "include/constants/metatile_behaviors.h": "c0b9a711033d27da81260ede19a06b6fa61c6c68",
+    "data/layouts/layouts.json": "8d5bc96bd4b6e4eeb5341e8f774620709caedee6",
+    "data/maps/map_groups.json": "047396b3b66fecb29df9f92595899ae1ec16acd0",
+    "data/tilesets/primary/general/metatile_attributes.bin": "d9cd29016d792fb568494dbf2f820100081a14f8",
+    "data/tilesets/secondary/lilycove/metatile_attributes.bin": "0f4e01b923280efa5742e9a869e9d172da7fb119",
+    "data/layouts/SafariZone_Northwest/map.bin": "1825a1c922377e90675375a0c5639afe25152eed",
+    "data/layouts/SafariZone_North/map.bin": "4f52968157003d4f41909909d6dbaa9b304222e0",
+    "data/layouts/SafariZone_Southwest/map.bin": "0074b6e552b2ad5b7974c743ee071b3c9749739b",
+    "data/layouts/SafariZone_South/map.bin": "50497b5035688fbd56a7da5cb868d9450bdebd68",
+    "data/layouts/SafariZone_Northeast/map.bin": "9a8803a6a72ef93d75cd6bc0742d0e735705d581",
+    "data/layouts/SafariZone_Southeast/map.bin": "a778b8797de84ddd3d397ce1e3649eaf86b2da4f"
+  },
+  "entries": [
+    {
+      "id": 1,
+      "map": "SafariZone_Northwest",
+      "group": 26,
+      "num": 0,
+      "x": 4,
+      "y": 7
+    },
+    {
+      "id": 2,
+      "map": "SafariZone_Northwest",
+      "group": 26,
+      "num": 0,
+      "x": 33,
+      "y": 15
+    },
+    {
+      "id": 3,
+      "map": "SafariZone_Northwest",
+      "group": 26,
+      "num": 0,
+      "x": 31,
+      "y": 29
+    },
+    {
+      "id": 4,
+      "map": "SafariZone_North",
+      "group": 26,
+      "num": 1,
+      "x": 32,
+      "y": 26
+    },
+    {
+      "id": 5,
+      "map": "SafariZone_North",
+      "group": 26,
+      "num": 1,
+      "x": 5,
+      "y": 34
+    },
+    {
+      "id": 6,
+      "map": "SafariZone_Southwest",
+      "group": 26,
+      "num": 2,
+      "x": 18,
+      "y": 16
+    },
+    {
+      "id": 7,
+      "map": "SafariZone_South",
+      "group": 26,
+      "num": 3,
+      "x": 24,
+      "y": 30
+    },
+    {
+      "id": 8,
+      "map": "SafariZone_Northeast",
+      "group": 26,
+      "num": 12,
+      "x": 5,
+      "y": 22
+    },
+    {
+      "id": 9,
+      "map": "SafariZone_Southeast",
+      "group": 26,
+      "num": 13,
+      "x": 29,
+      "y": 11
+    },
+    {
+      "id": 10,
+      "map": "SafariZone_Southeast",
+      "group": 26,
+      "num": 13,
+      "x": 25,
+      "y": 21
+    },
+    {
+      "id": 11,
+      "map": "SafariZone_Southeast",
+      "group": 26,
+      "num": 13,
+      "x": 19,
+      "y": 33
+    }
+  ]
+}

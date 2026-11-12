@@ -217,8 +217,22 @@ class RuntimePlayer:
         context = {'trigger': 'meeting' if pending else 'periodic',
                    'meeting': pending, 'observation': observation, 'untrusted': True}
         try:
+            if getattr(self.policy, 'requires_game_image', False):
+                import base64
+                from world.player_mcp import screenshot_png
+                frame = self.client.screenshot()
+                if frame.get('state', {}).get('world', {}).get('trainer') != self._trainer:
+                    self._terminal = True
+                    raise PolicyError('screenshot trainer changed')
+                png = screenshot_png(self.endpoint, frame)
+                encoded = base64.b64encode(png).decode('ascii')
+                if len(encoded) > 512 * 1024:
+                    raise PolicyError('game image too large')
+                context['game_image'] = encoded
+                # Send the current frame's state, never its local file path.
+                context['observation'] = {'state': frame['state']}
             actions = self._decide(context)
-        except (PolicyError, PlayerError, ValueError):
+        except (PolicyError, PlayerError, ValueError, OSError):
             self.status = {'status': 'policy_failed'}
             return self.status
         completed = 0
@@ -438,11 +452,43 @@ class CodexPolicy:
         return decode_player_codex(wire)
 
 
+class APIPolicy(CommandPolicy):
+    """Explicit official provider, own-game image sharing, no model tools.
+
+    Uses the existing cancellable subprocess boundary. Cancellation cannot undo
+    an already submitted billable request; no request is automatically retried.
+    """
+    requires_game_image = True
+
+    def __init__(self, provider, model, *, share_game_view=False, timeout=120, stop=None):
+        from world.author_backends import API_BACKENDS, validate
+        validate(provider, model, timeout)
+        if provider not in API_BACKENDS or share_game_view is not True:
+            raise ValueError('Explicit API provider and own-game view sharing required')
+        self.provider, self.model = provider, model
+        super().__init__([sys.executable, str(Path(__file__).with_name('player_api_policy.py')),
+                          '--provider', provider, '--model', model, '--timeout', str(timeout)],
+                         timeout=timeout, stop=stop)
+
+    def __call__(self, context):
+        # CommandPolicy normally prepends a human prompt. This child's strict
+        # input is the bounded context JSON; it constructs the fixed policy.
+        wire = json.dumps(context, allow_nan=False, separators=(',', ':'))
+        if len(wire.encode()) > 1024 * 1024:
+            raise PolicyError('player context too large')
+        with tempfile.TemporaryDirectory(prefix='emerald-player-api-') as cwd:
+            raw = _invoke(self.argv, wire, self.timeout, self.stop, self.max_output_bytes, cwd)
+        value = _json(raw); validate_actions(value)
+        return value
+
+
 def main(argv=None):
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--endpoint', required=True, help='Private ordinary player socket only')
-    parser.add_argument('--model', required=True, help='Explicit reviewed model; no default or fallback')
+    parser.add_argument('--provider', choices=('codex','openai-responses','anthropic-messages'), default='codex')
+    parser.add_argument('--share-game-view', action='store_true', help='Explicitly allow sending this agent trainer game image and state to the selected API provider, including visible public game text; API charges apply')
+    parser.add_argument('--model', required=True, help='Explicit provider model ID; no default or fallback')
     parser.add_argument('--interval', type=float, default=30, help='Idle thought interval in seconds')
     parser.add_argument('--min-model-interval', type=float, default=15)
     parser.add_argument('--poll-interval', type=float, default=.25)
@@ -452,7 +498,12 @@ def main(argv=None):
     stop = threading.Event()
     previous = {}
     try:
-        policy = CodexPolicy(args.model, timeout=args.timeout, stop=stop)
+        if args.provider != 'codex':
+            from world.author_backends import preflight
+            if not args.share_game_view:
+                raise ValueError('Explicit own-game view sharing required')
+            preflight(args.provider,args.model,args.timeout)
+        policy = (CodexPolicy(args.model, timeout=args.timeout, stop=stop) if args.provider=='codex' else APIPolicy(args.provider,args.model,share_game_view=args.share_game_view,timeout=args.timeout,stop=stop))
         for sig in (signal.SIGTERM, signal.SIGINT):
             previous[sig] = signal.signal(sig, lambda *_: stop.set())
         with RuntimePlayer(args.endpoint, policy, interval=args.interval,

@@ -38,6 +38,70 @@ class LinuxPackageTests(unittest.TestCase):
         self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
         return output / ('EmeraldWorld-' + version + '-linux-x86_64.tar.gz')
 
+    def test_trainer_runtime_catalogs_survive_packaging(self):
+        bundle = self.extract(self.package(engine='expansion-native'))
+        for name in ('trainer_experience_catalog.json', 'trainer_reference.json'):
+            asset = bundle / 'world' / name
+            self.assertTrue(asset.is_file(), 'Missing runtime asset: ' + name)
+            self.assertEqual(asset.read_bytes(), (REPO / 'world' / name).read_bytes())
+        code = ('import sys; sys.path.insert(0,sys.argv[1]); '
+                'from world.trainer_experiences import catalog; assert catalog(); '
+                'from world.trainer_context import author_context; '
+                'assert author_context("Roxanne")["story_progression"]')
+        subprocess.run([sys.executable, '-I', '-c', code, str(bundle)], check=True)
+
+    def test_cumulative_runtime_catalogues_survive_packaging(self):
+        bundle = self.extract(self.package(engine='expansion-native'))
+        for name in ('companion_move_names.json', 'encounter_traits.json',
+                     'practice_trainer_sources.json', 'rental_catalog.json'):
+            with self.subTest(name=name):
+                asset = bundle / 'world' / name
+                self.assertTrue(asset.is_file(), 'Missing runtime asset: ' + name)
+                self.assertEqual(asset.read_bytes(), (REPO / 'world' / name).read_bytes())
+        code = ('import sys,json; from pathlib import Path; sys.path.insert(0,sys.argv[1]); '
+                'import world.server; import world.rental_pools; '
+                'assert json.loads((Path(sys.argv[1])/"world/companion_move_names.json").read_text())["names"]')
+        subprocess.run([sys.executable, '-I', '-c', code, str(bundle)], check=True)
+
+    def test_daily_catalogues_work_without_development_scripts(self):
+        bundle = self.extract(self.package(engine='expansion-native'))
+        for name in ('pyramid_catalog.json', 'starter_catalog.json', 'move_traits.json',
+                     'native_resident_sites.json', 'secret_base_locations.json',
+                     'floorplan_catalog.json', 'combined_map_catalog.json'):
+            self.assertEqual((bundle / 'world' / name).read_bytes(),
+                             (REPO / 'world' / name).read_bytes())
+        code = ('import sys; sys.path.insert(0,sys.argv[1]); '
+                'import world.pyramid_courses, world.starter_offers, world.actor_runtime, world.combined_regions; '
+                'from world.native_resident_sites import catalog; assert catalog(); '
+                'assert "scripts.build_expansion" not in sys.modules')
+        subprocess.run([sys.executable, '-I', '-c', code, str(bundle)], check=True)
+
+    def test_nov12_runtime_catalogues_and_authority_reopen(self):
+        bundle = self.extract(self.package(engine='expansion-native'))
+        for name in ('berry_care_plots.json', 'safari_feeders.json',
+                     'hoenn_collision_catalog.json', 'hoenn_collision_sources.json'):
+            self.assertEqual((bundle / 'world' / name).read_bytes(),
+                             (REPO / 'world' / name).read_bytes())
+        code = '''import sys,tempfile
+from pathlib import Path
+sys.path.insert(0,sys.argv[1])
+from world.server import WorldServer
+from world import berry_care, safari_feeders, hoenn_collision
+import json
+catalog=json.loads(Path(hoenn_collision.__file__).with_name('hoenn_collision_catalog.json').read_text())
+assert hoenn_collision.checked_map(catalog,'Route102')
+with tempfile.TemporaryDirectory() as tmp:
+    for attempt in range(2):
+        server=WorldServer(str(Path(tmp)/'world.sock'),Path(tmp)/'state')
+        try:
+            server.start()
+            runtime=server.inspect()['actor_runtime']
+            assert 'shared_soil_care' in runtime and 'safari_feeders' in runtime
+            assert 'trick_questions' in runtime and 'rematch_strategies' in runtime
+        finally: server.close()
+'''
+        subprocess.run([sys.executable, '-B', '-I', '-c', code, str(bundle)], check=True)
+
     def test_relative_vite_index_asset_paths_are_supported(self):
         (self.dist / 'index.html').write_text('<html><script src="./assets/main.js"></script></html>')
         archive = self.package()

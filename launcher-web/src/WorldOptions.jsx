@@ -79,6 +79,12 @@ export default function WorldOptions({ state, worldKey, ready, busy, onChoose, o
     setDraft(previous => ({ ...previous, wild_shuffle: shuffle })); setReview(false); setSaved(false);
   }
 
+  function resetDefaults() {
+    // V2 hosts expose shuffle-only editing; keep their gameplay flags intact.
+    if (current.version !== 3) { edit(defaultRules().wild_shuffle); return; }
+    setDraft(defaultRules()); setReview(false); setSaved(false);
+  }
+
   async function reload() {
     if (pending.current) return;
     pending.current = true;
@@ -129,7 +135,7 @@ export default function WorldOptions({ state, worldKey, ready, busy, onChoose, o
     {(stale || uncertain) && <section className="rules-notice warning" role="alert"><p>{uncertain ? 'Check the saved options before trying again. The last save was not confirmed.' : 'World options changed while you were editing. Reload before applying a new draft.'}</p><button className="button ghost" disabled={!ready || busy} onClick={reload}>Discard draft & reload</button></section>}
     {compatible && current.players > 0 && <p className="rules-notice" role="status">All players must leave before applying changes. No one is disconnected automatically.</p>}
     {compatible && current.revision === 2147483647 && <p className="rules-notice" role="status">This world has reached its options revision limit. Ask the server operator to check it.</p>}
-    <section className="rules-presets" aria-label="Presets"><div><h2>Preset</h2><p>Review changes before applying.</p></div><button className="button ghost" disabled={!editable} onClick={() => edit(defaultRules().wild_shuffle)}>Use default</button><div className="rules-pending-preset"><button className="button ghost" disabled>Expansion playground</button><small>Needs a matching host and game update.</small></div></section>
+    <section className="rules-presets" aria-label="Presets"><div><h2>Preset</h2><p>Review changes before applying.</p></div><button className="button ghost" disabled={!editable} onClick={resetDefaults}>Use default</button><div className="rules-pending-preset"><button className="button ghost" disabled>Expansion playground</button><small>Needs a matching host and game update.</small></div></section>
     {compatible && <section className="rules-section" aria-labelledby="collecting-title"><div className="rules-category"><span>01</span><h2 id="collecting-title">Collecting</h2></div>
       <div className="rule-row"><div><label htmlFor="shuffle">Wild shuffle</label><p>Shuffle ordinary encounters; the expanded-pool permission selects the supported roster.</p></div><label className="rule-switch"><input id="shuffle" type="checkbox" checked={draft.wild_shuffle.enabled} disabled={!editable} onChange={event => edit({ ...draft.wild_shuffle, enabled: event.target.checked })} /><span>{draft.wild_shuffle.enabled ? 'On' : 'Off'}</span></label></div>
       <div className="rule-row seed-row"><div><label htmlFor="shuffle-seed">Shuffle seed</label><p>The same seed gives world members the same shuffle.</p></div><input id="shuffle-seed" className="text-input" type="number" min="1" max="20" step="1" inputMode="numeric" aria-describedby="shuffle-seed-help" aria-invalid={!validSeed} value={draft.wild_shuffle.seed} disabled={!editable} onChange={event => edit({ ...draft.wild_shuffle, seed: event.target.value === '' ? '' : Number(event.target.value) })} /></div>
