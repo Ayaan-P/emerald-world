@@ -17,7 +17,7 @@ class Cut(unittest.TestCase):
   rows=[b'#'*63]+[b'#'+b'.'*61+b'#' for _ in range(61)]+[b'#'*63]
   cave=types.SimpleNamespace(identity=identity,version=9,_rows=rows,cast=bytes(184),walkable=lambda x,y:0<x<62 and 0<y<62)
   def event(k,v):return self.db.execute('INSERT INTO events(kind,body) VALUES(?,?)',(k,json.dumps(v))).lastrowid
-  self.s=types.SimpleNamespace(db=self.db,lock=threading.RLock(),archive_generated_areas=True,shared_cave=cave,wilds_map=(0,1),cave_map=(0,2),peers={},memory=types.SimpleNamespace(append=event,place=lambda i:'place:'+i),revision=0)
+  self.s=types.SimpleNamespace(combined_regions=False,db=self.db,lock=threading.RLock(),archive_generated_areas=True,shared_cave=cave,wilds_map=(0,1),cave_map=(0,2),peers={},memory=types.SimpleNamespace(append=event,place=lambda i:'place:'+i),revision=0)
   for name in NAMES:setattr(self.s,name,types.MethodType(NS[name],self.s))
   self.s._active_walkable=lambda x,y:terrain.walkable(cave,self.s._active_terrain()[1],x,y)
   self.queued=[];self.s._queue=lambda p,line:self.queued.append(line);self.s._drop=lambda p:p.update(closing=True)

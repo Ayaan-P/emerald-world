@@ -105,7 +105,9 @@ def assemble(binary, web_dist, version, output, engine='vanilla'):
                  'companion_move_names.json', 'encounter_traits.json',
                  'practice_trainer_sources.json', 'rental_catalog.json',
                  'pyramid_catalog.json', 'starter_catalog.json', 'move_traits.json',
-                 'native_resident_sites.json', 'secret_base_locations.json'):
+                 'native_resident_sites.json', 'secret_base_locations.json',
+                 'berry_care_plots.json', 'safari_feeders.json',
+                 'hoenn_collision_catalog.json', 'hoenn_collision_sources.json'):
         frozen['world/' + name] = (plain(REPO / 'world' / name).read_bytes(), 0o644)
     frozen['scripts/__init__.py'] = (b'', 0o644)  # Prevent an installed scripts package shadowing this helper.
     for source, name in [('linux_client.py', 'scripts/linux_client.py'),

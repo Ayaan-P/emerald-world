@@ -62,7 +62,8 @@ class AgentUITests(unittest.TestCase):
   with self.assertRaises(SessionError):self.call('read')
  def test_single_cast_enrollment_preserves_original_records(self):
   info=self.call('enroll_cast',confirmed=True)
-  self.assertEqual(sum(a['followed'] for a in info['actors']),4)
+  self.assertEqual({a['id'] for a in info['actors'] if a['followed']},
+                   {'canon_birch','canon_rydel','canon_wally','canon_briney','canon_steven'})
   self.assertEqual(info['queued'],0)
   self.assertEqual(set(self.s.module_state['canonical_cast']),{'canon_rydel'})
   self.call('enroll_cast',confirmed=True)

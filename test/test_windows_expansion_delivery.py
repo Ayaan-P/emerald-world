@@ -38,7 +38,9 @@ class DeliveryTests(unittest.TestCase):
                     'world/pyramid_catalog.json', 'world/starter_catalog.json',
                     'world/move_traits.json', 'world/native_resident_sites.json',
                     'world/secret_base_locations.json', 'world/combined_map_catalog.json',
-                    'world/floorplan_catalog.json'}
+                    'world/floorplan_catalog.json', 'world/berry_care_plots.json',
+                    'world/safari_feeders.json', 'world/hoenn_collision_catalog.json',
+                    'world/hoenn_collision_sources.json'}
         self.assertEqual(d.DATA, required)
         base = {name: b'{}' for name in required}
         base.update({'world/windows_client.py': b'', 'launcher-web/index.html': b'', d.ENTRY: b''})

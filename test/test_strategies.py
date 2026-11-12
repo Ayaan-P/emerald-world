@@ -7,7 +7,7 @@ class Strategies(unittest.TestCase):
  def setUp(self):
   self.db=sqlite3.connect(':memory:');self.addCleanup(self.db.close);self.events=[]
   def append(k,v):self.events.append((k,v));return len(self.events)
-  self.s=types.SimpleNamespace(db=self.db,memory=types.SimpleNamespace(append=append),revision=0)
+  self.s=types.SimpleNamespace(combined_regions=False,db=self.db,memory=types.SimpleNamespace(append=append),revision=0)
   self.c={'id':'private-trainer','presence':{'state':[0,2,4,6,1,1,0],'state_time':time.monotonic()}}
   self.args=dict(trainer='calvin',expected_revision=0,types=['grass','fire'],status_moves=1)
  def configure(self):return m.configure(self.s,'coach',{},self.args)

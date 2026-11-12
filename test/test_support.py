@@ -24,7 +24,7 @@ class Support(unittest.TestCase):
  def test_actual_authenticated_dispatch(self):
   tree=ast.parse((ROOT/'world/server.py').read_text());method=next(n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef) and n.name=='_link_line')
   module=ast.Module(body=[method],type_ignores=[]);ns={'__package__':'support_fixture'}
-  package=types.ModuleType('support_fixture');package.__path__=[];sys.modules['support_fixture']=package;sys.modules['support_fixture.field_support']=m
+  package=types.ModuleType('support_fixture');package.__path__=[str(ROOT/'world')];self.s.combined_regions=False;sys.modules['support_fixture']=package;sys.modules['support_fixture.field_support']=m
   exec(compile(module,'actual_server_dispatch','exec'),ns)
   out=[];self.s._queue=lambda c,line:out.append((c,line));self.s._error=lambda c,error:out.append((c,error))
   ns['_link_line'](self.s,self.a,b'FS OFFER 1 b');self.assertEqual(len(out),2)

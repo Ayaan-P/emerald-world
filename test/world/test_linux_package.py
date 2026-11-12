@@ -76,6 +76,32 @@ class LinuxPackageTests(unittest.TestCase):
                 'assert "scripts.build_expansion" not in sys.modules')
         subprocess.run([sys.executable, '-I', '-c', code, str(bundle)], check=True)
 
+    def test_nov12_runtime_catalogues_and_authority_reopen(self):
+        bundle = self.extract(self.package(engine='expansion-native'))
+        for name in ('berry_care_plots.json', 'safari_feeders.json',
+                     'hoenn_collision_catalog.json', 'hoenn_collision_sources.json'):
+            self.assertEqual((bundle / 'world' / name).read_bytes(),
+                             (REPO / 'world' / name).read_bytes())
+        code = '''import sys,tempfile
+from pathlib import Path
+sys.path.insert(0,sys.argv[1])
+from world.server import WorldServer
+from world import berry_care, safari_feeders, hoenn_collision
+import json
+catalog=json.loads(Path(hoenn_collision.__file__).with_name('hoenn_collision_catalog.json').read_text())
+assert hoenn_collision.checked_map(catalog,'Route102')
+with tempfile.TemporaryDirectory() as tmp:
+    for attempt in range(2):
+        server=WorldServer(str(Path(tmp)/'world.sock'),Path(tmp)/'state')
+        try:
+            server.start()
+            runtime=server.inspect()['actor_runtime']
+            assert 'shared_soil_care' in runtime and 'safari_feeders' in runtime
+            assert 'trick_questions' in runtime and 'rematch_strategies' in runtime
+        finally: server.close()
+'''
+        subprocess.run([sys.executable, '-B', '-I', '-c', code, str(bundle)], check=True)
+
     def test_relative_vite_index_asset_paths_are_supported(self):
         (self.dist / 'index.html').write_text('<html><script src="./assets/main.js"></script></html>')
         archive = self.package()

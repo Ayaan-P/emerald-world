@@ -48,10 +48,12 @@ class SeedTests(unittest.TestCase):
    self.assertEqual(seeds.profile(actor)['binding'],cast.BINDINGS[actor])
    self.assertFalse(cast.decision_evidence(seeds.profile(actor),actor,seeds.pending(actor)))
 
- def test_commission_starts_four_without_campaign_sharing_or_fake_outcomes(self):
+ def test_commission_starts_five_without_campaign_sharing_or_fake_outcomes(self):
   seeds.initialize(self.q,self.f.s)
   events=[e for e in self.f.s.memory.history()['events'] if e['event']=='canonical_actor_commissioned']
-  self.assertEqual(len(events),4);self.assertEqual(len(self.observe()),4)
+  expected={'canon_birch','canon_rydel','canon_wally','canon_briney','canon_steven'}
+  self.assertEqual({e['character_id'] for e in events},expected)
+  self.assertEqual(len(events),5);self.assertEqual(len(self.observe()),5)
   item=self.q.claim();packet=json.loads(item['result']);actor=packet['id']
   context=self.f.context();context['runtime'].update(kind='character',observed_event=packet)
   reactions.prepare(context,self.f.fetch)
@@ -63,7 +65,7 @@ class SeedTests(unittest.TestCase):
   action['expected_version']=1
   with self.assertRaises(ValueError):cast.compile_actions([action],self.f.context())
   seeds.initialize(self.q,self.f.s)
-  self.assertEqual(len([e for e in self.f.s.memory.history()['events'] if e['event']=='canonical_actor_commissioned']),4)
+  self.assertEqual(len([e for e in self.f.s.memory.history()['events'] if e['event']=='canonical_actor_commissioned']),5)
   self.assertEqual(len(self.observe()),1) # New committed goal, not replayed commissioning.
   planning=self.q.db.execute("SELECT result FROM requests WHERE player=? AND status='queued'",(actor,)).fetchone()
   self.assertTrue(json.loads(planning[0])['self_direction'])

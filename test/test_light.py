@@ -23,7 +23,7 @@ class Light(unittest.TestCase):
    for flag in (0,1):
     subprocess.run(['cc','-std=c99','-DPORTABLE',f'-DEW_SHARED_CAVE_LIGHT={flag}','-fsanitize=undefined','-iquote',str(d),str(d/'test.c'),'-o',str(d/'test')],check=True);subprocess.run([str(d/'test')],check=True)
  def test_actual_server_dispatch(self):
-  package=types.ModuleType('fixture');package.__path__=[];sys.modules['fixture']=package;sys.modules['fixture.cave_light']=m
+  package=types.ModuleType('fixture');package.__path__=[str(ROOT/'world')];self.s.combined_regions=False;sys.modules['fixture']=package;sys.modules['fixture.cave_light']=m
   method=next(n for n in ast.walk(ast.parse((ROOT/'world/server.py').read_text())) if isinstance(n,ast.FunctionDef) and n.name=='_link_line');ns={'__package__':'fixture'};exec(compile(ast.Module(body=[method],type_ignores=[]),'dispatch','exec'),ns)
   out=[];self.s._queue=lambda c,v:out.append(v);self.s._error=lambda *a:None;ns['_link_line'](self.s,self.a,b'FL STATE 1 1 1');self.assertEqual(out,['FL LIGHT 1 0\n'])
  def test_actual_runtime_renderer_has_no_save_mutation(self):
