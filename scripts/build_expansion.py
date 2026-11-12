@@ -121,9 +121,12 @@ def main():
     parser.add_argument("--experimental-field-support", action="store_true", help="private companion Heal Pulse on original Hoenn routes; requires --development")
     parser.add_argument("--experimental-route-trainers",action="store_true",help="voluntary authored Hoenn trainer sight behavior; development only")
     parser.add_argument("--experimental-shared-cave-light",action="store_true",help="opt-in runtime Granite Cave visibility; development only")
+    parser.add_argument("--experimental-shared-soil-care", action="store_true", help="Route104 shared stage watering, personal harvests; development only")
     args = parser.parse_args()
     if args.experimental_route_trainers and not args.development:
         parser.error("--experimental-route-trainers requires --development")
+    if args.experimental_shared_soil_care and not args.development:
+        parser.error("shared soil care requires --development")
     if any((args.experimental_floorplans, args.experimental_native_trades, args.experimental_nature_challenges,
             args.experimental_regional_starters, args.experimental_kanto_rematches, args.experimental_route5_custody,
             args.experimental_regional_completion, args.experimental_regional_badges,
@@ -345,6 +348,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'EW_HOENN_MARKETS={int(args.experimental_hoenn_markets)}',
                 f'EW_SHARED_CONTEST={int(args.experimental_shared_contest)}',
                 f'EW_SHARED_STRENGTH={int(args.experimental_shared_strength)}',
+                f'EW_SHARED_SOIL_CARE={int(args.experimental_shared_soil_care)}',
                 f'EW_COOP_TURN_PLAN={int(args.experimental_coop_turn_plan)}',
                 f'EW_COOP_HOLD_BACK={int(args.experimental_coop_hold_back)}',
                 f'EW_DUAL_TRAINERS={int(args.experimental_dual_trainers)}',

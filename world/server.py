@@ -1397,6 +1397,10 @@ class WorldServer:
             from .dewford_trends import handle
             self._queue(conn,handle(self,conn,raw))
             return
+        if raw.startswith(b'BC '):
+            from .berry_care import handle
+            self._queue(conn,handle(self,conn,raw))
+            return
         if raw.startswith(b'FM '):
             from .field_move_ui import handle as field_move_ui_handle
             self._queue(conn,field_move_ui_handle(self,conn,raw))
