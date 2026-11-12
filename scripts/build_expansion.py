@@ -118,6 +118,7 @@ def main():
     parser.add_argument('--jobs', type=int, default=4)
     parser.add_argument("--experimental-field-support", action="store_true", help="private companion Heal Pulse on original Hoenn routes; requires --development")
     parser.add_argument("--experimental-route-trainers",action="store_true",help="voluntary authored Hoenn trainer sight behavior; development only")
+    parser.add_argument("--experimental-shared-cave-light",action="store_true",help="opt-in runtime Granite Cave visibility; development only")
     args = parser.parse_args()
     if args.experimental_route_trainers and not args.development:
         parser.error("--experimental-route-trainers requires --development")
@@ -158,6 +159,8 @@ def main():
         parser.error("--experimental-field-support requires --development")
     if args.experimental_persistent_cut and not args.development:
         parser.error('--experimental-persistent-cut requires --development')
+    if args.experimental_shared_cave_light and not args.development:
+        parser.error("--experimental-shared-cave-light requires --development")
     if args.experimental_rematch_strategies and not args.development:
         parser.error('--experimental-rematch-strategies requires --development')
     if args.experimental_birch_studies and not args.development:
@@ -326,6 +329,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'EW_FIELD_CONCEALMENT={int(args.experimental_field_concealment)}',
                 f'EW_FIELD_SUPPORT={int(args.experimental_field_support)}',
                 f'EW_PERSISTENT_CUT={int(args.experimental_persistent_cut)}',
+                f'EW_SHARED_CAVE_LIGHT={int(args.experimental_shared_cave_light)}',
                 f'EW_REMATCH_STRATEGIES={int(args.experimental_rematch_strategies)}',
                 f'EW_BIRCH_STUDIES={int(args.experimental_birch_studies)}',
                 f'EW_MATCH_CALL_EVENTS={int(args.experimental_match_call_events)}',

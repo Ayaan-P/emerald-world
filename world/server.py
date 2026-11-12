@@ -1278,6 +1278,8 @@ class WorldServer:
                 became_fresh = (last_state is not None and
                                 int((TRAVEL_FRESH_SECONDS - (now - last_state)) * 60) <= 0)
                 changed = (conn.get('mount',(0,0)) != mount or conn.get('state') != state or bool(conn.get('field')) != field or hashes != previous or became_fresh)
+                if not conn.get('state') or conn['state'][:2]!=state[:2] or bool(conn['state'][6])!=bool(state[6]):
+                    conn['cave_light_visit']=conn.get('cave_light_visit',0)+1
                 conn['motion_previous'] = (conn.get('state'),conn.get('state_time'),conn.get('mount',(0,0)))
                 conn['mount_trail'],conn['mount_trail_lost'] = trail,lost
                 conn['mount'] = mount
@@ -1428,6 +1430,10 @@ class WorldServer:
         if raw.startswith(b'PG '):
             from .player_cut import wire as player_cut_wire
             self._queue(conn,player_cut_wire(self,conn,raw))
+            return
+        if raw.startswith(b'FL '):
+            from .cave_light import handle
+            self._queue(conn,handle(self,conn,raw))
             return
         if raw.startswith(b'RS '):
             from .rematch_strategies import wire as strategy_wire
