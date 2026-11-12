@@ -317,6 +317,10 @@ class DeliveryTests(unittest.TestCase):
                     'world/move_traits.json': b'{}',
                     'world/native_resident_sites.json': b'{}',
                     'world/secret_base_locations.json': b'{}',
+                    'world/berry_care_plots.json': b'{}',
+                    'world/safari_feeders.json': b'{}',
+                    'world/hoenn_collision_catalog.json': b'{}',
+                    'world/hoenn_collision_sources.json': b'{}',
                     'launcher-web/index.html': b'<html>',
                     'scripts/windows_expansion_entry.py': b'# entry\n',
                     'engines/expansion.mk': b'# flags\n', '.gitignore': b'build/\n'}.items():
