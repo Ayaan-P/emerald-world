@@ -1447,6 +1447,10 @@ class WorldServer:
             from .cave_light import handle
             self._queue(conn,handle(self,conn,raw))
             return
+        if raw.startswith(b'TQ '):
+            from .trick_questions import wire as trick_wire
+            self._queue(conn,trick_wire(self,conn,raw))
+            return
         if raw.startswith(b'RS '):
             from .rematch_strategies import wire as strategy_wire
             self._queue(conn,strategy_wire(self,conn,raw))

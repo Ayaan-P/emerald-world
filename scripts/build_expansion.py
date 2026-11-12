@@ -69,6 +69,7 @@ def main():
     parser.add_argument('--experimental-match-call-events', action='store_true', help='Temporary world rematches in original Match Call, linked QA pending')
     parser.add_argument('--experimental-field-concealment', action='store_true', help='private learned-move route concealment; requires --development')
     parser.add_argument('--experimental-persistent-cut', action='store_true', help='completed Cut changes archived shared outdoor grass; requires --development')
+    parser.add_argument('--experimental-trick-quiz', action='store_true', help='optional authored native Trick House quiz; requires --development')
     parser.add_argument('--experimental-rematch-strategies', action='store_true', help='optional persistent native Hoenn rematch tactics; requires --development')
     parser.add_argument('--experimental-birch-studies', action='store_true', help='optional retained private field studies and local native tutoring; requires --development')
     parser.add_argument('--experimental-wally-invitation', action='store_true', help='enable optional native Wally invitation; requires --development')
@@ -166,6 +167,8 @@ def main():
         parser.error('--experimental-persistent-cut requires --development')
     if args.experimental_shared_cave_light and not args.development:
         parser.error("--experimental-shared-cave-light requires --development")
+    if args.experimental_trick_quiz and not args.development:
+        parser.error('--experimental-trick-quiz requires --development')
     if args.experimental_rematch_strategies and not args.development:
         parser.error('--experimental-rematch-strategies requires --development')
     if args.experimental_birch_studies and not args.development:
@@ -339,6 +342,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'EW_FIELD_SUPPORT={int(args.experimental_field_support)}',
                 f'EW_PERSISTENT_CUT={int(args.experimental_persistent_cut)}',
                 f'EW_SHARED_CAVE_LIGHT={int(args.experimental_shared_cave_light)}',
+                f'EW_TRICK_QUIZ={int(args.experimental_trick_quiz)}',
                 f'EW_REMATCH_STRATEGIES={int(args.experimental_rematch_strategies)}',
                 f'EW_BIRCH_STUDIES={int(args.experimental_birch_studies)}',
                 f'EW_MATCH_CALL_EVENTS={int(args.experimental_match_call_events)}',
