@@ -67,6 +67,8 @@ def main():
     parser.add_argument('--experimental-maze-courses', action='store_true', help='enable experimental generated Trainer Hill mazes; requires --development')
     parser.add_argument('--experimental-pyramid-courses', action='store_true', help='enable experimental authored Pyramid courses; requires --development')
     parser.add_argument('--experimental-match-call-events', action='store_true', help='Temporary world rematches in original Match Call, linked QA pending')
+    parser.add_argument('--experimental-field-concealment', action='store_true', help='private learned-move route concealment; requires --development')
+    parser.add_argument('--experimental-rematch-strategies', action='store_true', help='optional persistent native Hoenn rematch tactics; requires --development')
     parser.add_argument('--experimental-birch-studies', action='store_true', help='optional retained private field studies and local native tutoring; requires --development')
     parser.add_argument('--experimental-wally-invitation', action='store_true', help='enable optional native Wally invitation; requires --development')
     parser.add_argument('--experimental-map-offers', action='store_true', help='Read actual public settings on original Hoenn map, linked QA pending')
@@ -143,6 +145,10 @@ def main():
         parser.error('--experimental-maze-courses requires --development; native layout/save QA pending')
     if args.experimental_pyramid_courses and not args.development:
         parser.error('--experimental-pyramid-courses requires --development; linked suspend/save QA pending')
+    if args.experimental_field_concealment and not args.development:
+        parser.error('--experimental-field-concealment requires --development')
+    if args.experimental_rematch_strategies and not args.development:
+        parser.error('--experimental-rematch-strategies requires --development')
     if args.experimental_birch_studies and not args.development:
         parser.error('--experimental-birch-studies requires --development')
     if args.experimental_wally_invitation and not args.development:
@@ -302,6 +308,8 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'EW_RYDEL_ROUTES={int(args.experimental_rydel_routes)}',
                 f'EW_MAP_OFFERS={int(args.experimental_map_offers)}',
                 f'EW_WALLY_INVITATION={int(args.experimental_wally_invitation)}',
+                f'EW_FIELD_CONCEALMENT={int(args.experimental_field_concealment)}',
+                f'EW_REMATCH_STRATEGIES={int(args.experimental_rematch_strategies)}',
                 f'EW_BIRCH_STUDIES={int(args.experimental_birch_studies)}',
                 f'EW_MATCH_CALL_EVENTS={int(args.experimental_match_call_events)}',
                 f'EW_APPRENTICE_WALKING={int(args.experimental_apprentice_walking)}',
