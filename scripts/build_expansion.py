@@ -105,6 +105,7 @@ def main():
     parser.add_argument('--experimental-rusturf-recovery', action='store_true',
                         help='enable unverified personal Rusturf recovery and all regional payload readers; requires --development --regional-state --kanto-content; synthetic saves only until linked QA')
     parser.add_argument('--experimental-market-reactions', action='store_true', help='enable disclosed anonymous community purchase reports; requires --development --experimental-hoenn-markets')
+    parser.add_argument('--experimental-base-rooms', action='store_true', help='enable unverified matching Secret Base rooms; requires --development')
     parser.add_argument('--experimental-secret-bases', action='store_true', help='enable unverified own-base sharing; requires --development')
     parser.add_argument('--experimental-npc-coop', action='store_true',
                         help='enable unverified dynamic NPC co-op wire (requires --development; both clients must match)')
@@ -209,6 +210,8 @@ def main():
         parser.error('--experimental-rusturf-recovery requires --development --regional-state --kanto-content; linked rescue and save QA pending')
     if args.experimental_market_reactions and not (args.development and args.experimental_hoenn_markets):
         parser.error('--experimental-market-reactions requires --development --experimental-hoenn-markets; linked shopping QA pending')
+    if args.experimental_base_rooms and not args.development:
+        parser.error('--experimental-base-rooms requires --development; linked room QA pending')
     if args.experimental_secret_bases and not args.development:
         parser.error('--experimental-secret-bases requires --development; linked save QA pending')
     if args.experimental_npc_coop and not args.development:
@@ -357,6 +360,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'WORLD_CHARACTER_COOP_EXPERIMENT={int(args.experimental_npc_coop)}',
                 f'EW_MARKET_REACTIONS={int(args.experimental_market_reactions)}',
                 f'WORLD_BASE_SHARE_EXPERIMENT={int(args.experimental_secret_bases)}',
+                f'EW_SHARED_BASE_ROOMS={int(args.experimental_base_rooms)}',
                 f'GENERATED_WORLD_REGIONS={int(args.generated_regions) or RELEASE_CONFIG.generated_world_regions}',
                 f'WORLD_TOWER_RECORD_EXPERIMENT={int(args.experimental_tower_records)}',
                 f'WORLD_STARTER_OFFER_EXPERIMENT={int(args.experimental_starter_offers)}',
