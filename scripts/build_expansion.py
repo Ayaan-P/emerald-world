@@ -113,6 +113,7 @@ def main():
     parser.add_argument('--kanto-content', action='store_true',
                         help='enable Kanto in development (requires --regional-state; already enabled for release)')
     parser.add_argument('--jobs', type=int, default=4)
+    parser.add_argument("--experimental-field-support", action="store_true", help="private companion Heal Pulse on original Hoenn routes; requires --development")
     args = parser.parse_args()
     if any((args.experimental_floorplans, args.experimental_native_trades, args.experimental_nature_challenges,
             args.experimental_regional_starters, args.experimental_kanto_rematches, args.experimental_route5_custody,
@@ -147,6 +148,8 @@ def main():
         parser.error('--experimental-pyramid-courses requires --development; linked suspend/save QA pending')
     if args.experimental_field_concealment and not args.development:
         parser.error('--experimental-field-concealment requires --development')
+    if args.experimental_field_support and not args.development:
+        parser.error("--experimental-field-support requires --development")
     if args.experimental_rematch_strategies and not args.development:
         parser.error('--experimental-rematch-strategies requires --development')
     if args.experimental_birch_studies and not args.development:
@@ -309,6 +312,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'EW_MAP_OFFERS={int(args.experimental_map_offers)}',
                 f'EW_WALLY_INVITATION={int(args.experimental_wally_invitation)}',
                 f'EW_FIELD_CONCEALMENT={int(args.experimental_field_concealment)}',
+                f'EW_FIELD_SUPPORT={int(args.experimental_field_support)}',
                 f'EW_REMATCH_STRATEGIES={int(args.experimental_rematch_strategies)}',
                 f'EW_BIRCH_STUDIES={int(args.experimental_birch_studies)}',
                 f'EW_MATCH_CALL_EVENTS={int(args.experimental_match_call_events)}',

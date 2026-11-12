@@ -1404,6 +1404,12 @@ class WorldServer:
             from .player_tournaments import result as tournament_result
             self._queue(conn,tournament_result(self,conn,raw))
             return
+        if raw.startswith(b'FS '):
+            from .field_support import wire as support_wire, current as support_current
+            for recipient, line in support_wire(self,conn,raw):
+                if support_current(self,recipient):
+                    self._queue(recipient,line)
+            return
         if raw.startswith(b'RS '):
             from .rematch_strategies import wire as strategy_wire
             self._queue(conn,strategy_wire(self,conn,raw))
