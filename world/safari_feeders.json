@@ -1,5 +1,5 @@
 {
-  "native_commit": "8dea9e7f4ea77e22f3e1dd88da84b1b880ed7174",
+  "native_commit": "8a1fc99d13528154497b66215d8097f01f4b6cd3",
   "sources": {
     "include/constants/metatile_behaviors.h": "c0b9a711033d27da81260ede19a06b6fa61c6c68",
     "data/layouts/layouts.json": "8d5bc96bd4b6e4eeb5341e8f774620709caedee6",
