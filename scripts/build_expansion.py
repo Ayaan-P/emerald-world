@@ -107,6 +107,7 @@ def main():
     parser.add_argument('--experimental-market-reactions', action='store_true', help='enable disclosed anonymous community purchase reports; requires --development --experimental-hoenn-markets')
     parser.add_argument('--experimental-base-rooms', action='store_true', help='enable unverified matching Secret Base rooms; requires --development')
     parser.add_argument('--experimental-dewford-trends', action='store_true', help='enable unverified opt-in public Dewford fishing patterns; requires --development')
+    parser.add_argument('--experimental-safari-feeders', action='store_true', help='enable shared Safari feeder scents; requires --development')
     parser.add_argument('--experimental-secret-bases', action='store_true', help='enable unverified own-base sharing; requires --development')
     parser.add_argument('--experimental-npc-coop', action='store_true',
                         help='enable unverified dynamic NPC co-op wire (requires --development; both clients must match)')
@@ -218,6 +219,8 @@ def main():
         parser.error('--experimental-base-rooms requires --development; linked room QA pending')
     if args.experimental_dewford_trends and not args.development:
         parser.error('--experimental-dewford-trends requires --development; linked gameplay QA pending')
+    if args.experimental_safari_feeders and not args.development:
+        parser.error('--experimental-safari-feeders requires --development; linked Safari QA pending')
     if args.experimental_secret_bases and not args.development:
         parser.error('--experimental-secret-bases requires --development; linked save QA pending')
     if args.experimental_npc_coop and not args.development:
@@ -369,6 +372,7 @@ print('OK pinned Expansion engine and sandboxed native toolchain (including 32-b
                 f'EW_SHARED_DEWFORD_TRENDS={int(args.experimental_dewford_trends)}',
                 f'WORLD_BASE_SHARE_EXPERIMENT={int(args.experimental_secret_bases)}',
                 f'EW_SHARED_BASE_ROOMS={int(args.experimental_base_rooms)}',
+                f'EW_SHARED_SAFARI_FEEDERS={int(args.experimental_safari_feeders)}',
                 f'GENERATED_WORLD_REGIONS={int(args.generated_regions) or RELEASE_CONFIG.generated_world_regions}',
                 f'WORLD_TOWER_RECORD_EXPERIMENT={int(args.experimental_tower_records)}',
                 f'WORLD_STARTER_OFFER_EXPERIMENT={int(args.experimental_starter_offers)}',

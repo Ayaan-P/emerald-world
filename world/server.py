@@ -1417,6 +1417,10 @@ class WorldServer:
             from .base_rooms import handle as base_room_handle
             self._queue(conn,base_room_handle(self,conn,raw))
             return
+        if raw.startswith(b'SF '):
+            from .safari_feeders import handle as safari_feeder_handle
+            self._queue(conn,safari_feeder_handle(self,conn,raw))
+            return
         if raw.startswith(b'B '):
             from .base_neighborhood import handle as base_directory_handle
             self._queue(conn,base_directory_handle(self,conn,raw))
