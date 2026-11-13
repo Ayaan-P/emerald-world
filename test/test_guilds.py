@@ -13,6 +13,7 @@ sys.path.insert(0,str(ROOT))
 from world import guilds
 from world.guild_chat import GuildChat
 from world.landmark_survey import LandmarkSurvey
+from world.private_commands import route as route_private_command
 
 def database(path=':memory:'):
     db=sqlite3.connect(path)
@@ -144,6 +145,8 @@ class ChatIntegrationTests(unittest.TestCase):
         methods=[n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name in ('_line','_line_impl','_chat','_snapshot','_connection_cave')]
         ns={'re':re,'time':time,'bounded':bounded,'ID':re.compile(r'[A-Za-z0-9_-]{1,24}\\Z'), 'GuildError':guilds.GuildError, 'HASH':re.compile(r'[0-9a-fA-F]{16}\Z'), 'PRESENCE_HEARTBEAT_INTERVAL':1, 'TRAVEL_FRESH_SECONDS':3, 'MAX_PEERS':8, 'validate_coords':lambda *args:{'name':'Route101'}}
         ns['ID']=re.compile(r'[A-Za-z0-9_-]{1,24}\Z')
+        ns.update(route_private_command=route_private_command,
+                  __name__='world.server', __package__='world')
         exec(compile(ast.fix_missing_locations(ast.Module(body=methods,type_ignores=[])),'server.py','exec'),ns)
         class Server:
             _line=ns['_line'];_line_impl=ns['_line_impl'];_chat=ns['_chat'];_snapshot=ns['_snapshot']
@@ -158,6 +161,8 @@ class ChatIntegrationTests(unittest.TestCase):
             def _deliver_links(self,msg):pass
             def _schedule_presence(self,now):pass
         self.db=database();self.s=Server();self.s.db=self.db;self.s.guilds=guilds.Guilds(self.db,{(0,9):{'name':'Route101'}});self.s.lock=threading.RLock();self.s.chat_serial=0;self.s.guild_chat=GuildChat(self.s,lambda *args:{'name':'Route101'},3)
+        self.s.combined_regions=False  # Explicit legacy authority, as in WorldServer.__init__.
+        self.s.link_channels={}  # No authenticated native link channels in this guild fixture.
         self.s.cave_map=None;self.s.wilds_map=None;self.s.shared_cave=None;self.s.pending_states={};self.s.last_presence_broadcast=0
         self.s.landmark_survey=LandmarkSurvey(self.s)
         self.s.revision=1;self.s.tiles=[];self.s.objects=[]

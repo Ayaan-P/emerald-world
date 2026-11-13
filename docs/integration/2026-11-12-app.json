@@ -1,0 +1,835 @@
+{
+  "schema": 1,
+  "repository": "app",
+  "baseline": "4e9cb1a6de9dd683b3682ca7c010541c7c2a9c98",
+  "source_head": "aa337ee9ded8d0c5e22b91e4b22e3ad9112de60f",
+  "branch": "integrate/daily-20261112-app",
+  "worktree": "/home/ayaan/emerald-daily-20261112/app",
+  "cutoff": "2026-11-12T17:01:48.430743+00:00",
+  "changed_head_count": 16,
+  "dispositions": [
+    {
+      "ref": "origin/dot/apprentice-outings",
+      "sha": "a402d7392633d64922ddb4c27fee0586a7cfa7db",
+      "disposition": "source_integrated",
+      "ancestor_final": true,
+      "integration_commit": "2af7a0c8416332b9cdf1d84b1bde7e96b9cd459e",
+      "merge_base_with_baseline": "4e9cb1a6de9dd683b3682ca7c010541c7c2a9c98",
+      "cumulative_delta_patch_id": "d6e957ffbcfa27bc60bfa5fcf852868c0508b5ef",
+      "baseline_absent_files": [],
+      "delta_paths": {
+        "docs/experimental/apprentice-outings.md": "additive_reconciliation_or_test_repair",
+        "engines/expansion-native": "pair_metadata_reserved_for_parent",
+        "engines/expansion.mk": "additive_reconciliation_or_test_repair",
+        "scripts/build_expansion.py": "additive_reconciliation_or_test_repair",
+        "test/native_apprentice.c": "additive_reconciliation_or_test_repair",
+        "test/test_apprentice.py": "same_donor_blob",
+        "world/encounter_traits.json": "pair_metadata_reserved_for_parent",
+        "world/native_resident_sites.json": "pair_metadata_reserved_for_parent"
+      },
+      "reason": "Integrated cumulative/additive source through an actual merge. Existing privacy, scoped admission, native walking, public checkpoint and combined-map code retained. Donor engine gitlink/PIN and generated provenance deliberately not adopted; parent owns exact paired metadata. Source ancestry is not native gameplay acceptance."
+    },
+    {
+      "ref": "origin/dot/apprentice-walking",
+      "sha": "744c656d3a8ac7df37a2a8ce87cf0ffc93649336",
+      "disposition": "source_integrated",
+      "ancestor_final": true,
+      "integration_commit": "2af7a0c8416332b9cdf1d84b1bde7e96b9cd459e",
+      "merge_base_with_baseline": "4e9cb1a6de9dd683b3682ca7c010541c7c2a9c98",
+      "cumulative_delta_patch_id": "ccd9f69a4c31a8f4611b4bc58615f7db6e75b34f",
+      "baseline_absent_files": [],
+      "delta_paths": {
+        "docs/experimental/apprentice-outings.md": "same_donor_blob",
+        "docs/experimental/apprentice-walking.md": "same_donor_blob",
+        "engines/expansion-native": "pair_metadata_reserved_for_parent",
+        "engines/expansion.mk": "additive_reconciliation_or_test_repair",
+        "scripts/build_expansion.py": "additive_reconciliation_or_test_repair",
+        "test/native_apprentice.c": "same_donor_blob",
+        "test/native_apprentice_walk.c": "same_donor_blob",
+        "test/test_apprentice.py": "same_donor_blob",
+        "test/test_apprentice_walk.py": "same_donor_blob",
+        "world/encounter_traits.json": "pair_metadata_reserved_for_parent",
+        "world/native_resident_sites.json": "pair_metadata_reserved_for_parent"
+      },
+      "reason": "Integrated cumulative/additive source through an actual merge. Existing privacy, scoped admission, native walking, public checkpoint and combined-map code retained. Donor engine gitlink/PIN and generated provenance deliberately not adopted; parent owns exact paired metadata. Source ancestry is not native gameplay acceptance."
+    },
+    {
+      "ref": "origin/dot/field-concealment",
+      "sha": "c2cab74a6b80e4bd7280efe46d4c0cb98fc25dad",
+      "disposition": "source_integrated",
+      "ancestor_final": true,
+      "integration_commit": "ce84d38935f11e70b8f508dd9d9f093556737a94",
+      "merge_base_with_baseline": "441a32139fb6e2ba19d3fbe28f357842f8f54bf3",
+      "cumulative_delta_patch_id": "a9535fd1287eee68cf185801f9fa45dd14477ae0",
+      "baseline_absent_files": [],
+      "delta_paths": {
+        "docs/field-concealment.md": "same_donor_blob",
+        "docs/persistent-rematch-strategies.md": "same_donor_blob",
+        "engines/expansion-native": "pair_metadata_reserved_for_parent",
+        "engines/expansion.mk": "additive_reconciliation_or_test_repair",
+        "scripts/build_expansion.py": "additive_reconciliation_or_test_repair",
+        "test/native_concealment.c": "same_donor_blob",
+        "test/native_strategy.c": "same_donor_blob",
+        "test/test_concealment.py": "same_donor_blob",
+        "test/test_strategies.py": "additive_reconciliation_or_test_repair",
+        "world/actor_runtime.py": "additive_reconciliation_or_test_repair",
+        "world/rematch_strategies.py": "same_donor_blob",
+        "world/server.py": "additive_reconciliation_or_test_repair"
+      },
+      "reason": "Integrated cumulative/additive source through an actual merge. Existing privacy, scoped admission, native walking, public checkpoint and combined-map code retained. Donor engine gitlink/PIN and generated provenance deliberately not adopted; parent owns exact paired metadata. Source ancestry is not native gameplay acceptance."
+    },
+    {
+      "ref": "origin/dot/field-support",
+      "sha": "ae3a57cf481e222ed2697da3151a9f2afff4a9dc",
+      "disposition": "source_integrated",
+      "ancestor_final": true,
+      "integration_commit": "21e88dbb3703f391da229585099be63311ea5713",
+      "merge_base_with_baseline": "441a32139fb6e2ba19d3fbe28f357842f8f54bf3",
+      "cumulative_delta_patch_id": "1bfb78488cbe558922b93b70d9acf102974d15c1",
+      "baseline_absent_files": [],
+      "delta_paths": {
+        "docs/persistent-rematch-strategies.md": "same_donor_blob",
+        "engines/expansion-native": "pair_metadata_reserved_for_parent",
+        "engines/expansion.mk": "additive_reconciliation_or_test_repair",
+        "scripts/build_expansion.py": "additive_reconciliation_or_test_repair",
+        "test/native_strategy.c": "same_donor_blob",
+        "test/native_support.c": "same_donor_blob",
+        "test/test_strategies.py": "additive_reconciliation_or_test_repair",
+        "test/test_support.py": "additive_reconciliation_or_test_repair",
+        "world/actor_runtime.py": "additive_reconciliation_or_test_repair",
+        "world/field_support.py": "same_donor_blob",
+        "world/rematch_strategies.py": "same_donor_blob",
+        "world/server.py": "additive_reconciliation_or_test_repair"
+      },
+      "reason": "Integrated cumulative/additive source through an actual merge. Existing privacy, scoped admission, native walking, public checkpoint and combined-map code retained. Donor engine gitlink/PIN and generated provenance deliberately not adopted; parent owns exact paired metadata. Source ancestry is not native gameplay acceptance."
+    },
+    {
+      "ref": "origin/dot/hoenn-collision-planning",
+      "sha": "faa5fa74b140fb3039be6911f82c94d5e0b76ded",
+      "disposition": "source_integrated",
+      "ancestor_final": true,
+      "integration_commit": "820f8c74063ad24e5aa1862e253109258420c71c",
+      "merge_base_with_baseline": "441a32139fb6e2ba19d3fbe28f357842f8f54bf3",
+      "cumulative_delta_patch_id": "eb97d2b2f95a3e29b899ccd3e93aedebbb7669ba",
+      "baseline_absent_files": [],
+      "delta_paths": {
+        "docs/hoenn-collision-planning.md": "same_donor_blob",
+        "docs/persistent-rematch-strategies.md": "same_donor_blob",
+        "engines/expansion-native": "pair_metadata_reserved_for_parent",
+        "engines/expansion.mk": "additive_reconciliation_or_test_repair",
+        "scripts/build_expansion.py": "additive_reconciliation_or_test_repair",
+        "test/native_strategy.c": "same_donor_blob",
+        "test/test_hoenn_collision.py": "same_donor_blob",
+        "test/test_strategies.py": "additive_reconciliation_or_test_repair",
+        "world/actor_runtime.py": "additive_reconciliation_or_test_repair",
+        "world/hoenn_collision.py": "same_donor_blob",
+        "world/hoenn_collision_catalog.json": "same_donor_blob",
+        "world/hoenn_collision_sources.json": "same_donor_blob",
+        "world/rematch_strategies.py": "same_donor_blob",
+        "world/server.py": "additive_reconciliation_or_test_repair"
+      },
+      "reason": "Integrated cumulative/additive source through an actual merge. Existing privacy, scoped admission, native walking, public checkpoint and combined-map code retained. Donor engine gitlink/PIN and generated provenance deliberately not adopted; parent owns exact paired metadata. Source ancestry is not native gameplay acceptance."
+    },
+    {
+      "ref": "origin/dot/living-route-trainers",
+      "sha": "1bfbe7a24736d708885257a7fc3cf53611e51bf4",
+      "disposition": "source_integrated",
+      "ancestor_final": true,
+      "integration_commit": "1c3f5a2c20211a3c1e735fa549c67190d114df81",
+      "merge_base_with_baseline": "4e9cb1a6de9dd683b3682ca7c010541c7c2a9c98",
+      "cumulative_delta_patch_id": "eeefc10d8329b528b39173dac55c72f961fe081c",
+      "baseline_absent_files": [],
+      "delta_paths": {
+        "engines/expansion-native": "pair_metadata_reserved_for_parent",
+        "engines/expansion.mk": "additive_reconciliation_or_test_repair",
+        "scripts/build_expansion.py": "additive_reconciliation_or_test_repair",
+        "test/native_route.c": "same_donor_blob",
+        "test/test_routes.py": "same_donor_blob",
+        "world/actor_runtime.py": "additive_reconciliation_or_test_repair",
+        "world/encounter_traits.json": "pair_metadata_reserved_for_parent",
+        "world/native_resident_sites.json": "pair_metadata_reserved_for_parent",
+        "world/route_trainers.py": "same_donor_blob",
+        "world/server.py": "additive_reconciliation_or_test_repair"
+      },
+      "reason": "Integrated cumulative/additive source through an actual merge. Existing privacy, scoped admission, native walking, public checkpoint and combined-map code retained. Donor engine gitlink/PIN and generated provenance deliberately not adopted; parent owns exact paired metadata. Source ancestry is not native gameplay acceptance."
+    },
+    {
+      "ref": "origin/dot/persistent-native-cut",
+      "sha": "0b5291975865de48cd3936be804f0ea827221a1c",
+      "disposition": "source_integrated",
+      "ancestor_final": true,
+      "integration_commit": "22fd689e029efcd32b0fa91e4bfb1f7d4780eea4",
+      "merge_base_with_baseline": "441a32139fb6e2ba19d3fbe28f357842f8f54bf3",
+      "cumulative_delta_patch_id": "aff7bfbf67c7b4d3d1c1b49bb37edc77ee1a5c23",
+      "baseline_absent_files": [],
+      "delta_paths": {
+        "docs/persistent-cut-grass.md": "same_donor_blob",
+        "docs/persistent-rematch-strategies.md": "same_donor_blob",
+        "engines/expansion-native": "pair_metadata_reserved_for_parent",
+        "engines/expansion.mk": "additive_reconciliation_or_test_repair",
+        "scripts/build_expansion.py": "additive_reconciliation_or_test_repair",
+        "test/native_player_cut.c": "same_donor_blob",
+        "test/native_strategy.c": "same_donor_blob",
+        "test/test_player_cut.py": "additive_reconciliation_or_test_repair",
+        "test/test_strategies.py": "additive_reconciliation_or_test_repair",
+        "world/actor_runtime.py": "additive_reconciliation_or_test_repair",
+        "world/player_cut.py": "same_donor_blob",
+        "world/rematch_strategies.py": "same_donor_blob",
+        "world/server.py": "additive_reconciliation_or_test_repair"
+      },
+      "reason": "Integrated cumulative/additive source through an actual merge. Existing privacy, scoped admission, native walking, public checkpoint and combined-map code retained. Donor engine gitlink/PIN and generated provenance deliberately not adopted; parent owns exact paired metadata. Source ancestry is not native gameplay acceptance."
+    },
+    {
+      "ref": "origin/dot/persistent-rematch-strategies",
+      "sha": "555e5c7fe03cb4c62e24b4f64800c02b7769e148",
+      "disposition": "source_integrated",
+      "ancestor_final": true,
+      "integration_commit": "ce84d38935f11e70b8f508dd9d9f093556737a94",
+      "merge_base_with_baseline": "441a32139fb6e2ba19d3fbe28f357842f8f54bf3",
+      "cumulative_delta_patch_id": "68023310ca584e0a66beb821d5dfcf57073f1588",
+      "baseline_absent_files": [],
+      "delta_paths": {
+        "docs/persistent-rematch-strategies.md": "same_donor_blob",
+        "engines/expansion-native": "pair_metadata_reserved_for_parent",
+        "engines/expansion.mk": "additive_reconciliation_or_test_repair",
+        "scripts/build_expansion.py": "additive_reconciliation_or_test_repair",
+        "test/native_strategy.c": "same_donor_blob",
+        "test/test_strategies.py": "additive_reconciliation_or_test_repair",
+        "world/actor_runtime.py": "additive_reconciliation_or_test_repair",
+        "world/rematch_strategies.py": "same_donor_blob",
+        "world/server.py": "additive_reconciliation_or_test_repair"
+      },
+      "reason": "Integrated cumulative/additive source through an actual merge. Existing privacy, scoped admission, native walking, public checkpoint and combined-map code retained. Donor engine gitlink/PIN and generated provenance deliberately not adopted; parent owns exact paired metadata. Source ancestry is not native gameplay acceptance."
+    },
+    {
+      "ref": "origin/dot/responsive-hoenn-markets",
+      "sha": "05ea2d36b8999c4712278265875b1f6124b47f73",
+      "disposition": "source_integrated",
+      "ancestor_final": true,
+      "integration_commit": "118471f2d4d98f8e7ca2323af0047c384a457862",
+      "merge_base_with_baseline": "4e9cb1a6de9dd683b3682ca7c010541c7c2a9c98",
+      "cumulative_delta_patch_id": "57f96bba5bc3e97823cfbcf7e587737c2d86c5b7",
+      "baseline_absent_files": [],
+      "delta_paths": {
+        "docs/experimental/responsive-hoenn-markets.md": "same_donor_blob",
+        "engines/expansion-native": "pair_metadata_reserved_for_parent",
+        "engines/expansion.mk": "additive_reconciliation_or_test_repair",
+        "scripts/build_expansion.py": "additive_reconciliation_or_test_repair",
+        "test/native_market_checkout.c": "same_donor_blob",
+        "test/native_market_reactions.c": "same_donor_blob",
+        "test/test_market_reactions.py": "same_donor_blob",
+        "world/actor_runtime.py": "additive_reconciliation_or_test_repair",
+        "world/encounter_traits.json": "pair_metadata_reserved_for_parent",
+        "world/history_world_rules.py": "additive_reconciliation_or_test_repair",
+        "world/hoenn_markets.py": "same_donor_blob",
+        "world/native_resident_sites.json": "pair_metadata_reserved_for_parent"
+      },
+      "reason": "Integrated cumulative/additive source through an actual merge. Existing privacy, scoped admission, native walking, public checkpoint and combined-map code retained. Donor engine gitlink/PIN and generated provenance deliberately not adopted; parent owns exact paired metadata. Source ancestry is not native gameplay acceptance."
+    },
+    {
+      "ref": "origin/dot/shared-base-rooms",
+      "sha": "ee2a326f13d09aff37e164bcaf78e9865e81346f",
+      "disposition": "source_integrated",
+      "ancestor_final": true,
+      "integration_commit": "e2994438c86a50505718e15fc1c9bcdd6c9c139a",
+      "merge_base_with_baseline": "4e9cb1a6de9dd683b3682ca7c010541c7c2a9c98",
+      "cumulative_delta_patch_id": "82f7c7a89cb80d7a9e6bb98501c1d9bb50f971f2",
+      "baseline_absent_files": [],
+      "delta_paths": {
+        "docs/experimental/shared-base-rooms.md": "same_donor_blob",
+        "engines/expansion-native": "pair_metadata_reserved_for_parent",
+        "engines/expansion.mk": "additive_reconciliation_or_test_repair",
+        "scripts/build_expansion.py": "additive_reconciliation_or_test_repair",
+        "test/native_digest.c": "same_donor_blob",
+        "test/native_room.c": "same_donor_blob",
+        "test/test_base_rooms.py": "same_donor_blob",
+        "world/base_neighborhood.py": "same_donor_blob",
+        "world/base_rooms.py": "same_donor_blob",
+        "world/encounter_traits.json": "pair_metadata_reserved_for_parent",
+        "world/native_resident_sites.json": "pair_metadata_reserved_for_parent",
+        "world/server.py": "additive_reconciliation_or_test_repair"
+      },
+      "reason": "Integrated cumulative/additive source through an actual merge. Existing privacy, scoped admission, native walking, public checkpoint and combined-map code retained. Donor engine gitlink/PIN and generated provenance deliberately not adopted; parent owns exact paired metadata. Source ancestry is not native gameplay acceptance."
+    },
+    {
+      "ref": "origin/dot/shared-cave-light",
+      "sha": "2a96d440dcefdf8eee8fcf2d16277ba439b10632",
+      "disposition": "source_integrated",
+      "ancestor_final": true,
+      "integration_commit": "3d8ba392af8da08d4b586d06e42d1caaac745f91",
+      "merge_base_with_baseline": "441a32139fb6e2ba19d3fbe28f357842f8f54bf3",
+      "cumulative_delta_patch_id": "87bc073bc39d2a839c86ca6a5d9f568f1a788e5a",
+      "baseline_absent_files": [],
+      "delta_paths": {
+        "docs/persistent-rematch-strategies.md": "same_donor_blob",
+        "engines/expansion-native": "pair_metadata_reserved_for_parent",
+        "engines/expansion.mk": "additive_reconciliation_or_test_repair",
+        "scripts/build_expansion.py": "additive_reconciliation_or_test_repair",
+        "test/native_light.c": "same_donor_blob",
+        "test/native_strategy.c": "same_donor_blob",
+        "test/test_light.py": "additive_reconciliation_or_test_repair",
+        "test/test_strategies.py": "additive_reconciliation_or_test_repair",
+        "world/actor_runtime.py": "additive_reconciliation_or_test_repair",
+        "world/cave_light.py": "same_donor_blob",
+        "world/rematch_strategies.py": "same_donor_blob",
+        "world/server.py": "additive_reconciliation_or_test_repair"
+      },
+      "reason": "Integrated cumulative/additive source through an actual merge. Existing privacy, scoped admission, native walking, public checkpoint and combined-map code retained. Donor engine gitlink/PIN and generated provenance deliberately not adopted; parent owns exact paired metadata. Source ancestry is not native gameplay acceptance."
+    },
+    {
+      "ref": "origin/dot/shared-dewford-trends",
+      "sha": "43df18aefb0e5c49038c6b4af1cdbd150f227ff1",
+      "disposition": "source_integrated",
+      "ancestor_final": true,
+      "integration_commit": "4a59831ea2af473ee7b017fc0b4fa1ca8b462be3",
+      "merge_base_with_baseline": "4e9cb1a6de9dd683b3682ca7c010541c7c2a9c98",
+      "cumulative_delta_patch_id": "20c8fbd0a736834f280cd5bceaef029e561ecf92",
+      "baseline_absent_files": [],
+      "delta_paths": {
+        "docs/experimental/shared-dewford-trends.md": "same_donor_blob",
+        "engines/expansion-native": "pair_metadata_reserved_for_parent",
+        "engines/expansion.mk": "additive_reconciliation_or_test_repair",
+        "scripts/build_expansion.py": "additive_reconciliation_or_test_repair",
+        "test/native_acceptance.c": "same_donor_blob",
+        "test/native_feebas.c": "same_donor_blob",
+        "test/native_trend.c": "same_donor_blob",
+        "test/test_dewford_trends.py": "same_donor_blob",
+        "world/actor_runtime.py": "additive_reconciliation_or_test_repair",
+        "world/dewford_trends.py": "same_donor_blob",
+        "world/encounter_traits.json": "pair_metadata_reserved_for_parent",
+        "world/history_world_rules.py": "additive_reconciliation_or_test_repair",
+        "world/native_resident_sites.json": "pair_metadata_reserved_for_parent",
+        "world/server.py": "additive_reconciliation_or_test_repair"
+      },
+      "reason": "Integrated cumulative/additive source through an actual merge. Existing privacy, scoped admission, native walking, public checkpoint and combined-map code retained. Donor engine gitlink/PIN and generated provenance deliberately not adopted; parent owns exact paired metadata. Source ancestry is not native gameplay acceptance."
+    },
+    {
+      "ref": "origin/dot/shared-safari-feeders",
+      "sha": "1d6dc9534cae27093aeaa99f8ff62ecce50a4909",
+      "disposition": "source_integrated",
+      "ancestor_final": true,
+      "integration_commit": "7449be680bb00393ec6eef08b47786d180547ee8",
+      "merge_base_with_baseline": "4e9cb1a6de9dd683b3682ca7c010541c7c2a9c98",
+      "cumulative_delta_patch_id": "7492a8030517e5fbcc97aa9b846f2701417ad5d8",
+      "baseline_absent_files": [],
+      "delta_paths": {
+        "docs/experimental/shared-safari-feeders.md": "same_donor_blob",
+        "engines/expansion-native": "pair_metadata_reserved_for_parent",
+        "engines/expansion.mk": "additive_reconciliation_or_test_repair",
+        "scripts/build_expansion.py": "additive_reconciliation_or_test_repair",
+        "test/native_deposit.c": "same_donor_blob",
+        "test/native_nature.c": "same_donor_blob",
+        "test/native_scent.c": "same_donor_blob",
+        "test/test_safari_feeders.py": "same_donor_blob",
+        "world/actor_runtime.py": "additive_reconciliation_or_test_repair",
+        "world/encounter_traits.json": "pair_metadata_reserved_for_parent",
+        "world/history_world_rules.py": "additive_reconciliation_or_test_repair",
+        "world/native_resident_sites.json": "pair_metadata_reserved_for_parent",
+        "world/safari_feeders.json": "same_donor_blob",
+        "world/safari_feeders.py": "same_donor_blob",
+        "world/server.py": "additive_reconciliation_or_test_repair"
+      },
+      "reason": "Integrated cumulative/additive source through an actual merge. Existing privacy, scoped admission, native walking, public checkpoint and combined-map code retained. Donor engine gitlink/PIN and generated provenance deliberately not adopted; parent owns exact paired metadata. Source ancestry is not native gameplay acceptance."
+    },
+    {
+      "ref": "origin/dot/shared-soil-care",
+      "sha": "3167c8273ac89431473c8a0a1d0c669193df2bab",
+      "disposition": "source_integrated",
+      "ancestor_final": true,
+      "integration_commit": "546f7153bef9e7b94493f6f394b641a75aaeae70",
+      "merge_base_with_baseline": "4e9cb1a6de9dd683b3682ca7c010541c7c2a9c98",
+      "cumulative_delta_patch_id": "8f0acbd5ddc452407097f59ebce13377d930989b",
+      "baseline_absent_files": [],
+      "delta_paths": {
+        "engines/expansion-native": "pair_metadata_reserved_for_parent",
+        "engines/expansion.mk": "additive_reconciliation_or_test_repair",
+        "scripts/build_expansion.py": "additive_reconciliation_or_test_repair",
+        "test/native_care.c": "same_donor_blob",
+        "test/test_care.py": "same_donor_blob",
+        "world/actor_runtime.py": "additive_reconciliation_or_test_repair",
+        "world/berry_care.py": "same_donor_blob",
+        "world/berry_care_plots.json": "same_donor_blob",
+        "world/encounter_traits.json": "pair_metadata_reserved_for_parent",
+        "world/native_resident_sites.json": "pair_metadata_reserved_for_parent",
+        "world/server.py": "additive_reconciliation_or_test_repair"
+      },
+      "reason": "Integrated cumulative/additive source through an actual merge. Existing privacy, scoped admission, native walking, public checkpoint and combined-map code retained. Donor engine gitlink/PIN and generated provenance deliberately not adopted; parent owns exact paired metadata. Source ancestry is not native gameplay acceptance."
+    },
+    {
+      "ref": "origin/dot/tagged-field-actions",
+      "sha": "6db241b22095c7f1fe48ecdbcca83daac67e0ae6",
+      "disposition": "source_integrated",
+      "ancestor_final": true,
+      "integration_commit": "22db38e999cfeba4060d9c0d7f8446812f68cfa0",
+      "merge_base_with_baseline": "4e9cb1a6de9dd683b3682ca7c010541c7c2a9c98",
+      "cumulative_delta_patch_id": "3a9793453aaf623a4ba5450da5c113f7ff065dbb",
+      "baseline_absent_files": [],
+      "delta_paths": {
+        "test/test_tagged_actions.py": "same_donor_blob",
+        "world/field_move_ui.py": "same_donor_blob",
+        "world/link_protocol.py": "same_donor_blob"
+      },
+      "reason": "Integrated cumulative/additive source through an actual merge. Existing privacy, scoped admission, native walking, public checkpoint and combined-map code retained. Donor engine gitlink/PIN and generated provenance deliberately not adopted; parent owns exact paired metadata. Source ancestry is not native gameplay acceptance."
+    },
+    {
+      "ref": "origin/dot/trick-house-live-quiz",
+      "sha": "9e4b8b6b6ebca16d5c5e313b319055ccfd45d678",
+      "disposition": "source_integrated",
+      "ancestor_final": true,
+      "integration_commit": "48c46b89ae759692673e2a5e1d8121844736510b",
+      "merge_base_with_baseline": "441a32139fb6e2ba19d3fbe28f357842f8f54bf3",
+      "cumulative_delta_patch_id": "0e679d72f6f4190f243d1bb0c18a264d9a0878aa",
+      "baseline_absent_files": [
+        "docs/persistent-rematch-strategies.md",
+        "docs/trick-house-live-quiz.md",
+        "engines/expansion-native",
+        "engines/expansion.mk",
+        "scripts/build_expansion.py",
+        "test/native_strategy.c",
+        "test/native_trick_quiz.c",
+        "test/native_trick_stress.c",
+        "test/test_strategies.py",
+        "test/test_trick_questions.py",
+        "world/actor_runtime.py",
+        "world/rematch_strategies.py",
+        "world/server.py",
+        "world/trick_questions.py"
+      ],
+      "delta_paths": {
+        "docs/persistent-rematch-strategies.md": "same_donor_blob",
+        "docs/trick-house-live-quiz.md": "same_donor_blob",
+        "engines/expansion-native": "pair_metadata_reserved_for_parent",
+        "engines/expansion.mk": "additive_reconciliation_or_test_repair",
+        "scripts/build_expansion.py": "additive_reconciliation_or_test_repair",
+        "test/native_strategy.c": "same_donor_blob",
+        "test/native_trick_quiz.c": "same_donor_blob",
+        "test/native_trick_stress.c": "same_donor_blob",
+        "test/test_strategies.py": "additive_reconciliation_or_test_repair",
+        "test/test_trick_questions.py": "additive_reconciliation_or_test_repair",
+        "world/actor_runtime.py": "additive_reconciliation_or_test_repair",
+        "world/rematch_strategies.py": "same_donor_blob",
+        "world/server.py": "additive_reconciliation_or_test_repair",
+        "world/trick_questions.py": "same_donor_blob"
+      },
+      "reason": "Integrated cumulative/additive source through an actual merge. Existing privacy, scoped admission, native walking, public checkpoint and combined-map code retained. Donor engine gitlink/PIN and generated provenance deliberately not adopted; parent owns exact paired metadata. Source ancestry is not native gameplay acceptance."
+    }
+  ],
+  "commits": [
+    {
+      "sha": "2af7a0c8416332b9cdf1d84b1bde7e96b9cd459e",
+      "subject": "integrate: apprentice outings and transient walking source"
+    },
+    {
+      "sha": "ce84d38935f11e70b8f508dd9d9f093556737a94",
+      "subject": "integrate: persistent rematch strategies and optional concealment"
+    },
+    {
+      "sha": "21e88dbb3703f391da229585099be63311ea5713",
+      "subject": "integrate: private companion field support"
+    },
+    {
+      "sha": "820f8c74063ad24e5aa1862e253109258420c71c",
+      "subject": "integrate: verified conservative Hoenn collision planning"
+    },
+    {
+      "sha": "1c3f5a2c20211a3c1e735fa549c67190d114df81",
+      "subject": "integrate: authored optional route trainer dispositions"
+    },
+    {
+      "sha": "22fd689e029efcd32b0fa91e4bfb1f7d4780eea4",
+      "subject": "integrate: shared persistent native Cut grass"
+    },
+    {
+      "sha": "118471f2d4d98f8e7ca2323af0047c384a457862",
+      "subject": "integrate: consented community market checkout reactions"
+    },
+    {
+      "sha": "e2994438c86a50505718e15fc1c9bcdd6c9c139a",
+      "subject": "integrate: scoped shared Secret Base room presence"
+    },
+    {
+      "sha": "3d8ba392af8da08d4b586d06e42d1caaac745f91",
+      "subject": "integrate: current-visit shared cave Flash visibility"
+    },
+    {
+      "sha": "4a59831ea2af473ee7b017fc0b4fa1ca8b462be3",
+      "subject": "integrate: explicit public Dewford fishing traditions"
+    },
+    {
+      "sha": "7449be680bb00393ec6eef08b47786d180547ee8",
+      "subject": "integrate: explicitly shared Safari feeder deposits"
+    },
+    {
+      "sha": "546f7153bef9e7b94493f6f394b641a75aaeae70",
+      "subject": "integrate: shared soil watering with personal harvest isolation"
+    },
+    {
+      "sha": "22db38e999cfeba4060d9c0d7f8446812f68cfa0",
+      "subject": "integrate: retain idle tagged companion field actions"
+    },
+    {
+      "sha": "48c46b89ae759692673e2a5e1d8121844736510b",
+      "subject": "integrate: optional authored native Trick House questions"
+    },
+    {
+      "sha": "ab241a6ee84b95fb91981bff96646a156ab8f148",
+      "subject": "fix: close daily runtime package catalogs and faithful authority fixtures"
+    },
+    {
+      "sha": "aa337ee9ded8d0c5e22b91e4b22e3ad9112de60f",
+      "subject": "test: provide required daily catalog fixtures for Windows assembly"
+    }
+  ],
+  "tests": {
+    "app-tests-first.log": {
+      "log": "/home/ayaan/emerald-daily-20261112/app-tests-first.log",
+      "sha256": "c57a99acb156aa06b7c8aa72bf63c373fd76060a7e4c953c3efda0bbeacef950",
+      "summary": null,
+      "outcome": "RED_or_setup_error",
+      "final_lines": [
+        "    mod=__import__(name[:-3].replace('/','.'),fromlist=['*'])",
+        "        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+        "  File \"/home/ayaan/emerald-daily-20261112/app/test/test_apprentice_walk.py\", line 2, in <module>",
+        "    from test_apprentice import function",
+        "ModuleNotFoundError: No module named 'test_apprentice'"
+      ]
+    },
+    "app-tests-second.log": {
+      "log": "/home/ayaan/emerald-daily-20261112/app-tests-second.log",
+      "sha256": "b315e5e2ac2d4443d3849f41cc20c3ae0714289efb67fa594094bbf840b426e6",
+      "summary": [
+        "79",
+        "3.367"
+      ],
+      "outcome": "RED_or_setup_error",
+      "final_lines": [
+        "----------------------------------------------------------------------",
+        "Ran 79 tests in 3.367s",
+        "",
+        "FAILED (errors=5)",
+        "EXCLUDED native-dependent [\"test.test_apprentice.Outings.test_actual_native_session_and_entry_exit_enabled_disabled\", \"test.test_apprentice.Outings.test_native_routing_and_lifecycle_hooks\", \"test.test_apprentice.Outings.test_no_player_party_rollback_or_saved_template_mutation\", \"test.test_apprentice_walk.Walking.test_actual_walk_save_load_collision_on_off\", \"test.test_apprentice_walk.Walking.test_native_lifecycle_and_template_hooks\", \"test.test_apprentice_walk.Walking.test_no_saved_follower_backend\", \"test.test_base_rooms.Rooms.test_actual_native_room_digest_excludes_private_party\", \"test.test_base_rooms.Rooms.test_native_protocol_enabled_and_disabled\", \"test.test_care.Care.test_actual_stock_yield_and_source_preservation\", \"test.test_care.Care.test_hooks_and_private_ownership\", \"test.test_care.Care.test_native_core_enabled_disabled\", \"test.test_concealment.Concealment.test_actual_native_engine_on_off\", \"test.test_concealment.Concealment.test_entry_and_build_are_opt_in_without_missing_transport\", \"test.test_concealment.Concealment.test_original_field_menu_not_replaced_by_concealment\", \"test.test_concealment.Concealment.test_stock_detection_and_avatar_source_preserved\", \"test.test_dewford_trends.Trends.test_actual_feebas_algorithm_and_odds\", \"test.test_dewford_trends.Trends.test_actual_native_acceptance_branches\", \"test.test_dewford_trends.Trends.test_native_core_enabled_disabled\", \"test.test_dewford_trends.Trends.test_transport_reset_and_scope\", \"test.test_hoenn_collision.Collision.test_rebuild_exact_native_sources_and_corruption\", \"test.test_light.Light.test_actual_runtime_renderer_has_no_save_mutation\", \"test.test_light.Light.test_native_lifecycle\", \"test.test_light.Light.test_original_flash_function_preserved\", \"test.test_market_reactions.Markets.test_actual_checkout_reports_only_after_credit_and_debit\", \"test.test_market_reactions.Markets.test_native_enabled_disabled_revision_and_owner\", \"test.test_market_reactions.Markets.test_no_extra_approval_or_private_sell_reporting\", \"test.test_player_cut.Cut.test_actual_native_module_on_off\", \"test.test_player_cut.Cut.test_exact_native_digest_and_authoritative_restoration\", \"test.test_routes.Routes.test_native_actual_controller\", \"test.test_routes.Routes.test_stock_path_and_non_normal_trainers_unchanged\", \"test.test_safari_feeders.Feeders.test_actual_native_debit_activation_callback\", \"test.test_safari_feeders.Feeders.test_actual_native_nature_consequence_and_private_precedence\", \"test.test_safari_feeders.Feeders.test_hooks_no_new_debit_and_existing_history_executor\", \"test.test_safari_feeders.Feeders.test_native_lifecycle_on_off\", \"test.test_safari_feeders.Feeders.test_verified_real_feeder_catalog\", \"test.test_strategies.Strategies.test_native_actual_include_on_off\", \"test.test_strategies.Strategies.test_source_hooks\", \"test.test_support.Support.test_native_actual_controller\", \"test.test_support.Support.test_stock_menu_and_default\", \"test.test_trick_questions.Trick.test_native_source_on_off\", \"test.test_trick_questions.Trick.test_original_script_preserved\", \"test.test_trick_questions.Trick.test_scripts_and_build_connections\"]"
+      ]
+    },
+    "app-tests-green.log": {
+      "log": "/home/ayaan/emerald-daily-20261112/app-tests-green.log",
+      "sha256": "c7695aa57d6a52272d9e586395de38d65c0bd3f129b40c47d77e918370eaa3d5",
+      "summary": [
+        "79",
+        "3.315"
+      ],
+      "outcome": "PASS",
+      "final_lines": [
+        "----------------------------------------------------------------------",
+        "Ran 79 tests in 3.315s",
+        "",
+        "OK",
+        "EXCLUDED native-dependent [\"test.test_apprentice.Outings.test_actual_native_session_and_entry_exit_enabled_disabled\", \"test.test_apprentice.Outings.test_native_routing_and_lifecycle_hooks\", \"test.test_apprentice.Outings.test_no_player_party_rollback_or_saved_template_mutation\", \"test.test_apprentice_walk.Walking.test_actual_walk_save_load_collision_on_off\", \"test.test_apprentice_walk.Walking.test_native_lifecycle_and_template_hooks\", \"test.test_apprentice_walk.Walking.test_no_saved_follower_backend\", \"test.test_base_rooms.Rooms.test_actual_native_room_digest_excludes_private_party\", \"test.test_base_rooms.Rooms.test_native_protocol_enabled_and_disabled\", \"test.test_care.Care.test_actual_stock_yield_and_source_preservation\", \"test.test_care.Care.test_hooks_and_private_ownership\", \"test.test_care.Care.test_native_core_enabled_disabled\", \"test.test_concealment.Concealment.test_actual_native_engine_on_off\", \"test.test_concealment.Concealment.test_entry_and_build_are_opt_in_without_missing_transport\", \"test.test_concealment.Concealment.test_original_field_menu_not_replaced_by_concealment\", \"test.test_concealment.Concealment.test_stock_detection_and_avatar_source_preserved\", \"test.test_dewford_trends.Trends.test_actual_feebas_algorithm_and_odds\", \"test.test_dewford_trends.Trends.test_actual_native_acceptance_branches\", \"test.test_dewford_trends.Trends.test_native_core_enabled_disabled\", \"test.test_dewford_trends.Trends.test_transport_reset_and_scope\", \"test.test_hoenn_collision.Collision.test_rebuild_exact_native_sources_and_corruption\", \"test.test_light.Light.test_actual_runtime_renderer_has_no_save_mutation\", \"test.test_light.Light.test_native_lifecycle\", \"test.test_light.Light.test_original_flash_function_preserved\", \"test.test_market_reactions.Markets.test_actual_checkout_reports_only_after_credit_and_debit\", \"test.test_market_reactions.Markets.test_native_enabled_disabled_revision_and_owner\", \"test.test_market_reactions.Markets.test_no_extra_approval_or_private_sell_reporting\", \"test.test_player_cut.Cut.test_actual_native_module_on_off\", \"test.test_player_cut.Cut.test_exact_native_digest_and_authoritative_restoration\", \"test.test_routes.Routes.test_native_actual_controller\", \"test.test_routes.Routes.test_stock_path_and_non_normal_trainers_unchanged\", \"test.test_safari_feeders.Feeders.test_actual_native_debit_activation_callback\", \"test.test_safari_feeders.Feeders.test_actual_native_nature_consequence_and_private_precedence\", \"test.test_safari_feeders.Feeders.test_hooks_no_new_debit_and_existing_history_executor\", \"test.test_safari_feeders.Feeders.test_native_lifecycle_on_off\", \"test.test_safari_feeders.Feeders.test_verified_real_feeder_catalog\", \"test.test_strategies.Strategies.test_native_actual_include_on_off\", \"test.test_strategies.Strategies.test_source_hooks\", \"test.test_support.Support.test_native_actual_controller\", \"test.test_support.Support.test_stock_menu_and_default\", \"test.test_trick_questions.Trick.test_native_source_on_off\", \"test.test_trick_questions.Trick.test_original_script_preserved\", \"test.test_trick_questions.Trick.test_scripts_and_build_connections\"]"
+      ]
+    },
+    "app-tests-final.log": {
+      "log": "/home/ayaan/emerald-daily-20261112/app-tests-final.log",
+      "sha256": "0eb6f23aea0bda55300ca5eea033545f2f7247706172cde60ab524a2fd365531",
+      "summary": [
+        "105",
+        "6.570"
+      ],
+      "outcome": "PASS",
+      "final_lines": [
+        "----------------------------------------------------------------------",
+        "Ran 105 tests in 6.570s",
+        "",
+        "OK",
+        "EXCLUDED native-dependent [\"test.test_apprentice.Outings.test_actual_native_session_and_entry_exit_enabled_disabled\", \"test.test_apprentice.Outings.test_native_routing_and_lifecycle_hooks\", \"test.test_apprentice.Outings.test_no_player_party_rollback_or_saved_template_mutation\", \"test.test_apprentice_walk.Walking.test_actual_walk_save_load_collision_on_off\", \"test.test_apprentice_walk.Walking.test_native_lifecycle_and_template_hooks\", \"test.test_apprentice_walk.Walking.test_no_saved_follower_backend\", \"test.test_base_rooms.Rooms.test_actual_native_room_digest_excludes_private_party\", \"test.test_base_rooms.Rooms.test_native_protocol_enabled_and_disabled\", \"test.test_care.Care.test_actual_stock_yield_and_source_preservation\", \"test.test_care.Care.test_hooks_and_private_ownership\", \"test.test_care.Care.test_native_core_enabled_disabled\", \"test.test_concealment.Concealment.test_actual_native_engine_on_off\", \"test.test_concealment.Concealment.test_entry_and_build_are_opt_in_without_missing_transport\", \"test.test_concealment.Concealment.test_original_field_menu_not_replaced_by_concealment\", \"test.test_concealment.Concealment.test_stock_detection_and_avatar_source_preserved\", \"test.test_dewford_trends.Trends.test_actual_feebas_algorithm_and_odds\", \"test.test_dewford_trends.Trends.test_actual_native_acceptance_branches\", \"test.test_dewford_trends.Trends.test_native_core_enabled_disabled\", \"test.test_dewford_trends.Trends.test_transport_reset_and_scope\", \"test.test_hoenn_collision.Collision.test_rebuild_exact_native_sources_and_corruption\", \"test.test_light.Light.test_actual_runtime_renderer_has_no_save_mutation\", \"test.test_light.Light.test_native_lifecycle\", \"test.test_light.Light.test_original_flash_function_preserved\", \"test.test_market_reactions.Markets.test_actual_checkout_reports_only_after_credit_and_debit\", \"test.test_market_reactions.Markets.test_native_enabled_disabled_revision_and_owner\", \"test.test_market_reactions.Markets.test_no_extra_approval_or_private_sell_reporting\", \"test.test_player_cut.Cut.test_actual_native_module_on_off\", \"test.test_player_cut.Cut.test_exact_native_digest_and_authoritative_restoration\", \"test.test_routes.Routes.test_native_actual_controller\", \"test.test_routes.Routes.test_stock_path_and_non_normal_trainers_unchanged\", \"test.test_safari_feeders.Feeders.test_actual_native_debit_activation_callback\", \"test.test_safari_feeders.Feeders.test_actual_native_nature_consequence_and_private_precedence\", \"test.test_safari_feeders.Feeders.test_hooks_no_new_debit_and_existing_history_executor\", \"test.test_safari_feeders.Feeders.test_native_lifecycle_on_off\", \"test.test_safari_feeders.Feeders.test_verified_real_feeder_catalog\", \"test.test_strategies.Strategies.test_native_actual_include_on_off\", \"test.test_strategies.Strategies.test_source_hooks\", \"test.test_support.Support.test_native_actual_controller\", \"test.test_support.Support.test_stock_menu_and_default\", \"test.test_trick_questions.Trick.test_native_source_on_off\", \"test.test_trick_questions.Trick.test_original_script_preserved\", \"test.test_trick_questions.Trick.test_scripts_and_build_connections\", \"test.test_windows_expansion_delivery.DeliveryTests.test_end_to_end_pinned_sources_binary_and_dependency_manifest\"]"
+      ]
+    },
+    "packaging-red.log": {
+      "log": "/home/ayaan/emerald-daily-20261112/packaging-red.log",
+      "sha256": "33635c64e6fff64f3bf8fbd724fdfea9fd28545bb5769e0134f2c8e65d91aa25",
+      "summary": [
+        "2",
+        "0.340"
+      ],
+      "outcome": "RED_or_setup_error",
+      "final_lines": [
+        "",
+        "----------------------------------------------------------------------",
+        "Ran 2 tests in 0.340s",
+        "",
+        "FAILED (failures=1, errors=1)"
+      ]
+    },
+    "packaging-green.log": {
+      "log": "/home/ayaan/emerald-daily-20261112/packaging-green.log",
+      "sha256": "8a8aeaaa0e3c9b76b2e09affcc8c73e541c39a02c7ee630138fd2764f8c3b6ba",
+      "summary": [
+        "2",
+        "3.453"
+      ],
+      "outcome": "PASS",
+      "final_lines": [
+        "",
+        "----------------------------------------------------------------------",
+        "Ran 2 tests in 3.453s",
+        "",
+        "OK"
+      ]
+    },
+    "package-regressions.log": {
+      "log": "/home/ayaan/emerald-daily-20261112/package-regressions.log",
+      "sha256": "08a8505e248f69ec8d2f0496d637cbf0d849f005ca6a671e80337d633ef70e52",
+      "summary": [
+        "25",
+        "8.056"
+      ],
+      "outcome": "RED_or_setup_error",
+      "final_lines": [
+        "",
+        "----------------------------------------------------------------------",
+        "Ran 25 tests in 8.056s",
+        "",
+        "FAILED (errors=1)"
+      ]
+    },
+    "package-regressions-green.log": {
+      "log": "/home/ayaan/emerald-daily-20261112/package-regressions-green.log",
+      "sha256": "bb41dc2fedacf1254defd659738595e1fa0675753daa97198282934c93be0a8b",
+      "summary": [
+        "25",
+        "9.015"
+      ],
+      "outcome": "PASS",
+      "final_lines": [
+        "",
+        "----------------------------------------------------------------------",
+        "Ran 25 tests in 9.015s",
+        "",
+        "OK"
+      ]
+    },
+    "legacy-fixture-red.log": {
+      "log": "/home/ayaan/emerald-daily-20261112/legacy-fixture-red.log",
+      "sha256": "7d31732a243ca7cdfca6d4ec2e4815d4cee39193ea360592a8c1981e54c9c474",
+      "summary": [
+        "3",
+        "0.000"
+      ],
+      "outcome": "RED_or_setup_error",
+      "final_lines": [
+        "",
+        "----------------------------------------------------------------------",
+        "Ran 3 tests in 0.000s",
+        "",
+        "FAILED (errors=3)"
+      ]
+    },
+    "legacy-fixture-red-actual.log": {
+      "log": "/home/ayaan/emerald-daily-20261112/legacy-fixture-red-actual.log",
+      "sha256": "de78d80ad7f3c7e1d6354c2c2f3cda94cde69d3058ea55221badef3a60c18a49",
+      "summary": [
+        "3",
+        "11.461"
+      ],
+      "outcome": "RED_or_setup_error",
+      "final_lines": [
+        "",
+        "----------------------------------------------------------------------",
+        "Ran 3 tests in 11.461s",
+        "",
+        "FAILED (failures=3)"
+      ]
+    },
+    "legacy-fixture-green.log": {
+      "log": "/home/ayaan/emerald-daily-20261112/legacy-fixture-green.log",
+      "sha256": "52ce9de46c5cf5e84720c755759cadaf4331c7804ca1e747c63c658d7a92ce06",
+      "summary": [
+        "15",
+        "58.015"
+      ],
+      "outcome": "PASS",
+      "final_lines": [
+        "",
+        "----------------------------------------------------------------------",
+        "Ran 15 tests in 58.015s",
+        "",
+        "OK"
+      ]
+    },
+    "build-admission-tests.log": {
+      "log": "/home/ayaan/emerald-daily-20261112/build-admission-tests.log",
+      "sha256": "02398ad3dfbd8fdf428f20236efb8926d0c86aca572e8419258bb6a2d11ef4f1",
+      "summary": [
+        "13",
+        "0.893"
+      ],
+      "outcome": "PASS",
+      "final_lines": [
+        "",
+        "----------------------------------------------------------------------",
+        "Ran 13 tests in 0.893s",
+        "",
+        "OK"
+      ]
+    }
+  },
+  "app_test_result": {
+    "run": 105,
+    "failures": [],
+    "errors": [],
+    "skipped": [],
+    "excluded_native": [
+      "test.test_apprentice.Outings.test_actual_native_session_and_entry_exit_enabled_disabled",
+      "test.test_apprentice.Outings.test_native_routing_and_lifecycle_hooks",
+      "test.test_apprentice.Outings.test_no_player_party_rollback_or_saved_template_mutation",
+      "test.test_apprentice_walk.Walking.test_actual_walk_save_load_collision_on_off",
+      "test.test_apprentice_walk.Walking.test_native_lifecycle_and_template_hooks",
+      "test.test_apprentice_walk.Walking.test_no_saved_follower_backend",
+      "test.test_base_rooms.Rooms.test_actual_native_room_digest_excludes_private_party",
+      "test.test_base_rooms.Rooms.test_native_protocol_enabled_and_disabled",
+      "test.test_care.Care.test_actual_stock_yield_and_source_preservation",
+      "test.test_care.Care.test_hooks_and_private_ownership",
+      "test.test_care.Care.test_native_core_enabled_disabled",
+      "test.test_concealment.Concealment.test_actual_native_engine_on_off",
+      "test.test_concealment.Concealment.test_entry_and_build_are_opt_in_without_missing_transport",
+      "test.test_concealment.Concealment.test_original_field_menu_not_replaced_by_concealment",
+      "test.test_concealment.Concealment.test_stock_detection_and_avatar_source_preserved",
+      "test.test_dewford_trends.Trends.test_actual_feebas_algorithm_and_odds",
+      "test.test_dewford_trends.Trends.test_actual_native_acceptance_branches",
+      "test.test_dewford_trends.Trends.test_native_core_enabled_disabled",
+      "test.test_dewford_trends.Trends.test_transport_reset_and_scope",
+      "test.test_hoenn_collision.Collision.test_rebuild_exact_native_sources_and_corruption",
+      "test.test_light.Light.test_actual_runtime_renderer_has_no_save_mutation",
+      "test.test_light.Light.test_native_lifecycle",
+      "test.test_light.Light.test_original_flash_function_preserved",
+      "test.test_market_reactions.Markets.test_actual_checkout_reports_only_after_credit_and_debit",
+      "test.test_market_reactions.Markets.test_native_enabled_disabled_revision_and_owner",
+      "test.test_market_reactions.Markets.test_no_extra_approval_or_private_sell_reporting",
+      "test.test_player_cut.Cut.test_actual_native_module_on_off",
+      "test.test_player_cut.Cut.test_exact_native_digest_and_authoritative_restoration",
+      "test.test_routes.Routes.test_native_actual_controller",
+      "test.test_routes.Routes.test_stock_path_and_non_normal_trainers_unchanged",
+      "test.test_safari_feeders.Feeders.test_actual_native_debit_activation_callback",
+      "test.test_safari_feeders.Feeders.test_actual_native_nature_consequence_and_private_precedence",
+      "test.test_safari_feeders.Feeders.test_hooks_no_new_debit_and_existing_history_executor",
+      "test.test_safari_feeders.Feeders.test_native_lifecycle_on_off",
+      "test.test_safari_feeders.Feeders.test_verified_real_feeder_catalog",
+      "test.test_strategies.Strategies.test_native_actual_include_on_off",
+      "test.test_strategies.Strategies.test_source_hooks",
+      "test.test_support.Support.test_native_actual_controller",
+      "test.test_support.Support.test_stock_menu_and_default",
+      "test.test_trick_questions.Trick.test_native_source_on_off",
+      "test.test_trick_questions.Trick.test_original_script_preserved",
+      "test.test_trick_questions.Trick.test_scripts_and_build_connections",
+      "test.test_windows_expansion_delivery.DeliveryTests.test_end_to_end_pinned_sources_binary_and_dependency_manifest"
+    ]
+  },
+  "new_repairs": [
+    {
+      "issue": "Linux/Windows runtime packaging omitted four new reviewed JSON catalogs",
+      "red": "packaging-red.log: missing berry_care_plots.json, Windows DATA mismatch",
+      "green": "packaging-green.log and package-regressions-green.log",
+      "production_paths": [
+        "scripts/linux_package.py",
+        "scripts/windows_expansion_package.py"
+      ],
+      "boundary": "Allowlist expanded by exact four filenames, not arbitrary JSON; extracted Linux authority started/inspected/closed/reopened. Windows tests are synthetic PE/source packaging, not device execution."
+    },
+    {
+      "issue": "Five extracted dispatcher tests lacked real combined registry fixture prerequisites",
+      "red": "app-tests-second.log: 79 tests, 5 errors",
+      "green": "app-tests-green.log:79 pass",
+      "change": "Only faithful test initialization and package paths changed; retained real combined_regions guard and all original assertions."
+    },
+    {
+      "issue": "Prior hosted canonical actor/capability exact-set fixtures stale",
+      "red": "legacy-fixture-red-actual.log: all3 targeted assertions fail as expected",
+      "green": "legacy-fixture-green.log: all15 module cases pass",
+      "change": "Five exact commissioned IDs including Birch; duplicate commission count remains strict; exact capability allowlist includes four actual cumulative additions. No production semantics changed."
+    },
+    {
+      "issue": "Synthetic Windows assembly fixture lacks newly mandatory catalog inputs",
+      "red": "package-regressions.log:25 tests,1 error",
+      "green": "package-regressions-green.log:25 pass",
+      "change": "Added four explicitly synthetic fixture files only; assembly policy unchanged."
+    }
+  ],
+  "flags": {
+    "EW_REGION_STATE": 1,
+    "EW_KANTO_CONTENT": 1,
+    "EW_REGIONAL_COMPLETION": 0,
+    "EW_REGIONAL_BADGES": 0,
+    "EW_REGIONAL_STARTERS": 0,
+    "EW_KANTO_REMATCHES": 0,
+    "EW_ROXANNE_CONTINUATION": 0,
+    "EW_BIRCH_RESEARCH": 0,
+    "EW_HOENN_MARKETS": 0,
+    "EW_SHARED_CONTEST": 0,
+    "EW_SHARED_STRENGTH": 0,
+    "EW_COOP_TURN_PLAN": 0,
+    "EW_COOP_HOLD_BACK": 0,
+    "EW_DUAL_TRAINERS": 0,
+    "EW_COOP_DISCOVERY": 0,
+    "EW_COOP_RETREAT": 0,
+    "EW_SHARED_CUT": 0,
+    "EW_COOP_PREPARATION": 0,
+    "EW_PARTNER_MEDICINE": 0,
+    "EW_TRAINER_CHOICE": 0,
+    "EW_WOODS_CONTINUATION": 0,
+    "EW_RUSTURF_RECOVERY": 0,
+    "EW_RYDEL_ROUTES": 0,
+    "EW_MATCH_CALL_EVENTS": 0,
+    "EW_MAP_OFFERS": 0,
+    "EW_WALLY_INVITATION": 0,
+    "EW_BIRCH_STUDIES": 0,
+    "EW_APPRENTICE_OUTINGS": 0,
+    "EW_APPRENTICE_WALKING": 0,
+    "EW_REMATCH_STRATEGIES": 0,
+    "EW_FIELD_CONCEALMENT": 0,
+    "EW_FIELD_SUPPORT": 0,
+    "EW_ROUTE_TRAINERS": 0,
+    "EW_PERSISTENT_CUT": 0,
+    "EW_MARKET_REACTIONS": 0,
+    "EW_SHARED_BASE_ROOMS": 0,
+    "EW_SHARED_CAVE_LIGHT": 0,
+    "EW_SHARED_DEWFORD_TRENDS": 0,
+    "EW_SHARED_SAFARI_FEEDERS": 0,
+    "EW_SHARED_SOIL_CARE": 0,
+    "EW_TRICK_QUIZ": 0
+  },
+  "flag_verification": "Actual make expansion tested for all14 new switches off/default and on; actual builder make-assignment AST executes each forwarding branch; CLI rejects without development; mandatory COOP_TURN_PLAN remains0; regional1/Kanto1 retained.",
+  "metadata": {
+    "engine_gitlink": "8dea9e7f4ea77e22f3e1dd88da84b1b880ed7174",
+    "builder_pin": "8dea9e7f4ea77e22f3e1dd88da84b1b880ed7174",
+    "paired": false,
+    "parent_owns": [
+      "engines/expansion-native",
+      "scripts/build_expansion.py PIN",
+      "living_cast candidate manifest",
+      "world/encounter_traits.json",
+      "world/native_resident_sites.json",
+      "world/safari_feeders.json provenance",
+      "test/test_daily_pair_metadata.py"
+    ],
+    "handoff_update": "Parent reports reviewed native ca8a18de43baa0b5471fb749b9c2497355430e44 and has begun pairing in this worktree. This report attributes committed app-lane source/tests before those parent-owned uncommitted changes; no parent file staged by worker."
+  },
+  "limits": [
+    "No independent review in this app lane. Source commits intentionally lack verified prefix.",
+    "No full Linux/native build or new native gameplay run in app lane; parent owns exact pairing/full build/acceptance.",
+    "Native-dependent cases explicitly excluded until parent pairs: see app_test_result.excluded_native; not reported as passed or skipped by unittest.",
+    "Prior PR494 manifest native_revision mismatch remains for parent pairing; no full authority-suite/hosted CI green claimed.",
+    "No main merge/push/release/install/service restart/game save edit/cron change/public game binary. Existing human preview preserved.",
+    "Collision module is conservative planning only; no live collector or fabricated native walk admission."
+  ],
+  "tool_blockers": [
+    "execute_code unavailable in cron profile; normal targeted file tools used instead.",
+    "Two combined read-only inventory commands hit gateway self-restart guard before execution; no gateway action requested or performed.",
+    "Initial top-level suite missing test path and initial legacy suite missing test/world imports were setup errors, not production RED; exact later behavior RED logs retained."
+  ],
+  "test_commands": {
+    "app-tests-final.log": "PYTHONDONTWRITEBYTECODE=1 /home/ayaan/.local/bin/python3.11 /home/ayaan/emerald-daily-20261112/run_app_tests.py",
+    "legacy-fixture-red-actual.log": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=test/world /home/ayaan/.local/bin/python3.11 -m unittest test_canonical_seeds.SeedTests.test_commission_starts_four_without_campaign_sharing_or_fake_outcomes test_cast_agent_ui.AgentUITests.test_single_cast_enrollment_preserves_original_records test_actor_runtime.ActorRuntimeTests.test_real_composition_result_reference_restart_and_independent_recipient -v",
+    "legacy-fixture-green.log": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=test/world /home/ayaan/.local/bin/python3.11 -m unittest test_canonical_seeds test_cast_agent_ui test_actor_runtime -v",
+    "build-admission-tests.log": "PYTHONDONTWRITEBYTECODE=1 /home/ayaan/.local/bin/python3.11 -m unittest test.test_nov12_app_integration test.test_daily_app_integration -v",
+    "packaging-red.log and packaging-green.log": "PYTHONDONTWRITEBYTECODE=1 /home/ayaan/.local/bin/python3.11 -m unittest test.world.test_linux_package.LinuxPackageTests.test_nov12_runtime_catalogues_and_authority_reopen test.test_windows_expansion_delivery.DeliveryTests.test_all_runtime_catalogues_are_mandatory -v",
+    "package-regressions.log and package-regressions-green.log": "PYTHONDONTWRITEBYTECODE=1 /home/ayaan/.local/bin/python3.11 -m unittest test.test_windows_expansion_delivery test.world.test_linux_package.LinuxPackageTests.test_nov12_runtime_catalogues_and_authority_reopen test.world.test_linux_package.LinuxPackageTests.test_daily_catalogues_work_without_development_scripts test.world.test_linux_package.LinuxPackageTests.test_cumulative_runtime_catalogues_survive_packaging test.world.test_linux_package.LinuxPackageTests.test_archive_is_reproducible_and_sets_supported_glibc_floor test.world.test_linux_package.LinuxPackageTests.test_archive_contains_only_release_inputs_and_checksums -v"
+  }
+}

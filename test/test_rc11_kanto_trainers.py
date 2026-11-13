@@ -110,10 +110,15 @@ void TestKantoSlides(void) {
 ''')
         for name in ('trainers', 'slides', 'tables'):
             self.run_command(['gcc', *flags, *self.game_includes, '-iquote', 'src', '-c', str(d / f'{name}.c'), '-o', str(d / f'{name}.o')])
+        # difficulty.c now calls the real optional apprentice adapter even in
+        # the default-off cohort. Link that production dependency, not a fake
+        # no-op or a weakened regional trainer assertion.
+        self.run_command(['gcc', *flags, *self.game_includes, '-iquote', 'src',
+                          '-c', 'src/world/world_apprentice.c', '-o', str(d / 'apprentice.o')])
         binary = d / 'trainers'
         self.run_command(['gcc', *flags, '-Iplatform', '-idirafter', 'include', '-iquote', '.', *self.link,
                           str(d / 'trainers.o'), str(d / 'slides.o'), str(d / 'trainer-asm.o'),
-                          str(d / 'tables.o'), *self.platform, '-o', str(binary)])
+                          str(d / 'tables.o'), str(d / 'apprentice.o'), *self.platform, '-o', str(binary)])
         self.assertIn('independent saved profiles passed', self.run_command([str(binary)]))
 
 
