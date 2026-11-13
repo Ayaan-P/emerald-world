@@ -8,7 +8,7 @@ def create(server, actor, row, args):
     from .xl_wilds import encode
     from .route_landscape import compile_plan
     from .shared_cave import SharedCave
-    if set(args) != {'label', 'layout', 'blueprint'}:
+    if not {'label', 'layout', 'blueprint'} <= set(args) or set(args)-{'label','layout','blueprint','paint'}:
         raise ValueError('Supply label, layout and blueprint')
     label = args['label']
     if type(label) is not str or not 1 <= len(label) <= 20 or not label.strip() or any(not(c.isascii() and (c.isalnum() or c in " .,'!?-")) for c in label):
@@ -27,6 +27,13 @@ def create(server, actor, row, args):
         report = {'style': blueprint.get('style', 'rooms')}
     else:
         raise ValueError('Supported layouts: clearings, connected_shapes')
+    if 'paint' in args:
+        if type(args['paint']) is not str or len(args['paint']) > 2000: raise ValueError('Use bounded paint JSON')
+        try: paint=json.loads(args['paint'])
+        except (ValueError,TypeError): raise ValueError('Invalid paint JSON') from None
+        from .shared_outdoor_palette import encode as encode_painted
+        cells=blob[8:]; proposal=dict(rows=[cells[i*127:(i+1)*127].decode('ascii') for i in range(127)],spawn=[1,1],exit=[125,125])
+        blob=encode_painted(proposal,paint)
     cave = SharedCave(blob)
     if not server.archive_generated_areas or not server.persist_generated_cave:
         raise ValueError('Durable generated-area archive required')
@@ -44,7 +51,7 @@ def create(server, actor, row, args):
     _, record, plan, step = execution
     result = dict(revision=cave.identity, side=127, layout=args['layout'],
                   walkable_tiles=sum(r.count(ord('.')) for r in cave._rows),
-                  required_client_capability='CAVE16', outcome='outdoor_destination_activated',
+                  required_client_capability='CAVE17' if cave.version==17 else 'CAVE16', outcome='outdoor_destination_activated',
                   entry='Existing shared GeneratedWorld_Wilds entrance', report=report)
     committed = []
     def persist(identity, place):

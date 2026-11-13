@@ -18,7 +18,7 @@ def resolve_place(server, place_id, revision):
     if row is None or hashlib.sha256(row[0]).hexdigest()!=revision:
         raise GuildError('Generated expedition destination is unavailable.')
     cave=SharedCave(row[0])
-    if cave.version!=16 and not (cave.version==1 and row[2]==place_id):
+    if cave.version not in (16,17) and not (cave.version==1 and row[2]==place_id):
         raise GuildError('This generated destination does not support expeditions.')
     label=''.join(c if c.isascii() and (c.isalnum() or c in " .,'!?-") else ' ' for c in (row[1] or 'Generated destination')).strip()[:40] or 'Generated destination'
     return dict(place_id=place_id,revision=revision,label=label)
@@ -32,7 +32,7 @@ def observed_place(server,conn,freshness=5):
             or stamp is None or not 0<=time.monotonic()-stamp<=freshness):return None
     cave=server._connection_cave(conn)
     if cave is None or conn.get('cave_ack')!=cave.identity:return None
-    expected=server.wilds_map if cave.version==16 else server.cave_map if cave.version==1 and conn.get('region_cave') else None
+    expected=server.wilds_map if cave.version in (16,17) else server.cave_map if cave.version==1 and conn.get('region_cave') else None
     if expected is None or tuple(state[:2])!=expected or not cave.walkable(state[2],state[3]):return None
     row=server.db.execute('SELECT place_id FROM world_places WHERE revision=?',(cave.identity,)).fetchone()
     if row is None:return None
@@ -42,8 +42,8 @@ def observed_place(server,conn,freshness=5):
 
 def destination_available(server,conn,place_id,revision):
     """No automatic travel/activation: offer only destinations this client can enter."""
-    if server.shared_cave and server.shared_cave.identity==revision and server.shared_cave.version==16:
-        return bool(conn.get('cave_xl'))
+    if server.shared_cave and server.shared_cave.identity==revision and server.shared_cave.version in (16,17):
+        return bool(conn.get('cave_painted') if server.shared_cave.version==17 else conn.get('cave_xl'))
     return bool(conn.get('region_capable') and server.db.execute(
         'SELECT 1 FROM world_region_revisions WHERE place_id=? AND revision=?',(place_id,revision)).fetchone())
 
