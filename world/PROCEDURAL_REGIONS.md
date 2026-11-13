@@ -9,6 +9,7 @@
 - `style`: rooms, rounded, organic or maze.
 - `seed`: unsigned 32-bit integer.
 - `corridor_width`: 1–3 tiles.
+- `room_loops` (optional): 0–1 extra link between rooms within each place. Defaults to 0; one loop requires at least 3 rooms. Independent from `loops`, which controls connections between places.
 
 A deterministic binary partition packs room rectangles into each 31×31 interior. Seeded connected graph selection supplies room corridors and region passages, respecting the requested branching/cycle constraints. The established blueprint compiler produces and validates the actual native cave bytes. Identical arguments reproduce identical geometry; impossible constraints fail rather than silently change the requested topology.
 
@@ -73,3 +74,8 @@ A visitor can select an authored place, face a prop, review its existing move ch
 This removes compulsory objectives rather than weakening existing campaign evidence rules. Authors who choose a campaign can reference a subset of residents/mechanisms; all references still require validation, and invalid references/cycles/geometry remain rejected atomically. Social conversation uses the existing voluntary public NPC flow; characters are not automatically enrolled in a model service.
 
 Tests exercise campaign-free publication, an empty connected network across restart/repeat, partial objective coverage, two authenticated visitors selecting real generated revisions, actual admitted move-driven object changes, a later visitor's snapshot/checkpoint comparison and voluntary speech without battle/run enrollment. These are authority/protocol tests, not rendered native gameplay or live model QA.
+
+
+## Alternative room routes
+
+An author can optionally request `room_loops: 1` in the same constraints used by `world.generate_region_network` and `world.build_adventure`. This adds an edge to each connected room graph, allowing cyclic room layouts instead of only a tree. The seed still determines the graph and geometry; omitted `room_loops` keeps old outputs unchanged. Requests that cannot fit the graph or the existing 850-character network budget fail explicitly. A graph cycle does not guarantee physically disjoint paths: corridors may intersect and rooms may be open. This is geometry, not a claim of new stories, maps outside caves, populations, or a rendered playtest.
