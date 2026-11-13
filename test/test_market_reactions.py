@@ -10,7 +10,7 @@ m.catalog_maps=lambda:{p:{'name':n} for n,p in m.SITES.items()}
 class Markets(unittest.TestCase):
  def setUp(self):
   self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup);self.db=sqlite3.connect(pathlib.Path(self.temp.name)/'world.db');self.addCleanup(self.db.close);self.db.execute('CREATE TABLE history(seq INTEGER PRIMARY KEY,event TEXT,data TEXT)')
-  self.peer={'id':'alice','state':[9,13,1,1,2,0,0],'state_time':time.monotonic()};self.conn={'id':'alice','presence':self.peer,'sock':1};self.s=types.SimpleNamespace(db=self.db,peers={'alice':self.peer},link_channels={'alice':self.conn},connections={1:True},link_protocol=types.SimpleNamespace(sessions=types.SimpleNamespace(_locks={}),_encounters={}),revision=0,job=None,deployment=None)
+  self.peer={'id':'alice','state':[9,13,1,1,2,0,1],'state_time':time.monotonic()};self.conn={'id':'alice','presence':self.peer,'sock':1};self.s=types.SimpleNamespace(db=self.db,peers={'alice':self.peer},link_channels={'alice':self.conn},connections={1:True},link_protocol=types.SimpleNamespace(sessions=types.SimpleNamespace(_locks={}),_encounters={}),revision=0,job=None,deployment=None)
   def append(event,data):return self.db.execute('INSERT INTO history(event,data) VALUES(?,?)',(event,json.dumps(data))).lastrowid
   def history(after=0,limit=64):
    rows=self.db.execute('SELECT seq,event,data FROM history WHERE seq>? ORDER BY seq LIMIT ?',(after,limit)).fetchall();head=self.db.execute('SELECT coalesce(max(seq),0) FROM history').fetchone()[0];return {'events':[dict(seq=q,event=e,**json.loads(d)) for q,e,d in rows],'cursor':rows[-1][0] if rows else after,'through':head}
@@ -30,6 +30,149 @@ class Markets(unittest.TestCase):
   self.assertEqual(self.send(f'MK BUY 1 {self.first} 43 3'),'MK UNCONFIRMED 1\n');self.send('MK GET 2');self.assertEqual(self.send(f'MK BUY 2 {self.first} 43 3'),'MK RECORDED 2\n');self.assertEqual(self.send(f'MK BUY 2 {self.first} 43 3'),'MK UNCONFIRMED 2\n');self.assertEqual(self.send(f'MK BUY 3 {self.first} 28 1'),'MK UNCONFIRMED 3\n');self.assertEqual(self.db.execute('SELECT count(*) FROM hoenn_market_reports').fetchone()[0],1)
  def test_auth_context_lifetime_quantity(self):
   self.send('MK GET 2');self.assertEqual(self.send(f'MK BUY 1 {self.first} 43 10000'),'MK UNCONFIRMED 1\n');self.conn['market_report_shelves'][self.first]['at']-=7201;self.assertEqual(self.send(f'MK BUY 2 {self.first} 43 1'),'MK UNCONFIRMED 2\n');self.send('MK GET 2');self.s.link_protocol.sessions._locks['alice']=1;self.assertTrue(self.send(f'MK BUY 3 {self.first} 43 1').startswith('MK UNCONFIRMED'));self.s.link_protocol.sessions._locks.clear();self.peer['state'][1]=12;self.assertEqual(self.send('MK GET 2'),'MK NONE\n');self.peer['state'][1]=13;self.s.link_channels['alice']=dict(self.conn);self.assertEqual(self.send('MK GET 2'),'MK NONE\n')
+ def test_clerk_absence_keeps_explicit_mart_visit_listing_and_checkout(self):
+  # Real bridge revokes ordinary field presence for the clerk script.
+  self.peer['state'][6]=1
+  self.send('MK ENTER 9 13');self.send('MK GET 2')
+  self.peer['state']=[0,0,0,0,1,7,0]
+  self.assertTrue(self.send('MK GET 2').startswith('MK SHELF2 9 13'), 'clerk dialogue cleared Community stock')
+  self.assertEqual(self.send(f'MK BUY 1 {self.first} 43 1'),'MK RECORDED 1\n')
+  self.assertEqual(self.db.execute('SELECT item,quantity FROM hoenn_market_reports').fetchall(),[(43,1)])
+  self.assertEqual(self.peer['state'],[0,0,0,0,1,7,0])
+ def test_visit_cannot_start_from_absence_or_unready_field(self):
+  for state in ([0,0,0,0,1,7,0],[9,13,1,1,2,0,0],[9,12,1,1,2,0,1]):
+   self.peer['state']=state;self.send('MK ENTER 9 13')
+   self.assertNotIn('market_visit',self.conn)
+   self.assertEqual(self.send('MK GET 2'),'MK NONE\n')
+  self.assertEqual(self.send('MK GET 2'),'MK NONE\n')
+ def test_visit_security_revocation_and_replay(self):
+  for scenario in ('expiry','scope','leave','identity','channel','stale','lock','encounter'):
+   with self.subTest(scenario=scenario):
+    m.end_visit(self.conn);self.peer['state']=[9,13,1,1,2,0,1];self.peer['state_time']=time.monotonic()
+    self.s.peers['alice']=self.peer;self.s.link_channels['alice']=self.conn
+    self.s.link_protocol.sessions._locks.clear();self.s.link_protocol._encounters.clear()
+    self.send('MK ENTER 9 13');self.send('MK GET 2');self.peer['state']=m.ABSENT.copy()
+    if scenario=='expiry':self.conn['market_visit']['at']-=7201
+    if scenario=='scope':
+     self.peer['state']=[9,12,1,1,2,0,1];m.observe(self.conn);self.peer['state']=m.ABSENT.copy()
+    if scenario=='leave':self.send('MK LEAVE')
+    if scenario=='identity':self.s.peers['alice']=dict(self.peer)
+    if scenario=='channel':self.s.link_channels['alice']=dict(self.conn)
+    if scenario=='stale':self.peer['state_time']-=6
+    if scenario=='lock':self.s.link_protocol.sessions._locks['alice']=1
+    if scenario=='encounter':self.s.link_protocol._encounters['alice']=1
+    self.assertTrue(self.send(f'MK BUY 100 {self.first} 43 1').startswith('MK UNCONFIRMED'))
+  self.assertEqual(self.db.execute('SELECT count(*) FROM hoenn_market_reports').fetchone()[0],0)
+ def test_no_request_during_stale_gap_cannot_revive_on_heartbeat(self):
+  self.send('MK ENTER 9 13');self.send('MK GET 2');self.peer['state']=m.ABSENT.copy()
+  self.peer['state_time']-=6
+  # Execute the actual heartbeat boundary, including timestamp replacement.
+  source=(ROOT/'world/server.py').read_text();start=source.index('                from .hoenn_markets import observe as market_observe')
+  end=source.index('                self._deliver_links(',start)
+  import textwrap
+  exec(compile(textwrap.dedent(source[start:end]),'actual_heartbeat','exec'),{'__package__':'reaction_fixture','self':self.s,'conn':self.peer,'now':time.monotonic()})
+  self.assertEqual(self.send('MK GET 2'),'MK NONE\n')
+  self.assertTrue(self.send(f'MK BUY 1 {self.first} 43 1').startswith('MK UNCONFIRMED'))
+ def test_no_request_during_stale_observation_cannot_revive(self):
+  self.send('MK ENTER 9 13');self.send('MK GET 2');self.peer['state']=m.ABSENT.copy();self.peer['state_time']-=6
+  m.observe(self.conn);self.peer['state_time']=time.monotonic()
+  self.assertEqual(self.send('MK GET 2'),'MK NONE\n')
+ def busy_lifecycle(self,encounter):
+  from reaction_fixture.link_protocol import LinkProtocol
+  self.s.link_protocol=LinkProtocol(id_factory=lambda:7)
+  source=(ROOT/'world/server.py').read_text()
+  node=next(n for n in ast.walk(ast.parse(source)) if isinstance(n,ast.FunctionDef) and n.name=='_deliver_links')
+  ns={'__package__':'reaction_fixture'};exec(compile(ast.Module(body=[node],type_ignores=[]),'actual_delivery','exec'),ns)
+  self.s._queue=lambda *a:None
+  presence={'alice':[9,13,1,1,2,0,1],'bob':[9,13,2,1,2,0,1]}
+  def process(who,line):
+   out=self.s.link_protocol.process(who,line.encode(),presence)
+   self.assertFalse(any('ERROR' in text for _,text in out),out)
+   ns['_deliver_links'](self.s,out)
+  self.send('MK ENTER 9 13');self.send('MK GET 2')
+  if encounter:
+   process('alice','T OFFER bob');process('bob','T ACCEPT 7')
+   self.assertIn('market_visit',self.conn,'social consent alone is not busy')
+   process('alice','L CHOICE HOLD 7 42')
+   self.assertIn('alice',self.s.link_protocol._encounters)
+  else:
+   process('alice','L OFFER 1 bob')
+   self.assertIn('alice',self.s.link_protocol.sessions._locks)
+  self.peer['state']=m.ABSENT.copy()
+  # No market traffic occurs until after the authoritative hold is released.
+  if encounter:process('alice','L CHOICE RELEASE 7 42')
+  else:process('bob','L REJECT 7')
+  self.assertEqual(self.send('MK GET 2'),'MK NONE\n')
+  self.assertTrue(self.send(f'MK BUY 1 {self.first} 43 1').startswith('MK UNCONFIRMED'))
+  self.assertEqual(self.db.execute('SELECT count(*) FROM hoenn_market_reports').fetchone()[0],0)
+ def test_no_market_request_during_real_session_lock(self):self.busy_lifecycle(False)
+ def test_no_market_request_during_real_encounter_hold(self):self.busy_lifecycle(True)
+ def test_visit_deadline_is_not_renewed_by_absent_heartbeat(self):
+  self.peer['state'][6]=1;self.send('MK ENTER 9 13');at=self.conn['market_visit']['at']
+  self.peer['state']=m.ABSENT.copy();self.send('MK ENTER 9 13')
+  self.assertEqual(self.conn['market_visit']['at'],at)
+ def test_actual_presence_transition_revokes_market_scope(self):
+  source=(ROOT/'world/server.py').read_text()
+  marker='from .hoenn_markets import observe as market_observe'
+  self.assertIn(marker,source,'production presence update must revoke wrong-scope visits')
+  start=source.index(marker);boundary='                '+source[start:source.index('self._deliver_links(',start)]
+  self.peer['state'][6]=1;self.send('MK ENTER 9 13')
+  self.peer['state']=[9,12,1,1,2,0,1]
+  import textwrap
+  exec(compile(textwrap.dedent(boundary),'actual_presence_market_boundary','exec'),{'__package__':'reaction_fixture','self':self.s,'conn':self.peer,'now':time.monotonic()})
+  self.assertNotIn('market_visit',self.conn)
+ def test_visit_shelf_remains_frozen_after_publication_expiry(self):
+  self.send('MK ENTER 9 13');first=self.send('MK GET 2')
+  self.db.execute('UPDATE hoenn_market_shelves SET expires=0')
+  self.peer['state']=m.ABSENT.copy()
+  self.assertEqual(self.send('MK GET 2'),first)
+ def test_stale_or_busy_visit_cannot_revive_in_absence(self):
+  for scenario in ('stale','lock','encounter'):
+   with self.subTest(scenario=scenario):
+    m.end_visit(self.conn);self.peer['state']=[9,13,1,1,2,0,1];self.peer['state_time']=time.monotonic()
+    self.send('MK ENTER 9 13');self.send('MK GET 2');self.peer['state']=m.ABSENT.copy()
+    if scenario=='stale':self.peer['state_time']-=6
+    if scenario=='lock':self.s.link_protocol.sessions._locks['alice']=1
+    if scenario=='encounter':self.s.link_protocol._encounters['alice']=1
+    self.send('MK GET 2');self.peer['state_time']=time.monotonic()
+    self.s.link_protocol.sessions._locks.clear();self.s.link_protocol._encounters.clear()
+    self.assertEqual(self.send('MK GET 2'),'MK NONE\n')
+ def test_native_poll_dialogue_snapshot_buy_to_actual_authority_dispatch(self):
+  # Complete market C module <-> actual authority dispatch, with real SQLite.
+  sys.modules['reaction_fixture.combined_regions']=types.SimpleNamespace(pending=lambda *a:False)
+  node=next(n for n in ast.walk(ast.parse((ROOT/'world/server.py').read_text())) if isinstance(n,ast.FunctionDef) and n.name=='_link_line')
+  ns={'__package__':'reaction_fixture'};exec(compile(ast.Module(body=[node],type_ignores=[]),'actual_dispatch','exec'),ns)
+  replies=[];self.s._queue=lambda c,s:replies.append(s)
+  with tempfile.TemporaryDirectory() as tmp:
+   d=pathlib.Path(tmp);(d/'platform').mkdir()
+   for name in ['global.h','platform/world_bridge.h','platform/native_link.h']:(d/name).write_text('')
+   (d/'platform/world_market.h').write_text((NATIVE/'include/platform/world_market.h').read_text())
+   (d/'test.c').write_text((ROOT/'test/native_market_lifecycle.c').read_text().replace('ACTUAL_SOURCE',str(NATIVE/'src/world/world_market.c')))
+   subprocess.run(['cc','-std=c99','-Wall','-Wextra','-Werror','-DPORTABLE','-DEW_HOENN_MARKETS=1','-DEW_MARKET_REACTIONS=1','-fsanitize=undefined','-iquote',str(d),str(d/'test.c'),'-o',str(d/'test')],check=True)
+   p=subprocess.Popen([str(d/'test')],stdin=subprocess.PIPE,stdout=subprocess.PIPE,text=True)
+   try:
+    def command(line):
+     p.stdin.write(line+'\n');p.stdin.flush();out=[]
+     while True:
+      result=p.stdout.readline()
+      self.assertTrue(result,'native fixture exited before DONE')
+      if result=='DONE\n':return out
+      out.append(result.strip())
+    def exchange(lines):
+     for line in lines:
+      replies.clear();ns['_link_line'](self.s,self.conn,line.encode())
+      for reply in replies:
+       if reply:command('L '+reply.strip())
+    entry=command('P');self.assertEqual(entry,['MK ENTER 9 13','MK GET 2']);exchange(entry)
+    self.peer['state']=m.ABSENT.copy();m.observe(self.conn);command('D')
+    exchange(command('T'));self.assertTrue(replies[-1].startswith('MK SHELF2'))
+    command('S');buy=command('B');self.assertEqual(buy,[f'MK BUY 1 {self.first} 43 1'])
+    exchange(buy);self.assertEqual(replies,['MK RECORDED 1\n']);command('A')
+    self.assertEqual(self.db.execute('SELECT item,quantity FROM hoenn_market_reports').fetchall(),[(43,1)])
+    replies.clear();ns['_link_line'](self.s,self.conn,buy[0].encode());self.assertEqual(replies,['MK UNCONFIRMED 1\n'])
+   finally:
+    p.stdin.close();p.wait(timeout=5);p.stdout.close()
+   self.assertEqual(p.returncode,0)
  def test_ordinary_legacy_catalog_unchanged(self):self.assertEqual(self.send('MK GET 1'),'MK SHELF 9 13 15 2 43 114\n')
  def test_actual_transport_dispatch(self):
   sys.modules['reaction_fixture.combined_regions']=types.SimpleNamespace(pending=lambda *a:False);node=next(n for n in ast.walk(ast.parse((ROOT/'world/server.py').read_text())) if isinstance(n,ast.FunctionDef) and n.name=='_link_line');ns={'__package__':'reaction_fixture'};exec(compile(ast.Module(body=[node],type_ignores=[]),'actual_dispatch','exec'),ns);out=[];self.s._queue=lambda c,s:out.append(s);ns['_link_line'](self.s,self.conn,b'MK GET 2');self.assertTrue(out[0].startswith('MK SHELF2'))

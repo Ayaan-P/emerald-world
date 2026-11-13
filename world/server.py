@@ -1288,7 +1288,11 @@ class WorldServer:
                     conn['in_generated_cave'] = True
                 elif state[6]:
                     conn['in_generated_cave'] = False
+                from .hoenn_markets import observe as market_observe
+                market_channel=self.link_channels.get(conn['id'])
+                if market_channel is not None:market_observe(market_channel)
                 conn['state_time'] = now
+                if market_channel is not None:market_observe(market_channel)
                 self._deliver_links(self.link_protocol.update_presence(self._link_presence()))
                 if changed or now - self.last_presence_broadcast >= PRESENCE_HEARTBEAT_INTERVAL:
                     self._schedule_presence(now)
@@ -1349,6 +1353,14 @@ class WorldServer:
         self._broadcast()
 
     def _deliver_links(self, messages):
+        # All authoritative session/encounter transitions pass this boundary,
+        # including holds with no intervening market traffic. Revoke before a
+        # queue callback can synchronously release the activity again.
+        from .hoenn_markets import end_visit as market_end_visit
+        for trainer, channel in self.link_channels.items():
+            if (trainer in self.link_protocol.sessions._locks
+                    or trainer in self.link_protocol._encounters):
+                market_end_visit(channel)
         for trainer, line in messages:
             channel = self.link_channels.get(trainer)
             if (channel is not None and not channel.get('closing')

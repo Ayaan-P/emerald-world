@@ -4,6 +4,7 @@
 struct{struct{unsigned mapGroup,mapNum;}location;}save,*gSaveBlock1Ptr=&save;
 struct{unsigned char playerTrainerId[4];}save2,*gSaveBlock2Ptr=&save2;
 static unsigned sends;static char sent[100];static int connected=1,link;
+int WorldBridge_MarketEntryReady(void){return 1;}
 int WorldBridge_ConnectionActive(void){return connected;}int NativeLink_IsActive(void){return link;}
 int LinkTransport_MarketSend(const char*l){strcpy(sent,l);sends++;return connected;}
 #include "ACTUAL_SOURCE"

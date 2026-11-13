@@ -62,15 +62,62 @@ def _legacy_wire(server,conn,raw):
     return 'MK SHELF '+' '.join(map(str,[*pos,seconds,len(items),*items]))+'\n'
 
 
+ABSENT = [0,0,0,0,1,7,0]
+VISIT_SECONDS = 7200
+
+def end_visit(conn):
+    conn.pop('market_visit',None)
+    conn.pop('market_report_shelves',None)
+
+def observe(conn):
+    """Revoke on every presence transition, not only the next market request.
+
+    This private retail scope never changes public presence or its ready bit.
+    Canonical absence is allowed only after an explicit genuine mart admission.
+    """
+    visit=conn.get('market_visit')
+    if not visit:return
+    peer=conn.get('presence');state=peer.get('state') if peer else None
+    if (peer is not visit['peer'] or conn.get('id')!=visit['id']
+            or not 0<=time.monotonic()-peer.get('state_time',0)<5
+            or not 0<=time.monotonic()-visit['at']<VISIT_SECONDS
+            or not state or (state!=ABSENT and
+                (tuple(state[:2])!=visit['pos'] or not state[6]))):
+        end_visit(conn)
+
 def wire(server,conn,raw):
     if raw==b'MK GET 1':return _legacy_wire(server,conn,raw)
     seq=0
     try:
         peer=conn.get('presence');state=peer.get('state') if peer else None
-        if server.link_channels.get(conn['id']) is not conn or server.peers.get(conn['id']) is not peer:raise ValueError()
-        if not state or not 0<=time.monotonic()-peer.get('state_time',0)<5:raise ValueError()
-        if conn['id'] in server.link_protocol.sessions._locks or conn['id'] in server.link_protocol._encounters:raise ValueError()
-        pos=tuple(state[:2]);site=next((s for s,p in SITES.items() if p==pos),None)
+        if (server.link_channels.get(conn['id']) is not conn or server.peers.get(conn['id']) is not peer
+                or conn.get('closing') or not state or not 0<=time.monotonic()-peer.get('state_time',0)<5
+                or conn['id'] in server.link_protocol.sessions._locks or conn['id'] in server.link_protocol._encounters):
+            end_visit(conn)
+            raise ValueError()
+        observe(conn)
+        if raw==b'MK LEAVE':
+            end_visit(conn)
+            return ''
+        visit=conn.get('market_visit')
+        pos=tuple(state[:2])
+        if raw.startswith(b'MK ENTER '):
+            fields=raw.decode('ascii').split(' ')
+            if len(fields)!=4 or any(not re.fullmatch('[0-9]{1,3}',v) for v in fields[2:]):raise ValueError()
+            requested=tuple(map(int,fields[2:]))
+            if visit:
+                if requested!=visit['pos']:end_visit(conn)
+                return ''  # Heartbeats never extend an absent visit's deadline.
+            site=next((s for s,p in SITES.items() if p==requested),None)
+            if pos!=requested or not state[6] or not site or catalog_maps().get(pos,{}).get('name')!=site:raise ValueError()
+            end_visit(conn)
+            conn['market_visit']=dict(pos=pos,site=site,peer=peer,id=conn['id'],at=time.monotonic())
+            return ''
+        if state==ABSENT:
+            if not visit:raise ValueError()
+            pos=visit['pos']
+        elif not state[6]:raise ValueError()
+        site=next((s for s,p in SITES.items() if p==pos),None)
         if not site or catalog_maps().get(pos,{}).get('name')!=site:raise ValueError()
         setup(server.db)
         # This is a bounded witness of a shelf sent on this authenticated channel,
@@ -80,9 +127,11 @@ def wire(server,conn,raw):
         for rev in list(grants):
             if now-grants[rev]['at']>7200:del grants[rev]
         if raw==b'MK GET 2':
-            row=server.db.execute('SELECT actor,revision,expires,items FROM hoenn_market_shelves WHERE site=?',(site,)).fetchone()
-            seconds=min(15,int(row[2]-time.time())) if row else 0
+            frozen=visit.get('shelf') if visit else None
+            row=frozen or server.db.execute('SELECT actor,revision,expires,items FROM hoenn_market_shelves WHERE site=?',(site,)).fetchone()
+            seconds=15 if frozen else min(15,int(row[2]-time.time())) if row else 0
             if seconds<=0:return 'MK NONE\n'
+            if visit and not frozen:visit['shelf']=row
             actor,rev,_,encoded=row;items=json.loads(encoded)
             grants[rev]=dict(site=site,actor=actor,items=items,at=now)
             while len(grants)>16:del grants[min(grants,key=lambda r:grants[r]['at'])]
