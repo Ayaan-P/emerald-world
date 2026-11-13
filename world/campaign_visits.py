@@ -20,8 +20,8 @@ def validate(server,node):
         saved=server.db.execute('SELECT a.template,r.place_id FROM generated_area_archive a LEFT JOIN world_region_revisions r ON r.revision=a.identity WHERE a.identity=?',(revision,)).fetchone()
         if not saved or hashlib.sha256(saved[0]).hexdigest()!=revision:raise ValueError('Generated visit geometry unavailable')
         cave=SharedCave(saved[0])
-        if saved[1] is None and (cave.version!=16 or not server.archive_generated_areas):raise ValueError('Visit destination has not been opened')
-        expected=server.cave_map if cave.version in (1,10) else server.wilds_map if cave.version==16 else None
+        if saved[1] is None and (cave.version not in (16,17) or not server.archive_generated_areas):raise ValueError('Visit destination has not been opened')
+        expected=server.cave_map if cave.version in (1,10) else server.wilds_map if cave.version in (16,17) else None
         if expected is None or tuple(point[:2])!=tuple(expected) or not cave.walkable(*point[2:]):raise ValueError('Destination is not supported walkable geometry')
         if tuple(point[2:]) in ((1,1),(cave.side-2,cave.side-2),(cave.side-2,cave.side-3)):raise ValueError('Keep visit destinations off transit endpoints')
     else:

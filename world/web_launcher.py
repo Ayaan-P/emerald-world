@@ -273,7 +273,7 @@ class LauncherBridge:
                         formats = dict(server.db.execute(
                             'SELECT identity, substr(template, 1, 8) FROM generated_area_archive'))
                     kinds = {b'EWGMAP06': 'wilds', b'EWGMAP07': 'guided_wilds',
-                             b'EWGMAP08': 'cast_wilds', b'EWGMAP09': 'event_wilds', b'EWGMAP0A': 'xl_wilds'}
+                             b'EWGMAP08': 'cast_wilds', b'EWGMAP09': 'event_wilds', b'EWGMAP0A': 'xl_wilds', b'EWGMAP1A': 'painted_xl_wilds'}
                     areas = [dict(area, kind=kinds.get(formats.get(area['identity'], b''), area['kind']))
                              for area in areas]
                 except Exception:
@@ -283,7 +283,7 @@ class LauncherBridge:
                 with server.lock:
                     cave = server.shared_cave
                     if cave is not None:
-                        kinds = {6: 'wilds', 7: 'guided_wilds', 8: 'cast_wilds', 9: 'event_wilds', 16: 'xl_wilds'}
+                        kinds = {6: 'wilds', 7: 'guided_wilds', 8: 'cast_wilds', 9: 'event_wilds', 16: 'xl_wilds', 17: 'painted_xl_wilds'}
                         archived = next((area for area in areas if area['identity'] == cave.identity), {})
                         occupants = sum(1 for peer in server.peers.values()
                             if not peer.get('closing') and (peer.get('in_generated_cave') or

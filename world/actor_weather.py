@@ -7,7 +7,7 @@ def configure(server,actor,row,args):
  if set(args)!={'revision','mode'} or type(args['mode']) is not str or args['mode'] not in (*WEATHER,'default'):raise ValueError('Choose a supported outdoor weather or default')
  cave=server.shared_cave
  obj=next((o for o in server.objects if o['id']==actor),None)
- if (not cave or cave.version!=16 or not server.archive_generated_areas or not obj
+ if (not cave or cave.version not in (16,17) or not server.archive_generated_areas or not obj
      or obj.get('region_revision')!=args['revision'] or cave.identity!=args['revision']
      or (obj['group'],obj['num'])!=server.wilds_map or not cave.walkable(obj['x'],obj['y'])):
   raise ValueError('Actor must occupy this exact active archived outdoor destination')
@@ -24,7 +24,7 @@ def current(server,revision):
 def line(server,conn):
  if not conn.get('outdoor_weather_capable'):return None
  cave=server._connection_cave(conn);state=conn.get('state')
- if (not cave or cave.version!=16 or not state
+ if (not cave or cave.version not in (16,17) or not state
      or tuple(state[:2])!=server.wilds_map or conn.get('cave_ack')!=cave.identity):return None
  weather=current(server,cave.identity)
  if weather['mode']=='default':return None
