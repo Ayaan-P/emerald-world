@@ -59,6 +59,15 @@ class GeneratedRegionTests(unittest.TestCase):
   self.assertEqual(self.s._region_scope(peer),start);self.assertEqual(self.s.shared_cave.identity,old)
   self.s.close();base=self.f.p.f.f.f.f.f.f.f;base.server=base.open();self.s=base.server
   self.assertEqual(catalog(self.s)[0]['places'],places);self.assertEqual(len(graph(self.s)),6)
+ def test_looped_room_graph_is_admitted_as_playable_caves(self):
+  raw=spec(77,places=2,rooms=3,loops=0,branching=1,room_loops=1)
+  expected=generate('Field',raw);self.plan(raw);self.assertEqual(runtime.tick(self.s,now=10)['status'],'pending')
+  self.f.p.admit();self.assertEqual(runtime.tick(self.s,now=16)['status'],'succeeded')
+  places=catalog(self.s)[0]['places'];self.assertEqual(len(places),2)
+  for actual,definition in zip(places,expected['places']):
+   blueprint=definition['blueprint'];self.assertEqual(len(blueprint['links']),len(blueprint['rooms']))
+   proposal=proposal_from_blueprint(blueprint);c=SharedCave(b'EWGMAP01'+''.join(proposal['rows']).encode())
+   self.assertEqual(actual['revision'],c.identity);self.assertTrue(c.walkable(1,1));self.assertTrue(c.walkable(29,29))
  def test_second_actor_failed_admission_resumes_same_places(self):
   raw=spec(361,places=4,rooms=2,loops=0,branching=3,style='maze')
   self.plan(raw,actor='second');self.assertEqual(runtime.tick(self.s,now=10)['status'],'pending');places=catalog(self.s)[0]['places']
@@ -71,3 +80,4 @@ class GeneratedRegionTests(unittest.TestCase):
   self.plan(spec(branching=1));self.assertEqual(runtime.tick(self.s,now=10)['status'],'blocked')
   self.assertEqual(self.s.db.execute('SELECT count(*) FROM generated_area_archive').fetchone()[0],count)
   self.assertIsNone(self.s.deployment)
+
