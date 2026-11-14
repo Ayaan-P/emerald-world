@@ -17,6 +17,38 @@ def encode(proposal,paint):
     encode_geometry({'rows':[geometry[y*SIDE:(y+1)*SIDE].decode('ascii') for y in range(SIDE)],'spawn':[1,1],'exit':[125,125]})
     return MAGIC+bytes(cells)
 
+
+def paint_biome(proposal, biome, seed):
+    """Decorate walkable ground deterministically, without changing connectivity.
+
+    This only chooses already supported shared metatiles; it does not generate art.
+    """
+    import random
+    palettes = {
+        'meadow': ('.', 't', 'g'),
+        'dunes': ('s', 's', '.'),
+        'grassland': ('g', 't', '.'),
+        'scrub': ('.', 's', 't'),
+    }
+    if type(biome) is not str or biome not in palettes:
+        raise ValueError('unknown biome')
+    if type(seed) is not int or not 0 <= seed <= 0xffffffff:
+        raise ValueError('seed must be an unsigned 32-bit integer')
+    cells = bytearray(encode_geometry(proposal)[8:])
+    rng = random.Random(seed)
+    # Overlapping organic ellipses form large continuous patches, not per-tile noise.
+    for _ in range(80):
+        cx, cy = rng.randrange(2, 125), rng.randrange(2, 125)
+        rx, ry = rng.randrange(4, 17), rng.randrange(3, 13)
+        kind = ord(rng.choice(palettes[biome]))
+        for y in range(max(1, cy-ry), min(126, cy+ry+1)):
+            for x in range(max(1, cx-rx), min(126, cx+rx+1)):
+                if (x-cx)**2 * ry**2 + (y-cy)**2 * rx**2 <= rx**2 * ry**2 and cells[y*SIDE+x] == ord('.'):
+                    cells[y*SIDE+x] = kind
+    for x,y in ((1,1),(125,124),(125,125)):
+        cells[y*SIDE+x] = ord('.')
+    return MAGIC + bytes(cells)
+
 def compile_document(doc):
     if type(doc) is not dict or set(doc)!={'blueprint','paint'}:raise ValueError('expected blueprint and paint')
     return encode(proposal_from_blueprint(doc['blueprint'],side=SIDE),doc['paint'])
