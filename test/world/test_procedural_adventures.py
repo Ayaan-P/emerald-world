@@ -82,6 +82,30 @@ class AdventureTests(unittest.TestCase):
                 for i,n in enumerate(doc['campaign']['nodes'].values()):n['opponent']=doc['trainers'][i]['id']
                 self.plan(doc,name='seed_'+str(seed));self.assertEqual(runtime.tick(self.s,now=seed*10)['status'],'pending');self.p.admit();self.assertEqual(runtime.tick(self.s,now=seed*10+6)['status'],'succeeded')
 
+    def test_authored_entrance_and_exit_residents_are_reachable(self):
+        from collections import deque
+        doc=adventure();doc['trainers'][0]['anchor']='entrance';doc['trainers'][1]['anchor']='exit'
+        entry=self.build(doc)
+        from world.shared_cave import SharedCave
+        for index,place in enumerate(entry['places']):
+            cave=SharedCave(self.s.db.execute('SELECT template FROM generated_area_archive WHERE identity=?',(place['revision'],)).fetchone()[0])
+            obj=next(o for o in self.s.objects if o['id']=='visitor_'+str(index))
+            target=(1,1) if index==0 else (cave.side-2,cave.side-2)
+            distance=abs(obj['x']-target[0])+abs(obj['y']-target[1])
+            self.assertLessEqual(distance,8)
+            blocked={(o['x'],o['y']) for o in self.s.objects if o.get('region_revision')==place['revision']}
+            floor={(x,y) for y in range(cave.side) for x in range(cave.side) if cave.walkable(x,y)}-blocked
+            seen={(1,1)}; q=deque(seen)
+            while q:
+                x,y=q.popleft()
+                for point in ((x+1,y),(x-1,y),(x,y+1),(x,y-1)):
+                    if point in floor and point not in seen:seen.add(point);q.append(point)
+            self.assertEqual(seen,floor)
+            self.assertTrue(any((obj['x']+dx,obj['y']+dy) in seen for dx,dy in ((0,1),(0,-1),(1,0),(-1,0))))
+    def test_unrecognized_anchor_does_not_publish(self):
+        doc=adventure();doc['trainers'][0]['anchor']='underwater';self.plan(doc)
+        self.assertEqual(runtime.tick(self.s,now=10)['status'],'blocked');self.assertEqual(catalog(self.s),[])
+
     def test_campaign_conflict_and_actor_change_never_overwritten(self):
         self.plan();runtime.tick(self.s,now=10);self.p.admit()
         from world.battle_campaigns import publish

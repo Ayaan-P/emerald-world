@@ -79,3 +79,7 @@ Tests exercise campaign-free publication, an empty connected network across rest
 ## Alternative room routes
 
 An author can optionally request `room_loops: 1` in the same constraints used by `world.generate_region_network` and `world.build_adventure`. This adds an edge to each connected room graph, allowing cyclic room layouts instead of only a tree. The seed still determines the graph and geometry; omitted `room_loops` keeps old outputs unchanged. Requests that cannot fit the graph or the existing 850-character network budget fail explicitly. A graph cycle does not guarantee physically disjoint paths: corridors may intersect and rooms may be open. This is geometry, not a claim of new stories, maps outside caves, populations, or a rendered playtest.
+
+### Purposeful resident placement
+
+`world.build_adventure` trainers may specify an optional `anchor`: `entrance`, `exit`, or `anywhere` (the default). An entrance guide or exit rival is placed on the nearest available safe tile to that cave's entrance or exit, with seeded tie-breaking. Existing doors and other objects are respected, every remaining floor tile must remain reachable and the resident must be interactable from an adjacent tile. This is a preference within those constraints, not an exact tile or an assertion the character traveled there. Omission and `anywhere` keep the previous seeded ordering. Published places, existing saves and campaigns are not retroactively changed.
