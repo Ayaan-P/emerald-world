@@ -75,6 +75,18 @@ class AreaLibraryTests(unittest.TestCase):
                 self.assertEqual(self.db.total_changes, before)
                 self.assertIs(self.server.shared_cave, active)
 
+    def test_painted_archive_exposes_schematic_palette_without_changing_geometry(self):
+        from world.shared_outdoor_palette import encode
+        blob=encode(proposal(127),[dict(x=3,y=3,width=2,height=2,terrain='sand'),dict(x=7,y=7,width=2,height=2,terrain='rock')])
+        identity=self.save(blob); before=self.db.total_changes
+        result=self.inspect(identity)
+        self.assertEqual(result['kind'],'painted_xl_wilds')
+        self.assertEqual(result['palette_rows'][3][3],'s')
+        self.assertEqual(result['palette_rows'][7][7],'r')
+        self.assertEqual(result['rows'][3][3],'.')
+        self.assertEqual(result['rows'][7][7],'#')
+        self.assertEqual(self.db.total_changes,before)
+
     def test_real_cohort_rosters_group_species_and_keep_distinct_levels(self):
         for cohort, name in [('vanilla', 'ZUBAT'), ('expansion-native', 'ROOKIDEE')]:
             for side, encoder in [(31, offline_cave.encode_wildlife), (63, large_cave.encode_wildlife)]:
