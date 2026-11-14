@@ -49,6 +49,40 @@ def paint_biome(proposal, biome, seed):
         cells[y*SIDE+x] = ord('.')
     return MAGIC + bytes(cells)
 
+
+def add_ponds(blob, seed, count):
+    """Add bounded impassable ponds without disconnecting any walkable tile.
+
+    A requested count is a target, not a promise: narrow geometry may not fit.
+    Existing terrain and the protected entry and exit remain intact.
+    """
+    import random
+    if not isinstance(blob, bytes) or blob[:8] != MAGIC or len(blob) != 8+SIDE*SIDE:
+        raise ValueError('expected shared painted landscape')
+    if type(seed) is not int or not 0 <= seed <= 0xffffffff:
+        raise ValueError('seed must be an unsigned 32-bit integer')
+    if type(count) is not int or not 0 <= count <= 8:
+        raise ValueError('pond count must be between 0 and 8')
+    cells=bytearray(blob[8:]); rng=random.Random(seed ^ 0x504f4e44); made=0
+    protected={(1,1),(125,124),(125,125)}
+    for _ in range(count*24):
+        if made == count: break
+        cx,cy=rng.randrange(5,122),rng.randrange(5,122)
+        rx,ry=rng.randrange(2,7),rng.randrange(2,6)
+        points=[(x,y) for y in range(max(1,cy-ry),min(126,cy+ry+1))
+                for x in range(max(1,cx-rx),min(126,cx+rx+1))
+                if (x-cx)**2*ry**2+(y-cy)**2*rx**2 <= rx**2*ry**2]
+        if any((x,y) in protected or cells[y*SIDE+x] in (ord('#'),ord('r')) for x,y in points): continue
+        trial=cells.copy()
+        for x,y in points: trial[y*SIDE+x]=ord('#')
+        geometry=bytes(ord('#') if c in (ord('#'),ord('r')) else ord('.') for c in trial)
+        try:
+            encode_geometry({'rows':[geometry[y*SIDE:(y+1)*SIDE].decode('ascii') for y in range(SIDE)],'spawn':[1,1],'exit':[125,125]})
+        except ValueError:
+            continue
+        cells=trial;made+=1
+    return MAGIC+bytes(cells),made
+
 def compile_document(doc):
     if type(doc) is not dict or set(doc)!={'blueprint','paint'}:raise ValueError('expected blueprint and paint')
     return encode(proposal_from_blueprint(doc['blueprint'],side=SIDE),doc['paint'])
