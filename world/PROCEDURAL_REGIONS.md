@@ -79,3 +79,9 @@ Tests exercise campaign-free publication, an empty connected network across rest
 ## Alternative room routes
 
 An author can optionally request `room_loops: 1` in the same constraints used by `world.generate_region_network` and `world.build_adventure`. This adds an edge to each connected room graph, allowing cyclic room layouts instead of only a tree. The seed still determines the graph and geometry; omitted `room_loops` keeps old outputs unchanged. Requests that cannot fit the graph or the existing 850-character network budget fail explicitly. A graph cycle does not guarantee physically disjoint paths: corridors may intersect and rooms may be open. This is geometry, not a claim of new stories, maps outside caves, populations, or a rendered playtest.
+
+## Wildlife in connected adventures
+
+`world.build_adventure` accepts optional `habitats`: a list of `{place, profile, rate, criteria}`. Each place index can have one independently composed encounter table. Criteria use the existing `world.compose_habitat` species/type/generation/stat/level/seed rules. The existing Expansion wildlife compiler validates the chosen species, profile and encounter rate; a place without a habitat remains a plain cave. The resulting immutable version-10 cave retains its wildlife in the archive and uses the existing REGION1/CAVELINK1 compatibility checks. Unsupported clients cannot be assumed to traverse it. A complex authored document may require the existing blueprint facility because normal plan steps remain size-bounded.
+
+This gives adventures actual configured encounter tables, not sightings, catches or simulated population changes. It does not affect personal parties, saves or existing maps. Authority tests do not prove a rendered or multiplayer gameplay session.

@@ -64,9 +64,18 @@ def start(server,actor,row,args):
     if set(args)!={'document'} or type(args['document']) is not str or len(args['document'])>6000:
         raise ValueError('Supply bounded authored adventure JSON')
     doc=json.loads(args['document'])
-    if type(doc) is not dict or not {'label','constraints','trainers'}<=set(doc) or set(doc)-{'label','constraints','trainers','campaign','mechanisms'}:
+    if type(doc) is not dict or not {'label','constraints','trainers'}<=set(doc) or set(doc)-{'label','constraints','trainers','campaign','mechanisms','habitats'}:
         raise ValueError('Adventure requires label, procedural constraints and trainers; campaign is optional')
     layout=generate(doc['label'],encode(doc['constraints']))
+    habitats=doc.get('habitats',[])
+    if type(habitats) is not list or len(habitats)>len(layout['places']):raise ValueError('Use at most one habitat per place')
+    from .habitat_composer import compose
+    seen=set()
+    for habitat in habitats:
+        if type(habitat) is not dict or set(habitat)!={'place','profile','rate','criteria'} or type(habitat['place']) is not int or not 0<=habitat['place']<len(layout['places']) or habitat['place'] in seen:raise ValueError('Each habitat selects a different generated place')
+        seen.add(habitat['place'])
+        selected=compose(encode(habitat['criteria']))
+        layout['places'][habitat['place']]['population']=dict(profile=habitat['profile'],rate=habitat['rate'],slots=selected['slots'])
     trainers=doc['trainers'];campaign=doc.get('campaign')
     if type(trainers) is not list or not 0<=len(trainers)<=4 or campaign is not None and type(campaign) is not dict:
         raise ValueError('Use up to four original residents and an optional authored campaign')

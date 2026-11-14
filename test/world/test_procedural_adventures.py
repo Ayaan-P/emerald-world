@@ -82,6 +82,28 @@ class AdventureTests(unittest.TestCase):
                 for i,n in enumerate(doc['campaign']['nodes'].values()):n['opponent']=doc['trainers'][i]['id']
                 self.plan(doc,name='seed_'+str(seed));self.assertEqual(runtime.tick(self.s,now=seed*10)['status'],'pending');self.p.admit();self.assertEqual(runtime.tick(self.s,now=seed*10+6)['status'],'succeeded')
 
+    def test_real_adventure_can_include_seeded_wildlife_and_plain_places(self):
+        from world.shared_cave import SharedCave
+        from world.habitat_composer import compose
+        from world.species_cohort import catalogue
+        criteria=dict(types=['water','ice'],generations=list(range(1,10)),bst=[200,550],levels=[8,18],seed=42)
+        doc=adventure();doc['trainers']=[];doc.pop('campaign');doc['habitats']=[dict(place=0,profile='ice',rate=25,criteria=criteria)]
+        entry=self.build(doc);expected=compose(encode(criteria));ids=catalogue('expansion-native')
+        blob=self.s.db.execute('SELECT template FROM generated_area_archive WHERE identity=?',(entry['places'][0]['revision'],)).fetchone()[0]
+        cave=SharedCave(blob);self.assertEqual(cave.version,10);self.assertEqual(cave.wildlife[0],25)
+        for i,(name,level) in enumerate(expected['slots']):
+            self.assertEqual(int.from_bytes(cave.wildlife[1+3*i:3+3*i],'little'),ids[name]);self.assertEqual(cave.wildlife[3+3*i],level)
+        plain=SharedCave(self.s.db.execute('SELECT template FROM generated_area_archive WHERE identity=?',(entry['places'][1]['revision'],)).fetchone()[0]);self.assertEqual(plain.version,1)
+        self.assertIn('CAVE WILD '+cave.identity,cave.frames())
+        self.assertTrue(self.s.module_state['world_region_networks'])
+
+    def test_invalid_habitat_never_publishes_partial_places(self):
+        before=self.s.db.execute('SELECT count(*) FROM generated_area_archive').fetchone()[0]
+        criteria=dict(types=['water'],generations=[1],bst=[200,550],levels=[8,18],seed=42)
+        doc=adventure();doc['trainers']=[];doc.pop('campaign');doc['habitats']=[dict(place=0,profile='ice',rate=25,criteria=criteria),dict(place=0,profile='ice',rate=25,criteria=criteria)]
+        self.plan(doc);self.assertEqual(runtime.tick(self.s,now=10)['status'],'blocked');self.assertEqual(catalog(self.s),[])
+        self.assertEqual(self.s.db.execute('SELECT count(*) FROM generated_area_archive').fetchone()[0],before)
+
     def test_campaign_conflict_and_actor_change_never_overwritten(self):
         self.plan();runtime.tick(self.s,now=10);self.p.admit()
         from world.battle_campaigns import publish
