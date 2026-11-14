@@ -1,7 +1,7 @@
 """Bounded persistent reactions to public facts, using existing world executors."""
 import json,re,time,sqlite3
 
-TOOLS=('world.arrange_market_shelf', 'world.configure_outbreak', 'world.configure_fishing', 'world.set_weather')
+TOOLS=('world.publish_bulletin', 'world.arrange_market_shelf', 'world.configure_outbreak', 'world.configure_fishing', 'world.set_weather')
 EVENTS=('hoenn_market_purchase_reported', 'canonical_trainer_result', 'landmark_discovery_shared', 'public_story_choice_committed', 'character_journey_arrived', 'player_addressed_character', 'spatial_public_speech', 'dewford_trend_shared', 'safari_feeder_deposit_shared')
 
 
@@ -24,6 +24,7 @@ def publish(server,actor,row,args):
  cap=CAPABILITIES[d['tool']];record=actor_records(server).get(actor)
  if not record or ('canonical' if record.get('canonical') else 'world') not in cap.kinds or cap.poll is not None:raise ValueError('Operation is unavailable to this actor')
  if set(d['args'])!=set(cap.arguments):raise ValueError('Supply exactly the operation arguments in discovery')
+ if d['tool']=='world.publish_bulletin' and d['args'].get('evidence')!='@trigger':raise ValueError('Bulletin reactions must reference the matching public event using @trigger')
  encoded=json.dumps(d,sort_keys=True);old=server.db.execute('SELECT definition FROM history_world_rules WHERE actor=? AND id=?',(actor,args['id'])).fetchone()
  if old:
   if old[0]!=encoded:raise ValueError('Rule identities are immutable; pause an old rule before authoring a different ID')
@@ -45,7 +46,7 @@ def pause(server,actor,row,args):
 
 def discover(server):
  setup(server.db)
- return dict(triggers=list(EVENTS),operations=list(TOOLS),rules=[dict(actor=a,id=k,definition=json.loads(d),cursor=c,enabled=bool(e),used=u,window=w,next_at=n) for a,k,d,c,e,w,u,n in server.db.execute('SELECT * FROM history_world_rules ORDER BY enabled DESC,actor,id LIMIT 128')],limits='Future public events only. Fixed arguments, no code or event-text execution. Max two active rules per actor and 32 total; each persists across plans, but actor retirement disables it. Attempts, not successes, consume the recurring budget. Native guards still apply.')
+ return dict(triggers=list(EVENTS),operations=list(TOOLS),rules=[dict(actor=a,id=k,definition=json.loads(d),cursor=c,enabled=bool(e),used=u,window=w,next_at=n) for a,k,d,c,e,w,u,n in server.db.execute('SELECT * FROM history_world_rules ORDER BY enabled DESC,actor,id LIMIT 128')],limits='Future public events only. Fixed arguments, no code or event-text execution. Bulletin evidence @trigger binds only the committed event ID. Max two active rules per actor and 32 total; each persists across plans, but actor retirement disables it. Attempts, not successes, consume the recurring budget. Native guards still apply.')
 
 
 def _tick(server,*,now=None):
@@ -79,7 +80,10 @@ def _tick(server,*,now=None):
    server.db.execute('SAVEPOINT history_rule_effect')
    try:
     if cap.poll is not None or ('canonical' if record.get('canonical') else 'world') not in cap.kinds:raise ValueError('Operation unavailable for current actor')
-    result=cap.execute(server,actor,record,d['args'])
+    effect_args=dict(d['args'])
+    # Only the committed event ID is substituted, never its content.
+    if d['tool']=='world.publish_bulletin':effect_args['evidence']=json.dumps([event['seq']])
+    result=cap.execute(server,actor,record,effect_args)
     if type(result) is not dict:raise ValueError('World executor did not return a synchronous result')
     server.db.execute('RELEASE history_rule_effect')
    except (ValueError,TypeError,KeyError) as exc:
