@@ -1,0 +1,3225 @@
+{
+  "source_sha256": "d08e7a008df0f9eeaf58bbddf66d8a2d0a9cfc269d34d5f25d3fdb4042942e85",
+  "trainers": {
+    "t005375f3464bdabb": {
+      "name": "LAO",
+      "symbol": "TRAINER_LAO_4"
+    },
+    "t0085feb7c3da1a51": {
+      "name": "MELISSA",
+      "symbol": "TRAINER_MELISSA"
+    },
+    "t008b12ddb2a0580f": {
+      "name": "TABITHA",
+      "symbol": "TRAINER_TABITHA_MAGMA_HIDEOUT"
+    },
+    "t009d4364c34085a2": {
+      "name": "TAYLOR",
+      "symbol": "TRAINER_TAYLOR"
+    },
+    "t00c6da31dac54be7": {
+      "name": "JOSUE",
+      "symbol": "TRAINER_JOSUE"
+    },
+    "t014ce6132e05d5c5": {
+      "name": "TAKASHI",
+      "symbol": "TRAINER_TAKASHI"
+    },
+    "t01563dc263043f8d": {
+      "name": "ISAAC",
+      "symbol": "TRAINER_ISAAC_2"
+    },
+    "t017aa0562e300ae8": {
+      "name": "TIFFANY",
+      "symbol": "TRAINER_TIFFANY"
+    },
+    "t02fa113546ab277f": {
+      "name": "JERRY",
+      "symbol": "TRAINER_JERRY_1"
+    },
+    "t034546fd1789d835": {
+      "name": "ISAAC",
+      "symbol": "TRAINER_ISAAC_1"
+    },
+    "t0376887d21eb36f4": {
+      "name": "EDWIN",
+      "symbol": "TRAINER_EDWIN_3"
+    },
+    "t03882bfd196afee2": {
+      "name": "GRACE",
+      "symbol": "TRAINER_GRACE"
+    },
+    "t03971df577bc9516": {
+      "name": "SHELBY",
+      "symbol": "TRAINER_SHELBY_2"
+    },
+    "t052aba7479049fea": {
+      "name": "BEVERLY",
+      "symbol": "TRAINER_BEVERLY"
+    },
+    "t061e6612564f0e58": {
+      "name": "EDWIN",
+      "symbol": "TRAINER_EDWIN_2"
+    },
+    "t0654fa8f044a8196": {
+      "name": "ALLEN",
+      "symbol": "TRAINER_ALLEN"
+    },
+    "t0668b52c6fe06a79": {
+      "name": "BERKE",
+      "symbol": "TRAINER_BERKE"
+    },
+    "t0733aa6527ae77c0": {
+      "name": "ISABEL",
+      "symbol": "TRAINER_ISABEL_5"
+    },
+    "t074cb2c2ab41b9d7": {
+      "name": "BROOKE",
+      "symbol": "TRAINER_BROOKE_4"
+    },
+    "t0779152924a606e9": {
+      "name": "WALLY",
+      "symbol": "TRAINER_WALLY_VR_4"
+    },
+    "t07d90c8ff6439cde": {
+      "name": "WATTSON",
+      "symbol": "TRAINER_WATTSON_3"
+    },
+    "t0854e24fa0f0ed7b": {
+      "name": "CARTER",
+      "symbol": "TRAINER_CARTER"
+    },
+    "t08bcf891d68abd29": {
+      "name": "LORENZO",
+      "symbol": "TRAINER_LORENZO"
+    },
+    "t092dfb431f9d576e": {
+      "name": "HAILEY",
+      "symbol": "TRAINER_HAILEY"
+    },
+    "t096162dfbd415e5c": {
+      "name": "MOLLIE",
+      "symbol": "TRAINER_MOLLIE"
+    },
+    "t0a2c7469db6a3680": {
+      "name": "NAOMI",
+      "symbol": "TRAINER_NAOMI"
+    },
+    "t0a2ea88cbb75446a": {
+      "name": "KEVIN",
+      "symbol": "TRAINER_KEVIN"
+    },
+    "t0a36597adcad19a3": {
+      "name": "JACOB",
+      "symbol": "TRAINER_JACOB"
+    },
+    "t0a697ed05aed7e3f": {
+      "name": "TALIA",
+      "symbol": "TRAINER_TALIA"
+    },
+    "t0a7a50156ebe7931": {
+      "name": "BARRY",
+      "symbol": "TRAINER_BARRY"
+    },
+    "t0a8ed0f555c44d31": {
+      "name": "JUAN",
+      "symbol": "TRAINER_JUAN_4"
+    },
+    "t0ace18dc45279f86": {
+      "name": "NORMAN",
+      "symbol": "TRAINER_NORMAN_1"
+    },
+    "t0aef9ed5d8b59b01": {
+      "name": "EDMOND",
+      "symbol": "TRAINER_EDMOND"
+    },
+    "t0b10acb734a96734": {
+      "name": "JENNIFER",
+      "symbol": "TRAINER_JENNIFER"
+    },
+    "t0b20e3c808fd61b8": {
+      "name": "NICOLAS",
+      "symbol": "TRAINER_NICOLAS_2"
+    },
+    "t0b54396982b42678": {
+      "name": "TASHA",
+      "symbol": "TRAINER_TASHA"
+    },
+    "t0c0dfc8c10f74e0a": {
+      "name": "PHILLIP",
+      "symbol": "TRAINER_PHILLIP"
+    },
+    "t0c51375b6b8ca1f9": {
+      "name": "OWEN",
+      "symbol": "TRAINER_OWEN"
+    },
+    "t0ca9ea81ba61bd8f": {
+      "name": "WAYNE",
+      "symbol": "TRAINER_WAYNE"
+    },
+    "t0d11af56677123ee": {
+      "name": "FRANKLIN",
+      "symbol": "TRAINER_FRANKLIN"
+    },
+    "t0deac8685a28103c": {
+      "name": "BENJAMIN",
+      "symbol": "TRAINER_BENJAMIN_1"
+    },
+    "t0e0558c914fc2c01": {
+      "name": "WALLY",
+      "symbol": "TRAINER_WALLY_VR_3"
+    },
+    "t0e32206c7e69022c": {
+      "name": "EDWARDO",
+      "symbol": "TRAINER_EDWARDO"
+    },
+    "t0e7eb4e6d42c9236": {
+      "name": "YASU",
+      "symbol": "TRAINER_YASU"
+    },
+    "t0f19b0fd7aadbc2a": {
+      "name": "MAY",
+      "symbol": "TRAINER_MAY_ROUTE_103_TORCHIC"
+    },
+    "t0fb9912532197c88": {
+      "name": "JANICE",
+      "symbol": "TRAINER_JANICE"
+    },
+    "t104f15a4c830561e": {
+      "name": "MATT",
+      "symbol": "TRAINER_MATT"
+    },
+    "t10e666ab124ff7e0": {
+      "name": "KINDRA",
+      "symbol": "TRAINER_KINDRA"
+    },
+    "t110860dd3ab4cec2": {
+      "name": "ERNEST",
+      "symbol": "TRAINER_ERNEST_1"
+    },
+    "t11e1634bed327926": {
+      "name": "EDWIN",
+      "symbol": "TRAINER_EDWIN_1"
+    },
+    "t11f96bcc52b7486b": {
+      "name": "STEVEN",
+      "symbol": "TRAINER_STEVEN"
+    },
+    "t12399afedacf5692": {
+      "name": "PAT",
+      "symbol": "TRAINER_PAT"
+    },
+    "t127ffd1c660925db": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_SPACE_CENTER_4"
+    },
+    "t12c8137953021a72": {
+      "name": "DUSTY",
+      "symbol": "TRAINER_DUSTY_2"
+    },
+    "t12d1180ef632f7e7": {
+      "name": "BRENDAN",
+      "symbol": "TRAINER_BRENDAN_ROUTE_103_TREECKO"
+    },
+    "t1320a048ea5d4507": {
+      "name": "JESSICA",
+      "symbol": "TRAINER_JESSICA_3"
+    },
+    "t13430b3e0f374d90": {
+      "name": "LENNY",
+      "symbol": "TRAINER_LENNY"
+    },
+    "t135663b24df24640": {
+      "name": "NOLAN",
+      "symbol": "TRAINER_NOLAN"
+    },
+    "t135c333a90ce02eb": {
+      "name": "BRICE",
+      "symbol": "TRAINER_BRICE"
+    },
+    "t13cd9b06e7eddd39": {
+      "name": "JERRY",
+      "symbol": "TRAINER_JERRY_4"
+    },
+    "t13e1f4454d491427": {
+      "name": "BRENDAN",
+      "symbol": "TRAINER_BRENDAN_ROUTE_103_TORCHIC"
+    },
+    "t13e371bb5f9b9433": {
+      "name": "BRENDAN",
+      "symbol": "TRAINER_BRENDAN_ROUTE_110_MUDKIP"
+    },
+    "t141af3d6a7f0303a": {
+      "name": "GABRIELLE",
+      "symbol": "TRAINER_GABRIELLE_1"
+    },
+    "t144ca1917908baff": {
+      "name": "WINONA",
+      "symbol": "TRAINER_WINONA_3"
+    },
+    "t147859cff237c0e9": {
+      "name": "JACKSON",
+      "symbol": "TRAINER_JACKSON_5"
+    },
+    "t159e5de3227bc566": {
+      "name": "BRAWLY",
+      "symbol": "TRAINER_BRAWLY_1"
+    },
+    "t15def3ed7ed21fd6": {
+      "name": "ELLIOT",
+      "symbol": "TRAINER_ELLIOT_3"
+    },
+    "t1670a783ad404bc2": {
+      "name": "CONNIE",
+      "symbol": "TRAINER_CONNIE"
+    },
+    "t1686f92627d652d7": {
+      "name": "LOLA",
+      "symbol": "TRAINER_LOLA_5"
+    },
+    "t16a398d8e27e5acc": {
+      "name": "CHIP",
+      "symbol": "TRAINER_CHIP"
+    },
+    "t170398e9773eba57": {
+      "name": "MIGUEL",
+      "symbol": "TRAINER_MIGUEL_5"
+    },
+    "t170f514541be9175": {
+      "name": "FERNANDO",
+      "symbol": "TRAINER_FERNANDO_2"
+    },
+    "t179aac686b32af53": {
+      "name": "MIKE",
+      "symbol": "TRAINER_MIKE_2"
+    },
+    "t18804d6281df31ca": {
+      "name": "LAO",
+      "symbol": "TRAINER_LAO_3"
+    },
+    "t189b8130170d7024": {
+      "name": "BRENDAN",
+      "symbol": "TRAINER_BRENDAN_PLACEHOLDER"
+    },
+    "t18d253f778bf4e28": {
+      "name": "DEAN",
+      "symbol": "TRAINER_DEAN"
+    },
+    "t18f44dd2adcd79c9": {
+      "name": "THALIA",
+      "symbol": "TRAINER_THALIA_2"
+    },
+    "t191d80d5b6007949": {
+      "name": "FREDRICK",
+      "symbol": "TRAINER_FREDRICK"
+    },
+    "t197bf4810044b751": {
+      "name": "CORY",
+      "symbol": "TRAINER_CORY_5"
+    },
+    "t1983bd5169229096": {
+      "name": "ROXANNE",
+      "symbol": "TRAINER_ROXANNE_3"
+    },
+    "t19c1652afd6dbde7": {
+      "name": "STEVE",
+      "symbol": "TRAINER_STEVE_2"
+    },
+    "t1a518e44e3343b79": {
+      "name": "JONAH",
+      "symbol": "TRAINER_JONAH"
+    },
+    "t1a6ed633aec4efd9": {
+      "name": "KOJI",
+      "symbol": "TRAINER_KOJI_3"
+    },
+    "t1a80726ab4d5e9c9": {
+      "name": "DUNCAN",
+      "symbol": "TRAINER_DUNCAN"
+    },
+    "t1ab014d7b09fc339": {
+      "name": "TARA",
+      "symbol": "TRAINER_TARA"
+    },
+    "t1ab1edfa5adcf3d5": {
+      "name": "CHRIS",
+      "symbol": "TRAINER_CHRIS"
+    },
+    "t1b4213e5cd94e00f": {
+      "name": "PABLO",
+      "symbol": "TRAINER_PABLO_3"
+    },
+    "t1ba1f0d7ee916442": {
+      "name": "DUSTY",
+      "symbol": "TRAINER_DUSTY_3"
+    },
+    "t1bfae67957db8855": {
+      "name": "PARKER",
+      "symbol": "TRAINER_PARKER"
+    },
+    "t1c3a95f3208674b3": {
+      "name": "MAY",
+      "symbol": "TRAINER_MAY_PLACEHOLDER"
+    },
+    "t1c55935a65cf7126": {
+      "name": "BENNY",
+      "symbol": "TRAINER_BENNY"
+    },
+    "t1e35c8dd72dfa24d": {
+      "name": "JENNY",
+      "symbol": "TRAINER_JENNY_3"
+    },
+    "t1e3f53bb258efd23": {
+      "name": "ABIGAIL",
+      "symbol": "TRAINER_ABIGAIL_4"
+    },
+    "t1e478c82adcc0d93": {
+      "name": "BETHANY",
+      "symbol": "TRAINER_BETHANY"
+    },
+    "t1f10e2800c7986d6": {
+      "name": "ALEXA",
+      "symbol": "TRAINER_ALEXA"
+    },
+    "t1f216cfaf25daddf": {
+      "name": "SAMUEL",
+      "symbol": "TRAINER_SAMUEL"
+    },
+    "t1fa93db83872a843": {
+      "name": "FLANNERY",
+      "symbol": "TRAINER_FLANNERY_2"
+    },
+    "t200a42bfd39efabf": {
+      "name": "SHELBY",
+      "symbol": "TRAINER_SHELBY_1"
+    },
+    "t2063faaeeb7b2658": {
+      "name": "RILEY",
+      "symbol": "TRAINER_RILEY"
+    },
+    "t20a89fc389a1dcec": {
+      "name": "DALTON",
+      "symbol": "TRAINER_DALTON_4"
+    },
+    "t20e08320e59834fe": {
+      "name": "MACEY",
+      "symbol": "TRAINER_MACEY"
+    },
+    "t20e61bb5ad9ed45b": {
+      "name": "MARIA",
+      "symbol": "TRAINER_MARIA_4"
+    },
+    "t21552a83c361a6d5": {
+      "name": "DEVAN",
+      "symbol": "TRAINER_DEVAN"
+    },
+    "t21bcf6c92b038a1e": {
+      "name": "AARON",
+      "symbol": "TRAINER_AARON"
+    },
+    "t22193f86bae134cb": {
+      "name": "HAYDEN",
+      "symbol": "TRAINER_HAYDEN"
+    },
+    "t221b37b6c62d8687": {
+      "name": "SALLY",
+      "symbol": "TRAINER_SALLY"
+    },
+    "t22a787669c5ac240": {
+      "name": "KOJI",
+      "symbol": "TRAINER_KOJI_1"
+    },
+    "t22eeda8cbce04d09": {
+      "name": "WALLY",
+      "symbol": "TRAINER_WALLY_VR_5"
+    },
+    "t22f02f40726f5cd2": {
+      "name": "MAY",
+      "symbol": "TRAINER_MAY_ROUTE_119_MUDKIP"
+    },
+    "t2314d8a9105d201c": {
+      "name": "AISHA",
+      "symbol": "TRAINER_AISHA"
+    },
+    "t234966bf1291f3f7": {
+      "name": "VANESSA",
+      "symbol": "TRAINER_VANESSA"
+    },
+    "t24386ad5a4046f19": {
+      "name": "TIMOTHY",
+      "symbol": "TRAINER_TIMOTHY_1"
+    },
+    "t249146837910ac9d": {
+      "name": "WALTER",
+      "symbol": "TRAINER_WALTER_3"
+    },
+    "t24ed5067ffba49bd": {
+      "name": "KEEGAN",
+      "symbol": "TRAINER_KEEGAN"
+    },
+    "t2533f37a56d0906b": {
+      "name": "ALIX",
+      "symbol": "TRAINER_ALIX"
+    },
+    "t256f7af5fb3a581d": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MAGMA_HIDEOUT_11"
+    },
+    "t25dd9d637a545319": {
+      "name": "MAY",
+      "symbol": "TRAINER_MAY_ROUTE_110_TREECKO"
+    },
+    "t25fc8159254c772e": {
+      "name": "HALEY",
+      "symbol": "TRAINER_HALEY_1"
+    },
+    "t261137adf89de5fb": {
+      "name": "MARIELA",
+      "symbol": "TRAINER_MARIELA"
+    },
+    "t26fbca78f1bded92": {
+      "name": "NORMAN",
+      "symbol": "TRAINER_NORMAN_3"
+    },
+    "t272c8cca6a74db3c": {
+      "name": "JEFFREY",
+      "symbol": "TRAINER_JEFFREY_2"
+    },
+    "t2786662e1632d642": {
+      "name": "JACKI",
+      "symbol": "TRAINER_JACKI_5"
+    },
+    "t288dc225cb5627dd": {
+      "name": "MAY",
+      "symbol": "TRAINER_MAY_LILYCOVE_TREECKO"
+    },
+    "t289175d0487d0af0": {
+      "name": "JULIE",
+      "symbol": "TRAINER_JULIE"
+    },
+    "t2a24f56589c63961": {
+      "name": "ANNIKA",
+      "symbol": "TRAINER_ANNIKA"
+    },
+    "t2a287dc02ef1f668": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MT_PYRE_2"
+    },
+    "t2a2c2addc31ec3bb": {
+      "name": "HENRY",
+      "symbol": "TRAINER_HENRY"
+    },
+    "t2a5de699e9a97c1c": {
+      "name": "DUSTY",
+      "symbol": "TRAINER_DUSTY_1"
+    },
+    "t2afb345fe8958582": {
+      "name": "ARCHIE",
+      "symbol": "TRAINER_ARCHIE"
+    },
+    "t2b40813d70cf603d": {
+      "name": "WATTSON",
+      "symbol": "TRAINER_WATTSON_5"
+    },
+    "t2b98ee2ad764fcca": {
+      "name": "EDWIN",
+      "symbol": "TRAINER_EDWIN_5"
+    },
+    "t2bd7ca858e4abac1": {
+      "name": "RICHARD",
+      "symbol": "TRAINER_RICHARD"
+    },
+    "t2cd100ccda2fe2da": {
+      "name": "VITO",
+      "symbol": "TRAINER_VITO"
+    },
+    "t2d7e9c53be78882b": {
+      "name": "WADE",
+      "symbol": "TRAINER_WADE"
+    },
+    "t2da190e2ec8896a8": {
+      "name": "LYDIA",
+      "symbol": "TRAINER_LYDIA_1"
+    },
+    "t2daeb2da36329311": {
+      "name": "DRAKE",
+      "symbol": "TRAINER_DRAKE"
+    },
+    "t2dc1a609ca26a11d": {
+      "name": "GERALD",
+      "symbol": "TRAINER_GERALD"
+    },
+    "t2e0174b713fe5f09": {
+      "name": "MARCEL",
+      "symbol": "TRAINER_MARCEL"
+    },
+    "t2e61e1bbb6a3640c": {
+      "name": "KATELYNN",
+      "symbol": "TRAINER_KATELYNN"
+    },
+    "t2e63071201a111a9": {
+      "name": "ISABELLA",
+      "symbol": "TRAINER_ISABELLA"
+    },
+    "t2eed2c36a08e6b37": {
+      "name": "CHANDLER",
+      "symbol": "TRAINER_CHANDLER"
+    },
+    "t2eefeb81c0310555": {
+      "name": "TRENT",
+      "symbol": "TRAINER_TRENT_4"
+    },
+    "t2f09e44225513a00": {
+      "name": "CALVIN",
+      "symbol": "TRAINER_CALVIN_4"
+    },
+    "t2f6c8a5ea877cc51": {
+      "name": "MARY",
+      "symbol": "TRAINER_MARY"
+    },
+    "t2f9e4b6c31a9a627": {
+      "name": "LEONEL",
+      "symbol": "TRAINER_LEONEL"
+    },
+    "t2fb37a1be6669476": {
+      "name": "DYLAN",
+      "symbol": "TRAINER_DYLAN_3"
+    },
+    "t308036802f6d050e": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_AQUA_HIDEOUT_8"
+    },
+    "t30903d1052e4b975": {
+      "name": "TUCKER",
+      "symbol": "TRAINER_TUCKER"
+    },
+    "t311170aa59fc9390": {
+      "name": "TONY",
+      "symbol": "TRAINER_TONY_4"
+    },
+    "t315543950cc641a1": {
+      "name": "FLANNERY",
+      "symbol": "TRAINER_FLANNERY_5"
+    },
+    "t3192a412c5a60dd9": {
+      "name": "JOEY",
+      "symbol": "TRAINER_JOEY"
+    },
+    "t31e597bb91fb36c0": {
+      "name": "FOSTER",
+      "symbol": "TRAINER_FOSTER"
+    },
+    "t326181fd9ed05899": {
+      "name": "SARAH",
+      "symbol": "TRAINER_SARAH"
+    },
+    "t326686c0a13a23f2": {
+      "name": "MADELINE",
+      "symbol": "TRAINER_MADELINE_3"
+    },
+    "t32943bec6d1c4b76": {
+      "name": "CLAUDE",
+      "symbol": "TRAINER_CLAUDE"
+    },
+    "t329d0bfff3af2526": {
+      "name": "WILTON",
+      "symbol": "TRAINER_WILTON_5"
+    },
+    "t32c0f523df919c2d": {
+      "name": "DONNY",
+      "symbol": "TRAINER_DONNY"
+    },
+    "t32edf5956fe152e8": {
+      "name": "ALAN",
+      "symbol": "TRAINER_ALAN"
+    },
+    "t32fc7c435d883f52": {
+      "name": "WINSTON",
+      "symbol": "TRAINER_WINSTON_1"
+    },
+    "t33988e71ed205cd7": {
+      "name": "CALVIN",
+      "symbol": "TRAINER_CALVIN_2"
+    },
+    "t33b9c4da289757fa": {
+      "name": "FLANNERY",
+      "symbol": "TRAINER_FLANNERY_4"
+    },
+    "t33e2cdb49336e833": {
+      "name": "CRISTIAN",
+      "symbol": "TRAINER_CRISTIAN"
+    },
+    "t345668dddb0a7deb": {
+      "name": "KAI",
+      "symbol": "TRAINER_KAI"
+    },
+    "t349bef260114728a": {
+      "name": "MYLES",
+      "symbol": "TRAINER_MYLES"
+    },
+    "t35395c8edd002a34": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MAGMA_HIDEOUT_6"
+    },
+    "t36263bfbd1d36bbf": {
+      "name": "JOSEPH",
+      "symbol": "TRAINER_JOSEPH"
+    },
+    "t3671303518209dc1": {
+      "name": "JAMES",
+      "symbol": "TRAINER_JAMES_2"
+    },
+    "t36d5e193b844f078": {
+      "name": "EDDIE",
+      "symbol": "TRAINER_EDDIE"
+    },
+    "t372706c2bcc26492": {
+      "name": "VALERIE",
+      "symbol": "TRAINER_VALERIE_3"
+    },
+    "t3736bb2024d9c0e9": {
+      "name": "ISABELLE",
+      "symbol": "TRAINER_ISABELLE"
+    },
+    "t37920238c72ab314": {
+      "name": "ERNEST",
+      "symbol": "TRAINER_ERNEST_5"
+    },
+    "t37d1ccb2b472ad41": {
+      "name": "GWEN",
+      "symbol": "TRAINER_GWEN"
+    },
+    "t381f46e707f521d5": {
+      "name": "LARRY",
+      "symbol": "TRAINER_LARRY"
+    },
+    "t382068d04474c5f3": {
+      "name": "MARK",
+      "symbol": "TRAINER_MARK"
+    },
+    "t3848330f743011d9": {
+      "name": "PABLO",
+      "symbol": "TRAINER_PABLO_2"
+    },
+    "t3896bf198b915b7b": {
+      "name": "ISAIAH",
+      "symbol": "TRAINER_ISAIAH_4"
+    },
+    "t38a51cc1ecdd8dcd": {
+      "name": "BETH",
+      "symbol": "TRAINER_BETH"
+    },
+    "t38e45fc828567377": {
+      "name": "ROSE",
+      "symbol": "TRAINER_ROSE_3"
+    },
+    "t395f4ac0d4be2367": {
+      "name": "TONY",
+      "symbol": "TRAINER_TONY_2"
+    },
+    "t3984e750559fd379": {
+      "name": "SEBASTIAN",
+      "symbol": "TRAINER_SEBASTIAN"
+    },
+    "t39a731a8d3bc3eef": {
+      "name": "LINDA",
+      "symbol": "TRAINER_LINDA"
+    },
+    "t39ba94a94b68e8f8": {
+      "name": "MARIA",
+      "symbol": "TRAINER_MARIA_1"
+    },
+    "t39dfb544ad649ee8": {
+      "name": "RICKY",
+      "symbol": "TRAINER_RICKY_2"
+    },
+    "t39fd7956c608edf3": {
+      "name": "DONALD",
+      "symbol": "TRAINER_DONALD"
+    },
+    "t3a4abd0502011844": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MT_PYRE_4"
+    },
+    "t3acec65cce584c23": {
+      "name": "ROBERT",
+      "symbol": "TRAINER_ROBERT_1"
+    },
+    "t3b8c4dd8ff181e67": {
+      "name": "CRISTIN",
+      "symbol": "TRAINER_CRISTIN_4"
+    },
+    "t3c0bd6704e67c1cb": {
+      "name": "VIVI",
+      "symbol": "TRAINER_VIVI"
+    },
+    "t3c1944da88d13c1a": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MAGMA_HIDEOUT_12"
+    },
+    "t3c1d5a90d0618bff": {
+      "name": "KEIGO",
+      "symbol": "TRAINER_KEIGO"
+    },
+    "t3c321a0e662ef4be": {
+      "name": "KIRK",
+      "symbol": "TRAINER_KIRK"
+    },
+    "t3c49d56d0cbcc20e": {
+      "name": "KYLA",
+      "symbol": "TRAINER_KYLA"
+    },
+    "t3c68050bccb19727": {
+      "name": "ANDRES",
+      "symbol": "TRAINER_ANDRES_4"
+    },
+    "t3ca907de34a522d2": {
+      "name": "AUSTINA",
+      "symbol": "TRAINER_AUSTINA"
+    },
+    "t3d23d5f7089952a4": {
+      "name": "WALTER",
+      "symbol": "TRAINER_WALTER_4"
+    },
+    "t3d3ffb2d7c0c5962": {
+      "name": "WINSTON",
+      "symbol": "TRAINER_WINSTON_3"
+    },
+    "t3da79afa040c019c": {
+      "name": "BIANCA",
+      "symbol": "TRAINER_BIANCA"
+    },
+    "t3e0a3bdbf80ed4fd": {
+      "name": "RICKY",
+      "symbol": "TRAINER_RICKY_3"
+    },
+    "t3e27ebabf291da01": {
+      "name": "JAMES",
+      "symbol": "TRAINER_JAMES_5"
+    },
+    "t3eafa0267ef3470a": {
+      "name": "ELLIOT",
+      "symbol": "TRAINER_ELLIOT_5"
+    },
+    "t3f31448bcf4c61e1": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_WEATHER_INST_5"
+    },
+    "t3f7e4a0375e22008": {
+      "name": "JENNY",
+      "symbol": "TRAINER_JENNY_2"
+    },
+    "t3fa1299296fb3367": {
+      "name": "CLIFFORD",
+      "symbol": "TRAINER_CLIFFORD"
+    },
+    "t40fe15b87dedafaa": {
+      "name": "TANYA",
+      "symbol": "TRAINER_TANYA"
+    },
+    "t412667e4f7ca903b": {
+      "name": "LOLA",
+      "symbol": "TRAINER_LOLA_4"
+    },
+    "t4179a0fd4fdef7c6": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MAGMA_HIDEOUT_5"
+    },
+    "t417db8c3ec35cfca": {
+      "name": "JACLYN",
+      "symbol": "TRAINER_JACLYN"
+    },
+    "t41aaa071b3d6290c": {
+      "name": "AIDAN",
+      "symbol": "TRAINER_AIDAN"
+    },
+    "t421273af517a3f93": {
+      "name": "CORA",
+      "symbol": "TRAINER_CORA"
+    },
+    "t42832a8ac6c47441": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MAGMA_HIDEOUT_13"
+    },
+    "t4337c8f6e0d32181": {
+      "name": "WINONA",
+      "symbol": "TRAINER_WINONA_4"
+    },
+    "t434ebe5311c2ce58": {
+      "name": "JERRY",
+      "symbol": "TRAINER_JERRY_3"
+    },
+    "t4392365aefebf02e": {
+      "name": "HUGH",
+      "symbol": "TRAINER_HUGH"
+    },
+    "t43ddb9cfc494a3c0": {
+      "name": "TAMMY",
+      "symbol": "TRAINER_TAMMY"
+    },
+    "t44b0cb0cfee24091": {
+      "name": "ALEX",
+      "symbol": "TRAINER_ALEX"
+    },
+    "t4596cdbd52d6a127": {
+      "name": "MADELINE",
+      "symbol": "TRAINER_MADELINE_4"
+    },
+    "t45e12cd6dfcea99a": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_SPACE_CENTER_7"
+    },
+    "t46190a3e1e46ce73": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_SPACE_CENTER_1"
+    },
+    "t464ae3a6af6a03b3": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_WEATHER_INST_3"
+    },
+    "t4673961fdaec545f": {
+      "name": "BRENDAN",
+      "symbol": "TRAINER_BRENDAN_ROUTE_103_MUDKIP"
+    },
+    "t46c80a00c4b72ccf": {
+      "name": "KOJI",
+      "symbol": "TRAINER_KOJI_4"
+    },
+    "t46dde33937f41d3d": {
+      "name": "BECKY",
+      "symbol": "TRAINER_BECKY"
+    },
+    "t4702bda3900410a3": {
+      "name": "HARRISON",
+      "symbol": "TRAINER_HARRISON"
+    },
+    "t474a299619ebc5da": {
+      "name": "MAY",
+      "symbol": "TRAINER_MAY_ROUTE_110_MUDKIP"
+    },
+    "t474e18b6a7c275e3": {
+      "name": "MIGUEL",
+      "symbol": "TRAINER_MIGUEL_2"
+    },
+    "t4784a73ac021a1f8": {
+      "name": "KALEB",
+      "symbol": "TRAINER_KALEB"
+    },
+    "t48c21af075b05778": {
+      "name": "SHELLY",
+      "symbol": "TRAINER_SHELLY_WEATHER_INSTITUTE"
+    },
+    "t49452ae52a31fee8": {
+      "name": "MIGUEL",
+      "symbol": "TRAINER_MIGUEL_4"
+    },
+    "t498570766d83386f": {
+      "name": "DENISE",
+      "symbol": "TRAINER_DENISE"
+    },
+    "t4a38a8ca08c3c383": {
+      "name": "WINONA",
+      "symbol": "TRAINER_WINONA_2"
+    },
+    "t4aba2f55c28cfdb7": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_JAGGED_PASS"
+    },
+    "t4b05e9f716f65c9b": {
+      "name": "SIDNEY",
+      "symbol": "TRAINER_SIDNEY"
+    },
+    "t4b227b38785cdf77": {
+      "name": "ETHAN",
+      "symbol": "TRAINER_ETHAN_2"
+    },
+    "t4b764d34926ce30c": {
+      "name": "ISOBEL",
+      "symbol": "TRAINER_ISOBEL"
+    },
+    "t4b8ea35185e537aa": {
+      "name": "SAMANTHA",
+      "symbol": "TRAINER_SAMANTHA"
+    },
+    "t4ba1d12ab1490f72": {
+      "name": "MIGUEL",
+      "symbol": "TRAINER_MIGUEL_1"
+    },
+    "t4c2150c98be6492c": {
+      "name": "DARRIN",
+      "symbol": "TRAINER_DARRIN"
+    },
+    "t4c685fd66087bc1f": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MAGMA_HIDEOUT_3"
+    },
+    "t4d53acf5466608cb": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_AQUA_HIDEOUT_4"
+    },
+    "t4d68ccb3a3dafaea": {
+      "name": "BILLY",
+      "symbol": "TRAINER_BILLY"
+    },
+    "t4d81d6c18fbd2441": {
+      "name": "CHAD",
+      "symbol": "TRAINER_CHAD"
+    },
+    "t4d8a688536efcf6c": {
+      "name": "ALYSSA",
+      "symbol": "TRAINER_ALYSSA"
+    },
+    "t4dcba2ceed585644": {
+      "name": "VICKY",
+      "symbol": "TRAINER_VICKY"
+    },
+    "t4e0dbd0f5b896e9f": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_SEAFLOOR_CAVERN_2"
+    },
+    "t4e59f96da85df2f6": {
+      "name": "TED",
+      "symbol": "TRAINER_TED"
+    },
+    "t4ead16dc3a16653c": {
+      "name": "PRESTON",
+      "symbol": "TRAINER_PRESTON"
+    },
+    "t4ec85d02909725eb": {
+      "name": "BENJAMIN",
+      "symbol": "TRAINER_BENJAMIN_2"
+    },
+    "t4f688d193700ed84": {
+      "name": "JULIO",
+      "symbol": "TRAINER_JULIO"
+    },
+    "t4fde548189de2a07": {
+      "name": "EDWARD",
+      "symbol": "TRAINER_EDWARD"
+    },
+    "t4ff9efaae38d2835": {
+      "name": "GEORGE",
+      "symbol": "TRAINER_GEORGE"
+    },
+    "t510d0b8cb150e18d": {
+      "name": "STAN",
+      "symbol": "TRAINER_STAN"
+    },
+    "t511920df2f032ce1": {
+      "name": "AXLE",
+      "symbol": "TRAINER_AXLE"
+    },
+    "t515fe0b8f60aa937": {
+      "name": "DIANA",
+      "symbol": "TRAINER_DIANA_2"
+    },
+    "t51618481687a3b53": {
+      "name": "BRENDAN",
+      "symbol": "TRAINER_BRENDAN_ROUTE_119_TREECKO"
+    },
+    "t519254acbd2e7aa8": {
+      "name": "RACHEL",
+      "symbol": "TRAINER_RACHEL"
+    },
+    "t51a5f14932a2dbc4": {
+      "name": "WILTON",
+      "symbol": "TRAINER_WILTON_4"
+    },
+    "t51baf1bbabd3f730": {
+      "name": "NOLEN",
+      "symbol": "TRAINER_NOLEN"
+    },
+    "t52eeee16a0da56c1": {
+      "name": "ED",
+      "symbol": "TRAINER_ED"
+    },
+    "t5389a8c033f74e66": {
+      "name": "BRANDON",
+      "symbol": "TRAINER_BRANDON"
+    },
+    "t540258c2b6f89426": {
+      "name": "ROBERT",
+      "symbol": "TRAINER_ROBERT_3"
+    },
+    "t541da0d549cfa07a": {
+      "name": "BRAWLY",
+      "symbol": "TRAINER_BRAWLY_5"
+    },
+    "t5488b8458ca7e037": {
+      "name": "LUCAS",
+      "symbol": "TRAINER_LUCAS_2"
+    },
+    "t551337eb88731788": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_AQUA_HIDEOUT_7"
+    },
+    "t5514e8a52f4bc9b7": {
+      "name": "CORY",
+      "symbol": "TRAINER_CORY_1"
+    },
+    "t5519c210c3a01846": {
+      "name": "DIANA",
+      "symbol": "TRAINER_DIANA_4"
+    },
+    "t55be70f89b88b270": {
+      "name": "ERNEST",
+      "symbol": "TRAINER_ERNEST_2"
+    },
+    "t55e1caca9761d91b": {
+      "name": "GABRIELLE",
+      "symbol": "TRAINER_GABRIELLE_3"
+    },
+    "t56de778d46496af2": {
+      "name": "GABRIELLE",
+      "symbol": "TRAINER_GABRIELLE_5"
+    },
+    "t57360939969aa25f": {
+      "name": "DALTON",
+      "symbol": "TRAINER_DALTON_2"
+    },
+    "t5739a2f2e369990a": {
+      "name": "JEFFREY",
+      "symbol": "TRAINER_JEFFREY_5"
+    },
+    "t57977883df5e4bc1": {
+      "name": "CELINA",
+      "symbol": "TRAINER_CELINA"
+    },
+    "t579ee2432e5a7df0": {
+      "name": "CHARLIE",
+      "symbol": "TRAINER_CHARLIE"
+    },
+    "t57d2112337c4f432": {
+      "name": "HERMAN",
+      "symbol": "TRAINER_HERMAN"
+    },
+    "t57d68e71cf6ca84b": {
+      "name": "BRENDAN",
+      "symbol": "TRAINER_BRENDAN_ROUTE_119_TORCHIC"
+    },
+    "t57e50b17d2a3c1ef": {
+      "name": "BRENDAN",
+      "symbol": "TRAINER_BRENDAN_LILYCOVE_TREECKO"
+    },
+    "t57ec4c588ef3163d": {
+      "name": "LOLA",
+      "symbol": "TRAINER_LOLA_2"
+    },
+    "t5891ca6a315b836f": {
+      "name": "BRAWLY",
+      "symbol": "TRAINER_BRAWLY_3"
+    },
+    "t58f9a88e858a00e0": {
+      "name": "ANDRES",
+      "symbol": "TRAINER_ANDRES_3"
+    },
+    "t5abb31dc91da9fb2": {
+      "name": "SIMON",
+      "symbol": "TRAINER_SIMON"
+    },
+    "t5b3222ec07eb5205": {
+      "name": "KAYLA",
+      "symbol": "TRAINER_KAYLA"
+    },
+    "t5b51ae48e5db42c2": {
+      "name": "CAMDEN",
+      "symbol": "TRAINER_CAMDEN"
+    },
+    "t5b6db5e6cd37e337": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_UNUSED"
+    },
+    "t5b7ec9f44d5e8dec": {
+      "name": "DALTON",
+      "symbol": "TRAINER_DALTON_5"
+    },
+    "t5b9af95c78a2a26c": {
+      "name": "TISHA",
+      "symbol": "TRAINER_TISHA"
+    },
+    "t5bd16439eb9b9f3b": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MAGMA_HIDEOUT_15"
+    },
+    "t5c4055034784e4ec": {
+      "name": "CHASE",
+      "symbol": "TRAINER_CHASE"
+    },
+    "t5c8798f9ffbdd1a5": {
+      "name": "CINDY",
+      "symbol": "TRAINER_CINDY_2"
+    },
+    "t5c88748ec39153ba": {
+      "name": "FELIX",
+      "symbol": "TRAINER_FELIX"
+    },
+    "t5cae86899a856a6e": {
+      "name": "MATTHEW",
+      "symbol": "TRAINER_MATTHEW"
+    },
+    "t5cb714e9443b8681": {
+      "name": "DYLAN",
+      "symbol": "TRAINER_DYLAN_1"
+    },
+    "t5d076ca678c318ca": {
+      "name": "CALVIN",
+      "symbol": "TRAINER_CALVIN_3"
+    },
+    "t5d15d0d623264af1": {
+      "name": "LEONARDO",
+      "symbol": "TRAINER_LEONARDO"
+    },
+    "t5d5f25389e26f9e0": {
+      "name": "GRETA",
+      "symbol": "TRAINER_GRETA"
+    },
+    "t5dda1e566eeb8bb6": {
+      "name": "LAO",
+      "symbol": "TRAINER_LAO_5"
+    },
+    "t5dda5656a16781ef": {
+      "name": "CAMERON",
+      "symbol": "TRAINER_CAMERON_1"
+    },
+    "t5e5bbba8c5a36daa": {
+      "name": "KAREN",
+      "symbol": "TRAINER_KAREN_5"
+    },
+    "t5e7667b9ecfacc7c": {
+      "name": "FERNANDO",
+      "symbol": "TRAINER_FERNANDO_1"
+    },
+    "t5ec75926636b0ea6": {
+      "name": "LUCY",
+      "symbol": "TRAINER_LUCY"
+    },
+    "t5ed468091c8eed12": {
+      "name": "MICAH",
+      "symbol": "TRAINER_MICAH"
+    },
+    "t5ef8592b06e319b6": {
+      "name": "NICOLAS",
+      "symbol": "TRAINER_NICOLAS_4"
+    },
+    "t5f14942aae6506ed": {
+      "name": "JERRY",
+      "symbol": "TRAINER_JERRY_5"
+    },
+    "t6011c0567944404c": {
+      "name": "SAWYER",
+      "symbol": "TRAINER_SAWYER_4"
+    },
+    "t602b901a954afda8": {
+      "name": "ELLIOT",
+      "symbol": "TRAINER_ELLIOT_1"
+    },
+    "t60ab19c735baf4ad": {
+      "name": "YUJI",
+      "symbol": "TRAINER_YUJI"
+    },
+    "t615f6ea602c2b434": {
+      "name": "DALE",
+      "symbol": "TRAINER_DALE"
+    },
+    "t61757f473d642a67": {
+      "name": "TERRY",
+      "symbol": "TRAINER_TERRY"
+    },
+    "t619025aae52b2f47": {
+      "name": "JESSICA",
+      "symbol": "TRAINER_JESSICA_4"
+    },
+    "t61abf9a7ce38464b": {
+      "name": "SHAWN",
+      "symbol": "TRAINER_SHAWN"
+    },
+    "t61e31fb2d1218da0": {
+      "name": "CALVIN",
+      "symbol": "TRAINER_CALVIN_5"
+    },
+    "t623244c2ff0d9213": {
+      "name": "RHETT",
+      "symbol": "TRAINER_RHETT"
+    },
+    "t6289fd66084be4f9": {
+      "name": "GABRIELLE",
+      "symbol": "TRAINER_GABRIELLE_2"
+    },
+    "t63413140d72bcffa": {
+      "name": "TIMOTHY",
+      "symbol": "TRAINER_TIMOTHY_3"
+    },
+    "t636d375eee447ac2": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MT_CHIMNEY_2"
+    },
+    "t63a25f13c2bca8f9": {
+      "name": "JACKSON",
+      "symbol": "TRAINER_JACKSON_1"
+    },
+    "t647483bd03badefb": {
+      "name": "SHARON",
+      "symbol": "TRAINER_SHARON"
+    },
+    "t647a0fc4cea690ec": {
+      "name": "ISAIAH",
+      "symbol": "TRAINER_ISAIAH_1"
+    },
+    "t648b3b053b70e807": {
+      "name": "ETHAN",
+      "symbol": "TRAINER_ETHAN_3"
+    },
+    "t65678ef99712758d": {
+      "name": "BRENT",
+      "symbol": "TRAINER_BRENT"
+    },
+    "t65a2757dd2ded210": {
+      "name": "MAXIE",
+      "symbol": "TRAINER_MAXIE_MOSSDEEP"
+    },
+    "t65bda2fef5bc90bd": {
+      "name": "STEVE",
+      "symbol": "TRAINER_STEVE_5"
+    },
+    "t65fdad0f90ec7b64": {
+      "name": "JAZMYN",
+      "symbol": "TRAINER_JAZMYN"
+    },
+    "t664623669cfe175f": {
+      "name": "DREW",
+      "symbol": "TRAINER_DREW"
+    },
+    "t6671f14cd005e868": {
+      "name": "ROBERT",
+      "symbol": "TRAINER_ROBERT_5"
+    },
+    "t66ad34c34bda48a1": {
+      "name": "ROLAND",
+      "symbol": "TRAINER_ROLAND"
+    },
+    "t6741174e49e13769": {
+      "name": "ROSE",
+      "symbol": "TRAINER_ROSE_2"
+    },
+    "t678bb3440a42aeef": {
+      "name": "DOUGLAS",
+      "symbol": "TRAINER_DOUGLAS"
+    },
+    "t68109aad2797e4e9": {
+      "name": "JAYLEN",
+      "symbol": "TRAINER_JAYLEN"
+    },
+    "t6862ac11ad437717": {
+      "name": "CYNDY",
+      "symbol": "TRAINER_CYNDY_5"
+    },
+    "t6870fea49ea4db04": {
+      "name": "RICKY",
+      "symbol": "TRAINER_RICKY_4"
+    },
+    "t68913a867f0ca963": {
+      "name": "MADELINE",
+      "symbol": "TRAINER_MADELINE_2"
+    },
+    "t68a42ea0415c5d29": {
+      "name": "DAYTON",
+      "symbol": "TRAINER_DAYTON"
+    },
+    "t68c221f3700e6a1e": {
+      "name": "BROOKE",
+      "symbol": "TRAINER_BROOKE_3"
+    },
+    "t6a0ae2e47f0800e8": {
+      "name": "CALVIN",
+      "symbol": "TRAINER_CALVIN_1"
+    },
+    "t6a85dd61bef72ece": {
+      "name": "TIMMY",
+      "symbol": "TRAINER_TIMMY"
+    },
+    "t6bd6d4925507a4b9": {
+      "name": "JACKSON",
+      "symbol": "TRAINER_JACKSON_2"
+    },
+    "t6c15a27c67abb5a9": {
+      "name": "BRENDAN",
+      "symbol": "TRAINER_BRENDAN_RUSTBORO_TREECKO"
+    },
+    "t6c2a069cb7bf71ba": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_WEATHER_INST_2"
+    },
+    "t6c955226263f7595": {
+      "name": "BECK",
+      "symbol": "TRAINER_BECK"
+    },
+    "t6ca5656adcf6e22c": {
+      "name": "TYRON",
+      "symbol": "TRAINER_TYRON"
+    },
+    "t6d2a42d54b72d70a": {
+      "name": "KOICHI",
+      "symbol": "TRAINER_KOICHI"
+    },
+    "t6dddc3796c11d552": {
+      "name": "FLINT",
+      "symbol": "TRAINER_FLINT"
+    },
+    "t6de9324eee139ae0": {
+      "name": "JENNY",
+      "symbol": "TRAINER_JENNY_1"
+    },
+    "t6e23279067256959": {
+      "name": "KAREN",
+      "symbol": "TRAINER_KAREN_4"
+    },
+    "t6e2f6d631c662fe0": {
+      "name": "ETHAN",
+      "symbol": "TRAINER_ETHAN_4"
+    },
+    "t6e4c4ea6802e1b72": {
+      "name": "PRESLEY",
+      "symbol": "TRAINER_PRESLEY"
+    },
+    "t6e7efebf4602154e": {
+      "name": "BRENDAN",
+      "symbol": "TRAINER_BRENDAN_RUSTBORO_TORCHIC"
+    },
+    "t6ebcc0ae60475b2a": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_WEATHER_INST_4"
+    },
+    "t6f79324589f40624": {
+      "name": "THALIA",
+      "symbol": "TRAINER_THALIA_4"
+    },
+    "t6f96b31881b83547": {
+      "name": "CAMERON",
+      "symbol": "TRAINER_CAMERON_3"
+    },
+    "t6f9a31b70ea10424": {
+      "name": "CINDY",
+      "symbol": "TRAINER_CINDY_5"
+    },
+    "t6fafa5b51a38cc19": {
+      "name": "NATE",
+      "symbol": "TRAINER_NATE"
+    },
+    "t703e1b4717f2914e": {
+      "name": "BERNIE",
+      "symbol": "TRAINER_BERNIE_3"
+    },
+    "t70602113d2a27b4d": {
+      "name": "DANIELLE",
+      "symbol": "TRAINER_DANIELLE"
+    },
+    "t706dce09fe90468a": {
+      "name": "ROSE",
+      "symbol": "TRAINER_ROSE_5"
+    },
+    "t71503315b3d869b4": {
+      "name": "DUSTY",
+      "symbol": "TRAINER_DUSTY_4"
+    },
+    "t717a5e3b398ef924": {
+      "name": "JONATHAN",
+      "symbol": "TRAINER_JONATHAN"
+    },
+    "t71bc363e954ae19b": {
+      "name": "MAXIE",
+      "symbol": "TRAINER_MAXIE_MAGMA_HIDEOUT"
+    },
+    "t7246b77027dd35e4": {
+      "name": "SAWYER",
+      "symbol": "TRAINER_SAWYER_5"
+    },
+    "t72759d2ad65c3587": {
+      "name": "SHANNON",
+      "symbol": "TRAINER_SHANNON"
+    },
+    "t7277a3d3bc14d749": {
+      "name": "DEBRA",
+      "symbol": "TRAINER_DEBRA"
+    },
+    "t7287f2586fa5dc9c": {
+      "name": "CLARENCE",
+      "symbol": "TRAINER_CLARENCE"
+    },
+    "t73019d4db718efa7": {
+      "name": "DAISUKE",
+      "symbol": "TRAINER_DAISUKE"
+    },
+    "t73dfa673d6a9daa4": {
+      "name": "JACKI",
+      "symbol": "TRAINER_JACKI_3"
+    },
+    "t75b09060df2e4b90": {
+      "name": "KOJI",
+      "symbol": "TRAINER_KOJI_2"
+    },
+    "t75b66598e95ac466": {
+      "name": "BERNIE",
+      "symbol": "TRAINER_BERNIE_2"
+    },
+    "t761c55862674fc93": {
+      "name": "GREG",
+      "symbol": "TRAINER_GREG"
+    },
+    "t769f8b818a6dc7c9": {
+      "name": "MAY",
+      "symbol": "TRAINER_MAY_ROUTE_103_TREECKO"
+    },
+    "t781a709dffe0ee90": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_SEAFLOOR_CAVERN_1"
+    },
+    "t78a1b046a9a16e11": {
+      "name": "TONY",
+      "symbol": "TRAINER_TONY_3"
+    },
+    "t78cf3735a05104d0": {
+      "name": "KAREN",
+      "symbol": "TRAINER_KAREN_2"
+    },
+    "t78eb3ae879272660": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MAGMA_HIDEOUT_14"
+    },
+    "t7914e51d30d4d8b8": {
+      "name": "STEVE",
+      "symbol": "TRAINER_STEVE_3"
+    },
+    "t796b3602f2f6491e": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MAGMA_HIDEOUT_1"
+    },
+    "t796c27b30897ff3d": {
+      "name": "BROOKE",
+      "symbol": "TRAINER_BROOKE_1"
+    },
+    "t7ac9ff548f68c259": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_AQUA_HIDEOUT_1"
+    },
+    "t7ad6c38fae83c904": {
+      "name": "CRISTIN",
+      "symbol": "TRAINER_CRISTIN_3"
+    },
+    "t7b1ffe4f1e171306": {
+      "name": "BROOKE",
+      "symbol": "TRAINER_BROOKE_5"
+    },
+    "t7b4a34db9340d9a4": {
+      "name": "JACKI",
+      "symbol": "TRAINER_JACKI_1"
+    },
+    "t7c5979dfb6915663": {
+      "name": "KAYLEY",
+      "symbol": "TRAINER_KAYLEY"
+    },
+    "t7c9d8ead2106cffc": {
+      "name": "FABIAN",
+      "symbol": "TRAINER_FABIAN"
+    },
+    "t7ca28ee2fc07c111": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MUSEUM_2"
+    },
+    "t7d54576f97266a04": {
+      "name": "HUMBERTO",
+      "symbol": "TRAINER_HUMBERTO"
+    },
+    "t7d66cb3953ce8169": {
+      "name": "MAKAYLA",
+      "symbol": "TRAINER_MAKAYLA"
+    },
+    "t7d92db84816e9213": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MAGMA_HIDEOUT_10"
+    },
+    "t7d94f760c5f9910c": {
+      "name": "WALTER",
+      "symbol": "TRAINER_WALTER_5"
+    },
+    "t7db719db9ef5538e": {
+      "name": "LAURA",
+      "symbol": "TRAINER_LAURA"
+    },
+    "t7e761112626d8e85": {
+      "name": "FERNANDO",
+      "symbol": "TRAINER_FERNANDO_3"
+    },
+    "t7efee33c9128ba0c": {
+      "name": "VIRGIL",
+      "symbol": "TRAINER_VIRGIL"
+    },
+    "t7f277d641569e316": {
+      "name": "LUIS",
+      "symbol": "TRAINER_LUIS"
+    },
+    "t808dcdb118af37c9": {
+      "name": "JASMINE",
+      "symbol": "TRAINER_JASMINE"
+    },
+    "t80a8a5c7fdac4eb1": {
+      "name": "DIANNE",
+      "symbol": "TRAINER_DIANNE"
+    },
+    "t817f9c76c6c64e12": {
+      "name": "ASHLEY",
+      "symbol": "TRAINER_ASHLEY"
+    },
+    "t823f25d12bb0d94b": {
+      "name": "MARIA",
+      "symbol": "TRAINER_MARIA_2"
+    },
+    "t826250fde054915f": {
+      "name": "LUCAS",
+      "symbol": "TRAINER_LUCAS_1"
+    },
+    "t835985aa2a48ede8": {
+      "name": "JUAN",
+      "symbol": "TRAINER_JUAN_2"
+    },
+    "t840d26e1531f611e": {
+      "name": "KAREN",
+      "symbol": "TRAINER_KAREN_3"
+    },
+    "t842d2850b25fedcf": {
+      "name": "LAO",
+      "symbol": "TRAINER_LAO_2"
+    },
+    "t84748c14c6ba8e73": {
+      "name": "ANDRES",
+      "symbol": "TRAINER_ANDRES_1"
+    },
+    "t854a923592f223d3": {
+      "name": "CEDRIC",
+      "symbol": "TRAINER_CEDRIC"
+    },
+    "t8571df5e8640a8dc": {
+      "name": "PABLO",
+      "symbol": "TRAINER_PABLO_5"
+    },
+    "t85a00227a7b4e24e": {
+      "name": "LAWRENCE",
+      "symbol": "TRAINER_LAWRENCE"
+    },
+    "t85a66253bea0344d": {
+      "name": "KATIE",
+      "symbol": "TRAINER_KATIE"
+    },
+    "t863104a5620b6e17": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_SPACE_CENTER_3"
+    },
+    "t8644553b660f6a21": {
+      "name": "GEORGIA",
+      "symbol": "TRAINER_GEORGIA"
+    },
+    "t867e5327b80622ec": {
+      "name": "ALEXIA",
+      "symbol": "TRAINER_ALEXIA"
+    },
+    "t86a128736d71863d": {
+      "name": "JARED",
+      "symbol": "TRAINER_JARED"
+    },
+    "t86c676f796ac62ba": {
+      "name": "BRAWLY",
+      "symbol": "TRAINER_BRAWLY_2"
+    },
+    "t87562e1cca6f37e8": {
+      "name": "ISAIAH",
+      "symbol": "TRAINER_ISAIAH_3"
+    },
+    "t877039f6946ca01d": {
+      "name": "RONALD",
+      "symbol": "TRAINER_RONALD"
+    },
+    "t87963d56d10125a9": {
+      "name": "LEROY",
+      "symbol": "TRAINER_LEROY"
+    },
+    "t87eff871872753eb": {
+      "name": "HALEY",
+      "symbol": "TRAINER_HALEY_3"
+    },
+    "t88bd692aaed38fbe": {
+      "name": "JUSTIN",
+      "symbol": "TRAINER_JUSTIN"
+    },
+    "t88e5eee069bca504": {
+      "name": "DUDLEY",
+      "symbol": "TRAINER_DUDLEY"
+    },
+    "t88e641c9ff3be21a": {
+      "name": "ALVARO",
+      "symbol": "TRAINER_ALVARO"
+    },
+    "t891e8c466154ba45": {
+      "name": "DYLAN",
+      "symbol": "TRAINER_DYLAN_4"
+    },
+    "t893b4fd3339918d7": {
+      "name": "HITOSHI",
+      "symbol": "TRAINER_HITOSHI"
+    },
+    "t8a8ca6e8c4ca65f5": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_AQUA_HIDEOUT_3"
+    },
+    "t8ab7fadad70442c9": {
+      "name": "BRENDAN",
+      "symbol": "TRAINER_BRENDAN_LILYCOVE_TORCHIC"
+    },
+    "t8ad607f5275b2606": {
+      "name": "GABRIELLE",
+      "symbol": "TRAINER_GABRIELLE_4"
+    },
+    "t8b414604ab6988f8": {
+      "name": "ROSE",
+      "symbol": "TRAINER_ROSE_4"
+    },
+    "t8c3bcb0ef8f7430c": {
+      "name": "BRIANNA",
+      "symbol": "TRAINER_BRIANNA"
+    },
+    "t8cbc79ee46c058ab": {
+      "name": "WINONA",
+      "symbol": "TRAINER_WINONA_1"
+    },
+    "t8ce4b73b593894e7": {
+      "name": "BENJAMIN",
+      "symbol": "TRAINER_BENJAMIN_5"
+    },
+    "t8cfe8c8d25e8aa48": {
+      "name": "BRENDA",
+      "symbol": "TRAINER_BRENDA"
+    },
+    "t8d89cb73036bb367": {
+      "name": "HUEY",
+      "symbol": "TRAINER_HUEY"
+    },
+    "t8dd477f8e8028ee9": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_SPACE_CENTER_2"
+    },
+    "t8e081cb88fbf71cb": {
+      "name": "CAMERON",
+      "symbol": "TRAINER_CAMERON_2"
+    },
+    "t8e21a2100a92b568": {
+      "name": "SHELBY",
+      "symbol": "TRAINER_SHELBY_4"
+    },
+    "t8e277e0b98350e70": {
+      "name": "CATHERINE",
+      "symbol": "TRAINER_CATHERINE_5"
+    },
+    "t8e4027cb04920eec": {
+      "name": "NICOLAS",
+      "symbol": "TRAINER_NICOLAS_5"
+    },
+    "t8e633c741e47fb44": {
+      "name": "PERRY",
+      "symbol": "TRAINER_PERRY"
+    },
+    "t8e835726fcb116f3": {
+      "name": "MIKE",
+      "symbol": "TRAINER_MIKE_1"
+    },
+    "t8eb4eefd677a386c": {
+      "name": "VALERIE",
+      "symbol": "TRAINER_VALERIE_1"
+    },
+    "t8ebb2105346ca8c7": {
+      "name": "JACKSON",
+      "symbol": "TRAINER_JACKSON_4"
+    },
+    "t8ed909b897fd56de": {
+      "name": "RICKY",
+      "symbol": "TRAINER_RICKY_1"
+    },
+    "t8ef31b50a2c11960": {
+      "name": "TRENT",
+      "symbol": "TRAINER_TRENT_3"
+    },
+    "t8f880a527392ea72": {
+      "name": "ALICE",
+      "symbol": "TRAINER_ALICE"
+    },
+    "t910b20d9ad3c1b46": {
+      "name": "PAUL",
+      "symbol": "TRAINER_PAUL"
+    },
+    "t91178a39cb7e8125": {
+      "name": "HALEY",
+      "symbol": "TRAINER_HALEY_4"
+    },
+    "t914ee89046e3596f": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MAGMA_HIDEOUT_16"
+    },
+    "t9192d61059625c64": {
+      "name": "MARIA",
+      "symbol": "TRAINER_MARIA_5"
+    },
+    "t927d5aab5992d289": {
+      "name": "KAREN",
+      "symbol": "TRAINER_KAREN_1"
+    },
+    "t93320e9d592040e0": {
+      "name": "ABIGAIL",
+      "symbol": "TRAINER_ABIGAIL_3"
+    },
+    "t938512326ee83794": {
+      "name": "ELLIOT",
+      "symbol": "TRAINER_ELLIOT_4"
+    },
+    "t93b487f0bca87ddc": {
+      "name": "NORMAN",
+      "symbol": "TRAINER_NORMAN_4"
+    },
+    "t93b4b0fef566e7a9": {
+      "name": "KATELYN",
+      "symbol": "TRAINER_KATELYN_1"
+    },
+    "t93e406c9890d67f7": {
+      "name": "SIENNA",
+      "symbol": "TRAINER_SIENNA"
+    },
+    "t93f9fe7d4e7683a0": {
+      "name": "ABIGAIL",
+      "symbol": "TRAINER_ABIGAIL_1"
+    },
+    "t9461af5e9156f512": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MAGMA_HIDEOUT_9"
+    },
+    "t946d048092487465": {
+      "name": "JAMES",
+      "symbol": "TRAINER_JAMES_3"
+    },
+    "t95941d42da9d1108": {
+      "name": "JESSICA",
+      "symbol": "TRAINER_JESSICA_1"
+    },
+    "t95f8a4fe10cb0563": {
+      "name": "QUINCY",
+      "symbol": "TRAINER_QUINCY"
+    },
+    "t97903b4845329465": {
+      "name": "JESSICA",
+      "symbol": "TRAINER_JESSICA_2"
+    },
+    "t97a3ad7646e65908": {
+      "name": "SUSIE",
+      "symbol": "TRAINER_SUSIE"
+    },
+    "t983d65d918ea12c1": {
+      "name": "NORMAN",
+      "symbol": "TRAINER_NORMAN_5"
+    },
+    "t98bc090f78f8b8f2": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_PETALBURG_WOODS"
+    },
+    "t9982c4ff697b6fe1": {
+      "name": "VICTORIA",
+      "symbol": "TRAINER_VICTORIA"
+    },
+    "t99a76b24842491cc": {
+      "name": "DARIAN",
+      "symbol": "TRAINER_DARIAN"
+    },
+    "t99b78e6aabdff076": {
+      "name": "ISAIAH",
+      "symbol": "TRAINER_ISAIAH_2"
+    },
+    "t99efe59568c8acf6": {
+      "name": "JACKI",
+      "symbol": "TRAINER_JACKI_2"
+    },
+    "t9a319693f728d299": {
+      "name": "DARCY",
+      "symbol": "TRAINER_DARCY"
+    },
+    "t9a3be7b484774a40": {
+      "name": "ELI",
+      "symbol": "TRAINER_ELI"
+    },
+    "t9a5ce40881f7099b": {
+      "name": "ISABEL",
+      "symbol": "TRAINER_ISABEL_3"
+    },
+    "t9aaec5ba3441c902": {
+      "name": "WINSTON",
+      "symbol": "TRAINER_WINSTON_5"
+    },
+    "t9abdddbfc6708da1": {
+      "name": "WALLY",
+      "symbol": "TRAINER_WALLY_VR_1"
+    },
+    "t9b3708131bdc5d73": {
+      "name": "TIMOTHY",
+      "symbol": "TRAINER_TIMOTHY_5"
+    },
+    "t9b85d911e9f3197a": {
+      "name": "CONOR",
+      "symbol": "TRAINER_CONOR"
+    },
+    "t9bed5104a7baaf3c": {
+      "name": "DOUG",
+      "symbol": "TRAINER_DOUG"
+    },
+    "t9c1bcd39eda07093": {
+      "name": "TOMMY",
+      "symbol": "TRAINER_TOMMY"
+    },
+    "t9c660f951d87aec7": {
+      "name": "NED",
+      "symbol": "TRAINER_NED"
+    },
+    "t9ce0dcc968cd1ee8": {
+      "name": "RED",
+      "symbol": "TRAINER_RED"
+    },
+    "t9cf54a5406721e67": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MAGMA_HIDEOUT_2"
+    },
+    "t9d3dffb5724e2fb4": {
+      "name": "CAMERON",
+      "symbol": "TRAINER_CAMERON_4"
+    },
+    "t9d5387881ac1868d": {
+      "name": "MARTHA",
+      "symbol": "TRAINER_MARTHA"
+    },
+    "t9db4d65bdb9d99bc": {
+      "name": "ANABEL",
+      "symbol": "TRAINER_ANABEL"
+    },
+    "t9ddfd221fde99af4": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_WEATHER_INST_1"
+    },
+    "t9e9e3e345d4a059b": {
+      "name": "BEN",
+      "symbol": "TRAINER_BEN"
+    },
+    "t9ecf89a9ce19cfab": {
+      "name": "JOSE",
+      "symbol": "TRAINER_JOSE"
+    },
+    "t9f441f3810e15695": {
+      "name": "SYLVIA",
+      "symbol": "TRAINER_SYLVIA"
+    },
+    "t9f6d5b554dfc0e90": {
+      "name": "CARLEE",
+      "symbol": "TRAINER_CARLEE"
+    },
+    "t9f91a934e643e006": {
+      "name": "MITCHELL",
+      "symbol": "TRAINER_MITCHELL"
+    },
+    "ta007fae4d9996d42": {
+      "name": "AURON",
+      "symbol": "TRAINER_AURON"
+    },
+    "ta0528c9cfe62e4c9": {
+      "name": "TONY",
+      "symbol": "TRAINER_TONY_5"
+    },
+    "ta0ba58a726b5d219": {
+      "name": "GLACIA",
+      "symbol": "TRAINER_GLACIA"
+    },
+    "ta0f65047856b008f": {
+      "name": "DANA",
+      "symbol": "TRAINER_DANA"
+    },
+    "ta21a6d51103a6d73": {
+      "name": "COLIN",
+      "symbol": "TRAINER_COLIN"
+    },
+    "ta2324d7c74a00a10": {
+      "name": "WILTON",
+      "symbol": "TRAINER_WILTON_2"
+    },
+    "ta2ceeb1b5f8f3d53": {
+      "name": "TRAVIS",
+      "symbol": "TRAINER_TRAVIS"
+    },
+    "ta39804243f778015": {
+      "name": "BRENDAN",
+      "symbol": "TRAINER_BRENDAN_RUSTBORO_MUDKIP"
+    },
+    "ta3b77ae2e9b9388b": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MAGMA_HIDEOUT_8"
+    },
+    "ta457dba23fa68d55": {
+      "name": "MELINA",
+      "symbol": "TRAINER_MELINA"
+    },
+    "ta4cf14ab434a0434": {
+      "name": "CINDY",
+      "symbol": "TRAINER_CINDY_6"
+    },
+    "ta4e72d0b226404f5": {
+      "name": "MAURA",
+      "symbol": "TRAINER_MAURA"
+    },
+    "ta55dbcf8095a25d2": {
+      "name": "HANNAH",
+      "symbol": "TRAINER_HANNAH"
+    },
+    "ta56584092e7e5fb9": {
+      "name": "DALTON",
+      "symbol": "TRAINER_DALTON_1"
+    },
+    "ta5c161c806865abc": {
+      "name": "HECTOR",
+      "symbol": "TRAINER_HECTOR"
+    },
+    "ta5c3ed2188502b28": {
+      "name": "EDWIN",
+      "symbol": "TRAINER_EDWIN_4"
+    },
+    "ta5de284f2c1971d9": {
+      "name": "DILLON",
+      "symbol": "TRAINER_DILLON"
+    },
+    "ta62df4d98431a407": {
+      "name": "HOPE",
+      "symbol": "TRAINER_HOPE"
+    },
+    "ta6ab7e1d84203438": {
+      "name": "JENNY",
+      "symbol": "TRAINER_JENNY_4"
+    },
+    "ta7220ffac92c4c81": {
+      "name": "LYDIA",
+      "symbol": "TRAINER_LYDIA_2"
+    },
+    "ta77114dc7754d88e": {
+      "name": "MIGUEL",
+      "symbol": "TRAINER_MIGUEL_3"
+    },
+    "ta775ea6ff00a1e3b": {
+      "name": "CINDY",
+      "symbol": "TRAINER_CINDY_4"
+    },
+    "ta802d0b31ab27dcc": {
+      "name": "LAO",
+      "symbol": "TRAINER_LAO_1"
+    },
+    "ta811f51027494a71": {
+      "name": "JOHANNA",
+      "symbol": "TRAINER_JOHANNA"
+    },
+    "ta8921f25e95f2e67": {
+      "name": "CYNDY",
+      "symbol": "TRAINER_CYNDY_2"
+    },
+    "ta8db9f04c4b1e2e2": {
+      "name": "BRANDEN",
+      "symbol": "TRAINER_BRANDEN"
+    },
+    "ta903e1f727dee039": {
+      "name": "HALEY",
+      "symbol": "TRAINER_HALEY_5"
+    },
+    "ta96b354dfbce9aaf": {
+      "name": "JEFFREY",
+      "symbol": "TRAINER_JEFFREY_4"
+    },
+    "taa5f86bbe186b18c": {
+      "name": "GARRISON",
+      "symbol": "TRAINER_GARRISON"
+    },
+    "taae2c515d6f2f804": {
+      "name": "WINSTON",
+      "symbol": "TRAINER_WINSTON_2"
+    },
+    "tab0beb37d0b0ece6": {
+      "name": "LEAH",
+      "symbol": "TRAINER_LEAH"
+    },
+    "tab0bf043641d2f38": {
+      "name": "CAMERON",
+      "symbol": "TRAINER_CAMERON_5"
+    },
+    "tab1ad1c7e2dd0e10": {
+      "name": "TIMOTHY",
+      "symbol": "TRAINER_TIMOTHY_4"
+    },
+    "tab6e80b572630a0c": {
+      "name": "ANGELINA",
+      "symbol": "TRAINER_ANGELINA"
+    },
+    "tabf7f011cf05d057": {
+      "name": "WATTSON",
+      "symbol": "TRAINER_WATTSON_2"
+    },
+    "taccee65681b5a0d7": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MAGMA_HIDEOUT_4"
+    },
+    "tadad49dd330935fa": {
+      "name": "TABITHA",
+      "symbol": "TRAINER_TABITHA_MOSSDEEP"
+    },
+    "tadfa8be079fa4d88": {
+      "name": "KATHLEEN",
+      "symbol": "TRAINER_KATHLEEN"
+    },
+    "tae9b274539816cb2": {
+      "name": "ROGER",
+      "symbol": "TRAINER_ROGER"
+    },
+    "taec82482159e858e": {
+      "name": "DIANA",
+      "symbol": "TRAINER_DIANA_5"
+    },
+    "taecca37d8fb70e42": {
+      "name": "LYDIA",
+      "symbol": "TRAINER_LYDIA_4"
+    },
+    "taf02ffb2a9ca1612": {
+      "name": "NOB",
+      "symbol": "TRAINER_NOB_2"
+    },
+    "taf11707811f43d58": {
+      "name": "BERNIE",
+      "symbol": "TRAINER_BERNIE_1"
+    },
+    "taf40cf1ed8a09f37": {
+      "name": "COLTON",
+      "symbol": "TRAINER_COLTON"
+    },
+    "taf84b73a015b7ac6": {
+      "name": "IVAN",
+      "symbol": "TRAINER_IVAN"
+    },
+    "tb0521407f8592efc": {
+      "name": "BENJAMIN",
+      "symbol": "TRAINER_BENJAMIN_4"
+    },
+    "tb23dfa3cb15069ed": {
+      "name": "KELVIN",
+      "symbol": "TRAINER_KELVIN"
+    },
+    "tb302548ba91e9f87": {
+      "name": "GARRET",
+      "symbol": "TRAINER_GARRET"
+    },
+    "tb31a7b30e145ec4b": {
+      "name": "IRENE",
+      "symbol": "TRAINER_IRENE"
+    },
+    "tb34e534899f789d4": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_SPACE_CENTER_5"
+    },
+    "tb354edaa5a1f861d": {
+      "name": "MAY",
+      "symbol": "TRAINER_MAY_RUSTBORO_TREECKO"
+    },
+    "tb374017a6d651c57": {
+      "name": "BRIDGET",
+      "symbol": "TRAINER_BRIDGET"
+    },
+    "tb40f50d6db183d06": {
+      "name": "SHANE",
+      "symbol": "TRAINER_SHANE"
+    },
+    "tb466fb105853ecd3": {
+      "name": "ISABEL",
+      "symbol": "TRAINER_ISABEL_2"
+    },
+    "tb4783254b8f16464": {
+      "name": "ISAAC",
+      "symbol": "TRAINER_ISAAC_3"
+    },
+    "tb5555e926b656be8": {
+      "name": "SAWYER",
+      "symbol": "TRAINER_SAWYER_2"
+    },
+    "tb5a35c8eded9629c": {
+      "name": "CLARISSA",
+      "symbol": "TRAINER_CLARISSA"
+    },
+    "tb639cab855f2daf5": {
+      "name": "RUBEN",
+      "symbol": "TRAINER_RUBEN"
+    },
+    "tb66b185309897edd": {
+      "name": "LAUREL",
+      "symbol": "TRAINER_LAUREL"
+    },
+    "tb6e0387bc77c4d3c": {
+      "name": "ROXANNE",
+      "symbol": "TRAINER_ROXANNE_4"
+    },
+    "tb7346c1f03af69c5": {
+      "name": "STEVE",
+      "symbol": "TRAINER_STEVE_4"
+    },
+    "tb7537c1f62807dc1": {
+      "name": "CATHERINE",
+      "symbol": "TRAINER_CATHERINE_1"
+    },
+    "tb864d0f75e7de0e6": {
+      "name": "BENJAMIN",
+      "symbol": "TRAINER_BENJAMIN_3"
+    },
+    "tb8918d666bdc4199": {
+      "name": "ANDREA",
+      "symbol": "TRAINER_ANDREA"
+    },
+    "tb8947ba5a95cd70c": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MUSEUM_1"
+    },
+    "tb8ecab74970697fd": {
+      "name": "NOLAND",
+      "symbol": "TRAINER_NOLAND"
+    },
+    "tb90524801d84aa09": {
+      "name": "VIOLET",
+      "symbol": "TRAINER_VIOLET"
+    },
+    "tb94755ec9ba1acb0": {
+      "name": "JODY",
+      "symbol": "TRAINER_JODY"
+    },
+    "tb961b629a0dd4b87": {
+      "name": "BRENDAN",
+      "symbol": "TRAINER_BRENDAN_ROUTE_110_TORCHIC"
+    },
+    "tb9c87dcf6869b5e2": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MT_PYRE_3"
+    },
+    "tb9ef028a268d7a66": {
+      "name": "MAY",
+      "symbol": "TRAINER_MAY_LILYCOVE_MUDKIP"
+    },
+    "tb9f550bc199d5ebb": {
+      "name": "THALIA",
+      "symbol": "TRAINER_THALIA_1"
+    },
+    "tbae09d22829a63ea": {
+      "name": "ROSE",
+      "symbol": "TRAINER_ROSE_1"
+    },
+    "tbaf0390562375878": {
+      "name": "DALTON",
+      "symbol": "TRAINER_DALTON_3"
+    },
+    "tbaf508a1ce830538": {
+      "name": "MARCOS",
+      "symbol": "TRAINER_MARCOS"
+    },
+    "tbb68350530992082": {
+      "name": "LYDIA",
+      "symbol": "TRAINER_LYDIA_3"
+    },
+    "tbb6b94a156a790bf": {
+      "name": "ERNEST",
+      "symbol": "TRAINER_ERNEST_4"
+    },
+    "tbb7645509437db39": {
+      "name": "MARC",
+      "symbol": "TRAINER_MARC"
+    },
+    "tbb77fd0874668fc5": {
+      "name": "CALLIE",
+      "symbol": "TRAINER_CALLIE"
+    },
+    "tbbbb84f9341ee63a": {
+      "name": "ANDRES",
+      "symbol": "TRAINER_ANDRES_5"
+    },
+    "tbc186753b0dd01db": {
+      "name": "MAY",
+      "symbol": "TRAINER_MAY_ROUTE_103_MUDKIP"
+    },
+    "tbd412aac3ca89384": {
+      "name": "TRENT",
+      "symbol": "TRAINER_TRENT_1"
+    },
+    "tbd6d37ae7639666e": {
+      "name": "CAROLINE",
+      "symbol": "TRAINER_CAROLINE"
+    },
+    "tbd85b1d86bc5e1d9": {
+      "name": "MARIA",
+      "symbol": "TRAINER_MARIA_3"
+    },
+    "tbd8dd5aece2ce503": {
+      "name": "ISAIAH",
+      "symbol": "TRAINER_ISAIAH_5"
+    },
+    "tbd97635998453b9c": {
+      "name": "REYNA",
+      "symbol": "TRAINER_REYNA"
+    },
+    "tbde0cb69febb1509": {
+      "name": "BEAU",
+      "symbol": "TRAINER_BEAU"
+    },
+    "tbe0a854ad2791b8a": {
+      "name": "TABITHA",
+      "symbol": "TRAINER_TABITHA_MT_CHIMNEY"
+    },
+    "tbe366e7841bb6878": {
+      "name": "CHESTER",
+      "symbol": "TRAINER_CHESTER"
+    },
+    "tbe5088ff7df3e478": {
+      "name": "THALIA",
+      "symbol": "TRAINER_THALIA_5"
+    },
+    "tbe84e2bfadff52c8": {
+      "name": "MAXIE",
+      "symbol": "TRAINER_MAXIE_MT_CHIMNEY"
+    },
+    "tbefb090c0cd589de": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_AQUA_HIDEOUT_2"
+    },
+    "tbf32bd9a342f3218": {
+      "name": "ELIJAH",
+      "symbol": "TRAINER_ELIJAH"
+    },
+    "tbf34796d22cbc1f5": {
+      "name": "WENDY",
+      "symbol": "TRAINER_WENDY"
+    },
+    "tbf40ae6801cf60ca": {
+      "name": "DAVIS",
+      "symbol": "TRAINER_DAVIS"
+    },
+    "tbf55fd26b7cce6a1": {
+      "name": "BRYANT",
+      "symbol": "TRAINER_BRYANT"
+    },
+    "tc005c5fe53271306": {
+      "name": "NORMAN",
+      "symbol": "TRAINER_NORMAN_2"
+    },
+    "tc0320db5ec06cbdc": {
+      "name": "JERRY",
+      "symbol": "TRAINER_JERRY_2"
+    },
+    "tc0490b73796835ca": {
+      "name": "KATELYN",
+      "symbol": "TRAINER_KATELYN_4"
+    },
+    "tc071bb0c4b9acc6e": {
+      "name": "JUAN",
+      "symbol": "TRAINER_JUAN_5"
+    },
+    "tc1c4558239238289": {
+      "name": "NICOLAS",
+      "symbol": "TRAINER_NICOLAS_1"
+    },
+    "tc1f675d00ceb2cd6": {
+      "name": "KYRA",
+      "symbol": "TRAINER_KYRA"
+    },
+    "tc2a9cb4c168d2173": {
+      "name": "NOB",
+      "symbol": "TRAINER_NOB_1"
+    },
+    "tc2db2728a832e63c": {
+      "name": "ANGELO",
+      "symbol": "TRAINER_ANGELO"
+    },
+    "tc2e444ba1be977fb": {
+      "name": "BRENDAN",
+      "symbol": "TRAINER_BRENDAN_ROUTE_110_TREECKO"
+    },
+    "tc33836fdbe1d06f8": {
+      "name": "BROOKE",
+      "symbol": "TRAINER_BROOKE_2"
+    },
+    "tc38a0b09b37c19f9": {
+      "name": "TONY",
+      "symbol": "TRAINER_TONY_1"
+    },
+    "tc3f2e8061d29f562": {
+      "name": "MARLENE",
+      "symbol": "TRAINER_MARLENE"
+    },
+    "tc4455f52fcf8f963": {
+      "name": "DAPHNE",
+      "symbol": "TRAINER_DAPHNE"
+    },
+    "tc4caf8d6c1a924d8": {
+      "name": "CLARK",
+      "symbol": "TRAINER_CLARK"
+    },
+    "tc4e6a54f3d1e6358": {
+      "name": "BRENDEN",
+      "symbol": "TRAINER_BRENDEN"
+    },
+    "tc512ee3c0799bd36": {
+      "name": "THALIA",
+      "symbol": "TRAINER_THALIA_3"
+    },
+    "tc55ff4b89afdbbe7": {
+      "name": "ETHAN",
+      "symbol": "TRAINER_ETHAN_1"
+    },
+    "tc5944cc70a68d7c3": {
+      "name": "KATELYN",
+      "symbol": "TRAINER_KATELYN_2"
+    },
+    "tc5949c595d596bcc": {
+      "name": "CALE",
+      "symbol": "TRAINER_CALE"
+    },
+    "tc5ba825c9bd468f6": {
+      "name": "NANCY",
+      "symbol": "TRAINER_NANCY"
+    },
+    "tc6a20a3557be639d": {
+      "name": "MAY",
+      "symbol": "TRAINER_MAY_ROUTE_110_TORCHIC"
+    },
+    "tc6d5b933309adee3": {
+      "name": "EDGAR",
+      "symbol": "TRAINER_EDGAR"
+    },
+    "tc74363548bb4cec6": {
+      "name": "CELIA",
+      "symbol": "TRAINER_CELIA"
+    },
+    "tc74ebd5d02193d36": {
+      "name": "SHELBY",
+      "symbol": "TRAINER_SHELBY_3"
+    },
+    "tc75ee6299aab8006": {
+      "name": "LOLA",
+      "symbol": "TRAINER_LOLA_3"
+    },
+    "tc7bb0a3880c820c0": {
+      "name": "CRISTIN",
+      "symbol": "TRAINER_CRISTIN_5"
+    },
+    "tc7ff2f9177ee81f3": {
+      "name": "ANTHONY",
+      "symbol": "TRAINER_ANTHONY"
+    },
+    "tc8d28fca584848b0": {
+      "name": "ROXANNE",
+      "symbol": "TRAINER_ROXANNE_2"
+    },
+    "tc921419f8b3cca69": {
+      "name": "SOPHIE",
+      "symbol": "TRAINER_SOPHIE"
+    },
+    "tc9564328db46983b": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_SEAFLOOR_CAVERN_5"
+    },
+    "tc9956d53b8bc56be": {
+      "name": "JENNA",
+      "symbol": "TRAINER_JENNA"
+    },
+    "tc9cd45d2a0539252": {
+      "name": "DARIUS",
+      "symbol": "TRAINER_DARIUS"
+    },
+    "tca1e9e95f516e37b": {
+      "name": "TIANA",
+      "symbol": "TRAINER_TIANA"
+    },
+    "tca7a197d3f9072f8": {
+      "name": "TIMOTHY",
+      "symbol": "TRAINER_TIMOTHY_2"
+    },
+    "tca8709bb86c657ab": {
+      "name": "VALERIE",
+      "symbol": "TRAINER_VALERIE_5"
+    },
+    "tcaac0a0cb8db3332": {
+      "name": "HALLE",
+      "symbol": "TRAINER_HALLE"
+    },
+    "tcae325900f8d017c": {
+      "name": "WALLY",
+      "symbol": "TRAINER_WALLY_MAUVILLE"
+    },
+    "tcaf4be33e9699107": {
+      "name": "JESSICA",
+      "symbol": "TRAINER_JESSICA_5"
+    },
+    "tcb42a6336b024f6e": {
+      "name": "KEIRA",
+      "symbol": "TRAINER_KEIRA"
+    },
+    "tcb503bad2f55012a": {
+      "name": "JEROME",
+      "symbol": "TRAINER_JEROME"
+    },
+    "tcbf1e8d114b2046c": {
+      "name": "SAWYER",
+      "symbol": "TRAINER_SAWYER_3"
+    },
+    "tcbfa531e3409ea0e": {
+      "name": "NOB",
+      "symbol": "TRAINER_NOB_5"
+    },
+    "tcc3fc40d4f06956a": {
+      "name": "NICHOLAS",
+      "symbol": "TRAINER_NICHOLAS"
+    },
+    "tcc5d0cdd4e96bf41": {
+      "name": "JUAN",
+      "symbol": "TRAINER_JUAN_3"
+    },
+    "tcccae28f81772742": {
+      "name": "CATHERINE",
+      "symbol": "TRAINER_CATHERINE_3"
+    },
+    "tccdb8749677ed843": {
+      "name": "LEONARD",
+      "symbol": "TRAINER_LEONARD"
+    },
+    "tcdfa1aaf18337a8d": {
+      "name": "WILLIAM",
+      "symbol": "TRAINER_WILLIAM"
+    },
+    "tce07bfeb4b54ed38": {
+      "name": "VINCENT",
+      "symbol": "TRAINER_VINCENT"
+    },
+    "tce884f415dfda7b9": {
+      "name": "OLIVIA",
+      "symbol": "TRAINER_OLIVIA"
+    },
+    "tcef46001b8eb965a": {
+      "name": "DAISY",
+      "symbol": "TRAINER_DAISY"
+    },
+    "tcefa4a5b06c9867a": {
+      "name": "WARREN",
+      "symbol": "TRAINER_WARREN"
+    },
+    "tcf4c5f1124db146a": {
+      "name": "PAXTON",
+      "symbol": "TRAINER_PAXTON"
+    },
+    "td03a2cdfc7e8b9f5": {
+      "name": "IMANI",
+      "symbol": "TRAINER_IMANI"
+    },
+    "td06dc926aa824c85": {
+      "name": "LILITH",
+      "symbol": "TRAINER_LILITH"
+    },
+    "td08c007cca8553e9": {
+      "name": "ERIC",
+      "symbol": "TRAINER_ERIC"
+    },
+    "td0bf121f0743d5c5": {
+      "name": "FERNANDO",
+      "symbol": "TRAINER_FERNANDO_5"
+    },
+    "td10c8f4bcd71cd36": {
+      "name": "ROBIN",
+      "symbol": "TRAINER_ROBIN"
+    },
+    "td152263e9866dba3": {
+      "name": "LUNG",
+      "symbol": "TRAINER_LUNG"
+    },
+    "td1b462dddf7534ab": {
+      "name": "LYDIA",
+      "symbol": "TRAINER_LYDIA_5"
+    },
+    "td1db1fe10e0aecef": {
+      "name": "BRYAN",
+      "symbol": "TRAINER_BRYAN"
+    },
+    "td1e1c7a8d5d6d42e": {
+      "name": "WINSTON",
+      "symbol": "TRAINER_WINSTON_4"
+    },
+    "td1ef47c70124a060": {
+      "name": "BARNY",
+      "symbol": "TRAINER_BARNY"
+    },
+    "td1fd8ae088b874b8": {
+      "name": "KIYO",
+      "symbol": "TRAINER_KIYO"
+    },
+    "td209f05d5f3c1ab2": {
+      "name": "DEREK",
+      "symbol": "TRAINER_DEREK"
+    },
+    "td2281cf3b2574716": {
+      "name": "BERNIE",
+      "symbol": "TRAINER_BERNIE_4"
+    },
+    "td255f335e4e53b3f": {
+      "name": "RICK",
+      "symbol": "TRAINER_RICK"
+    },
+    "td25bed2ef6b98c0c": {
+      "name": "SPENSER",
+      "symbol": "TRAINER_SPENSER"
+    },
+    "td25d8fa345717323": {
+      "name": "HEIDI",
+      "symbol": "TRAINER_HEIDI"
+    },
+    "td326216bc1e6e10e": {
+      "name": "WALTER",
+      "symbol": "TRAINER_WALTER_2"
+    },
+    "td343dee86a932fb2": {
+      "name": "JAMES",
+      "symbol": "TRAINER_JAMES_4"
+    },
+    "td3576aea1e30bb60": {
+      "name": "CYNDY",
+      "symbol": "TRAINER_CYNDY_3"
+    },
+    "td37b2169e252983a": {
+      "name": "NIKKI",
+      "symbol": "TRAINER_NIKKI"
+    },
+    "td413d54198f89284": {
+      "name": "JACKSON",
+      "symbol": "TRAINER_JACKSON_3"
+    },
+    "td4cea6305545d009": {
+      "name": "KENT",
+      "symbol": "TRAINER_KENT"
+    },
+    "td6234d394594c2a8": {
+      "name": "RICKY",
+      "symbol": "TRAINER_RICKY_5"
+    },
+    "td6559846994f6d17": {
+      "name": "BRENDAN",
+      "symbol": "TRAINER_BRENDAN_ROUTE_119_MUDKIP"
+    },
+    "td6f5a3cc172fec41": {
+      "name": "FLANNERY",
+      "symbol": "TRAINER_FLANNERY_1"
+    },
+    "td6f8656244b3f3d0": {
+      "name": "MISSY",
+      "symbol": "TRAINER_MISSY"
+    },
+    "td7220b414ccc6fca": {
+      "name": "ANGELICA",
+      "symbol": "TRAINER_ANGELICA"
+    },
+    "td7d4d5cc48a70732": {
+      "name": "MAY",
+      "symbol": "TRAINER_MAY_RUSTBORO_MUDKIP"
+    },
+    "td7e5db0a6f048b65": {
+      "name": "CRISTIN",
+      "symbol": "TRAINER_CRISTIN_2"
+    },
+    "td7f47453406867be": {
+      "name": "JOHNSON",
+      "symbol": "TRAINER_JOHNSON"
+    },
+    "td7fd70c58abcd559": {
+      "name": "SHIRLEY",
+      "symbol": "TRAINER_SHIRLEY"
+    },
+    "td83e95a4a8ad9ad2": {
+      "name": "ISAAC",
+      "symbol": "TRAINER_ISAAC_4"
+    },
+    "td841e0d74ef12ec0": {
+      "name": "BRENDAN",
+      "symbol": "TRAINER_BRENDAN_LILYCOVE_MUDKIP"
+    },
+    "td866d5d544ec60c0": {
+      "name": "THOMAS",
+      "symbol": "TRAINER_THOMAS"
+    },
+    "td86e19f135c1aacd": {
+      "name": "DWAYNE",
+      "symbol": "TRAINER_DWAYNE"
+    },
+    "td870132bd80668dc": {
+      "name": "ABIGAIL",
+      "symbol": "TRAINER_ABIGAIL_2"
+    },
+    "td907e01fa4a2a506": {
+      "name": "ELLIOT",
+      "symbol": "TRAINER_ELLIOT_2"
+    },
+    "td925cf1028264226": {
+      "name": "COLE",
+      "symbol": "TRAINER_COLE"
+    },
+    "td97daf456956db02": {
+      "name": "PABLO",
+      "symbol": "TRAINER_PABLO_1"
+    },
+    "td9900ce737bbd661": {
+      "name": "MAY",
+      "symbol": "TRAINER_MAY_ROUTE_119_TREECKO"
+    },
+    "td9a1bd9c1305465e": {
+      "name": "ROBERT",
+      "symbol": "TRAINER_ROBERT_2"
+    },
+    "tda05eb310eee0f23": {
+      "name": "MADELINE",
+      "symbol": "TRAINER_MADELINE_1"
+    },
+    "tda2b4bfa8ebcbc98": {
+      "name": "JONAS",
+      "symbol": "TRAINER_JONAS"
+    },
+    "tda41e85673d8cbd7": {
+      "name": "SPENCER",
+      "symbol": "TRAINER_SPENCER"
+    },
+    "tda808abb34a44f7b": {
+      "name": "RANDALL",
+      "symbol": "TRAINER_RANDALL"
+    },
+    "tdaae1d57862c215d": {
+      "name": "ABIGAIL",
+      "symbol": "TRAINER_ABIGAIL_5"
+    },
+    "tdafc334ab824c254": {
+      "name": "PABLO",
+      "symbol": "TRAINER_PABLO_4"
+    },
+    "tdb218065215a22d3": {
+      "name": "WINONA",
+      "symbol": "TRAINER_WINONA_5"
+    },
+    "tdb6ecbf030c5218f": {
+      "name": "MICHELLE",
+      "symbol": "TRAINER_MICHELLE"
+    },
+    "tdb7436f0195eb7a5": {
+      "name": "JANI",
+      "symbol": "TRAINER_JANI"
+    },
+    "tdbb25768b4eaedd1": {
+      "name": "ATHENA",
+      "symbol": "TRAINER_ATHENA"
+    },
+    "tdbea90d72916b378": {
+      "name": "SOPHIA",
+      "symbol": "TRAINER_SOPHIA"
+    },
+    "tdc28077b019ae2b6": {
+      "name": "SANTIAGO",
+      "symbol": "TRAINER_SANTIAGO"
+    },
+    "tdc73e584104f67d8": {
+      "name": "HIDEO",
+      "symbol": "TRAINER_HIDEO"
+    },
+    "tdcbcd43161e901aa": {
+      "name": "DEANDRE",
+      "symbol": "TRAINER_DEANDRE"
+    },
+    "tdcf9c93dbd8f12fc": {
+      "name": "CINDY",
+      "symbol": "TRAINER_CINDY_1"
+    },
+    "tdd33b996776deb6e": {
+      "name": "WATTSON",
+      "symbol": "TRAINER_WATTSON_1"
+    },
+    "tdd45013be3e85485": {
+      "name": "JACKI",
+      "symbol": "TRAINER_JACKI_4"
+    },
+    "tdd589580e7c6b401": {
+      "name": "BERNIE",
+      "symbol": "TRAINER_BERNIE_5"
+    },
+    "tdd826cbf25ba3eed": {
+      "name": "ANDREW",
+      "symbol": "TRAINER_ANDREW"
+    },
+    "tdd9b26f92fc6bb99": {
+      "name": "CATHERINE",
+      "symbol": "TRAINER_CATHERINE_4"
+    },
+    "tde1d7bc160db93c2": {
+      "name": "HUDSON",
+      "symbol": "TRAINER_HUDSON"
+    },
+    "tde366f66f2559a14": {
+      "name": "COBY",
+      "symbol": "TRAINER_COBY"
+    },
+    "tde7913acfff7b379": {
+      "name": "MAY",
+      "symbol": "TRAINER_MAY_RUSTBORO_TORCHIC"
+    },
+    "tdec1b2f83133cf8c": {
+      "name": "CINDY",
+      "symbol": "TRAINER_CINDY_3"
+    },
+    "tded99f8c56f18c21": {
+      "name": "VALERIE",
+      "symbol": "TRAINER_VALERIE_2"
+    },
+    "te03abe5a2a47779b": {
+      "name": "VALERIE",
+      "symbol": "TRAINER_VALERIE_4"
+    },
+    "te04ad19fccdcb962": {
+      "name": "JEFF",
+      "symbol": "TRAINER_JEFF"
+    },
+    "te04ce9f6d0c69ab9": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_SEAFLOOR_CAVERN_4"
+    },
+    "te0568689b4d3aa81": {
+      "name": "WALLACE",
+      "symbol": "TRAINER_WALLACE"
+    },
+    "te0b02b4f03cd44e8": {
+      "name": "LOLA",
+      "symbol": "TRAINER_LOLA_1"
+    },
+    "te1425b594cd110dc": {
+      "name": "NOB",
+      "symbol": "TRAINER_NOB_4"
+    },
+    "te161561781f54008": {
+      "name": "MARLEY",
+      "symbol": "TRAINER_MARLEY"
+    },
+    "te25a18f7cb54f6fc": {
+      "name": "JEFFREY",
+      "symbol": "TRAINER_JEFFREY_3"
+    },
+    "te2e3136a9a9fb75a": {
+      "name": "CYNDY",
+      "symbol": "TRAINER_CYNDY_4"
+    },
+    "te34427829c8edbfb": {
+      "name": "JUAN",
+      "symbol": "TRAINER_JUAN_1"
+    },
+    "te34bee8ebbd70375": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_SEAFLOOR_CAVERN_3"
+    },
+    "te35629217deb2610": {
+      "name": "JOSHUA",
+      "symbol": "TRAINER_JOSHUA"
+    },
+    "te35cc65de7614b96": {
+      "name": "KOJI",
+      "symbol": "TRAINER_KOJI_5"
+    },
+    "te3ad1bf203c7b2b9": {
+      "name": "DUSTY",
+      "symbol": "TRAINER_DUSTY_5"
+    },
+    "te404fdbbbf7ccb63": {
+      "name": "KATELYN",
+      "symbol": "TRAINER_KATELYN_3"
+    },
+    "te4ffe513fabb35ad": {
+      "name": "RODNEY",
+      "symbol": "TRAINER_RODNEY"
+    },
+    "te56e29ce85dcac1c": {
+      "name": "SAWYER",
+      "symbol": "TRAINER_SAWYER_1"
+    },
+    "te59bd349c081a2ca": {
+      "name": "ROXANNE",
+      "symbol": "TRAINER_ROXANNE_1"
+    },
+    "te5bd912fbb83c946": {
+      "name": "ATSUSHI",
+      "symbol": "TRAINER_ATSUSHI"
+    },
+    "te616e4035e0288ca": {
+      "name": "DYLAN",
+      "symbol": "TRAINER_DYLAN_2"
+    },
+    "te61dd4d3a31a144e": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_AQUA_HIDEOUT_6"
+    },
+    "te651112476ab0695": {
+      "name": "CATHERINE",
+      "symbol": "TRAINER_CATHERINE_2"
+    },
+    "te6d3d1e7661109d5": {
+      "name": "PHIL",
+      "symbol": "TRAINER_PHIL"
+    },
+    "te6e7031465400d0a": {
+      "name": "ISAAC",
+      "symbol": "TRAINER_ISAAC_5"
+    },
+    "te701e7ecdd5ac695": {
+      "name": "FLANNERY",
+      "symbol": "TRAINER_FLANNERY_3"
+    },
+    "te7528a0f382e62f4": {
+      "name": "VICTOR",
+      "symbol": "TRAINER_VICTOR"
+    },
+    "te7c8b153e1d6dd8b": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_RUSTURF_TUNNEL"
+    },
+    "te8c79ef3fd45646b": {
+      "name": "DIANA",
+      "symbol": "TRAINER_DIANA_1"
+    },
+    "te8cec006d400b40c": {
+      "name": "CRISSY",
+      "symbol": "TRAINER_CRISSY"
+    },
+    "te96d25916e0ae310": {
+      "name": "MADELINE",
+      "symbol": "TRAINER_MADELINE_5"
+    },
+    "te990943c8f3e6fa8": {
+      "name": "DEMETRIUS",
+      "symbol": "TRAINER_DEMETRIUS"
+    },
+    "te99d1bdeb2553f21": {
+      "name": "WILTON",
+      "symbol": "TRAINER_WILTON_3"
+    },
+    "tea49bc7040b3a461": {
+      "name": "CYNDY",
+      "symbol": "TRAINER_CYNDY_1"
+    },
+    "teaa3ccf2970c5bf1": {
+      "name": "ISABEL",
+      "symbol": "TRAINER_ISABEL_4"
+    },
+    "teaa618c5ae3c6d8c": {
+      "name": "DECLAN",
+      "symbol": "TRAINER_DECLAN"
+    },
+    "tead1782461ff0bea": {
+      "name": "WALLY",
+      "symbol": "TRAINER_WALLY_VR_2"
+    },
+    "teadd2e02dacb0e77": {
+      "name": "LEAF",
+      "symbol": "TRAINER_LEAF"
+    },
+    "teb2db67c3e66314f": {
+      "name": "ROXANNE",
+      "symbol": "TRAINER_ROXANNE_5"
+    },
+    "teb504884d26d0238": {
+      "name": "ALBERTO",
+      "symbol": "TRAINER_ALBERTO"
+    },
+    "tebc47a41c73eb88f": {
+      "name": "PETE",
+      "symbol": "TRAINER_PETE"
+    },
+    "tec583d69fb38e175": {
+      "name": "CORY",
+      "symbol": "TRAINER_CORY_4"
+    },
+    "tec75444bf70a1dcf": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_SPACE_CENTER_6"
+    },
+    "tec949879d061d010": {
+      "name": "JAIDEN",
+      "symbol": "TRAINER_JAIDEN"
+    },
+    "tece92e54bdbf3f6d": {
+      "name": "ZANDER",
+      "symbol": "TRAINER_ZANDER"
+    },
+    "ted020546eb03dd5c": {
+      "name": "MAY",
+      "symbol": "TRAINER_MAY_ROUTE_119_TORCHIC"
+    },
+    "ted1bb812e57ce481": {
+      "name": "DAWSON",
+      "symbol": "TRAINER_DAWSON"
+    },
+    "ted439b474ac362f9": {
+      "name": "STEVE",
+      "symbol": "TRAINER_STEVE_1"
+    },
+    "tedb75fc407173fbd": {
+      "name": "NOB",
+      "symbol": "TRAINER_NOB_3"
+    },
+    "tedc7e8d1167d775f": {
+      "name": "TAKAO",
+      "symbol": "TRAINER_TAKAO"
+    },
+    "tedc8ccc14394d5c0": {
+      "name": "REED",
+      "symbol": "TRAINER_REED"
+    },
+    "tee2cdcbc5f788ef4": {
+      "name": "ALBERT",
+      "symbol": "TRAINER_ALBERT"
+    },
+    "tef77f842e125e279": {
+      "name": "CHARLOTTE",
+      "symbol": "TRAINER_CHARLOTTE"
+    },
+    "tefed1388ccc37016": {
+      "name": "JENNY",
+      "symbol": "TRAINER_JENNY_5"
+    },
+    "teff9bb198023bf5d": {
+      "name": "CAROLINA",
+      "symbol": "TRAINER_CAROLINA"
+    },
+    "tf09486939dedf7a4": {
+      "name": "BRAXTON",
+      "symbol": "TRAINER_BRAXTON"
+    },
+    "tf11088de457afb58": {
+      "name": "JEFFREY",
+      "symbol": "TRAINER_JEFFREY_1"
+    },
+    "tf1a344f6fea5035b": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MAGMA_HIDEOUT_7"
+    },
+    "tf1b141152c48bef1": {
+      "name": "AUTUMN",
+      "symbol": "TRAINER_AUTUMN"
+    },
+    "tf1cc25eefd1b74ad": {
+      "name": "JAMES",
+      "symbol": "TRAINER_JAMES_1"
+    },
+    "tf22604b587b1b63a": {
+      "name": "ANDRES",
+      "symbol": "TRAINER_ANDRES_2"
+    },
+    "tf256a80ad560aebb": {
+      "name": "SHEILA",
+      "symbol": "TRAINER_SHEILA"
+    },
+    "tf28b0a6bfbfd500e": {
+      "name": "PAULA",
+      "symbol": "TRAINER_PAULA"
+    },
+    "tf2fabc97389b09a3": {
+      "name": "ALLISON",
+      "symbol": "TRAINER_ALLISON"
+    },
+    "tf34c4172a318b710": {
+      "name": "JOCELYN",
+      "symbol": "TRAINER_JOCELYN"
+    },
+    "tf3766fcbda40c246": {
+      "name": "HALEY",
+      "symbol": "TRAINER_HALEY_2"
+    },
+    "tf3c0ba0e75e41cf0": {
+      "name": "ALEXIS",
+      "symbol": "TRAINER_ALEXIS"
+    },
+    "tf3fc70bc9e6b4237": {
+      "name": "ROBERT",
+      "symbol": "TRAINER_ROBERT_4"
+    },
+    "tf3fd7e5427b8951f": {
+      "name": "KAYLEE",
+      "symbol": "TRAINER_KAYLEE"
+    },
+    "tf449be9a06804875": {
+      "name": "DYLAN",
+      "symbol": "TRAINER_DYLAN_5"
+    },
+    "tf4596dd8abab4bfd": {
+      "name": "EVERETT",
+      "symbol": "TRAINER_EVERETT"
+    },
+    "tf4b6850014e31c0c": {
+      "name": "WATTSON",
+      "symbol": "TRAINER_WATTSON_4"
+    },
+    "tf4c4af15967d0e07": {
+      "name": "CAROL",
+      "symbol": "TRAINER_CAROL"
+    },
+    "tf4caf0f518a0185b": {
+      "name": "SHELBY",
+      "symbol": "TRAINER_SHELBY_5"
+    },
+    "tf557f8c17d823aaa": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MT_PYRE_1"
+    },
+    "tf5720708bc11fe9f": {
+      "name": "NICOLAS",
+      "symbol": "TRAINER_NICOLAS_3"
+    },
+    "tf581497f835df63d": {
+      "name": "SHAYLA",
+      "symbol": "TRAINER_SHAYLA"
+    },
+    "tf5a11d8d30a3f9a3": {
+      "name": "TRENT",
+      "symbol": "TRAINER_TRENT_5"
+    },
+    "tf5cae14511b77824": {
+      "name": "DOMINIK",
+      "symbol": "TRAINER_DOMINIK"
+    },
+    "tf5f32d6d9a459547": {
+      "name": "BLAKE",
+      "symbol": "TRAINER_BLAKE"
+    },
+    "tf637d7e16a88b90d": {
+      "name": "ISABEL",
+      "symbol": "TRAINER_ISABEL_1"
+    },
+    "tf68b6f2d676bd54b": {
+      "name": "CAMRON",
+      "symbol": "TRAINER_CAMRON"
+    },
+    "tf68ba2bedceb1d5f": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_AQUA_HIDEOUT_5"
+    },
+    "tf6e645ca2e0b7184": {
+      "name": "PHOEBE",
+      "symbol": "TRAINER_PHOEBE"
+    },
+    "tf743ff9cec2ad9da": {
+      "name": "BRAWLY",
+      "symbol": "TRAINER_BRAWLY_4"
+    },
+    "tf7685593d73a4451": {
+      "name": "JOSH",
+      "symbol": "TRAINER_JOSH"
+    },
+    "tf83b8759855d7e7b": {
+      "name": "DAVID",
+      "symbol": "TRAINER_DAVID"
+    },
+    "tf865287f60ff3443": {
+      "name": "JACE",
+      "symbol": "TRAINER_JACE"
+    },
+    "tf8760d56bb5fe6e8": {
+      "name": "VIVIAN",
+      "symbol": "TRAINER_VIVIAN"
+    },
+    "tf8b56112705a72b1": {
+      "name": "CORY",
+      "symbol": "TRAINER_CORY_2"
+    },
+    "tf8d27339a8a888b9": {
+      "name": "GRUNT",
+      "symbol": "TRAINER_GRUNT_MT_CHIMNEY_1"
+    },
+    "tf92dc1980363365a": {
+      "name": "TRENT",
+      "symbol": "TRAINER_TRENT_2"
+    },
+    "tfa25345d3636d3c2": {
+      "name": "JACK",
+      "symbol": "TRAINER_JACK"
+    },
+    "tfa2e2ff5b50fa165": {
+      "name": "ERNEST",
+      "symbol": "TRAINER_ERNEST_3"
+    },
+    "tfaaa17739d1ae681": {
+      "name": "KATELYN",
+      "symbol": "TRAINER_KATELYN_5"
+    },
+    "tfb35b3488e9911cb": {
+      "name": "HELENE",
+      "symbol": "TRAINER_HELENE"
+    },
+    "tfccdb421128af3e8": {
+      "name": "DIANA",
+      "symbol": "TRAINER_DIANA_3"
+    },
+    "tfce6a751012a51ad": {
+      "name": "ETHAN",
+      "symbol": "TRAINER_ETHAN_5"
+    },
+    "tfd1d3429f2b790ac": {
+      "name": "CORY",
+      "symbol": "TRAINER_CORY_3"
+    },
+    "tfd8b3e9d7d957657": {
+      "name": "SHELLY",
+      "symbol": "TRAINER_SHELLY_SEAFLOOR_CAVERN"
+    },
+    "tfe071074a5aa1ed3": {
+      "name": "WILTON",
+      "symbol": "TRAINER_WILTON_1"
+    },
+    "tfe511317e6a6a7d6": {
+      "name": "MAY",
+      "symbol": "TRAINER_MAY_LILYCOVE_TORCHIC"
+    },
+    "tfee58d2fcdf75209": {
+      "name": "GILBERT",
+      "symbol": "TRAINER_GILBERT"
+    },
+    "tfee83640d6290788": {
+      "name": "WALTER",
+      "symbol": "TRAINER_WALTER_1"
+    },
+    "tfeeb87cdf33abc9d": {
+      "name": "KARA",
+      "symbol": "TRAINER_KARA"
+    },
+    "tfef69c2e778e4c6d": {
+      "name": "FERNANDO",
+      "symbol": "TRAINER_FERNANDO_4"
+    },
+    "tff485f600e2f033a": {
+      "name": "WYATT",
+      "symbol": "TRAINER_WYATT"
+    },
+    "tff7bc52d166785a9": {
+      "name": "PATRICIA",
+      "symbol": "TRAINER_PATRICIA"
+    },
+    "tff87f78701106712": {
+      "name": "LYLE",
+      "symbol": "TRAINER_LYLE"
+    },
+    "tffaf429ce379a653": {
+      "name": "BRANDI",
+      "symbol": "TRAINER_BRANDI"
+    },
+    "tffd1ab78fbbcc84b": {
+      "name": "CRISTIN",
+      "symbol": "TRAINER_CRISTIN_1"
+    }
+  }
+}

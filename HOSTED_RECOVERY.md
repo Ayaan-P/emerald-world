@@ -1,5 +1,134 @@
 # Hosted authority backup and recovery
 
+## Production activation archives (RC12)
+
+The protected RC11.3 activation archive is a **full service/state archive**, not
+`world.hosting_backup`'s `root/` plus `tls/` format. Do not pass it to that
+module's restore command. It contains private hosted and standalone state under
+`var/lib/`, plus service metadata under `etc/`. It includes credentials, history,
+and possibly player-owned files. Never publish its listing or content.
+
+Use the separate activation rehearsal tool from a reviewed checkout:
+
+```sh
+umask 077
+mkdir -m 700 "$HOME/private-recovery"
+# Copy an already protected, consistent archive here through approved SSH/SCP.
+# Set the local archive mode to 0600. Obtain its SHA-256 independently.
+python3 scripts/rehearse_hosted_restore.py \
+  --archive "$HOME/private-recovery/activation.tar.gz" \
+  --destination "$HOME/private-recovery/rehearsal-NEW" \
+  --sha256 TRUSTED_SHA256 \
+  --authority-proof
+```
+
+The destination must not exist, even as an empty directory or dangling symlink.
+Its existing parent must be owned by the caller and mode 0700. Archive input must
+be an owned, single-link regular file with mode 0600. Symlink ancestors, absolute
+archive paths, traversal, duplicate names, file/directory collisions, sparse
+files, links, devices and FIFOs are refused. Extraction only accepts the known
+activation archive prefixes and never writes to the archive's original absolute
+paths. System directories cannot be destinations. Files are created exclusively
+as 0600 and all extracted directories as 0700. Limits are 100,000 entries and
+4 GiB of expanded content. A failed extraction removes only its fresh destination.
+A later verification failure retains the private extraction for operator review.
+These checks assume operator-controlled parents without concurrent same-user
+renames or archive mutation. A matching hash is only trustworthy if the expected
+hash came from a trusted channel.
+
+Offline verification checks every extracted SQLite database, including copied
+WAL state, with `integrity_check` and `foreign_key_check`. It reads service units
+and ordered drop-ins as inert metadata, resolves the known hostname variable,
+checks the hosted registry's endpoint and certificate SHA-256 against its service
+configuration, loads both TLS certificate/key pairs, and matches hosted member
+tokens to restored world identities. It hashes configuration and source deployment
+references without printing names, tokens, endpoints or private key material.
+This is a deliberately bounded systemd metadata grammar, not a general unit
+or sandbox evaluator. Only Unit, Service and Install sections with explicitly
+listed launch-policy fields are accepted. WorkingDirectory and ExecStart must
+be in Service. Commands must be the literal `/usr/bin/python3 -m world.hosting
+start` or `/usr/bin/python3 -m world.server` forms with supported separate
+option/value pairs. Unknown options, repeated options or assignments, resets,
+continuations, command hooks and effective overrides fail closed, including
+WorkingDirectory overrides in drop-ins. This restriction may refuse older
+activation metadata that the earlier permissive parser accepted. Do not edit a
+protected archive to bypass it or treat an earlier proof as a proof by this version.
+Only the hosted `/etc/emerald-hosted.conf` EnvironmentFile with one literal
+EMERALD_HOST hostname is supported. Other environment files, Environment
+assignments and substitutions are refused. Both state roots and their required
+databases must exist. Numeric capacities, port ranges, registered world-port
+uniqueness and hosted game/management/standalone port collisions are checked.
+The consistency flag covers this accepted metadata grammar, not replay of the
+archived launch policy or sandbox. No archived service command is executed.
+
+The optional authority proof requires Linux `unshare`, `ip`, and permission for
+unprivileged user/network/PID namespaces. It checks for a distinct network namespace,
+loopback as the only interface, and no external routes before enabling loopback.
+All TCP listeners bind 127.0.0.1 inside that namespace. It runs local reviewed
+Python source against additional short-path private disposable state copies,
+starts every registered hosted world and the standalone authority on their
+original game ports, and authenticates the copied identities over pinned TLS
+using the current `SOCIALRULES3` native handshake. Rules and admission policy are
+not disabled. No player STATE, save import or world edit is sent. Runtime copies
+are removed on normal exit. The authority runs as init in a disposable PID
+namespace, with unshare's kill-child lifetime protection. On timeout, Ctrl-C or
+SIGTERM the caller kills namespace init first and waits for unshare to reap it.
+The kernel terminates and reaps namespace descendants even if they created new
+sessions. No process-wide subreaper policy is changed by the tool. An interrupted
+copy can still leave a mode 0700 `/tmp/er-*` directory. Process cleanup is not
+proof of filesystem cleanup. The operator should inspect and remove remnants
+privately. Abrupt caller SIGKILL or machine failure cannot run caller cleanup.
+
+There is **no fallback to the active network namespace**. If isolation is not
+available, omit `--authority-proof` for an offline-only check and record that
+boundary. A failed command emits only a sanitized failure stage and any completed
+offline checks. Successful output contains aggregate counts and hashes only.
+No service is installed, stopped, restarted, promoted or replaced. Public
+registry and TLS identities are never changed.
+
+This proof does not replay management HTTPS, DNS, firewall, service sandboxing,
+external client reachability, gameplay, or a production cutover. The activation
+archive has source deployment references but **does not bundle `/opt` source**.
+The output explicitly identifies and hashes the local implementation used for
+the rehearsal. Starting restored worlds can also execute persisted
+`module.source` mechanics through the existing bubblewrap runtime during ticks.
+That persisted code is a separate sandbox/trust boundary and is not covered by
+the local service implementation hash. This proof neither asserts that persisted
+code is inert nor replays the archived service sandbox. Recover the matching
+reviewed release source separately before
+an operator-approved promotion. Do not infer a byte-identical source restore
+from a successful state rehearsal. An old activation snapshot is also not a
+current backup of everything humans have done since it was taken.
+
+### Private independent-copy cadence
+
+A practical operator policy is to review backup freshness daily, keep a verified
+copy after each approved cold snapshot, and rehearse monthly and before a release.
+A daily review does not itself create a daily consistent snapshot. If a 24-hour
+recovery-point target is needed, approve a consistent snapshot method and
+maintenance policy first. Never tar changing live SQLite files or stop human
+worlds just to satisfy a schedule. The existing activation archive can be copied
+read-only without recapturing or touching running services.
+
+For each already-approved cold snapshot, use a fresh private local directory and
+exclusive new filename, copy through approved SSH/SCP, set mode 0600, verify the
+trusted hash, and run the rehearsal above. Keep the archive, hash, sanitized proof
+and matching reviewed source release together on private encrypted storage.
+Keep a second encrypted offline copy on an independently controlled device or
+approved storage account. Verify that second copy's hash and rehearse from it
+before treating it as recoverable. Suggested retention is seven daily snapshots
+and four weekly snapshots, subject to capacity and the user's retention approval.
+Do not delete the last verified snapshot until its replacement and independent
+copy pass. This is a recipe, not an installed job: no timer, cron, cloud account,
+upload, pruning or new production backup is created by the rehearsal tool.
+
+Player saves and offline exports remain independently owned. Copy them separately
+on the player's terms. A restored offline copy is a separate history and must
+never merge into or silently replace the online authority. Do not copy private
+archives, world databases, player files or TLS keys into Git or a release bundle.
+
+## Hosted-manager archive format
+
 These operator tools apply to `world.hosting.HostedWorldManager`, not a single
 standalone `world.server` root or a player's hosted-profile export. No deployment
 is performed by this change. Never interrupt current human play to run a backup.

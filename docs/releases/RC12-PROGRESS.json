@@ -1,0 +1,191 @@
+{
+  "schema": 1,
+  "recorded_at_utc": "2026-11-09T00:37:49.138420+00:00",
+  "status": "WIP source checkpoint, not an integrated release",
+  "priority": "Linux combined integration and delivery first; Windows follows the same verified final pair",
+  "repositories": {
+    "app": "Ayaan-P/emerald-world",
+    "engine": "Ayaan-P/pokeemerald-expansion-native"
+  },
+  "integration_base_app": "72433860b79077cec65b6dc8aa1fc438bea9ad3a",
+  "app_recorded_engine_gitlink": "5cb76554ca986a95230a49d9d34c9cc3ef24388d",
+  "engine_checkout_head": "49b4aec930263755de71d14f569c812456900e9a",
+  "parent_wip_files": [
+    "world/character_actions.py",
+    "world/character_chapters.py",
+    "world/characters.py",
+    "world/hosting.py",
+    "world/hosting_client.py",
+    "world/hosting_ui.py",
+    "world/server.py",
+    "test/world/test_character_identity.py",
+    "test/world/test_hosted_product_adventure.py",
+    "test/world/test_player_activity_control.py"
+  ],
+  "checkpoint_checks": {
+    "python_ast_files": 10,
+    "git_diff_check": "passed",
+    "runtime_tests_rerun": false,
+    "final_build_rerun": false
+  },
+  "app_branches": [
+    {
+      "branch": "integrate/rc12-dot-next",
+      "commit": "72433860b79077cec65b6dc8aa1fc438bea9ad3a",
+      "status": [
+        "M engines/expansion-native",
+        " M world/character_actions.py",
+        " M world/character_chapters.py",
+        " M world/characters.py",
+        " M world/hosting.py",
+        " M world/hosting_client.py",
+        " M world/hosting_ui.py",
+        " M world/server.py",
+        "?? test/world/test_character_identity.py",
+        "?? test/world/test_hosted_product_adventure.py",
+        "?? test/world/test_player_activity_control.py"
+      ],
+      "summary": "test: make main baseline fixtures independent of host build state"
+    },
+    {
+      "branch": "product/rc12-adventure",
+      "commit": "244a04b653162edbb24be866ded820066bff5794",
+      "status": [],
+      "summary": "Add reviewed model-free Lantern Trail adventure"
+    },
+    {
+      "branch": "product/rc12-build-gates",
+      "commit": "270464601b432962eaa0f593860aed2e4d9bf182",
+      "status": [
+        "M engines/expansion-native"
+      ],
+      "summary": "fix(ci): checkout exact private engine pin with scoped SSH key"
+    },
+    {
+      "branch": "product/rc12-player-ui",
+      "commit": "7ae3fa0a2649d471fa9d514fe81ec6bd7d2c8723",
+      "status": [],
+      "summary": "Add private player objectives and reviewed first adventure entry"
+    },
+    {
+      "branch": "product/rc12-recovery",
+      "commit": "8202d19755dfe97ccc79bc3ec556684214c655a4",
+      "status": [],
+      "summary": "recovery: rehearse activation archives in isolated namespaces"
+    },
+    {
+      "branch": "product/rc12-windows",
+      "commit": "ede76b64636e106058b9ff78c60dc05114c273dc",
+      "status": [],
+      "summary": "feat: add private matched Expansion Windows source handoff lane"
+    },
+    {
+      "branch": "product/rc12-windows-build",
+      "commit": "94cf646155eefd721e7c112db6df543af11e7370",
+      "status": [],
+      "summary": "build: pin matched Windows Expansion VRAM layout"
+    }
+  ],
+  "engine_branches": [
+    {
+      "branch": "integrate/rc12-dot-next",
+      "commit": "49b4aec930263755de71d14f569c812456900e9a",
+      "status": [],
+      "summary": "fix(native): guard optional world entry-point calls in standalone builds"
+    },
+    {
+      "branch": "fix/rc12-build-closure",
+      "commit": "1dfd29e5ca7c9e3be852fcacd64404ff721fa2d4",
+      "status": [],
+      "summary": "test(native): pin added inspector facts in standalone replays"
+    },
+    {
+      "branch": "product/rc12-collection",
+      "commit": "edaef15b60ff10b360b61656873f5fc51ce6405e",
+      "status": [],
+      "summary": "feat(collection): add policy-gated Rustboro evolution supplies"
+    },
+    {
+      "branch": "product/rc12-native-objectives",
+      "commit": "c3e37eb0e56737870f2d31b3322c8a12ce8da41c",
+      "status": [],
+      "summary": "feat(native): add explicit private survey actions to objectives journal"
+    },
+    {
+      "branch": "product/rc12-native-residents",
+      "commit": "3111d567ce25dbfe9998f42a04252adb05972d77",
+      "status": [],
+      "summary": "Add generated resident offer consent and admitted battle identity"
+    },
+    {
+      "branch": "product/rc12-windows-native",
+      "commit": "6ec77d8d2d1d51204b83b6702167bb79a970dfee",
+      "status": [],
+      "summary": "fix(windows): match extended VRAM region and PE filler to native cohort"
+    }
+  ],
+  "new_dot_app_branches": [
+    {
+      "branch": "dot/rc12-activity-board",
+      "commit": "27c097d834bab56a3d27bf48fde15c5ddaf4a326",
+      "summary": "Unify RC12 field activities with opt-in guild discovery and joining",
+      "integrated_by_ancestry": false
+    },
+    {
+      "branch": "dot/rc12-candidate",
+      "commit": "ddc4760eb94a59ea8e572bdd654c693885a267f8",
+      "summary": "Connect native mounts to exact-witness multiplayer relay racing",
+      "integrated_by_ancestry": false
+    },
+    {
+      "branch": "dot/rc12-core-story",
+      "commit": "657ac8ff6f0a12b9dc9dddbaad655328ac60c893",
+      "summary": "Reconcile native story progression and bind private checkpoint replies",
+      "integrated_by_ancestry": false
+    },
+    {
+      "branch": "dot/rc12-field-flags",
+      "commit": "3f946f921ede2956e00644158a49973dd3906c19",
+      "summary": "Add opt-in capture-the-flag field duels with durable private results",
+      "integrated_by_ancestry": false
+    },
+    {
+      "branch": "dot/rc12-field-relays",
+      "commit": "24bc0deca2b7803a3816a9d37cd8e69e25ef4f12",
+      "summary": "Add cooperative field relay races with private durable team times",
+      "integrated_by_ancestry": false
+    },
+    {
+      "branch": "dot/rc12-field-stories",
+      "commit": "da328a772a80b3f0ea67b11aa254873c5c66fbdb",
+      "summary": "Install complete cooperative story through reviewed workshop preset",
+      "integrated_by_ancestry": false
+    },
+    {
+      "branch": "dot/rc12-private-commands",
+      "commit": "ebc93b91ec5c882ac08d8336af26da4ad943ee18",
+      "summary": "Refresh friend-travel fixtures for command negotiation",
+      "integrated_by_ancestry": false
+    }
+  ],
+  "new_dot_engine_branches": [
+    {
+      "branch": "dot/rc12-core-story",
+      "commit": "9d4635b00ddc0e221fca9e73f4e76ee809dd9303",
+      "summary": "Connect canonical Emerald story safe points to explicitly shared history",
+      "integrated_by_ancestry": false
+    },
+    {
+      "branch": "dot/rc12-mounts",
+      "commit": "488796e4959eb7f9d658abc7e8313e138acb3c87",
+      "summary": "Negotiate multiplayer mounts and preserve exact per-frame race crossings",
+      "integrated_by_ancestry": false
+    },
+    {
+      "branch": "dot/rc12-private-commands",
+      "commit": "984165808a45aaaaa7c7169c228ef1a1480ab6d0",
+      "summary": "Guard private commands on the released Expansion baseline",
+      "integrated_by_ancestry": false
+    }
+  ]
+}

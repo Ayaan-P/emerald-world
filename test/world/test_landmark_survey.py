@@ -132,17 +132,11 @@ class LandmarkSurveyTests(unittest.TestCase):
         self.assertIn(f'EXPLORE_READY {self.conn["seq"]}',reply)
         self.assertEqual(other['chat_history'],[])
         self.assertEqual(self.conn['chat_history'],[])
-        # Emulate the prior server, which forwards unknown slash commands.
+        # Even a missing feature handler cannot fall through to room chat.
         with patch.object(self.s.landmark_survey,'handle',return_value=False):
             self.command('/explore protocol 1')
-        public=bytes.fromhex(other['chat_history'][-1][3]).decode()
-        self.assertEqual(public,'/explore protocol 1')
-        self.assertNotIn('camp',public)
-        # Older clients lack this guard and remain unsafe on that old server.
-        with patch.object(self.s.landmark_survey,'handle',return_value=False):
             self.command('/explore share camp')
-        self.assertEqual(other['chat_history'][-1][1],'Scout')
-        self.assertEqual(bytes.fromhex(other['chat_history'][-1][3]).decode(),'/explore share camp')
+        self.assertEqual(other['chat_history'],[])
 
     def test_registration_requires_exact_archived_template(self):
         changed=plan();changed['seed']=45

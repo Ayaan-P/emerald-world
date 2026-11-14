@@ -48,7 +48,7 @@ enum CaveState {CAVE_DISABLED,CAVE_IDLE,CAVE_WAIT,CAVE_WAIT_RESET,CAVE_ACK,CAVE_
 static struct {
  bool8 connected,caveAvailable,staging,caveReturning,caveProbe,caveLegacy;
  bool8 regionProbe,regionLegacy,regionAvailable,regionSelected;
- bool8 rallyProbe,rallyLegacy,travelProbe,travelLegacy,chatProbe,chatLegacy,chatAvailable,fieldKnown;
+ bool8 rallyProbe,rallyLegacy,travelProbe,travelLegacy,chatProbe,chatLegacy,commandsProbe,commandsLegacy,chatAvailable,fieldKnown;
  bool8 exploreAvailable;
  unsigned exploreProbeSeq;
  enum CaveState caveState;
@@ -57,7 +57,7 @@ static struct {
  const char *regionStatus;
  struct WorldCaveWire caveWire;
  size_t outputSize;char output[4096];
- struct {char chatStatus[12];} live;
+ struct {char chatStatus[12];unsigned commandMask;} live;
 } sWorld;
 static int freeField,warps,disconnected,stateReports;
 static char sent[4096];
@@ -84,11 +84,11 @@ static unsigned split(char *line,char **parts){unsigned n=0;char *s=strtok(line,
 int main(void){char place[42],line[256],revision[65];struct MapLayout base={19,26,0,0,0,0};char *parts[8];unsigned n;
  assert(fgets(place,sizeof(place),stdin));assert(strlen(place)==41);assert(getchar()=='\n');
  assert(fgets(revision,sizeof(revision),stdin));assert(strlen(revision)==64);assert(getchar()=='\n');
- strcpy(sWorld.trainer,"Alice");strcpy(sWorld.token,"token");QueueHello(0);
+ strcpy(sWorld.trainer,"Alice");strcpy(sWorld.token,"token");sWorld.commandsLegacy=1;QueueHello(0);
  assert(strstr(sWorld.output,"CAVEREGION1\n"));char *auth[]={"ERROR","AUTH"};
  assert(CaveProbeRejected(2,auth));assert(sWorld.regionLegacy&&!sWorld.caveLegacy);
- QueueHello(0);assert(strstr(sWorld.output,"CAVE\n")&&!strstr(sWorld.output,"REGION1"));
- sWorld.regionLegacy=0;QueueHello(0);sWorld.outputSize=0;
+ sWorld.commandsLegacy=1;QueueHello(0);assert(strstr(sWorld.output,"CAVE\n")&&!strstr(sWorld.output,"REGION1"));
+ sWorld.regionLegacy=0;sWorld.commandsLegacy=1;QueueHello(0);sWorld.outputSize=0;
  sWorld.connected=1;sWorld.caveAvailable=1;sWorld.chatAvailable=1;sWorld.caveState=CAVE_READY;sWorld.fieldKnown=1;
  char *ready[]={"REGION","READY","1"};assert(RegionLine(3,ready));
  assert(!RegionQueue("area:bad"));
@@ -129,14 +129,14 @@ class NativeRegions(unittest.TestCase):
                'GENERATED_WILDS_GUIDE','GENERATED_WILDS_CAST','GENERATED_WILDS_EVENTS',
                'GENERATED_WILDS_SHARED_TERRAIN','GENERATED_WILDS_SHARED_GEOMETRY',
                'GENERATED_WILDS_LARGE_TERRAIN','GENERATED_WORLD_XL')
-        fields=['caveProbe','caveLegacy','regionProbe','regionLegacy','rallyProbe','rallyLegacy',
+        fields=['commandsProbe','commandsLegacy','caveProbe','caveLegacy','regionProbe','regionLegacy','rallyProbe','rallyLegacy',
                 'travelProbe','travelLegacy','chatProbe','chatLegacy']
         fields += ['caveV'+version+suffix for version in ('2','3','4','5','6','7','8','9','9T','9G','9H','10') for suffix in ('Probe','Legacy')]
         code='#include <assert.h>\n#include <stdio.h>\n#include <string.h>\ntypedef int bool8;\n#define TRUE 1\n#define FALSE 0\n'
         code+=''.join('#define '+flag+' 1\n' for flag in flags)
         code+='static struct {bool8 '+','.join(fields)+';char trainer[25],token[65],output[4096];int outputSize;} sWorld;\n'
         code+=function(source,'CaveProbeRejected')+function(source,'QueueHello')
-        code+='\nint main(void){char *error[]={"ERROR","AUTH"};strcpy(sWorld.trainer,"Alice");strcpy(sWorld.token,"token");\nQueueHello(0);assert(strstr(sWorld.output,"CAVE10REGION1\\n"));\nassert(CaveProbeRejected(2,error));assert(sWorld.regionLegacy&&!sWorld.caveV10Legacy);\nQueueHello(0);assert(strstr(sWorld.output,"CAVE10\\n")&&!strstr(sWorld.output,"REGION1"));return 0;}\n'
+        code+='\nint main(void){char *error[]={"ERROR","AUTH"};strcpy(sWorld.trainer,"Alice");strcpy(sWorld.token,"token");\nsWorld.commandsLegacy=1;QueueHello(0);assert(strstr(sWorld.output,"CAVE10REGION1\\n"));\nassert(CaveProbeRejected(2,error));assert(sWorld.regionLegacy&&!sWorld.caveV10Legacy);\nsWorld.commandsLegacy=1;QueueHello(0);assert(strstr(sWorld.output,"CAVE10\\n")&&!strstr(sWorld.output,"REGION1"));return 0;}\n'
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp);(p/'test.c').write_text(code)
             build=subprocess.run(['cc','-std=c99','-Wall','-Wextra','-Werror',str(p/'test.c'),'-o',str(p/'test')],capture_output=True,text=True)
@@ -147,8 +147,8 @@ class NativeRegions(unittest.TestCase):
     def test_native_selection_admission_and_manual_entry_preserve_return(self):
         source=(ROOT/'src/platform/world_bridge.c').read_text()
         names=('Identifier','WorldBridge_GeneratedCaveReady','CaveProbeRejected','CaveLine','CavePump',
-               'QueueHello','RegionIdentifier','RegionQueue','RegionLine','RegionPump','WorldBridge_ChatSend','WorldBridge_ChatStatus')
-        code=PRELUDE+'\n'.join(function(source,name) for name in names)+MAIN
+               'QueueHello','RegionIdentifier','RegionQueue','RegionLine','RegionPump','WorldBridge_ChatCommandAllowed','WorldBridge_ChatSend','WorldBridge_ChatStatus')
+        code=(ROOT/'include/platform/chat_command_gate.h').read_text()+PRELUDE+'\n'.join(function(source,name) for name in names)+MAIN
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp);(p/'platform').mkdir();(p/'constants').mkdir();(p/'global.h').write_text(GLOBAL)
             for name in ('main.h','overworld.h','field_screen_effect.h','field_player_avatar.h','fieldmap.h'):

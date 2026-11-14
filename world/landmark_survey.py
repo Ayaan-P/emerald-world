@@ -41,10 +41,29 @@ class LandmarkSurvey:
 
     def scope(self, conn):
         s=self.server;state=conn.get('state');cave=s._connection_cave(conn)
-        if (not state or time.monotonic()-conn.get('state_time',0)>5 or not state[6] or not conn.get('in_generated_cave') or cave is None
+        if (not state or not 0<=time.monotonic()-conn.get('state_time',0)<=5 or not state[6] or not conn.get('in_generated_cave') or cave is None
                 or cave.version!=16 or tuple(state[:2])!=s.wilds_map or s._region_scope(conn)!=cave.identity):
             return None
         return cave.identity
+
+    def next_objective(self, conn, revision, sites, seen, active=True):
+        """The one private target shared by native status and activity reads."""
+        if (not active or conn is None or self.server.peers.get(conn.get('id')) is not conn
+                or conn.get('closing') or self.scope(conn) != revision):
+            return None
+        remaining = [site for site in sites if site['id'] not in seen]
+        if not remaining:
+            return None
+        # A geometry-selected guide target remains authoritative while walking,
+        # even when another unvisited clearing becomes closer along the route.
+        note = None
+        if self.server.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='survey_guidance'").fetchone():
+            note = self.server.db.execute('SELECT revision,landmark FROM survey_guidance WHERE trainer=?', (conn['id'],)).fetchone()
+        site = next((site for site in remaining if note == (revision, site['id'])), None)
+        if site is None:
+            x, y = conn['state'][2:4]
+            site = min(remaining, key=lambda p: (abs(p['x']-x)+abs(p['y']-y), p['id']))
+        return dict(site, revision=revision)
 
     def lines(self, conn):
         s=self.server;row=s.db.execute('SELECT revision,active FROM survey_sessions WHERE trainer=?',(conn['id'],)).fetchone()
@@ -55,8 +74,9 @@ class LandmarkSurvey:
         lines=[f'Survey: {len(seen)}/{len(sites)} landmarks. '+('Active.' if active else 'Paused.')]
         if len(seen)==len(sites):return lines+['Survey complete. Your discoveries are saved privately.']
         if self.scope(conn)!=revision:return lines+['Return to the same map revision to continue.']
-        x,y=conn['state'][2:4]
-        site=min((p for p in sites if p['id'] not in seen),key=lambda p:(abs(p['x']-x)+abs(p['y']-y),p['id']))
+        site = self.next_objective(conn, revision, sites, seen, bool(active))
+        if site is None:
+            return lines
         return lines+[f'Next: {site["id"]} near ({site["x"]},{site["y"]}). Reach its clearing center.']
 
     def share(self, conn, landmark, confirmed=False):
@@ -77,10 +97,12 @@ class LandmarkSurvey:
         if old:return ['That landmark discovery is already in public world history.']
         place=s.db.execute('SELECT place_id FROM world_places WHERE revision=?',(revision,)).fetchone()
         if place is None:return ['Archived place identity unavailable; nothing was shared.']
+        study=s.db.execute('SELECT actor,digest FROM canonical_studies WHERE revision=?',(revision,)).fetchone()
+        attribution=dict(study_actor=study[0],study_digest=study[1]) if study else {}
         try:
             with s.db:
                 seq=s.memory.append('landmark_discovery_shared',dict(place_id=place[0],revision=revision,
-                    landmark=landmark,x=site['x'],y=site['y'],publication='explicit_player_share',
+                    landmark=landmark,x=site['x'],y=site['y'],publication='explicit_player_share',**attribution,
                     basis='authenticated_acknowledged_client_presence',
                     limits='A player chose to share this arrival. Travel is client-reported, not independently simulated.'))
                 s.db.execute('INSERT INTO survey_publications VALUES (?,?,?)',(revision,landmark,seq))

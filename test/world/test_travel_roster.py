@@ -16,6 +16,7 @@ class TravelRosterTests(unittest.TestCase):
         self.server.lock = threading.RLock()
         self.server.revision = 1
         # This __new__ fixture bypasses constructor initialization.
+        self.server.combined_regions = False  # Explicit legacy authority, as in __init__.
         self.server.cave_map = None
         self.server.wilds_map = None
         self.server.tiles = []
@@ -31,6 +32,8 @@ class TravelRosterTests(unittest.TestCase):
         self.server.db.execute('CREATE TABLE identities (id TEXT, token TEXT)')
         self.server.world_rules = WorldRules(self.server.db)
         self.server.host_controls = HostControls(self.server.db)
+        from world.canonical_scenes import CanonicalScenes
+        self.server.cast_scenes = CanonicalScenes(self.server)
         self.server.max_players = 64
 
     def connect(self, name, role='SOCIALTRAVELCHAT', token=None):

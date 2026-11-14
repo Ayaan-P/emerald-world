@@ -56,15 +56,10 @@ class SettlementFlow(unittest.TestCase):
             previous_revision=self.server.shared_cave.identity,expected_world_id=m['world_id'],expected_sequence=m['through'])
 
     def transport(self,_socket,request,**kwargs):
-        conn=dict(id=None,out=bytearray(),closing=False,sock=object())
-        self.server.connections[conn['sock']]=conn
-        try:
-            self.server._admin_line(conn,json.dumps(request).encode())
-            if self.server.job and self.server.job[1]=='settlement':
-                self.server.job[0].result(timeout=5)
-                self.server._poll_mechanics();self.server.next_tick=float('inf')
-            return json.loads(conn['out'])
-        finally:self.server.connections.pop(conn['sock'],None)
+        from admin_transport import admin_request
+        result = admin_request(self.server, request)
+        self.server.next_tick=float('inf')
+        return result
 
     def provider(self,prompt,validator,**kwargs):
         self.assertIn('Redwood',prompt);self.assertIn('guild_goal_completed',prompt)
