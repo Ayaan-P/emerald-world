@@ -33,3 +33,7 @@ All rule definitions/results are public fictional world-authoring data. They con
 ## Checks still required
 
 Component tests cover real capability registration, player speech, native snapshot output, filtering/private-kind exclusion, unrelated public backlog, ownership conflict, recurring budget/restart, retirement/pause, fairness and transactional failure recovery. Model decisions in tests are scripted inputs. No live model session, full linked native build or rendered multiplayer playtest is claimed. Maya owns integration and final QA.
+
+## History-driven TV reports
+
+A reaction may call `world.publish_bulletin` with the normal literal `pages` JSON and `hours`, and `evidence` set to `@trigger`. At execution only, the authority replaces that marker with the matching committed public event ID, then calls the existing bulletin publisher. Pages remain fixed, attributed character-authored text; event text is never interpolated, interpreted, or executed. As with other rules, the actor authors the interpretation and must choose appropriate event filters: a report is not independent verification of its claims. Successful output is available through the existing optional compatible TV path, not proof anyone watched. Existing rule cooldown, attempt limits, atomic receipt, ownership, retirement and pause apply. No rule or broadcast is installed automatically.

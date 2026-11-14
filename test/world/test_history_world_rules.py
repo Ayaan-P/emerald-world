@@ -78,6 +78,33 @@ class HistoryRuleTests(unittest.TestCase):
   self.assertIsNone(shared_outbreaks.line(self.s,self.peer));self.assertEqual(self.s.revision,before)
   self.assertEqual(self.s.db.execute('SELECT used FROM history_world_rules').fetchone()[0],0)
   self.assertEqual(rules.tick(self.s,now=10006)['trigger'],seq)
+ def test_public_event_can_publish_attributed_tv_bulletin(self):
+  from world.actor_bulletins import line
+  self.spec.update(tool='world.publish_bulletin',args=dict(pages=json.dumps(['News from the field','A visitor spoke today']),evidence='@trigger',hours=1))
+  self.install(); seq=self.event(); out=rules.tick(self.s,now=10000)
+  self.assertEqual(out['status'],'succeeded'); self.assertEqual(out['trigger'],seq)
+  published=next(e for e in self.s.memory.history()['events'] if e['event']=='character_bulletin_published')
+  self.assertEqual(published['source_events'],[seq]); self.assertEqual(published['character_id'],self.actor)
+  self.assertTrue(line(self.s,{'world_bulletin_capable':True}).startswith('WORLD_BULLETIN '))
+  self.assertIsNone(line(self.s,{'world_bulletin_capable':False}))
+  self.assertIsNone(rules.tick(self.s,now=10100))
+ def test_bulletin_and_causal_receipt_roll_back_together(self):
+  from unittest.mock import patch
+  from world.actor_bulletins import line
+  self.spec.update(tool='world.publish_bulletin',args=dict(pages='["News","Today"]',evidence='@trigger',hours=1));self.install();seq=self.event()
+  original=self.s.memory.append
+  def append(kind,data):
+   if kind=='history_world_rule_result':raise ValueError('receipt unavailable')
+   return original(kind,data)
+  with patch.object(self.s.memory,'append',side_effect=append):self.assertEqual(rules.tick(self.s,now=10000)['status'],'uncommitted')
+  self.assertIsNone(line(self.s,{'world_bulletin_capable':True}))
+  self.assertEqual(rules.tick(self.s,now=10006)['trigger'],seq)
+  self.assertTrue(line(self.s,{'world_bulletin_capable':True}).startswith('WORLD_BULLETIN '))
+ def test_bulletin_cannot_select_or_interpolate_evidence(self):
+  self.spec.update(tool='world.publish_bulletin',args=dict(pages='["News","Today"]',evidence='[1]',hours=1))
+  with self.assertRaises(ValueError):rules.publish(self.s,self.actor,{},dict(id='bad',rule=json.dumps(self.spec)))
+  self.spec['args']['evidence']='@trigger';self.spec['args']['pages']='["{event.text}","Today"]'
+  self.install();self.event();self.assertEqual(rules.tick(self.s,now=10000)['status'],'blocked')
  def test_owner_pause_all_and_bounded_scan(self):
   self.install()
   for i in range(70):self.event(str(i))
