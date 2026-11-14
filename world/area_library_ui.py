@@ -7,7 +7,7 @@ from .session import SessionError
 from .shared_cave import MAX_SIZE, SharedCave
 from .species_cohort import catalogue
 
-KINDS = {6: 'wilds', 7: 'guided_wilds', 8: 'cast_wilds', 9: 'event_wilds', 16: 'xl_wilds'}
+KINDS = {6: 'wilds', 7: 'guided_wilds', 8: 'cast_wilds', 9: 'event_wilds', 16: 'xl_wilds', 17: 'painted_xl_wilds'}
 
 
 def inspect_area(session, worlds, payload):

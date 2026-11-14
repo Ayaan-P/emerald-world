@@ -85,7 +85,7 @@ class WorldServer:
         self.archive_generated_areas = archive_generated_areas
         self.shared_cave = SharedCave(cave_template) if cave_template is not None else None
         self._terrain_walk_cache = None
-        if self.shared_cave and (self.wilds_map if self.shared_cave.version in (6, 7, 8, 9, 16) else self.cave_map) is None:
+        if self.shared_cave and (self.wilds_map if self.shared_cave.version in (6, 7, 8, 9, 16, 17) else self.cave_map) is None:
             raise ValueError('generated map missing from catalog')
         if type(max_players) is not int or not 1 <= max_players <= 64:
             raise ValueError('max_players must be between 1 and 64')
@@ -208,13 +208,13 @@ class WorldServer:
             if row is not None:
                 self.shared_cave = SharedCave(row[0])
                 self.memory.place(self.shared_cave.identity)
-                if (self.wilds_map if self.shared_cave.version in (6, 7, 8, 9, 16) else self.cave_map) is None:
+                if (self.wilds_map if self.shared_cave.version in (6, 7, 8, 9, 16, 17) else self.cave_map) is None:
                     raise ValueError('generated map missing from catalog')
             if self.archive_generated_areas:
                 self.db.execute('CREATE TABLE IF NOT EXISTS generated_area_terrain (identity TEXT PRIMARY KEY, revision INTEGER NOT NULL, payload BLOB NOT NULL)')
                 self.db.execute('CREATE TABLE IF NOT EXISTS generated_area_archive (identity TEXT PRIMARY KEY, label TEXT NOT NULL, kind TEXT NOT NULL, template BLOB NOT NULL, created INTEGER NOT NULL)')
                 if row is not None:
-                    kind = 'wilds' if self.shared_cave.version in (6, 7, 8, 9, 16) else 'cave'
+                    kind = 'wilds' if self.shared_cave.version in (6, 7, 8, 9, 16, 17) else 'cave'
                     self.db.execute('INSERT OR IGNORE INTO generated_area_archive (identity,label,kind,template,created) VALUES (?,?,?,?,?)',
                                     (self.shared_cave.identity, 'Outdoor area' if kind == 'wilds' else 'Cave', kind, row[0], int(time.time())))
         if self.archive_generated_areas:
@@ -822,7 +822,8 @@ class WorldServer:
                 region_capable = role.endswith('REGION1')
                 if region_capable:
                     role = role[:-7]
-                cave_xl = role.endswith('CAVE16')
+                cave_painted = role.endswith('CAVE17')
+                cave_xl = cave_painted or role.endswith('CAVE16')
                 cave_expansion_large = cave_xl or role.endswith('CAVE11')
                 cave_expansion = cave_expansion_large or role.endswith('CAVE10')
                 cave_large_terrain = cave_xl or role.endswith('CAVE9H')
@@ -980,6 +981,7 @@ class WorldServer:
                 conn['cave_geometry'] = cave_geometry
                 conn['cave_large_terrain'] = cave_large_terrain
                 conn['cave_xl'] = cave_xl
+                conn['cave_painted'] = cave_painted
                 conn['cave_expansion'] = cave_expansion
                 conn['cave_expansion_large'] = cave_expansion_large
                 conn['event_command_seq'] = 0
@@ -1094,6 +1096,7 @@ class WorldServer:
                         cave=self._connection_cave(conn)
                         if (cave is None or not self._props_compatible(conn,cave)
                                 or (cave.version == 16 and not conn.get('cave_xl'))
+                                or (cave.version == 17 and not conn.get('cave_painted'))
                                 or (cave.version == 9 and not conn.get('cave_events'))
                                 or (cave.version == 9 and self._active_terrain()[1]!=b'\0' and not conn.get('cave_terrain'))
                                 or (cave.version == 9 and self._terrain_requires_geometry() and not conn.get('cave_geometry'))
@@ -1234,7 +1237,7 @@ class WorldServer:
                 state = [bounded(v, 0, limit) for v, limit in zip(fields[2:9], limits)]
                 if tuple(state[:2]) in (self.cave_map, self.wilds_map):
                     cave=self._connection_cave(conn)
-                    active_map = self.wilds_map if cave and cave.version in (6, 7, 8, 9, 16) else self.cave_map
+                    active_map = self.wilds_map if cave and cave.version in (6, 7, 8, 9, 16, 17) else self.cave_map
                     if tuple(state[:2]) != active_map:
                         raise ValueError('wrong generated map')
                     if (cave and conn.get('cave_capable') and conn.get('cave_revoked')
@@ -1780,7 +1783,7 @@ class WorldServer:
                 for seq in history_evidence:
                     if self.db.execute("SELECT 1 FROM events WHERE seq=? AND kind='world_memory'",(seq,)).fetchone() is None:
                         raise ValueError('history evidence unavailable')
-            if (self.wilds_map if candidate.version in (6, 7, 8, 9, 16) else self.cave_map) is None:
+            if (self.wilds_map if candidate.version in (6, 7, 8, 9, 16, 17) else self.cave_map) is None:
                 raise ValueError('generated map missing from catalog')
             if self.shared_cave and candidate.identity == self.shared_cave.identity:
                 self._persist_cave(blob, label=label, previous_revision=previous_revision, history_evidence=history_evidence, character_continuation=character_continuation, cast_construction=cast_construction, actor_tool_commit=actor_tool_commit)

@@ -80,4 +80,3 @@ class GeneratedRegionTests(unittest.TestCase):
   self.plan(spec(branching=1));self.assertEqual(runtime.tick(self.s,now=10)['status'],'blocked')
   self.assertEqual(self.s.db.execute('SELECT count(*) FROM generated_area_archive').fetchone()[0],count)
   self.assertIsNone(self.s.deployment)
-

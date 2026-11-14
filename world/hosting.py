@@ -319,10 +319,10 @@ class HostedWorldManager:
             server = self._start_world(self._owned(token, world_id))
             with server.lock:
                 kinds = {6: 'wilds', 7: 'guided_wilds', 8: 'cast_wilds',
-                         9: 'event_wilds', 16: 'xl_wilds'}
+                         9: 'event_wilds', 16: 'xl_wilds', 17: 'painted_xl_wilds'}
                 formats = {b'EWGMAP06': 'wilds', b'EWGMAP07': 'guided_wilds',
                            b'EWGMAP08': 'cast_wilds', b'EWGMAP09': 'event_wilds',
-                           b'EWGMAP0A': 'xl_wilds'}
+                           b'EWGMAP0A': 'xl_wilds', b'EWGMAP1A': 'painted_xl_wilds'}
                 headers = dict(server.db.execute(
                     'SELECT identity, substr(template, 1, 8) FROM generated_area_archive'))
                 areas = [dict(area, kind=formats.get(headers.get(area['identity'], b''), area['kind']))

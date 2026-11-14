@@ -32,10 +32,10 @@ def validate_region_objects(server, objects, state):
         if row is None or hashlib.sha256(row[0]).hexdigest()!=revision:
             raise ValueError('character region must be an opened immutable revision')
         cave=SharedCave(row[0])
-        if row[1] is None and (cave.version!=16 or not server.archive_generated_areas):
+        if row[1] is None and (cave.version not in (16,17) or not server.archive_generated_areas):
             raise ValueError('only archived XL maps may host shared-slot characters')
         placements.setdefault(revision,(cave,set()))[1].add((obj['x'],obj['y']))
-        expected=server.cave_map if cave.version in (1,10) else server.wilds_map if cave.version==16 else None
+        expected=server.cave_map if cave.version in (1,10) else server.wilds_map if cave.version in (16,17) else None
         if expected is None or (obj['group'],obj['num'])!=expected:
             raise ValueError('unsupported character region geometry')
         x,y=obj['x'],obj['y']
@@ -65,7 +65,7 @@ def scoped(server,conn,obj,revision=None):
     cave=conn.get('region_cave')
     if cave is None:
         cave=server.shared_cave
-        if cave is None or cave.version!=16 or not server.archive_generated_areas:return False
+        if cave is None or cave.version not in (16,17) or not server.archive_generated_areas:return False
     state=conn.get('state')
     return bool(conn.get('character_region_capable') and cave and revision==obj.get('region_revision')
                 and revision==cave.identity and conn.get('cave_ack')==revision

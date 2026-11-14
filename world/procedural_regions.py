@@ -78,4 +78,3 @@ def start(server,actor,row,args):
     # All archive, topology, object, capacity, rollback and resume ownership is
     # retained by the existing real publication transaction and its poller.
     return publish(server,actor,row,dict(network=json.dumps(doc,separators=(',',':'))))
-
