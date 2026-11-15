@@ -153,3 +153,44 @@ def main(argv=None):
     write_map(a.output,blob,replace=a.replace_output)
     print('Wrote validated offline XL terrain:',a.output)
 if __name__=='__main__':main()
+
+
+def add_watercourse(blob, seed, *, protected_points=()):
+    """Add one connected, impassable winding stream without isolating ground.
+
+    A short stream may fit inside a clearing even when a full river would split
+    narrow paths. This uses the existing blocked-water tile, not surfable water.
+    """
+    import random
+    if type(blob) is not bytes or blob[:8] != MAGIC or len(blob) != 8+SIDE*SIDE:
+        raise ValueError('expected shared painted landscape')
+    if type(seed) is not int or not 0 <= seed <= 0xffffffff:
+        raise ValueError('seed must be an unsigned 32-bit integer')
+    protected={(1,1),(125,124),(125,125)} | set(protected_points)
+    cells=bytearray(blob[8:]); rng=random.Random(seed ^ 0x5354524d)
+    starts=[(x,y) for y in range(4,120) for x in range(4,120)
+            if (x,y) not in protected and cells[y*SIDE+x] not in (ord('#'),ord('r'))]
+    rng.shuffle(starts)
+    for x,y in starts[:512]:
+        horizontal=bool(rng.randrange(2));points=[]
+        for _ in range(rng.randrange(10,25)):
+            if not 1<=x<126 or not 1<=y<126 or (x,y) in protected or cells[y*SIDE+x] in (ord('#'),ord('r')):break
+            points.append((x,y))
+            # Occasional perpendicular turn is followed by forward movement,
+            # so the stream remains one connected chain.
+            if rng.randrange(4)==0:
+                dx,dy=(0,rng.choice((-1,1))) if horizontal else (rng.choice((-1,1)),0)
+                nx,ny=x+dx,y+dy
+                if not 1<=nx<126 or not 1<=ny<126 or (nx,ny) in protected or cells[ny*SIDE+nx] in (ord('#'),ord('r')):break
+                points.append((nx,ny));x,y=nx,ny
+            if horizontal:x+=1
+            else:y+=1
+        if len(set(points))<8:continue
+        trial=cells.copy()
+        for px,py in points:trial[py*SIDE+px]=ord('#')
+        geometry=bytes(ord('#') if c in (ord('#'),ord('r')) else ord('.') for c in trial)
+        try:
+            encode_geometry({'rows':[geometry[y*SIDE:(y+1)*SIDE].decode('ascii') for y in range(SIDE)],'spawn':[1,1],'exit':[125,125]})
+        except ValueError:continue
+        return MAGIC+bytes(trial),len(set(points))
+    raise ValueError('No connected watercourse fits without blocking the landscape')
