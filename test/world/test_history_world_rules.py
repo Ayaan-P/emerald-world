@@ -13,6 +13,105 @@ class HistoryRuleTests(unittest.TestCase):
   self.assertEqual(result['status'],'succeeded');return result
  def event(self,text='Open the field',kind='player_addressed_character'):
   with self.s.db:return self.s.memory.append(kind,dict(character_id=self.actor,text=text,publication='explicit_public_npc_speech',basis='authenticated_nearby_player_message'))
+ def test_recent_activity_expires_across_restart_and_uses_actual_public_records(self):
+  from unittest.mock import patch
+  self.spec.update(every=2,within_seconds=60);self.install()
+  with patch('world.world_memory.time.time',return_value=10000):old=self.event()
+  self.assertIsNone(rules.tick(self.s,now=10000))
+  db=sqlite3.connect(':memory:');self.s.db.backup(db);original=self.s.db;self.s.db=db
+  try:
+   rules.setup(db);self.s.history_rule_next=0
+   with patch('world.world_memory.time.time',return_value=10070):fresh=self.event()
+   self.assertIsNone(rules.tick(self.s,now=10070))
+   with patch('world.world_memory.time.time',return_value=10080):new=self.event()
+   result=rules.tick(self.s,now=10080)
+   self.assertEqual(result['trigger_events'],[fresh,new]);self.assertNotIn(old,result['trigger_events'])
+   self.assertTrue(any(line.startswith('WILD_OUTBREAK') for line in self.s._snapshot(self.peer).splitlines()))
+  finally:self.s.db=original;db.close()
+ def test_expired_backlog_and_receipt_failure_cannot_create_phantom_reaction(self):
+  from unittest.mock import patch
+  self.spec.update(every=2,within_seconds=60);self.install()
+  with patch('world.world_memory.time.time',return_value=10000):self.event();self.event()
+  self.assertIsNone(rules.tick(self.s,now=10100))
+  self.assertIsNone(shared_outbreaks.line(self.s,self.peer))
+  with patch('world.world_memory.time.time',return_value=10105):a=self.event();b=self.event()
+  original=self.s.memory.append
+  def append(kind,data):
+   if kind=='history_world_rule_result':raise ValueError('receipt unavailable')
+   return original(kind,data)
+  with patch.object(self.s.memory,'append',side_effect=append):self.assertEqual(rules.tick(self.s,now=10105)['status'],'uncommitted')
+  self.assertIsNone(shared_outbreaks.line(self.s,self.peer))
+  self.assertEqual(rules.tick(self.s,now=10110)['trigger_events'],[a,b])
+
+ def test_recent_window_rejects_invalid_configuration_and_future_events(self):
+  from unittest.mock import patch
+  for value in (True,0,59,604801):
+   d=deepcopy(self.spec);d.update(every=2,within_seconds=value)
+   with self.assertRaises(ValueError):rules.publish(self.s,self.actor,{},dict(id='bad',rule=json.dumps(d)))
+  d=deepcopy(self.spec);d['within_seconds']=60
+  with self.assertRaises(ValueError):rules.publish(self.s,self.actor,{},dict(id='bad',rule=json.dumps(d)))
+  self.spec.update(every=2,within_seconds=60);self.install()
+  with patch('world.world_memory.time.time',return_value=20000):self.event()
+  with patch('world.world_memory.time.time',return_value=10000):self.event()
+  self.assertIsNone(rules.tick(self.s,now=10000))
+  self.assertEqual(len(rules.discover(self.s)['rules'][0]['pending_matches']),1)
+
+ def test_only_explicitly_shared_own_race_finish_can_trigger_bulletin(self):
+  from unittest.mock import patch
+  from world import rydel_routes,actor_bulletins
+  self.spec.update(event='route_finish_shared',where={'course':'ridge_run'},tool='world.publish_bulletin',args=dict(pages='["Race news","A finish was shared"]',evidence='@trigger',hours=1))
+  self.install();c=self.peer;c['core_active_run']='a'*32
+  with self.s.db:self.s.db.execute('INSERT INTO race_results VALUES(?,?,?,?,?)',('race1','ridge_run',c['id'],19000,'[19000]'))
+  # A private finish is not world history and cannot trigger a reaction.
+  self.assertIsNone(rules.tick(self.s,now=10000))
+  with patch.object(self.s.core_story,'_place'),patch.object(self.s.link_protocol,'busy',return_value=False):
+   view=rydel_routes.panel(self.s,c,c['core_active_run'],'rydel','view')
+   def pick(panel,n):return rydel_routes.panel(self.s,c,c['core_active_run'],'rydel',f"pick:{panel['session']}:{panel['version']}:{n}")
+   preview=pick(view,3);self.assertIn('ALL players',preview['question'])
+   self.assertIsNone(rules.tick(self.s,now=10006))
+   pick(preview,1)
+  events=self.s.memory.history()['events'];event=next(e for e in events if e['event']=='route_finish_shared')
+  self.assertNotIn(c['id'],json.dumps(event));self.assertNotIn('run',event)
+  result=rules.tick(self.s,now=10012);self.assertEqual(result['trigger'],event['seq']);self.assertEqual(result['status'],'succeeded')
+  self.assertTrue(actor_bulletins.line(self.s,{'world_bulletin_capable':True}).startswith('WORLD_BULLETIN '))
+  receipt=next(e for e in self.s.memory.history()['events'] if e['event']=='character_bulletin_published')
+  self.assertEqual(receipt['source_events'],[event['seq']])
+ def test_shared_research_publication_can_trigger_character_report(self):
+  import time
+  from unittest.mock import patch
+  from world import shared_research,actor_bulletins
+  self.spec.update(event='shared_research_published',where={'dex':1,'flag':'seen'},tool='world.publish_bulletin',args=dict(pages='["Field news","Research was shared"]',evidence='@trigger',hours=1))
+  self.install(); c=self.peer
+  # Private, non-published information is not an event and cannot trigger.
+  with patch.object(shared_research,'names',return_value={1:'BULBASAUR'}):
+   self.assertTrue(any('#1 BULBASAUR' in line for line in shared_research.command(self.s,c,['unreported'])))
+  self.assertIsNone(rules.tick(self.s,now=10000))
+  c['presence']=dict(campaign_run='private-run',state=[1,4,5,5,0,0,1],state_time=time.monotonic())
+  with patch.object(self.s.link_protocol,'busy',return_value=False):
+   self.assertEqual(shared_research.handle(self.s,c,b'D REPORT 1 1'),'D ACK 1\n')
+  event=next(e for e in self.s.memory.history()['events'] if e['event']=='shared_research_published')
+  with patch.object(shared_research,'names',return_value={1:'BULBASAUR'}):
+   self.assertFalse(any('#1 BULBASAUR' in line for line in shared_research.command(self.s,c,['unreported'])))
+   self.assertTrue(any('#1 BULBASAUR: seen reported' in line for line in shared_research.command(self.s,c,['uncaught'])))
+  self.assertNotIn('private-run',json.dumps(event))
+  result=rules.tick(self.s,now=10006);self.assertEqual(result['trigger'],event['seq']);self.assertEqual(result['status'],'succeeded')
+  self.assertTrue(actor_bulletins.line(self.s,{'world_bulletin_capable':True}).startswith('WORLD_BULLETIN '))
+  self.assertIsNone(rules.tick(self.s,now=10100))
+ def test_research_reaction_requires_explicit_provenance_and_strict_filter(self):
+  self.spec.update(event='shared_research_published',where={'dex':1,'flag':'caught'})
+  for where in ({},{'dex':True,'flag':'seen'},{'dex':1,'flag':'owned'},{'dex':1,'flag':'seen','name':'x'}):
+   d=deepcopy(self.spec);d['where']=where
+   with self.assertRaises(ValueError):rules.publish(self.s,self.actor,{},dict(id='bad',rule=json.dumps(d)))
+  d=deepcopy(self.spec);d['every']=2
+  with self.assertRaises(ValueError):rules.publish(self.s,self.actor,{},dict(id='bad',rule=json.dumps(d)))
+  self.install()
+  with self.s.db:self.s.memory.append('shared_research_published',dict(entries=[[1,3]],basis='unverified',publication='explicit_current_dex_snapshot'))
+  self.assertIsNone(rules.tick(self.s,now=10000))
+ def test_unconfirmed_race_claim_is_not_a_trigger(self):
+  self.spec.update(event='route_finish_shared',where={},tool='world.publish_bulletin',args=dict(pages='["Race news","A finish was shared"]',evidence='@trigger',hours=1));self.install()
+  with self.s.db:self.s.memory.append('route_finish_shared',dict(course='ridge_run',basis='unverified',publication='anonymous_public_finish'))
+  self.assertIsNone(rules.tick(self.s,now=10000))
+
  def test_actual_future_event_effect_native_wire_and_no_replay(self):
   old=self.event();self.install();self.assertIsNone(rules.tick(self.s,now=10000));self.assertIsNone(shared_outbreaks.line(self.s,self.peer))
   seq=self.event();out=rules.tick(self.s,now=10006)
@@ -78,6 +177,70 @@ class HistoryRuleTests(unittest.TestCase):
   self.assertIsNone(shared_outbreaks.line(self.s,self.peer));self.assertEqual(self.s.revision,before)
   self.assertEqual(self.s.db.execute('SELECT used FROM history_world_rules').fetchone()[0],0)
   self.assertEqual(rules.tick(self.s,now=10006)['trigger'],seq)
+ def test_public_event_can_publish_attributed_tv_bulletin(self):
+  from world.actor_bulletins import line
+  self.spec.update(tool='world.publish_bulletin',args=dict(pages=json.dumps(['News from the field','A visitor spoke today']),evidence='@trigger',hours=1))
+  self.install(); seq=self.event(); out=rules.tick(self.s,now=10000)
+  self.assertEqual(out['status'],'succeeded'); self.assertEqual(out['trigger'],seq)
+  published=next(e for e in self.s.memory.history()['events'] if e['event']=='character_bulletin_published')
+  self.assertEqual(published['source_events'],[seq]); self.assertEqual(published['character_id'],self.actor)
+  self.assertTrue(line(self.s,{'world_bulletin_capable':True}).startswith('WORLD_BULLETIN '))
+  self.assertIsNone(line(self.s,{'world_bulletin_capable':False}))
+  self.assertIsNone(rules.tick(self.s,now=10100))
+ def test_bulletin_and_causal_receipt_roll_back_together(self):
+  from unittest.mock import patch
+  from world.actor_bulletins import line
+  self.spec.update(tool='world.publish_bulletin',args=dict(pages='["News","Today"]',evidence='@trigger',hours=1));self.install();seq=self.event()
+  original=self.s.memory.append
+  def append(kind,data):
+   if kind=='history_world_rule_result':raise ValueError('receipt unavailable')
+   return original(kind,data)
+  with patch.object(self.s.memory,'append',side_effect=append):self.assertEqual(rules.tick(self.s,now=10000)['status'],'uncommitted')
+  self.assertIsNone(line(self.s,{'world_bulletin_capable':True}))
+  self.assertEqual(rules.tick(self.s,now=10006)['trigger'],seq)
+  self.assertTrue(line(self.s,{'world_bulletin_capable':True}).startswith('WORLD_BULLETIN '))
+ def test_bulletin_cannot_select_or_interpolate_evidence(self):
+  self.spec.update(tool='world.publish_bulletin',args=dict(pages='["News","Today"]',evidence='[1]',hours=1))
+  with self.assertRaises(ValueError):rules.publish(self.s,self.actor,{},dict(id='bad',rule=json.dumps(self.spec)))
+  self.spec['args']['evidence']='@trigger';self.spec['args']['pages']='["{event.text}","Today"]'
+  self.install();self.event();self.assertEqual(rules.tick(self.s,now=10000)['status'],'blocked')
+ def test_repeated_events_produce_a_real_outbreak_and_persist_across_restart(self):
+  self.spec['every']=3;self.install();a=self.event();self.event('Different');b=self.event()
+  self.assertIsNone(rules.tick(self.s,now=10000));self.assertIsNone(shared_outbreaks.line(self.s,self.peer))
+  self.assertEqual(rules.discover(self.s)['rules'][0]['pending_matches'],[a,b])
+  db=sqlite3.connect(':memory:');self.s.db.backup(db);old=self.s.db;self.s.db=db
+  try:
+   self.s.history_rule_next=0;c=self.event();out=rules.tick(self.s,now=10006)
+   self.assertEqual(out['trigger_events'],[a,b,c]);self.assertEqual(out['status'],'succeeded')
+   self.assertTrue(shared_outbreaks.line(self.s,self.peer).startswith('WILD_OUTBREAK'))
+   receipt=next(e for e in self.s.memory.history()['events'] if e['event']=='history_world_rule_result')
+   self.assertEqual(receipt['trigger_events'],[a,b,c]);self.assertIsNone(rules.tick(self.s,now=10100))
+  finally:self.s.db=old;db.close()
+ def test_threshold_receipt_failure_preserves_progress_and_retries(self):
+  from unittest.mock import patch
+  self.spec['every']=2;self.install();a=self.event();self.assertIsNone(rules.tick(self.s,now=10000));b=self.event()
+  original=self.s.memory.append
+  def append(kind,data):
+   if kind=='history_world_rule_result':raise ValueError('receipt unavailable')
+   return original(kind,data)
+  with patch.object(self.s.memory,'append',side_effect=append):self.assertEqual(rules.tick(self.s,now=10006)['status'],'uncommitted')
+  self.assertIsNone(shared_outbreaks.line(self.s,self.peer))
+  out=rules.tick(self.s,now=10012);self.assertEqual(out['trigger_events'],[a,b]);self.assertEqual(out['status'],'succeeded')
+ def test_threshold_can_publish_bulletin_with_final_event_source(self):
+  self.spec.update(every=2,tool='world.publish_bulletin',args=dict(pages='["News","Today"]',evidence='@trigger',hours=1))
+  self.install();a=self.event();b=self.event();result=rules.tick(self.s,now=10000)
+  self.assertEqual(result['trigger_events'],[a,b]);self.assertEqual(result['status'],'succeeded')
+  event=next(e for e in self.s.memory.history()['events'] if e['event']=='character_bulletin_published')
+  self.assertEqual(event['source_events'],[b])
+
+ def test_repeated_threshold_batches_and_validation(self):
+  for value in (0,13,True,'3'):
+   self.spec['every']=value
+   with self.assertRaises(ValueError):rules.publish(self.s,self.actor,{},dict(id='bad',rule=json.dumps(self.spec)))
+  self.spec['every']=2;self.install();a=self.event();b=self.event();c=self.event();d=self.event()
+  self.assertEqual(rules.tick(self.s,now=10000)['trigger_events'],[a,b])
+  self.assertEqual(rules.tick(self.s,now=10066)['trigger_events'],[c,d])
+
  def test_owner_pause_all_and_bounded_scan(self):
   self.install()
   for i in range(70):self.event(str(i))

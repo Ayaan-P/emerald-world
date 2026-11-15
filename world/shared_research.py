@@ -48,7 +48,24 @@ def handle(server,conn,raw):
 def command(server,conn,words):
     from .guilds import GuildError
     entries=catalog(server)['entries'];labels=names()
-    if not words:return ['Shared research: %d reported seen / %d reported caught.'%(sum(r['seen'] for r in entries),sum(r['caught'] for r in entries)), 'Search: /guild research NAME or National Dex number. List: /guild research page N.', 'Native /research explains one-time publication. Personal Dex unchanged.']
+    if not words:return ['Shared research: %d reported seen / %d reported caught.'%(sum(r['seen'] for r in entries),sum(r['caught'] for r in entries)), 'Search: /guild research NAME or National Dex number. List: /guild research page N.', 'Explore gaps: /guild research unreported [page] or uncaught [page].', 'Native /research explains one-time publication. Personal Dex unchanged.']
+    # Research gaps are relative to this server's voluntarily published aggregate,
+    # not a player's personal Dex, proof of availability, or a complete National Dex.
+    if words[0].lower() in ('unreported', 'uncaught'):
+        if len(words)>2 or (len(words)==2 and (not words[1].isdigit() or len(words[1])>3)):
+            raise GuildError('Use /guild research unreported [page] or uncaught [page]')
+        page=int(words[1]) if len(words)==2 else 0
+        flags={row['dex']:row for row in entries}
+        mode=words[0].lower()
+        candidates=[dex for dex in sorted(labels) if 1<=dex<=MAX_DEX and
+                    (dex not in flags if mode=='unreported' else not flags.get(dex,{}).get('caught',False))]
+        selected=candidates[page*8:page*8+8] if page<256 else []
+        header='No public report' if mode=='unreported' else 'No public caught report'
+        lines=[f'{header}: {len(candidates)} known catalog entries. Page {page}.']
+        lines += [f"#{dex} {labels[dex]}: " + ('seen reported' if flags.get(dex,{}).get('seen') else 'not reported') for dex in selected]
+        if not selected: lines.append('No entries on this page.')
+        lines.append('Voluntary reports only; not proof of availability or personal progress.')
+        return lines
     if len(words)==2 and words[0]=='page' and words[1].isdigit():
         page=int(words[1]);rows=entries[page*8:page*8+8] if page<256 else []
     elif len(words)==1:

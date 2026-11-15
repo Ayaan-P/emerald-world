@@ -33,3 +33,31 @@ All rule definitions/results are public fictional world-authoring data. They con
 ## Checks still required
 
 Component tests cover real capability registration, player speech, native snapshot output, filtering/private-kind exclusion, unrelated public backlog, ownership conflict, recurring budget/restart, retirement/pause, fairness and transactional failure recovery. Model decisions in tests are scripted inputs. No live model session, full linked native build or rendered multiplayer playtest is claimed. Maya owns integration and final QA.
+
+## History-driven TV reports
+
+A reaction may call `world.publish_bulletin` with the normal literal `pages` JSON and `hours`, and `evidence` set to `@trigger`. At execution only, the authority replaces that marker with the matching committed public event ID, then calls the existing bulletin publisher. Pages remain fixed, attributed character-authored text; event text is never interpolated, interpreted, or executed. As with other rules, the actor authors the interpretation and must choose appropriate event filters: a report is not independent verification of its claims. Successful output is available through the existing optional compatible TV path, not proof anyone watched. Existing rule cooldown, attempt limits, atomic receipt, ownership, retirement and pause apply. No rule or broadcast is installed automatically.
+
+## Responding to repeated activity
+
+A reaction may specify `every` from 1 to 12 (default 1). It accumulates that many future matching public records, then runs its existing weather, encounter, fishing or market operation once. For example, an author can configure an outbreak after three qualifying public discoveries. Matches are records, not distinct people, proven catches, observations or unique events beyond their sequence IDs; authors should choose filters accordingly. There is no implicit expiry window, and delayed processing may involve old activity. Each event is consumed at most once per rule; the receipt cites every contributing public sequence. Partial progress and cursors survive restart. The existing cooldown and hourly attempt budget apply after each attempt, including failures; no backlog is scanned while those limits block the rule. Pausing retains progress but prevents execution, and paused identities cannot be silently re-enabled. Nothing is installed by default.
+
+### Recent activity (optional)
+
+A reaction with `every` of at least 2 may set `within_seconds` from 60 to 604800. Only matching records whose authority-recorded timestamps are within that interval of the processing time count; partial matches expire even across restarts. Events delayed by a cooldown or backlog can expire before processing. Future or malformed timestamps are ignored rather than treated as recent. This measures record times, not verified occurrence times, unique trainers, catches or causation. Without the option, existing persistent threshold behavior is unchanged.
+
+### Voluntarily shared race finishes
+
+`route_finish_shared` can trigger a reaction only after a player explicitly publishes their own completed race record through Rydel's board. The public record is anonymous and remains client-attested recreational timing, not verified performance or proof of a winner. A rule may filter the course, but it cannot read private finishes, infer identities, declare a ranking, or award a player. Nothing is shared or installed by default.
+
+## Reacting to shared Pokédex research
+
+`shared_research_published` uses `where` with exactly `dex` (National Dex
+number) and `flag` (`seen` or `caught`). It matches the first newly added
+flag in an explicitly published anonymous aggregate snapshot. Existing flags,
+private Dex activity, re-publication and malformed or differently sourced
+events do not trigger it. Since each aggregate flag can be added only once,
+`every` must be 1. Authors may use a matching event as evidence for an
+attributed bulletin or invoke another existing reviewed operation; no rule is
+created automatically. A report is a player-provided claim, not proof of a
+capture, current ownership, location or cause of a world change.
