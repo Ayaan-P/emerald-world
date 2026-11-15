@@ -85,3 +85,11 @@ An author can optionally request `room_loops: 1` in the same constraints used by
 `world.build_adventure` accepts optional `habitats`: a list of `{place, profile, rate, criteria}`. Each place index can have one independently composed encounter table. Authors can instead supply `slots` containing twelve explicit `[species, level]` pairs, allowing distinctive authored wildlife. Use exactly one of `criteria` and `slots`. Criteria use the existing `world.compose_habitat` species/type/generation/stat/level/seed rules. The existing Expansion wildlife compiler validates the chosen species, profile and encounter rate; a place without a habitat remains a plain cave. The resulting immutable version-10 cave retains its wildlife in the archive and uses the existing REGION1/CAVELINK1 compatibility checks. Unsupported clients cannot be assumed to traverse it. A complex authored document may require the existing blueprint facility because normal plan steps remain size-bounded.
 
 This gives adventures actual configured encounter tables, not sightings, catches or simulated population changes. It does not affect personal parties, saves or existing maps. Authority tests do not prove a rendered or multiplayer gameplay session.
+
+### Named places
+
+`world.build_adventure` may include `place_names`, one distinct visible name per generated place, instead of the default numbered label. These names appear through the existing region selection and linked passage metadata. Names are literal bounded text, not dynamic narration. Omission keeps old deterministic results and labels; an invalid list fails before any place is opened. The same document and author still resume the same places.
+
+### Varied connected cave layouts
+
+`place_styles` is an optional constraints list with one style (`rooms`, `rounded`, `organic`, or `maze`) per place. It allows a single generated network to combine distinct cave geometries, including in `world.build_adventure` alongside named places and habitats. Omitting it retains the prior single-style deterministic output. The same connectivity, geometry, size and admission guards apply. These are existing geometry styles, not new tiles or outdoor assets.

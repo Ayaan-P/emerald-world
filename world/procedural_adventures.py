@@ -64,9 +64,14 @@ def start(server,actor,row,args):
     if set(args)!={'document'} or type(args['document']) is not str or len(args['document'])>6000:
         raise ValueError('Supply bounded authored adventure JSON')
     doc=json.loads(args['document'])
-    if type(doc) is not dict or not {'label','constraints','trainers'}<=set(doc) or set(doc)-{'label','constraints','trainers','campaign','mechanisms','habitats'}:
+    if type(doc) is not dict or not {'label','constraints','trainers'}<=set(doc) or set(doc)-{'label','constraints','trainers','campaign','mechanisms','habitats','place_names'}:
         raise ValueError('Adventure requires label, procedural constraints and trainers; campaign is optional')
     layout=generate(doc['label'],encode(doc['constraints']))
+    if 'place_names' in doc:
+        names=doc['place_names']
+        if type(names) is not list or len(names)!=len(layout['places']) or any(type(n) is not str or not 1<=len(n)<=20 or not n.strip() or any(not(c.isascii() and (c.isalnum() or c in " .,'!?-")) for c in n) for n in names) or len({n.casefold().strip() for n in names})!=len(names):
+            raise ValueError('Supply one distinct 1..20 character name per generated place')
+        for place,name in zip(layout['places'],names):place['label']=name
     habitats=doc.get('habitats',[])
     if type(habitats) is not list or len(habitats)>len(layout['places']):raise ValueError('Use at most one habitat per place')
     from .habitat_composer import compose
