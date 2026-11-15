@@ -56,6 +56,31 @@ class HistoryRuleTests(unittest.TestCase):
   self.assertIsNone(rules.tick(self.s,now=10000))
   self.assertEqual(len(rules.discover(self.s)['rules'][0]['pending_matches']),1)
 
+ def test_only_explicitly_shared_own_race_finish_can_trigger_bulletin(self):
+  from unittest.mock import patch
+  from world import rydel_routes,actor_bulletins
+  self.spec.update(event='route_finish_shared',where={'course':'ridge_run'},tool='world.publish_bulletin',args=dict(pages='["Race news","A finish was shared"]',evidence='@trigger',hours=1))
+  self.install();c=self.peer;c['core_active_run']='a'*32
+  with self.s.db:self.s.db.execute('INSERT INTO race_results VALUES(?,?,?,?,?)',('race1','ridge_run',c['id'],19000,'[19000]'))
+  # A private finish is not world history and cannot trigger a reaction.
+  self.assertIsNone(rules.tick(self.s,now=10000))
+  with patch.object(self.s.core_story,'_place'),patch.object(self.s.link_protocol,'busy',return_value=False):
+   view=rydel_routes.panel(self.s,c,c['core_active_run'],'rydel','view')
+   def pick(panel,n):return rydel_routes.panel(self.s,c,c['core_active_run'],'rydel',f"pick:{panel['session']}:{panel['version']}:{n}")
+   preview=pick(view,3);self.assertIn('ALL players',preview['question'])
+   self.assertIsNone(rules.tick(self.s,now=10006))
+   pick(preview,1)
+  events=self.s.memory.history()['events'];event=next(e for e in events if e['event']=='route_finish_shared')
+  self.assertNotIn(c['id'],json.dumps(event));self.assertNotIn('run',event)
+  result=rules.tick(self.s,now=10012);self.assertEqual(result['trigger'],event['seq']);self.assertEqual(result['status'],'succeeded')
+  self.assertTrue(actor_bulletins.line(self.s,{'world_bulletin_capable':True}).startswith('WORLD_BULLETIN '))
+  receipt=next(e for e in self.s.memory.history()['events'] if e['event']=='character_bulletin_published')
+  self.assertEqual(receipt['source_events'],[event['seq']])
+ def test_unconfirmed_race_claim_is_not_a_trigger(self):
+  self.spec.update(event='route_finish_shared',where={},tool='world.publish_bulletin',args=dict(pages='["Race news","A finish was shared"]',evidence='@trigger',hours=1));self.install()
+  with self.s.db:self.s.memory.append('route_finish_shared',dict(course='ridge_run',basis='unverified',publication='anonymous_public_finish'))
+  self.assertIsNone(rules.tick(self.s,now=10000))
+
  def test_actual_future_event_effect_native_wire_and_no_replay(self):
   old=self.event();self.install();self.assertIsNone(rules.tick(self.s,now=10000));self.assertIsNone(shared_outbreaks.line(self.s,self.peer))
   seq=self.event();out=rules.tick(self.s,now=10006)
