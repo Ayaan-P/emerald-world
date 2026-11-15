@@ -36,7 +36,7 @@ def publish(server,change):
     archive=server.db.execute('SELECT template FROM generated_area_archive WHERE identity=?',(study['revision'],)).fetchone()
     if not server.archive_generated_areas or not archive:raise ValueError('study needs an existing immutable archived map')
     cave=SharedCave(archive[0])
-    if cave.version!=16:raise ValueError('study requires supported plain XL survey geometry')
+    if cave.version not in (16,17):raise ValueError('study requires supported shared XL survey geometry')
     if any(not cave.walkable(site['x'],site['y']) for site in study['sites']):
         raise ValueError('study site is not walkable in the exact archived map')
     place=server.memory.place(study['revision'])
