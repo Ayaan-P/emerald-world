@@ -330,6 +330,7 @@ class WorldMemory:
                     revision=revision,label=row[1],place_id=row[2],template_version=cave.version,
                     active=bool(server.shared_cave and server.shared_cave.identity==revision),
                     side=cave.side,rows=[line.decode('ascii') for line in cave._rows],
+                    palette_rows=[cave.palette[i:i+cave.side].decode('ascii') for i in range(0,len(cave.palette),cave.side)] if cave.version==17 else None,
                     terrain_revision=terrain[0] if terrain else 0,terrain_overrides=overrides,
                     layout='saved_base_with_explicit_terrain_overrides',
                     history_request=dict(command='world_history',place_id=row[2],after=0,limit=32),
