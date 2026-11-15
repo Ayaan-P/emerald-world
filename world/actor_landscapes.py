@@ -8,8 +8,9 @@ def create(server, actor, row, args):
     from .xl_wilds import encode
     from .route_landscape import compile_plan
     from .shared_cave import SharedCave
-    if not {'label', 'layout', 'blueprint'} <= set(args) or set(args)-{'label','layout','blueprint','paint','biome','seed','ponds','trail','trail_width'}:
+    if not {'label', 'layout', 'blueprint'} <= set(args) or set(args)-{'label','layout','blueprint','paint','biome','seed','ponds','trail','trail_width','_network'}:
         raise ValueError('Supply label, layout and blueprint')
+    network = args['layout'] == 'clearings' and args.get('trail') is not None and bool(args.get('_network'))
     label = args['label']
     if type(label) is not str or not 1 <= len(label) <= 20 or not label.strip() or any(not(c.isascii() and (c.isalnum() or c in " .,'!?-")) for c in label):
         raise ValueError('Use a literal 1..20 character label')
@@ -43,13 +44,22 @@ def create(server, actor, row, args):
         report.update(biome=args['biome'], biome_seed=args['seed'])
         if 'ponds' in args:
             from .shared_outdoor_palette import add_ponds
-            blob, made=add_ponds(blob,args['seed'],args['ponds'])
+            protected=[(site['x'],site['y']) for site in generated['landmarks']] if network else ()
+            blob, made=add_ponds(blob,args['seed'],args['ponds'],protected_points=protected)
             report.update(ponds_requested=args['ponds'], ponds_created=made)
     if 'trail' in args or 'trail_width' in args:
         if 'biome' not in args or 'trail' not in args or 'trail_width' not in args:
             raise ValueError('Trail requires biome, trail terrain and width')
         from .shared_outdoor_palette import add_trail
-        blob, steps, changed = add_trail(blob, args['trail'], args['trail_width'])
+        if network:
+            sites={site['id']:(site['x'],site['y']) for site in generated['landmarks']}
+            steps=changed=0
+            for edge in generated['routes']:
+                blob,n,c=add_trail(blob,args['trail'],args['trail_width'],endpoints=(sites[edge['source']],sites[edge['target']]))
+                steps+=n; changed+=c
+            report['marked_routes']=len(generated['routes'])
+        else:
+            blob, steps, changed = add_trail(blob, args['trail'], args['trail_width'])
         report.update(trail=args['trail'], trail_width=args['trail_width'],
                       trail_steps=steps, trail_changed_tiles=changed)
     cave = SharedCave(blob)
@@ -81,3 +91,9 @@ def create(server, actor, row, args):
         expected_sequence=server.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0],
         history_evidence=list(row['evidence']), actor_tool_commit=persist)
     return Committed(committed[0], result)
+
+
+def create_network(server, actor, row, args):
+    if args.get('layout') != 'clearings':
+        raise ValueError('Route network requires clearings layout')
+    return create(server, actor, row, dict(args, _network=True))

@@ -50,7 +50,7 @@ def paint_biome(proposal, biome, seed):
     return MAGIC + bytes(cells)
 
 
-def add_ponds(blob, seed, count):
+def add_ponds(blob, seed, count, *, protected_points=()):
     """Add bounded impassable ponds without disconnecting any walkable tile.
 
     A requested count is a target, not a promise: narrow geometry may not fit.
@@ -64,7 +64,7 @@ def add_ponds(blob, seed, count):
     if type(count) is not int or not 0 <= count <= 8:
         raise ValueError('pond count must be between 0 and 8')
     cells=bytearray(blob[8:]); rng=random.Random(seed ^ 0x504f4e44); made=0
-    protected={(1,1),(125,124),(125,125)}
+    protected={(1,1),(125,124),(125,125)} | set(protected_points)
     for _ in range(count*24):
         if made == count: break
         cx,cy=rng.randrange(5,122),rng.randrange(5,122)
@@ -83,7 +83,7 @@ def add_ponds(blob, seed, count):
         cells=trial;made+=1
     return MAGIC+bytes(cells),made
 
-def add_trail(blob, terrain, width):
+def add_trail(blob, terrain, width, *, endpoints=None):
     """Mark a walkable route through the exact saved terrain, avoiding obstacles.
 
     Uses existing ordinary grass or sand tiles, not a new road asset. Collision,
@@ -96,7 +96,10 @@ def add_trail(blob, terrain, width):
         raise ValueError('trail terrain must be grass or sand')
     if type(width) is not int or width not in (1, 3):
         raise ValueError('trail width must be 1 or 3')
-    cells = bytearray(blob[8:]); start = (1, 1); end = (125, 125)
+    cells = bytearray(blob[8:]); start, end = endpoints or ((1, 1), (125, 125))
+    if any(type(p) not in (list, tuple) or len(p)!=2 or any(type(v) is not int or not 1<=v<=125 for v in p) for p in (start,end)):
+        raise ValueError('invalid trail endpoints')
+    start,end=tuple(start),tuple(end)
     blocked = (ord('#'), ord('r'))
     if cells[start[1]*SIDE+start[0]] in blocked or cells[end[1]*SIDE+end[0]] in blocked:
         raise ValueError('trail endpoints are blocked')
