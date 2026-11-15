@@ -76,6 +76,32 @@ class HistoryRuleTests(unittest.TestCase):
   self.assertTrue(actor_bulletins.line(self.s,{'world_bulletin_capable':True}).startswith('WORLD_BULLETIN '))
   receipt=next(e for e in self.s.memory.history()['events'] if e['event']=='character_bulletin_published')
   self.assertEqual(receipt['source_events'],[event['seq']])
+ def test_shared_research_publication_can_trigger_character_report(self):
+  import time
+  from unittest.mock import patch
+  from world import shared_research,actor_bulletins
+  self.spec.update(event='shared_research_published',where={'dex':1,'flag':'seen'},tool='world.publish_bulletin',args=dict(pages='["Field news","Research was shared"]',evidence='@trigger',hours=1))
+  self.install(); c=self.peer
+  # Private, non-published information is not an event and cannot trigger.
+  self.assertIsNone(rules.tick(self.s,now=10000))
+  c['presence']=dict(campaign_run='private-run',state=[1,4,5,5,0,0,1],state_time=time.monotonic())
+  with patch.object(self.s.link_protocol,'busy',return_value=False):
+   self.assertEqual(shared_research.handle(self.s,c,b'D REPORT 1 1'),'D ACK 1\n')
+  event=next(e for e in self.s.memory.history()['events'] if e['event']=='shared_research_published')
+  self.assertNotIn('private-run',json.dumps(event))
+  result=rules.tick(self.s,now=10006);self.assertEqual(result['trigger'],event['seq']);self.assertEqual(result['status'],'succeeded')
+  self.assertTrue(actor_bulletins.line(self.s,{'world_bulletin_capable':True}).startswith('WORLD_BULLETIN '))
+  self.assertIsNone(rules.tick(self.s,now=10100))
+ def test_research_reaction_requires_explicit_provenance_and_strict_filter(self):
+  self.spec.update(event='shared_research_published',where={'dex':1,'flag':'caught'})
+  for where in ({},{'dex':True,'flag':'seen'},{'dex':1,'flag':'owned'},{'dex':1,'flag':'seen','name':'x'}):
+   d=deepcopy(self.spec);d['where']=where
+   with self.assertRaises(ValueError):rules.publish(self.s,self.actor,{},dict(id='bad',rule=json.dumps(d)))
+  d=deepcopy(self.spec);d['every']=2
+  with self.assertRaises(ValueError):rules.publish(self.s,self.actor,{},dict(id='bad',rule=json.dumps(d)))
+  self.install()
+  with self.s.db:self.s.memory.append('shared_research_published',dict(entries=[[1,3]],basis='unverified',publication='explicit_current_dex_snapshot'))
+  self.assertIsNone(rules.tick(self.s,now=10000))
  def test_unconfirmed_race_claim_is_not_a_trigger(self):
   self.spec.update(event='route_finish_shared',where={},tool='world.publish_bulletin',args=dict(pages='["Race news","A finish was shared"]',evidence='@trigger',hours=1));self.install()
   with self.s.db:self.s.memory.append('route_finish_shared',dict(course='ridge_run',basis='unverified',publication='anonymous_public_finish'))

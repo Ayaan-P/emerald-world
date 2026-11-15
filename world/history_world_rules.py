@@ -2,7 +2,7 @@
 import json,re,time,sqlite3,math
 
 TOOLS=('world.publish_bulletin', 'world.arrange_market_shelf', 'world.configure_outbreak', 'world.configure_fishing', 'world.set_weather')
-EVENTS=('route_finish_shared', 'hoenn_market_purchase_reported', 'canonical_trainer_result', 'landmark_discovery_shared', 'public_story_choice_committed', 'character_journey_arrived', 'player_addressed_character', 'spatial_public_speech', 'dewford_trend_shared', 'safari_feeder_deposit_shared')
+EVENTS=('shared_research_published', 'route_finish_shared', 'hoenn_market_purchase_reported', 'canonical_trainer_result', 'landmark_discovery_shared', 'public_story_choice_committed', 'character_journey_arrived', 'player_addressed_character', 'spatial_public_speech', 'dewford_trend_shared', 'safari_feeder_deposit_shared')
 
 
 def setup(db):
@@ -21,6 +21,11 @@ def publish(server,actor,row,args):
  if 'within_seconds' in d and (type(d['within_seconds']) is not int or not 60<=d['within_seconds']<=604800 or d.get('every',1)<2):raise ValueError('within_seconds requires every >=2 and 60..604800 seconds')
  if d['event'] not in EVENTS or d['tool'] not in TOOLS:raise ValueError('Use a discovered public trigger and reviewed world operation')
  if type(d['where']) is not dict or len(d['where'])>4 or any(type(k) is not str or not re.fullmatch('[a-z][a-z0-9_]{0,63}',k) or type(v) not in (str,int,bool) or (type(v) is str and len(v)>100) for k,v in d['where'].items()):raise ValueError('Use up to four literal top-level equality filters')
+ if d['event']=='shared_research_published':
+  from .shared_research import MAX_DEX
+  w=d['where']
+  if set(w)!={'dex','flag'} or type(w['dex']) is not int or not 1<=w['dex']<=MAX_DEX or w['flag'] not in ('seen','caught'):raise ValueError('Research trigger requires a National Dex number and seen or caught flag')
+  if d.get('every',1)!=1:raise ValueError('A public aggregate flag is added only once; research reactions require every=1')
  if type(d['args']) is not dict or any(type(k) is not str or type(v) not in (str,int,bool) for k,v in d['args'].items()):raise ValueError('Operation arguments are fixed literal scalars, never event interpolation')
  if type(d['cooldown']) is not int or not 60<=d['cooldown']<=86400 or type(d['per_hour']) is not int or not 1<=d['per_hour']<=12:raise ValueError('Cooldown 60..86400 seconds and 1..12 attempts per rolling hour')
  from .actor_runtime import CAPABILITIES,actor_records
@@ -49,7 +54,7 @@ def pause(server,actor,row,args):
 
 def discover(server):
  setup(server.db)
- return dict(triggers=list(EVENTS),operations=list(TOOLS),rules=[dict(actor=a,id=k,definition=json.loads(d),cursor=c,enabled=bool(e),used=u,window=w,next_at=n,pending_matches=json.loads(p or '[]')) for a,k,d,c,e,w,u,n,p in server.db.execute('SELECT r.*,p.sequences FROM history_world_rules r LEFT JOIN history_world_rule_progress p ON p.actor=r.actor AND p.id=r.id ORDER BY r.enabled DESC,r.actor,r.id LIMIT 128')],limits='Future public events only. Fixed arguments, no code or event-text execution. Bulletin evidence @trigger binds only the committed event ID. Max two active rules per actor and 32 total; each persists across plans, but actor retirement disables it. Attempts, not successes, consume the recurring budget. Native guards still apply.')
+ return dict(triggers=list(EVENTS),research_filter='For shared_research_published use where: {dex: National Dex number, flag: seen or caught}; only the first newly published aggregate flag can trigger.',operations=list(TOOLS),rules=[dict(actor=a,id=k,definition=json.loads(d),cursor=c,enabled=bool(e),used=u,window=w,next_at=n,pending_matches=json.loads(p or '[]')) for a,k,d,c,e,w,u,n,p in server.db.execute('SELECT r.*,p.sequences FROM history_world_rules r LEFT JOIN history_world_rule_progress p ON p.actor=r.actor AND p.id=r.id ORDER BY r.enabled DESC,r.actor,r.id LIMIT 128')],limits='Future public events only. Fixed arguments, no code or event-text execution. Bulletin evidence @trigger binds only the committed event ID. Max two active rules per actor and 32 total; each persists across plans, but actor retirement disables it. Attempts, not successes, consume the recurring budget. Native guards still apply.')
 
 
 
@@ -82,7 +87,19 @@ def _tick(server,*,now=None):
   event=None
   for candidate in page['events']:
    if candidate.get('event')=='route_finish_shared' and (candidate.get('basis')!='explicit_own_committed_race_record' or candidate.get('publication')!='anonymous_public_finish'):continue
-   if candidate.get('event')==d['event'] and all(type(candidate.get(k)) is type(v) and candidate.get(k)==v for k,v in d['where'].items()):
+   matches = all(type(candidate.get(k)) is type(v) and candidate.get(k)==v for k,v in d['where'].items())
+   if candidate.get('event')=='shared_research_published':
+    from .shared_research import BASIS,MAX_DEX
+    entries=candidate.get('entries')
+    w=d['where']; mask=1 if w.get('flag')=='seen' else 2
+    matches=(d['event']=='shared_research_published' and candidate.get('basis')==BASIS
+             and candidate.get('publication')=='explicit_current_dex_snapshot'
+             and type(entries) is list and 1<=len(entries)<=MAX_DEX
+             and all(type(e) is list and len(e)==2 and type(e[0]) is int and 1<=e[0]<=MAX_DEX
+                     and type(e[1]) is int and 1<=e[1]<=3 for e in entries)
+             and len({e[0] for e in entries})==len(entries)
+             and any(e[0]==w.get('dex') and e[1]&mask for e in entries))
+   if candidate.get('event')==d['event'] and matches:
     stamp=candidate.get('recorded_at')
     if interval is not None and (type(stamp) not in (int,float) or not math.isfinite(stamp) or not 0<=now-stamp<=interval):continue
     sequences.append([candidate['seq'],stamp] if interval is not None else candidate['seq'])

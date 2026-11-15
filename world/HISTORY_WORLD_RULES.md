@@ -49,3 +49,15 @@ A reaction with `every` of at least 2 may set `within_seconds` from 60 to 604800
 ### Voluntarily shared race finishes
 
 `route_finish_shared` can trigger a reaction only after a player explicitly publishes their own completed race record through Rydel's board. The public record is anonymous and remains client-attested recreational timing, not verified performance or proof of a winner. A rule may filter the course, but it cannot read private finishes, infer identities, declare a ranking, or award a player. Nothing is shared or installed by default.
+
+## Reacting to shared Pokédex research
+
+`shared_research_published` uses `where` with exactly `dex` (National Dex
+number) and `flag` (`seen` or `caught`). It matches the first newly added
+flag in an explicitly published anonymous aggregate snapshot. Existing flags,
+private Dex activity, re-publication and malformed or differently sourced
+events do not trigger it. Since each aggregate flag can be added only once,
+`every` must be 1. Authors may use a matching event as evidence for an
+attributed bulletin or invoke another existing reviewed operation; no rule is
+created automatically. A report is a player-provided claim, not proof of a
+capture, current ownership, location or cause of a world change.
