@@ -105,6 +105,43 @@ class HistoryRuleTests(unittest.TestCase):
   with self.assertRaises(ValueError):rules.publish(self.s,self.actor,{},dict(id='bad',rule=json.dumps(self.spec)))
   self.spec['args']['evidence']='@trigger';self.spec['args']['pages']='["{event.text}","Today"]'
   self.install();self.event();self.assertEqual(rules.tick(self.s,now=10000)['status'],'blocked')
+ def test_repeated_events_produce_a_real_outbreak_and_persist_across_restart(self):
+  self.spec['every']=3;self.install();a=self.event();self.event('Different');b=self.event()
+  self.assertIsNone(rules.tick(self.s,now=10000));self.assertIsNone(shared_outbreaks.line(self.s,self.peer))
+  self.assertEqual(rules.discover(self.s)['rules'][0]['pending_matches'],[a,b])
+  db=sqlite3.connect(':memory:');self.s.db.backup(db);old=self.s.db;self.s.db=db
+  try:
+   self.s.history_rule_next=0;c=self.event();out=rules.tick(self.s,now=10006)
+   self.assertEqual(out['trigger_events'],[a,b,c]);self.assertEqual(out['status'],'succeeded')
+   self.assertTrue(shared_outbreaks.line(self.s,self.peer).startswith('WILD_OUTBREAK'))
+   receipt=next(e for e in self.s.memory.history()['events'] if e['event']=='history_world_rule_result')
+   self.assertEqual(receipt['trigger_events'],[a,b,c]);self.assertIsNone(rules.tick(self.s,now=10100))
+  finally:self.s.db=old;db.close()
+ def test_threshold_receipt_failure_preserves_progress_and_retries(self):
+  from unittest.mock import patch
+  self.spec['every']=2;self.install();a=self.event();self.assertIsNone(rules.tick(self.s,now=10000));b=self.event()
+  original=self.s.memory.append
+  def append(kind,data):
+   if kind=='history_world_rule_result':raise ValueError('receipt unavailable')
+   return original(kind,data)
+  with patch.object(self.s.memory,'append',side_effect=append):self.assertEqual(rules.tick(self.s,now=10006)['status'],'uncommitted')
+  self.assertIsNone(shared_outbreaks.line(self.s,self.peer))
+  out=rules.tick(self.s,now=10012);self.assertEqual(out['trigger_events'],[a,b]);self.assertEqual(out['status'],'succeeded')
+ def test_threshold_can_publish_bulletin_with_final_event_source(self):
+  self.spec.update(every=2,tool='world.publish_bulletin',args=dict(pages='["News","Today"]',evidence='@trigger',hours=1))
+  self.install();a=self.event();b=self.event();result=rules.tick(self.s,now=10000)
+  self.assertEqual(result['trigger_events'],[a,b]);self.assertEqual(result['status'],'succeeded')
+  event=next(e for e in self.s.memory.history()['events'] if e['event']=='character_bulletin_published')
+  self.assertEqual(event['source_events'],[b])
+
+ def test_repeated_threshold_batches_and_validation(self):
+  for value in (0,13,True,'3'):
+   self.spec['every']=value
+   with self.assertRaises(ValueError):rules.publish(self.s,self.actor,{},dict(id='bad',rule=json.dumps(self.spec)))
+  self.spec['every']=2;self.install();a=self.event();b=self.event();c=self.event();d=self.event()
+  self.assertEqual(rules.tick(self.s,now=10000)['trigger_events'],[a,b])
+  self.assertEqual(rules.tick(self.s,now=10066)['trigger_events'],[c,d])
+
  def test_owner_pause_all_and_bounded_scan(self):
   self.install()
   for i in range(70):self.event(str(i))
