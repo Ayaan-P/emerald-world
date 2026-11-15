@@ -141,6 +141,36 @@ class AdventureTests(unittest.TestCase):
         self.plan(doc);self.assertEqual(runtime.tick(self.s,now=10)['status'],'blocked');self.assertEqual(catalog(self.s),[])
         self.assertEqual(before,self.s.db.execute('SELECT count(*) FROM generated_area_archive').fetchone()[0])
 
+    def test_network_can_combine_named_styles_and_distinct_habitat(self):
+        from world.procedural_regions import generate
+        doc=adventure();doc['trainers']=[];doc.pop('campaign');doc['place_names']=['Echo Grotto','Moonlit Vault'];doc['constraints']['place_styles']=['maze','organic']
+        doc['habitats']=[dict(place=1,profile='ice',rate=25,criteria=dict(types=['water','ice'],generations=list(range(1,10)),bst=[200,550],levels=[8,18],seed=42))]
+        layout=generate(doc['label'],encode(doc['constraints']));self.assertEqual([p['blueprint']['style'] for p in layout['places']],['maze','organic'])
+        entry=self.build(doc);self.assertEqual([p['label'] for p in entry['places']],doc['place_names'])
+        from world.shared_cave import SharedCave
+        caves=[SharedCave(self.s.db.execute('SELECT template FROM generated_area_archive WHERE identity=?',(p['revision'],)).fetchone()[0]) for p in entry['places']]
+        self.assertEqual([c.version for c in caves],[1,10]);self.assertEqual(caves[1].wildlife[0],25)
+    def test_bad_place_styles_fail_without_opening_places(self):
+        from world.procedural_regions import generate
+        for styles in (['rooms'],['maze','unknown'],['maze',None]):
+            doc=adventure();doc['constraints']['place_styles']=styles
+            with self.assertRaises(ValueError):generate(doc['label'],encode(doc['constraints']))
+
+    def test_named_places_are_published_and_stable_on_resume(self):
+        doc=adventure();doc['trainers']=[];doc.pop('campaign');doc['place_names']=['Echo Grotto','Moonlit Vault']
+        entry=self.build(doc);self.assertEqual([p['label'] for p in entry['places']],doc['place_names'])
+        for p in entry['places']:
+            label=self.s.db.execute('SELECT label FROM generated_area_archive WHERE identity=?',(p['revision'],)).fetchone()[0];self.assertEqual(label,p['label'])
+        self.plan(doc,name='repeat_names');self.assertEqual(runtime.tick(self.s,now=22)['status'],'succeeded');self.assertEqual(catalog(self.s)[0]['places'],entry['places'])
+    def test_invalid_place_names_cannot_create_partial_world(self):
+        before=self.s.db.execute('SELECT count(*) FROM generated_area_archive').fetchone()[0]
+        for names in (['One'],['Same','same'],['Valid','bad/name'],['a'*21,'Good']):
+            doc=adventure();doc['trainers']=[];doc.pop('campaign');doc['place_names']=names
+            with self.assertRaises(ValueError):
+                from world.procedural_adventures import start
+                start(self.s,'harbor_guide',{},dict(document=encode(doc)))
+            self.assertEqual(self.s.db.execute('SELECT count(*) FROM generated_area_archive').fetchone()[0],before)
+
     def test_invalid_habitat_never_publishes_partial_places(self):
         before=self.s.db.execute('SELECT count(*) FROM generated_area_archive').fetchone()[0]
         criteria=dict(types=['water'],generations=[1],bst=[200,550],levels=[8,18],seed=42)
