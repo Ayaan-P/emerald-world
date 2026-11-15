@@ -8,7 +8,7 @@ def create(server, actor, row, args):
     from .xl_wilds import encode
     from .route_landscape import compile_plan
     from .shared_cave import SharedCave
-    if not {'label', 'layout', 'blueprint'} <= set(args) or set(args)-{'label','layout','blueprint','paint','biome','seed','ponds','trail','trail_width','_network'}:
+    if not {'label', 'layout', 'blueprint'} <= set(args) or set(args)-{'label','layout','blueprint','paint','biome','seed','ponds','trail','trail_width','_network','_watercourse'}:
         raise ValueError('Supply label, layout and blueprint')
     network = args['layout'] == 'clearings' and args.get('trail') is not None and bool(args.get('_network'))
     label = args['label']
@@ -46,7 +46,14 @@ def create(server, actor, row, args):
             from .shared_outdoor_palette import add_ponds
             protected=[(site['x'],site['y']) for site in generated['landmarks']] if network else ()
             blob, made=add_ponds(blob,args['seed'],args['ponds'],protected_points=protected)
-            report.update(ponds_requested=args['ponds'], ponds_created=made)
+            report.update(ponds_requested=args['ponds'], ponds_created=made, pond_placement='walkable_ground_v2')
+    if args.get('_watercourse'):
+        if not network or 'biome' not in args:
+            raise ValueError('Watercourse requires a networked biome')
+        from .shared_outdoor_palette import add_watercourse
+        protected=[(site['x'],site['y']) for site in generated['landmarks']]
+        blob, water_tiles=add_watercourse(blob,args['seed'],protected_points=protected)
+        report['watercourse_tiles']=water_tiles
     if 'trail' in args or 'trail_width' in args:
         if 'biome' not in args or 'trail' not in args or 'trail_width' not in args:
             raise ValueError('Trail requires biome, trail terrain and width')
@@ -97,3 +104,9 @@ def create_network(server, actor, row, args):
     if args.get('layout') != 'clearings':
         raise ValueError('Route network requires clearings layout')
     return create(server, actor, row, dict(args, _network=True))
+
+
+def create_watercourse(server, actor, row, args):
+    if args.get('layout') != 'clearings':
+        raise ValueError('Watercourse requires clearings layout')
+    return create(server, actor, row, dict(args, _network=True, _watercourse=True))
