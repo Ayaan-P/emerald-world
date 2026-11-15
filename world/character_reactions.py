@@ -272,7 +272,7 @@ def prepare(context, fetch):
         saved=fetch(dict(command='inspect_saved_place',revision=study_target))
         if (saved.get('ok') is not True or saved.get('world_id')!=memory['world_id']
                 or saved.get('captured_at_seq')!=memory['through'] or saved.get('revision')!=study_target
-                or saved.get('template_version')!=16 or saved.get('side')!=127
+                or saved.get('template_version') not in (16,17) or saved.get('side')!=127
                 or type(saved.get('rows')) is not list or len(saved['rows'])!=127
                 or any(type(line) is not str or len(line)!=127 or set(line)-set('#.') for line in saved['rows'])):
             raise ValueError('study geometry does not match exact inspected world boundary')
