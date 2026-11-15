@@ -21,3 +21,13 @@ Tests compile the actual one-shot sender against fake transport/read functions,
 check opt-in, snapshot retries, ACK, reset and finite timeout. The native read
 adapter and transport/chat hooks have source checks only. Full linked build,
 rendered UI and two-client testing remain for integration QA. No live providers.
+
+## Exploring the shared research gaps
+
+`/guild research unreported [page]` lists known catalogue entries with no public
+report; `/guild research uncaught [page]` also includes entries reported seen
+but not caught. Pages are zero-based and show eight entries. These compare only
+the voluntary shared aggregate to the server's existing species catalogue. The
+catalogue may omit species; absence does not imply a species is obtainable,
+that no trainer owns it, or anything about a player's private Pokédex. Browsing
+never modifies a save or publishes a report.
