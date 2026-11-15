@@ -272,13 +272,23 @@ def prepare(context, fetch):
         saved=fetch(dict(command='inspect_saved_place',revision=study_target))
         if (saved.get('ok') is not True or saved.get('world_id')!=memory['world_id']
                 or saved.get('captured_at_seq')!=memory['through'] or saved.get('revision')!=study_target
-                or saved.get('template_version')!=16 or saved.get('side')!=127
+                or saved.get('template_version') not in (16,17) or saved.get('side')!=127
                 or type(saved.get('rows')) is not list or len(saved['rows'])!=127
                 or any(type(line) is not str or len(line)!=127 or set(line)-set('#.') for line in saved['rows'])):
             raise ValueError('study geometry does not match exact inspected world boundary')
+        palette=saved.get('palette_rows')
+        if saved['template_version']==17:
+            if (type(palette) is not list or len(palette)!=127
+                    or any(type(line) is not str or len(line)!=127 or set(line)-set('#.tsgr') for line in palette)
+                    or any(('#' if c in '#r' else '.')!=saved['rows'][y][x] for y,line in enumerate(palette) for x,c in enumerate(line))):
+                raise ValueError('study terrain does not match exact inspected geometry')
+        elif palette is not None:raise ValueError('plain study geometry cannot contain a terrain palette')
         # Explicit allowlist: no private survey sessions/visits or trainer data.
         context['character_study_map']={key:saved[key] for key in ('revision','place_id','template_version','side','rows')}
-        context['character_study_map']['limits']='Existing archived geometry only. Do not claim the actor traveled or found anything.'
+        if palette is not None:
+            context['character_study_map']['palette_rows']=palette
+            context['character_study_map']['terrain_legend']={'#':'blocked water','.':'grass','t':'tall grass','s':'sand','g':'long grass','r':'blocked rock'}
+        context['character_study_map']['limits']='Existing archived terrain and geometry only. Do not claim the actor traveled or found anything.'
     if character.get('canonical'):
         from .canonical_experiences import recall
         recall(context,character,fetch)

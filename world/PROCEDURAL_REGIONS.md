@@ -79,3 +79,9 @@ Tests exercise campaign-free publication, an empty connected network across rest
 ## Alternative room routes
 
 An author can optionally request `room_loops: 1` in the same constraints used by `world.generate_region_network` and `world.build_adventure`. This adds an edge to each connected room graph, allowing cyclic room layouts instead of only a tree. The seed still determines the graph and geometry; omitted `room_loops` keeps old outputs unchanged. Requests that cannot fit the graph or the existing 850-character network budget fail explicitly. A graph cycle does not guarantee physically disjoint paths: corridors may intersect and rooms may be open. This is geometry, not a claim of new stories, maps outside caves, populations, or a rendered playtest.
+
+### Studies on painted outdoors
+
+Original characters may install their existing optional landmark surveys on an exact archived shared painted XL area as well as a plain XL area. Authors inspect the same walkability geometry; rock and water are blocked, and site validation uses the exact archive revision. A compatible CAVE17 client must acknowledge that revision before private visits can count. Visits remain per trainer, with only explicit anonymous shares entering public history. This does not make water surfable, create new artwork, activate a map or assert that an agent traveled.
+
+A character inspecting a painted study destination also receives the saved terrain symbols alongside the independently checked walkability geometry: grass, tall and long grass, sand, blocked water and rock. This is a schematic of the archived template, not live player positions or proof of discovery. Geometry and palette must agree or the study context is rejected.
