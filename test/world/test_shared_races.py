@@ -60,6 +60,26 @@ class RaceTests(unittest.TestCase):
   for p in COURSE['checkpoints']*2:self.move(self.f.a,p)
   self.f.b['closing']=True;self.s.races.tick();self.assertIsNone(self.s.races.current('Alice'))
   self.assertEqual(self.s.db.execute('SELECT trainer FROM race_results').fetchall(),[('Alice',)])
+ def test_disconnect_during_race_does_not_stop_other_racer(self):
+  r=self.start();self.move(self.f.a,COURSE['checkpoints'][0])
+  self.f.b['closing']=True;self.s.races.tick()
+  self.assertIs(self.s.races.current('Alice'),r);self.assertIsNone(self.s.races.current('Bob'))
+  for point in [COURSE['checkpoints'][1],*COURSE['checkpoints']]:
+   self.f.now+=0.2;self.f.state(self.f.a,point)
+  self.assertIsNone(self.s.races.current('Alice'))
+  self.assertEqual(self.s.db.execute('SELECT trainer FROM race_results').fetchall(),[('Alice',)])
+ def test_leaving_and_mount_loss_only_remove_that_racer(self):
+  r=self.start(True)
+  self.state(self.f.b,COURSE['starts'][1],species=59);self.s.races.tick()
+  self.assertIsNone(self.s.races.current('Bob'));self.assertIs(self.s.races.current('Alice'),r)
+  self.f.chat(self.f.a,'/guild race leave')
+  self.assertEqual(self.s.races.runs,{})
+  self.assertEqual(self.s.db.execute('SELECT count(*) FROM race_results').fetchone()[0],0)
+ def test_racer_with_stale_updates_drops_but_fresh_player_can_finish(self):
+  r=self.start();self.f.now+=11;self.f.state(self.f.a,COURSE['starts'][0]);self.s.races.tick()
+  self.assertIsNone(self.s.races.current('Bob'));self.assertIs(self.s.races.current('Alice'),r)
+  for point in COURSE['checkpoints']*2:self.f.now+=0.2;self.f.state(self.f.a,point)
+  self.assertEqual(self.s.db.execute('SELECT trainer FROM race_results').fetchall(),[('Alice',)])
  def test_validation_immutable_course_and_no_auto_results(self):
   for bad in [dict(laps=0),dict(starts=[COURSE['starts'][0]]),dict(checkpoints=[COURSE['checkpoints'][0]]*2),dict(starts=[[0,0,10,10],[0,0,100,100]])]:
    with self.assertRaises(ValueError):self.s.races.publish(dict(COURSE,**bad))
