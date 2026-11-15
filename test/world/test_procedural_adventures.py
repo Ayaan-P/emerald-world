@@ -82,6 +82,72 @@ class AdventureTests(unittest.TestCase):
                 for i,n in enumerate(doc['campaign']['nodes'].values()):n['opponent']=doc['trainers'][i]['id']
                 self.plan(doc,name='seed_'+str(seed));self.assertEqual(runtime.tick(self.s,now=seed*10)['status'],'pending');self.p.admit();self.assertEqual(runtime.tick(self.s,now=seed*10+6)['status'],'succeeded')
 
+    def test_real_adventure_can_include_seeded_wildlife_and_plain_places(self):
+        from world.shared_cave import SharedCave
+        from world.habitat_composer import compose
+        from world.species_cohort import catalogue
+        criteria=dict(types=['water','ice'],generations=list(range(1,10)),bst=[200,550],levels=[8,18],seed=42)
+        doc=adventure();doc['trainers']=[];doc.pop('campaign');doc['habitats']=[dict(place=0,profile='ice',rate=25,criteria=criteria)]
+        entry=self.build(doc);expected=compose(encode(criteria));ids=catalogue('expansion-native')
+        blob=self.s.db.execute('SELECT template FROM generated_area_archive WHERE identity=?',(entry['places'][0]['revision'],)).fetchone()[0]
+        cave=SharedCave(blob);self.assertEqual(cave.version,10);self.assertEqual(cave.wildlife[0],25)
+        for i,(name,level) in enumerate(expected['slots']):
+            self.assertEqual(int.from_bytes(cave.wildlife[1+3*i:3+3*i],'little'),ids[name]);self.assertEqual(cave.wildlife[3+3*i],level)
+        plain=SharedCave(self.s.db.execute('SELECT template FROM generated_area_archive WHERE identity=?',(entry['places'][1]['revision'],)).fetchone()[0]);self.assertEqual(plain.version,1)
+        self.assertIn('CAVE WILD '+cave.identity,cave.frames())
+        self.assertTrue(self.s.module_state['world_region_networks'])
+
+    def test_two_clients_enter_composed_habitat_through_real_link_protocol(self):
+        from world.actor_linked_navigation import graph
+        from world.shared_cave import SharedCave
+        criteria=dict(types=['water','ice'],generations=list(range(1,10)),bst=[200,550],levels=[8,18],seed=42)
+        doc=adventure();doc['trainers']=[];doc.pop('campaign');doc['habitats']=[dict(place=1,profile='ice',rate=25,criteria=criteria)]
+        entry=self.build(doc); source,target=entry['places']; source_cave=SharedCave(self.s.db.execute('SELECT template FROM generated_area_archive WHERE identity=?',(source['revision'],)).fetchone()[0]);wild=SharedCave(self.s.db.execute('SELECT template FROM generated_area_archive WHERE identity=?',(target['revision'],)).fetchone()[0])
+        edge=next(e for e in graph(self.s) if e['source']==source['revision'] and e['destination']==target['revision']);gate=next(o for o in self.s.objects if o['id']==edge['object'])
+        x,y=next((gate['x']+dx,gate['y']+dy) for dx,dy in ((0,1),(0,-1),(1,0),(-1,0)) if source_cave.walkable(gate['x']+dx,gate['y']+dy))
+        facing={(0,1):1,(0,-1):2,(-1,0):3,(1,0):4}[(gate['x']-x,gate['y']-y)]
+        def send(conn,command):
+            conn['out'].clear();self.s._line(conn,command.encode());return conn['out'].decode()
+        def connect(name,modern):
+            token=self.s.create_identity(name)['token'];conn=dict(id=None,out=bytearray(),closing=False,state=None,seq=0,sock=object())
+            caps='SOCIALCAVE10REGION1CHAR1CHARQUEST1CHARREG1WORLDOBJ1CAVELINK1'+('CAVELINKW1' if modern else '')
+            self.assertIn('WELCOME',send(conn,f'HELLO 1 {name} {token} {caps}'))
+            send(conn,'STATE 1 0 9 8 8 1 7 1 aaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbb')
+            self.assertIn('REGION SELECTED',send(conn,'REGION SELECT '+source['place_id']))
+            send(conn,'CAVE GET');self.assertIn('CAVE OK',send(conn,'CAVE ACK '+source['revision']))
+            send(conn,f'STATE 2 {self.s.cave_map[0]} {self.s.cave_map[1]} {x} {y} {facing} 7 1 aaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbb')
+            return conn
+        legacy=connect('LegacyX',False);seq=legacy['seq']+1
+        self.assertNotIn('LINK OFFER',send(legacy,f'INTERACT_REGION {seq} {gate["id"]} {source["revision"]}'))
+        for name in ('QuestA','QuestB'):
+            peer=connect(name,True);seq=peer['seq']+1
+            self.assertIn('LINK OFFER',send(peer,f'INTERACT_REGION {seq} {gate["id"]} {source["revision"]}'))
+            data=send(peer,f'LINK ACCEPT {seq}');self.assertIn(wild.wildlife.hex(),data)
+            self.assertIn('LINK COMMIT',send(peer,f'LINK ACK {seq} {wild.identity}'))
+            send(peer,f'STATE {seq+1} {self.s.cave_map[0]} {self.s.cave_map[1]} 1 1 1 7 1 aaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbb')
+            self.assertIn('LINK DONE',send(peer,f'LINK ARRIVED {seq} {wild.identity}'))
+            self.assertEqual(self.s._connection_cave(peer).wildlife,wild.wildlife)
+        self.assertEqual(legacy['cave_ack'],source['revision'])
+
+    def test_authored_slots_populate_habitat_without_changing_plain_place(self):
+        from world.shared_cave import SharedCave
+        from world.species_cohort import catalogue
+        doc=adventure();doc['trainers']=[];doc.pop('campaign');doc['habitats']=[dict(place=0,profile='granite',rate=17,slots=[['ZUBAT',8]]*12)]
+        entry=self.build(doc);blob=self.s.db.execute('SELECT template FROM generated_area_archive WHERE identity=?',(entry['places'][0]['revision'],)).fetchone()[0]
+        cave=SharedCave(blob);self.assertEqual(cave.wildlife[0],17);self.assertEqual(int.from_bytes(cave.wildlife[1:3],'little'),catalogue('expansion-native')['ZUBAT']);self.assertEqual(cave.wildlife[3],8)
+    def test_malformed_authored_species_rolls_back(self):
+        doc=adventure();doc['trainers']=[];doc.pop('campaign');doc['habitats']=[dict(place=0,profile='granite',rate=17,slots=[['NOT_A_POKEMON',8]]*12)]
+        before=self.s.db.execute('SELECT count(*) FROM generated_area_archive').fetchone()[0]
+        self.plan(doc);self.assertEqual(runtime.tick(self.s,now=10)['status'],'blocked');self.assertEqual(catalog(self.s),[])
+        self.assertEqual(before,self.s.db.execute('SELECT count(*) FROM generated_area_archive').fetchone()[0])
+
+    def test_invalid_habitat_never_publishes_partial_places(self):
+        before=self.s.db.execute('SELECT count(*) FROM generated_area_archive').fetchone()[0]
+        criteria=dict(types=['water'],generations=[1],bst=[200,550],levels=[8,18],seed=42)
+        doc=adventure();doc['trainers']=[];doc.pop('campaign');doc['habitats']=[dict(place=0,profile='ice',rate=25,criteria=criteria),dict(place=0,profile='ice',rate=25,criteria=criteria)]
+        self.plan(doc);self.assertEqual(runtime.tick(self.s,now=10)['status'],'blocked');self.assertEqual(catalog(self.s),[])
+        self.assertEqual(self.s.db.execute('SELECT count(*) FROM generated_area_archive').fetchone()[0],before)
+
     def test_campaign_conflict_and_actor_change_never_overwritten(self):
         self.plan();runtime.tick(self.s,now=10);self.p.admit()
         from world.battle_campaigns import publish
