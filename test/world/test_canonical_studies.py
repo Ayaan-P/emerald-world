@@ -81,6 +81,68 @@ class CanonicalStudyTests(unittest.TestCase):
   self.assertEqual(self.s.db.execute('SELECT count(*) FROM canonical_studies').fetchone()[0],1)
   self.assertEqual(self.s.db.execute('SELECT count(*) FROM survey_visits').fetchone()[0],len(self.study['sites']))
   self.assertEqual(cast.records(self.s.module_state)['canon_steven']['goal'],changed['changes']['goal'])
+ def test_painted_outdoors_supports_independent_survey_and_private_share(self):
+  from world.shared_outdoor_palette import encode
+  from world.shared_cave import SharedCave
+  base=SharedCave(compile_plan(plan())[0]);rows=[r.decode('ascii') for r in base._rows]
+  site=self.study['sites'][0]
+  blob=encode(dict(rows=rows,spawn=[1,1],exit=[125,125]),[dict(x=site['x'],y=site['y'],width=1,height=1,terrain='sand')])
+  revision=self.s._replace_cave(blob,label='Painted Study Grounds');self.assertEqual(self.s.shared_cave.version,17)
+  change=deepcopy(self.initial);change['expected_version']=1
+  change['changes'].update(intentions=[dict(id='painted_study',kind='study',target=revision,reason='Compare this landscape.')])
+  self.f.apply(change)
+  with tempfile.TemporaryDirectory() as tmp:
+   q=IntentQueue(tmp)
+   try:
+    reactions.configure(q,self.s.inspect(),'canon_steven','Inspect a possible study on the outdoor map.')
+    self.assertEqual(len(reactions.observe(q,self.s.inspect(),self.f.fetch)),1)
+    item=q.claim();ctx=self.f.context();ctx['runtime'].update(kind='character',observed_event=json.loads(item['result']))
+    reactions.prepare(ctx,self.fetch)
+    self.assertEqual(ctx['character_study_map']['template_version'],17)
+    self.assertEqual(ctx['character_study_map']['rows'][site['y']][site['x']],'.')
+    self.assertEqual(ctx['character_study_map']['palette_rows'][site['y']][site['x']],'s')
+    self.assertEqual(ctx['character_study_map']['terrain_legend']['s'],'sand')
+    def bad_fetch(query):
+     saved=self.fetch(query)
+     if query['command']=='inspect_saved_place':
+      saved['palette_rows']=list(saved['palette_rows']);y=site['y'];x=site['x'];line=saved['palette_rows'][y]
+      saved['palette_rows'][y]=line[:x]+'r'+line[x+1:]
+     return saved
+    bad=self.f.context();bad['runtime'].update(kind='character',observed_event=json.loads(item['result']))
+    with self.assertRaisesRegex(ValueError,'terrain does not match'):reactions.prepare(bad,bad_fetch)
+   finally:q.close()
+  action=deepcopy(change);action['expected_version']=2
+  study=deepcopy(self.study);study['revision']=revision
+  action['changes'].update(intentions=[],fulfill='painted_study',study=study)
+  self.f.apply(action)
+  h=survey_fixture.LandmarkSurveyTests();h.s=self.s;h.revision=revision
+  def connect(name):
+   token=self.s.create_identity(name)['token'];c=dict(id=None,out=bytearray(),closing=False,state=None,seq=0,sock=object())
+   h.send(c,f'HELLO 1 {name} {token} SOCIALCAVE17');h.send(c,'CHAT_ENABLE');h.send(c,'CAVE GET');h.send(c,'CAVE ACK '+revision);h.state(c,1,1);return c
+  h.conn=connect('PaintScout');other=connect('OtherScout')
+  h.command('/explore start');h.state(h.conn,site['x'],site['y']);self.assertEqual(h.count(),1)
+  self.assertEqual(self.s.db.execute('SELECT count(*) FROM survey_visits WHERE trainer=?',(other['id'],)).fetchone()[0],0)
+  before=self.s.memory.history()['events'];h.command('/explore share '+site['id']);self.assertEqual(before,self.s.memory.history()['events'])
+  h.command('/explore share '+site['id']+' confirm');event=self.s.memory.history()['events'][-1]
+  self.assertEqual(event['event'],'landmark_discovery_shared');self.assertEqual(event['revision'],revision);self.assertNotIn('PaintScout',json.dumps(event))
+  # Plain geometry remains the actor-facing representation, never private visits.
+  from admin_transport import admin_request
+  saved=admin_request(self.s,dict(command='inspect_saved_place',revision=revision));self.assertTrue(saved['ok'])
+  self.assertEqual(saved['template_version'],17)
+  self.assertLess(len(json.dumps(saved).encode()),65536)
+  self.assertEqual(saved['rows'][site['y']][site['x']],'.');self.assertNotIn('survey_visits',saved)
+
+ def test_painted_rock_cannot_become_a_study_site(self):
+  from world.shared_outdoor_palette import encode
+  from world.shared_cave import SharedCave
+  from world.canonical_studies import publish
+  base=SharedCave(compile_plan(plan())[0]);rows=[r.decode('ascii') for r in base._rows];site=self.study['sites'][0]
+  blob=encode(dict(rows=rows,spawn=[1,1],exit=[125,125]),[dict(x=site['x'],y=site['y'],width=1,height=1,terrain='rock')])
+  revision=self.s._replace_cave(blob,label='Rock Study Grounds');study=deepcopy(self.study);study['revision']=revision
+  with self.assertRaisesRegex(ValueError,'not walkable'):
+   with self.s.db:publish(self.s,dict(character_id='canon_steven',character_name='Steven',before={},after=dict(study=study,evidence=[self.f.evidence])))
+  self.assertEqual(self.s.db.execute('SELECT count(*) FROM canonical_studies').fetchone()[0],0)
+
  def test_failed_geometry_rolls_back_actor_study_and_receipts(self):
   before=deepcopy(self.s.module_state);history=self.s.memory.history()
   bad=deepcopy(self.study);bad['sites'][0].update(x=124,y=2)

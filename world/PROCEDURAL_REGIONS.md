@@ -97,3 +97,9 @@ This gives adventures actual configured encounter tables, not sightings, catches
 ### Purposeful resident placement
 
 `world.build_adventure` trainers may specify an optional `anchor`: `entrance`, `exit`, or `anywhere` (the default). An entrance guide or exit rival is placed on the nearest available safe tile to that cave's entrance or exit, with seeded tie-breaking. Existing doors and other objects are respected, every remaining floor tile must remain reachable and the resident must be interactable from an adjacent tile. This is a preference within those constraints, not an exact tile or an assertion the character traveled there. Omission and `anywhere` keep the previous seeded ordering. Published places, existing saves and campaigns are not retroactively changed.
+
+### Studies on painted outdoors
+
+Original characters may install their existing optional landmark surveys on an exact archived shared painted XL area as well as a plain XL area. Authors inspect the same walkability geometry; rock and water are blocked, and site validation uses the exact archive revision. A compatible CAVE17 client must acknowledge that revision before private visits can count. Visits remain per trainer, with only explicit anonymous shares entering public history. This does not make water surfable, create new artwork, activate a map or assert that an agent traveled.
+
+A character inspecting a painted study destination also receives the saved terrain symbols alongside the independently checked walkability geometry: grass, tall and long grass, sand, blocked water and rock. This is a schematic of the archived template, not live player positions or proof of discovery. Geometry and palette must agree or the study context is rejected.
