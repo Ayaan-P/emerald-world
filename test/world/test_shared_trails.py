@@ -65,3 +65,28 @@ class NetworkTrailTests(unittest.TestCase):
 def SharedTrailTests_blob():
     rows=['#'*127]+['#'+'.'*125+'#']*125+['#'*127]
     return paint_biome(dict(rows=rows,spawn=[1,1],exit=[125,125]),'meadow',1)
+
+class WatercourseTests(unittest.TestCase):
+    def test_repeatable_connected_water_and_protected_sites(self):
+        from world.shared_outdoor_palette import add_watercourse
+        before=SharedTrailTests_blob();out,count=add_watercourse(before,7,protected_points=[(50,50)])
+        self.assertEqual((out,count),add_watercourse(before,7,protected_points=[(50,50)]))
+        cave=SharedCave(out);self.assertEqual(cave.version,17)
+        self.assertGreaterEqual(count,8);self.assertTrue(cave.walkable(50,50))
+        self.assertEqual(cave.palette.count(ord('#'))-SharedCave(before).palette.count(ord('#')),count)
+        for i,prior in enumerate(SharedCave(before).palette):
+            if prior in (ord('#'),ord('r')):self.assertEqual(cave.palette[i],prior)
+
+    def test_agent_creates_routed_landscape_with_watercourse(self):
+        import test_actor_runtime as fixture
+        from world import actor_runtime as runtime
+        case=fixture.ActorRuntimeTests();case.setUp();self.addCleanup(case.doCleanups)
+        server=case.s;server.archive_generated_areas=True;server.persist_generated_cave=True
+        plan=dict(seed=11,landmarks=[dict(id='grove',x=20,y=90,radius=10),dict(id='pond',x=90,y=25,radius=10)],reservations=[],loops=0)
+        args=dict(label='Creek',layout='clearings',blueprint=json.dumps(plan,separators=(',',':')),biome='meadow',seed=22,ponds=0,trail='sand',trail_width=1)
+        case.apply(dict(id='creek',purpose='Make a place to explore.',steps=[dict(id='create',tool='world.create_watercourse_landscape',args=args,after=[])]))
+        self.assertEqual(runtime.tick(server,now=10)['status'],'succeeded')
+        cave=server.shared_cave;self.assertEqual(cave.version,17)
+        for site in plan['landmarks']:
+            self.assertTrue(cave.walkable(site['x'],site['y']))
+            self.assertEqual(cave.palette[site['y']*127+site['x']],ord('s'))
