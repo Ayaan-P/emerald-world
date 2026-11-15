@@ -187,3 +187,26 @@ it('shows a later adventure after paging instead of claiming none exists', () =>
   fireEvent.click(screen.getByRole('button', { name: 'Show more areas (1)' }));
   expect(screen.getByText(adventure.label)).toBeTruthy();
 });
+
+
+it('finds painted areas under Outdoors and previews their saved terrain', async () => {
+  const painted = { identity: 'd'.repeat(64), label: 'Sand and stone', kind: 'painted_xl_wilds', active: false };
+  const value = data(painted,127);
+  value.palette_rows = [...value.rows];
+  value.palette_rows[3] = value.palette_rows[3].slice(0,3)+'s'+value.palette_rows[3].slice(4);
+  value.palette_rows[7] = value.palette_rows[7].slice(0,7)+'r'+value.palette_rows[7].slice(8);
+  value.rows[7] = value.rows[7].slice(0,7)+'#'+value.rows[7].slice(8);
+  const inspect = vi.fn().mockResolvedValue(value);
+  render(<AreaLibrary {...base} areas={[painted]} onInspect={inspect} />);
+  fireEvent.click(screen.getByRole('button', {name:'Outdoors'}));
+  expect(screen.getByText('Painted outdoor world')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', {name:'Preview map: Sand and stone'}));
+  const map=await screen.findByRole('img', {name:'Saved layout of Sand and stone'});
+  expect(map.querySelectorAll('path')).toHaveLength(6);
+  expect(within(screen.getByRole('list', {name:'Map legend'})).getByText('Sand')).toBeTruthy();
+  expect(screen.getByText('Rock (blocked)')).toBeTruthy();
+  expect(screen.getByText(/Colors are schematic/)).toBeTruthy();
+  const bad={...value,palette_rows:[...value.palette_rows]};
+  bad.palette_rows[7]=bad.palette_rows[7].slice(0,7)+'.'+bad.palette_rows[7].slice(8);
+  expect(validPreview(bad,'local',painted.identity)).toBe(false);
+});

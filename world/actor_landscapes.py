@@ -8,7 +8,7 @@ def create(server, actor, row, args):
     from .xl_wilds import encode
     from .route_landscape import compile_plan
     from .shared_cave import SharedCave
-    if not {'label', 'layout', 'blueprint'} <= set(args) or set(args)-{'label','layout','blueprint','paint'}:
+    if not {'label', 'layout', 'blueprint'} <= set(args) or set(args)-{'label','layout','blueprint','paint','biome','seed','ponds','trail','trail_width'}:
         raise ValueError('Supply label, layout and blueprint')
     label = args['label']
     if type(label) is not str or not 1 <= len(label) <= 20 or not label.strip() or any(not(c.isascii() and (c.isalnum() or c in " .,'!?-")) for c in label):
@@ -34,6 +34,24 @@ def create(server, actor, row, args):
         from .shared_outdoor_palette import encode as encode_painted
         cells=blob[8:]; proposal=dict(rows=[cells[i*127:(i+1)*127].decode('ascii') for i in range(127)],spawn=[1,1],exit=[125,125])
         blob=encode_painted(proposal,paint)
+    if 'biome' in args:
+        if 'paint' in args or 'seed' not in args:
+            raise ValueError('Biome requires a seed and cannot be combined with paint')
+        from .shared_outdoor_palette import paint_biome
+        cells=blob[8:]; proposal=dict(rows=[cells[i*127:(i+1)*127].decode('ascii') for i in range(127)],spawn=[1,1],exit=[125,125])
+        blob=paint_biome(proposal,args['biome'],args['seed'])
+        report.update(biome=args['biome'], biome_seed=args['seed'])
+        if 'ponds' in args:
+            from .shared_outdoor_palette import add_ponds
+            blob, made=add_ponds(blob,args['seed'],args['ponds'])
+            report.update(ponds_requested=args['ponds'], ponds_created=made)
+    if 'trail' in args or 'trail_width' in args:
+        if 'biome' not in args or 'trail' not in args or 'trail_width' not in args:
+            raise ValueError('Trail requires biome, trail terrain and width')
+        from .shared_outdoor_palette import add_trail
+        blob, steps, changed = add_trail(blob, args['trail'], args['trail_width'])
+        report.update(trail=args['trail'], trail_width=args['trail_width'],
+                      trail_steps=steps, trail_changed_tiles=changed)
     cave = SharedCave(blob)
     if not server.archive_generated_areas or not server.persist_generated_cave:
         raise ValueError('Durable generated-area archive required')
