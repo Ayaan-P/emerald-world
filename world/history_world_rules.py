@@ -8,6 +8,7 @@ EVENTS=('hoenn_market_purchase_reported', 'canonical_trainer_result', 'landmark_
 def setup(db):
  db.execute('CREATE TABLE IF NOT EXISTS history_world_rules(actor TEXT,id TEXT,definition TEXT,cursor INTEGER,enabled INTEGER,window REAL,used INTEGER,next_at REAL,PRIMARY KEY(actor,id))')
  db.execute('CREATE TABLE IF NOT EXISTS history_world_rule_runs(actor TEXT,id TEXT,event_seq INTEGER,status TEXT,result TEXT,receipt INTEGER,PRIMARY KEY(actor,id,event_seq))')
+ db.execute('CREATE TABLE IF NOT EXISTS history_world_rule_progress(actor TEXT,id TEXT,sequences TEXT,PRIMARY KEY(actor,id))')
  db.execute('CREATE TABLE IF NOT EXISTS history_world_rule_scheduler(singleton INTEGER PRIMARY KEY,last_actor TEXT,last_id TEXT)')
 
 
@@ -15,7 +16,8 @@ def publish(server,actor,row,args):
  setup(server.db)
  if set(args)!={'id','rule'} or type(args['id']) is not str or not re.fullmatch('[a-z][a-z0-9_]{0,23}',args['id']) or type(args['rule']) is not str or len(args['rule'])>650:raise ValueError('Use a rule ID and bounded literal rule JSON')
  d=json.loads(args['rule'])
- if type(d) is not dict or set(d)!={'event','where','tool','args','cooldown','per_hour'}:raise ValueError('Use event/where/tool/args/cooldown/per_hour')
+ if type(d) is not dict or not {'event','where','tool','args','cooldown','per_hour'}<=set(d) or set(d)-{'event','where','tool','args','cooldown','per_hour','every'}:raise ValueError('Use event/where/tool/args/cooldown/per_hour and optional every')
+ if type(d.get('every',1)) is not int or not 1<=d.get('every',1)<=12:raise ValueError('Every must be a count from 1 to 12')
  if d['event'] not in EVENTS or d['tool'] not in TOOLS:raise ValueError('Use a discovered public trigger and reviewed world operation')
  if type(d['where']) is not dict or len(d['where'])>4 or any(type(k) is not str or not re.fullmatch('[a-z][a-z0-9_]{0,63}',k) or type(v) not in (str,int,bool) or (type(v) is str and len(v)>100) for k,v in d['where'].items()):raise ValueError('Use up to four literal top-level equality filters')
  if type(d['args']) is not dict or any(type(k) is not str or type(v) not in (str,int,bool) for k,v in d['args'].items()):raise ValueError('Operation arguments are fixed literal scalars, never event interpolation')
@@ -46,7 +48,8 @@ def pause(server,actor,row,args):
 
 def discover(server):
  setup(server.db)
- return dict(triggers=list(EVENTS),operations=list(TOOLS),rules=[dict(actor=a,id=k,definition=json.loads(d),cursor=c,enabled=bool(e),used=u,window=w,next_at=n) for a,k,d,c,e,w,u,n in server.db.execute('SELECT * FROM history_world_rules ORDER BY enabled DESC,actor,id LIMIT 128')],limits='Future public events only. Fixed arguments, no code or event-text execution. Bulletin evidence @trigger binds only the committed event ID. Max two active rules per actor and 32 total; each persists across plans, but actor retirement disables it. Attempts, not successes, consume the recurring budget. Native guards still apply.')
+ return dict(triggers=list(EVENTS),operations=list(TOOLS),rules=[dict(actor=a,id=k,definition=json.loads(d),cursor=c,enabled=bool(e),used=u,window=w,next_at=n,pending_matches=json.loads(p or '[]')) for a,k,d,c,e,w,u,n,p in server.db.execute('SELECT r.*,p.sequences FROM history_world_rules r LEFT JOIN history_world_rule_progress p ON p.actor=r.actor AND p.id=r.id ORDER BY r.enabled DESC,r.actor,r.id LIMIT 128')],limits='Future public events only. Fixed arguments, no code or event-text execution. Bulletin evidence @trigger binds only the committed event ID. Max two active rules per actor and 32 total; each persists across plans, but actor retirement disables it. Attempts, not successes, consume the recurring budget. Native guards still apply.')
+
 
 
 def _tick(server,*,now=None):
@@ -68,9 +71,17 @@ def _tick(server,*,now=None):
   if now>=window+3600:window=now;used=0
   if now<next_at or used>=d['per_hour']:continue
   page=server.memory.history(after=after,limit=64)
-  event=next((e for e in page['events'] if e.get('event')==d['event'] and all(type(e.get(k)) is type(v) and e.get(k)==v for k,v in d['where'].items())),None)
+  prior=server.db.execute('SELECT sequences FROM history_world_rule_progress WHERE actor=? AND id=?',(actor,key)).fetchone()
+  sequences=json.loads(prior[0]) if prior else []
+  event=None
+  for candidate in page['events']:
+   if candidate.get('event')==d['event'] and all(type(candidate.get(k)) is type(v) and candidate.get(k)==v for k,v in d['where'].items()):
+    sequences.append(candidate['seq'])
+    if len(sequences)>=d.get('every',1):event=candidate;break
   if event is None:
-   with server.db:server.db.execute('UPDATE history_world_rules SET cursor=? WHERE actor=? AND id=?',(page['cursor'],actor,key))
+   with server.db:
+    server.db.execute('INSERT OR REPLACE INTO history_world_rule_progress VALUES(?,?,?)',(actor,key,json.dumps(sequences)))
+    server.db.execute('UPDATE history_world_rules SET cursor=? WHERE actor=? AND id=?',(page['cursor'],actor,key))
    continue
   cap=CAPABILITIES[d['tool']];status='succeeded';old_revision=server.revision
   with server.db:
@@ -89,11 +100,12 @@ def _tick(server,*,now=None):
    except (ValueError,TypeError,KeyError) as exc:
     server.db.execute('ROLLBACK TO history_rule_effect');server.db.execute('RELEASE history_rule_effect');server.revision=old_revision
     status='blocked';result=dict(reason=str(exc)[:240],effect_applied=False)
-   seq=server.memory.append('history_world_rule_result',dict(character_id=actor,rule=key,trigger=event['seq'],tool=d['tool'],status=status,result=result,basis='current_validated_world_executor',limits='Trigger remains its original reported provenance. No fictional cause, observed encounter, victory or native rendering asserted.'))
+   seq=server.memory.append('history_world_rule_result',dict(character_id=actor,rule=key,trigger=event['seq'],trigger_events=sequences,tool=d['tool'],status=status,result=result,basis='current_validated_world_executor',limits='Trigger remains its original reported provenance. No fictional cause, observed encounter, victory or native rendering asserted.'))
+   server.db.execute('INSERT OR REPLACE INTO history_world_rule_progress VALUES(?,?,?)',(actor,key,'[]'))
    server.db.execute('INSERT INTO history_world_rule_runs VALUES(?,?,?,?,?,?)',(actor,key,event['seq'],status,json.dumps(result,sort_keys=True),seq))
    server.db.execute('UPDATE history_world_rules SET cursor=?,window=?,used=?,next_at=? WHERE actor=? AND id=?',(event['seq'],window,used+1,now+d['cooldown'],actor,key))
    server.db.execute('INSERT OR REPLACE INTO history_world_rule_scheduler VALUES(1,?,?)',(actor,key));server.revision=seq
-  return dict(actor=actor,rule=key,trigger=event['seq'],status=status,receipt=seq,result=result)
+  return dict(actor=actor,rule=key,trigger=event['seq'],trigger_events=sequences,status=status,receipt=seq,result=result)
 
 
 def tick(server,*,now=None):
