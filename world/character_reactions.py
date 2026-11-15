@@ -1,6 +1,6 @@
 """Opt-in, result-driven author turns for already registered world characters.
 
-No arc, timer, fabricated outcome, native script replacement or automatic model
+No predetermined arc, fabricated outcome, native script replacement or automatic model
 startup. Exact public expedition completion or a trusted isolated practice
 receipt can schedule another bounded action through the configured developer GM.
 """
@@ -20,6 +20,8 @@ def actors(state):
 
 
 def dynamic_result(event, identity, character):
+    from .shared_research import interested as research_interested
+    if research_interested(event,character):return True
     from .method_exchange import relevant as lesson_relevant
     if lesson_relevant(event,identity):return True
     from .move_assistance import relevant as assistance_relevant
