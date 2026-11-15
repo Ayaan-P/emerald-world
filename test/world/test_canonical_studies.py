@@ -100,6 +100,16 @@ class CanonicalStudyTests(unittest.TestCase):
     reactions.prepare(ctx,self.fetch)
     self.assertEqual(ctx['character_study_map']['template_version'],17)
     self.assertEqual(ctx['character_study_map']['rows'][site['y']][site['x']],'.')
+    self.assertEqual(ctx['character_study_map']['palette_rows'][site['y']][site['x']],'s')
+    self.assertEqual(ctx['character_study_map']['terrain_legend']['s'],'sand')
+    def bad_fetch(query):
+     saved=self.fetch(query)
+     if query['command']=='inspect_saved_place':
+      saved['palette_rows']=list(saved['palette_rows']);y=site['y'];x=site['x'];line=saved['palette_rows'][y]
+      saved['palette_rows'][y]=line[:x]+'r'+line[x+1:]
+     return saved
+    bad=self.f.context();bad['runtime'].update(kind='character',observed_event=json.loads(item['result']))
+    with self.assertRaisesRegex(ValueError,'terrain does not match'):reactions.prepare(bad,bad_fetch)
    finally:q.close()
   action=deepcopy(change);action['expected_version']=2
   study=deepcopy(self.study);study['revision']=revision
@@ -116,7 +126,10 @@ class CanonicalStudyTests(unittest.TestCase):
   h.command('/explore share '+site['id']+' confirm');event=self.s.memory.history()['events'][-1]
   self.assertEqual(event['event'],'landmark_discovery_shared');self.assertEqual(event['revision'],revision);self.assertNotIn('PaintScout',json.dumps(event))
   # Plain geometry remains the actor-facing representation, never private visits.
-  saved=self.s.memory.inspect_saved_place(self.s,revision);self.assertEqual(saved['template_version'],17)
+  from admin_transport import admin_request
+  saved=admin_request(self.s,dict(command='inspect_saved_place',revision=revision));self.assertTrue(saved['ok'])
+  self.assertEqual(saved['template_version'],17)
+  self.assertLess(len(json.dumps(saved).encode()),65536)
   self.assertEqual(saved['rows'][site['y']][site['x']],'.');self.assertNotIn('survey_visits',saved)
 
  def test_painted_rock_cannot_become_a_study_site(self):

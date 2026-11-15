@@ -83,3 +83,5 @@ An author can optionally request `room_loops: 1` in the same constraints used by
 ### Studies on painted outdoors
 
 Original characters may install their existing optional landmark surveys on an exact archived shared painted XL area as well as a plain XL area. Authors inspect the same walkability geometry; rock and water are blocked, and site validation uses the exact archive revision. A compatible CAVE17 client must acknowledge that revision before private visits can count. Visits remain per trainer, with only explicit anonymous shares entering public history. This does not make water surfable, create new artwork, activate a map or assert that an agent traveled.
+
+A character inspecting a painted study destination also receives the saved terrain symbols alongside the independently checked walkability geometry: grass, tall and long grass, sand, blocked water and rock. This is a schematic of the archived template, not live player positions or proof of discovery. Geometry and palette must agree or the study context is rejected.
