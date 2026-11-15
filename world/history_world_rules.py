@@ -2,7 +2,7 @@
 import json,re,time,sqlite3,math
 
 TOOLS=('world.publish_bulletin', 'world.arrange_market_shelf', 'world.configure_outbreak', 'world.configure_fishing', 'world.set_weather')
-EVENTS=('hoenn_market_purchase_reported', 'canonical_trainer_result', 'landmark_discovery_shared', 'public_story_choice_committed', 'character_journey_arrived', 'player_addressed_character', 'spatial_public_speech', 'dewford_trend_shared', 'safari_feeder_deposit_shared')
+EVENTS=('route_finish_shared', 'hoenn_market_purchase_reported', 'canonical_trainer_result', 'landmark_discovery_shared', 'public_story_choice_committed', 'character_journey_arrived', 'player_addressed_character', 'spatial_public_speech', 'dewford_trend_shared', 'safari_feeder_deposit_shared')
 
 
 def setup(db):
@@ -81,6 +81,7 @@ def _tick(server,*,now=None):
    sequences=[v for v in sequences if type(v) is list and len(v)==2 and type(v[0]) is int and type(v[1]) in (int,float) and math.isfinite(v[1]) and 0<=now-v[1]<=interval]
   event=None
   for candidate in page['events']:
+   if candidate.get('event')=='route_finish_shared' and (candidate.get('basis')!='explicit_own_committed_race_record' or candidate.get('publication')!='anonymous_public_finish'):continue
    if candidate.get('event')==d['event'] and all(type(candidate.get(k)) is type(v) and candidate.get(k)==v for k,v in d['where'].items()):
     stamp=candidate.get('recorded_at')
     if interval is not None and (type(stamp) not in (int,float) or not math.isfinite(stamp) or not 0<=now-stamp<=interval):continue

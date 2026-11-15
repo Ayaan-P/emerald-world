@@ -45,3 +45,7 @@ A reaction may specify `every` from 1 to 12 (default 1). It accumulates that man
 ### Recent activity (optional)
 
 A reaction with `every` of at least 2 may set `within_seconds` from 60 to 604800. Only matching records whose authority-recorded timestamps are within that interval of the processing time count; partial matches expire even across restarts. Events delayed by a cooldown or backlog can expire before processing. Future or malformed timestamps are ignored rather than treated as recent. This measures record times, not verified occurrence times, unique trainers, catches or causation. Without the option, existing persistent threshold behavior is unchanged.
+
+### Voluntarily shared race finishes
+
+`route_finish_shared` can trigger a reaction only after a player explicitly publishes their own completed race record through Rydel's board. The public record is anonymous and remains client-attested recreational timing, not verified performance or proof of a winner. A rule may filter the course, but it cannot read private finishes, infer identities, declare a ranking, or award a player. Nothing is shared or installed by default.
