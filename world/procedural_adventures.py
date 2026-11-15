@@ -72,10 +72,10 @@ def start(server,actor,row,args):
     from .habitat_composer import compose
     seen=set()
     for habitat in habitats:
-        if type(habitat) is not dict or set(habitat)!={'place','profile','rate','criteria'} or type(habitat['place']) is not int or not 0<=habitat['place']<len(layout['places']) or habitat['place'] in seen:raise ValueError('Each habitat selects a different generated place')
+        if type(habitat) is not dict or set(habitat) not in ({'place','profile','rate','criteria'},{'place','profile','rate','slots'}) or type(habitat['place']) is not int or not 0<=habitat['place']<len(layout['places']) or habitat['place'] in seen:raise ValueError('Each habitat selects a different generated place')
         seen.add(habitat['place'])
-        selected=compose(encode(habitat['criteria']))
-        layout['places'][habitat['place']]['population']=dict(profile=habitat['profile'],rate=habitat['rate'],slots=selected['slots'])
+        slots=compose(encode(habitat['criteria']))['slots'] if 'criteria' in habitat else habitat['slots']
+        layout['places'][habitat['place']]['population']=dict(profile=habitat['profile'],rate=habitat['rate'],slots=slots)
     trainers=doc['trainers'];campaign=doc.get('campaign')
     if type(trainers) is not list or not 0<=len(trainers)<=4 or campaign is not None and type(campaign) is not dict:
         raise ValueError('Use up to four original residents and an optional authored campaign')
