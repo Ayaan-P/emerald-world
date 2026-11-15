@@ -83,6 +83,49 @@ def add_ponds(blob, seed, count):
         cells=trial;made+=1
     return MAGIC+bytes(cells),made
 
+def add_trail(blob, terrain, width):
+    """Mark a walkable route through the exact saved terrain, avoiding obstacles.
+
+    Uses existing ordinary grass or sand tiles, not a new road asset. Collision,
+    water, rock and the protected entrance/exit never change.
+    """
+    from collections import deque
+    if type(blob) is not bytes or blob[:8] != MAGIC or len(blob) != 8 + SIDE * SIDE:
+        raise ValueError('expected shared painted landscape')
+    if terrain not in ('grass', 'sand') or type(terrain) is not str:
+        raise ValueError('trail terrain must be grass or sand')
+    if type(width) is not int or width not in (1, 3):
+        raise ValueError('trail width must be 1 or 3')
+    cells = bytearray(blob[8:]); start = (1, 1); end = (125, 125)
+    blocked = (ord('#'), ord('r'))
+    if cells[start[1]*SIDE+start[0]] in blocked or cells[end[1]*SIDE+end[0]] in blocked:
+        raise ValueError('trail endpoints are blocked')
+    queue = deque([start]); previous = {start: None}
+    while queue and end not in previous:
+        x, y = queue.popleft()
+        for point in ((x+1,y),(x,y+1),(x-1,y),(x,y-1)):
+            px, py = point
+            if (1 <= px < 126 and 1 <= py < 126 and point not in previous
+                    and cells[py*SIDE+px] not in blocked):
+                previous[point] = (x,y); queue.append(point)
+    if end not in previous:
+        raise ValueError('no connected trail to the exit')
+    path=[]; point=end
+    while point is not None:
+        path.append(point); point=previous[point]
+    protected={(1,1),(125,124),(125,125)}
+    color=ord('.' if terrain=='grass' else 's'); changed=set()
+    for x,y in path:
+        for dy in range(-(width//2), width//2+1):
+            for dx in range(-(width//2), width//2+1):
+                px,py=x+dx,y+dy
+                if (1 <= px < 126 and 1 <= py < 126 and (px,py) not in protected
+                        and cells[py*SIDE+px] not in blocked):
+                    if cells[py*SIDE+px] != color: changed.add((px,py))
+                    cells[py*SIDE+px]=color
+    return MAGIC + bytes(cells), len(path)-1, len(changed)
+
+
 def compile_document(doc):
     if type(doc) is not dict or set(doc)!={'blueprint','paint'}:raise ValueError('expected blueprint and paint')
     return encode(proposal_from_blueprint(doc['blueprint'],side=SIDE),doc['paint'])
