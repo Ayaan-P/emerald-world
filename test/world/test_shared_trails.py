@@ -123,3 +123,38 @@ class WatercourseTests(unittest.TestCase):
         before=cave.identity,bytes(cave.palette)
         server.close();holder=case.f.f.f.case;holder.server=holder.open();case.s=holder.server
         self.assertEqual((case.s.shared_cave.identity,bytes(case.s.shared_cave.palette)),before)
+
+class LandmarkTerrainTests(unittest.TestCase):
+    def test_distinct_clearings_preserve_geometry_and_reject_invalid_zones(self):
+        from world.route_landscape import compile_plan
+        from world.shared_outdoor_palette import paint_landmarks
+        plan=dict(seed=11,landmarks=[dict(id='grove',x=20,y=90,radius=10),dict(id='ridge',x=90,y=25,radius=10)],reservations=[],loops=0)
+        raw,report=compile_plan(plan);cells=raw[8:]
+        base=paint_biome(dict(rows=[cells[i*127:(i+1)*127].decode() for i in range(127)],spawn=[1,1],exit=[125,125]),'meadow',1)
+        zones={'grove':'long_grass','ridge':'sand'}
+        out=paint_landmarks(base,report['landmarks'],zones)
+        self.assertEqual(out,paint_landmarks(base,report['landmarks'],zones))
+        before,after=SharedCave(base),SharedCave(out)
+        self.assertEqual(before._rows,after._rows)
+        self.assertEqual(after.palette[90*127+20],ord('g'))
+        self.assertEqual(after.palette[25*127+90],ord('s'))
+        for bad in ({'missing':'sand'},{'entry':'grass'},{'grove':'water'},[],{'grove':None}):
+            with self.assertRaises(ValueError):paint_landmarks(base,report['landmarks'],bad)
+
+    def test_character_creates_multi_terrain_area_with_water_and_routes(self):
+        import test_actor_runtime as fixture
+        from world import actor_runtime as runtime
+        case=fixture.ActorRuntimeTests();case.setUp();self.addCleanup(case.doCleanups)
+        server=case.s;server.archive_generated_areas=True;server.persist_generated_cave=True
+        plan=dict(seed=11,landmarks=[dict(id='grove',x=20,y=90,radius=10),dict(id='ridge',x=90,y=25,radius=10)],reservations=[],loops=0)
+        args=dict(label='Grove and ridge',layout='clearings',blueprint=json.dumps(plan,separators=(',',':')),biome='meadow',seed=1,ponds=3,trail='sand',trail_width=1,zones=json.dumps({'grove':'long_grass','ridge':'sand'}))
+        case.apply(dict(id='landmarks',purpose='Create distinctive connected places.',steps=[dict(id='create',tool='world.create_landmark_landscape',args=args,after=[])]))
+        result=runtime.tick(server,now=10);self.assertEqual(result['status'],'succeeded')
+        event=next(e for e in server.memory.history()['events'] if e['seq']==result['seq'])
+        report=event['result']['report']
+        self.assertEqual(report['landmark_terrain'],{'grove':'long_grass','ridge':'sand'})
+        self.assertEqual(report['ponds_created'],3);self.assertGreaterEqual(report['watercourse_tiles'],8)
+        cave=server.shared_cave
+        self.assertEqual(cave.version,17)
+        self.assertIn(ord('g'),cave.palette);self.assertIn(ord('s'),cave.palette)
+        for site in plan['landmarks']:self.assertTrue(cave.walkable(site['x'],site['y']))
