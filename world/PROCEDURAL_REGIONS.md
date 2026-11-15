@@ -93,3 +93,7 @@ This gives adventures actual configured encounter tables, not sightings, catches
 ### Varied connected cave layouts
 
 `place_styles` is an optional constraints list with one style (`rooms`, `rounded`, `organic`, or `maze`) per place. It allows a single generated network to combine distinct cave geometries, including in `world.build_adventure` alongside named places and habitats. Omitting it retains the prior single-style deterministic output. The same connectivity, geometry, size and admission guards apply. These are existing geometry styles, not new tiles or outdoor assets.
+
+### Purposeful resident placement
+
+`world.build_adventure` trainers may specify an optional `anchor`: `entrance`, `exit`, or `anywhere` (the default). An entrance guide or exit rival is placed on the nearest available safe tile to that cave's entrance or exit, with seeded tie-breaking. Existing doors and other objects are respected, every remaining floor tile must remain reachable and the resident must be interactable from an adjacent tile. This is a preference within those constraints, not an exact tile or an assertion the character traveled there. Omission and `anywhere` keep the previous seeded ordering. Published places, existing saves and campaigns are not retroactively changed.
