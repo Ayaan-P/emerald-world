@@ -178,6 +178,46 @@ class AdventureTests(unittest.TestCase):
         self.plan(doc);self.assertEqual(runtime.tick(self.s,now=10)['status'],'blocked');self.assertEqual(catalog(self.s),[])
         self.assertEqual(self.s.db.execute('SELECT count(*) FROM generated_area_archive').fetchone()[0],before)
 
+    def test_authored_entrance_and_exit_residents_are_reachable(self):
+        from collections import deque
+        doc=adventure();doc['trainers'][0]['anchor']='entrance';doc['trainers'][1]['anchor']='exit'
+        entry=self.build(doc)
+        from world.shared_cave import SharedCave
+        for index,place in enumerate(entry['places']):
+            cave=SharedCave(self.s.db.execute('SELECT template FROM generated_area_archive WHERE identity=?',(place['revision'],)).fetchone()[0])
+            obj=next(o for o in self.s.objects if o['id']=='visitor_'+str(index))
+            target=(1,1) if index==0 else (cave.side-2,cave.side-2)
+            distance=abs(obj['x']-target[0])+abs(obj['y']-target[1])
+            self.assertLessEqual(distance,8)
+            blocked={(o['x'],o['y']) for o in self.s.objects if o.get('region_revision')==place['revision']}
+            floor={(x,y) for y in range(cave.side) for x in range(cave.side) if cave.walkable(x,y)}-blocked
+            seen={(1,1)}; q=deque(seen)
+            while q:
+                x,y=q.popleft()
+                for point in ((x+1,y),(x-1,y),(x,y+1),(x,y-1)):
+                    if point in floor and point not in seen:seen.add(point);q.append(point)
+            self.assertEqual(seen,floor)
+            self.assertTrue(any((obj['x']+dx,obj['y']+dy) in seen for dx,dy in ((0,1),(0,-1),(1,0),(-1,0))))
+    def test_anchored_cast_and_wildlife_in_named_varied_adventure(self):
+        from world.shared_cave import SharedCave
+        doc=adventure();doc['place_names']=['Echo Grotto','Moonlit Vault']
+        doc['constraints']['place_styles']=['maze','organic']
+        doc['trainers']=doc['trainers'][1:];doc['trainers'][0]['anchor']='exit';doc.pop('campaign')
+        doc['habitats']=[dict(place=1,profile='granite',rate=17,criteria=dict(types=['water'],generations=[1],bst=[200,550],levels=[8,18],seed=42))]
+        entry=self.build(doc);self.assertEqual([p['label'] for p in entry['places']],doc['place_names'])
+        for i,place in enumerate(entry['places']):
+            cave=SharedCave(self.s.db.execute('SELECT template FROM generated_area_archive WHERE identity=?',(place['revision'],)).fetchone()[0])
+            if i==1:
+                resident=next(o for o in self.s.objects if o['id']=='visitor_1')
+                self.assertEqual(resident['region_revision'],place['revision'])
+                self.assertTrue(cave.walkable(resident['x'],resident['y']))
+                self.assertEqual(cave.wildlife[0],17)
+        self.assertTrue(entry['published'])
+
+    def test_unrecognized_anchor_does_not_publish(self):
+        doc=adventure();doc['trainers'][0]['anchor']='underwater';self.plan(doc)
+        self.assertEqual(runtime.tick(self.s,now=10)['status'],'blocked');self.assertEqual(catalog(self.s),[])
+
     def test_campaign_conflict_and_actor_change_never_overwritten(self):
         self.plan();runtime.tick(self.s,now=10);self.p.admit()
         from world.battle_campaigns import publish
