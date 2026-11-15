@@ -27,7 +27,7 @@ def start(server,actor,row,args):
  from .cave_blueprint import proposal_from_blueprint
  from .shared_cave import SharedCave
  from .place_connections import prepare_connection
- if set(args)!={'network'} or type(args['network']) is not str or len(args['network'])>850:raise ValueError('Use bounded connected network JSON')
+ if set(args)!={'network'} or type(args['network']) is not str or len(args['network'])>4096:raise ValueError('Use bounded connected network JSON')
  try:doc=json.loads(args['network'])
  except ValueError:raise ValueError('Invalid network JSON') from None
  if type(doc) is not dict or set(doc)!={'places','links'} or type(doc['places']) is not list or not 2<=len(doc['places'])<=4:raise ValueError('Use two to four places and an undirected connected link graph')
@@ -47,18 +47,24 @@ def start(server,actor,row,args):
  if old:request=json.loads(old[0])
  else:
   if server.db.execute('SELECT count(*) FROM world_region_revisions').fetchone()[0]+n>32:raise ValueError('Opened region capacity reached')
-  caves=[];labels=[]
+  caves=[];labels=[];blobs=[]
   for place in doc['places']:
-   if type(place) is not dict or set(place)!={'label','blueprint'}:raise ValueError('Each place needs label and normal cave blueprint')
+   if type(place) is not dict or not {'label','blueprint'}<=set(place) or set(place)-{'label','blueprint','population'}:raise ValueError('Each place needs label and cave blueprint, with optional population')
    label=place['label']
    if type(label) is not str or not 1<=len(label)<=20 or not label.strip() or any(not(c.isascii() and (c.isalnum() or c in " .,'!?-")) for c in label):raise ValueError('Use literal region labels')
    proposal=proposal_from_blueprint(place['blueprint'],side=31)
-   cave=SharedCave(b'EWGMAP01'+''.join(proposal['rows']).encode('ascii'))
+   blob=b'EWGMAP01'+''.join(proposal['rows']).encode('ascii')
+   if 'population' in place:
+    population=place['population']
+    if type(population) is not dict or set(population)!={'profile','rate','slots'} or type(population['slots']) is not list or len(population['slots'])!=12 or any(type(slot) is not list or len(slot)!=2 for slot in population['slots']):raise ValueError('Population needs profile, rate and 12 species/level pairs')
+    from .offline_cave import encode_wildlife
+    blob=encode_wildlife(proposal,population['profile'],population['rate'],[dict(species=p[0],level=p[1]) for p in population['slots']],cohort='expansion-native')
+   cave=SharedCave(blob)
    if any(c.identity==cave.identity for c in caves) or server.db.execute('SELECT 1 FROM generated_area_archive WHERE identity=?',(cave.identity,)).fetchone():raise ValueError('Reuse existing places rather than duplicating exact geometry')
-   caves.append(cave);labels.append(label)
+   caves.append(cave);labels.append(label);blobs.append(blob)
   places=[]
-  for cave,label in zip(caves,labels):
-   server.db.execute('INSERT INTO generated_area_archive VALUES(?,?,?,?,?)',(cave.identity,label,'cave',b'EWGMAP01'+b''.join(cave._rows),int(time.time())))
+  for cave,label,blob in zip(caves,labels,blobs):
+   server.db.execute('INSERT INTO generated_area_archive VALUES(?,?,?,?,?)',(cave.identity,label,'cave',blob,int(time.time())))
    opened=server._pin_region(cave.identity);places.append(dict(place_id=opened['place_id'],revision=cave.identity,label=label))
   connections=[];occupied=list(server.objects)
   for a,b in edges:
@@ -85,4 +91,4 @@ def poll(server,actor,row,pending):
  from .place_connections import poll as install
  if server.module_state.get('world_region_networks',{}).get(pending['id'])!=pending:raise ValueError('Network passages not admitted; opened places retained. Reissue the same network to resume.')
  for connection in pending['connections']:install(server,actor,row,connection)
- return dict(outcome='connected_region_network_installed',network=pending['id'],places=pending['places'],entry_place=pending['places'][0]['place_id'],entry_revision=pending['places'][0]['revision'],passages=2*len(pending['connections']),limits='Plain 31x31 caves, actual REGION1 menus and CAVELINK1 passage props. No outdoor admission, seamless travel, visits or simulated construction.')
+ return dict(outcome='connected_region_network_installed',network=pending['id'],places=pending['places'],entry_place=pending['places'][0]['place_id'],entry_revision=pending['places'][0]['revision'],passages=2*len(pending['connections']),limits='31x31 caves, optional CAVE10 wildlife, actual REGION1 menus and CAVELINK1 passage props. No outdoor admission, seamless travel, visits or simulated construction.')

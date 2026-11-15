@@ -48,19 +48,21 @@ def generate(label,raw):
     try:spec=json.loads(raw)
     except ValueError:raise ValueError('Invalid generation constraints') from None
     keys={'places','rooms','loops','branching','style','seed','corridor_width'}
-    if type(spec) is not dict or not keys <= set(spec) or set(spec)-keys-{'room_loops'}:raise ValueError('Supply places, rooms, loops, branching, style, seed and corridor_width; room_loops is optional')
+    if type(spec) is not dict or not keys <= set(spec) or set(spec)-keys-{'room_loops','place_styles'}:raise ValueError('Supply places, rooms, loops, branching, style, seed and corridor_width; room_loops is optional')
     for key,lo,hi in [('places',2,4),('rooms',2,4),('loops',0,1),('branching',1,3),('seed',0,2**32-1),('corridor_width',1,3)]:
         if type(spec[key]) is not int or not lo<=spec[key]<=hi:raise ValueError('Invalid '+key+' constraint')
     room_loops=spec.get('room_loops',0)
     if type(room_loops) is not int or not 0<=room_loops<=1:raise ValueError('room_loops must be 0 or 1')
     if spec['style'] not in ('rooms','rounded','organic','maze'):raise ValueError('Unsupported cave style')
+    styles=spec.get('place_styles',[spec['style']]*spec['places'])
+    if type(styles) is not list or len(styles)!=spec['places'] or any(type(style) is not str or style not in ('rooms','rounded','organic','maze') for style in styles):raise ValueError('place_styles must choose a valid style for every place')
     links=graph(spec['places'],spec['loops'],spec['branching'],spec['seed'])
     from .cave_blueprint import proposal_from_blueprint
     from .shared_cave import SharedCave
     places=[];identities=set()
     for i in range(spec['places']):
         seed=number(spec['seed'],'place',i)%2**32
-        blueprint=dict(rooms=rooms(spec['rooms'],seed),links=graph(spec['rooms'],room_loops,3,seed),entrance_room=0,exit_room=spec['rooms']-1,style=spec['style'],seed=seed,corridor_width=spec['corridor_width'])
+        blueprint=dict(rooms=rooms(spec['rooms'],seed),links=graph(spec['rooms'],room_loops,3,seed),entrance_room=0,exit_room=spec['rooms']-1,style=styles[i],seed=seed,corridor_width=spec['corridor_width'])
         proposal=proposal_from_blueprint(blueprint)
         cave=SharedCave(b'EWGMAP01'+''.join(proposal['rows']).encode())
         if cave.identity in identities:raise ValueError('Generated duplicate geometry; choose another seed')

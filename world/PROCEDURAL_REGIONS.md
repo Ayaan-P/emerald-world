@@ -79,3 +79,21 @@ Tests exercise campaign-free publication, an empty connected network across rest
 ## Alternative room routes
 
 An author can optionally request `room_loops: 1` in the same constraints used by `world.generate_region_network` and `world.build_adventure`. This adds an edge to each connected room graph, allowing cyclic room layouts instead of only a tree. The seed still determines the graph and geometry; omitted `room_loops` keeps old outputs unchanged. Requests that cannot fit the graph or the existing 850-character network budget fail explicitly. A graph cycle does not guarantee physically disjoint paths: corridors may intersect and rooms may be open. This is geometry, not a claim of new stories, maps outside caves, populations, or a rendered playtest.
+
+## Wildlife in connected adventures
+
+`world.build_adventure` accepts optional `habitats`: a list of `{place, profile, rate, criteria}`. Each place index can have one independently composed encounter table. Authors can instead supply `slots` containing twelve explicit `[species, level]` pairs, allowing distinctive authored wildlife. Use exactly one of `criteria` and `slots`. Criteria use the existing `world.compose_habitat` species/type/generation/stat/level/seed rules. The existing Expansion wildlife compiler validates the chosen species, profile and encounter rate; a place without a habitat remains a plain cave. The resulting immutable version-10 cave retains its wildlife in the archive and uses the existing REGION1/CAVELINK1 compatibility checks. Unsupported clients cannot be assumed to traverse it. A complex authored document may require the existing blueprint facility because normal plan steps remain size-bounded.
+
+This gives adventures actual configured encounter tables, not sightings, catches or simulated population changes. It does not affect personal parties, saves or existing maps. Authority tests do not prove a rendered or multiplayer gameplay session.
+
+### Named places
+
+`world.build_adventure` may include `place_names`, one distinct visible name per generated place, instead of the default numbered label. These names appear through the existing region selection and linked passage metadata. Names are literal bounded text, not dynamic narration. Omission keeps old deterministic results and labels; an invalid list fails before any place is opened. The same document and author still resume the same places.
+
+### Varied connected cave layouts
+
+`place_styles` is an optional constraints list with one style (`rooms`, `rounded`, `organic`, or `maze`) per place. It allows a single generated network to combine distinct cave geometries, including in `world.build_adventure` alongside named places and habitats. Omitting it retains the prior single-style deterministic output. The same connectivity, geometry, size and admission guards apply. These are existing geometry styles, not new tiles or outdoor assets.
+
+### Purposeful resident placement
+
+`world.build_adventure` trainers may specify an optional `anchor`: `entrance`, `exit`, or `anywhere` (the default). An entrance guide or exit rival is placed on the nearest available safe tile to that cave's entrance or exit, with seeded tie-breaking. Existing doors and other objects are respected, every remaining floor tile must remain reachable and the resident must be interactable from an adjacent tile. This is a preference within those constraints, not an exact tile or an assertion the character traveled there. Omission and `anywhere` keep the previous seeded ordering. Published places, existing saves and campaigns are not retroactively changed.

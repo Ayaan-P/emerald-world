@@ -37,11 +37,17 @@ from .region_networks import apply_network
 from .actor_population import population_step
 
 
-def placement(server,cave,revision,objects,seed,identity):
+def placement(server,cave,revision,objects,seed,identity,anchor="anywhere"):
+    if anchor not in ("anywhere", "entrance", "exit"):
+        raise ValueError("Trainer placement must be anywhere, entrance or exit")
     blocked={(o['x'],o['y']) for o in objects if o.get('region_revision')==revision}
     floor={(x,y) for y in range(cave.side) for x in range(cave.side) if cave.walkable(x,y)}
     excluded={(1,1),(cave.side-2,cave.side-2),(cave.side-2,cave.side-3)}
     candidates=sorted(floor-blocked-excluded,key=lambda p:hashlib.sha256(encode([seed,identity,p]).encode()).digest())
+    if anchor != 'anywhere':
+        target=(1,1) if anchor=='entrance' else (cave.side-2,cave.side-2)
+        # Stable seed-hash ordering resolves equal-distance alternatives.
+        candidates.sort(key=lambda p: abs(p[0]-target[0])+abs(p[1]-target[1]))
     for point in candidates:
         # Keep every remaining floor tile and an adjacent interaction tile reachable.
         remaining=floor-blocked-{point};seen={(1,1)};queue=deque(seen)
@@ -64,14 +70,28 @@ def start(server,actor,row,args):
     if set(args)!={'document'} or type(args['document']) is not str or len(args['document'])>6000:
         raise ValueError('Supply bounded authored adventure JSON')
     doc=json.loads(args['document'])
-    if type(doc) is not dict or not {'label','constraints','trainers'}<=set(doc) or set(doc)-{'label','constraints','trainers','campaign','mechanisms'}:
+    if type(doc) is not dict or not {'label','constraints','trainers'}<=set(doc) or set(doc)-{'label','constraints','trainers','campaign','mechanisms','habitats','place_names'}:
         raise ValueError('Adventure requires label, procedural constraints and trainers; campaign is optional')
     layout=generate(doc['label'],encode(doc['constraints']))
+    if 'place_names' in doc:
+        names=doc['place_names']
+        if type(names) is not list or len(names)!=len(layout['places']) or any(type(n) is not str or not 1<=len(n)<=20 or not n.strip() or any(not(c.isascii() and (c.isalnum() or c in " .,'!?-")) for c in n) for n in names) or len({n.casefold().strip() for n in names})!=len(names):
+            raise ValueError('Supply one distinct 1..20 character name per generated place')
+        for place,name in zip(layout['places'],names):place['label']=name
+    habitats=doc.get('habitats',[])
+    if type(habitats) is not list or len(habitats)>len(layout['places']):raise ValueError('Use at most one habitat per place')
+    from .habitat_composer import compose
+    seen=set()
+    for habitat in habitats:
+        if type(habitat) is not dict or set(habitat) not in ({'place','profile','rate','criteria'},{'place','profile','rate','slots'}) or type(habitat['place']) is not int or not 0<=habitat['place']<len(layout['places']) or habitat['place'] in seen:raise ValueError('Each habitat selects a different generated place')
+        seen.add(habitat['place'])
+        slots=compose(encode(habitat['criteria']))['slots'] if 'criteria' in habitat else habitat['slots']
+        layout['places'][habitat['place']]['population']=dict(profile=habitat['profile'],rate=habitat['rate'],slots=slots)
     trainers=doc['trainers'];campaign=doc.get('campaign')
     if type(trainers) is not list or not 0<=len(trainers)<=4 or campaign is not None and type(campaign) is not dict:
         raise ValueError('Use up to four original residents and an optional authored campaign')
     for trainer in trainers:
-        if type(trainer) is not dict or set(trainer)!={'place','id','name','role','goals','team','gfx','text'} or type(trainer['place']) is not int or not 0<=trainer['place']<len(layout['places']):
+        if type(trainer) is not dict or not {'place','id','name','role','goals','team','gfx','text'}<=set(trainer) or set(trainer)-{'place','id','name','role','goals','team','gfx','text','anchor'} or trainer.get('anchor','anywhere') not in ('anywhere','entrance','exit') or type(trainer['place']) is not int or not 0<=trainer['place']<len(layout['places']):
             raise ValueError('Each original trainer selects an actual generated place index')
     ids=[t['id'] for t in trainers]
     if any(type(i) is not str for i in ids) or len(set(ids))!=len(ids):
@@ -93,8 +113,8 @@ def start(server,actor,row,args):
         for trainer in trainers:
             place=network['places'][trainer['place']];revision=place['revision']
             cave=SharedCave(server.db.execute('SELECT template FROM generated_area_archive WHERE identity=?',(revision,)).fetchone()[0])
-            x,y=placement(server,cave,revision,trial['objects'],doc['constraints']['seed'],trainer['id'])
-            definition={k:v for k,v in trainer.items() if k!='place'}
+            x,y=placement(server,cave,revision,trial['objects'],doc['constraints']['seed'],trainer['id'],trainer.get('anchor','anywhere'))
+            definition={k:v for k,v in trainer.items() if k not in ('place','anchor')}
             definition.update(kind='character',x=x,y=y)
             population=prepare(server,actor,row,dict(revision=revision,definition=encode(definition)),state=trial['state'],objects=trial['objects'])
             trial=population_step(trial,population);populations.append(population)
