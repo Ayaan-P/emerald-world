@@ -74,10 +74,9 @@ def command(server,conn,words):
     return ['Public client reports (not verified captures):']+['#%d %s: %s%s'%(r['dex'],labels.get(r['dex'],'Unknown name'), 'seen ' if r['seen'] else '', 'caught' if r['caught'] else '') for r in rows]+([] if rows else ['No matching published findings.'])
 
 
-def relevant(event, identity):
-    # Only an anonymous, already-public aggregate delta. No attribution, locations
-    # or claim that Birch met the reporter or saw an individual Pokemon.
-    if (identity!='canon_birch' or event.get('event')!='shared_research_published'
+def valid_event(event):
+    # Only anonymous, explicitly published aggregate deltas, never private Dex data.
+    if (event.get('event')!='shared_research_published'
             or event.get('basis')!=BASIS or event.get('publication')!='explicit_current_dex_snapshot'):
         return False
     entries=event.get('entries')
@@ -85,3 +84,13 @@ def relevant(event, identity):
         and all(type(e) is list and len(e)==2 and type(e[0]) is int and 1<=e[0]<=MAX_DEX
                 and type(e[1]) is int and 1<=e[1]<=3 for e in entries)
         and len({e[0] for e in entries})==len(entries))
+
+
+def relevant(event, identity):
+    return identity=='canon_birch' and valid_event(event)
+
+
+def interested(event, character):
+    # Actor-owned interests refer to National Dex numbers, not engine species IDs.
+    interests=character.get('research_interests',[])
+    return bool(interests and valid_event(event) and any(entry[0] in interests for entry in event['entries']))
