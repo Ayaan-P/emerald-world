@@ -50,6 +50,26 @@ def paint_biome(proposal, biome, seed):
     return MAGIC + bytes(cells)
 
 
+def paint_landmarks(blob, landmarks, zones):
+    """Give named clearings distinct existing ground, preserving collision."""
+    if type(blob) is not bytes or blob[:8] != MAGIC or len(blob) != 8+SIDE*SIDE:
+        raise ValueError('expected shared painted landscape')
+    colors={'grass':ord('.'),'sand':ord('s'),'tall_grass':ord('t'),'long_grass':ord('g')}
+    if type(zones) is not dict or len(zones)>12:
+        raise ValueError('landmark terrain must be a map of IDs to ground types')
+    sites={site['id']:site for site in landmarks if site['id'] not in ('entry','exit')}
+    if any(type(k) is not str or k not in sites or type(v) is not str or v not in colors for k,v in zones.items()):
+        raise ValueError('unknown landmark or ground type')
+    cells=bytearray(blob[8:]); protected={(1,1),(125,124),(125,125)}
+    for name,kind in sorted(zones.items()):
+        site=sites[name];cx,cy,r=site['x'],site['y'],site['radius']
+        for y in range(max(1,cy-r),min(126,cy+r+1)):
+            for x in range(max(1,cx-r),min(126,cx+r+1)):
+                if (x-cx)**2+(y-cy)**2<=r*r and (x,y) not in protected and cells[y*SIDE+x] not in (ord('#'),ord('r')):
+                    cells[y*SIDE+x]=colors[kind]
+    return MAGIC+bytes(cells)
+
+
 def add_ponds(blob, seed, count, *, protected_points=()):
     """Add bounded impassable ponds without disconnecting any walkable tile.
 
