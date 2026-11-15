@@ -1,5 +1,5 @@
 """Bounded persistent reactions to public facts, using existing world executors."""
-import json,re,time,sqlite3
+import json,re,time,sqlite3,math
 
 TOOLS=('world.publish_bulletin', 'world.arrange_market_shelf', 'world.configure_outbreak', 'world.configure_fishing', 'world.set_weather')
 EVENTS=('hoenn_market_purchase_reported', 'canonical_trainer_result', 'landmark_discovery_shared', 'public_story_choice_committed', 'character_journey_arrived', 'player_addressed_character', 'spatial_public_speech', 'dewford_trend_shared', 'safari_feeder_deposit_shared')
@@ -16,8 +16,9 @@ def publish(server,actor,row,args):
  setup(server.db)
  if set(args)!={'id','rule'} or type(args['id']) is not str or not re.fullmatch('[a-z][a-z0-9_]{0,23}',args['id']) or type(args['rule']) is not str or len(args['rule'])>650:raise ValueError('Use a rule ID and bounded literal rule JSON')
  d=json.loads(args['rule'])
- if type(d) is not dict or not {'event','where','tool','args','cooldown','per_hour'}<=set(d) or set(d)-{'event','where','tool','args','cooldown','per_hour','every'}:raise ValueError('Use event/where/tool/args/cooldown/per_hour and optional every')
+ if type(d) is not dict or not {'event','where','tool','args','cooldown','per_hour'}<=set(d) or set(d)-{'event','where','tool','args','cooldown','per_hour','every','within_seconds'}:raise ValueError('Use event/where/tool/args/cooldown/per_hour and optional every/within_seconds')
  if type(d.get('every',1)) is not int or not 1<=d.get('every',1)<=12:raise ValueError('Every must be a count from 1 to 12')
+ if 'within_seconds' in d and (type(d['within_seconds']) is not int or not 60<=d['within_seconds']<=604800 or d.get('every',1)<2):raise ValueError('within_seconds requires every >=2 and 60..604800 seconds')
  if d['event'] not in EVENTS or d['tool'] not in TOOLS:raise ValueError('Use a discovered public trigger and reviewed world operation')
  if type(d['where']) is not dict or len(d['where'])>4 or any(type(k) is not str or not re.fullmatch('[a-z][a-z0-9_]{0,63}',k) or type(v) not in (str,int,bool) or (type(v) is str and len(v)>100) for k,v in d['where'].items()):raise ValueError('Use up to four literal top-level equality filters')
  if type(d['args']) is not dict or any(type(k) is not str or type(v) not in (str,int,bool) for k,v in d['args'].items()):raise ValueError('Operation arguments are fixed literal scalars, never event interpolation')
@@ -73,16 +74,25 @@ def _tick(server,*,now=None):
   page=server.memory.history(after=after,limit=64)
   prior=server.db.execute('SELECT sequences FROM history_world_rule_progress WHERE actor=? AND id=?',(actor,key)).fetchone()
   sequences=json.loads(prior[0]) if prior else []
+  interval=d.get('within_seconds')
+  if interval is not None:
+   # Matching authority-recorded timestamps, not the time of an underlying action.
+   # Exclude future/corrupt timestamps and expire old partial matches after restart.
+   sequences=[v for v in sequences if type(v) is list and len(v)==2 and type(v[0]) is int and type(v[1]) in (int,float) and math.isfinite(v[1]) and 0<=now-v[1]<=interval]
   event=None
   for candidate in page['events']:
    if candidate.get('event')==d['event'] and all(type(candidate.get(k)) is type(v) and candidate.get(k)==v for k,v in d['where'].items()):
-    sequences.append(candidate['seq'])
+    stamp=candidate.get('recorded_at')
+    if interval is not None and (type(stamp) not in (int,float) or not math.isfinite(stamp) or not 0<=now-stamp<=interval):continue
+    sequences.append([candidate['seq'],stamp] if interval is not None else candidate['seq'])
     if len(sequences)>=d.get('every',1):event=candidate;break
   if event is None:
    with server.db:
     server.db.execute('INSERT OR REPLACE INTO history_world_rule_progress VALUES(?,?,?)',(actor,key,json.dumps(sequences)))
     server.db.execute('UPDATE history_world_rules SET cursor=? WHERE actor=? AND id=?',(page['cursor'],actor,key))
    continue
+  # Expose only event IDs in receipts regardless of progress representation.
+  sequences=[v[0] for v in sequences] if interval is not None else sequences
   cap=CAPABILITIES[d['tool']];status='succeeded';old_revision=server.revision
   with server.db:
    # sqlite context managers do not BEGIN until DML; releasing an outermost

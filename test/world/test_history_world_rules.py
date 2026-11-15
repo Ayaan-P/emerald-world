@@ -13,6 +13,49 @@ class HistoryRuleTests(unittest.TestCase):
   self.assertEqual(result['status'],'succeeded');return result
  def event(self,text='Open the field',kind='player_addressed_character'):
   with self.s.db:return self.s.memory.append(kind,dict(character_id=self.actor,text=text,publication='explicit_public_npc_speech',basis='authenticated_nearby_player_message'))
+ def test_recent_activity_expires_across_restart_and_uses_actual_public_records(self):
+  from unittest.mock import patch
+  self.spec.update(every=2,within_seconds=60);self.install()
+  with patch('world.world_memory.time.time',return_value=10000):old=self.event()
+  self.assertIsNone(rules.tick(self.s,now=10000))
+  db=sqlite3.connect(':memory:');self.s.db.backup(db);original=self.s.db;self.s.db=db
+  try:
+   rules.setup(db);self.s.history_rule_next=0
+   with patch('world.world_memory.time.time',return_value=10070):fresh=self.event()
+   self.assertIsNone(rules.tick(self.s,now=10070))
+   with patch('world.world_memory.time.time',return_value=10080):new=self.event()
+   result=rules.tick(self.s,now=10080)
+   self.assertEqual(result['trigger_events'],[fresh,new]);self.assertNotIn(old,result['trigger_events'])
+   self.assertTrue(any(line.startswith('WILD_OUTBREAK') for line in self.s._snapshot(self.peer).splitlines()))
+  finally:self.s.db=original;db.close()
+ def test_expired_backlog_and_receipt_failure_cannot_create_phantom_reaction(self):
+  from unittest.mock import patch
+  self.spec.update(every=2,within_seconds=60);self.install()
+  with patch('world.world_memory.time.time',return_value=10000):self.event();self.event()
+  self.assertIsNone(rules.tick(self.s,now=10100))
+  self.assertIsNone(shared_outbreaks.line(self.s,self.peer))
+  with patch('world.world_memory.time.time',return_value=10105):a=self.event();b=self.event()
+  original=self.s.memory.append
+  def append(kind,data):
+   if kind=='history_world_rule_result':raise ValueError('receipt unavailable')
+   return original(kind,data)
+  with patch.object(self.s.memory,'append',side_effect=append):self.assertEqual(rules.tick(self.s,now=10105)['status'],'uncommitted')
+  self.assertIsNone(shared_outbreaks.line(self.s,self.peer))
+  self.assertEqual(rules.tick(self.s,now=10110)['trigger_events'],[a,b])
+
+ def test_recent_window_rejects_invalid_configuration_and_future_events(self):
+  from unittest.mock import patch
+  for value in (True,0,59,604801):
+   d=deepcopy(self.spec);d.update(every=2,within_seconds=value)
+   with self.assertRaises(ValueError):rules.publish(self.s,self.actor,{},dict(id='bad',rule=json.dumps(d)))
+  d=deepcopy(self.spec);d['within_seconds']=60
+  with self.assertRaises(ValueError):rules.publish(self.s,self.actor,{},dict(id='bad',rule=json.dumps(d)))
+  self.spec.update(every=2,within_seconds=60);self.install()
+  with patch('world.world_memory.time.time',return_value=20000):self.event()
+  with patch('world.world_memory.time.time',return_value=10000):self.event()
+  self.assertIsNone(rules.tick(self.s,now=10000))
+  self.assertEqual(len(rules.discover(self.s)['rules'][0]['pending_matches']),1)
+
  def test_actual_future_event_effect_native_wire_and_no_replay(self):
   old=self.event();self.install();self.assertIsNone(rules.tick(self.s,now=10000));self.assertIsNone(shared_outbreaks.line(self.s,self.peer))
   seq=self.event();out=rules.tick(self.s,now=10006)
