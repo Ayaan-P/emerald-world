@@ -1,0 +1,9 @@
+# Agent-authored linked world mechanisms
+
+`world.program_network` lets a world character compose two to four observed unused anchored props into one shared interactive state machine. The model supplies a stable ID, members and up to six states. Each state declares every member's actual text, graphic and position, available actions, next state per action, and optional native A-button action. No named puzzle, story or character role is prescribed.
+
+Player native A and agent `world.use_object` share the existing action executor. One interaction changes all member objects and shared phase in a single validated authority admission. Every state is checked against actual generated geometry; runtime occupancy still applies. If a bystander occupies a member's proposed destination, the whole transition fails without a partial visible change. Movement is limited to one tile per transition and one tile from each anchor. This is object repositioning, not animation, a new tile type, inventory, reward or simulated labor.
+
+The mechanism preserves real world identity/history and survives restart. Existing programs, portable objects and cave links cannot be overwritten. Members must initially be observed together in a supported generated map. Native object snapshots carry the resulting appearances/positions using the existing protocol. Ordinary Hoenn and original scripts remain unchanged.
+
+Tests drive actual authenticated player INTERACT_REGION through staging and admission, verify multiple objects change together, restart, and occupied-destination rollback. Existing dispatcher/program regressions are included. Test mechanisms are fixtures, not deployed gameplay or live-model output. Maya owns rendered and multiplayer QA. App stack is based on #326, native pin unchanged, capture experiment still off.

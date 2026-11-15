@@ -1,0 +1,17 @@
+# Wally's optional in-game rematch request
+
+Stacked on original-map discovery app #490 / native #128, not Maya's integration branch. Default EW_WALLY_INVITATION=0. Explicit development option --experimental-wally-invitation. Requires an actual authored canon_wally greeting and current wally_native invitation; no default invitation, model call or fixed relationship arc is installed.
+
+At Wally's original Victory Road completed-conversation entry, press L during the supplemental greeting to ask about a rematch. Read the normal battle stakes, then A requests or B returns. Normal original dialogue finishes first. The request never starts a battle: successful feedback says to talk to Wally normally when ready. Original team ladder, money, EXP, defeat/whiteout, rematch cleanup and story eligibility remain native. No party, reward, victory, shared credit or partner approval is added. Early Wally, automatic approach scenes, phone calls and other characters do not get this input.
+
+This is an invitation request, not a guarantee that an author is currently offering a battle. The existing authority rechecks the original conversation's exact actor/version, current location, save lineage and expiry. Withdrawal or newer revision rejects the request. Native checks postgame, first exit-battle victory, current map and all original idle/link/activity guards. No arbitrary script execution or new trainer party.
+
+A RAM-only queue captures save/world, map and player tile with a 3600-update lifetime. It does not mutate readiness during the script lock. Once the original conversation releases and the field is idle it sends the existing REMATCH request once. Replies are already nonce-bound; the queue rechecks context and native eligibility before applying ordinary readiness. Walking away, map/save/world change, new game, restart, disconnect, activity, cancellation, expiry or refusal discard pending work. Late replies after cancellation cannot apply. The existing /history rematch cancel command also cancels the queue. Already applied stock readiness is not rolled back. If another field UI prevents feedback, it is not forced open; no background retry follows. Extremely slow conversation or stale server presence can reject the request, requiring a new voluntary interaction.
+
+The UI does not change native saved story flags itself; readiness follows the existing reviewed Wally helper and normal saving. No persistence or recovery journal is needed for a non-consumptive, idempotent readiness invitation. No real saves were used.
+
+## Verification
+
+Three focused tests pass: actual native included implementation compiled with UBSan on/off (deferred send, cancel, movement, lineage, expiry, eligibility loss, disconnect, refusal, response timeout, late script lock and duplicate pump); exact existing authority handler with stale version, withdrawn offer, old save/location/expiry and wrong authenticated connection; production wiring/default checks. Full source syntax passes against recovered native headers with a test-only shim for three inherited missing declarations (gSpecialVar_ItemId, WorldCoreStory_CampaignClose, ChooseMonForWorldTutor). This is not an exact linked build.
+
+Rendered message paging/input edge timing, original Wally script assembly and continuation, actual readiness/save/reload, native rematch battle and matched-client gameplay remain unverified. Maya owns integration and QA. No live provider or installed preview changes. Mandatory turn review is not enabled by this feature.

@@ -130,6 +130,7 @@ class TagCoopTests(unittest.TestCase):
 
     def test_server_link_role_filter_and_tag_delivery_abort_are_authoritative(self):
         import tempfile
+        import time
         from world.server import WorldServer, MAX_QUEUE
         from test.world.test_link_delivery import Selector, Sock
         with tempfile.TemporaryDirectory() as root:
@@ -139,7 +140,7 @@ class TagCoopTests(unittest.TestCase):
             channels = {}
             try:
                 for actor in self.pos:
-                    peer = dict(id=actor, state=self.pos[actor], closing=False)
+                    peer = dict(id=actor, state=self.pos[actor], state_time=time.monotonic(), closing=False)
                     server.peers[actor] = peer
                     conn = dict(id=actor, presence=peer, sock=Sock(), link=True,
                                 closing=False, out=bytearray())

@@ -18,11 +18,14 @@ class ChatRoutingTests(unittest.TestCase):
     def setUp(self):
         self.server = WorldServer.__new__(WorldServer)
         # Keep the in-memory fixture's admission and chat dependencies real.
+        self.server.combined_regions = False  # Explicit legacy authority, as in __init__.
         self.server.lock = threading.RLock()
         self.server.db = sqlite3.connect(':memory:')
         self.addCleanup(self.server.db.close)
         self.server.world_rules = WorldRules(self.server.db)
         self.server.host_controls = HostControls(self.server.db)
+        from world.canonical_scenes import CanonicalScenes
+        self.server.cast_scenes = CanonicalScenes(self.server)
         self.server.landmark_survey = LandmarkSurvey(self.server)
         self.server.chat_serial = 0
         self.server.peers = {name: peer(name, name != 'legacy') for name in ('alice', 'bob', 'carol', 'legacy')}
@@ -33,6 +36,7 @@ class ChatRoutingTests(unittest.TestCase):
         self.server._broadcast = Mock()
         self.server._queue = Mock()
         self.server.revision = 0
+        self.server.module_state = {}  # Same empty character state as the real constructor.
         self.server.tiles = []
         self.server.objects = []
         self.server._error = Mock()

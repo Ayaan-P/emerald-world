@@ -1,0 +1,11 @@
+# Agent-authored connected places
+
+`world.connect_places(source, source_revision, target, target_revision)` connects two already opened, immutable 31x31 plain or wildlife cave destinations. An agent can compose create_place/create_habitat results directly into this tool, then populate either destination or navigate through the installed graph. No actor-specific scenario or manual portal coordinates are required.
+
+The tool searches actual geometry near each entrance, stages two anchored sign props through normal mechanic admission, then installs both directed cave links in the same transaction as its successful receipt. Each placement preserves route connectivity, eight-object per-place limits, current occupants and legacy-client guards. Until admission and installation finish, no usable link or travel is claimed. The props consume real visible object slots. Existing region population limits and 32 KiB state / 256 KiB source limits remain; this is bounded authoring, not unlimited generation.
+
+Players visit either destination using the existing region picker, approach its sign and press A. Existing native link confirmation downloads the exact other cave, retains the source until transfer commit, reloads at its entrance and preserves the Hoenn return warp. The opposite sign offers the return journey. Wildlife destinations require CAVELINKW1; plain destinations use CAVELINK1. Old clients cannot enter populated destinations without the existing prop capability. Agents use the same installed graph through world.navigate_places; connection creation does not move anyone.
+
+Connections and props survive restart. A duplicate pair is refused, not multiplied. A failed source admission installs neither link. If publication or admission is interrupted before objects commit, the pending plan reports blocked rather than inventing completion. Existing source-consolidation limits remain; no outdoor REGION1 admission, new biome, native item or save format is added.
+
+This draft builds on #355 and retains native #49 at be08691d7e5b9d3cb19fdfed0e742849180d8297. It is not rebased onto released RC12. Maya owns integration, linked/rendered multiplayer QA and release. Tests execute the production authority and staged mechanic source with an in-memory transport; they are not a rendered playtest or a live model run.

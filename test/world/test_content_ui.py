@@ -57,6 +57,55 @@ class ContentUI(unittest.TestCase):
         self.assertEqual(self.s.memory.history(), history)
         self.assertEqual(self.s.db.execute('SELECT count(*) FROM survey_visits').fetchone()[0], 0)
 
+    def test_complete_field_story_preview_install_and_idempotent_reinstall(self):
+        from world.field_story_bundle import curated
+        old=self.s.shared_cave.identity
+        history=self.s.memory.history()
+        draft=self.call('preview',kind='field_story',label='Signal',plan={},outcome_seq=None)
+        self.assertEqual(draft['report']['stages'],2)
+        self.assertEqual(self.s.db.execute('SELECT count(*) FROM mystery_packs').fetchone()[0],0)
+        with self.assertRaises(SessionError):self.call('apply',token=draft['token'],confirmed=False)
+        result=self.call('apply',token=draft['token'],confirmed=True)
+        self.assertTrue(result['field_story']['installed'])
+        self.assertEqual(self.s.shared_cave.identity,old)
+        self.assertEqual(self.s.memory.history(),history)
+        self.s.mysteries.command('Scout',['start','signal_v2'])
+        run=self.s.mysteries._current('Scout')
+        draft=self.call('preview',kind='field_story',label='Signal',plan={},outcome_seq=None)
+        self.call('apply',token=draft['token'],confirmed=True)
+        self.assertEqual(self.s.mysteries._current('Scout'),run)
+        self.assertEqual(self.s.db.execute('SELECT count(*) FROM story_packs').fetchone()[0],1)
+
+    def test_field_story_is_atomic_and_conflicts_preserve_both_parts(self):
+        import sqlite3
+        from world.field_story_bundle import curated, install
+        self.s.db.execute("CREATE TRIGGER fail_bundle BEFORE INSERT ON story_packs BEGIN SELECT RAISE(ABORT,'fixture'); END")
+        with self.assertRaises(sqlite3.Error):install(self.s,curated())
+        self.assertEqual(self.s.db.execute('SELECT count(*) FROM mystery_packs').fetchone()[0],0)
+        self.s.db.execute('DROP TRIGGER fail_bundle')
+        changed=curated();changed['story']['title']='Existing different story'
+        # Install an incompatible pair first; the preset must never replace it.
+        install(self.s,changed)
+        with self.assertRaisesRegex(SessionError,'identity'):
+            self.call('preview',kind='field_story',label='Signal',plan={},outcome_seq=None)
+        self.assertIn('Existing different story',self.s.db.execute('SELECT document FROM story_packs').fetchone()[0])
+
+    def test_packaged_preset_matches_authored_example_content(self):
+        from pathlib import Path
+        from world.field_story_bundle import curated
+        root=Path(__file__).resolve().parents[2]
+        bundle=curated()
+        self.assertEqual(bundle['mystery'],json.loads((root/'examples/cooperative_signal.json').read_text()))
+        self.assertEqual(bundle['story'],json.loads((root/'examples/cooperative_signal_story.json').read_text()))
+
+    def test_field_story_refuses_connected_players_and_stale_review(self):
+        draft=self.call('preview',kind='field_story',label='Signal',plan={},outcome_seq=None)
+        self.s.peers['Alice']={'closing':False}
+        with self.assertRaisesRegex(SessionError,'close all'):
+            self.call('apply',token=draft['token'],confirmed=True)
+        self.s.peers.clear()
+        self.assertEqual(self.s.db.execute('SELECT count(*) FROM mystery_packs').fetchone()[0],0)
+
 
 class SettlementUI(unittest.TestCase):
     def test_reviewed_settlement_uses_existing_staged_authority_and_keeps_inhabitants(self):
