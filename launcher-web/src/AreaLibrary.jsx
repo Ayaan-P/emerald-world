@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import './area-library.css';
 
-const labels = { cave: 'Cave', wilds: 'Outdoor wilds', guided_wilds: 'Outdoor wilds · Guide', cast_wilds: 'Outdoor wilds · Characters', event_wilds: 'Interactive adventure', xl_wilds: 'XL outdoor world' };
+const labels = { cave: 'Cave', wilds: 'Outdoor wilds', guided_wilds: 'Outdoor wilds · Guide', cast_wilds: 'Outdoor wilds · Characters', event_wilds: 'Interactive adventure', xl_wilds: 'XL outdoor world', painted_xl_wilds: 'Painted outdoor world' };
 const filters = ['All areas', 'Caves', 'Outdoors', 'Adventures'];
 const previewError = 'Map preview unavailable. Try again or check the local host. Nothing was changed.';
 
@@ -10,6 +10,9 @@ export function validPreview(value, world, identity) {
   if (!value || value.world !== world || value.identity !== identity || value.layout !== 'saved_base'
       || ![31, 63, 127].includes(value.side) || !Array.isArray(value.rows) || value.rows.length !== value.side
       || !value.rows.every(row => typeof row === 'string' && row.length === value.side && /^[.#]+$/.test(row))) return false;
+  if (value.palette_rows != null && (!Array.isArray(value.palette_rows) || value.palette_rows.length !== value.side ||
+      !value.palette_rows.every((row, y) => typeof row === 'string' && row.length === value.side && /^[.#tsgr]+$/.test(row) &&
+        [...row].every((cell, x) => ((cell === '#' || cell === 'r') ? '#' : '.') === value.rows[y][x])))) return false;
   const point = xy => Array.isArray(xy) && xy.length === 2 && xy.every(n => Number.isInteger(n) && n >= 0 && n < value.side);
   return point(value.entrance) && point(value.exit) && Array.isArray(value.characters) && value.characters.length <= 3
     && value.characters.every(npc => npc && Number.isInteger(npc.number) && npc.number >= 1 && npc.number <= 3 && point([npc.x, npc.y]))
@@ -22,6 +25,18 @@ export function validPreview(value, world, identity) {
 // One path of horizontal runs keeps even a 127-square layout small in the DOM.
 export function floorPath(rows) {
   return rows.flatMap((row, y) => [...row.matchAll(/\.+/g)].map(run => `M${run.index} ${y}h${run[0].length}v1h-${run[0].length}z`)).join('');
+}
+
+const terrain = { '#': ['Water', '#28596a'], '.': ['Grass', '#668877'], t: ['Tall grass', '#43744f'], g: ['Long grass', '#7e9b56'], s: ['Sand', '#d9c287'], r: ['Rock', '#84776e'] };
+export function terrainPath(rows, symbol) {
+  return rows.flatMap((row, y) => {
+    const paths = []; let start = -1;
+    for (let x = 0; x <= row.length; x++) {
+      if (row[x] === symbol && start < 0) start = x;
+      if (row[x] !== symbol && start >= 0) { const width = x-start; paths.push(`M${start} ${y}h${width}v1h-${width}z`); start = -1; }
+    }
+    return paths;
+  }).join('');
 }
 
 function MapPreview({ area, data }) {
@@ -39,14 +54,14 @@ function MapPreview({ area, data }) {
       <div className="area-map-canvas"><svg role="img" aria-label={`Saved layout of ${area.label}`} viewBox={`0 0 ${data.side} ${data.side}`} style={{ width: `${zoom * 100}%` }}>
         <title>{area.label}. Entrance at {data.entrance.join(', ')}, exit at {data.exit.join(', ')}.</title>
         <rect width={data.side} height={data.side} className="map-blocked" />
-        <path d={floorPath(data.rows)} className="map-floor" shapeRendering="crispEdges" />
+        {data.palette_rows ? Object.entries(terrain).map(([symbol, [label, color]]) => <path key={symbol} d={terrainPath(data.palette_rows, symbol)} fill={color} shapeRendering="crispEdges"><title>{label}</title></path>) : <path d={floorPath(data.rows)} className="map-floor" shapeRendering="crispEdges" />}
         <circle cx={data.entrance[0] + 0.5} cy={data.entrance[1] + 0.5} r="1.1" className="map-entrance" />
         <rect x={data.exit[0] - 0.5} y={data.exit[1] - 0.5} width="2" height="2" className="map-exit" />
         {data.characters.map(npc => <path key={npc.number} d={`M${npc.x + 0.5} ${npc.y - 0.8}l1.3 1.3-1.3 1.3-1.3-1.3z`} className="map-character"><title>Character {npc.number} at {npc.x}, {npc.y}</title></path>)}
       </svg></div>
     </div>
-    <ul className={`area-map-key${area.kind === 'cave' ? ' cave-map-key' : ''}`} aria-label="Map legend"><li><i className="key-entrance" />Entrance</li><li><i className="key-exit" />Exit</li><li><i className="key-floor" />Floor</li><li><i className="key-blocked" />Blocked</li>{data.characters.length > 0 && <li><i className="key-character" />Characters · {data.characters.length}</li>}</ul>
-    <p className="field-hint">Saved base layout. Live terrain and player positions are not shown.</p>
+    <ul className={`area-map-key${area.kind === 'cave' ? ' cave-map-key' : ''}`} aria-label="Map legend"><li><i className="key-entrance" />Entrance</li><li><i className="key-exit" />Exit</li>{data.palette_rows ? Object.entries(terrain).map(([symbol, [label, color]]) => <li key={symbol}><i style={{background: color}} />{label}{symbol === '#' || symbol === 'r' ? ' (blocked)' : ''}</li>) : <><li><i className="key-floor" />Floor</li><li><i className="key-blocked" />Blocked</li></>}{data.characters.length > 0 && <li><i className="key-character" />Characters · {data.characters.length}</li>}</ul>
+    <p className="field-hint">Saved base layout. Colors are schematic. Live terrain and player positions are not shown.</p>
     {data.characters.length > 0 && <p className="field-hint">In game: face a character and press A (default Z).</p>}
     {data.wildlife.length > 0 ? <details className="area-wildlife"><summary>Wildlife · {data.wildlife.length} species</summary>
       <ul>{data.wildlife.map(mon => <li key={mon.species}><span>{mon.name}</span><span>Lv. {mon.levels.join(', ')}</span></li>)}</ul>
@@ -104,7 +119,7 @@ export default function AreaLibrary({ world, areas, error, disabled, occupied, p
   }
   const matches = areas.filter(area => area.label.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
     && (filter === 'All areas' || (filter === 'Caves' && area.kind === 'cave')
-      || (filter === 'Outdoors' && ['wilds', 'guided_wilds', 'cast_wilds', 'xl_wilds'].includes(area.kind))
+      || (filter === 'Outdoors' && ['wilds', 'guided_wilds', 'cast_wilds', 'xl_wilds', 'painted_xl_wilds'].includes(area.kind))
       || (filter === 'Adventures' && area.kind === 'event_wilds')));
   const visible = matches.slice(0, limit);
   const searching = query.trim() || filter !== 'All areas';
