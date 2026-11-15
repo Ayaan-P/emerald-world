@@ -38,3 +38,19 @@ class AgentPondTests(unittest.TestCase):
         case.apply(dict(id='lake',purpose='Create a place.',steps=[dict(id='create',tool='world.create_lakeside_landscape',args=args,after=[])]))
         self.assertEqual(runtime.tick(server,now=10)['status'],'succeeded')
         self.assertEqual(server.shared_cave.version,17)
+
+class SparseClearingPondTests(unittest.TestCase):
+    def test_sparse_route_plan_places_ponds_without_blocking_sites(self):
+        from world.route_landscape import compile_plan
+        plan=dict(seed=11,landmarks=[dict(id='grove',x=20,y=90,radius=5),dict(id='ridge',x=90,y=25,radius=5)],reservations=[],loops=0)
+        raw,report=compile_plan(plan);cells=raw[8:];side=127
+        proposal=dict(rows=[cells[i*side:(i+1)*side].decode('ascii') for i in range(side)],spawn=[1,1],exit=[125,125])
+        protected=[(s['x'],s['y']) for s in report['landmarks']]
+        base=paint_biome(proposal,'meadow',1)
+        out,count=add_ponds(base,1,3,protected_points=protected)
+        self.assertEqual(count,3) # Prior uniform random placement produced zero.
+        self.assertEqual((out,count),add_ponds(base,1,3,protected_points=protected))
+        cave=SharedCave(out)
+        for x,y in protected:self.assertTrue(cave.walkable(x,y))
+        self.assertTrue(cave.walkable(1,1));self.assertTrue(cave.walkable(125,125))
+        self.assertNotEqual(cave.identity,SharedCave(base).identity)

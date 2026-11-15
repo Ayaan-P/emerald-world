@@ -46,7 +46,7 @@ def create(server, actor, row, args):
             from .shared_outdoor_palette import add_ponds
             protected=[(site['x'],site['y']) for site in generated['landmarks']] if network else ()
             blob, made=add_ponds(blob,args['seed'],args['ponds'],protected_points=protected)
-            report.update(ponds_requested=args['ponds'], ponds_created=made)
+            report.update(ponds_requested=args['ponds'], ponds_created=made, pond_placement='walkable_ground_v2')
     if 'trail' in args or 'trail_width' in args:
         if 'biome' not in args or 'trail' not in args or 'trail_width' not in args:
             raise ValueError('Trail requires biome, trail terrain and width')
