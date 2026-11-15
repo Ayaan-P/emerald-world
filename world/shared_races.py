@@ -76,7 +76,11 @@ class SharedRaces:
   if not r:return ['Use /guild race list, start COURSE, join CODE, records, or /guild play.']
   if not words or words==['status']:return self.status(r,c)
   if words==['leave']:
-   self.tell(r,['Race stopped by a racer. Already completed individual times remain saved.']);self.runs.pop(r['id'],None);return ['You left the race.']
+   if r['phase']=='running':
+    self.drop(r,c,'left the race')
+   else:
+    self.tell(r,['Race lobby closed by a racer.']);self.runs.pop(r['id'],None)
+   return ['You left the race.']
   if words==['ready']:
    if r['phase']!='lobby':raise GuildError('Race already started')
    if not self.at(c,r['course']['starts'][r['members'].index(c)],now):raise GuildError('Stand ready on your assigned start pad')
@@ -87,24 +91,45 @@ class SharedRaces:
     self.tell(r,['Race starts in three seconds. All racers run at once. Stay on your start pads.'])
    return ['Ready. Stay on your pad.']
   raise GuildError('Use race list/start/join/ready/status/records/leave')
+ def drop(self,r,c,reason):
+  """Remove only this racer after the start; never credit an incomplete run."""
+  if c not in r['members']:return
+  r['members'].remove(c)
+  self.tell(r,[c['id']+' '+reason+'. Other racers can continue.'])
+  if not r['members'] or all(r['progress'][p['id']]['finished'] is not None for p in r['members']):
+   self.tell(r,['Race complete. /guild race records shows your own retained times.'])
+   self.runs.pop(r['id'],None)
  def tick(self):
   now=self.clock()
   for r in list(self.runs.values()):
    course=r['course']
-   if any(self.s.peers.get(c['id']) is not c or c.get('closing') or not self.s.guilds._member(c['id']) or self.s.guilds._member(c['id'])[0]!=r['guild'] for c in r['members']):
-    self.tell(r,['Race interrupted by disconnect/guild change. Completed individual times remain saved.']);self.runs.pop(r['id'],None);continue
+   invalid=lambda c:self.s.peers.get(c['id']) is not c or c.get('closing') or not self.s.guilds._member(c['id']) or self.s.guilds._member(c['id'])[0]!=r['guild']
+   if r['phase']=='running':
+    for c in list(r['members']):
+     if invalid(c):self.drop(r,c,'disconnected or left the guild')
+    if r['id'] not in self.runs:continue
+   elif any(invalid(c) for c in r['members']):
+    self.tell(r,['Race interrupted before the start by disconnect/guild change.']);self.runs.pop(r['id'],None);continue
    if r['phase']=='lobby':
     if now>r['until']:self.runs.pop(r['id'],None)
     continue
-   if course['mounted'] and any(c.get('mount')!=r['mounts'][c['id']] or not c.get('mount',(0,0))[0] or c.get('mount_trail_lost') for c in r['members']):
-    self.tell(r,['Race stopped: mount changed or movement reports were lost. No missing visits inferred.']);self.runs.pop(r['id'],None);continue
+   lost=lambda c:c.get('mount')!=r['mounts'][c['id']] or not c.get('mount',(0,0))[0] or c.get('mount_trail_lost')
+   if course['mounted'] and r['phase']=='running':
+    for c in list(r['members']):
+     if r['progress'][c['id']]['finished'] is None and lost(c):self.drop(r,c,'lost the mount or movement trail')
+    if r['id'] not in self.runs:continue
+   elif course['mounted'] and any(lost(c) for c in r['members']):
+    self.tell(r,['Race stopped before the start: mount changed or movement reports were lost.']);self.runs.pop(r['id'],None);continue
    if r['phase']=='countdown':
     if not all(self.at(c,course['starts'][i],now) for i,c in enumerate(r['members'])):
      r['phase']='lobby';r['ready'].clear();self.tell(r,['Countdown cancelled. Return to pads and ready again.']);continue
     if now<r['started']:continue
     r['phase']='running';r['progress']={c['id']:dict(index=0,splits=[],finished=None,seq=c['seq'],trace=len(c.get('mount_trail',[]))-1) for c in r['members']};self.tell(r,['Go! Everyone follows the same checkpoints. /guild race status for your next target.'])
-   if now-r['started']>course['limit'] or any(now-c.get('state_time',-100)>10 for c in r['members']):
-    self.tell(r,['Race ended: time limit or stale reports. Only actual completed times remain saved.']);self.runs.pop(r['id'],None);continue
+   if now-r['started']>course['limit']:
+    self.tell(r,['Race ended: time limit. Only actual completed times remain saved.']);self.runs.pop(r['id'],None);continue
+   for c in list(r['members']):
+    if r['progress'][c['id']]['finished'] is None and now-c.get('state_time',-100)>10:self.drop(r,c,'lost movement updates')
+   if r['id'] not in self.runs:continue
    failed=False
    for c in r['members']:
     p=r['progress'][c['id']]
@@ -126,7 +151,7 @@ class SharedRaces:
     else:
      for line in self.status(r,c):self.s.guild_chat.message(c,c['id'],line[:120])
    if failed:continue
-   if all(p['finished'] is not None for p in r['progress'].values()):
+   if all(r['progress'][c['id']]['finished'] is not None for c in r['members']):
     self.tell(r,['Race complete. /guild race records shows your own retained times.']);self.runs.pop(r['id'],None)
 
 def publish(server,actor,row,args):
