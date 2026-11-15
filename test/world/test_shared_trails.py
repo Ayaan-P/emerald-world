@@ -40,3 +40,28 @@ class SharedTrailTests(unittest.TestCase):
         self.assertEqual(runtime.tick(server,now=10)['status'],'succeeded')
         self.assertEqual(server.shared_cave.version,17)
         self.assertIn(ord('s'),server.shared_cave.palette)
+
+class NetworkTrailTests(unittest.TestCase):
+    def test_actor_network_connects_all_landmarks(self):
+        import test_actor_runtime as fixture
+        from world import actor_runtime as runtime
+        case=fixture.ActorRuntimeTests();case.setUp();self.addCleanup(case.doCleanups)
+        server=case.s;server.archive_generated_areas=True;server.persist_generated_cave=True
+        plan=dict(seed=11,landmarks=[dict(id='grove',x=20,y=90,radius=5),dict(id='pond',x=90,y=25,radius=5)],reservations=[],loops=0)
+        args=dict(label='Crossroads',layout='clearings',blueprint=json.dumps(plan,separators=(',',':')),biome='meadow',seed=22,ponds=3,trail='sand',trail_width=1)
+        case.apply(dict(id='network',purpose='Connect outdoor clearings.',steps=[dict(id='create',tool='world.create_landscape_network',args=args,after=[])]))
+        self.assertEqual(runtime.tick(server,now=10)['status'],'succeeded')
+        cave=server.shared_cave
+        self.assertEqual(cave.version,17)
+        for site in plan['landmarks']:
+            self.assertTrue(cave.walkable(site['x'],site['y']))
+            self.assertEqual(cave.palette[site['y']*127+site['x']],ord('s'))
+        self.assertEqual(cave.palette[127+1],ord('.'))
+
+    def test_invalid_endpoint_rejected(self):
+        for p in [((-1,3),(1,1)),((True,3),(1,1)),((1,1),(126,1))]:
+            with self.assertRaises(ValueError):add_trail(SharedTrailTests_blob(),'sand',1,endpoints=p)
+
+def SharedTrailTests_blob():
+    rows=['#'*127]+['#'+'.'*125+'#']*125+['#'*127]
+    return paint_biome(dict(rows=rows,spawn=[1,1],exit=[125,125]),'meadow',1)
