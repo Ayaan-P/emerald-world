@@ -57,6 +57,27 @@ class ContentUI(unittest.TestCase):
         self.assertEqual(self.s.memory.history(), history)
         self.assertEqual(self.s.db.execute('SELECT count(*) FROM survey_visits').fetchone()[0], 0)
 
+    def test_existing_painted_route_can_be_reviewed_and_registered(self):
+        from world.route_landscape import compile_plan
+        from world.shared_cave import SharedCave
+        from world.shared_outdoor_palette import paint_biome, add_ponds, add_trail
+        blob, _ = compile_plan(route_plan()); cave=SharedCave(blob)
+        proposal=dict(rows=[r.decode('ascii') for r in cave._rows],spawn=[1,1],exit=[125,125])
+        painted=paint_biome(proposal,'meadow',42)
+        painted,_=add_ponds(painted,42,2,protected_points=[(p['x'],p['y']) for p in route_plan()['landmarks']])
+        painted,_,_=add_trail(painted,'sand',1)
+        revision=self.s._replace_cave(painted,label='Painted route')
+        history=self.s.memory.history()
+        draft=self.call('preview',kind='survey',label='Painted route',plan=route_plan(),outcome_seq=None)
+        self.assertEqual(draft['mode'],'register');self.assertEqual(draft['report']['revision'],revision)
+        self.assertEqual(self.s.db.execute('SELECT count(*) FROM survey_routes').fetchone()[0],0)
+        self.assertEqual(self.s.shared_cave.identity,revision)
+        result=self.call('apply',token=draft['token'],confirmed=True)
+        self.assertEqual(result['registered_revision'],revision)
+        self.assertEqual(self.s.memory.history(),history)
+        self.assertIsNotNone(self.s.db.execute('SELECT 1 FROM survey_routes WHERE revision=?',(revision,)).fetchone())
+        with self.assertRaises(SessionError):self.call('apply',token=draft['token'],confirmed=True)
+
     def test_complete_field_story_preview_install_and_idempotent_reinstall(self):
         from world.field_story_bundle import curated
         old=self.s.shared_cave.identity

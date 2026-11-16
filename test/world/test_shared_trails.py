@@ -158,3 +158,28 @@ class LandmarkTerrainTests(unittest.TestCase):
         self.assertEqual(cave.version,17)
         self.assertIn(ord('g'),cave.palette);self.assertIn(ord('s'),cave.palette)
         for site in plan['landmarks']:self.assertTrue(cave.walkable(site['x'],site['y']))
+
+    def test_owner_registers_survey_on_painted_landscape(self):
+        import test_actor_runtime as fixture
+        import test_landmark_survey as survey
+        from admin_transport import admin_request
+        from world import actor_runtime as runtime
+        case=fixture.ActorRuntimeTests();case.setUp();self.addCleanup(case.doCleanups)
+        s=case.s;s.archive_generated_areas=True;s.persist_generated_cave=True
+        plan=dict(seed=11,landmarks=[dict(id='grove',x=20,y=90,radius=10),dict(id='ridge',x=90,y=25,radius=10)],reservations=[],loops=0)
+        args=dict(label='Survey landscape',layout='clearings',blueprint=json.dumps(plan,separators=(',',':')),biome='meadow',seed=1,ponds=3,trail='sand',trail_width=1,zones=json.dumps({'grove':'long_grass','ridge':'sand'}))
+        case.apply(dict(id='surveyland',purpose='Create a route.',steps=[dict(id='create',tool='world.create_landmark_landscape',args=args,after=[])]))
+        self.assertEqual(runtime.tick(s,now=10)['status'],'succeeded')
+        revision=s.shared_cave.identity
+        self.assertFalse(admin_request(s,dict(command='register_survey',plan=plan))['ok'])
+        self.assertTrue(admin_request(s,dict(command='register_survey',plan=plan,revision=revision))['ok'])
+        self.assertEqual(s.db.execute('SELECT count(*) FROM survey_routes WHERE revision=?',(revision,)).fetchone()[0],1)
+        h=survey.LandmarkSurveyTests();h.s=s;h.revision=revision
+        token=s.create_identity('SurveyScout')['token'];h.conn=dict(id=None,out=bytearray(),closing=False,state=None,seq=0,sock=object())
+        h.send(h.conn,'HELLO 1 SurveyScout '+token+' SOCIALCAVE17');h.send(h.conn,'CHAT_ENABLE');h.send(h.conn,'CAVE GET');h.send(h.conn,'CAVE ACK '+revision)
+        h.state(h.conn,20,90);h.command('/explore start');self.assertEqual(h.count(),1)
+        h.command('/explore share grove confirm')
+        event=s.memory.history()['events'][-1]
+        self.assertEqual((event['event'],event['revision'],event['landmark']),('landmark_discovery_shared',revision,'grove'))
+        changed=dict(plan,landmarks=[dict(id='grove',x=40,y=40,radius=4),plan['landmarks'][1]])
+        self.assertFalse(admin_request(s,dict(command='register_survey',plan=changed,revision=revision))['ok'])
