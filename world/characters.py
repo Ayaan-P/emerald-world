@@ -33,7 +33,7 @@ def records(state):
     for identity, character in value.items():
         if type(identity) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}', identity):
             raise ValueError('invalid character identity')
-        if type(character) is not dict or not FIELDS <= set(character) or set(character)-FIELDS-{'plan','offer','services','battle_portrait','intentions','campaign_interests','goal_review'}:
+        if type(character) is not dict or not FIELDS <= set(character) or set(character)-FIELDS-{'plan','offer','services','battle_portrait','intentions','campaign_interests','research_interests','goal_review'}:
             raise ValueError('invalid character fields')
         if ('battle_portrait' in character and
                 (type(character['battle_portrait']) is not str or character['battle_portrait'] not in BATTLE_PORTRAITS)):
@@ -59,6 +59,12 @@ def records(state):
         allowed={'native:'+m['name'] for m in catalog_maps().values() if not m['name'].startswith('GeneratedWorld')}
         if type(interests) is not list or len(interests)>4 or any(type(v) is not str or v not in allowed for v in interests) or len(set(interests))!=len(interests):
             raise ValueError('Campaign interests must be up to four existing original places')
+        research=character.get('research_interests',[])
+        from .shared_research import MAX_DEX
+        if (type(research) is not list or len(research)>8 or
+                any(type(n) is not int or not 1<=n<=MAX_DEX for n in research) or
+                len(set(research))!=len(research)):
+            raise ValueError('Research interests must be up to eight distinct National Dex numbers')
         goals = character['goals']
         if type(goals) is not list or len(goals) > 4:
             raise ValueError('invalid character goals')
