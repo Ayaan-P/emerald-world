@@ -24,20 +24,45 @@ class LandmarkSurvey:
                 PRIMARY KEY(trainer,revision,landmark));
         ''')
 
-    def register(self, plan):
-        """Owner registers an already archived exact generated route plan."""
+    def inspect_registration(self, plan, revision=None):
+        """Validate a survey against an archived map without modifying it."""
         s=self.server
         blob,report=compile_plan(plan)
         sites=[site for site in report['landmarks'] if site['id'] not in ('entry','exit')]
         with s.lock:
             if not s.archive_generated_areas:raise ValueError('survey requires persistent area archive')
-            row=s.db.execute('SELECT template FROM generated_area_archive WHERE identity=?',(report['revision'],)).fetchone()
-            if row is None or row[0]!=blob:raise ValueError('publish this exact route map before registering its survey')
+            target=report['revision'] if revision is None else revision
+            if type(target) is not str or len(target)!=64 or any(c not in '0123456789abcdef' for c in target):
+                raise ValueError('survey needs an exact archived map revision')
+            row=s.db.execute('SELECT template FROM generated_area_archive WHERE identity=?',(target,)).fetchone()
+            if row is None:raise ValueError('publish this exact route map before registering its survey')
+            if row[0]!=blob:
+                if revision is None:raise ValueError('publish this exact route map before registering its survey')
+                from collections import deque
+                from .shared_cave import SharedCave
+                original,actual=SharedCave(blob),SharedCave(row[0])
+                if actual.version!=17 or any(actual.walkable(x,y) and not original.walkable(x,y) for y in range(127) for x in range(127)):
+                    raise ValueError('painted survey geometry does not match route plan')
+                start=(1,1); seen={start}; pending=deque([start])
+                if not actual.walkable(*start):raise ValueError('survey entrance is blocked')
+                while pending:
+                    x,y=pending.popleft()
+                    for point in ((x+1,y),(x-1,y),(x,y+1),(x,y-1)):
+                        if point not in seen and actual.walkable(*point):seen.add(point);pending.append(point)
+                if any((p['x'],p['y']) not in seen for p in report['landmarks']):
+                    raise ValueError('survey landmarks must be reachable in the archived map')
             encoded=json.dumps(sites,sort_keys=True)
-            old=s.db.execute('SELECT sites FROM survey_routes WHERE revision=?',(report['revision'],)).fetchone()
+            old=s.db.execute('SELECT sites FROM survey_routes WHERE revision=?',(target,)).fetchone()
             if old and old[0]!=encoded:raise ValueError('survey landmarks are already fixed for this revision')
-            with s.db:s.db.execute('INSERT OR IGNORE INTO survey_routes VALUES (?,?)',(report['revision'],encoded))
-        return dict(ok=True,revision=report['revision'],landmarks=len(sites))
+            return dict(revision=target, landmarks=len(sites), sites=encoded, template=row[0], report=report)
+
+    def register(self, plan, revision=None):
+        """Register only the exact plan and archived geometry just validated."""
+        s=self.server
+        with s.lock:
+            checked=self.inspect_registration(plan,revision)
+            with s.db:s.db.execute('INSERT OR IGNORE INTO survey_routes VALUES (?,?)',(checked['revision'],checked['sites']))
+        return dict(ok=True,revision=checked['revision'],landmarks=checked['landmarks'])
 
     def scope(self, conn):
         s=self.server;state=conn.get('state');cave=s._connection_cave(conn)
@@ -156,12 +181,15 @@ class LandmarkSurvey:
 def main(argv=None):
     parser=argparse.ArgumentParser(description='Register an archived route map survey without activating or changing terrain.')
     parser.add_argument('plan',type=Path);parser.add_argument('--admin-socket',required=True)
+    parser.add_argument('--revision',help='Exact archived painted-map revision to validate against the plan')
     args=parser.parse_args(argv)
     with args.plan.open('rb') as stream:raw=stream.read(MAX_INPUT+1)
     if len(raw)>MAX_INPUT:parser.error('plan too large')
     from .client import admin_request
     plan=json.loads(raw);compile_plan(plan)
-    result=admin_request('',dict(command='register_survey',plan=plan),admin_path=args.admin_socket)
+    request=dict(command='register_survey',plan=plan)
+    if args.revision is not None:request['revision']=args.revision
+    result=admin_request('',request,admin_path=args.admin_socket)
     if result.get('ok') is not True:parser.error(result.get('error','survey registration refused'))
     print(json.dumps(result))
 

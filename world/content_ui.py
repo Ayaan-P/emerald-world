@@ -114,11 +114,19 @@ class ContentWorkshop:
                     elif kind == 'survey':
                         from .route_landscape import compile_plan
                         blob, report = compile_plan(plan)
-                        row = server.db.execute('SELECT template FROM generated_area_archive WHERE identity=?', (report['revision'],)).fetchone()
-                        if current['identity'] is not None and (row is None or row[0] != blob):
-                            raise SessionError('Do not replace existing geography. Register the exact archived route plan, or create a separate empty local world for a new route.')
-                        request = dict(command='register_survey', plan=plan)
-                        mode = 'register' if row is not None and row[0] == blob else 'create'
+                        if current['identity'] is not None:
+                            # Preview and apply both validate the exact active archive.
+                            try:
+                                checked=server.landmark_survey.inspect_registration(plan,current['identity'])
+                            except ValueError as exc:
+                                raise SessionError('The existing archived area does not match this survey: '+str(exc)) from exc
+                            blob=checked['template'];report=dict(report,revision=checked['revision'])
+                            request=dict(command='register_survey',plan=plan,revision=checked['revision'])
+                            mode='register'
+                        else:
+                            row=server.db.execute('SELECT template FROM generated_area_archive WHERE identity=?',(report['revision'],)).fetchone()
+                            request=dict(command='register_survey',plan=plan)
+                            mode='register' if row is not None and row[0]==blob else 'create'
                     elif kind in ('outpost', 'settlement'):
                         stored = server.db.execute('SELECT template FROM generated_cave WHERE singleton=1').fetchone()
                         if current['version'] != 16 or stored is None:
@@ -180,7 +188,7 @@ class ContentWorkshop:
                         # No active area can be replaced by this route entry point.
                         server._replace_cave(draft['blob'], label=draft['label'], expected_world_id=current['world_id'],
                                              expected_sequence=current['sequence'], history_evidence=[])
-                    server.landmark_survey.register(request['plan'])
+                    server.landmark_survey.register(request['plan'],request.get('revision'))
                 else:
                     # Staging is asynchronous. The server loop needs its lock,
                     # so use the existing private admin transport outside it.
