@@ -22,11 +22,12 @@ import re
 
 def validate_objects(objects):
     """Small static NPC catalog and literal text, never engine scripts or pointers."""
-    if type(objects) is not list or len(objects) > 8:
-        raise ValueError('objects must be a list of at most 8 entries')
+    if type(objects) is not list or len(objects) > 64:
+        raise ValueError('world catalog must contain at most 64 objects')
+    scope_counts = {}
     seen, locations = set(), set()
     for obj in objects:
-        if type(obj) is not dict or set(obj) - {'region_revision'} != {'id', 'group', 'num', 'x', 'y', 'gfx', 'text'}:
+        if type(obj) is not dict or set(obj) - {'region_revision','kind','portable'} != {'id', 'group', 'num', 'x', 'y', 'gfx', 'text'}:
             raise ValueError('invalid object fields')
         name, text = obj['id'], obj['text']
         if type(name) is not str or not re.fullmatch(r'[A-Za-z0-9_-]{1,24}', name) or name in seen:
@@ -41,11 +42,16 @@ def validate_objects(objects):
         if generated:
             if not 0<=obj['x']<127 or not 0<=obj['y']<127:raise ValueError('invalid generated object coordinates')
         else:validate_coords(obj['group'],obj['num'],obj['x'],obj['y'])
-        if obj['gfx'] not in (7, 8):
+        if 'portable' in obj and (obj.get('kind')!='prop' or type(obj['portable']) is not bool):raise ValueError('Only props may declare explicit portable status')
+        if obj.get('kind') is not None and (obj['kind']!='prop' or not generated):raise ValueError('Props require exact generated scope')
+        if obj['gfx'] not in ((0,1) if obj.get('kind')=='prop' else (7,8)):
             raise ValueError('object graphics must be boy 1 (7) or girl 1 (8)')
         if (type(text) is not str or not re.fullmatch(r"[A-Za-z0-9 .,!?'-]+(?:\n[A-Za-z0-9 .,!?'-]+)?", text)
                 or any(len(line) > 28 for line in text.split('\n'))):
             raise ValueError('object text needs one or two literal lines of at most 28 characters')
+        scope=(obj['group'],obj['num'],obj.get('region_revision'))
+        scope_counts[scope]=scope_counts.get(scope,0)+1
+        if scope_counts[scope]>8:raise ValueError('at most eight objects per map and revision')
         location = tuple(obj[k] for k in ('group', 'num', 'x', 'y')) + (obj.get('region_revision'),)
         if location in locations:
             raise ValueError('duplicate object position')

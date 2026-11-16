@@ -113,7 +113,7 @@ class LinkSessions:
     Timeouts are (0, 60] seconds. now is finite [0, 2**53-1], nondecreasing.
     tick must be called periodically even when no client sends requests.
     """
-    KINDS = frozenset(('battle_single', 'battle_double', 'trade', 'coop_wild'))
+    KINDS = frozenset(('battle_single', 'battle_double', 'trade', 'coop_wild', 'contest'))
     NATIVE_WINDOW = 16
 
     def __init__(self, *, clock=time.monotonic, consent_timeout=15,
@@ -195,7 +195,7 @@ class LinkSessions:
             raise LinkError('busy')
         if len(self._sessions) >= self.max_sessions:
             raise LinkError('capacity')
-        self._near(presence, actor, target, coop=kind == 'coop_wild')
+        self._near(presence, actor, target, coop=kind in ('coop_wild','contest'))
         self._generation += 1
         sid = 'link-' + self._instance + '-' + str(self._generation)
         s = _Session(sid, self._generation, actor, target, kind,
@@ -223,7 +223,7 @@ class LinkSessions:
             raise LinkError('not_target')
         if s.state != 'pending':
             raise LinkError('invalid_state')
-        self._near(presence, *s.participants, coop=s.kind == 'coop_wild')
+        self._near(presence, *s.participants, coop=s.kind in ('coop_wild','contest'))
         s.state = 'preparing'
         return self._result(s, self._events(s, 'accepted'))
 
@@ -233,7 +233,7 @@ class LinkSessions:
         s = self._member(actor, session_id)
         if s.state != 'preparing' or s.link_generation:
             raise LinkError('invalid_state')
-        self._near(presence, *s.participants, coop=s.kind == 'coop_wild')
+        self._near(presence, *s.participants, coop=s.kind in ('coop_wild','contest'))
         s.ready.add(actor)
         if len(s.ready) == 2:
             s.state = 'active'

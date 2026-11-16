@@ -14,6 +14,23 @@ def plan():
         reservations=[[50,12,14,75]])
 
 class TerrainRouting(unittest.TestCase):
+    def test_optional_wide_corridors_keep_reservations_and_legacy_output(self):
+        baseline,report=compile_plan(plan())
+        legacy=plan();legacy['corridor_width']=1
+        self.assertEqual((baseline,report),compile_plan(legacy))
+        widened=plan();widened['corridor_width']=5
+        blob,wide=compile_plan(widened)
+        self.assertEqual((blob,wide),compile_plan(widened))
+        self.assertGreater(wide['walkable_tiles'],report['walkable_tiles'])
+        cave=SharedCave(blob)
+        self.assertTrue(all(not cave.walkable(x,y) for x in range(50,64) for y in range(12,87)))
+        self.assertTrue(all(not cave.walkable(x,y) for x in range(127) for y in (0,126)))
+        for edge in report['routes']:
+            self.assertTrue(all(cave.walkable(*p) for p in edge['path']))
+        for invalid in (0,2,8,True,'3'):
+            bad=plan();bad['corridor_width']=invalid
+            with self.assertRaises(ValueError):compile_plan(bad)
+
     def test_real_paths_detour_around_reserved_terrain_and_add_alternates(self):
         blob,report=compile_plan(plan())
         self.assertEqual(SharedCave(blob).version,16)

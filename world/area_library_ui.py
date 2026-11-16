@@ -7,7 +7,7 @@ from .session import SessionError
 from .shared_cave import MAX_SIZE, SharedCave
 from .species_cohort import catalogue
 
-KINDS = {6: 'wilds', 7: 'guided_wilds', 8: 'cast_wilds', 9: 'event_wilds', 16: 'xl_wilds'}
+KINDS = {6: 'wilds', 7: 'guided_wilds', 8: 'cast_wilds', 9: 'event_wilds', 16: 'xl_wilds', 17: 'painted_xl_wilds'}
 
 
 def inspect_area(session, worlds, payload):
@@ -58,6 +58,7 @@ def inspect_area(session, worlds, payload):
             wildlife = [dict(species=species, name=names[species], levels=sorted(values)) for species, values in levels.items()]
         return dict(world=world, identity=identity, label=label, kind=KINDS.get(cave.version, 'cave'),
                     side=cave.side, rows=[row.decode('ascii') for row in cave._rows],
+                    palette_rows=[cave.palette[i:i+cave.side].decode('ascii') for i in range(0, len(cave.palette), cave.side)] if cave.palette is not None else None,
                     entrance=[1, 1], exit=[cave.side - 2, cave.side - 2], characters=characters,
                     wildlife=wildlife, wildlife_cohort=cave.cohort if wildlife else None,
                     floor_tiles=sum(row.count(b'.') for row in cave._rows),

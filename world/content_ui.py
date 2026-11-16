@@ -41,6 +41,7 @@ class ContentWorkshop:
         self.draft: dict[str, Any] | None = None
 
     def _read(self, server, world) -> dict[str, Any]:
+        from .adventure_workshop import catalog as adventure_catalog
         cave = server.shared_cave
         if server._closed or not server.archive_generated_areas or not server.persist_generated_cave:
             raise SessionError('Open a durable local world before authoring content.')
@@ -53,7 +54,11 @@ class ContentWorkshop:
                     identity=cave.identity if cave else None, version=cave.version if cave else None,
                     rows=[row.decode('ascii') for row in cave._rows] if cave else [],
                     outcomes=outcomes, residents=sorted(server.module_state.get('world_characters', {})),
-                    players=sum(not peer.get('closing') for peer in server.peers.values()))
+                    players=sum(not peer.get('closing') for peer in server.peers.values()),
+                    activities=server.activities.catalog(),adventure_inputs=adventure_catalog(server),
+                    adventures=[dict(id=k,title=json.loads(raw)['title']) for k,raw in server.db.execute('SELECT id,document FROM battle_campaigns ORDER BY id LIMIT 32')],
+                    relay_courses=[dict(id=key,title=json.loads(raw)['title'],runners=len(json.loads(raw)['legs']))
+                                   for key,raw in server.db.execute('SELECT id,document FROM relay_courses ORDER BY id LIMIT 8')])
 
     @staticmethod
     def _guard(current):
@@ -80,6 +85,23 @@ class ContentWorkshop:
                         raise ValueError('content plan exceeds 16384 bytes')
                     plan = deepcopy(payload['plan']); kind = payload['kind']; label = payload['label']
                     request: dict[str, Any]
+                    if kind == 'adventure':
+                        from .adventure_workshop import inspect
+                        report=inspect(server,plan);token=secrets.token_hex(24)
+                        self.draft=dict(token=token,server=server,guard=self._guard(current),
+                            request=dict(command='install_adventure',plan=plan),report=report,expires=time.monotonic()+900)
+                        return dict(current,token=token,kind=kind,mode='install',plan=plan,report=report,
+                            proposed_rows=current['rows'],validation='Review every real destination and route. This installs an optional adventure only. It does not create or reset its world objects, enrol players, run an agent, or change saves.')
+                    if kind == 'field_story':
+                        from .field_story_bundle import curated, inspect
+                        if plan != {}:raise ValueError('The curated field story uses its reviewed built-in plan.')
+                        plan=curated();report=inspect(server,plan);token=secrets.token_hex(24)
+                        self.draft=dict(token=token,server=server,guard=self._guard(current),
+                                        request=dict(command='publish_field_story',bundle=plan),report=report,
+                                        expires=time.monotonic()+900)
+                        return dict(current,token=token,kind=kind,mode='install',plan=plan,report=report,
+                                    proposed_rows=current['rows'],
+                                    validation='Install both story parts together. Existing geography, trainers and progress are retained. Requires two matched RC12 clients. Station walkability still needs in-game QA.')
                     if kind == 'field_test':
                         if current['identity'] is not None or server.candidate is not None or server.objects:
                             raise SessionError('Use a separate empty local world for the RC11 field test. Existing geography and inhabitants cannot be replaced.')
@@ -92,11 +114,19 @@ class ContentWorkshop:
                     elif kind == 'survey':
                         from .route_landscape import compile_plan
                         blob, report = compile_plan(plan)
-                        row = server.db.execute('SELECT template FROM generated_area_archive WHERE identity=?', (report['revision'],)).fetchone()
-                        if current['identity'] is not None and (row is None or row[0] != blob):
-                            raise SessionError('Do not replace existing geography. Register the exact archived route plan, or create a separate empty local world for a new route.')
-                        request = dict(command='register_survey', plan=plan)
-                        mode = 'register' if row is not None and row[0] == blob else 'create'
+                        if current['identity'] is not None:
+                            # Preview and apply both validate the exact active archive.
+                            try:
+                                checked=server.landmark_survey.inspect_registration(plan,current['identity'])
+                            except ValueError as exc:
+                                raise SessionError('The existing archived area does not match this survey: '+str(exc)) from exc
+                            blob=checked['template'];report=dict(report,revision=checked['revision'])
+                            request=dict(command='register_survey',plan=plan,revision=checked['revision'])
+                            mode='register'
+                        else:
+                            row=server.db.execute('SELECT template FROM generated_area_archive WHERE identity=?',(report['revision'],)).fetchone()
+                            request=dict(command='register_survey',plan=plan)
+                            mode='register' if row is not None and row[0]==blob else 'create'
                     elif kind in ('outpost', 'settlement'):
                         stored = server.db.execute('SELECT template FROM generated_cave WHERE singleton=1').fetchone()
                         if current['version'] != 16 or stored is None:
@@ -142,6 +172,14 @@ class ContentWorkshop:
                 # automatically replayed, even if the HTTP response is lost.
                 self.draft = None
                 request = draft['request']
+                if request['command'] == 'install_adventure':
+                    from .adventure_workshop import install
+                    installed=install(server,request['plan'],draft['report'])
+                    return dict(self._read(server,payload['world']),saved=True,adventure=installed)
+                if request['command'] == 'publish_field_story':
+                    from .field_story_bundle import install
+                    installed=install(server,request['bundle'])
+                    return dict(self._read(server,payload['world']),saved=True,field_story=installed)
                 if request['command'] == 'construct_outpost':
                     from .frontier_outposts import construct
                     construct(server, request)
@@ -150,7 +188,7 @@ class ContentWorkshop:
                         # No active area can be replaced by this route entry point.
                         server._replace_cave(draft['blob'], label=draft['label'], expected_world_id=current['world_id'],
                                              expected_sequence=current['sequence'], history_evidence=[])
-                    server.landmark_survey.register(request['plan'])
+                    server.landmark_survey.register(request['plan'],request.get('revision'))
                 else:
                     # Staging is asynchronous. The server loop needs its lock,
                     # so use the existing private admin transport outside it.

@@ -1,0 +1,192 @@
+"""Author real outdoor geometry using the existing shared XL destination."""
+import json
+
+
+def create(server, actor, row, args):
+    from .actor_runtime import Committed, _receipt
+    from .cave_blueprint import proposal_from_blueprint
+    from .xl_wilds import encode
+    from .route_landscape import compile_plan
+    from .shared_cave import SharedCave
+    if not {'label', 'layout', 'blueprint'} <= set(args) or set(args)-{'label','layout','blueprint','paint','biome','seed','ponds','trail','trail_width','zones','_network','_watercourse','_survey'}:
+        raise ValueError('Supply label, layout and blueprint')
+    network = args['layout'] == 'clearings' and args.get('trail') is not None and bool(args.get('_network'))
+    label = args['label']
+    if type(label) is not str or not 1 <= len(label) <= 20 or not label.strip() or any(not(c.isascii() and (c.isalnum() or c in " .,'!?-")) for c in label):
+        raise ValueError('Use a literal 1..20 character label')
+    if type(args['blueprint']) is not str or len(args['blueprint']) > 800:
+        raise ValueError('Use bounded layout JSON')
+    try:
+        blueprint = json.loads(args['blueprint'])
+    except (ValueError, TypeError):
+        raise ValueError('Invalid layout JSON')
+    if args['layout'] == 'clearings':
+        blob, generated = compile_plan(blueprint)
+        if blueprint.get('reservation_terrain','water')!='water' and 'biome' not in args:
+            raise ValueError('Rock reservations require a shared biome')
+        report = dict(landmarks=generated['landmarks'], routes=len(generated['routes']))
+    elif args['layout'] == 'connected_shapes':
+        blob = encode(proposal_from_blueprint(blueprint, side=127))
+        report = {'style': blueprint.get('style', 'rooms')}
+    else:
+        raise ValueError('Supported layouts: clearings, connected_shapes')
+    if 'paint' in args:
+        if type(args['paint']) is not str or len(args['paint']) > 2000: raise ValueError('Use bounded paint JSON')
+        try: paint=json.loads(args['paint'])
+        except (ValueError,TypeError): raise ValueError('Invalid paint JSON') from None
+        from .shared_outdoor_palette import encode as encode_painted
+        cells=blob[8:]; proposal=dict(rows=[cells[i*127:(i+1)*127].decode('ascii') for i in range(127)],spawn=[1,1],exit=[125,125])
+        blob=encode_painted(proposal,paint)
+    if 'biome' in args:
+        if 'paint' in args or 'seed' not in args:
+            raise ValueError('Biome requires a seed and cannot be combined with paint')
+        from .shared_outdoor_palette import paint_biome
+        cells=blob[8:]; proposal=dict(rows=[cells[i*127:(i+1)*127].decode('ascii') for i in range(127)],spawn=[1,1],exit=[125,125])
+        blob=paint_biome(proposal,args['biome'],args['seed'])
+        report.update(biome=args['biome'], biome_seed=args['seed'])
+        if args['layout']=='clearings' and blueprint.get('reservation_terrain','water')=='rock':
+            from .shared_outdoor_palette import paint_reservations
+            blob=paint_reservations(blob,blueprint['reservations'],'rock')
+            report['reservation_terrain']='rock'
+        if 'zones' in args:
+            if not network or type(args['zones']) is not str or len(args['zones'])>600:
+                raise ValueError('Landmark terrain requires a network and bounded JSON')
+            try: zones=json.loads(args['zones'])
+            except (TypeError,ValueError): raise ValueError('Invalid landmark terrain JSON') from None
+            from .shared_outdoor_palette import paint_landmarks
+            blob=paint_landmarks(blob,generated['landmarks'],zones)
+            report['landmark_terrain']=zones
+        if 'ponds' in args:
+            from .shared_outdoor_palette import add_ponds
+            protected=[(site['x'],site['y']) for site in generated['landmarks']] if network else ()
+            blob, made=add_ponds(blob,args['seed'],args['ponds'],protected_points=protected)
+            report.update(ponds_requested=args['ponds'], ponds_created=made, pond_placement='walkable_ground_v2')
+    if args.get('_watercourse'):
+        if not network or 'biome' not in args:
+            raise ValueError('Watercourse requires a networked biome')
+        from .shared_outdoor_palette import add_watercourse
+        protected=[(site['x'],site['y']) for site in generated['landmarks']]
+        blob, water_tiles=add_watercourse(blob,args['seed'],protected_points=protected)
+        report['watercourse_tiles']=water_tiles
+    if 'trail' in args or 'trail_width' in args:
+        if 'biome' not in args or 'trail' not in args or 'trail_width' not in args:
+            raise ValueError('Trail requires biome, trail terrain and width')
+        from .shared_outdoor_palette import add_trail
+        if network:
+            sites={site['id']:(site['x'],site['y']) for site in generated['landmarks']}
+            steps=changed=0
+            for edge in generated['routes']:
+                blob,n,c=add_trail(blob,args['trail'],args['trail_width'],endpoints=(sites[edge['source']],sites[edge['target']]))
+                steps+=n; changed+=c
+            report['marked_routes']=len(generated['routes'])
+        else:
+            blob, steps, changed = add_trail(blob, args['trail'], args['trail_width'])
+        report.update(trail=args['trail'], trail_width=args['trail_width'],
+                      trail_steps=steps, trail_changed_tiles=changed)
+    cave = SharedCave(blob)
+    if not server.archive_generated_areas or not server.persist_generated_cave:
+        raise ValueError('Durable generated-area archive required')
+    old = server.shared_cave.identity if server.shared_cave else None
+    # Do not silently strand existing actors, props or held resources. This is
+    # creation, not relocation or revision continuation. Existing places remain archived.
+    if old and (any(o.get('region_revision') == old for o in server.objects) or
+                server.db.execute('SELECT 1 FROM world_prop_custody WHERE json_extract(object,\'$.region_revision\')=?', (old,)).fetchone()):
+        raise ValueError('Active destination has world objects; preserve it or explicitly relocate them first')
+    if server.db.execute('SELECT 1 FROM generated_area_archive WHERE identity=?', (cave.identity,)).fetchone():
+        raise ValueError('This layout already exists; do not create a duplicate place')
+    execution = getattr(server, 'actor_tool_execution', None)
+    if not execution or execution[0] != actor:
+        raise ValueError('Landscape creation requires the durable plan executor')
+    _, record, plan, step = execution
+    result = dict(revision=cave.identity, side=127, layout=args['layout'],
+                  walkable_tiles=sum(r.count(ord('.')) for r in cave._rows),
+                  required_client_capability='CAVE17' if cave.version==17 else 'CAVE16', outcome='outdoor_destination_activated',
+                  entry='Existing shared GeneratedWorld_Wilds entrance', report=report)
+    committed = []
+    def persist(identity, place):
+        if identity != cave.identity:
+            raise ValueError('Unexpected landscape commit')
+        result['place_id'] = place
+        if args.get('_survey'):
+            checked=server.landmark_survey.inspect_registration(blueprint,identity)
+            server.db.execute('INSERT INTO survey_routes VALUES (?,?)',(identity,checked['sites']))
+            result['survey']=dict(revision=identity,landmarks=checked['landmarks'],enrollment='player_opt_in')
+        committed.append(_receipt(server, actor, record, plan, step, 'succeeded', result))
+    server._replace_cave(blob, label=label, expected_world_id=server.memory.world_id,
+        expected_sequence=server.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0],
+        history_evidence=list(row['evidence']), actor_tool_commit=persist)
+    return Committed(committed[0], result)
+
+
+def create_network(server, actor, row, args):
+    if args.get('layout') != 'clearings':
+        raise ValueError('Route network requires clearings layout')
+    return create(server, actor, row, dict(args, _network=True))
+
+
+def create_watercourse(server, actor, row, args):
+    if args.get('layout') != 'clearings':
+        raise ValueError('Watercourse requires clearings layout')
+    return create(server, actor, row, dict(args, _network=True, _watercourse=True))
+
+
+def create_zoned_watercourse(server, actor, row, args):
+    if args.get('layout') != 'clearings':
+        raise ValueError('Landmark terrain requires clearings layout')
+    return create(server, actor, row, dict(args, _network=True, _watercourse=True))
+
+
+def create_survey_landscape(server, actor, row, args):
+    if args.get('layout') != 'clearings':
+        raise ValueError('Survey landscape requires clearings layout')
+    return create(server, actor, row, dict(args, _network=True, _watercourse=True, _survey=True))
+
+
+def generate_landscape(server, actor, row, args):
+    return _generate_landscape(server,actor,row,args,{})
+
+
+def generate_designed_landscape(server, actor, row, args):
+    if type(args.get('options')) is not str or len(args['options'])>600:
+        raise ValueError('Use bounded landscape options JSON')
+    try: options=json.loads(args['options'])
+    except (ValueError,TypeError):raise ValueError('Invalid landscape options JSON') from None
+    if type(options) is not dict or set(options)-{'zones','watercourse','reservations','reservation_terrain'}:
+        raise ValueError('Use zones, watercourse, reservations or reservation_terrain')
+    if 'watercourse' in options and type(options['watercourse']) is not bool:
+        raise ValueError('watercourse must be true or false')
+    return _generate_landscape(server,actor,row,{k:v for k,v in args.items() if k!='options'},options)
+
+
+def _generate_landscape(server, actor, row, args, options):
+    """Create a seeded connected landscape from names rather than coordinates."""
+    import random
+    import re
+    expected={'label','landmarks','biome','seed','ponds','trail','trail_width','corridor_width'}
+    if set(args)!=expected or type(args['landmarks']) is not str or len(args['landmarks'])>350:
+        raise ValueError('Supply a bounded landmark-name list and landscape settings')
+    try:
+        names=json.loads(args['landmarks'])
+    except (ValueError,TypeError):
+        raise ValueError('Invalid landmark list') from None
+    if (type(names) is not list or not 2<=len(names)<=8 or
+        any(type(n) is not str or not re.fullmatch('[a-z][a-z0-9_]{0,23}',n) or n in ('entry','exit') for n in names) or
+        len(set(names))!=len(names)):
+        raise ValueError('Use 2..8 unique landmark IDs')
+    seed=args['seed']
+    if type(seed) is not int or not 0<=seed<2**32:
+        raise ValueError('Use an unsigned seed')
+    rng=random.Random(seed)
+    # A jittered grid keeps clearings separated and away from both endpoints.
+    cells=[(x,y) for y in (23,52,81,110) for x in (24,60,96)]
+    rng.shuffle(cells)
+    landmarks=[dict(id=name,x=x+rng.randint(-3,3),y=y+rng.randint(-3,3),radius=rng.randint(5,8))
+               for name,(x,y) in zip(names,cells)]
+    plan=dict(seed=seed,landmarks=landmarks,reservations=options.get('reservations',[]),loops=0,corridor_width=args['corridor_width'])
+    if 'reservation_terrain' in options:plan['reservation_terrain']=options['reservation_terrain']
+    settings=dict(label=args['label'],layout='clearings',
+        blueprint=json.dumps(plan,separators=(',',':')),biome=args['biome'],seed=seed,ponds=args['ponds'],
+        trail=args['trail'],trail_width=args['trail_width'],_network=True,_survey=True)
+    if options.get('watercourse',False):settings['_watercourse']=True
+    if 'zones' in options:settings['zones']=json.dumps(options['zones'],separators=(',',':'))
+    return create(server,actor,row,settings)

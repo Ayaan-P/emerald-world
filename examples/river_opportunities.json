@@ -1,0 +1,162 @@
+{
+  "id": "river",
+  "title": "The River Remembers",
+  "qualities": {
+    "flood": {
+      "scope": "place",
+      "initial": 2,
+      "max": 3
+    },
+    "reedbed": {
+      "scope": "place",
+      "initial": 2,
+      "max": 3
+    },
+    "ferry": {
+      "scope": "place",
+      "initial": 0,
+      "max": 1
+    },
+    "trust": {
+      "scope": "player",
+      "initial": 0,
+      "max": 3
+    },
+    "relief": {
+      "scope": "place",
+      "initial": 0,
+      "max": 2
+    }
+  },
+  "scenes": {
+    "bank": {
+      "place": "PetalburgCity",
+      "text": "Floodwater reaches the ferry steps. Repair the bank or cut a channel?",
+      "requires": {
+        "flood": [
+          2,
+          3
+        ]
+      },
+      "choices": {
+        "repair": {
+          "text": "Repair the bank together.",
+          "effects": {
+            "flood": -1,
+            "trust": 1
+          },
+          "result": "The bank holds. Other visitors can now organize relief.",
+          "requires": {}
+        },
+        "cut": {
+          "text": "Cut through the reedbed to drain the water.",
+          "effects": {
+            "flood": -2,
+            "reedbed": -2
+          },
+          "result": "Water recedes quickly, but the nesting reedbed is gone.",
+          "requires": {}
+        }
+      },
+      "once": "world"
+    },
+    "relief": {
+      "place": "PetalburgCity",
+      "text": "The water is low enough to deliver supplies. The village needs two volunteers.",
+      "requires": {
+        "flood": [
+          0,
+          1
+        ],
+        "relief": [
+          0,
+          1
+        ]
+      },
+      "choices": {
+        "help": {
+          "text": "Help deliver supplies.",
+          "effects": {
+            "relief": 1,
+            "trust": 1
+          },
+          "result": "Your delivery joins the village effort. Another volunteer can finish it.",
+          "requires": {}
+        }
+      },
+      "once": "player"
+    },
+    "launch": {
+      "place": "PetalburgCity",
+      "text": "Relief is complete. The ferryman can reopen the crossing.",
+      "requires": {
+        "relief": [
+          2,
+          2
+        ],
+        "ferry": [
+          0,
+          0
+        ]
+      },
+      "choices": {
+        "open": {
+          "text": "Organize the reopening.",
+          "effects": {
+            "ferry": 1
+          },
+          "result": "The village celebrates. The ferry chapter is now available to every visitor.",
+          "requires": {}
+        }
+      },
+      "once": "world"
+    },
+    "reeds": {
+      "place": "PetalburgCity",
+      "text": "Bird nests are missing from the drained reeds. Help restore their shelter?",
+      "requires": {
+        "reedbed": [
+          0,
+          1
+        ]
+      },
+      "choices": {
+        "plant": {
+          "text": "Replant the reedbed.",
+          "effects": {
+            "reedbed": 2,
+            "trust": 1
+          },
+          "result": "New reeds take root. A later visitor will find a different riverbank.",
+          "requires": {}
+        }
+      },
+      "once": "world"
+    },
+    "welcome": {
+      "place": "PetalburgCity",
+      "text": "The reopened ferry brings news from the far bank. The ferryman remembers your help.",
+      "requires": {
+        "ferry": [
+          1,
+          1
+        ],
+        "trust": [
+          1,
+          3
+        ]
+      },
+      "choices": {
+        "listen": {
+          "text": "Listen to the ferryman.",
+          "effects": {
+            "trust": 1
+          },
+          "result": "You learn a new story about the far bank. Your private chapter is recorded.",
+          "requires": {}
+        }
+      },
+      "once": "player"
+    }
+  }
+}

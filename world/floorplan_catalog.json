@@ -1,0 +1,847 @@
+{
+  "native_source": "a8355423fcd4ba90a6668b4d230134da5325354e",
+  "layouts": {
+    "SecretBase_RedCave1": {
+      "symbol": "LAYOUT_SECRET_BASE_RED_CAVE1",
+      "width": 11,
+      "height": 9
+    },
+    "SecretBase_BrownCave1": {
+      "symbol": "LAYOUT_SECRET_BASE_BROWN_CAVE1",
+      "width": 11,
+      "height": 9
+    },
+    "SecretBase_BlueCave1": {
+      "symbol": "LAYOUT_SECRET_BASE_BLUE_CAVE1",
+      "width": 11,
+      "height": 9
+    },
+    "SecretBase_YellowCave1": {
+      "symbol": "LAYOUT_SECRET_BASE_YELLOW_CAVE1",
+      "width": 11,
+      "height": 9
+    },
+    "SecretBase_Tree1": {
+      "symbol": "LAYOUT_SECRET_BASE_TREE1",
+      "width": 11,
+      "height": 9
+    },
+    "SecretBase_Shrub1": {
+      "symbol": "LAYOUT_SECRET_BASE_SHRUB1",
+      "width": 11,
+      "height": 9
+    },
+    "SecretBase_RedCave2": {
+      "symbol": "LAYOUT_SECRET_BASE_RED_CAVE2",
+      "width": 7,
+      "height": 16
+    },
+    "SecretBase_BrownCave2": {
+      "symbol": "LAYOUT_SECRET_BASE_BROWN_CAVE2",
+      "width": 14,
+      "height": 9
+    },
+    "SecretBase_BlueCave2": {
+      "symbol": "LAYOUT_SECRET_BASE_BLUE_CAVE2",
+      "width": 15,
+      "height": 7
+    },
+    "SecretBase_YellowCave2": {
+      "symbol": "LAYOUT_SECRET_BASE_YELLOW_CAVE2",
+      "width": 14,
+      "height": 9
+    },
+    "SecretBase_Tree2": {
+      "symbol": "LAYOUT_SECRET_BASE_TREE2",
+      "width": 7,
+      "height": 16
+    },
+    "SecretBase_Shrub2": {
+      "symbol": "LAYOUT_SECRET_BASE_SHRUB2",
+      "width": 15,
+      "height": 7
+    },
+    "SecretBase_RedCave3": {
+      "symbol": "LAYOUT_SECRET_BASE_RED_CAVE3",
+      "width": 15,
+      "height": 8
+    },
+    "SecretBase_BrownCave3": {
+      "symbol": "LAYOUT_SECRET_BASE_BROWN_CAVE3",
+      "width": 15,
+      "height": 11
+    },
+    "SecretBase_BlueCave3": {
+      "symbol": "LAYOUT_SECRET_BASE_BLUE_CAVE3",
+      "width": 10,
+      "height": 17
+    },
+    "SecretBase_YellowCave3": {
+      "symbol": "LAYOUT_SECRET_BASE_YELLOW_CAVE3",
+      "width": 12,
+      "height": 11
+    },
+    "SecretBase_Tree3": {
+      "symbol": "LAYOUT_SECRET_BASE_TREE3",
+      "width": 17,
+      "height": 8
+    },
+    "SecretBase_Shrub3": {
+      "symbol": "LAYOUT_SECRET_BASE_SHRUB3",
+      "width": 13,
+      "height": 11
+    },
+    "SecretBase_RedCave4": {
+      "symbol": "LAYOUT_SECRET_BASE_RED_CAVE4",
+      "width": 9,
+      "height": 15
+    },
+    "SecretBase_BrownCave4": {
+      "symbol": "LAYOUT_SECRET_BASE_BROWN_CAVE4",
+      "width": 14,
+      "height": 12
+    },
+    "SecretBase_BlueCave4": {
+      "symbol": "LAYOUT_SECRET_BASE_BLUE_CAVE4",
+      "width": 9,
+      "height": 17
+    },
+    "SecretBase_YellowCave4": {
+      "symbol": "LAYOUT_SECRET_BASE_YELLOW_CAVE4",
+      "width": 13,
+      "height": 14
+    },
+    "SecretBase_Tree4": {
+      "symbol": "LAYOUT_SECRET_BASE_TREE4",
+      "width": 14,
+      "height": 14
+    },
+    "SecretBase_Shrub4": {
+      "symbol": "LAYOUT_SECRET_BASE_SHRUB4",
+      "width": 14,
+      "height": 11
+    }
+  },
+  "decorations": {
+    "1": {
+      "name": "SMALL_DESK",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SOLID_FLOOR"
+    },
+    "2": {
+      "name": "POKEMON_DESK",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SOLID_FLOOR"
+    },
+    "3": {
+      "name": "HEAVY_DESK",
+      "width": 3,
+      "height": 2,
+      "permission": "DECORPERM_SOLID_FLOOR"
+    },
+    "4": {
+      "name": "RAGGED_DESK",
+      "width": 3,
+      "height": 2,
+      "permission": "DECORPERM_SOLID_FLOOR"
+    },
+    "5": {
+      "name": "COMFORT_DESK",
+      "width": 3,
+      "height": 2,
+      "permission": "DECORPERM_SOLID_FLOOR"
+    },
+    "6": {
+      "name": "PRETTY_DESK",
+      "width": 3,
+      "height": 3,
+      "permission": "DECORPERM_SOLID_FLOOR"
+    },
+    "7": {
+      "name": "BRICK_DESK",
+      "width": 3,
+      "height": 3,
+      "permission": "DECORPERM_SOLID_FLOOR"
+    },
+    "8": {
+      "name": "CAMP_DESK",
+      "width": 3,
+      "height": 3,
+      "permission": "DECORPERM_SOLID_FLOOR"
+    },
+    "9": {
+      "name": "HARD_DESK",
+      "width": 3,
+      "height": 3,
+      "permission": "DECORPERM_SOLID_FLOOR"
+    },
+    "10": {
+      "name": "SMALL_CHAIR",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "11": {
+      "name": "POKEMON_CHAIR",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "12": {
+      "name": "HEAVY_CHAIR",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "13": {
+      "name": "PRETTY_CHAIR",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "14": {
+      "name": "COMFORT_CHAIR",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "15": {
+      "name": "RAGGED_CHAIR",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "16": {
+      "name": "BRICK_CHAIR",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "17": {
+      "name": "CAMP_CHAIR",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "18": {
+      "name": "HARD_CHAIR",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "19": {
+      "name": "RED_PLANT",
+      "width": 1,
+      "height": 2,
+      "permission": "DECORPERM_BEHIND_FLOOR"
+    },
+    "20": {
+      "name": "TROPICAL_PLANT",
+      "width": 1,
+      "height": 2,
+      "permission": "DECORPERM_BEHIND_FLOOR"
+    },
+    "21": {
+      "name": "PRETTY_FLOWERS",
+      "width": 1,
+      "height": 2,
+      "permission": "DECORPERM_BEHIND_FLOOR"
+    },
+    "22": {
+      "name": "COLORFUL_PLANT",
+      "width": 2,
+      "height": 2,
+      "permission": "DECORPERM_BEHIND_FLOOR"
+    },
+    "23": {
+      "name": "BIG_PLANT",
+      "width": 2,
+      "height": 2,
+      "permission": "DECORPERM_BEHIND_FLOOR"
+    },
+    "24": {
+      "name": "GORGEOUS_PLANT",
+      "width": 2,
+      "height": 2,
+      "permission": "DECORPERM_BEHIND_FLOOR"
+    },
+    "25": {
+      "name": "RED_BRICK",
+      "width": 1,
+      "height": 2,
+      "permission": "DECORPERM_SOLID_FLOOR"
+    },
+    "26": {
+      "name": "YELLOW_BRICK",
+      "width": 1,
+      "height": 2,
+      "permission": "DECORPERM_SOLID_FLOOR"
+    },
+    "27": {
+      "name": "BLUE_BRICK",
+      "width": 1,
+      "height": 2,
+      "permission": "DECORPERM_SOLID_FLOOR"
+    },
+    "28": {
+      "name": "RED_BALLOON",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "29": {
+      "name": "BLUE_BALLOON",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "30": {
+      "name": "YELLOW_BALLOON",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "31": {
+      "name": "RED_TENT",
+      "width": 3,
+      "height": 3,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "32": {
+      "name": "BLUE_TENT",
+      "width": 3,
+      "height": 3,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "33": {
+      "name": "SOLID_BOARD",
+      "width": 1,
+      "height": 2,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "34": {
+      "name": "SLIDE",
+      "width": 2,
+      "height": 4,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "35": {
+      "name": "FENCE_LENGTH",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SOLID_FLOOR"
+    },
+    "36": {
+      "name": "FENCE_WIDTH",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SOLID_FLOOR"
+    },
+    "37": {
+      "name": "TIRE",
+      "width": 2,
+      "height": 2,
+      "permission": "DECORPERM_SOLID_FLOOR"
+    },
+    "38": {
+      "name": "STAND",
+      "width": 4,
+      "height": 2,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "39": {
+      "name": "MUD_BALL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "40": {
+      "name": "BREAKABLE_DOOR",
+      "width": 1,
+      "height": 2,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "41": {
+      "name": "SAND_ORNAMENT",
+      "width": 1,
+      "height": 2,
+      "permission": "DECORPERM_BEHIND_FLOOR"
+    },
+    "42": {
+      "name": "SILVER_SHIELD",
+      "width": 1,
+      "height": 2,
+      "permission": "DECORPERM_BEHIND_FLOOR"
+    },
+    "43": {
+      "name": "GOLD_SHIELD",
+      "width": 1,
+      "height": 2,
+      "permission": "DECORPERM_BEHIND_FLOOR"
+    },
+    "44": {
+      "name": "GLASS_ORNAMENT",
+      "width": 1,
+      "height": 2,
+      "permission": "DECORPERM_BEHIND_FLOOR"
+    },
+    "45": {
+      "name": "TV",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SOLID_FLOOR"
+    },
+    "46": {
+      "name": "ROUND_TV",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SOLID_FLOOR"
+    },
+    "47": {
+      "name": "CUTE_TV",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SOLID_FLOOR"
+    },
+    "48": {
+      "name": "GLITTER_MAT",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "49": {
+      "name": "JUMP_MAT",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "50": {
+      "name": "SPIN_MAT",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "51": {
+      "name": "C_LOW_NOTE_MAT",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "52": {
+      "name": "D_NOTE_MAT",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "53": {
+      "name": "E_NOTE_MAT",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "54": {
+      "name": "F_NOTE_MAT",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "55": {
+      "name": "G_NOTE_MAT",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "56": {
+      "name": "A_NOTE_MAT",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "57": {
+      "name": "B_NOTE_MAT",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "58": {
+      "name": "C_HIGH_NOTE_MAT",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "59": {
+      "name": "SURF_MAT",
+      "width": 3,
+      "height": 3,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "60": {
+      "name": "THUNDER_MAT",
+      "width": 3,
+      "height": 3,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "61": {
+      "name": "FIRE_BLAST_MAT",
+      "width": 3,
+      "height": 3,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "62": {
+      "name": "POWDER_SNOW_MAT",
+      "width": 3,
+      "height": 3,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "63": {
+      "name": "ATTRACT_MAT",
+      "width": 3,
+      "height": 3,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "64": {
+      "name": "FISSURE_MAT",
+      "width": 3,
+      "height": 3,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "65": {
+      "name": "SPIKES_MAT",
+      "width": 3,
+      "height": 3,
+      "permission": "DECORPERM_PASS_FLOOR"
+    },
+    "66": {
+      "name": "BALL_POSTER",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_NA_WALL"
+    },
+    "67": {
+      "name": "GREEN_POSTER",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_NA_WALL"
+    },
+    "68": {
+      "name": "RED_POSTER",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_NA_WALL"
+    },
+    "69": {
+      "name": "BLUE_POSTER",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_NA_WALL"
+    },
+    "70": {
+      "name": "CUTE_POSTER",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_NA_WALL"
+    },
+    "71": {
+      "name": "PIKA_POSTER",
+      "width": 2,
+      "height": 1,
+      "permission": "DECORPERM_NA_WALL"
+    },
+    "72": {
+      "name": "LONG_POSTER",
+      "width": 2,
+      "height": 1,
+      "permission": "DECORPERM_NA_WALL"
+    },
+    "73": {
+      "name": "SEA_POSTER",
+      "width": 2,
+      "height": 1,
+      "permission": "DECORPERM_NA_WALL"
+    },
+    "74": {
+      "name": "SKY_POSTER",
+      "width": 2,
+      "height": 1,
+      "permission": "DECORPERM_NA_WALL"
+    },
+    "75": {
+      "name": "KISS_POSTER",
+      "width": 2,
+      "height": 1,
+      "permission": "DECORPERM_NA_WALL"
+    },
+    "76": {
+      "name": "PICHU_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "77": {
+      "name": "PIKACHU_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "78": {
+      "name": "MARILL_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "79": {
+      "name": "TOGEPI_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "80": {
+      "name": "CYNDAQUIL_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "81": {
+      "name": "CHIKORITA_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "82": {
+      "name": "TOTODILE_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "83": {
+      "name": "JIGGLYPUFF_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "84": {
+      "name": "MEOWTH_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "85": {
+      "name": "CLEFAIRY_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "86": {
+      "name": "DITTO_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "87": {
+      "name": "SMOOCHUM_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "88": {
+      "name": "TREECKO_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "89": {
+      "name": "TORCHIC_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "90": {
+      "name": "MUDKIP_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "91": {
+      "name": "DUSKULL_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "92": {
+      "name": "WYNAUT_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "93": {
+      "name": "BALTOY_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "94": {
+      "name": "KECLEON_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "95": {
+      "name": "AZURILL_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "96": {
+      "name": "SKITTY_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "97": {
+      "name": "SWABLU_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "98": {
+      "name": "GULPIN_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "99": {
+      "name": "LOTAD_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "100": {
+      "name": "SEEDOT_DOLL",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "101": {
+      "name": "PIKA_CUSHION",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "102": {
+      "name": "ROUND_CUSHION",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "103": {
+      "name": "KISS_CUSHION",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "104": {
+      "name": "ZIGZAG_CUSHION",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "105": {
+      "name": "SPIN_CUSHION",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "106": {
+      "name": "DIAMOND_CUSHION",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "107": {
+      "name": "BALL_CUSHION",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "108": {
+      "name": "GRASS_CUSHION",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "109": {
+      "name": "FIRE_CUSHION",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "110": {
+      "name": "WATER_CUSHION",
+      "width": 1,
+      "height": 1,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "111": {
+      "name": "SNORLAX_DOLL",
+      "width": 1,
+      "height": 2,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "112": {
+      "name": "RHYDON_DOLL",
+      "width": 1,
+      "height": 2,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "113": {
+      "name": "LAPRAS_DOLL",
+      "width": 1,
+      "height": 2,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "114": {
+      "name": "VENUSAUR_DOLL",
+      "width": 1,
+      "height": 2,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "115": {
+      "name": "CHARIZARD_DOLL",
+      "width": 1,
+      "height": 2,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "116": {
+      "name": "BLASTOISE_DOLL",
+      "width": 1,
+      "height": 2,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "117": {
+      "name": "WAILMER_DOLL",
+      "width": 1,
+      "height": 2,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "118": {
+      "name": "REGIROCK_DOLL",
+      "width": 1,
+      "height": 2,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "119": {
+      "name": "REGICE_DOLL",
+      "width": 1,
+      "height": 2,
+      "permission": "DECORPERM_SPRITE"
+    },
+    "120": {
+      "name": "REGISTEEL_DOLL",
+      "width": 1,
+      "height": 2,
+      "permission": "DECORPERM_SPRITE"
+    }
+  }
+}

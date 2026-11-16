@@ -29,6 +29,12 @@ def describe(event, place=None):
         details = [f"({t['x']}, {t['y']}): {t['before']} → {t['after']}" for t in event['tiles'][:8]]
         if len(event['tiles']) > 8:
             details.append(str(len(event['tiles']) - 8) + ' more changed cells in this record.')
+    elif kind == 'character_report_relayed':
+        title = event['character_id'] + ' passed along an observation'
+        details = ['Recipient: '+event['recipient'], 'Original observer: '+event['observer'], 'Original observation receipt: '+str(event['observation']), 'A dated report, not new sight or proof the world is unchanged.']
+    elif kind == 'character_archived':
+        title = event['name'] + ' entered the historical cast'
+        details = ['Their explicitly retired simulation record is archived.', 'Identity, relationships, original history and individual roster are retained; this does not mean death.']
     elif kind == 'character_changed':
         character = event['after']
         title = character['name'] + ' continued their story'
@@ -38,6 +44,87 @@ def describe(event, place=None):
         details.append('Team plan: ' + ', '.join('species ' + str(mon['species']) +
                        ' at level ' + str(mon['level']) for mon in character['team']))
         details.append('This is an authored character change, not proof of a battle or catch.')
+    elif kind == 'canonical_speaker_decided':
+        title='A speaker answered '+event['character_id']
+        details=[event['question'],event['label'],'Speaker choice with optional advice, not group consensus or story progression.']
+    elif kind == 'canonical_council_agreed':
+        title='A group answered '+event['character_id']
+        details=[event['question'],event['label'],str(event['participants'])+' trainers unanimously agreed. Preference only, not story progression or completed activity.']
+    elif kind == 'canonical_trainer_result':
+        title=event['summary']
+        details=[event.get('limits','Player-authorized native client report, not another save progression.')]
+    elif kind == 'canonical_campaign_milestone':
+        title=event['summary']
+        details=['Shared by future campaign opt-in. Native client attestation, not another trainer progression or actor achievement.']
+    elif kind == 'character_field_report':
+        title=event['character_name']+': '+event['title']
+        details=[str(len(event['samples']))+' visited route points measured on exact map '+event['revision'][:12],
+                 str(len(event['junctions']))+' junctions; '+str(len(event['dead_ends']))+' dead ends.',
+                 'Static access geometry, not wildlife sightings or player activity.']
+    elif kind == 'character_encounter':
+        title=event['character_id']+' '+('reached '+event['recipient'] if event['outcome']=='public_message_delivered' else 'missed an encounter')
+        details=[event.get('text',event.get('reason','')), 'Actual authority positions. No reply, friendship or player participation is inferred.']
+    elif kind == 'character_journey_arrived':
+        title=event['character_name']+' reached a destination'
+        details=[str(event['steps'])+' authority walking steps on exact map '+event['revision'][:12],
+                 'Authority arrival; clients may still be rendering movement. No player or original story NPC travel is implied.']
+    elif kind == 'canonical_intention_fulfilled':
+        from .canonical_cast import BINDINGS
+        title=BINDINGS[event['character_id']]['name']+' completed a retained intention'
+        details=[event['kind']+': '+event['target'],'Actual committed action receipt: '+str(event['action_receipt'])]
+    elif kind in ('canonical_contribution_proposed','canonical_contribution_resolved'):
+        from .canonical_cast import BINDINGS
+        title=BINDINGS[event['character_id']]['name']+' '+('offered project guidance' if kind.endswith('proposed') else 'decided on a contribution')
+        details=[event.get('text',event.get('decision','')), 'Project: '+event['course'],
+                 'Public author collaboration. No physical attendance or player participation is implied.']
+    elif kind in ('canonical_project_invited','canonical_project_decided'):
+        from .canonical_cast import BINDINGS
+        title=BINDINGS[event['character_id']]['name']+' '+('invited '+BINDINGS[event['recipient']]['name'] if kind.endswith('invited') else 'chose to '+event['decision']+' a project')
+        details=['Project: '+event['intention'],'Independent project decision. No physical meeting or mutual affection is implied.']
+    elif kind == 'canonical_initiative_published':
+        from .canonical_cast import BINDINGS
+        title=BINDINGS[event['character_id']]['name']+' opened a shared project'
+        details=[event['title'],'Executable public choices installed; no physical participation or completed work implied.']
+    elif kind == 'canonical_scene_observed':
+        from .canonical_cast import BINDINGS
+        title = BINDINGS.get(event.get('character_id'),{}).get('name','An original actor') + ' completed an observed movement'
+        details = ['Native observers reported the reviewed path and home restoration.', 'This records movement, not research, training, rewards or player opinions.']
+    elif kind == 'canonical_shared_project_decided':
+        from .canonical_cast import BINDINGS
+        title=BINDINGS[event['character_id']]['name']+' received a shared project decision'
+        details=[event['pack']+': '+event['scene']+' / '+event['choice'],'Anonymous shared consequence; private clues and solver identities are not recorded.']
+    elif kind == 'canonical_action_obstructed':
+        from .canonical_cast import BINDINGS
+        title=BINDINGS[event['character_id']]['name']+' encountered a changed project'
+        details=['A retained project choice was unavailable. The actor can reconsider their plan.', 'No action completed and no cause or blame is inferred.']
+    elif kind == 'canonical_world_action_committed':
+        from .canonical_cast import BINDINGS
+        title=BINDINGS[event['character_id']]['name']+' changed a shared opportunity'
+        details=[event['result'],'Shared narrative state, not physical travel or native progression.']
+    elif kind == 'canonical_construction_completed':
+        from .canonical_cast import BINDINGS
+        title=BINDINGS[event['character_id']]['name']+' completed '+event['label']
+        details=[str(event['report']['added_walkable_tiles'])+' connected walkable tiles added.',
+                 'Abstract authority project execution, not animated labor, NPC travel or player resource gathering.']
+    elif kind == 'canonical_study_published':
+        title=event['character_name']+' installed '+event['title']
+        details=[str(len(event['sites']))+' optional survey sites on map revision '+event['revision'][:12],
+                 'An exploration activity, not character travel or discoveries. Player visits stay private unless shared.']
+    elif kind == 'canonical_project_published':
+        title=event['character_name']+' published '+event['title']
+        details=['Playable relay course installed: '+event['course'],
+                 str(event['limit'])+' second limit. '+('Mounts required.' if event['mounted'] else 'On-foot practice.'),
+                 'No player has been joined or credited. No physical construction or race completion is implied.']
+    elif kind == 'canonical_letter_delivered':
+        from .canonical_cast import BINDINGS
+        title=BINDINGS[event['sender']]['name']+' wrote to '+BINDINGS[event['recipient']]['name']
+        details=[event['text'],'Delivered public in-world correspondence. No physical meeting, travel or battle is implied.']
+    elif kind == 'canonical_actor_changed':
+        title=event['character_name']+' reconsidered a goal'
+        details=['Authored goal: '+event['after']['goal'],
+                 'Supplemental dialogue: '+event['after']['dialogue'],
+                 'Based on public evidence records: '+', '.join(map(str,event['after']['evidence'])),
+                 'An authored interpretation, not proof that this character performed an activity. Original gameplay is unchanged.']
     elif kind == 'guild_goal_completed':
         title = 'Guild '+event['goal_kind']+' completed'
         details = [event['guild_name']+' completed its '+event['goal_kind']+' goal.',

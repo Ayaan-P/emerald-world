@@ -50,7 +50,88 @@ class GuildChat:
             with s.lock:
                 try:
                     command=text[6:].strip();words=command.split()
-                    if words and words[0].lower()=='online': lines=self.online(conn['id'],words[1:])
+                    if words and words[0].lower()=='return':
+                        from .returning_places import command as return_command
+                        lines=return_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='org':
+                        from .npc_organizations import command as organization_command
+                        lines=organization_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='pyramid':
+                        from .pyramid_courses import command as pyramid_command
+                        lines=pyramid_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='tower':
+                        from .tower_exchange import command as tower_command
+                        lines=tower_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='starters':
+                        from .starter_offers import command as starter_command
+                        lines=starter_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='mazes':
+                        from .maze_courses import command as maze_command
+                        lines=maze_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='floorplans':
+                        from .floorplans import command as floorplan_command
+                        lines=floorplan_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='bases':
+                        from .base_neighborhood import command as base_directory_command
+                        lines=base_directory_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='tournament':
+                        from .player_tournaments import command as tournament_command
+                        lines=tournament_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='rematches':
+                        from .route_rematch_events import command as rematch_command
+                        lines=rematch_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='research':
+                        from .shared_research import command as research_command
+                        lines=research_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='tactics':
+                        from .npc_tactics import command as tactics_command
+                        lines=tactics_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='chart':
+                        from .shared_cartography import command as chart_command
+                        lines=chart_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='npc':
+                        from .npc_conversations import command as npc_command
+                        lines=npc_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='safari':
+                        from .safari_outings import command as safari_command
+                        lines=safari_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='cargo':
+                        from .player_cargo import command as cargo_command
+                        lines=cargo_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='methods':
+                        from .actor_methods import command as methods_command
+                        lines=methods_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='reconstruction':
+                        from .reconstruction import command as reconstruction_command
+                        lines=reconstruction_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='object':
+                        from .object_choices import command as object_command
+                        lines=object_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='contests':
+                        from .contest_guests import command as contest_command
+                        lines=contest_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='fishing':
+                        from .shared_fishing import command as fishing_command
+                        lines=fishing_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='outbreaks':
+                        from .shared_outbreaks import command as outbreak_command
+                        lines=outbreak_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='campaign':
+                        from .battle_campaigns import command as campaign_command
+                        lines=campaign_command(s,conn,words[1:])
+                    elif words and words[0].lower()=='cast':
+                        from .canonical_cast import guild_command,native_text
+                        lines=[native_text(line) for line in guild_command(s,conn,words[1:])]
+                        self.epoch+=1
+                    elif words and words[0].lower()=='play' and getattr(s, 'activities', None):
+                        lines=[line[:113] for line in s.activities.command(conn,words[1:])]
+                    elif words and words[0].lower()=='race' and getattr(s, 'races', None):
+                        lines=s.races.command(conn,words[1:])
+                    elif words and words[0].lower()=='flag' and getattr(s, 'flags', None):
+                        lines=s.flags.command(conn,words[1:])
+                    elif words and words[0].lower()=='relay' and getattr(s, 'relays', None):
+                        lines=s.relays.command(conn,words[1:])
+                    elif words and words[0].lower()=='online': lines=self.online(conn['id'],words[1:])
                     else:
                         generated=None
                         if (len(words)==4 and words[0].lower() in ('expedition','meet')
@@ -68,6 +149,12 @@ class GuildChat:
                         lines=(s.guilds.expedition(conn['id'],['start','here',words[3]],place=generated) if generated else s.guilds.command(conn['id'],command))
                         self.epoch+=1
                 except GuildError as exc: lines=[str(exc)]
+                if not words:lines.append('Original character field proposals: /guild cast ACTOR')
+                if not words:
+                    lines.append('Talk publicly to nearby recurring NPCs: /guild npc')
+                    lines.append('Choose shared object actions while facing one: /guild object choices')
+                if not words:lines.append('Keep private place checkpoints: /guild return')
+                if not words and getattr(s, 'relays', None):lines.append('Find games and partners: /guild play')
                 for line in lines: self.message(conn,conn['id'],'Guild: '+line)
                 parts=text.split()
                 if len(parts)==3 and parts[1].lower()=='invite' and lines[0].startswith('Invited '):

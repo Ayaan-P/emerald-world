@@ -1,0 +1,1426 @@
+{
+  "source_revision": "1c080463544d2633e7013480f66b8ae3398cdfc5",
+  "source_path": "src/data/battle_frontier/battle_tent.h",
+  "sets": [
+    {
+      "id": 0,
+      "key": "SLATEPORT_TENT_MON_ZIGZAGOON_1",
+      "species": "SPECIES_ZIGZAGOON",
+      "item": "ITEM_CHOICE_BAND",
+      "moves": [
+        "MOVE_TACKLE",
+        "MOVE_CHARM",
+        "MOVE_ODOR_SLEUTH",
+        "MOVE_PIN_MISSILE"
+      ],
+      "nature": "NATURE_JOLLY"
+    },
+    {
+      "id": 1,
+      "key": "SLATEPORT_TENT_MON_ZIGZAGOON_2",
+      "species": "SPECIES_ZIGZAGOON",
+      "item": "ITEM_LUM_BERRY",
+      "moves": [
+        "MOVE_DIG",
+        "MOVE_MUD_SPORT",
+        "MOVE_TAIL_WHIP",
+        "MOVE_REST"
+      ],
+      "nature": "NATURE_JOLLY"
+    },
+    {
+      "id": 2,
+      "key": "SLATEPORT_TENT_MON_BEAUTIFLY",
+      "species": "SPECIES_BEAUTIFLY",
+      "item": "ITEM_NONE",
+      "moves": [
+        "MOVE_STUN_SPORE",
+        "MOVE_MEGA_DRAIN",
+        "MOVE_GUST",
+        "MOVE_HARDEN"
+      ],
+      "nature": "NATURE_MODEST"
+    },
+    {
+      "id": 3,
+      "key": "SLATEPORT_TENT_MON_DUSTOX",
+      "species": "SPECIES_DUSTOX",
+      "item": "ITEM_ORAN_BERRY",
+      "moves": [
+        "MOVE_POISON_STING",
+        "MOVE_MOONLIGHT",
+        "MOVE_PROTECT",
+        "MOVE_GUST"
+      ],
+      "nature": "NATURE_MODEST"
+    },
+    {
+      "id": 4,
+      "key": "SLATEPORT_TENT_MON_WAILMER_1",
+      "species": "SPECIES_WAILMER",
+      "item": "ITEM_RAWST_BERRY",
+      "moves": [
+        "MOVE_ROLLOUT",
+        "MOVE_CURSE",
+        "MOVE_GROWL",
+        "MOVE_WHIRLPOOL"
+      ],
+      "nature": "NATURE_ADAMANT"
+    },
+    {
+      "id": 5,
+      "key": "SLATEPORT_TENT_MON_WAILMER_2",
+      "species": "SPECIES_WAILMER",
+      "item": "ITEM_SITRUS_BERRY",
+      "moves": [
+        "MOVE_ROLLOUT",
+        "MOVE_GROWL",
+        "MOVE_WHIRLPOOL",
+        "MOVE_WATER_PULSE"
+      ],
+      "nature": "NATURE_MODEST"
+    },
+    {
+      "id": 6,
+      "key": "SLATEPORT_TENT_MON_MARILL_1",
+      "species": "SPECIES_MARILL",
+      "item": "ITEM_WHITE_HERB",
+      "moves": [
+        "MOVE_ROLLOUT",
+        "MOVE_DEFENSE_CURL",
+        "MOVE_TAIL_WHIP",
+        "MOVE_BUBBLE_BEAM"
+      ],
+      "nature": "NATURE_IMPISH"
+    },
+    {
+      "id": 7,
+      "key": "SLATEPORT_TENT_MON_WINGULL_1",
+      "species": "SPECIES_WINGULL",
+      "item": "ITEM_METAL_COAT",
+      "moves": [
+        "MOVE_SUPERSONIC",
+        "MOVE_GROWL",
+        "MOVE_WING_ATTACK",
+        "MOVE_STEEL_WING"
+      ],
+      "nature": "NATURE_NAIVE"
+    },
+    {
+      "id": 8,
+      "key": "SLATEPORT_TENT_MON_PELIPPER_1",
+      "species": "SPECIES_PELIPPER",
+      "item": "ITEM_DRAGON_FANG",
+      "moves": [
+        "MOVE_TWISTER",
+        "MOVE_WATER_SPORT",
+        "MOVE_GROWL",
+        "MOVE_WING_ATTACK"
+      ],
+      "nature": "NATURE_MODEST"
+    },
+    {
+      "id": 9,
+      "key": "SLATEPORT_TENT_MON_CACNEA_1",
+      "species": "SPECIES_CACNEA",
+      "item": "ITEM_LAX_INCENSE",
+      "moves": [
+        "MOVE_SANDSTORM",
+        "MOVE_LEER",
+        "MOVE_LEECH_SEED",
+        "MOVE_PIN_MISSILE"
+      ],
+      "nature": "NATURE_JOLLY"
+    },
+    {
+      "id": 10,
+      "key": "SLATEPORT_TENT_MON_LOMBRE_1",
+      "species": "SPECIES_LOMBRE",
+      "item": "ITEM_MIRACLE_SEED",
+      "moves": [
+        "MOVE_ASTONISH",
+        "MOVE_WATER_GUN",
+        "MOVE_FAKE_OUT",
+        "MOVE_ABSORB"
+      ],
+      "nature": "NATURE_MODEST"
+    },
+    {
+      "id": 11,
+      "key": "SLATEPORT_TENT_MON_LOTAD",
+      "species": "SPECIES_LOTAD",
+      "item": "ITEM_MYSTIC_WATER",
+      "moves": [
+        "MOVE_SYNTHESIS",
+        "MOVE_NATURE_POWER",
+        "MOVE_RAIN_DANCE",
+        "MOVE_MEGA_DRAIN"
+      ],
+      "nature": "NATURE_DOCILE"
+    },
+    {
+      "id": 12,
+      "key": "SLATEPORT_TENT_MON_SEEDOT",
+      "species": "SPECIES_SEEDOT",
+      "item": "ITEM_SALAC_BERRY",
+      "moves": [
+        "MOVE_SUNNY_DAY",
+        "MOVE_SYNTHESIS",
+        "MOVE_LEECH_SEED",
+        "MOVE_BIDE"
+      ],
+      "nature": "NATURE_TIMID"
+    },
+    {
+      "id": 13,
+      "key": "SLATEPORT_TENT_MON_NUZLEAF",
+      "species": "SPECIES_NUZLEAF",
+      "item": "ITEM_NONE",
+      "moves": [
+        "MOVE_FAKE_OUT",
+        "MOVE_NATURE_POWER",
+        "MOVE_HARDEN",
+        "MOVE_ATTRACT"
+      ],
+      "nature": "NATURE_LONELY"
+    },
+    {
+      "id": 14,
+      "key": "SLATEPORT_TENT_MON_NINJASK_1",
+      "species": "SPECIES_NINJASK",
+      "item": "ITEM_NONE",
+      "moves": [
+        "MOVE_FURY_CUTTER",
+        "MOVE_SCREECH",
+        "MOVE_SWORDS_DANCE",
+        "MOVE_DOUBLE_TEAM"
+      ],
+      "nature": "NATURE_QUIRKY"
+    },
+    {
+      "id": 15,
+      "key": "SLATEPORT_TENT_MON_NINJASK_2",
+      "species": "SPECIES_NINJASK",
+      "item": "ITEM_SILVER_POWDER",
+      "moves": [
+        "MOVE_FURY_CUTTER",
+        "MOVE_DOUBLE_TEAM",
+        "MOVE_SCREECH",
+        "MOVE_SAND_ATTACK"
+      ],
+      "nature": "NATURE_NAUGHTY"
+    },
+    {
+      "id": 16,
+      "key": "SLATEPORT_TENT_MON_GRAVELER",
+      "species": "SPECIES_GRAVELER",
+      "item": "ITEM_NONE",
+      "moves": [
+        "MOVE_MUD_SPORT",
+        "MOVE_BLOCK",
+        "MOVE_ROCK_TOMB",
+        "MOVE_MAGNITUDE"
+      ],
+      "nature": "NATURE_BRAVE"
+    },
+    {
+      "id": 17,
+      "key": "SLATEPORT_TENT_MON_BALTOY",
+      "species": "SPECIES_BALTOY",
+      "item": "ITEM_NONE",
+      "moves": [
+        "MOVE_SELF_DESTRUCT",
+        "MOVE_ANCIENT_POWER",
+        "MOVE_PSYBEAM",
+        "MOVE_REFLECT"
+      ],
+      "nature": "NATURE_NAIVE"
+    },
+    {
+      "id": 18,
+      "key": "SLATEPORT_TENT_MON_MIGHTYENA_1",
+      "species": "SPECIES_MIGHTYENA",
+      "item": "ITEM_BLACK_GLASSES",
+      "moves": [
+        "MOVE_BITE",
+        "MOVE_ROAR",
+        "MOVE_SWAGGER",
+        "MOVE_TACKLE"
+      ],
+      "nature": "NATURE_CALM"
+    },
+    {
+      "id": 19,
+      "key": "SLATEPORT_TENT_MON_MIGHTYENA_2",
+      "species": "SPECIES_MIGHTYENA",
+      "item": "ITEM_SHELL_BELL",
+      "moves": [
+        "MOVE_ODOR_SLEUTH",
+        "MOVE_HOWL",
+        "MOVE_SAND_ATTACK",
+        "MOVE_POISON_FANG"
+      ],
+      "nature": "NATURE_LONELY"
+    },
+    {
+      "id": 20,
+      "key": "SLATEPORT_TENT_MON_LINOONE",
+      "species": "SPECIES_LINOONE",
+      "item": "ITEM_MENTAL_HERB",
+      "moves": [
+        "MOVE_HEADBUTT",
+        "MOVE_TICKLE",
+        "MOVE_TAIL_WHIP",
+        "MOVE_REST"
+      ],
+      "nature": "NATURE_JOLLY"
+    },
+    {
+      "id": 21,
+      "key": "SLATEPORT_TENT_MON_GOLDEEN",
+      "species": "SPECIES_GOLDEEN",
+      "item": "ITEM_SCOPE_LENS",
+      "moves": [
+        "MOVE_WATER_SPORT",
+        "MOVE_HORN_ATTACK",
+        "MOVE_WATERFALL",
+        "MOVE_SUPERSONIC"
+      ],
+      "nature": "NATURE_CALM"
+    },
+    {
+      "id": 22,
+      "key": "SLATEPORT_TENT_MON_ELECTRIKE_1",
+      "species": "SPECIES_ELECTRIKE",
+      "item": "ITEM_MAGNET",
+      "moves": [
+        "MOVE_BITE",
+        "MOVE_SPARK",
+        "MOVE_ROAR",
+        "MOVE_FLASH"
+      ],
+      "nature": "NATURE_MODEST"
+    },
+    {
+      "id": 23,
+      "key": "SLATEPORT_TENT_MON_VOLTORB",
+      "species": "SPECIES_VOLTORB",
+      "item": "ITEM_NONE",
+      "moves": [
+        "MOVE_SPARK",
+        "MOVE_ROLLOUT",
+        "MOVE_CHARGE",
+        "MOVE_SCREECH"
+      ],
+      "nature": "NATURE_MILD"
+    },
+    {
+      "id": 24,
+      "key": "SLATEPORT_TENT_MON_ARON_1",
+      "species": "SPECIES_ARON",
+      "item": "ITEM_NONE",
+      "moves": [
+        "MOVE_DIG",
+        "MOVE_METAL_CLAW",
+        "MOVE_IRON_DEFENSE",
+        "MOVE_ENDEAVOR"
+      ],
+      "nature": "NATURE_NAUGHTY"
+    },
+    {
+      "id": 25,
+      "key": "SLATEPORT_TENT_MON_ARON_2",
+      "species": "SPECIES_ARON",
+      "item": "ITEM_LEPPA_BERRY",
+      "moves": [
+        "MOVE_MUD_SLAP",
+        "MOVE_IRON_TAIL",
+        "MOVE_HARDEN",
+        "MOVE_ROAR"
+      ],
+      "nature": "NATURE_MODEST"
+    },
+    {
+      "id": 26,
+      "key": "SLATEPORT_TENT_MON_TRAPINCH_1",
+      "species": "SPECIES_TRAPINCH",
+      "item": "ITEM_NONE",
+      "moves": [
+        "MOVE_BODY_SLAM",
+        "MOVE_FOCUS_ENERGY",
+        "MOVE_SAND_TOMB",
+        "MOVE_SAND_ATTACK"
+      ],
+      "nature": "NATURE_BRAVE"
+    },
+    {
+      "id": 27,
+      "key": "SLATEPORT_TENT_MON_CACNEA_2",
+      "species": "SPECIES_CACNEA",
+      "item": "ITEM_BRIGHT_POWDER",
+      "moves": [
+        "MOVE_INGRAIN",
+        "MOVE_SANDSTORM",
+        "MOVE_POISON_STING",
+        "MOVE_DESTINY_BOND"
+      ],
+      "nature": "NATURE_TIMID"
+    },
+    {
+      "id": 28,
+      "key": "SLATEPORT_TENT_MON_TAILLOW",
+      "species": "SPECIES_TAILLOW",
+      "item": "ITEM_SHARP_BEAK",
+      "moves": [
+        "MOVE_GROWL",
+        "MOVE_AERIAL_ACE",
+        "MOVE_AGILITY",
+        "MOVE_ENDEAVOR"
+      ],
+      "nature": "NATURE_ADAMANT"
+    },
+    {
+      "id": 29,
+      "key": "SLATEPORT_TENT_MON_SWELLOW",
+      "species": "SPECIES_SWELLOW",
+      "item": "ITEM_NONE",
+      "moves": [
+        "MOVE_SUPERSONIC",
+        "MOVE_GROWL",
+        "MOVE_FOCUS_ENERGY",
+        "MOVE_PECK"
+      ],
+      "nature": "NATURE_IMPISH"
+    },
+    {
+      "id": 30,
+      "key": "SLATEPORT_TENT_MON_GOLBAT_1",
+      "species": "SPECIES_GOLBAT",
+      "item": "ITEM_SPELL_TAG",
+      "moves": [
+        "MOVE_ASTONISH",
+        "MOVE_GUST",
+        "MOVE_MEAN_LOOK",
+        "MOVE_CONFUSE_RAY"
+      ],
+      "nature": "NATURE_TIMID"
+    },
+    {
+      "id": 31,
+      "key": "SLATEPORT_TENT_MON_LOUDRED",
+      "species": "SPECIES_LOUDRED",
+      "item": "ITEM_NONE",
+      "moves": [
+        "MOVE_ASTONISH",
+        "MOVE_SCREECH",
+        "MOVE_UPROAR",
+        "MOVE_SUPERSONIC"
+      ],
+      "nature": "NATURE_ADAMANT"
+    },
+    {
+      "id": 32,
+      "key": "SLATEPORT_TENT_MON_SPINDA",
+      "species": "SPECIES_SPINDA",
+      "item": "ITEM_CHESTO_BERRY",
+      "moves": [
+        "MOVE_DIZZY_PUNCH",
+        "MOVE_FEINT_ATTACK",
+        "MOVE_HYPNOSIS",
+        "MOVE_REST"
+      ],
+      "nature": "NATURE_ADAMANT"
+    },
+    {
+      "id": 33,
+      "key": "SLATEPORT_TENT_MON_MAGNEMITE",
+      "species": "SPECIES_MAGNEMITE",
+      "item": "ITEM_QUICK_CLAW",
+      "moves": [
+        "MOVE_METAL_SOUND",
+        "MOVE_SUPERSONIC",
+        "MOVE_THUNDER_WAVE",
+        "MOVE_SPARK"
+      ],
+      "nature": "NATURE_SERIOUS"
+    },
+    {
+      "id": 34,
+      "key": "SLATEPORT_TENT_MON_WHISMUR",
+      "species": "SPECIES_WHISMUR",
+      "item": "ITEM_SILK_SCARF",
+      "moves": [
+        "MOVE_REST",
+        "MOVE_SLEEP_TALK",
+        "MOVE_HOWL",
+        "MOVE_BODY_SLAM"
+      ],
+      "nature": "NATURE_ADAMANT"
+    },
+    {
+      "id": 35,
+      "key": "SLATEPORT_TENT_MON_MAKUHITA",
+      "species": "SPECIES_MAKUHITA",
+      "item": "ITEM_FOCUS_BAND",
+      "moves": [
+        "MOVE_SAND_ATTACK",
+        "MOVE_KNOCK_OFF",
+        "MOVE_ARM_THRUST",
+        "MOVE_BELLY_DRUM"
+      ],
+      "nature": "NATURE_ADAMANT"
+    },
+    {
+      "id": 36,
+      "key": "SLATEPORT_TENT_MON_NUMEL_1",
+      "species": "SPECIES_NUMEL",
+      "item": "ITEM_NONE",
+      "moves": [
+        "MOVE_EMBER",
+        "MOVE_TAKE_DOWN",
+        "MOVE_GROWL",
+        "MOVE_FOCUS_ENERGY"
+      ],
+      "nature": "NATURE_MODEST"
+    },
+    {
+      "id": 37,
+      "key": "SLATEPORT_TENT_MON_BARBOACH",
+      "species": "SPECIES_BARBOACH",
+      "item": "ITEM_SEA_INCENSE",
+      "moves": [
+        "MOVE_MAGNITUDE",
+        "MOVE_MUD_SPORT",
+        "MOVE_WATER_SPORT",
+        "MOVE_WATER_GUN"
+      ],
+      "nature": "NATURE_JOLLY"
+    },
+    {
+      "id": 38,
+      "key": "SLATEPORT_TENT_MON_TENTACOOL",
+      "species": "SPECIES_TENTACOOL",
+      "item": "ITEM_POISON_BARB",
+      "moves": [
+        "MOVE_SCREECH",
+        "MOVE_BUBBLE_BEAM",
+        "MOVE_ACID",
+        "MOVE_BARRIER"
+      ],
+      "nature": "NATURE_ADAMANT"
+    },
+    {
+      "id": 39,
+      "key": "SLATEPORT_TENT_MON_VIGOROTH",
+      "species": "SPECIES_VIGOROTH",
+      "item": "ITEM_AGUAV_BERRY",
+      "moves": [
+        "MOVE_FOCUS_ENERGY",
+        "MOVE_FURY_SWIPES",
+        "MOVE_ENDURE",
+        "MOVE_YAWN"
+      ],
+      "nature": "NATURE_ADAMANT"
+    },
+    {
+      "id": 40,
+      "key": "SLATEPORT_TENT_MON_MAGIKARP",
+      "species": "SPECIES_MAGIKARP",
+      "item": "ITEM_DRAGON_SCALE",
+      "moves": [
+        "MOVE_TACKLE",
+        "MOVE_FLAIL",
+        "MOVE_SPLASH",
+        "MOVE_NONE"
+      ],
+      "nature": "NATURE_ADAMANT"
+    },
+    {
+      "id": 41,
+      "key": "SLATEPORT_TENT_MON_SEVIPER_1",
+      "species": "SPECIES_SEVIPER",
+      "item": "ITEM_NONE",
+      "moves": [
+        "MOVE_LICK",
+        "MOVE_POISON_FANG",
+        "MOVE_GLARE",
+        "MOVE_WRAP"
+      ],
+      "nature": "NATURE_ADAMANT"
+    },
+    {
+      "id": 42,
+      "key": "SLATEPORT_TENT_MON_SOLROCK",
+      "species": "SPECIES_SOLROCK",
+      "item": "ITEM_HARD_STONE",
+      "moves": [
+        "MOVE_ROCK_THROW",
+        "MOVE_HARDEN",
+        "MOVE_PSYWAVE",
+        "MOVE_TACKLE"
+      ],
+      "nature": "NATURE_ADAMANT"
+    },
+    {
+      "id": 43,
+      "key": "SLATEPORT_TENT_MON_KECLEON_1",
+      "species": "SPECIES_KECLEON",
+      "item": "ITEM_NONE",
+      "moves": [
+        "MOVE_PSYBEAM",
+        "MOVE_SUBSTITUTE",
+        "MOVE_THIEF",
+        "MOVE_TAIL_WHIP"
+      ],
+      "nature": "NATURE_MODEST"
+    },
+    {
+      "id": 44,
+      "key": "SLATEPORT_TENT_MON_KECLEON_2",
+      "species": "SPECIES_KECLEON",
+      "item": "ITEM_IAPAPA_BERRY",
+      "moves": [
+        "MOVE_FEINT_ATTACK",
+        "MOVE_ASTONISH",
+        "MOVE_LICK",
+        "MOVE_SCREECH"
+      ],
+      "nature": "NATURE_CALM"
+    },
+    {
+      "id": 45,
+      "key": "SLATEPORT_TENT_MON_SHROOMISH_1",
+      "species": "SPECIES_SHROOMISH",
+      "item": "ITEM_PERSIM_BERRY",
+      "moves": [
+        "MOVE_STUN_SPORE",
+        "MOVE_TACKLE",
+        "MOVE_LEECH_SEED",
+        "MOVE_MEGA_DRAIN"
+      ],
+      "nature": "NATURE_MODEST"
+    },
+    {
+      "id": 46,
+      "key": "SLATEPORT_TENT_MON_SHROOMISH_2",
+      "species": "SPECIES_SHROOMISH",
+      "item": "ITEM_FIGY_BERRY",
+      "moves": [
+        "MOVE_ABSORB",
+        "MOVE_STUN_SPORE",
+        "MOVE_SPORE",
+        "MOVE_LEECH_SEED"
+      ],
+      "nature": "NATURE_BRAVE"
+    },
+    {
+      "id": 47,
+      "key": "SLATEPORT_TENT_MON_LOMBRE_2",
+      "species": "SPECIES_LOMBRE",
+      "item": "ITEM_NONE",
+      "moves": [
+        "MOVE_NATURE_POWER",
+        "MOVE_ASTONISH",
+        "MOVE_GROWL",
+        "MOVE_ABSORB"
+      ],
+      "nature": "NATURE_LONELY"
+    },
+    {
+      "id": 48,
+      "key": "SLATEPORT_TENT_MON_NUMEL_2",
+      "species": "SPECIES_NUMEL",
+      "item": "ITEM_CHARCOAL",
+      "moves": [
+        "MOVE_EMBER",
+        "MOVE_GROWL",
+        "MOVE_EARTHQUAKE",
+        "MOVE_SUNNY_DAY"
+      ],
+      "nature": "NATURE_MODEST"
+    },
+    {
+      "id": 49,
+      "key": "SLATEPORT_TENT_MON_TRAPINCH_2",
+      "species": "SPECIES_TRAPINCH",
+      "item": "ITEM_ASPEAR_BERRY",
+      "moves": [
+        "MOVE_FEINT_ATTACK",
+        "MOVE_DIG",
+        "MOVE_BITE",
+        "MOVE_QUICK_ATTACK"
+      ],
+      "nature": "NATURE_BRAVE"
+    },
+    {
+      "id": 50,
+      "key": "SLATEPORT_TENT_MON_PELIPPER_2",
+      "species": "SPECIES_PELIPPER",
+      "item": "ITEM_WIKI_BERRY",
+      "moves": [
+        "MOVE_WING_ATTACK",
+        "MOVE_SUPERSONIC",
+        "MOVE_MIST",
+        "MOVE_AGILITY"
+      ],
+      "nature": "NATURE_ADAMANT"
+    },
+    {
+      "id": 51,
+      "key": "SLATEPORT_TENT_MON_WINGULL_2",
+      "species": "SPECIES_WINGULL",
+      "item": "ITEM_NEVER_MELT_ICE",
+      "moves": [
+        "MOVE_WATER_GUN",
+        "MOVE_SUPERSONIC",
+        "MOVE_GROWL",
+        "MOVE_ICY_WIND"
+      ],
+      "nature": "NATURE_ADAMANT"
+    },
+    {
+      "id": 52,
+      "key": "SLATEPORT_TENT_MON_MARILL_2",
+      "species": "SPECIES_MARILL",
+      "item": "ITEM_GANLON_BERRY",
+      "moves": [
+        "MOVE_DOUBLE_EDGE",
+        "MOVE_RAIN_DANCE",
+        "MOVE_TAIL_WHIP",
+        "MOVE_WATER_GUN"
+      ],
+      "nature": "NATURE_MODEST"
+    },
+    {
+      "id": 53,
+      "key": "SLATEPORT_TENT_MON_SKITTY",
+      "species": "SPECIES_SKITTY",
+      "item": "ITEM_PETAYA_BERRY",
+      "moves": [
+        "MOVE_ASSIST",
+        "MOVE_ATTRACT",
+        "MOVE_SING",
+        "MOVE_CHARM"
+      ],
+      "nature": "NATURE_CAREFUL"
+    },
+    {
+      "id": 54,
+      "key": "SLATEPORT_TENT_MON_SEVIPER_2",
+      "species": "SPECIES_SEVIPER",
+      "item": "ITEM_NONE",
+      "moves": [
+        "MOVE_SWAGGER",
+        "MOVE_WRAP",
+        "MOVE_POISON_TAIL",
+        "MOVE_HAZE"
+      ],
+      "nature": "NATURE_BRAVE"
+    },
+    {
+      "id": 55,
+      "key": "SLATEPORT_TENT_MON_GOLBAT_2",
+      "species": "SPECIES_GOLBAT",
+      "item": "ITEM_LEFTOVERS",
+      "moves": [
+        "MOVE_BITE",
+        "MOVE_TORMENT",
+        "MOVE_SCREECH",
+        "MOVE_POISON_FANG"
+      ],
+      "nature": "NATURE_HARDY"
+    },
+    {
+      "id": 56,
+      "key": "SLATEPORT_TENT_MON_RALTS",
+      "species": "SPECIES_RALTS",
+      "item": "ITEM_MAGO_BERRY",
+      "moves": [
+        "MOVE_HYPNOSIS",
+        "MOVE_IMPRISON",
+        "MOVE_PSYCHIC",
+        "MOVE_DREAM_EATER"
+      ],
+      "nature": "NATURE_TIMID"
+    },
+    {
+      "id": 57,
+      "key": "SLATEPORT_TENT_MON_SANDSHREW",
+      "species": "SPECIES_SANDSHREW",
+      "item": "ITEM_SOFT_SAND",
+      "moves": [
+        "MOVE_SLASH",
+        "MOVE_SAND_ATTACK",
+        "MOVE_SAND_TOMB",
+        "MOVE_DEFENSE_CURL"
+      ],
+      "nature": "NATURE_HARDY"
+    },
+    {
+      "id": 58,
+      "key": "SLATEPORT_TENT_MON_SWALOT",
+      "species": "SPECIES_SWALOT",
+      "item": "ITEM_NONE",
+      "moves": [
+        "MOVE_YAWN",
+        "MOVE_SLUDGE",
+        "MOVE_ENCORE",
+        "MOVE_POUND"
+      ],
+      "nature": "NATURE_IMPISH"
+    },
+    {
+      "id": 59,
+      "key": "SLATEPORT_TENT_MON_VOLBEAT",
+      "species": "SPECIES_VOLBEAT",
+      "item": "ITEM_NONE",
+      "moves": [
+        "MOVE_TACKLE",
+        "MOVE_CONFUSE_RAY",
+        "MOVE_QUICK_ATTACK",
+        "MOVE_DOUBLE_TEAM"
+      ],
+      "nature": "NATURE_HARDY"
+    },
+    {
+      "id": 60,
+      "key": "SLATEPORT_TENT_MON_ILLUMISE",
+      "species": "SPECIES_ILLUMISE",
+      "item": "ITEM_CHERI_BERRY",
+      "moves": [
+        "MOVE_CHARM",
+        "MOVE_TACKLE",
+        "MOVE_ENCORE",
+        "MOVE_MOONLIGHT"
+      ],
+      "nature": "NATURE_ADAMANT"
+    },
+    {
+      "id": 61,
+      "key": "SLATEPORT_TENT_MON_KADABRA",
+      "species": "SPECIES_KADABRA",
+      "item": "ITEM_NONE",
+      "moves": [
+        "MOVE_DISABLE",
+        "MOVE_CONFUSION",
+        "MOVE_REFLECT",
+        "MOVE_RECOVER"
+      ],
+      "nature": "NATURE_QUIRKY"
+    },
+    {
+      "id": 62,
+      "key": "SLATEPORT_TENT_MON_KIRLIA",
+      "species": "SPECIES_KIRLIA",
+      "item": "ITEM_TWISTED_SPOON",
+      "moves": [
+        "MOVE_CALM_MIND",
+        "MOVE_CONFUSION",
+        "MOVE_DOUBLE_TEAM",
+        "MOVE_GROWL"
+      ],
+      "nature": "NATURE_CAREFUL"
+    },
+    {
+      "id": 63,
+      "key": "SLATEPORT_TENT_MON_BRELOOM",
+      "species": "SPECIES_BRELOOM",
+      "item": "ITEM_NONE",
+      "moves": [
+        "MOVE_ABSORB",
+        "MOVE_TACKLE",
+        "MOVE_STUN_SPORE",
+        "MOVE_MEGA_DRAIN"
+      ],
+      "nature": "NATURE_NAIVE"
+    },
+    {
+      "id": 64,
+      "key": "SLATEPORT_TENT_MON_PLUSLE_1",
+      "species": "SPECIES_PLUSLE",
+      "item": "ITEM_LIECHI_BERRY",
+      "moves": [
+        "MOVE_SPARK",
+        "MOVE_ENCORE",
+        "MOVE_THUNDER_WAVE",
+        "MOVE_GROWL"
+      ],
+      "nature": "NATURE_LONELY"
+    },
+    {
+      "id": 65,
+      "key": "SLATEPORT_TENT_MON_PLUSLE_2",
+      "species": "SPECIES_PLUSLE",
+      "item": "ITEM_PECHA_BERRY",
+      "moves": [
+        "MOVE_SPARK",
+        "MOVE_FAKE_TEARS",
+        "MOVE_SUBSTITUTE",
+        "MOVE_QUICK_ATTACK"
+      ],
+      "nature": "NATURE_MILD"
+    },
+    {
+      "id": 66,
+      "key": "SLATEPORT_TENT_MON_ELECTRIKE_2",
+      "species": "SPECIES_ELECTRIKE",
+      "item": "ITEM_APICOT_BERRY",
+      "moves": [
+        "MOVE_SPARK",
+        "MOVE_CHARGE",
+        "MOVE_ROAR",
+        "MOVE_THUNDER_WAVE"
+      ],
+      "nature": "NATURE_TIMID"
+    },
+    {
+      "id": 67,
+      "key": "SLATEPORT_TENT_MON_SWABLU",
+      "species": "SPECIES_SWABLU",
+      "item": "ITEM_NONE",
+      "moves": [
+        "MOVE_SING",
+        "MOVE_PECK",
+        "MOVE_STEEL_WING",
+        "MOVE_SAFEGUARD"
+      ],
+      "nature": "NATURE_JOLLY"
+    },
+    {
+      "id": 68,
+      "key": "SLATEPORT_TENT_MON_MACHOP",
+      "species": "SPECIES_MACHOP",
+      "item": "ITEM_BLACK_BELT",
+      "moves": [
+        "MOVE_FOCUS_ENERGY",
+        "MOVE_VITAL_THROW",
+        "MOVE_SEISMIC_TOSS",
+        "MOVE_FORESIGHT"
+      ],
+      "nature": "NATURE_ADAMANT"
+    },
+    {
+      "id": 69,
+      "key": "SLATEPORT_TENT_MON_MACHOKE",
+      "species": "SPECIES_MACHOKE",
+      "item": "ITEM_NONE",
+      "moves": [
+        "MOVE_FOCUS_ENERGY",
+        "MOVE_LEER",
+        "MOVE_KARATE_CHOP",
+        "MOVE_FORESIGHT"
+      ],
+      "nature": "NATURE_MODEST"
+    }
+  ],
+  "trainers": [
+    {
+      "name": "Jolie",
+      "sets": [
+        9,
+        10,
+        13,
+        27,
+        35,
+        37,
+        42,
+        44,
+        45,
+        46,
+        63
+      ]
+    },
+    {
+      "name": "Malachi",
+      "sets": [
+        9,
+        16,
+        17,
+        27,
+        36,
+        39,
+        42,
+        45,
+        48,
+        49,
+        53
+      ]
+    },
+    {
+      "name": "Kelsie",
+      "sets": [
+        4,
+        5,
+        6,
+        11,
+        28,
+        34,
+        35,
+        37,
+        43,
+        51,
+        53
+      ]
+    },
+    {
+      "name": "Davon",
+      "sets": [
+        4,
+        5,
+        6,
+        12,
+        26,
+        36,
+        37,
+        38,
+        40,
+        44,
+        46,
+        50
+      ]
+    },
+    {
+      "name": "Glenda",
+      "sets": [
+        0,
+        1,
+        17,
+        18,
+        19,
+        22,
+        23,
+        33,
+        42,
+        61,
+        64,
+        65,
+        66
+      ]
+    },
+    {
+      "name": "Helena",
+      "sets": [
+        18,
+        19,
+        21,
+        38,
+        39,
+        41,
+        42,
+        52,
+        54,
+        58,
+        63
+      ]
+    },
+    {
+      "name": "Rodolfo",
+      "sets": [
+        0,
+        1,
+        4,
+        5,
+        7,
+        8,
+        18,
+        20,
+        21,
+        37,
+        38,
+        40,
+        62
+      ]
+    },
+    {
+      "name": "Davion",
+      "sets": [
+        17,
+        23,
+        24,
+        25,
+        31,
+        32,
+        33,
+        34,
+        39,
+        43,
+        44,
+        49,
+        57,
+        69
+      ]
+    },
+    {
+      "name": "Kendall",
+      "sets": [
+        4,
+        7,
+        8,
+        9,
+        11,
+        12,
+        13,
+        27,
+        38,
+        40,
+        45,
+        46,
+        47,
+        63
+      ]
+    },
+    {
+      "name": "Colten",
+      "sets": [
+        0,
+        2,
+        12,
+        22,
+        28,
+        30,
+        35,
+        38,
+        43,
+        44,
+        56,
+        57
+      ]
+    },
+    {
+      "name": "Irvin",
+      "sets": [
+        0,
+        1,
+        2,
+        3,
+        14,
+        15,
+        24,
+        25,
+        32,
+        34,
+        39,
+        59,
+        60
+      ]
+    },
+    {
+      "name": "Shaun",
+      "sets": [
+        17,
+        18,
+        19,
+        22,
+        29,
+        36,
+        42,
+        48,
+        61,
+        62,
+        66,
+        68,
+        69
+      ]
+    },
+    {
+      "name": "Kyler",
+      "sets": [
+        22,
+        23,
+        28,
+        29,
+        31,
+        32,
+        34,
+        39,
+        55,
+        64,
+        65,
+        67
+      ]
+    },
+    {
+      "name": "Maggie",
+      "sets": [
+        10,
+        13,
+        17,
+        27,
+        45,
+        46,
+        53,
+        56,
+        61,
+        62,
+        63
+      ]
+    },
+    {
+      "name": "Stephon",
+      "sets": [
+        8,
+        10,
+        16,
+        23,
+        29,
+        43,
+        44,
+        60,
+        62,
+        63,
+        68
+      ]
+    },
+    {
+      "name": "Rebecca",
+      "sets": [
+        8,
+        13,
+        21,
+        29,
+        33,
+        41,
+        48,
+        54,
+        59,
+        61,
+        68
+      ]
+    },
+    {
+      "name": "Reggie",
+      "sets": [
+        6,
+        7,
+        17,
+        23,
+        24,
+        26,
+        32,
+        36,
+        52,
+        53,
+        57,
+        65
+      ]
+    },
+    {
+      "name": "Janae",
+      "sets": [
+        0,
+        1,
+        27,
+        28,
+        32,
+        34,
+        36,
+        37,
+        52,
+        53,
+        57,
+        65
+      ]
+    },
+    {
+      "name": "Caiden",
+      "sets": [
+        10,
+        14,
+        15,
+        16,
+        20,
+        21,
+        25,
+        30,
+        35,
+        47,
+        48,
+        50,
+        69
+      ]
+    },
+    {
+      "name": "Kirsten",
+      "sets": [
+        10,
+        16,
+        18,
+        19,
+        20,
+        21,
+        25,
+        30,
+        35,
+        39,
+        41,
+        48,
+        69
+      ]
+    },
+    {
+      "name": "Kurtis",
+      "sets": [
+        0,
+        1,
+        36,
+        37,
+        40,
+        46,
+        49,
+        51,
+        64,
+        67,
+        68
+      ]
+    },
+    {
+      "name": "Stefan",
+      "sets": [
+        4,
+        5,
+        21,
+        33,
+        37,
+        38,
+        40,
+        51,
+        52,
+        64,
+        65
+      ]
+    },
+    {
+      "name": "Avery",
+      "sets": [
+        2,
+        3,
+        7,
+        8,
+        22,
+        23,
+        28,
+        29,
+        30,
+        51,
+        67
+      ]
+    },
+    {
+      "name": "Dwane",
+      "sets": [
+        14,
+        15,
+        30,
+        43,
+        44,
+        45,
+        46,
+        55,
+        58,
+        59,
+        63
+      ]
+    },
+    {
+      "name": "Mckenna",
+      "sets": [
+        27,
+        29,
+        30,
+        32,
+        36,
+        48,
+        51,
+        52,
+        53,
+        57,
+        67
+      ]
+    },
+    {
+      "name": "Camryn",
+      "sets": [
+        5,
+        6,
+        7,
+        8,
+        10,
+        16,
+        17,
+        20,
+        21,
+        37,
+        43,
+        44
+      ]
+    },
+    {
+      "name": "Natasha",
+      "sets": [
+        1,
+        3,
+        4,
+        5,
+        9,
+        11,
+        12,
+        20,
+        21,
+        22,
+        51
+      ]
+    },
+    {
+      "name": "Austyn",
+      "sets": [
+        25,
+        31,
+        35,
+        37,
+        38,
+        39,
+        50,
+        51,
+        52,
+        58,
+        68,
+        69
+      ]
+    },
+    {
+      "name": "Donovan",
+      "sets": [
+        10,
+        16,
+        17,
+        24,
+        25,
+        43,
+        44,
+        47,
+        49,
+        53,
+        59,
+        60,
+        64,
+        65
+      ]
+    },
+    {
+      "name": "Tamia",
+      "sets": [
+        2,
+        6,
+        9,
+        13,
+        17,
+        19,
+        20,
+        24,
+        27,
+        29,
+        30
+      ]
+    }
+  ]
+}

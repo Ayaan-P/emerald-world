@@ -22,7 +22,8 @@ class GatewayTests(unittest.TestCase):
         source = (Path(__file__).resolve().parents[2]/'src/platform/world_bridge.c').read_text()
         for key in ('loopback_port', 'loopback_token', 'trainer', 'token', 'telemetry'):
             self.assertIn('"' + key + '"', source)
-        self.assertIn('"EWLOCAL1 %s\\nHELLO 1 %s %s SOCIAL\\n"', source)
+        self.assertIn('"EWLOCAL1 %s\\nHELLO 1 %s %s %s%s%s%s\\n"', source)
+        self.assertIn('SOCIALTRAVELRALLY', source)
         self.assertIn('htonl(INADDR_LOOPBACK)', source)
         code = ("import sys, subprocess; sys.modules.pop('fcntl', None); import world.windows_client; "
                 "assert not any(m in sys.modules for m in "
