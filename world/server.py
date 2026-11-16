@@ -2116,8 +2116,8 @@ class WorldServer:
                 except ValueError as exc:
                     result=dict(ok=False,error=str(exc))
             elif request.get('command') == 'register_survey':
-                if set(request) != {'command','plan'}:raise ValueError('invalid survey registration')
-                result = self.landmark_survey.register(request['plan'])
+                if set(request) not in ({'command','plan'},{'command','plan','revision'}):raise ValueError('invalid survey registration')
+                result = self.landmark_survey.register(request['plan'],request.get('revision'))
             elif request.get('command') == 'found_settlement':
                 try:
                     from .settlement_plans import begin
