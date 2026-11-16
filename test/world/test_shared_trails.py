@@ -90,3 +90,36 @@ class WatercourseTests(unittest.TestCase):
         for site in plan['landmarks']:
             self.assertTrue(cave.walkable(site['x'],site['y']))
             self.assertEqual(cave.palette[site['y']*127+site['x']],ord('s'))
+
+    def test_ponds_watercourse_and_marked_network_survive_authority_restart(self):
+        import test_actor_runtime as fixture
+        from world import actor_runtime as runtime
+        case=fixture.ActorRuntimeTests();case.setUp();self.addCleanup(case.doCleanups)
+        server=case.s;server.archive_generated_areas=True;server.persist_generated_cave=True
+        plan=dict(seed=11,landmarks=[dict(id='grove',x=20,y=90,radius=10),dict(id='ridge',x=90,y=25,radius=10)],reservations=[],loops=0)
+        args=dict(label='Creek and ponds',layout='clearings',blueprint=json.dumps(plan,separators=(',',':')),biome='meadow',seed=1,ponds=3,trail='sand',trail_width=1)
+        case.apply(dict(id='waters',purpose='Create a connected place.',steps=[dict(id='create',tool='world.create_watercourse_landscape',args=args,after=[])]))
+        outcome=runtime.tick(server,now=10)
+        self.assertEqual(outcome['status'],'succeeded')
+        event=next(e for e in server.memory.history()['events'] if e['seq']==outcome['seq'])
+        report=event['result']['report']
+        self.assertEqual(report['ponds_created'],3)
+        self.assertEqual(report['pond_placement'],'walkable_ground_v2')
+        self.assertGreaterEqual(report['watercourse_tiles'],8)
+        self.assertEqual(report['marked_routes'],report['routes'])
+        cave=server.shared_cave
+        self.assertEqual(cave.version,17)
+        for site in plan['landmarks']:
+            self.assertTrue(cave.walkable(site['x'],site['y']))
+        from collections import deque
+        seen={(1,1)}; pending=deque(seen)
+        while pending:
+            x,y=pending.popleft()
+            for point in ((x+1,y),(x-1,y),(x,y+1),(x,y-1)):
+                if point not in seen and cave.walkable(*point):
+                    seen.add(point);pending.append(point)
+        self.assertIn((125,125),seen)
+        for site in plan['landmarks']:self.assertIn((site['x'],site['y']),seen)
+        before=cave.identity,bytes(cave.palette)
+        server.close();holder=case.f.f.f.case;holder.server=holder.open();case.s=holder.server
+        self.assertEqual((case.s.shared_cave.identity,bytes(case.s.shared_cave.palette)),before)
