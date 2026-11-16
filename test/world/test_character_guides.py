@@ -25,11 +25,65 @@ class CharacterGuideTests(unittest.TestCase):
         self.assertIsNone(self.s.module_error)
         self.f.state(self.f.conn,15,20)
 
+    def survey_reply_cases(self):
+        """Real authority commands, enrollment, visits, and private peer baseline."""
+        other = self.f.connect('Other')
+        other_history = list(other['chat_history'])
+        before = self.s.memory.history()['events']
+        self.assertEqual(self.s.db.execute('SELECT count(*) FROM survey_sessions').fetchone()[0], 0)
+        self.assertEqual(self.f.count(), 0)
+        for command in ('/explore start', '/explore guide route_guide', '/explore directions', '/explore stop'):
+            serial = self.s.chat_serial
+            wire = self.f.command(command)
+            replies = [entry for entry in self.f.conn['chat_history'] if entry[0] > serial]
+            self.assertTrue(replies, command)
+            for entry in replies:
+                yield command, wire, entry
+        self.assertEqual(self.s.db.execute('SELECT active FROM survey_sessions WHERE trainer=?', ('Scout',)).fetchone(), (0,))
+        self.assertEqual(self.f.count(), 1)
+        self.assertIsNotNone(self.s.db.execute('SELECT 1 FROM survey_guidance WHERE trainer=?', ('Scout',)).fetchone())
+        self.assertEqual(other['chat_history'], other_history)
+        self.assertEqual(self.s.memory.history()['events'], before)
+
+    def test_survey_and_guide_producer_emits_private_self_replies(self):
+        # Always runs in authority-only CI, without the private native checkout.
+        for command, wire, entry in self.survey_reply_cases():
+            with self.subTest(command=command, reply=entry):
+                self.assertEqual(entry[1:3], ('Scout', 'Scout'))
+                self.assertIn(f'CHATMSG {entry[0]} Scout Scout {entry[3]}', wire)
+
+    def test_native_objectives_displays_real_survey_and_guide_replies_privately(self):
+        from pathlib import Path
+        import os
+        import tempfile
+        from native_objectives_harness import ENGINE, build, render
+
+        required = [ENGINE / 'src/world' / name for name in ('world_chat.c', 'world_bridge.c')]
+        missing = [str(path) for path in required if not path.is_file()]
+        if missing:
+            if 'EW_RC7_ENGINE' in os.environ:
+                self.fail('Explicit EW_RC7_ENGINE is missing native sources: ' + ', '.join(missing))
+            self.skipTest('Private native source unavailable; set EW_RC7_ENGINE to exercise compiled objectives consumer')
+        with tempfile.TemporaryDirectory() as directory:
+            binary = build(Path(directory))
+            for command, _, entry in self.survey_reply_cases():
+                with self.subTest(command=command, reply=entry):
+                    text = bytes.fromhex(entry[3]).decode('ascii')
+                    self.assertEqual(render(binary, 'Scout', [entry]), text)
+                    noise = [(0, 'Other', '*', b'public chatter'.hex()),
+                             (0, 'Other', 'Scout', b'private whisper'.hex()),
+                             (0, 'World', 'Scout', b'world whisper'.hex()),
+                             (0, 'Scout', 'Other', b'another recipient'.hex())]
+                    for rejected in noise:
+                        self.assertEqual(render(binary, 'Scout', [rejected]), 'No private activity reply yet.')
+                    self.assertEqual(render(binary, 'Scout', noise + [entry] + noise), text)
+
     def private_text(self):
         return '\n'.join(bytes.fromhex(row[3]).decode() for row in self.f.conn.get('chat_history',[]))
 
     def test_first_directions_uses_adjacent_resident_without_typed_identity(self):
         other = self.f.connect('Other')
+        other_history = list(other['chat_history'])
         self.f.command('/explore start')
         before = self.s.memory.history()['events']
         self.f.command('/explore directions')
@@ -39,7 +93,7 @@ class CharacterGuideTests(unittest.TestCase):
         from world.player_activity import snapshot
         self.assertEqual(snapshot(self.s, 'Scout')['survey']['next_objective']['id'], note[1])
         self.assertEqual(self.s.memory.history()['events'], before)
-        self.assertEqual(other['chat_history'], [])
+        self.assertEqual(other['chat_history'], other_history)
 
     def test_reached_notes_retarget_through_adjacent_eligible_guide(self):
         self.f.command('/explore start')
@@ -84,6 +138,7 @@ class CharacterGuideTests(unittest.TestCase):
 
     def test_geometry_directions_arrival_share_and_restart_isolation(self):
         other=self.f.connect('Other')
+        other_history = list(other['chat_history'])
         self.f.command('/explore start')
         before=self.s.memory.history()['events']
         self.f.command('/explore guide route_guide')
@@ -108,7 +163,7 @@ class CharacterGuideTests(unittest.TestCase):
         else:self.fail('directions did not reach a clearing')
         self.assertTrue(self.s.db.execute('SELECT 1 FROM survey_visits WHERE trainer=? AND revision=? AND landmark=?',('Scout',note[0],note[1])).fetchone())
         self.assertEqual(self.s.memory.history()['events'],before)
-        self.assertEqual(other['chat_history'],[])
+        self.assertEqual(other['chat_history'], other_history)
         self.f.command('/explore share '+note[1]);self.assertEqual(self.s.memory.history()['events'],before)
         self.f.command('/explore share '+note[1]+' confirm')
         event=self.s.memory.history()['events'][-1];self.assertEqual(event['event'],'landmark_discovery_shared')
@@ -122,6 +177,7 @@ class CharacterGuideTests(unittest.TestCase):
 
     def test_guide_adjacency_freshness_pause_revision_and_malformed_privacy(self):
         other=self.f.connect('Other')
+        other_history = list(other['chat_history'])
         self.f.command('/explore guide route_guide');self.assertIn('start first',self.private_text())
         self.f.command('/explore start');self.f.conn['state_time']=0
         self.f.command('/explore guide route_guide');self.assertIn('Stand ready',self.private_text())
@@ -134,7 +190,7 @@ class CharacterGuideTests(unittest.TestCase):
         self.f.command('/explore directions');self.assertIn('exact acknowledged destination',self.private_text())
         for command in ('/explore guide','/explore directions extra','/explore guide unknown extra'):
             self.f.command(command)
-        self.assertEqual(other['chat_history'],[])
+        self.assertEqual(other['chat_history'], other_history)
 
 
 if __name__=='__main__':unittest.main()

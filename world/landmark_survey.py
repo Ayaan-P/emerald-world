@@ -141,7 +141,7 @@ class LandmarkSurvey:
 
     def reply(self, conn, lines):
         s=self.server
-        for line in lines:s.guild_chat.message(conn,'World',line)
+        for line in lines:s.guild_chat.message(conn,conn['id'],line)
         conn['chat_status']='sent';s._queue(conn,s._snapshot(conn))
 
     def handle(self, conn, text):
