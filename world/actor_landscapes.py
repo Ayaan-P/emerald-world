@@ -22,6 +22,8 @@ def create(server, actor, row, args):
         raise ValueError('Invalid layout JSON')
     if args['layout'] == 'clearings':
         blob, generated = compile_plan(blueprint)
+        if blueprint.get('reservation_terrain','water')!='water' and 'biome' not in args:
+            raise ValueError('Rock reservations require a shared biome')
         report = dict(landmarks=generated['landmarks'], routes=len(generated['routes']))
     elif args['layout'] == 'connected_shapes':
         blob = encode(proposal_from_blueprint(blueprint, side=127))
@@ -42,6 +44,10 @@ def create(server, actor, row, args):
         cells=blob[8:]; proposal=dict(rows=[cells[i*127:(i+1)*127].decode('ascii') for i in range(127)],spawn=[1,1],exit=[125,125])
         blob=paint_biome(proposal,args['biome'],args['seed'])
         report.update(biome=args['biome'], biome_seed=args['seed'])
+        if args['layout']=='clearings' and blueprint.get('reservation_terrain','water')=='rock':
+            from .shared_outdoor_palette import paint_reservations
+            blob=paint_reservations(blob,blueprint['reservations'],'rock')
+            report['reservation_terrain']='rock'
         if 'zones' in args:
             if not network or type(args['zones']) is not str or len(args['zones'])>600:
                 raise ValueError('Landmark terrain requires a network and bounded JSON')

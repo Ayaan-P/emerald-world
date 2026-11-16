@@ -24,7 +24,29 @@ class SharedBiomeTests(unittest.TestCase):
         for biome,seed in [('ocean',1),('meadow',-1),('meadow',True),('meadow',2**32)]:
             with self.assertRaises(ValueError): paint_biome(self.proposal,biome,seed)
 
+    def test_reservation_painter_never_turns_walkable_tiles_into_rocks(self):
+        from world.shared_outdoor_palette import paint_reservations
+        blob=paint_biome(self.proposal,'meadow',42)
+        with self.assertRaises(ValueError):paint_reservations(blob,[[10,10,2,2]],'rock')
+        with self.assertRaises(ValueError):paint_reservations(blob,[[0,0,2,2]],'rock')
+
 class AgentBiomeTests(unittest.TestCase):
+    def test_rock_reservation_is_shared_and_keeps_collision(self):
+        import json
+        import test_actor_runtime as fixture
+        from world import actor_runtime as runtime
+        case=fixture.ActorRuntimeTests();case.setUp();self.addCleanup(case.doCleanups)
+        server=case.s;server.archive_generated_areas=True;server.persist_generated_cave=True
+        blueprint=dict(seed=52,loops=0,landmarks=[dict(id='west',x=20,y=25,radius=6),dict(id='east',x=90,y=70,radius=8)],reservations=[[45,45,15,15]],reservation_terrain='rock',corridor_width=5)
+        args=dict(label='Rock Country',layout='clearings',blueprint=json.dumps(blueprint,separators=(',',':')),biome='meadow',seed=42)
+        case.apply(dict(id='rock',purpose='Create a place.',steps=[dict(id='create',tool='world.create_biome_landscape',args=args,after=[])]))
+        self.assertEqual(runtime.tick(server,now=10)['status'],'succeeded')
+        cave=server.shared_cave
+        self.assertEqual(cave.palette[50*127+50],ord('r'))
+        self.assertFalse(cave.walkable(50,50))
+        self.assertTrue(cave.walkable(20,25))
+        self.assertIn('XLPAINT',''.join(cave.frames()))
+
     def test_agent_creates_shared_biome(self):
         import json
         import test_actor_runtime as fixture

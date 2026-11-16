@@ -30,8 +30,10 @@ Routes go around reservations, rather than drawing L-shaped lines through them.
 The spanning network connects every clearing and both native return endpoints.
 Requested additional routes must use new terrain outside their endpoint areas.
 """
-    if type(plan) is not dict or not {'seed','landmarks','reservations','loops'} <= set(plan) or set(plan)-{'seed','landmarks','reservations','loops','corridor_width'}:
-        raise ValueError('expected seed, landmarks, reservations, loops and optional corridor_width')
+    if type(plan) is not dict or not {'seed','landmarks','reservations','loops'} <= set(plan) or set(plan)-{'seed','landmarks','reservations','loops','corridor_width','reservation_terrain'}:
+        raise ValueError('expected seed, landmarks, reservations, loops and optional corridor_width or reservation_terrain')
+    if plan.get('reservation_terrain','water') not in ('water','rock'):
+        raise ValueError('reservation_terrain must be water or rock')
     width=plan.get('corridor_width',1)
     if type(width) is not int or width not in (1,3,5,7):
         raise ValueError('corridor_width must be 1, 3, 5 or 7')
