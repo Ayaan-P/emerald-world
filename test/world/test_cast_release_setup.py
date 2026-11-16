@@ -1,11 +1,17 @@
 """Paired draft pins and fail-before-claim author startup."""
-import contextlib,io,json,tempfile,unittest
+import ast,contextlib,io,json,tempfile,unittest
 from pathlib import Path
 from unittest.mock import patch
 from world import runtime_gm as runtime,private_cast_worker
 from scripts import build_expansion
 
 class SetupTests(unittest.TestCase):
+ def test_authority_components_select_real_survey_reply_producer(self):
+  runner=Path(__file__).resolve().parents[2]/'scripts/check_living_cast.py'
+  tree=ast.parse(runner.read_text())
+  modules=next(node.value for node in tree.body if isinstance(node,ast.Assign) and any(isinstance(target,ast.Name) and target.id=='MODULES' for target in node.targets))
+  assert isinstance(modules,ast.Call) and isinstance(modules.func,ast.Attribute)
+  self.assertIn('test_character_guides',ast.literal_eval(modules.func.value).split())
  def test_unreviewed_cli_does_not_open_or_claim_world_queue(self):
   with tempfile.TemporaryDirectory() as tmp:
    with patch('subprocess.check_output',return_value='codex-cli unreviewed'),patch.object(runtime,'RuntimeGM') as worker,contextlib.redirect_stdout(io.StringIO()) as out:
