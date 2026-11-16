@@ -5,6 +5,7 @@ visits stay private unless a player explicitly shares one anonymous landmark
 arrival with public world history.
 """
 import argparse
+import hashlib
 import json
 import time
 import sqlite3
@@ -36,6 +37,8 @@ class LandmarkSurvey:
                 raise ValueError('survey needs an exact archived map revision')
             row=s.db.execute('SELECT template FROM generated_area_archive WHERE identity=?',(target,)).fetchone()
             if row is None:raise ValueError('publish this exact route map before registering its survey')
+            if type(row[0]) is not bytes or hashlib.sha256(row[0]).hexdigest()!=target:
+                raise ValueError('generated area unavailable')
             if row[0]!=blob:
                 if revision is None:raise ValueError('publish this exact route map before registering its survey')
                 from collections import deque

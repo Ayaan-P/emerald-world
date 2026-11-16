@@ -150,6 +150,23 @@ class LandmarkSurveyTests(unittest.TestCase):
         self.assertEqual(self.conn['chat_history'],original)
         self.assertTrue(any('/explore start' in bytes.fromhex(entry[3]).decode() for entry in other['chat_history']))
 
+    def test_registration_rejects_archive_bytes_under_wrong_revision(self):
+        import hashlib
+        from world.shared_cave import SharedCave
+        from world.shared_outdoor_palette import paint_biome
+        base=SharedCave(self.blob)
+        painted=paint_biome(dict(rows=[r.decode() for r in base._rows],spawn=[1,1],exit=[125,125]),'meadow',42)
+        self.assertNotEqual(hashlib.sha256(painted).hexdigest(),self.revision)
+        self.s.peers.clear()
+        with self.s.db:
+            self.s.db.execute('DELETE FROM survey_routes')
+            self.s.db.execute('UPDATE generated_area_archive SET template=? WHERE identity=?',(painted,self.revision))
+        with self.assertRaises(ValueError):self.s.activate_generated_area(self.revision)
+        before=self.s.db.total_changes
+        with self.assertRaises(ValueError):self.s.landmark_survey.register(plan(),self.revision)
+        self.assertEqual(self.s.db.total_changes,before)
+        self.assertEqual(self.s.db.execute('SELECT count(*) FROM survey_routes').fetchone()[0],0)
+
     def test_registration_requires_exact_archived_template(self):
         changed=plan();changed['seed']=45
         result=self.f.admin(dict(command='register_survey',plan=changed))
