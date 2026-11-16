@@ -166,3 +166,19 @@ def main(argv=None):
     print(json.dumps(result))
 
 if __name__=='__main__':main()
+
+
+def character_interested(event, character):
+    """Match anonymous public arrivals to a character's chosen logical places."""
+    import re
+    if (event.get('event')!='landmark_discovery_shared' or
+            event.get('publication')!='explicit_player_share' or
+            event.get('basis')!='authenticated_acknowledged_client_presence'):
+        return False
+    place=event.get('place_id');revision=event.get('revision');landmark=event.get('landmark')
+    if (place not in character.get('field_interests',[]) or type(revision) is not str or
+            not re.fullmatch('[0-9a-f]{64}',revision) or type(landmark) is not str or
+            not re.fullmatch('[a-z][a-z0-9_]{0,23}',landmark) or
+            any(type(event.get(k)) is not int or not 1<=event[k]<=125 for k in ('x','y'))):
+        return False
+    return True

@@ -33,7 +33,7 @@ def records(state):
     for identity, character in value.items():
         if type(identity) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,24}', identity):
             raise ValueError('invalid character identity')
-        if type(character) is not dict or not FIELDS <= set(character) or set(character)-FIELDS-{'plan','offer','services','battle_portrait','intentions','campaign_interests','research_interests','goal_review'}:
+        if type(character) is not dict or not FIELDS <= set(character) or set(character)-FIELDS-{'plan','offer','services','battle_portrait','intentions','campaign_interests','research_interests','field_interests','goal_review'}:
             raise ValueError('invalid character fields')
         if ('battle_portrait' in character and
                 (type(character['battle_portrait']) is not str or character['battle_portrait'] not in BATTLE_PORTRAITS)):
@@ -65,6 +65,11 @@ def records(state):
                 any(type(n) is not int or not 1<=n<=MAX_DEX for n in research) or
                 len(set(research))!=len(research)):
             raise ValueError('Research interests must be up to eight distinct National Dex numbers')
+        fields=character.get('field_interests',[])
+        if (type(fields) is not list or len(fields)>4 or
+                any(type(p) is not str or not re.fullmatch(r'area:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',p) for p in fields) or
+                len(set(fields))!=len(fields)):
+            raise ValueError('Field interests must be up to four distinct generated place IDs')
         goals = character['goals']
         if type(goals) is not list or len(goals) > 4:
             raise ValueError('invalid character goals')
