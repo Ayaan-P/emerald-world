@@ -183,3 +183,40 @@ class LandmarkTerrainTests(unittest.TestCase):
         self.assertEqual((event['event'],event['revision'],event['landmark']),('landmark_discovery_shared',revision,'grove'))
         changed=dict(plan,landmarks=[dict(id='grove',x=40,y=40,radius=4),plan['landmarks'][1]])
         self.assertFalse(admin_request(s,dict(command='register_survey',plan=changed,revision=revision))['ok'])
+
+    def test_agent_creates_opt_in_survey_atomically(self):
+        import test_actor_runtime as fixture
+        import test_landmark_survey as survey
+        from world import actor_runtime as runtime
+        case=fixture.ActorRuntimeTests();case.setUp();self.addCleanup(case.doCleanups)
+        s=case.s;s.archive_generated_areas=True;s.persist_generated_cave=True
+        plan=dict(seed=11,landmarks=[dict(id='grove',x=20,y=90,radius=10),dict(id='ridge',x=90,y=25,radius=10)],reservations=[],loops=0)
+        args=dict(label='Explorers trail',layout='clearings',blueprint=json.dumps(plan,separators=(',',':')),biome='meadow',seed=1,ponds=3,trail='sand',trail_width=1,zones=json.dumps({'grove':'long_grass','ridge':'sand'}))
+        case.apply(dict(id='explore',purpose='Create an optional survey.',steps=[dict(id='create',tool='world.create_survey_landscape',args=args,after=[])]))
+        result=runtime.tick(s,now=10);self.assertEqual(result['status'],'succeeded')
+        revision=s.shared_cave.identity
+        self.assertIsNotNone(s.db.execute('SELECT 1 FROM survey_routes WHERE revision=?',(revision,)).fetchone())
+        self.assertEqual(s.db.execute('SELECT count(*) FROM survey_sessions').fetchone()[0],0)
+        h=survey.LandmarkSurveyTests();h.s=s;h.revision=revision
+        token=s.create_identity('Scout')['token'];h.conn=dict(id=None,out=bytearray(),closing=False,state=None,seq=0,sock=object())
+        h.send(h.conn,'HELLO 1 Scout '+token+' SOCIALCAVE17');h.send(h.conn,'CHAT_ENABLE');h.send(h.conn,'CAVE GET');h.send(h.conn,'CAVE ACK '+revision)
+        h.state(h.conn,20,90);self.assertEqual(h.count(),0)
+        h.command('/explore start');self.assertEqual(h.count(),1)
+        h.command('/explore share grove confirm')
+        self.assertEqual(s.memory.history()['events'][-1]['event'],'landmark_discovery_shared')
+        s.peers.clear();s.close();holder=case.f.f.f.case;holder.server=holder.open();case.s=holder.server
+        self.assertIsNotNone(case.s.db.execute('SELECT 1 FROM survey_routes WHERE revision=?',(revision,)).fetchone())
+
+    def test_survey_registration_failure_rolls_back_created_map(self):
+        import test_actor_runtime as fixture
+        from world import actor_runtime as runtime
+        case=fixture.ActorRuntimeTests();case.setUp();self.addCleanup(case.doCleanups)
+        s=case.s;s.archive_generated_areas=True;s.persist_generated_cave=True
+        old=s.shared_cave.identity if s.shared_cave else None
+        plan=dict(seed=11,landmarks=[dict(id='grove',x=20,y=90,radius=10),dict(id='ridge',x=90,y=25,radius=10)],reservations=[],loops=0)
+        args=dict(label='No partial',layout='clearings',blueprint=json.dumps(plan,separators=(',',':')),biome='meadow',seed=1,ponds=0,trail='sand',trail_width=1,zones='{}')
+        case.apply(dict(id='failure',purpose='Test atomicity.',steps=[dict(id='create',tool='world.create_survey_landscape',args=args,after=[])]))
+        s.db.execute("CREATE TRIGGER reject_survey BEFORE INSERT ON survey_routes BEGIN SELECT RAISE(ABORT,'fixture'); END")
+        self.assertEqual(runtime.tick(s,now=10)['status'],'blocked')
+        self.assertEqual(s.shared_cave.identity if s.shared_cave else None,old)
+        self.assertEqual(s.db.execute("SELECT count(*) FROM generated_area_archive WHERE label='No partial'").fetchone()[0],0)
