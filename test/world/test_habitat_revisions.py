@@ -113,3 +113,29 @@ class ComposedRevisionTests(HabitatRevisionTests):
   p=self.connect('Inside','SOCIALCAVE10');self.send(p,'CAVE GET');self.send(p,'CAVE ACK '+old)
   p['state']=[*self.s.cave_map,2,2,1,7,1];p['in_generated_cave']=True
   self.assertEqual(runtime.tick(self.s,now=16)['status'],'blocked');self.assertEqual(self.s.shared_cave.identity,old)
+ def test_native_decoder_receives_composed_table_and_restart_preserves_it(self):
+  root=os.environ.get('EW_LINK_NATIVE_SOURCE')
+  if not root:self.skipTest('requires published native cave decoder fixture')
+  from test_habitat_composer import criteria
+  self.compose_plan(criteria());self.assertEqual(runtime.tick(self.s,now=16)['status'],'succeeded')
+  before=self.s.shared_cave;place=self.s.memory.place(before.identity)
+  p=self.connect('Decoder','SOCIALCAVE10');frames=self.send(p,'CAVE GET')
+  self.assertIn('CAVE WILD '+before.identity,frames)
+  expected=','.join(str(b) for b in before.wildlife)
+  code='''#include <stdio.h>
+#include <string.h>
+#include "global.h"
+#include "platform/world_cave_wire.h"
+int main(void){char line[512];struct WorldCaveWire w={0};int r=0;unsigned char expected[]={EXPECTED};
+while(fgets(line,sizeof(line),stdin)){char *t[5],*save,*p;unsigned n=0;line[strcspn(line,"\\n")]=0;for(p=strtok_r(line," ",&save);p&&n<5;p=strtok_r(NULL," ",&save))t[n++]=p;r=WorldCaveWire_Feed(&w,n,(const char *const*)t);if(r<0)return 2;}
+return r==1 && w.version==10 && !memcmp(w.wildlife,expected,sizeof(expected)) ? 0:3;}'''.replace('EXPECTED',expected)
+  with tempfile.TemporaryDirectory() as d:
+   d=Path(d);root=Path(root).resolve();(d/'global.h').write_text('#include <stdint.h>\ntypedef uint8_t u8;typedef uint32_t u32;typedef int bool8;\n#define TRUE 1\n#define FALSE 0\n');(d/'test.c').write_text(code)
+   build=subprocess.run(['cc','-std=gnu99','-DPORTABLE','-DGENERATED_CAVE_PROFILES=1','-DGENERATED_CAVE_WILDLIFE=1','-iquote',str(d),'-iquote',str(root/'include'),str(root/'src/world/world_cave_wire.c'),str(d/'test.c'),'-o',str(d/'test')],capture_output=True,text=True)
+   self.assertEqual(build.returncode,0,build.stderr)
+   run=subprocess.run([str(d/'test')],input=frames,capture_output=True,text=True);self.assertEqual(run.returncode,0,run.stderr)
+  db=self.s.db.execute('PRAGMA database_list').fetchone()[2]
+  from test_shared_generated_cave import MemoryAuthority
+  self.s.close();restored=MemoryAuthority('/tmp/habitat-not-listening',Path(db).parent,persist_generated_cave=True,archive_generated_areas=True);self.addCleanup(restored.close)
+  self.assertEqual(restored.shared_cave.identity,before.identity);self.assertEqual(restored.shared_cave.wildlife,before.wildlife)
+  self.assertEqual(restored.memory.place(before.identity),place)
