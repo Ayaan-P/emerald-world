@@ -65,22 +65,30 @@ def add_ponds(blob, seed, count, *, protected_points=()):
         raise ValueError('pond count must be between 0 and 8')
     cells=bytearray(blob[8:]); rng=random.Random(seed ^ 0x504f4e44); made=0
     protected={(1,1),(125,124),(125,125)} | set(protected_points)
-    for _ in range(count*24):
+    # Sample actual walkable ground rather than mostly blocked cells. Candidate
+    # order and shape are seeded, and admission remains connectivity-checked.
+    # Existing archived maps retain their bytes; this is the v2 placement policy
+    # for new creations, not an in-place regeneration.
+    starts=[(x,y) for y in range(2,125) for x in range(2,125)
+            if (x,y) not in protected and cells[y*SIDE+x] not in (ord('#'),ord('r'))]
+    rng.shuffle(starts)
+    for cx,cy in starts[:count*256]:
         if made == count: break
-        cx,cy=rng.randrange(5,122),rng.randrange(5,122)
-        rx,ry=rng.randrange(2,7),rng.randrange(2,6)
-        points=[(x,y) for y in range(max(1,cy-ry),min(126,cy+ry+1))
-                for x in range(max(1,cx-rx),min(126,cx+rx+1))
-                if (x-cx)**2*ry**2+(y-cy)**2*rx**2 <= rx**2*ry**2]
-        if any((x,y) in protected or cells[y*SIDE+x] in (ord('#'),ord('r')) for x,y in points): continue
-        trial=cells.copy()
-        for x,y in points: trial[y*SIDE+x]=ord('#')
-        geometry=bytes(ord('#') if c in (ord('#'),ord('r')) else ord('.') for c in trial)
-        try:
-            encode_geometry({'rows':[geometry[y*SIDE:(y+1)*SIDE].decode('ascii') for y in range(SIDE)],'spawn':[1,1],'exit':[125,125]})
-        except ValueError:
-            continue
-        cells=trial;made+=1
+        # Fall back to a small pond when large ellipses cannot fit a clearing.
+        shapes=[(rng.randrange(3,7),rng.randrange(3,6)),(2,3),(2,2)]
+        for rx,ry in shapes:
+            points=[(x,y) for y in range(max(1,cy-ry),min(126,cy+ry+1))
+                    for x in range(max(1,cx-rx),min(126,cx+rx+1))
+                    if (x-cx)**2*ry**2+(y-cy)**2*rx**2 <= rx**2*ry**2]
+            if any((x,y) in protected or cells[y*SIDE+x] in (ord('#'),ord('r')) for x,y in points): continue
+            trial=cells.copy()
+            for x,y in points: trial[y*SIDE+x]=ord('#')
+            geometry=bytes(ord('#') if c in (ord('#'),ord('r')) else ord('.') for c in trial)
+            try:
+                encode_geometry({'rows':[geometry[y*SIDE:(y+1)*SIDE].decode('ascii') for y in range(SIDE)],'spawn':[1,1],'exit':[125,125]})
+            except ValueError:
+                continue
+            cells=trial;made+=1;break
     return MAGIC+bytes(cells),made
 
 def add_trail(blob, terrain, width, *, endpoints=None):
