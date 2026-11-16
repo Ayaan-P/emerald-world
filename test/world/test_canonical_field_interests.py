@@ -52,3 +52,46 @@ class CanonicalFieldInterestTests(unittest.TestCase):
   for change in (dict(publication='private'),dict(place_id='area:other'),dict(basis='forged')):
    self.assertFalse(cast.reaction_activity(dict(event,**change),'canon_wally',row))
    self.assertFalse(cast.decision_evidence(dict(event,**change),'canon_wally',row))
+
+class LandscapeCastIntegrationTests(unittest.TestCase):
+ def test_authored_landscape_can_host_original_cast_study_and_reaction(self):
+  from world import actor_runtime as runtime
+  from test_route_landscape import plan
+  from test_landmark_survey import LandmarkSurveyTests
+  f=fixture.CanonicalStudyTests();f.setUp();self.addCleanup(f.doCleanups)
+  s=f.s;s.archive_generated_areas=True;s.persist_generated_cave=True
+  p=plan()
+  args=dict(label='Living field',layout='clearings',blueprint=json.dumps(p,separators=(',',':')),biome='meadow',seed=1,ponds=3,trail='sand',trail_width=1,zones=json.dumps({'camp':'long_grass','ruins':'sand'}))
+  action=f.f.action();action['changes']['plan']=dict(id='field',purpose='Create a connected landscape.',steps=[dict(id='create',tool='world.create_landmark_landscape',args=args,after=[])])
+  f.f.apply(action)
+  result=runtime.tick(s,now=10);self.assertEqual(result['status'],'succeeded')
+  revision=s.shared_cave.identity;place=s.memory.place(revision)
+  self.assertEqual(s.shared_cave.version,17)
+  event=next(e for e in s.memory.history()['events'] if e['seq']==result['seq'])
+  report=event['result']['report'];self.assertEqual(report['ponds_created'],3)
+  self.assertGreaterEqual(report['watercourse_tiles'],8)
+  study=deepcopy(f.study);study['revision']=revision
+  change=deepcopy(f.initial);change['expected_version']=1
+  change['changes'].update(intentions=[dict(id='new_study',kind='study',target=revision,reason='Study the new place.')])
+  f.f.apply(change)
+  change=deepcopy(change);change['expected_version']=2
+  change['changes'].update(intentions=[],fulfill='new_study',study=study)
+  f.f.apply(change)
+  w=f.f.action();w['id']='canon_wally';w['changes'].update(field_interests=[place])
+  f.f.apply(w)
+  with tempfile.TemporaryDirectory() as tmp:
+   q=IntentQueue(tmp)
+   try:
+    reactions.configure(q,s.inspect(),'canon_wally','Consider shared discoveries.')
+    self.assertEqual(reactions.observe(q,s.inspect(),f.f.fetch),[])
+    h=LandmarkSurveyTests();h.s=s;h.revision=revision
+    token=s.create_identity('FieldScout')['token'];h.conn=dict(id=None,out=bytearray(),closing=False,state=None,seq=0,sock=object())
+    h.send(h.conn,'HELLO 1 FieldScout '+token+' SOCIALCAVE17');h.send(h.conn,'CHAT_ENABLE');h.send(h.conn,'CAVE GET');h.send(h.conn,'CAVE ACK '+revision)
+    site=study['sites'][0];h.state(h.conn,site['x'],site['y']);h.command('/explore start')
+    self.assertEqual(reactions.observe(q,s.inspect(),f.f.fetch),[])
+    h.command('/explore share '+site['id']+' confirm')
+    self.assertEqual(len(reactions.observe(q,s.inspect(),f.f.fetch)),1)
+    packet=json.loads(q.claim()['result']);ctx=f.f.context();ctx['runtime'].update(kind='character',observed_event=packet)
+    reactions.prepare(ctx,f.f.fetch)
+    self.assertEqual(ctx['recalled_history']['events'][-1]['place_id'],place)
+   finally:q.close()
