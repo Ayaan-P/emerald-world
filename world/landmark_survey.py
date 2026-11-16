@@ -24,8 +24,8 @@ class LandmarkSurvey:
                 PRIMARY KEY(trainer,revision,landmark));
         ''')
 
-    def register(self, plan, revision=None):
-        """Owner registers an already archived exact generated route plan."""
+    def inspect_registration(self, plan, revision=None):
+        """Validate a survey against an archived map without modifying it."""
         s=self.server
         blob,report=compile_plan(plan)
         sites=[site for site in report['landmarks'] if site['id'] not in ('entry','exit')]
@@ -54,8 +54,15 @@ class LandmarkSurvey:
             encoded=json.dumps(sites,sort_keys=True)
             old=s.db.execute('SELECT sites FROM survey_routes WHERE revision=?',(target,)).fetchone()
             if old and old[0]!=encoded:raise ValueError('survey landmarks are already fixed for this revision')
-            with s.db:s.db.execute('INSERT OR IGNORE INTO survey_routes VALUES (?,?)',(target,encoded))
-        return dict(ok=True,revision=target,landmarks=len(sites))
+            return dict(revision=target, landmarks=len(sites), sites=encoded, template=row[0], report=report)
+
+    def register(self, plan, revision=None):
+        """Register only the exact plan and archived geometry just validated."""
+        s=self.server
+        with s.lock:
+            checked=self.inspect_registration(plan,revision)
+            with s.db:s.db.execute('INSERT OR IGNORE INTO survey_routes VALUES (?,?)',(checked['revision'],checked['sites']))
+        return dict(ok=True,revision=checked['revision'],landmarks=checked['landmarks'])
 
     def scope(self, conn):
         s=self.server;state=conn.get('state');cave=s._connection_cave(conn)
