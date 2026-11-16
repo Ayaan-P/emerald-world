@@ -1,6 +1,6 @@
 """Opt-in, result-driven author turns for already registered world characters.
 
-No arc, timer, fabricated outcome, native script replacement or automatic model
+No predetermined arc, fabricated outcome, native script replacement or automatic model
 startup. Exact public expedition completion or a trusted isolated practice
 receipt can schedule another bounded action through the configured developer GM.
 """
@@ -20,6 +20,10 @@ def actors(state):
 
 
 def dynamic_result(event, identity, character):
+    from .landmark_survey import character_interested
+    if character_interested(event,character):return True
+    from .shared_research import interested as research_interested
+    if research_interested(event,character):return True
     from .method_exchange import relevant as lesson_relevant
     if lesson_relevant(event,identity):return True
     from .move_assistance import relevant as assistance_relevant
@@ -294,6 +298,8 @@ def prepare(context, fetch):
         recall(context,character,fetch)
     # Public fictional actors need committed public results, not player purposes
     # or current private party/save observations from the general GM inspection.
+    if events[0].get('event')=='landmark_discovery_shared':
+        context['field_report_limits']='Anonymous explicitly shared client-reported arrival at an exact archived landmark. Not an actor sighting, verified travel, resource claim, or permission to reveal private survey activity. Inspect the current place before acting.'
     if events[0].get('event')=='shared_research_published':
         context['research_report_limits']='Anonymous explicitly published historical Dex deltas. Not sightings at any location, currently owned individuals, the identity of a reporter, Birch witnessing anything, or proof that a new population is natural. An authored encounter configuration is a world change, not an observed migration. Choose a supported action or wait.'
     if events[0].get('event')=='canonical_trainer_result':
