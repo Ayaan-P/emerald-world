@@ -167,7 +167,15 @@ class LandmarkSurvey:
         s=self.server;revision=self.scope(conn)
         if revision is None:return
         row=s.db.execute('SELECT revision FROM survey_sessions WHERE trainer=? AND active=1',(conn['id'],)).fetchone()
-        if row is None or row[0]!=revision:return
+        if row is None or row[0]!=revision:
+            # A private, per-connection hint makes an available activity visible
+            # without enrolling the player or publishing a visit.
+            announced=conn.setdefault('survey_hints',set())
+            if (conn.get('chat') and revision not in announced and len(announced)<32
+                    and s.db.execute('SELECT 1 FROM survey_routes WHERE revision=?',(revision,)).fetchone()):
+                announced.add(revision)
+                self.reply(conn,['Landmarks to explore here. Use /explore start to begin a private survey.'])
+            return
         sites=json.loads(s.db.execute('SELECT sites FROM survey_routes WHERE revision=?',(revision,)).fetchone()[0])
         x,y=conn['state'][2:4]
         for site in sites:
