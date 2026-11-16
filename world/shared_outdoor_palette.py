@@ -70,6 +70,28 @@ def paint_landmarks(blob, landmarks, zones):
     return MAGIC+bytes(cells)
 
 
+def paint_reservations(blob, reservations, terrain):
+    """Choose existing impassable tiles for validated reserved rectangles."""
+    if type(blob) is not bytes or blob[:8] != MAGIC or len(blob) != 8+SIDE*SIDE:
+        raise ValueError('expected shared painted landscape')
+    if terrain not in ('water', 'rock'):
+        raise ValueError('reservation terrain must be water or rock')
+    cells=bytearray(blob[8:]); color=ord('#' if terrain=='water' else 'r')
+    for rect in reservations:
+        if type(rect) is not list or len(rect)!=4 or any(type(v) is not int for v in rect):
+            raise ValueError('invalid reservation')
+        x,y,w,h=rect
+        if x<1 or y<1 or w<1 or h<1 or x+w>126 or y+h>126:
+            raise ValueError('reservation outside interior')
+        for yy in range(y,y+h):
+            for xx in range(x,x+w):
+                i=yy*SIDE+xx
+                if cells[i] not in (ord('#'),ord('r')):
+                    raise ValueError('reservation overlaps walkable terrain')
+                cells[i]=color
+    return MAGIC+bytes(cells)
+
+
 def add_ponds(blob, seed, count, *, protected_points=()):
     """Add bounded impassable ponds without disconnecting any walkable tile.
 
