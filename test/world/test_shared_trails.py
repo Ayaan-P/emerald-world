@@ -42,6 +42,79 @@ class SharedTrailTests(unittest.TestCase):
         self.assertIn(ord('s'),server.shared_cave.palette)
 
 class NetworkTrailTests(unittest.TestCase):
+    def test_seeded_design_reuses_default_and_checks_options(self):
+        from unittest.mock import patch
+        from world.actor_landscapes import generate_landscape,generate_designed_landscape
+        args=dict(label='Country',landmarks=json.dumps(['grove','ridge']),biome='meadow',seed=19,ponds=0,trail='sand',trail_width=1,corridor_width=3)
+        with patch('world.actor_landscapes.create',side_effect=lambda server,actor,row,values:values):
+            plain=generate_landscape(None,'a',{},args)
+            self.assertEqual(plain,generate_designed_landscape(None,'a',{},dict(args,options='{}')))
+            options=dict(zones={'grove':'tall_grass'},watercourse=True,reservations=[[42,42,3,3]],reservation_terrain='rock')
+            designed=generate_designed_landscape(None,'a',{},dict(args,options=json.dumps(options)))
+            self.assertTrue(designed['_watercourse'])
+            self.assertEqual(json.loads(designed['zones']),options['zones'])
+            self.assertEqual(json.loads(designed['blueprint'])['reservations'],options['reservations'])
+            for bad in ('[]','{"watercourse":1}','{"unknown":true}'):
+                with self.assertRaises(ValueError):generate_designed_landscape(None,'a',{},dict(args,options=bad))
+
+    def test_designed_seeded_area_publishes_zone_and_survey(self):
+        import test_actor_runtime as fixture
+        from world import actor_runtime as runtime
+        case=fixture.ActorRuntimeTests();case.setUp();self.addCleanup(case.doCleanups)
+        server=case.s;server.archive_generated_areas=True;server.persist_generated_cave=True
+        options=json.dumps(dict(zones={'grove':'long_grass'},watercourse=True))
+        args=dict(label='Country',landmarks=json.dumps(['grove','ridge']),biome='meadow',seed=19,ponds=0,trail='sand',trail_width=1,corridor_width=5,options=options)
+        case.apply(dict(id='designed',purpose='Make a place.',steps=[dict(id='create',tool='world.generate_designed_landscape',args=args,after=[])]))
+        self.assertEqual(runtime.tick(server,now=10)['status'],'succeeded')
+        cave=server.shared_cave
+        sites=json.loads(server.db.execute('SELECT sites FROM survey_routes WHERE revision=?',(cave.identity,)).fetchone()[0])
+        grove=next(s for s in sites if s['id']=='grove')
+        self.assertTrue(cave.walkable(grove['x'],grove['y']))
+        self.assertIn(ord('g'),cave.palette)
+        result=json.loads(server.db.execute("SELECT result FROM actor_tool_receipts WHERE step='create'").fetchone()[0])
+        self.assertGreaterEqual(result['report']['watercourse_tiles'],8)
+        self.assertEqual(result['report']['landmark_terrain'],{'grove':'long_grass'})
+
+    def test_invalid_design_does_not_publish_a_map_or_survey(self):
+        import test_actor_runtime as fixture
+        from world import actor_runtime as runtime
+        case=fixture.ActorRuntimeTests();case.setUp();self.addCleanup(case.doCleanups)
+        server=case.s;server.archive_generated_areas=True;server.persist_generated_cave=True
+        args=dict(label='Country',landmarks=json.dumps(['grove','ridge']),biome='meadow',seed=19,ponds=0,trail='sand',trail_width=1,corridor_width=5,options=json.dumps({'zones':{'missing':'sand'}}))
+        old=server.shared_cave
+        case.apply(dict(id='invalid',purpose='Make a place.',steps=[dict(id='create',tool='world.generate_designed_landscape',args=args,after=[])]))
+        self.assertEqual(runtime.tick(server,now=10)['status'],'blocked')
+        self.assertIs(server.shared_cave,old)
+        self.assertEqual(server.db.execute('SELECT count(*) FROM generated_area_archive').fetchone()[0],0)
+        self.assertEqual(server.db.execute('SELECT count(*) FROM survey_routes').fetchone()[0],0)
+
+    def test_generated_layout_is_repeatable_and_validates_names(self):
+        from unittest.mock import patch
+        from world.actor_landscapes import generate_landscape
+        args=dict(label='Open country',landmarks=json.dumps(['grove','ridge','spring']),biome='meadow',seed=19,ponds=0,trail='sand',trail_width=1,corridor_width=3)
+        with patch('world.actor_landscapes.create',side_effect=lambda server,actor,row,values:values):
+            first=generate_landscape(None,'a',{},args)
+            self.assertEqual(first,generate_landscape(None,'a',{},args))
+            other=dict(args,seed=20)
+            self.assertNotEqual(first['blueprint'],generate_landscape(None,'a',{},other)['blueprint'])
+            for names in ([],['entry','ridge'],['grove','grove'],['Not valid','ridge']):
+                with self.assertRaises(ValueError):generate_landscape(None,'a',{},dict(args,landmarks=json.dumps(names)))
+
+    def test_seeded_landscape_creates_connected_survey_without_coordinates(self):
+        import test_actor_runtime as fixture
+        from world import actor_runtime as runtime
+        case=fixture.ActorRuntimeTests();case.setUp();self.addCleanup(case.doCleanups)
+        server=case.s;server.archive_generated_areas=True;server.persist_generated_cave=True
+        args=dict(label='Open country',landmarks=json.dumps(['grove','ridge','spring']),biome='meadow',seed=19,ponds=2,trail='sand',trail_width=3,corridor_width=5)
+        case.apply(dict(id='generated',purpose='Make an area.',steps=[dict(id='create',tool='world.generate_landscape',args=args,after=[])]))
+        self.assertEqual(runtime.tick(server,now=10)['status'],'succeeded')
+        cave=server.shared_cave;self.assertEqual(cave.version,17)
+        sites=json.loads(server.db.execute('SELECT sites FROM survey_routes WHERE revision=?',(cave.identity,)).fetchone()[0])
+        self.assertEqual({s['id'] for s in sites},{'grove','ridge','spring'})
+        self.assertTrue(all(cave.walkable(s['x'],s['y']) for s in sites))
+        self.assertEqual(server.db.execute('SELECT count(*) FROM survey_sessions').fetchone()[0],0)
+        self.assertEqual(server.db.execute('SELECT count(*) FROM survey_publications').fetchone()[0],0)
+
     def test_actor_network_connects_all_landmarks(self):
         import test_actor_runtime as fixture
         from world import actor_runtime as runtime
