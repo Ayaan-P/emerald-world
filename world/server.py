@@ -1728,7 +1728,7 @@ class WorldServer:
                 self.db.execute('INSERT OR REPLACE INTO generated_cave (singleton, template) VALUES (1, ?)', (blob,))
                 if self.archive_generated_areas:
                     identity = hashlib.sha256(blob).hexdigest()
-                    kind = 'wilds' if blob[:8] in (b'EWGMAP06', b'EWGMAP07', b'EWGMAP08', b'EWGMAP09', b'EWGMAP0A') else 'cave'
+                    kind = 'wilds' if blob[:8] in (b'EWGMAP06', b'EWGMAP07', b'EWGMAP08', b'EWGMAP09', b'EWGMAP0A', b'EWGMAP1A') else 'cave'
                     prior_name = self.db.execute('SELECT label FROM generated_area_archive WHERE identity=?', (identity,)).fetchone()
                     display = label if label is not None else (prior_name[0] if prior_name else ('Outdoor area' if kind == 'wilds' else 'Cave'))
                     self.db.execute('INSERT OR IGNORE INTO generated_area_archive (identity,label,kind,template,created) VALUES (?,?,?,?,?)',
@@ -1813,7 +1813,9 @@ class WorldServer:
         if not self.archive_generated_areas:
             raise ValueError('generated area archive is not enabled')
         with self.lock:
-            rows = self.db.execute('SELECT identity,label,kind,created FROM generated_area_archive ORDER BY created DESC, identity').fetchall()
+            # Older authorities stored painted XL wilds as caves. Correct the
+            # displayed kind without rewriting archived maps or labels.
+            rows = self.db.execute("SELECT identity,label,CASE WHEN kind='cave' AND length(template)=16137 AND substr(template,1,8)=x'4557474d41503141' THEN 'wilds' ELSE kind END,created FROM generated_area_archive ORDER BY created DESC, identity").fetchall()
             active = self.shared_cave.identity if self.shared_cave else None
             return [dict(identity=i, label=label, kind=kind, created=created, active=i == active)
                     for i, label, kind, created in rows]
