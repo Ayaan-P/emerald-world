@@ -8,7 +8,7 @@ def create(server, actor, row, args):
     from .xl_wilds import encode
     from .route_landscape import compile_plan
     from .shared_cave import SharedCave
-    if not {'label', 'layout', 'blueprint'} <= set(args) or set(args)-{'label','layout','blueprint','paint','biome','seed','ponds','trail','trail_width','zones','_network','_watercourse'}:
+    if not {'label', 'layout', 'blueprint'} <= set(args) or set(args)-{'label','layout','blueprint','paint','biome','seed','ponds','trail','trail_width','zones','_network','_watercourse','_survey'}:
         raise ValueError('Supply label, layout and blueprint')
     network = args['layout'] == 'clearings' and args.get('trail') is not None and bool(args.get('_network'))
     label = args['label']
@@ -101,6 +101,10 @@ def create(server, actor, row, args):
         if identity != cave.identity:
             raise ValueError('Unexpected landscape commit')
         result['place_id'] = place
+        if args.get('_survey'):
+            checked=server.landmark_survey.inspect_registration(blueprint,identity)
+            server.db.execute('INSERT INTO survey_routes VALUES (?,?)',(identity,checked['sites']))
+            result['survey']=dict(revision=identity,landmarks=checked['landmarks'],enrollment='player_opt_in')
         committed.append(_receipt(server, actor, record, plan, step, 'succeeded', result))
     server._replace_cave(blob, label=label, expected_world_id=server.memory.world_id,
         expected_sequence=server.db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0],
@@ -124,3 +128,9 @@ def create_zoned_watercourse(server, actor, row, args):
     if args.get('layout') != 'clearings':
         raise ValueError('Landmark terrain requires clearings layout')
     return create(server, actor, row, dict(args, _network=True, _watercourse=True))
+
+
+def create_survey_landscape(server, actor, row, args):
+    if args.get('layout') != 'clearings':
+        raise ValueError('Survey landscape requires clearings layout')
+    return create(server, actor, row, dict(args, _network=True, _watercourse=True, _survey=True))
