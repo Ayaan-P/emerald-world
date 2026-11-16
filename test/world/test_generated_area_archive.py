@@ -64,3 +64,20 @@ class GeneratedAreaArchive(unittest.TestCase):
         try:self.assertEqual(server.list_generated_areas()[0]['identity'],old)
         finally:server.close()
         with self.assertRaises(ValueError):self.server(archive_generated_areas=True)
+
+    def test_painted_outdoors_are_listed_as_wilds_including_older_records(self):
+        from world.shared_outdoor_palette import paint_biome
+        from test_route_landscape import plan
+        from world.route_landscape import compile_plan
+        base=SharedCave(compile_plan(plan())[0])
+        proposal=dict(rows=[row.decode('ascii') for row in base._rows],spawn=[1,1],exit=[125,125])
+        blob=paint_biome(proposal,'meadow',5)
+        server=self.server(persist_generated_cave=True,archive_generated_areas=True)
+        try:
+            ident=server._replace_cave(blob,label='Riverside')
+            self.assertEqual(server.list_generated_areas()[0]['kind'],'wilds')
+            with server.db:server.db.execute("UPDATE generated_area_archive SET kind='cave' WHERE identity=?",(ident,))
+            listed=server.list_generated_areas()[0]
+            self.assertEqual((listed['kind'],listed['label']),('wilds','Riverside'))
+            self.assertEqual(server.db.execute('SELECT kind,template FROM generated_area_archive WHERE identity=?',(ident,)).fetchone(),('cave',blob))
+        finally:server.close()
