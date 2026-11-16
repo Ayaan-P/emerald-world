@@ -10,9 +10,10 @@ class LandscapeTests(unittest.TestCase):
  def setUp(self):
   self.f=fixture.ActorRuntimeTests();self.f.setUp();self.addCleanup(self.f.doCleanups);self.s=self.f.s
   self.s.archive_generated_areas=True;self.s.persist_generated_cave=True
- def plan(self,actor='canon_rydel',layout='connected_shapes',style='organic'):
+ def plan(self,actor='canon_rydel',layout='connected_shapes',style='organic',corridor_width=None):
   bp=dict(rooms=[[3,3,20,18],[75,80,25,20]],links=[[0,1]],entrance_room=0,exit_room=1,style=style,seed=357,corridor_width=3)
   if layout=='clearings':bp=dict(seed=52,loops=0,landmarks=[dict(id='west',x=20,y=25,radius=6),dict(id='east',x=90,y=70,radius=8)],reservations=[[45,45,15,15]])
+  if layout=='clearings' and corridor_width is not None:bp['corridor_width']=corridor_width
   self.f.apply(dict(id='landscape',purpose='Create usable outdoor space.',steps=[dict(id='create',tool='world.create_landscape',args=dict(label='Open Country',layout=layout,blueprint=json.dumps(bp,separators=(',',':'))),after=[])]),version=1 if actor=='canon_wally' else 0,actor=actor)
  def test_two_layouts_real_archive_native_frames_and_restart(self):
   self.plan();self.assertEqual(runtime.tick(self.s,now=10)['status'],'succeeded')
@@ -27,6 +28,17 @@ class LandscapeTests(unittest.TestCase):
   self.s.close();case=self.f.f.f.f.case;case.server=case.open();self.s=case.server
   self.assertEqual(self.s.shared_cave.identity,second.identity)
   self.assertIsNone(runtime.tick(self.s,now=30))
+ def test_agent_can_create_and_reopen_wide_clearings(self):
+  from world.route_landscape import compile_plan
+  bp=dict(seed=52,loops=0,landmarks=[dict(id='west',x=20,y=25,radius=6),dict(id='east',x=90,y=70,radius=8)],reservations=[[45,45,15,15]])
+  narrow,_=compile_plan(bp)
+  self.plan(layout='clearings',corridor_width=5)
+  self.assertEqual(runtime.tick(self.s,now=10)['status'],'succeeded')
+  cave=self.s.shared_cave;revision=cave.identity
+  self.assertGreater(sum(r.count(ord('.')) for r in cave._rows),narrow[8:].count(b'.'))
+  self.assertFalse(cave.walkable(50,50))
+  self.s.close();case=self.f.f.f.f.case;case.server=case.open();self.s=case.server
+  self.assertEqual(self.s.shared_cave.identity,revision)
  def test_occupied_or_populated_active_world_not_displaced(self):
   self.plan();self.assertEqual(runtime.tick(self.s,now=10)['status'],'succeeded');old=self.s.shared_cave.identity
   self.plan('canon_wally','clearings');self.s.objects=[dict(id='resident',region_revision=old)]

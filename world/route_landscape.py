@@ -30,8 +30,11 @@ Routes go around reservations, rather than drawing L-shaped lines through them.
 The spanning network connects every clearing and both native return endpoints.
 Requested additional routes must use new terrain outside their endpoint areas.
 """
-    if type(plan) is not dict or set(plan)!={'seed','landmarks','reservations','loops'}:
-        raise ValueError('expected seed, landmarks, reservations and loops')
+    if type(plan) is not dict or not {'seed','landmarks','reservations','loops'} <= set(plan) or set(plan)-{'seed','landmarks','reservations','loops','corridor_width'}:
+        raise ValueError('expected seed, landmarks, reservations, loops and optional corridor_width')
+    width=plan.get('corridor_width',1)
+    if type(width) is not int or width not in (1,3,5,7):
+        raise ValueError('corridor_width must be 1, 3, 5 or 7')
     seed=plan['seed'];loops=plan['loops'];landmarks=plan['landmarks'];reservations=plan['reservations']
     if type(seed) is not int or not 0<=seed<2**32 or type(loops) is not int or not 0<=loops<=4:
         raise ValueError('invalid seed or loop count')
@@ -114,6 +117,15 @@ Requested additional routes must use new terrain outside their endpoint areas.
         if path is not None and len(set(path)-walk)>4:
             add(a,b,path,'alternate');added+=1
     if added!=loops:raise ValueError('cannot fit requested alternate routes around reservations')
+    # Widen the actual walkable geometry, rather than only repainting its
+    # existing one-tile paths. Clip at reservations and the native border.
+    # Legacy plans retain byte-identical output and route-selection semantics.
+    if width>1:
+        radius=width//2
+        expanded={(x+dx,y+dy) for x,y in walk for dx in range(-radius,radius+1)
+                  for dy in range(-radius,radius+1) if abs(dx)+abs(dy)<=radius
+                  and 1<=x+dx<=125 and 1<=y+dy<=125}
+        walk.update(expanded-blocked)
     rows=[''.join('.' if (x,y) in walk else '#' for x in range(SIDE)) for y in range(SIDE)]
     blob=encode(dict(rows=rows,spawn=[1,1],exit=[125,125]));cave=SharedCave(blob)
     distance={(1,1):0};queue=deque(distance)
