@@ -8,7 +8,7 @@ def create(server, actor, row, args):
     from .xl_wilds import encode
     from .route_landscape import compile_plan
     from .shared_cave import SharedCave
-    if not {'label', 'layout', 'blueprint'} <= set(args) or set(args)-{'label','layout','blueprint','paint','biome','seed','ponds','trail','trail_width','_network','_watercourse'}:
+    if not {'label', 'layout', 'blueprint'} <= set(args) or set(args)-{'label','layout','blueprint','paint','biome','seed','ponds','trail','trail_width','zones','_network','_watercourse'}:
         raise ValueError('Supply label, layout and blueprint')
     network = args['layout'] == 'clearings' and args.get('trail') is not None and bool(args.get('_network'))
     label = args['label']
@@ -42,6 +42,14 @@ def create(server, actor, row, args):
         cells=blob[8:]; proposal=dict(rows=[cells[i*127:(i+1)*127].decode('ascii') for i in range(127)],spawn=[1,1],exit=[125,125])
         blob=paint_biome(proposal,args['biome'],args['seed'])
         report.update(biome=args['biome'], biome_seed=args['seed'])
+        if 'zones' in args:
+            if not network or type(args['zones']) is not str or len(args['zones'])>600:
+                raise ValueError('Landmark terrain requires a network and bounded JSON')
+            try: zones=json.loads(args['zones'])
+            except (TypeError,ValueError): raise ValueError('Invalid landmark terrain JSON') from None
+            from .shared_outdoor_palette import paint_landmarks
+            blob=paint_landmarks(blob,generated['landmarks'],zones)
+            report['landmark_terrain']=zones
         if 'ponds' in args:
             from .shared_outdoor_palette import add_ponds
             protected=[(site['x'],site['y']) for site in generated['landmarks']] if network else ()
@@ -109,4 +117,10 @@ def create_network(server, actor, row, args):
 def create_watercourse(server, actor, row, args):
     if args.get('layout') != 'clearings':
         raise ValueError('Watercourse requires clearings layout')
+    return create(server, actor, row, dict(args, _network=True, _watercourse=True))
+
+
+def create_zoned_watercourse(server, actor, row, args):
+    if args.get('layout') != 'clearings':
+        raise ValueError('Landmark terrain requires clearings layout')
     return create(server, actor, row, dict(args, _network=True, _watercourse=True))
