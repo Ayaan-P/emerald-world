@@ -46,7 +46,7 @@ class LandmarkSurveyTests(unittest.TestCase):
         for site in self.report['landmarks'][1:-1]:self.state(self.conn,site['x'],site['y'])
         self.assertEqual(self.count(),4)
         self.assertIn('Survey complete',' '.join(self.s.landmark_survey.lines(self.conn)))
-        stranger=self.connect('Other');self.assertEqual(len(stranger['chat_history']),0)
+        stranger=self.connect('Other');self.assertEqual(len(stranger['chat_history']),1)
         self.assertEqual(self.s.memory.history()['events'],before)
         self.s.close();self.f.server=self.f.open();self.s=self.f.server
         self.conn=self.connect('Scout')
@@ -130,13 +130,25 @@ class LandmarkSurveyTests(unittest.TestCase):
         other=self.connect('Other')
         reply=self.command('/explore protocol 1')
         self.assertIn(f'EXPLORE_READY {self.conn["seq"]}',reply)
-        self.assertEqual(other['chat_history'],[])
-        self.assertEqual(self.conn['chat_history'],[])
+        self.assertEqual(len(other['chat_history']),1)
+        self.assertEqual(len(self.conn['chat_history']),1)
         # Even a missing feature handler cannot fall through to room chat.
         with patch.object(self.s.landmark_survey,'handle',return_value=False):
             self.command('/explore protocol 1')
             self.command('/explore share camp')
-        self.assertEqual(other['chat_history'],[])
+        self.assertEqual(len(other['chat_history']),1)
+
+    def test_available_survey_hint_is_private_once_and_never_enrolls(self):
+        # The initial acknowledged arrival sends one private hint, not a visit.
+        self.assertTrue(any('/explore start' in bytes.fromhex(entry[3]).decode() for entry in self.conn['chat_history']))
+        original=list(self.conn['chat_history']); before=self.s.memory.history()
+        self.state(self.conn,15,20);self.state(self.conn,30,95)
+        self.assertEqual(self.conn['chat_history'],original)
+        self.assertEqual(self.s.db.execute('SELECT count(*) FROM survey_sessions').fetchone()[0],0)
+        self.assertEqual(self.count(),0);self.assertEqual(self.s.memory.history(),before)
+        other=self.connect('Other')
+        self.assertEqual(self.conn['chat_history'],original)
+        self.assertTrue(any('/explore start' in bytes.fromhex(entry[3]).decode() for entry in other['chat_history']))
 
     def test_registration_requires_exact_archived_template(self):
         changed=plan();changed['seed']=45
