@@ -82,11 +82,14 @@ class CanonicalStudyTests(unittest.TestCase):
   self.assertEqual(self.s.db.execute('SELECT count(*) FROM survey_visits').fetchone()[0],len(self.study['sites']))
   self.assertEqual(cast.records(self.s.module_state)['canon_steven']['goal'],changed['changes']['goal'])
  def test_painted_outdoors_supports_independent_survey_and_private_share(self):
-  from world.shared_outdoor_palette import encode
+  from world.shared_outdoor_palette import encode, add_trail
   from world.shared_cave import SharedCave
-  base=SharedCave(compile_plan(plan())[0]);rows=[r.decode('ascii') for r in base._rows]
+  geometry,network=compile_plan(plan());base=SharedCave(geometry);rows=[r.decode('ascii') for r in base._rows]
   site=self.study['sites'][0]
-  blob=encode(dict(rows=rows,spawn=[1,1],exit=[125,125]),[dict(x=site['x'],y=site['y'],width=1,height=1,terrain='sand')])
+  blob=encode(dict(rows=rows,spawn=[1,1],exit=[125,125]),[])
+  positions={s['id']:(s['x'],s['y']) for s in network['landmarks']}
+  for route in network['routes']:
+   blob,_,_=add_trail(blob,'sand',1,endpoints=(positions[route['source']],positions[route['target']]))
   revision=self.s._replace_cave(blob,label='Painted Study Grounds');self.assertEqual(self.s.shared_cave.version,17)
   change=deepcopy(self.initial);change['expected_version']=1
   change['changes'].update(intentions=[dict(id='painted_study',kind='study',target=revision,reason='Compare this landscape.')])
