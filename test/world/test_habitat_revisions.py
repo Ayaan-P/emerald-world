@@ -83,3 +83,33 @@ return r==1 && w.version==10 && w.wildlife[0]==25 && (w.wildlife[1]+256*w.wildli
    build=subprocess.run(['cc','-std=gnu99','-DPORTABLE','-DGENERATED_CAVE_PROFILES=1','-DGENERATED_CAVE_WILDLIFE=1','-iquote',str(d),'-iquote',str(root/'include'),str(root/'src/world/world_cave_wire.c'),str(d/'test.c'),'-o',str(d/'test')],capture_output=True,text=True)
    self.assertEqual(build.returncode,0,build.stderr)
    run=subprocess.run([str(d/'test')],input=frames,capture_output=True,text=True);self.assertEqual(run.returncode,0,run.stderr)
+
+class ComposedRevisionTests(HabitatRevisionTests):
+ def compose_plan(self, criteria, version=0):
+  self.f.apply(dict(id='composed'+str(version),purpose='Refresh a cave habitat.',steps=[
+   dict(id='inspect',tool='world.inspect_habitat',args={},after=[]),
+   dict(id='revise',tool='world.compose_habitat_revision',args=dict(observation=dict(result='inspect',key='tool_receipt'),profile='granite',rate=25,criteria=criteria),after=['inspect'])]),actor='canon_rydel',version=version)
+  self.assertEqual(runtime.tick(self.s,now=10+20*version)['status'],'succeeded')
+ def test_composed_revision_changes_real_table_keeps_place_and_geometry(self):
+  from test_habitat_composer import criteria
+  from world.habitat_composer import compose
+  old=self.s.shared_cave;place=self.s.memory.place(old.identity)
+  self.compose_plan(criteria());self.assertEqual(runtime.tick(self.s,now=16)['status'],'succeeded')
+  new=self.s.shared_cave;self.assertEqual(new._rows,old._rows);self.assertEqual(self.s.memory.place(new.identity),place)
+  expected=compose(criteria())['slots']
+  for i,(name,level) in enumerate(expected):
+   self.assertEqual(int.from_bytes(new.wildlife[1+3*i:3+3*i],'little'),species_id(name,'expansion-native'))
+   self.assertEqual(new.wildlife[3+3*i],level)
+  self.assertEqual(new.wildlife[0],25)
+ def test_impossible_population_fails_without_revision(self):
+  from test_habitat_composer import criteria
+  old=self.s.shared_cave.identity
+  self.compose_plan(criteria(types=['ice'],generations=[1],bst=[150,200]))
+  self.assertEqual(runtime.tick(self.s,now=16)['status'],'blocked')
+  self.assertEqual(self.s.shared_cave.identity,old)
+ def test_occupied_cave_refuses_composed_revision(self):
+  from test_habitat_composer import criteria
+  old=self.s.shared_cave.identity;self.compose_plan(criteria())
+  p=self.connect('Inside','SOCIALCAVE10');self.send(p,'CAVE GET');self.send(p,'CAVE ACK '+old)
+  p['state']=[*self.s.cave_map,2,2,1,7,1];p['in_generated_cave']=True
+  self.assertEqual(runtime.tick(self.s,now=16)['status'],'blocked');self.assertEqual(self.s.shared_cave.identity,old)
