@@ -143,6 +143,22 @@ def create_survey_landscape(server, actor, row, args):
 
 
 def generate_landscape(server, actor, row, args):
+    return _generate_landscape(server,actor,row,args,{})
+
+
+def generate_designed_landscape(server, actor, row, args):
+    if type(args.get('options')) is not str or len(args['options'])>600:
+        raise ValueError('Use bounded landscape options JSON')
+    try: options=json.loads(args['options'])
+    except (ValueError,TypeError):raise ValueError('Invalid landscape options JSON') from None
+    if type(options) is not dict or set(options)-{'zones','watercourse','reservations','reservation_terrain'}:
+        raise ValueError('Use zones, watercourse, reservations or reservation_terrain')
+    if 'watercourse' in options and type(options['watercourse']) is not bool:
+        raise ValueError('watercourse must be true or false')
+    return _generate_landscape(server,actor,row,{k:v for k,v in args.items() if k!='options'},options)
+
+
+def _generate_landscape(server, actor, row, args, options):
     """Create a seeded connected landscape from names rather than coordinates."""
     import random
     import re
@@ -166,7 +182,11 @@ def generate_landscape(server, actor, row, args):
     rng.shuffle(cells)
     landmarks=[dict(id=name,x=x+rng.randint(-3,3),y=y+rng.randint(-3,3),radius=rng.randint(5,8))
                for name,(x,y) in zip(names,cells)]
-    plan=dict(seed=seed,landmarks=landmarks,reservations=[],loops=0,corridor_width=args['corridor_width'])
-    return create(server,actor,row,dict(label=args['label'],layout='clearings',
+    plan=dict(seed=seed,landmarks=landmarks,reservations=options.get('reservations',[]),loops=0,corridor_width=args['corridor_width'])
+    if 'reservation_terrain' in options:plan['reservation_terrain']=options['reservation_terrain']
+    settings=dict(label=args['label'],layout='clearings',
         blueprint=json.dumps(plan,separators=(',',':')),biome=args['biome'],seed=seed,ponds=args['ponds'],
-        trail=args['trail'],trail_width=args['trail_width'],_network=True,_survey=True))
+        trail=args['trail'],trail_width=args['trail_width'],_network=True,_survey=True)
+    if options.get('watercourse',False):settings['_watercourse']=True
+    if 'zones' in options:settings['zones']=json.dumps(options['zones'],separators=(',',':'))
+    return create(server,actor,row,settings)
