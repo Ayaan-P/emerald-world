@@ -140,3 +140,53 @@ def create_survey_landscape(server, actor, row, args):
     if args.get('layout') != 'clearings':
         raise ValueError('Survey landscape requires clearings layout')
     return create(server, actor, row, dict(args, _network=True, _watercourse=True, _survey=True))
+
+
+def generate_landscape(server, actor, row, args):
+    return _generate_landscape(server,actor,row,args,{})
+
+
+def generate_designed_landscape(server, actor, row, args):
+    if type(args.get('options')) is not str or len(args['options'])>600:
+        raise ValueError('Use bounded landscape options JSON')
+    try: options=json.loads(args['options'])
+    except (ValueError,TypeError):raise ValueError('Invalid landscape options JSON') from None
+    if type(options) is not dict or set(options)-{'zones','watercourse','reservations','reservation_terrain'}:
+        raise ValueError('Use zones, watercourse, reservations or reservation_terrain')
+    if 'watercourse' in options and type(options['watercourse']) is not bool:
+        raise ValueError('watercourse must be true or false')
+    return _generate_landscape(server,actor,row,{k:v for k,v in args.items() if k!='options'},options)
+
+
+def _generate_landscape(server, actor, row, args, options):
+    """Create a seeded connected landscape from names rather than coordinates."""
+    import random
+    import re
+    expected={'label','landmarks','biome','seed','ponds','trail','trail_width','corridor_width'}
+    if set(args)!=expected or type(args['landmarks']) is not str or len(args['landmarks'])>350:
+        raise ValueError('Supply a bounded landmark-name list and landscape settings')
+    try:
+        names=json.loads(args['landmarks'])
+    except (ValueError,TypeError):
+        raise ValueError('Invalid landmark list') from None
+    if (type(names) is not list or not 2<=len(names)<=8 or
+        any(type(n) is not str or not re.fullmatch('[a-z][a-z0-9_]{0,23}',n) or n in ('entry','exit') for n in names) or
+        len(set(names))!=len(names)):
+        raise ValueError('Use 2..8 unique landmark IDs')
+    seed=args['seed']
+    if type(seed) is not int or not 0<=seed<2**32:
+        raise ValueError('Use an unsigned seed')
+    rng=random.Random(seed)
+    # A jittered grid keeps clearings separated and away from both endpoints.
+    cells=[(x,y) for y in (23,52,81,110) for x in (24,60,96)]
+    rng.shuffle(cells)
+    landmarks=[dict(id=name,x=x+rng.randint(-3,3),y=y+rng.randint(-3,3),radius=rng.randint(5,8))
+               for name,(x,y) in zip(names,cells)]
+    plan=dict(seed=seed,landmarks=landmarks,reservations=options.get('reservations',[]),loops=0,corridor_width=args['corridor_width'])
+    if 'reservation_terrain' in options:plan['reservation_terrain']=options['reservation_terrain']
+    settings=dict(label=args['label'],layout='clearings',
+        blueprint=json.dumps(plan,separators=(',',':')),biome=args['biome'],seed=seed,ponds=args['ponds'],
+        trail=args['trail'],trail_width=args['trail_width'],_network=True,_survey=True)
+    if options.get('watercourse',False):settings['_watercourse']=True
+    if 'zones' in options:settings['zones']=json.dumps(options['zones'],separators=(',',':'))
+    return create(server,actor,row,settings)
