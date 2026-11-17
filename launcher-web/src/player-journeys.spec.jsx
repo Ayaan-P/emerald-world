@@ -9,7 +9,9 @@ const base = { engine: 'expansion-native', local_worlds: [], local_hosts: [], wo
 beforeEach(() => { loadState.mockResolvedValue(base); perform.mockResolvedValue(base); });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 async function localDialog() {
-  fireEvent.click(await screen.findByRole('button', { name: 'Create local world' }));
+  const create = await screen.findByRole('button', { name: 'Create local world' });
+  await waitFor(() => expect(create.disabled).toBe(false));
+  fireEvent.click(create);
   const dialog = screen.getByRole('dialog');
   fireEvent.change(within(dialog).getByLabelText('World name'), { target: { value: 'Cave lab' } });
   return dialog;
@@ -39,6 +41,36 @@ it('separates Local and Hosted and keeps release notes and generation forms off 
   expect(screen.getByRole('button', { name: 'Generate caves & areas' })).toBeTruthy();
   expect(screen.queryByText(/RC8|Your adventure|Your world is open/i)).toBeNull();
   expect(screen.queryByLabelText('Area theme')).toBeNull();
+});
+it('waits for launcher readiness before opening the local world dialog', async () => {
+  vi.useFakeTimers();
+  try {
+    let finishLoading;
+    loadState.mockImplementation(() => new Promise(resolve => { finishLoading = resolve; }));
+    render(<App />);
+    const create = screen.getByRole('button', { name: 'Create local world' });
+    expect(create.disabled).toBe(true);
+    fireEvent.click(create);
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    // Hold the real readiness gate closed while the helper finds the button.
+    // Capture rejection immediately so the old helper's missing-dialog failure
+    // is reported by this test, rather than as an unhandled rejection.
+    const opening = localDialog().then(dialog => ({ dialog }), error => ({ error }));
+    // Advance the query wrapper's zero-delay timer, not the state-load promise.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(create.disabled).toBe(true);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(perform).not.toHaveBeenCalled();
+
+    await act(async () => { finishLoading(base); });
+    await vi.advanceTimersByTimeAsync(50);
+    const result = await opening;
+    if (result.error) throw result.error;
+    expect(create.disabled).toBe(false);
+    expect(within(result.dialog).getByLabelText('World name').value).toBe('Cave lab');
+    expect(perform).not.toHaveBeenCalled();
+  } finally { vi.useRealTimers(); }
 });
 it('creates and launches a local world without requiring hosted-owner access', async () => {
   render(<App />);
