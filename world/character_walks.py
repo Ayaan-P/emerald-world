@@ -8,7 +8,9 @@ def walk_for(state, identity):
 
 def walking(state, identity):
     walk=walk_for(state,identity)
-    return bool(walk and walk['index']<len(walk['path'])-1)
+    control=state.get('world_character_controls',{}).get(identity,{}) if type(state) is dict else {}
+    journey=control.get('journey')
+    return bool(walk and (walk['index']<len(walk['path'])-1 or journey and journey['segment']+len(walk['path'])<len(journey['path'])))
 
 
 def validate_walks(server, before, after, objects, *, restoring=False):
@@ -59,6 +61,8 @@ def validate_walks(server, before, after, objects, *, restoring=False):
                 if len({(o.get('region_revision'),o['group'],o['num'],o['x'],o['y']) for o in projected})!=len(projected):
                     raise ValueError('character path collides with another object')
                 validate_region_objects(server,projected,after)
+    from .character_journeys import validate as validate_journeys
+    validate_journeys(server,before,after,objects,restoring=restoring)
     for identity,old in old_controls.items():
         if old.get('walk') and not controls.get(identity,{}).get('walk'):
             previous=records(before).get(identity);current=cast.get(identity)

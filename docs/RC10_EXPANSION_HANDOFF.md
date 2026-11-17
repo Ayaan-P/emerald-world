@@ -1,5 +1,7 @@
 # RC10 Expansion source handoff for Dot / PR #252
 
+Historical checkpoint only. For the delivered RC11 baseline, RC12 candidate status, current combined build cohort and required private-engine access, use [the current build and release handoff](RC12_BUILD_RELEASE.md). The pins and release claims below describe RC10, not the current source.
+
 ## Correct source boundary
 
 The app's active native game is **not** the root `src/platform/` engine.

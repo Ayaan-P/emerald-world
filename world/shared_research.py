@@ -1,0 +1,96 @@
+"""Public aggregate of deliberately published native Dex flags, never save writes."""
+import json,time
+from pathlib import Path
+BASIS='opted_in_client_reported_dex_flags'
+MAX_DEX=1026
+
+def setup(db):
+    db.execute('CREATE TABLE IF NOT EXISTS shared_research(dex INTEGER PRIMARY KEY,flags INTEGER NOT NULL)')
+
+def names():
+    rows=json.loads(Path(__file__).with_name('encounter_traits.json').read_text())['species']
+    result={}
+    for row in rows:result.setdefault(row['national_dex'],row['name'])
+    return result
+
+def catalog(server):
+    setup(server.db)
+    return dict(basis=BASIS,limits='Public aggregate of voluntarily reported personal seen/caught flags. Not verified captures, current ownership, location or a shared personal Pokedex.',entries=[dict(dex=d,seen=bool(f&1),caught=bool(f&2)) for d,f in server.db.execute('SELECT dex,flags FROM shared_research ORDER BY dex')])
+
+def handle(server,conn,raw):
+    setup(server.db)
+    try:
+        fields=raw.decode('ascii').split(' ')
+        if len(fields)!=4 or fields[:3]!=['D','REPORT','1']:raise ValueError('format')
+        packed=fields[3]
+        if not 1<=len(packed)<=MAX_DEX//2 or any(c not in '0123456789abcdef' for c in packed):raise ValueError('flags')
+        flags=[v for c in packed for v in (int(c,16)&3,int(c,16)>>2)]
+        peer=conn['presence'];state=peer.get('state')
+        if (not peer.get('campaign_run') or not state or len(state)!=7
+                or not 0<=time.monotonic()-peer.get('state_time',0)<=5
+                or not state[6] or server.link_protocol.busy(conn['id'])):raise ValueError('session')
+        # Single atomic publication: no private lineage, trainer or raw save retained.
+        added=[]
+        with server.db:
+            for dex,c in enumerate(flags,1):
+                value=int(c)
+                if not value:continue
+                prior=server.db.execute('SELECT flags FROM shared_research WHERE dex=?',(dex,)).fetchone()
+                old=prior[0] if prior else 0
+                if value|old!=old:
+                    server.db.execute('INSERT OR REPLACE INTO shared_research VALUES(?,?)',(dex,value|old));added.append([dex,value&~old])
+            if added:
+                seq=server.memory.append('shared_research_published',dict(entries=added,basis=BASIS,publication='explicit_current_dex_snapshot',limits='Client-reported seen/caught flags, not verified captures or current Pokemon ownership. No trainer, save, party or location published.'))
+                server.revision=seq
+        return 'D ACK 1\n'
+    except (ValueError,KeyError,UnicodeError):return 'D ERROR 1\n'
+
+def command(server,conn,words):
+    from .guilds import GuildError
+    entries=catalog(server)['entries'];labels=names()
+    if not words:return ['Shared research: %d reported seen / %d reported caught.'%(sum(r['seen'] for r in entries),sum(r['caught'] for r in entries)), 'Search: /guild research NAME or National Dex number. List: /guild research page N.', 'Explore gaps: /guild research unreported [page] or uncaught [page].', 'Native /research explains one-time publication. Personal Dex unchanged.']
+    # Research gaps are relative to this server's voluntarily published aggregate,
+    # not a player's personal Dex, proof of availability, or a complete National Dex.
+    if words[0].lower() in ('unreported', 'uncaught'):
+        if len(words)>2 or (len(words)==2 and (not words[1].isdigit() or len(words[1])>3)):
+            raise GuildError('Use /guild research unreported [page] or uncaught [page]')
+        page=int(words[1]) if len(words)==2 else 0
+        flags={row['dex']:row for row in entries}
+        mode=words[0].lower()
+        candidates=[dex for dex in sorted(labels) if 1<=dex<=MAX_DEX and
+                    (dex not in flags if mode=='unreported' else not flags.get(dex,{}).get('caught',False))]
+        selected=candidates[page*8:page*8+8] if page<256 else []
+        header='No public report' if mode=='unreported' else 'No public caught report'
+        lines=[f'{header}: {len(candidates)} known catalog entries. Page {page}.']
+        lines += [f"#{dex} {labels[dex]}: " + ('seen reported' if flags.get(dex,{}).get('seen') else 'not reported') for dex in selected]
+        if not selected: lines.append('No entries on this page.')
+        lines.append('Voluntary reports only; not proof of availability or personal progress.')
+        return lines
+    if len(words)==2 and words[0]=='page' and words[1].isdigit():
+        page=int(words[1]);rows=entries[page*8:page*8+8] if page<256 else []
+    elif len(words)==1:
+        term=words[0].upper();rows=[r for r in entries if str(r['dex'])==term or term in labels.get(r['dex'],'')][:8]
+    else:raise GuildError('Use /guild research [NAME|NUMBER|page N]')
+    return ['Public client reports (not verified captures):']+['#%d %s: %s%s'%(r['dex'],labels.get(r['dex'],'Unknown name'), 'seen ' if r['seen'] else '', 'caught' if r['caught'] else '') for r in rows]+([] if rows else ['No matching published findings.'])
+
+
+def valid_event(event):
+    # Only anonymous, explicitly published aggregate deltas, never private Dex data.
+    if (event.get('event')!='shared_research_published'
+            or event.get('basis')!=BASIS or event.get('publication')!='explicit_current_dex_snapshot'):
+        return False
+    entries=event.get('entries')
+    return (type(entries) is list and 1<=len(entries)<=MAX_DEX
+        and all(type(e) is list and len(e)==2 and type(e[0]) is int and 1<=e[0]<=MAX_DEX
+                and type(e[1]) is int and 1<=e[1]<=3 for e in entries)
+        and len({e[0] for e in entries})==len(entries))
+
+
+def relevant(event, identity):
+    return identity=='canon_birch' and valid_event(event)
+
+
+def interested(event, character):
+    # Actor-owned interests refer to National Dex numbers, not engine species IDs.
+    interests=character.get('research_interests',[])
+    return bool(interests and valid_event(event) and any(entry[0] in interests for entry in event['entries']))

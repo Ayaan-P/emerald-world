@@ -29,9 +29,8 @@ class WorldMemoryTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def admin(self, request):
-        conn = dict(id=None, out=bytearray(), closing=False, sock=object())
-        self.server._admin_line(conn, json.dumps(request).encode())
-        return json.loads(conn['out'])
+        from admin_transport import admin_request
+        return admin_request(self.server, request)
 
     def test_history_context_restart_and_noop(self):
         identity = self.server._replace_cave(BLOB)
@@ -258,7 +257,15 @@ class WorldMemoryTests(unittest.TestCase):
         self.server.set_shared_geometry(identity, [], replace=True)
         self.server.module_state = {'existing':'x'*32000}
         inspection = self.server.inspect()
-        self.assertLess(len(json.dumps(inspection).encode()), 65536)
+        from world import inspection_transfer
+        conn = {}
+        first = inspection_transfer.begin(conn, inspection)
+        self.assertLess(len(json.dumps(first).encode()), 65536)
+        def exchange(request):
+            chunk = inspection_transfer.next_chunk(conn, request)
+            self.assertLess(len(json.dumps(chunk).encode()), 65536)
+            return chunk
+        self.assertEqual(inspection_transfer.receive(first, exchange), json.loads(json.dumps(inspection)))
         page = self.admin(dict(command='world_history',limit=64))
         self.assertLess(len(json.dumps(page).encode()), 65536)
         self.assertTrue(page['has_more'])

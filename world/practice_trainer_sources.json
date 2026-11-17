@@ -1,0 +1,11 @@
+{
+  "repository": "Ayaan-P/pokeemerald-expansion-native",
+  "revision": "2abe34bd2b39ec9085e1d1aa5eda4cd5e65b8ed6",
+  "path": "src/data/trainers.party",
+  "definitions": {
+    "CALVIN_1": "=== TRAINER_CALVIN_1 ===\nName: CALVIN\nClass: Youngster\nPic: Youngster\nGender: Male\nMusic: Male\nDouble Battle: No\nAI: Check Bad Move\n\nPoochyena\nLevel: 5\nIVs: 0 HP / 0 Atk / 0 Def / 0 SpA / 0 SpD / 0 Spe\n",
+    "ALLEN": "=== TRAINER_ALLEN ===\nName: ALLEN\nClass: Youngster\nPic: Youngster\nGender: Male\nMusic: Male\nDouble Battle: No\nAI: Check Bad Move\n\nZigzagoon\nLevel: 4\nIVs: 0 HP / 0 Atk / 0 Def / 0 SpA / 0 SpD / 0 Spe\n\nTaillow\nLevel: 3\nIVs: 0 HP / 0 Atk / 0 Def / 0 SpA / 0 SpD / 0 Spe\n",
+    "TIANA": "=== TRAINER_TIANA ===\nName: TIANA\nClass: Lass\nPic: Lass\nGender: Female\nMusic: Female\nDouble Battle: No\nAI: Check Bad Move\n\nZigzagoon\nLevel: 4\nIVs: 0 HP / 0 Atk / 0 Def / 0 SpA / 0 SpD / 0 Spe\n\nShroomish\nLevel: 4\nIVs: 0 HP / 0 Atk / 0 Def / 0 SpA / 0 SpD / 0 Spe\n",
+    "HALEY_1": "=== TRAINER_HALEY_1 ===\nName: HALEY\nClass: Lass\nPic: Lass\nGender: Female\nMusic: Female\nDouble Battle: No\nAI: Check Bad Move\n\nLotad\nLevel: 6\nIVs: 0 HP / 0 Atk / 0 Def / 0 SpA / 0 SpD / 0 Spe\n\nShroomish\nLevel: 6\nIVs: 0 HP / 0 Atk / 0 Def / 0 SpA / 0 SpD / 0 Spe\n"
+  }
+}

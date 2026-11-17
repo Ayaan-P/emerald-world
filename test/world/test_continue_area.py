@@ -1,5 +1,4 @@
 """Real geometry commits from history-informed inert proposals, no model calls."""
-import json
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -29,9 +28,8 @@ class ContinueAreaTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def transport(self,_socket,request,**kwargs):
-        conn=dict(id=None,out=bytearray(),closing=False,sock=object())
-        self.server._admin_line(conn,json.dumps(request).encode())
-        return json.loads(conn['out'])
+        from admin_transport import admin_request
+        return admin_request(self.server, request)
 
     def author(self,prompt):
         self.assertIn(str(self.evidence),prompt)
@@ -41,6 +39,15 @@ class ContinueAreaTests(unittest.TestCase):
     def run_builder(self,author=None,apply=True):
         with patch('world.continue_area.admin_request',side_effect=self.transport):
             return continue_area('admin','Restore the refuge clearing using its recorded terrain history',author=author or self.author,apply=apply)
+
+    def test_transport_refuses_chunks_after_authority_closes_connection(self):
+        original = self.server._admin_line
+        def close_after_response(conn, raw):
+            original(conn, raw)
+            conn['closing'] = True
+        with patch.object(self.server, '_admin_line', side_effect=close_after_response):
+            with self.assertRaises(ConnectionResetError):
+                self.transport('', dict(command='inspect'))
 
     def test_real_commit_retains_place_story_template_and_restart_history(self):
         before=self.server.shared_cave.identity

@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 RESEARCH = '/home/ayaan/projects/emerald-world-research'
@@ -364,7 +365,8 @@ class SessionTests(unittest.TestCase):
                 self.assertLess(time.monotonic() - started, 1)
             self.assertIsNotNone(child.poll())
 
-    def test_runtime_gm_host_controls_queue_real_intents_and_stop_cleanly(self):
+    @patch("world.author_backends.preflight",return_value={"ok":True})
+    def test_runtime_gm_host_controls_queue_real_intents_and_stop_cleanly(self, _preflight):
         import time
         from world import session
         from world.runtime_gm import MODEL

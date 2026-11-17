@@ -132,6 +132,7 @@ static const struct MapHeader *Overworld_GetMapHeaderByGroupAndId(unsigned g, un
 }
 #include "platform/world_catalog.h"
 '''
+        source += (ROOT/'include/platform/chat_command_gate.h').read_text()
         source += declarations
         source += ''.join(function(bridge, n) for n in ('Identifier', 'Decimal', 'ObjectText', 'MapCoords', 'Line'))
         source += '''static void ApplyTiles(void) {

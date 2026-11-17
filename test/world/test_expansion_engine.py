@@ -315,6 +315,11 @@ class ExpansionEngineTest(unittest.TestCase):
             paths = launcher.profile_paths(directory, 'Ash', engine='expansion-native')
             command = launcher.game_command('/bin/true', directory, paths, engine='expansion-native')
             native = command[command.index('--')+1:]
+            self.assertNotIn('--field-skills', native)
+            enabled = launcher.game_command('/bin/true', directory, paths, engine='expansion-native', field_skills=True)
+            self.assertIn('--field-skills', enabled[enabled.index('--')+1:])
+            with self.assertRaises(ValueError):
+                launcher.game_command('/bin/true', directory, paths, engine='expansion-native', field_skills='yes')
             self.assertIn('--data-dir', native)
             self.assertIn('--rtc-offset', native)
             self.assertIn('--headless', native)
