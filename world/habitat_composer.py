@@ -64,3 +64,17 @@ def create(server,actor,row,args):
  # The existing compiler/admission owns actual profile, rate, species and map validation.
  return create_habitat(server,actor,row,dict(label=args['label'],blueprint=args['blueprint'],
         population=json.dumps(dict(profile=args['profile'],rate=args['rate'],slots=population['slots']),separators=(',',':'))))
+
+
+def revise(server,actor,row,args):
+ """Compose a new encounter table for an inspected, existing shared cave.
+
+ The revision authority still owns stale-observation, occupied-area, immutable
+ region, exact geometry, species cohort and atomic commit checks.
+ """
+ from .actor_habitat_revision import revise as revise_habitat
+ if set(args)!={'observation','profile','rate','criteria'}:
+  raise ValueError('Supply own habitat inspection, profile, rate and criteria')
+ population=compose(args['criteria'])
+ return revise_habitat(server,actor,row,dict(observation=args['observation'],profile=args['profile'],
+     rate=args['rate'],slots=json.dumps(population['slots'],separators=(',',':'))))
